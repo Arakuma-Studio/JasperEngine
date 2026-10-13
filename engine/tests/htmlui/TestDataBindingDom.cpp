@@ -113,6 +113,20 @@ TEST_F(DataBindingDomTest, DataForTemplateIsNotInTheDom){
     ASSERT_EQ(tree.size(), 4u);   // the list and its three rows
     EXPECT_EQ(tree[3].ref, "#log > li:nth-child(3)");
     EXPECT_EQ(query(document, "#log > li:nth-child(3)").size(), 1u);
+    // assert_ui's count sees the rows (the inventory example's manifest: count .slot = 24)
+    AssertSpec count;
+    count.kind = AssertKind::Count;
+    count.selector = ".row";
+    count.count = 3;
+    AssertResult counted = HtmlUIAssertions::run(&fixture->getScene(), document.getEntity(), count);
+    EXPECT_TRUE(counted.passed) << (counted.failures.empty() ? counted.error : counted.failures[0].message);
+    EXPECT_EQ(counted.matched, 3u);
+    AssertSpec visible;
+    visible.kind = AssertKind::Visible;
+    visible.selector = "#log > li";
+    counted = HtmlUIAssertions::run(&fixture->getScene(), document.getEntity(), visible);
+    EXPECT_TRUE(counted.passed) << "the hidden template is not a match that fails visible";
+    EXPECT_EQ(counted.matched, 3u);
 
     // one row: :only-child; no rows: nothing, and a query of the template's selector finds nothing
     UIValue one = UIValue::array();

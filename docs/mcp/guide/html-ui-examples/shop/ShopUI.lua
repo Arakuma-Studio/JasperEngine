@@ -2,7 +2,8 @@
 -- The cards are the "shop" data model's items; a chip sets the filter, Buy opens the dialog,
 -- the stepper sets the quantity and Buy in the dialog pays: the purse counts down with anime
 -- and "shop: bought <id> x<n>" is logged. Buttons the purse cannot pay for are disabled by
--- the document itself (data-attrif-disabled).
+-- the document itself (data-attrif-disabled). Escape (a gamepad's B) cancels the dialog, and
+-- while it is open the arrow keys (the d-pad) stay on its buttons.
 ---@class ShopUI : ScriptInstance
 local ShopUI = {
     properties = {}
@@ -53,6 +54,8 @@ function ShopUI:init()
     self.onPlus = function() self:setQuantity(self.model.qty + 1) end
     self.onCancel = function() self:closeConfirm() end
     self.onConfirm = function() self:confirm() end
+    ---@param event UIEvent
+    self.onKey = function(event) self:keyDown(event) end
 
     RegisterEvent(self, self.doc.onLoad, "onDocumentLoad")
     self:onDocumentLoad()
@@ -66,6 +69,37 @@ function ShopUI:onDocumentLoad()
     byId(doc, "confirm-cancel"):addEventListener("click", self.onCancel)
     byId(doc, "confirm-buy"):addEventListener("click", self.onConfirm)
     byId(doc, "confirm").classList:toggle("open", self.pending ~= nil)
+    doc:addEventListener("keydown", self.onKey)
+end
+
+-- the dialog's buttons, in the order the arrow keys step through them
+local DIALOG = { "qty-minus", "qty-plus", "confirm-cancel", "confirm-buy" }
+
+---@param event UIEvent
+function ShopUI:keyDown(event)
+    if not self.pending then return end
+    if event.key == "Escape" then
+        self:closeConfirm()
+        event:preventDefault()
+        return
+    end
+    local step = (event.key == "ArrowRight" or event.key == "ArrowDown") and 1
+              or (event.key == "ArrowLeft" or event.key == "ArrowUp") and -1 or 0
+    if step == 0 then return end
+    -- a modal dialog: the focus moves among its enabled buttons and does not leave it
+    local at = #DIALOG
+    for i, id in ipairs(DIALOG) do
+        if byId(self.doc, id):matches(":focus") then at = i end
+    end
+    for _ = 1, #DIALOG do
+        at = (at - 1 + step) % #DIALOG + 1
+        local button = byId(self.doc, DIALOG[at])
+        if not button:hasAttribute("disabled") then
+            button:focus()
+            break
+        end
+    end
+    event:preventDefault()
 end
 
 ---@param index integer 1-based
@@ -73,6 +107,7 @@ function ShopUI:openConfirm(index)
     local ware = WARES[index]
     if ware.price > self.gold then return end
     self.pending = ware
+    self.pendingIndex = index
     self.model.pendingName = ware.name
     self.model.pendingIcon = ware.icon
     self.model.pendingPrice = ware.price
@@ -84,6 +119,10 @@ end
 function ShopUI:closeConfirm()
     self.pending = nil
     byId(self.doc, "confirm").classList:remove("open")
+    -- the focus goes back to the card's Buy button (the dialog's are hidden now)
+    local card = self.pendingIndex and self.doc:querySelectorAll(".card")[self.pendingIndex]
+    local buy = card and card:querySelector(".buy")
+    if buy then buy:focus() end
 end
 
 ---@param qty integer

@@ -1,6 +1,7 @@
 -- Main menu logic: attach to the GameObject that has the UI Document (main_menu.html).
 -- Clicks log "main_menu: <id>", Settings opens the slide-in panel (class "open"), arrow keys
--- move the focus between the buttons and Enter presses the focused one.
+-- move the focus between the buttons and Enter presses the focused one. A gamepad does the same:
+-- its d-pad and stick arrive as arrow keys, A as Enter, B as Escape (closes the panel).
 ---@class MainMenuUI : ScriptInstance
 local MainMenuUI = {
     properties = {}
@@ -97,6 +98,8 @@ function MainMenuUI:keyDown(event)
     if event.key == "Escape" and panelOpen then
         self:showSettings(false)
         event:preventDefault()
+    elseif panelOpen and event.key:sub(1, 5) == "Arrow" then
+        event:preventDefault()   -- the d-pad stays on the panel (its Back button)
     elseif (event.key == "ArrowDown" or event.key == "ArrowUp") and not panelOpen then
         local step = event.key == "ArrowDown" and 1 or -1
         local index = self.focused == 0 and 1 or (self.focused - 1 + step) % #BUTTONS + 1

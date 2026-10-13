@@ -155,6 +155,29 @@ async def console_messages(ed: Editor, **args) -> list[str]:
     return [e.get("message", "") for e in await ed.console_since(limit=1000, **args)]
 
 
+async def pad(ed: Editor, *buttons: str, frames_after: int = 6) -> None:
+    """Gamepad presses (p4-input: the focused document gets them as keys)."""
+    await ed.call("send_input", events=[{"type": "gamepad", "button": b, "action": "press"} for b in buttons],
+                  frames_after=frames_after)
+
+
+async def focused(ed: Editor, name: str) -> str:
+    """The id of the example's focused element ('' for none)."""
+    return (await lua(ed, f"local f = {doc_lua(name)}:querySelector(':focus'); return f and f.id or ''"))[0]
+
+
+async def walk(ed: Editor, name: str, button: str, limit: int = 12) -> list[str]:
+    """Presses `button` until the focus stops moving; the ids it went through."""
+    seen = []
+    for _ in range(limit):
+        await pad(ed, button)
+        current = await focused(ed, name)
+        if seen and current == seen[-1]:
+            break
+        seen.append(current)
+    return seen
+
+
 async def console_cursor(ed: Editor) -> int:
     """A read_console cursor at the newest line (the steps move console_since's own cursor)."""
     return (await ed.call("read_console", limit=1))["next_cursor"]
@@ -494,6 +517,23 @@ async def main_menu_after(ed: Editor, n: str) -> None:
     await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "enter"}], frames_after=10)
     check("main_menu: settings" in await console_messages(ed), "ArrowDown then Enter presses #settings")
 
+    # the gamepad (p4-input): B closes the panel, the d-pad reaches every button, A presses
+    panel = f"return {doc_lua(n)}:getElementById('settings-panel').classList:contains('open')"
+    check(await lua(ed, panel) == [True], "the panel is open")
+    await pad(ed, "dpad_down")
+    check(await focused(ed, n) == "settings-back", "the d-pad stays on the open panel")
+    await pad(ed, "b", frames_after=30)
+    check(await lua(ed, panel) == [False] and await focused(ed, n) == "settings", "B closes the panel")
+    check(await walk(ed, n, "dpad_down", 3) == ["credits", "quit", "play"], "the d-pad goes through the buttons")
+    await pad(ed, "dpad_down", "dpad_down")
+    await ed.console_since(None, limit=1)
+    await pad(ed, "a", frames_after=10)
+    check("main_menu: credits" in await console_messages(ed), "A presses the focused #credits")
+    await pad(ed, "dpad_up", "a", frames_after=30)
+    check(await lua(ed, panel) == [True] and await focused(ed, n) == "settings-back", "A on #settings opens the panel")
+    await pad(ed, "a", frames_after=30)
+    check(await lua(ed, panel) == [False], "A on Back closes it")
+
 
 async def pause_menu_before(ed: Editor, n: str, first: bool) -> None:
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('pause').classList:contains('open')") == [False],
@@ -513,6 +553,21 @@ async def pause_menu_after(ed: Editor, n: str) -> None:
     await ed.call("send_input", events=[{"type": "key", "key": "escape"}], frames_after=5)
     await click(ed, n, "#resume")
     check(await lua(ed, "return Engine.timeScale") == [1], "#resume closes the menu")
+
+    # the gamepad (p4-input): Start opens, the d-pad reaches every button, A presses, B closes
+    is_open = f"return {doc_lua(n)}:getElementById('pause').classList:contains('open'), Engine.timeScale"
+    await pad(ed, "start", frames_after=20)
+    check(await lua(ed, is_open) == [True, 0] and await focused(ed, n) == "resume", "Start opens the menu on #resume")
+    check(await walk(ed, n, "dpad_down") == ["options", "restart", "to-menu"], "the d-pad goes through the buttons")
+    await pad(ed, "dpad_up")
+    await ed.console_since(None, limit=1)
+    await pad(ed, "a", frames_after=10)
+    check("pause_menu: restart" in await console_messages(ed), "A presses #restart")
+    await pad(ed, "b", frames_after=20)
+    check(await lua(ed, is_open) == [False, 1], "B closes the menu and the game runs")
+    await pad(ed, "start", frames_after=20)
+    await pad(ed, "a", frames_after=20)
+    check(await lua(ed, is_open) == [False, 1], "A on #resume closes it")
 
 
 async def hud_before(ed: Editor, n: str, first: bool) -> None:
@@ -542,7 +597,7 @@ async def hud_after(ed: Editor, n: str) -> None:
 
 
 async def inventory_before(ed: Editor, n: str, first: bool) -> None:
-    check(await lua(ed, f"return #{doc_lua(n)}:querySelectorAll('.grid > .slot:not([data-for])')") == [24], "24 slots")
+    check(await lua(ed, f"return #{doc_lua(n)}:querySelectorAll('.grid > .slot')") == [24], "24 slots (the data-for template is no element)")
     a = await center(ed, n, ".slot:nth-child(1)")
     b = await center(ed, n, ".slot:nth-child(6)")
     # WAVE-2: send_input {mouse drag target: ".slot:nth-child(1)", to_target: ".slot:nth-child(6)"}
@@ -561,8 +616,37 @@ async def inventory_after(ed: Editor, n: str) -> None:
     await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": x, "y": y}], frames_after=10)
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('tooltip').classList:contains('show')") == [False],
           "an empty slot hides the tooltip")
+    # the gamepad (p4-input): the first key focuses the first slot, the d-pad moves through the grid
+    # (the tooltip follows), A picks an item up and puts it down, B cancels, the close button is reachable
+    slot = (f"local d = {doc_lua(n)}; local s = d:querySelectorAll('.grid > .slot'); "
+            f"for i, e in ipairs(s) do if e:matches(':focus') then return i end end; return 0")
+    await lua(ed, f"local f = {doc_lua(n)}:querySelector(':focus'); if f then f:blur() end")
+    await pad(ed, "dpad_right")
+    check(await lua(ed, slot) == [1], "the first gamepad key focuses the first slot")
+    await pad(ed, "dpad_right", "dpad_down")
+    check(await lua(ed, slot) == [8], "right then down: slot 8 (six columns)")
+    check(await lua(ed, f"local d = {doc_lua(n)}; return d:getElementById('tooltip').classList:contains('show'), "
+                        f"d:getElementById('tooltip-title').textContent") == [True, "Vault Key"], "the tooltip follows the focus")
+    model = f"{doc_lua(n)}:getDataModel('inventory')"
+    await pad(ed, "a")
+    check(await lua(ed, f"return {model}.picked") == [8], "A picks the key up")
+    await pad(ed, "dpad_left", "a")
+    check(await lua(ed, f"local m = {model}; return m.picked, m.items[7].id, m.items[8].id") == [0, "key", ""],
+          "A on slot 7 puts it down there")
+    await pad(ed, "a", "b")
+    check(await lua(ed, f"return {model}.picked, {doc_lua(n)}.visible") == [0, True], "B cancels a pick")
+    rows = [await lua(ed, slot)]
+    for button in ("dpad_up", "dpad_right", "dpad_right", "dpad_right", "dpad_right", "dpad_right", "dpad_up"):
+        await pad(ed, button)
+        rows.append((await lua(ed, slot))[0])
+    check(await focused(ed, n) == "close", f"the close button above the grid is reachable: {rows}")
+
     await click(ed, n, "#close")
     check(await lua(ed, f"return {doc_lua(n)}.visible") == [False], "#close hides the document")
+    await pad(ed, "back", frames_after=10)
+    check(await lua(ed, f"return {doc_lua(n)}.visible") == [True], "View shows it again")
+    await pad(ed, "b", frames_after=10)
+    check(await lua(ed, f"return {doc_lua(n)}.visible") == [False], "B closes it")
 
 
 async def settings_before(ed: Editor, n: str, first: bool) -> None:
@@ -598,6 +682,38 @@ async def settings_after(ed: Editor, n: str) -> None:
     await click(ed, n, "#reset")
     check(await lua(ed, f"local m = {doc_lua(n)}:getDataModel('settings'); return m.music, m.vsync, m.keys.jump") == [60, True, "Space"],
           "#reset restores the defaults")
+
+    # the gamepad (p4-input): every control of a tab is reachable, ranges adjust, checkboxes toggle,
+    # selects open and choose, B is Back
+    model = f"{doc_lua(n)}:getDataModel('settings')"
+    await lua(ed, f"{doc_lua(n)}:getElementById('tab-graphics'):focus()")
+    await pad(ed, "a", frames_after=10)
+    check(await lua(ed, f"return {doc_lua(n)}:getElementById('panel-graphics').classList:contains('active')") == [True],
+          "A selects the Graphics tab")
+    check(await walk(ed, n, "dpad_right") == ["tab-audio", "tab-controls", "tab-gameplay"], "the d-pad goes along the tabs")
+    down = await walk(ed, n, "dpad_down")
+    for want in ("resolution", "quality", "fov", "vsync", "bloom"):
+        check(want in down, f"the d-pad reaches #{want}: {down}")
+    check(any(i in down for i in ("back", "reset", "apply")), f"and the footer: {down}")
+    footer = await walk(ed, n, "dpad_left") + await walk(ed, n, "dpad_right")
+    for want in ("back", "reset", "apply"):
+        check(want in footer, f"the footer's #{want} is reachable: {footer}")
+    up = await walk(ed, n, "dpad_up")
+    check(up and up[-1].startswith("tab-"), f"up reaches the tabs again: {up}")
+
+    await lua(ed, f"{doc_lua(n)}:getElementById('fov'):focus()")
+    fov = (await lua(ed, f"return {model}.fov"))[0]
+    await pad(ed, "dpad_right", "dpad_right", frames_after=10)
+    check(await lua(ed, f"return {model}.fov") == [fov + 2], "the d-pad adjusts the focused range")
+    await lua(ed, f"{doc_lua(n)}:getElementById('bloom'):focus()")
+    await pad(ed, "a", frames_after=10)
+    check(await lua(ed, f"return {model}.bloom") == [False], "A toggles the focused switch")
+    await lua(ed, f"{doc_lua(n)}:getElementById('quality'):focus()")
+    await pad(ed, "a", "dpad_down", "a", frames_after=10)
+    check(await lua(ed, f"return {model}.quality") == ["ultra"], "A opens the select, the d-pad moves, A chooses")
+    await ed.console_since(None, limit=1)
+    await pad(ed, "b", frames_after=10)
+    check("settings: back" in await console_messages(ed), "B is Back")
 
 
 async def dialogue_before(ed: Editor, n: str, first: bool) -> None:
@@ -640,6 +756,21 @@ async def shop_after(ed: Editor, n: str) -> None:
                           f"if c.style.display ~= 'none' then names[#names + 1] = c:querySelector('.name').textContent end end; "
                           f"return table.concat(names, ', ')")
     check(shown == ["Health Potion, Golden Apple"], f"the Potions chip shows the potions: {shown}")
+
+    # the gamepad (p4-input): the dialog keeps the d-pad on its buttons, A presses, B cancels
+    await click(ed, n, ".card:nth-child(7) .buy", frames_after=20)
+    is_open = f"return {doc_lua(n)}:getElementById('confirm').classList:contains('open')"
+    check(await lua(ed, is_open) == [True] and await focused(ed, n) == "confirm-buy", "Buy opens the dialog on its Buy")
+    await pad(ed, "dpad_right")
+    check(await focused(ed, n) == "qty-plus", "right wraps to the stepper (the disabled minus is skipped)")
+    await pad(ed, "a", frames_after=10)
+    check(await lua(ed, f"return {doc_lua(n)}:getElementById('qty').textContent") == ["2"], "A on + adds one")
+    await pad(ed, "dpad_down", "dpad_down", "dpad_down")
+    check(await focused(ed, n) in ("qty-minus", "qty-plus", "confirm-cancel", "confirm-buy"), "the d-pad stays in the dialog")
+    await pad(ed, "b", frames_after=20)
+    check(await lua(ed, is_open) == [False], "B cancels the dialog")
+    check(await lua(ed, f"return {doc_lua(n)}:querySelectorAll('.card')[7]:querySelector('.buy'):matches(':focus')") == [True],
+          "the focus goes back to the card's Buy")
 
 
 async def toasts_before(ed: Editor, n: str, first: bool) -> None:

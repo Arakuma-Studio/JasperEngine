@@ -1884,9 +1884,9 @@ Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
   drag and drop is the engine's CSS property `drag: drag-drop` on `.slot` (browsers ignore it;
   RmlUi has no `drag` attribute) with `data-event-dragstart="pick(i)"` /
   `data-event-dragdrop="drop(i)"`. A `data-for` element stays in the DOM, hidden, as the
-  **last** child of its parent: `.slot:nth-child(1)` is the first slot, and a count of `.slot`
-  that includes hidden elements is 25 (the manifest's `count .slot = 24` assumes `assert_ui`
-  counts what is shown).
+  **last** child of its parent: `.slot:nth-child(1)` is the first slot. *(p4-input, 4.6.1: the
+  Lua DOM, the inspector and `assert_ui` leave the template out, so `.slot` counts 24, as the
+  manifest's `count .slot = 24` says.)*
 - **Settings switches**: an invisible `<input type="checkbox">` over a `span.knob` whose
   `::before` is the knob (`input:checked + .knob`): the engine generates no `::before`/`::after`
   on `<input>` (Chromium does with `appearance: none`; reported as a parity gap, not fixed here).
