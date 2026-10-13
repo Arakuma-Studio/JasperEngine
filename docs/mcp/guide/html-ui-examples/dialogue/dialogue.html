@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   Dialogue: a conversation box at the bottom of the screen.
-  Shows: a circular portrait (an SVG asset clipped by border-radius), a name plate overlapping
+  Shows: a circular portrait (an <img> of an SVG asset with border-radius), a name plate overlapping
   the box, layered gradients, a bouncing continue marker (keyframes), and choice buttons that
   DialogueUI.lua creates with createElement / appendChild. The text is typed at 40 characters
   per second of game time in onUpdate; a click or Space completes the line, then advances.
@@ -17,9 +17,7 @@
   <div class="scrim"></div>
 
   <section class="dialogue" id="dialogue" aria-live="polite">
-    <div class="portrait">
-      <img src="assets/portrait.svg" alt="">
-    </div>
+    <img class="portrait" src="assets/portrait.svg" alt="">
 
     <div class="body">
       <p class="speaker" id="speaker">Captain Mira</p>

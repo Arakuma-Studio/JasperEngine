@@ -2,7 +2,7 @@
 -- The cards are the "shop" data model's items; a chip sets the filter, Buy opens the dialog,
 -- the stepper sets the quantity and Buy in the dialog pays: the purse counts down with anime
 -- and "shop: bought <id> x<n>" is logged. Buttons the purse cannot pay for are disabled by
--- the document itself (data-attrif-disabled).
+-- the document itself (data-attr-disabled).
 ---@class ShopUI : ScriptInstance
 local ShopUI = {
     properties = {}
