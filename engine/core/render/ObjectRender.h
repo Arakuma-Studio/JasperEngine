@@ -39,8 +39,12 @@ namespace jasperengine {
         void setIndexBuffer(BufferRender* buffer);
         void resetIndexBuffer();
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        // builds every pipeline type in pipelines with the render state
-        bool endLoad(uint16_t pipelines, const RenderState& state);
+        // the texture through the sampler (filter, wrap) of another one: a pass that needs
+        // bilinear taps of a target the user made NEAREST
+        void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
+        // builds every pipeline type in pipelines with the render state; the PIP_MSAA* types
+        // take msaaSamples (the post-processed camera's multisampled target, 2 or 4)
+        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
@@ -56,10 +60,6 @@ namespace jasperengine {
 
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
-        // the sample count (2 or 4) the PIP_MSAA* pipelines of objects loaded from now on take:
-        // the multisampled scene target of the post-processed camera (RenderSystem sets it
-        // before its scene's objects load)
-        static void setMsaaSamples(int samples);
     };
 }
 

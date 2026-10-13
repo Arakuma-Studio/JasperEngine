@@ -8,7 +8,8 @@
 //      output pixels)
 //   2. the scene tap, or FXAA 3.11's console algorithm (UBER_FXAA: luma from green, the 4
 //      corner taps, 4 more on edge pixels), then sharpen (UBER_SHARPEN, from the same corners)
-//   3. chromatic aberration (UBER_CHROMATIC): red and blue taps shifted along the radius
+//   3. chromatic aberration (UBER_CHROMATIC): red and blue taps shifted along the radius, added
+//      as their difference from the centre tap (FXAA and sharpen stay on every channel)
 //   4. bloom (UBER_BLOOM: u_bloomTexture, added in linear light with the gamma-2 approximation
 //      sqrt(c*c + bloom), exact where there is none) and blur (UBER_BLUR: u_blurTexture mixed in)
 //   5. the colour grade's LUT (UBER_LUT: display colour in and out, includes/post_color.glsl's
@@ -20,6 +21,11 @@
 //
 // Colour maths is mediump (fp16 on GLES where the GPU has it); UVs and texel sizes stay highp
 // (the parameter block too: GL uploads it as one vec4 array).
+// The source is always sampled bilinear (the corner taps and the FXAA search rely on it): the
+// engine binds a linear sampler when the fixed-resolution target is NEAREST, and the UV snaps
+// to the centre of its source texel (sampling.x 1), so that upscale stays nearest and every
+// effect works per source texel. UBER_UPSCALE (none of the effects) is the plain upscale of a
+// render scale below 1.
 // The bloom and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when sampled, in
 // the gamma-2 domain the chain's prefilter decoded the scene to); with none bound the engine
 // binds black (bloom adds nothing) and the source with a blur mix of 0.
@@ -66,6 +72,7 @@ uniform u_fs_uberParams {
     vec4 vignetteColor;             // rgb display colour, a intensity
     vec4 vignetteLutScan;     // x, y vignette falloff, z LUT side, w scanline period (output pixels)
     vec4 bloomBlur;                 // rgb bloom tint * intensity (linear), a blur mix
+    vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale)
 } uber;
 
 mediump vec3 sceneTap(highp vec2 uv){
@@ -141,13 +148,17 @@ void main(){
     #ifdef UBER_WARP
         uv = screen * uber.uvScaleOffset.xz + uber.uvScaleOffset.yw;
     #endif
+    // a NEAREST upscale: the centre of the source texel (bilinear there is that texel)
+    highp vec2 snapped = (floor(uv * uber.sourceTexel.zw) + 0.5) * uber.sourceTexel.xy;
+    highp vec2 snap = (snapped - uv) * uber.sampling.x;
+    uv += snap;
 
     #ifdef UBER_CORNERS
         #ifdef UBER_WARP
             highp vec2 halfTexel = 0.5 * uber.sourceTexel.xy;
             highp vec4 corners = vec4(uv - halfTexel, uv + halfTexel);
         #else
-            highp vec4 corners = v_corners;
+            highp vec4 corners = v_corners + snap.xyxy;
         #endif
         mediump vec3 nw = sceneTap(corners.xy);
         mediump vec3 ne = sceneTap(corners.zy);
@@ -170,8 +181,10 @@ void main(){
         // red in, blue out along the radius, growing with its square (none at the centre)
         highp vec2 radius = screen - 0.5;
         highp vec2 shift = radius * dot(radius, radius) * (0.06 * uber.effects.x) * uber.uvScaleOffset.xz;
-        color.r = sceneTap(uv - shift).r;
-        color.b = sceneTap(uv + shift).b;
+        // the shifted taps' difference from the centre tap, on top of the antialiased and
+        // sharpened colour (a raw tap would bring the jaggies back on red and blue)
+        color.r = max(color.r + (sceneTap(uv - shift).r - sceneColor.r), 0.0);
+        color.b = max(color.b + (sceneTap(uv + shift).b - sceneColor.b), 0.0);
     #endif
 
     #ifdef UBER_BLOOM

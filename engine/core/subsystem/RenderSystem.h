@@ -69,7 +69,23 @@ namespace jasperengine{
 		Vector4 vignetteScaleOffset; // p = gl_FragCoord.xy * xy - zw (centred, 1 at the edges)
 		Vector4 vignetteColor;       // rgb display colour, a intensity (0 = none)
 		Vector4 params;              // x, y vignette falloff, z dither amplitude, w LUT side (0 = no LUT)
+		Vector4 shaper;              // x the LUT shaper's k (s = sqrt(x / (x + k))), y how a built-in shader's
+		                             // blend takes its colour (PostColorBlend: 0 own, 1 added, 2 premultiplied)
 	} post_color_t;
+
+	// How the blend of a draw takes the post-processing colour of a shader without a manifest
+	// (built-in mesh, points, lines and their forks: no BLEND_* define), the index of its pass
+	// block (RenderSystem::passPostColors): its own colour (opaque, alpha), an added one
+	// (black adds nothing, includes/post_color.glsl), a plain factor (multiply: neutral data),
+	// or a premultiplied colour (the straight colour's, times alpha). Library shaders follow
+	// their BLEND_* define and always take POST_BLEND_OWN.
+	enum PostColorBlend : uint8_t {
+		POST_BLEND_OWN = 0,
+		POST_BLEND_ADDITIVE = 1,
+		POST_BLEND_PREMULTIPLIED = 2,
+		POST_BLEND_MULTIPLY = 3,
+		POST_BLEND_COUNT = 4
+	};
 
 	// u_vs_frame / u_fs_frame (shaderlib/includes/frame.glsl): per-camera-pass data for any
 	// shader that declares the block. The layout up to ambient is a contract with the
@@ -232,6 +248,7 @@ namespace jasperengine{
 		Vector4 vignetteColor;
 		Vector4 vignetteLutScan;     // x, y vignette falloff, z grade LUT side, w scanline period (output pixels)
 		Vector4 bloomBlur;           // rgb bloom tint * intensity (linear), a blur mix
+		Vector4 sampling;            // x 1: the source is a NEAREST target, its UV snaps to texel centres
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -319,7 +336,8 @@ namespace jasperengine{
 		UBER_DITHER       = 1u << 9,  // 'Dth' dither
 		UBER_BLOOM        = 1u << 10, // 'Blm' bloom composite (u_bloomTexture, the bloom chain's)
 		UBER_BLUR         = 1u << 11, // 'Blr' blur composite (u_blurTexture, the blur chain's)
-		UBER_FEATURE_COUNT = 12
+		UBER_UPSCALE      = 1u << 12, // 'Scl' none of the above: the plain upscale of a render scale below 1
+		UBER_FEATURE_COUNT = 13
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -1149,11 +1167,13 @@ namespace jasperengine{
 		// built-in Lit's part of it (u_fs_litFrame)
 		frame_t passFrame;
 		// (its lit member is the prefix every Lit variant declares; a variant with the post
-		// colour uploads from postColor)
-		lit_frame_block_t passLitFrameBlock;
+		// colour uploads from postColor), one per PostColorBlend (built-in Lit meshes take the
+		// one of their blend)
+		lit_frame_block_t passLitFrameBlocks[POST_BLEND_COUNT];
 		// the post-processing colour's parameters of the camera pass (post_color_t): the
-		// scene's in the main camera's colour pass, neutral elsewhere (updatePassFrame)
-		post_color_t passPostColor;
+		// scene's in the main camera's colour pass, neutral elsewhere (updatePassFrame), as
+		// each PostColorBlend takes them (u_fs_postColor)
+		post_color_t passPostColors[POST_BLEND_COUNT];
 
 		// SSR: per-frame fullscreen passes for the main camera. The opaque color pass
 		// renders into sceneColorFramebuffer, the ssr pass marches the depth pre-pass
@@ -1283,6 +1303,10 @@ namespace jasperengine{
 		// the in-shader LUT (shaper domain, includes/post_color.glsl), side postTailLutSize
 		TextureRender postTailLut;
 		int postTailLutSize = 0;
+		// its shaper's k (getPostColorShaper), post_color_t::shaper.x
+		float postTailShaper = 1.0f;
+		// linearSampler's texture
+		TextureRender postLinearSampler;
 		// the uber pass's grade LUT (display domain), side postGradeLutSize
 		TextureRender postGradeLut;
 		int postGradeLutSize = 0;
@@ -1449,14 +1473,20 @@ namespace jasperengine{
 		void destroyBloomPrograms();
 		// the chain's targets for a source size and down levels (0..3), made or resized
 		bool ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels);
-		// one pass of the chain: source (and level, a mixed upsample's) into target
+		// one pass of the chain: source (and level, a mixed upsample's) into target; the source
+		// through samplerOf's sampler when given (a NEAREST target, see linearSampler)
 		void renderBloomPass(BloomProgramKind kind, const char* label, TextureRender* source, unsigned int sourceWidth,
-		                     unsigned int sourceHeight, TextureRender* level, Framebuffer& target, const Vector4& offset);
+		                     unsigned int sourceHeight, TextureRender* level, Framebuffer& target, const Vector4& offset,
+		                     TextureRender* samplerOf = nullptr);
 		// The bloom chain (threshold, 3 levels down and up with the scatter mix) or the blur chain
 		// (no threshold, levels from the blur radius) of the uber pass's source: its result at a
-		// quarter of the source's size, or null while its programs build
-		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
-		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight);
+		// quarter of the source's size, or null while its programs build. nearestSource: the source
+		// is a NEAREST target, which the prefilter's 2x2 averages read through a linear sampler
+		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
+		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
+		// a texture whose sampler is linear and clamped (its image is never read), made when a
+		// pass first reads a NEAREST target bilinear (the fixed resolution's, NEAREST by default)
+		TextureRender* linearSampler();
 	public:
 		// the blur chain's dual-filter levels for a radius (0..3: 1 + 2 x levels passes)
 		static int getBlurLevels(float radius);
@@ -1467,8 +1497,10 @@ namespace jasperengine{
 		bool ensureMsaaResolveFramebuffer(unsigned int width, unsigned int height);
 		// binds the frame's blurred scene to a draw that reads it (includes/blurred_scene.glsl)
 		void applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// nearestSource: the source is a NEAREST target (fixed resolution): read through a linear
+		// sampler at its texel centres (uber.frag's sampling), so the upscale stays nearest
 		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
-		                FramebufferRender* destination, const Rect& viewport);
+		                FramebufferRender* destination, const Rect& viewport, bool nearestSource);
 		// the post colour bit of a shader type's variants while the scene's objects load with it
 		uint32_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
@@ -1959,6 +1991,10 @@ namespace jasperengine{
 		// what a set of post-processing settings turns on (the export collector and the editor
 		// use it to pick the same variants), and what the renderer applies now
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
+		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
+		// one putting the clip point (2^-exposure) on a texel, so whites reach 255 at any side
+		static float getPostColorShaper(const PostProcessingSettings& settings, int lutSide);
 		const PostProcessingTiers& getActivePostProcessingTiers() const { return postTiers; }
 		void needReloadUIs();
 		void needReloadSky();

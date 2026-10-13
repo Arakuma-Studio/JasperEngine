@@ -74,7 +74,7 @@ void main() {
     vec4 color = getBaseColor();
 
     #ifdef USE_POST_COLOR
-        g_finalColor = vec4(postColorEncode(color.rgb), color.a);
+        g_finalColor = postColorEncodeBlended(color);
     #else
         g_finalColor = (vec4(linearTosRGB(color.rgb), color.a));
     #endif

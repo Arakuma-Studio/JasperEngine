@@ -50,6 +50,7 @@ uniform u_fs_frame {
         vec4 postColor_vignetteScaleOffset;
         vec4 postColor_vignetteColor;
         vec4 postColor_params;
+        vec4 postColor_shaper;
     #endif
 } frame;
 #endif

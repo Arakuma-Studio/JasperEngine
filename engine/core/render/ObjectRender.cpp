@@ -54,8 +54,12 @@ void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, T
     backend.addTexture(slot, stage, texture);
 }
 
-bool ObjectRender::endLoad(uint16_t pipelines, const RenderState& state){
-    return backend.endLoad(pipelines, state);
+void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf){
+    backend.addTexture(slot, stage, texture, samplerOf);
+}
+
+bool ObjectRender::endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples){
+    return backend.endLoad(pipelines, state, msaaSamples);
 }
 
 bool ObjectRender::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
@@ -88,8 +92,4 @@ void ObjectRender::destroy(){
 
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
-}
-
-void ObjectRender::setMsaaSamples(int samples){
-    SokolObject::setMsaaSamples(samples);
 }

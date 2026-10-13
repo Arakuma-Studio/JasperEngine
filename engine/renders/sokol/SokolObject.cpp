@@ -17,8 +17,6 @@ using namespace jasperengine;
 namespace {
     // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
     std::atomic<int> livePipelines(0);
-    // SokolObject::setMsaaSamples
-    std::atomic<int> loadMsaaSamples(4);
 
     // the bit index of a pipeline type
     int pipelineIndex(PipelineType pipType){
@@ -76,10 +74,6 @@ void SokolObject::resetPipelines(){
 
 int SokolObject::getLivePipelineCount(){
     return livePipelines.load();
-}
-
-void SokolObject::setMsaaSamples(int samples){
-    loadMsaaSamples = samples > 1 ? samples : 1;
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) = default;
@@ -374,6 +368,15 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     }
 }
 
+void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf){
+    if (slot.first != -1){
+        if (stage == ShaderStageType::VERTEX || stage == ShaderStageType::FRAGMENT){
+            bind.views[slot.first] = texture->backend.getView();
+            bind.samplers[slot.second] = samplerOf->backend.getSampler();
+        }
+    }
+}
+
 // The description of one pipeline type, from the load description and face state.
 // endLoad creates each pipeline from it, and a no-culling variant only changes its cull mode.
 sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType){
@@ -559,9 +562,11 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
     return pipelines[index < PIPELINE_TYPES ? index : 0];
 }
 
-bool SokolObject::endLoad(uint16_t types, const RenderState& state){
+bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples){
     loadState = state;
-    msaaSamples = loadMsaaSamples.load();
+    // the PIP_MSAA* types' sample count, given by the RenderSystem loading the object (never
+    // shared state: another scene or the editor's thumbnail thread loads with its own)
+    msaaSamples = samples > 1 ? samples : 1;
 
     // creation order of the pipeline types
     static const PipelineType order[] = {

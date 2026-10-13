@@ -80,6 +80,10 @@ namespace jasperengine{
         // the shader has no frame or Lit block to hold it, and its LUT
         int slotFSPostColor = -1;
         std::pair<int, int> slotPostColorLut = {-1, -1};
+        // how the draw's blend takes that colour (RenderSystem's PostColorBlend: which pass
+        // block it uploads), for a shader without a manifest (no BLEND_* define); set by the
+        // load after the render state is resolved, 0 (its own colour) otherwise
+        uint8_t postColorBlend = 0;
         std::vector<ShaderTextureSlot> textures;
         int slotFSSceneInputs = -1;
         unsigned int sceneInputsSize = 0;
@@ -99,6 +103,7 @@ namespace jasperengine{
             frameSizeFS = 0;
             slotFSPostColor = -1;
             slotPostColorLut = {-1, -1};
+            postColorBlend = 0;
             textures.clear();
             slotFSSceneInputs = -1;
             sceneInputsSize = 0;

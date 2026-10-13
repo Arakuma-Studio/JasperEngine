@@ -5,7 +5,7 @@
 // IBL; the engine uploads the reflected size. Filled with the frame block by
 // RenderSystem::updatePassFrame (lit_frame_t in RenderSystem.h). Engine-internal: library
 // shaders use includes/frame.glsl. A variant with the post-processing colour (USE_POST_COLOR)
-// has its three vectors before the prefix (lit_frame_block_t).
+// has its four vectors before the prefix (lit_frame_block_t).
 //
 // includes/lights.glsl (shadows), includes/shadows.glsl, includes/ibl.glsl and
 // includes/fog.glsl read it when LIT_FRAME_DECLARED is defined, the frame block otherwise.
@@ -20,6 +20,7 @@ uniform u_fs_litFrame {
         vec4 postColor_vignetteScaleOffset;
         vec4 postColor_vignetteColor;
         vec4 postColor_params;
+        vec4 postColor_shaper;
     #endif
     vec4 cameraPosition_fogEnd;     // xyz camera world position, w fog linear end
     vec4 ambient_fogType;           // rgb scene ambient, w fog type (0 linear, 1 exp, 2 exp2)

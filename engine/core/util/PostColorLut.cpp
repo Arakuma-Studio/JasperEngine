@@ -216,7 +216,8 @@ Vector3 PostColorLut::grade(const PostProcessingSettings& s, const Strip* strip,
     return saturate(e);
 }
 
-void PostColorLut::bake(const PostProcessingSettings& settings, const Strip* strip, Stage stage, int n, std::vector<uint8_t>& rgba){
+void PostColorLut::bake(const PostProcessingSettings& settings, const Strip* strip, Stage stage, int n, std::vector<uint8_t>& rgba,
+                        float shaper){
     rgba.resize((size_t)n * n * n * 4);
     const float exposure = std::exp2(settings.exposure);
     const size_t width = (size_t)n * n;
@@ -228,11 +229,11 @@ void PostColorLut::bake(const PostProcessingSettings& settings, const Strip* str
                 if (stage == Stage::GRADE){
                     out = grade(settings, strip, powv(coord, GAMMA));
                 }else{
-                    // the shaper's inverse: s = sqrt(x / (x + 1)), x = s^2 / (1 - s^2)
+                    // the shaper's inverse: s = sqrt(x / (x + k)), x = k s^2 / (1 - s^2)
                     Vector3 linear;
                     for (int i = 0; i < 3; i++){
                         const float s2 = coord[i] * coord[i];
-                        linear[i] = s2 < 1.0f ? s2 / (1.0f - s2) : 65504.0f;
+                        linear[i] = s2 < 1.0f ? shaper * s2 / (1.0f - s2) : 65504.0f;
                     }
                     const Vector3 display = toneMap(settings.tonemap, linear * exposure);
                     out = (stage == Stage::ALL) ? grade(settings, strip, display) : saturate(powv(display, 1.0f / GAMMA));

@@ -230,7 +230,7 @@ void main() {
             baseColor.rgb = getFogColor(baseColor.rgb);
         #endif
         #ifdef USE_POST_COLOR
-            g_finalColor = vec4(postColorEncode(baseColor.rgb), baseColor.a);
+            g_finalColor = postColorEncodeBlended(baseColor);
         #else
             g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
         #endif
@@ -411,7 +411,7 @@ void main() {
         #endif
 
         #ifdef USE_POST_COLOR
-            g_finalColor = vec4(postColorEncode(color.rgb), baseColor.a);
+            g_finalColor = postColorEncodeBlended(vec4(color.rgb, baseColor.a));
         #else
             g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
         #endif

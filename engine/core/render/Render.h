@@ -346,7 +346,7 @@ namespace jasperengine{
         PIP_POST        = 1 << 11,
         // PIP_RTT, PIP_RTT_NODEPTH and PIP_ZPREPASS_RTT into the multisampled scene target of
         // the post-processed camera (PostProcessingSettings::msaaSamples); their sample count
-        // is ObjectRender::setMsaaSamples' when the object loaded
+        // is the one the object's endLoad was given (its RenderSystem's)
         PIP_MSAA        = 1 << 12,
         PIP_MSAA_NODEPTH = 1 << 13,
         PIP_ZPREPASS_MSAA = 1 << 14

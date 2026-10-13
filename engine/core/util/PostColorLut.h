@@ -18,8 +18,11 @@ namespace jasperengine{
     // them. Every texel holds a display-encoded colour.
     //
     // Two domains:
-    //  - shaper (the in-shader tail, T0): a texel's coordinate s is sqrt(x / (x + 1)) of the
+    //  - shaper (the in-shader tail, T0): a texel's coordinate s is sqrt(x / (x + k)) of the
     //    linear scene colour x (0..inf), so the LUT holds encode(grade(curve(exposure * x))).
+    //    k is 1, or with tone mapping NONE the one putting its clip point on a texel
+    //    (RenderSystem::getPostColorShaper): linear filtering across a texel pair that
+    //    straddles the clip would leave whites short of 255.
     //  - display (the uber pass): a texel's coordinate is a display-encoded colour, the LUT
     //    holds the grade of it.
     //
@@ -54,8 +57,10 @@ namespace jasperengine{
         // whether they change the curve (exposure or a tone mapping curve)
         static bool hasCurve(const PostProcessingSettings& settings);
 
-        // bakes a strip of side n for that stage into rgba (n * n * n * 4 bytes)
-        static void bake(const PostProcessingSettings& settings, const Strip* strip, Stage stage, int n, std::vector<uint8_t>& rgba);
+        // bakes a strip of side n for that stage into rgba (n * n * n * 4 bytes); shaper is the
+        // shaper domain's k (ALL and CURVE)
+        static void bake(const PostProcessingSettings& settings, const Strip* strip, Stage stage, int n, std::vector<uint8_t>& rgba,
+                         float shaper = 1.0f);
 
         // loads a LUT strip image (height N, width N * N); false with a logged error otherwise
         static bool loadStrip(const std::string& path, Strip& strip);

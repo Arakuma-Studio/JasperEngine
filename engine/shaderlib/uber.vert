@@ -6,7 +6,8 @@
 // vertex stage computes the tap coordinates it can: the source UV, the output position, and
 // the four corner taps FXAA, sharpen and edge detect share (half a source texel off the
 // centre, so each bilinear tap averages 2x2 texels), unless the fragment stage warps the UV
-// first (pixelate, CRT curvature).
+// first (pixelate, CRT curvature). With no effect (UBER_UPSCALE) it is the render scale's plain
+// upscale.
 
 #if defined(UBER_FXAA) || defined(UBER_SHARPEN) || defined(UBER_EDGE)
     #define UBER_CORNERS

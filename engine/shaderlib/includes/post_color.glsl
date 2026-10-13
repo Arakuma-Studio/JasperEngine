@@ -8,13 +8,14 @@
 //
 // The colour work is one lookup in a strip LUT the engine bakes on the CPU from the settings
 // (u_postColorLut: N*N x N, N 16 or 32, blue across the slices): the linear colour goes in
-// through the shaper sqrt(x / (x + 1)) (0..inf to 0..1, near-linear in the display range) and
-// comes out display-encoded, exposure, curve, grade and encoding baked in. When the uber pass
+// through the shaper sqrt(x / (x + k)) (0..inf to 0..1, near-linear in the display range; k
+// near 1, RenderSystem::getPostColorShaper) and comes out display-encoded, exposure, curve,
+// grade and encoding baked in. When the uber pass
 // runs (FXAA, bloom...) the LUT holds the exposure and the curve only (they need the unclamped
 // linear colour) and the uber pass grades the frame. Vignette and dither are maths on
 // gl_FragCoord; the engine zeroes them when the uber pass does them.
 //
-// Parameters: three vectors in the block the variant uploads anyway, in this order of
+// Parameters: four vectors in the block the variant uploads anyway, in this order of
 // preference: the built-in Lit's camera block (includes/lit_frame.glsl, before its members),
 // the frame block (includes/frame.glsl, after its members), else a block of their own,
 // u_fs_postColor. Include this file after those (output.glsl and mesh.frag do).
@@ -25,6 +26,10 @@
 //                                  amplitude (0 = none); w LUT side N, 0 = no LUT (a pass
 //                                  without post-processing: render-to-texture cameras,
 //                                  reflection probes, the editor's Scene view)
+//   postColor_shaper               x the shaper's k; y how the draw's blend takes the colour, for
+//                                  the built-in shaders (postColorEncodeBlended, no BLEND_*
+//                                  define): 0 its own, 1 added, 2 premultiplied (a multiply
+//                                  blend's draw gets neutral parameters: the plain encoding)
 
 #ifndef POST_COLOR_GLSL
 #define POST_COLOR_GLSL
@@ -42,6 +47,7 @@
             vec4 postColor_vignetteScaleOffset;
             vec4 postColor_vignetteColor;
             vec4 postColor_params;
+            vec4 postColor_shaper;
         } postColorBlock;
         #define POST_COLOR_BLOCK postColorBlock
     #endif
@@ -70,7 +76,8 @@
         vec4 params = POST_COLOR_BLOCK.postColor_params;
         vec3 x = max(linearColor, vec3(0.0));
         if (params.w > 0.5){
-            return samplePostColorLut(sqrt(x / (x + 1.0)), params.w);
+            float k = POST_COLOR_BLOCK.postColor_shaper.x;
+            return samplePostColorLut(sqrt(x / (x + k)), params.w);
         }
         return linearTosRGB(x);
     }
@@ -100,6 +107,23 @@
     vec3 postColorEncodeAdditive(vec3 linearColor){
         // (no dither: what is behind has it, and the target would clamp its negative half)
         return max(postColorLut(linearColor) - postColorLut(vec3(0.0)), vec3(0.0)) * (1.0 - postColorVignette());
+    }
+
+    // the built-in shaders' colour (mesh, points, lines: no BLEND_* define), linear in,
+    // display-encoded out, as the draw's blend takes it (postColor_shaper.y, per draw): its own
+    // colour (opaque, alpha), an added one (additive particles: their black adds nothing,
+    // not the grade's lifted black), the straight colour's of a premultiplied one; a
+    // multiply blend's factor gets neutral parameters (the plain encoding). A uniform branch:
+    // the built-in variants have no bit left for the blend.
+    vec4 postColorEncodeBlended(vec4 color){
+        float blend = POST_COLOR_BLOCK.postColor_shaper.y;
+        if (blend > 1.5){
+            float coverage = max(color.a, 1e-4);
+            return vec4(postColorEncode(color.rgb / coverage) * color.a, color.a);
+        }
+        if (blend > 0.5)
+            return vec4(postColorEncodeAdditive(color.rgb), color.a);
+        return vec4(postColorEncode(color.rgb), color.a);
     }
 
 #endif

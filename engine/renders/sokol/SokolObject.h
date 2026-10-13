@@ -46,7 +46,7 @@ namespace jasperengine{
 
         // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         RenderState loadState;
-        // the sample count of the PIP_MSAA* pipelines (setMsaaSamples when endLoad ran)
+        // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
 
 #ifdef JASPERENGINE_EDITOR
@@ -80,9 +80,6 @@ namespace jasperengine{
     public:
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
-        // the sample count the PIP_MSAA* pipelines of the objects loaded from now on take (the
-        // post-processed camera's multisampled scene target, 2 or 4)
-        static void setMsaaSamples(int samples);
 
         SokolObject();
         SokolObject(const SokolObject& rhs);
@@ -100,7 +97,8 @@ namespace jasperengine{
         void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        bool endLoad(uint16_t pipelines, const RenderState& state);
+        void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
+        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere)
