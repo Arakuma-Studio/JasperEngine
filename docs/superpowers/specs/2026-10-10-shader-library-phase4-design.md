@@ -486,6 +486,133 @@ user-pass and editor work is also written out in `/tmp/shader-research/p4-api.md
   chain is not on this base (`uberBloomTexture` null binds black), so the measured pass lists of
   Mobile and Console are 1 pass where the estimate counts the chain's 7.
 
+### 5.4 Review fixes: engine (sl/p4-fix-engine)
+
+The engine and GLSL items of the phase 4 review (`/tmp/shader-research/p4-review/engine.md`), each
+reproduced on 3097628f first (a fixture case, frame stats or a pixel probe), then fixed and
+measured again. New fixture cases (`tools/fixtures/post-processing`): `render_scale`, `console`,
+`console_still`, `ca_fxaa`, `blend`, `blend_uber`, `white16`, `white32`, `fixed_nearest`; the scene
+gained additive built-in points, an additive built-in mesh and additive lines plus a multiply quad
+on a black backdrop, and a white unlit cube.
+
+- Render scale alone (1). `getPostProcessingTiers` turned the uber pass on for a render scale below
+  1 but gave it no feature, and `loadUber(0)` fails: the scene drew at full size with nothing
+  upscaled ("uber pass on (features none)", pass list `camera 1280x720`). The uber pass now has a
+  plain upscale variant, `UBER_UPSCALE` ('Scl', BLIT bit 12, appended; define `UBER_UPSCALE`,
+  nothing in it), taken whenever the uber pass runs with no other feature (grade, vignette or
+  dither move into it as before, so it is only the render scale alone, or with fixed resolution
+  the blit). `render_scale`: `camera 640x360, uber 1280x720`, the same budget as `scale` (render
+  scale with FXAA). The export collector gets it as any uber variant (it is non-zero), and
+  `renderScale` is now a scriptable switch (below).
+- Chromatic aberration after FXAA (2). uber.frag replaced red and blue with raw shifted taps after
+  FXAA and sharpen, so those channels kept their jaggies everywhere (the shift is near 0 in the
+  centre). It now adds the shifted taps' difference from the centre tap to the antialiased and
+  sharpened colour (`color.r += tap(uv - shift).r - centre.r`, blue alike): no cost, identical
+  without FXAA or sharpen, and where the shift is under a pixel (most of the screen at the Console
+  preset's 0.15) every channel keeps FXAA. Probe (a pole's edge against the sky, the pixels between
+  10% and 90% of each channel's range, i.e. antialiased): `console_still` red/green/blue 117/299/125
+  before, 362/290/368 after; `ca_fxaa` (intensity 1) 229/330/228 before, 347/330/336 after. At
+  the periphery of a strong aberration the fringe itself is a shifted (not re-antialiased) copy:
+  re-running FXAA on the shifted taps would triple its cost.
+- Blends of the built-in shaders (3). mesh.frag, points.frag and lines.frag (no BLEND_* define:
+  the built-in variants key no blend, and the mesh key has no bit left) encoded every draw as its
+  own colour: an additive glow added the grade's lifted black and the vignette colour (a lit
+  square around each glow), a multiply factor was graded. They now call
+  `postColorEncodeBlended(color)` (includes/post_color.glsl): a per-draw value says how the draw's
+  resolved blend takes the colour, its own (`postColorEncode`), added (`postColorEncodeAdditive`:
+  black adds nothing, the vignette only darkens) or premultiplied (the straight colour's, times
+  alpha); a multiply draw gets neutral parameters (the plain encoding, as library shaders'
+  multiply). The value is a fourth post-colour vector, `postColor_shaper` (y; x is item 4's k), in
+  `post_color_t`, so the three places holding it (`u_fs_litFrame` prefix, `u_fs_frame` end,
+  `u_fs_postColor`) grow from 48 to 64 bytes for variants with the colour bit (nothing changes
+  without it). The engine keeps one pass block per blend (`passPostColors[4]`,
+  `passLitFrameBlocks[4]`, filled once per pass) and a draw uploads the one of its blend
+  (`ShaderLibraryBindings::postColorBlend`, set at load from the resolved render state for a
+  shader without a manifest; library shaders keep their define and take the own-colour block):
+  no per-draw work beyond the pointer. The branch in the shader is on a uniform. `blend`
+  (lift 0.15, contrast 1.3, purple vignette 0.8, T0) and `blend_uber` (the same in the uber pass)
+  now draw the same image: no square around the glows; before, T0 drew purple squares.
+- Whites with tone mapping NONE (4). The shaper `sqrt(x / (x + 1))` puts linear 1 between two
+  texels (10.6 of 15 at side 16), and NONE clips there: linear filtering across the kink left
+  white at 245/255 (side 16) and 253-254 (side 32), measured on the white cube (`white16`,
+  `white32`: 244/245/244 and 253/254/253). The shaper is now `sqrt(x / (x + k))` with k from
+  `RenderSystem::getPostColorShaper(settings, side)`: 1 for the curves (smooth there; unchanged),
+  and for NONE the k that puts the clip point (`2^-exposure`) exactly on the texel nearest 0.71
+  (0.8595 at side 16, 0.9855 at 32); `PostColorLut::bake` takes k, the shader reads it from
+  `postColor_shaper.x`. Both cases now 255/255/255. The LUT model (bake + sampling with 8-bit
+  texels, grey ramp 0..1.5): NONE worst error 9.83/255 -> 1.25/255 at side 16, 1.43 -> 0.47 at
+  32. Neutral's 3.3/255 at side 16 is curvature of its shoulder over a 16-texel grid (1.0 at 32),
+  not a kink: no knot helps it (a knot at its compression start gives 3.7); side 32 is the fix.
+- MSAA sample count per load (5). `SokolObject::endLoad` read a process-global sample count that
+  each scene's update set (an editor thumbnail scene on its worker thread, a layer scene, could
+  load objects with another scene's count). The global and `ObjectRender::setMsaaSamples` are gone:
+  `endLoad(pipelines, state, msaaSamples)` takes the loading RenderSystem's `msaaPipelineSamples`
+  (mesh, depth, extra pass, UI, points, lines, sky).
+- Targets freed (6). By the settings (not the pass: the editor's Scene view draws the same view
+  without post-processing between Game view frames, which must not free and remake them):
+  `postSceneFramebuffer` when the uber pass is off or fixed resolution is on, `msaaFramebuffer`
+  when MSAA is off, the linear sampler (item 7) without a NEAREST fixed-resolution uber source,
+  the uber variant when the uber pass is off, the bloom programs when bloom and blur are off.
+  `PP_CYCLE` (GL, `JASPERENGINE_FRAME_STATS=all`): every return to `off` is back to 19 images, the
+  count of the first `off` frame; pipelines 88 -> 90 after
+  MSAA's exported redirect loaded the plain blit, which stays loaded (as after fixed resolution,
+  phase 3).
+- Bilinear taps on a NEAREST target (7). The fixed-resolution target takes the scene's filter,
+  NEAREST by default, and the uber pass and the bloom/blur prefilter read it through its sampler,
+  while FXAA, sharpen and edge's corner taps and the prefilter's 2x2 averages assume bilinear.
+  Decision: the final upscale stays NEAREST when the user chose it, and every effect works per
+  fixed-resolution pixel. The uber pass binds that source through a linear, clamped sampler
+  (`ObjectRender::addTexture(slot, stage, texture, samplerOf)`, the sampler of
+  `RenderSystem::linearSampler()`, an 8x8 texture made only while needed) and snaps its UV to the
+  source texel centre first (`fs_uber_t::sampling.x`; a bilinear tap at a centre is that texel):
+  the corners then sit exactly on texel corners. The prefilter reads it through the same sampler.
+  `fixed_nearest` (FXAA + sharpen at 640x360): every 2x2 output block is one colour (100% of the
+  blocks, 22% before, where the nearest corner taps made sharpen spikes up to 255 apart). A LINEAR
+  fixed resolution and the scaled target (LINEAR) are unchanged.
+- Uber variant switch (8). `loadUber` destroyed the loaded variant before the new one existed: in
+  a game compiling a variant at runtime the uber pass vanished for those frames, the swapchain
+  redirect flipped off and on (every object reloaded twice) and the frames lost the grade,
+  vignette and dither the uber pass does. Now `applyPostProcessing` applies new settings whose uber
+  variant is not built yet only once it is (or failed: no uber pass), keeping the tiers the frame
+  draws with (and asking for the variant every frame), then swaps the variant in the same call;
+  `loadUber` keeps a loaded variant while a requested one builds, and the grade LUT a loaded
+  variant samples is kept until the swap. The bloom and blur chains follow the loaded variant's
+  features. `PP_CYCLE` (13 switches, GL, every frame): no frame drops the uber pass between uber
+  cases or draws fewer than the case's draws; switching to `fixed_nearest` draws one frame with
+  the plain fixed-resolution blit (fixed resolution comes on at once, its FXAA/sharpen variant a
+  frame later). Settings changes wait with the variant (a few frames in the editor).
+- Collector (9). `getScriptableEffectFields` adds `monochromeEnabled` (it toggles the uber pass's
+  LUT) and `renderScale` (flipped between the scene's value and 0.5 or 1: the upscale variant);
+  with no field named, 14 switches each flipped alone (at most 15 variants).
+- Same bug classes elsewhere: the uber variant and the bloom programs lingered after their effect
+  went off (item 6's list now has them); the bloom chain ran for a variant that could not
+  composite it (now keyed on the loaded variant). Checked and fine: the grade LUT's last slice
+  (`uv + 1/n` clamps, weight 0), library shaders' blends (BLEND_* defines), sky (own colour), the
+  user chain's and bloom chain's own targets (LINEAR). Not fixed (editor-only, by design of 5.1):
+  with the Scene view's "Show post-processing" on and the Game view open, both draw the primary
+  view at different sizes in one frame, so the scaled target and the bloom targets are remade
+  twice a frame there.
+- Engine behaviour matches 5.5's cost estimate: render scale alone is one uber pass; MSAA in an
+  exported game with nothing else offscreen is the scene pass plus a blit; blur is
+  `1 + 2 x getBlurLevels(radius)` passes.
+- Checks run (4 cores, on this branch merged with `shader-library` 6f9b44f3): full
+  `tools/build.sh linux`; `shaders --library all --backend all` (40 shaders, 13842 compiles, 0
+  failures); 43 built-in specs x 6 backends (258 compiles, 0 failures: blit and every uber
+  combination of 5.2 plus `Scl`, the five bloom programs, Pcl mesh (lit, unlit, painted terrain with
+  IBL and SSAO), points, lines and sky; the GLES3 uber output keeps `precision mediump float` with
+  the new `sampling` member). `post-processing` fixture, all 55 cases on GL and on GLES3
+  (screenshots read; GLES3 within 0.5% of GL's pixels but for the per-frame grain and the animated
+  neon hue), the 9 new cases on Vulkan (same probes: whites 255, every 2x2 block of
+  `fixed_nearest` one colour, `console_still` red/green/blue 364/290/371, no squares in `blend`);
+  pass lists as 5.2's (`render_scale` and `t1_fixed` `camera 640x360, uber 1280x720`, `msaa4`
+  `camera msaa 4, blit`, `mobile_full` 8 passes after the scene); `PP_CYCLE` subset on GL (above).
+  GL smokes of `shader-library`, `scene-inputs`, `stencil`, `extra-pass` pass. Post-processing off
+  against the `shader-library-phase3` tag with the pass-list and DOCKER_CPUS commits (temporary
+  worktree, removed): frame stats lines identical on `shader-library`, `scene-inputs` and `stencil`;
+  `stencil` pixel-identical, the other two differ only where two runs of this build differ too
+  (the animated heat haze, the time-animated objects). `check.sh` (7 scenes ok). MCP suite 290
+  passed, 0 failed, 3 skipped.
+
 ### 5.5 Review fixes: editor (sl/p4-fix-editor)
 
 The editor/MCP/tooling items of the phase 4 review (`/tmp/shader-research/p4-review/editor.md`),
