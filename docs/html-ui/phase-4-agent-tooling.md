@@ -1634,6 +1634,67 @@ not-installed skips.
   phase-end run, wave 2 replaces those skips with the real tool calls (owned by `p4-mcp-tools`;
   see 4.5).
 
+#### 4.2.1 `p4-checks` as implemented
+
+Where the code differs from 3.4, 3.5 and 5.2-5.3 (also in `CONTRACTS.md`):
+
+- **`ProjectChecks`** (`editor/util/ProjectChecks.{h,cpp}`): as 3.4.1, plus
+  - `UiCheck::files`: the project-relative files the check covered (checked, or read by a
+    document: linked sheets, imports). The hook memory uses it to drop fixed warnings.
+  - `assetsRootFromProjectFile(root)` (project.yaml `assetsDir`, default the project root),
+    `uiFinding(root, assetsRoot, Diagnostic)` (a compat diagnostic as a `Finding`, used by
+    `w4::syncHtmlUi` too) and `uiSupportJson()` (the `ui-support` JSON, so later tools can reuse it).
+  - `checkUiFiles` checks only files inside the assets directory (compat paths are
+    asset-relative; an `.html` elsewhere cannot be a UI document), skips the web shell with `--files`
+    too (the hook would otherwise flag it on every edit), and converts at the project's canvas size
+    (project.yaml `canvasWidth`/`canvasHeight`), as documents load.
+- **CLI**: as 3.4.2. Hook exit: 2 when there are errors or newly shown UI warnings; non-UI
+  warnings keep their old behaviour (printed, exit 0 without errors). The memory is keyed by the
+  finding's path (a warning located in a linked css is remembered at the css); after a run every
+  covered file takes its current set; entries of files that no longer exist are dropped.
+- **`ui-support`**: as 3.4.2, plus: `value` rows carry `property`, `attribute` rows `element`; a
+  row with a code also has `severity` (the severity it is reported with); `diagnostics` entries are
+  `{code, name, severity (the default), by_case, summary, help}`. The tables have no code column,
+  so the code is chosen per kind and status from the codes the rewriters report (unsupported
+  property `HTMLUI-CSS-0002`, value `-0004`, selector `HTMLUI-SEL-0001`, at-rule `HTMLUI-AT-0001`,
+  element `HTMLUI-HTML-0002`, `on*` `HTMLUI-HTML-0005`, ...); an approximated row is
+  `approximated-visible` (Warning) or `approximated-minor` (Info) by the first `(Warning…)` /
+  `(Info…)` marker of its note, the convention of the tables' notes. Native, rewritten and emulated
+  rows have no code. After phase 3 no row is `fallback` (1870 rows; 86 codes).
+- **Matrix** (`gen_html_ui_support.py`): the Markdown names no editor version (it is
+  `git describe`, so the committed file would be stale after every commit); the JSON has it.
+  Extra sub-tables: input types (Elements), values / functions / units, media features (At-rules);
+  the Notes column ends with the row's code.
+- **`w4::syncHtmlUi`** returns `{reloaded, current, problems}` as 3.5.2. `syncFiles` and
+  `external_changes` name them `ui_reloaded` and `ui_current` (5.3's "`current` is 1" is
+  `ui_current`). `w4::isHtmlUiFile(path)` (W4Shared.h) is the file filter. A live document whose
+  `.html` was deleted gives an error problem (`HTMLUI-GEN-0001`, "the document file is missing").
+  Each reload logs the poller's line, `[HTML UI] Restyled|Reloaded <file> in scene '<name>'`.
+- **Play** (3.5.3): changed `.html/.htm/.css`, fonts and `.json/.lottie` go through `w4::syncFiles`
+  (which calls `syncHtmlUi`), so open code-editor buffers and `sync_files`' snapshot stay current
+  too; images go through `syncHtmlUi` and stay deferred. The `deferred` text is set only when non-UI
+  files wait.
+- **Text**: `Reloaded UI: <html> in "<GameObject>" (styles only), ...; N document(s) were already
+  current.` (four documents listed, then `and N more`).
+- **`McpAutoSync`**: the `images` map is `assets` (images, fonts, `.json/.lottie`); new statics
+  `isUiCodeFile`, `isAssetFile`, `compactProblems`, `addUiReport`.
+- **Phase-2 fix**: `DocumentLoader::restyle(document, shared_ptr, options)` kept the first load's
+  diagnostics after a stylesheet-only reload, so `getDiagnostics` (and the pick-up's problems)
+  showed stale CSS findings. The binding now takes the new compile's diagnostics, its font check,
+  and the document scripts' Lua errors (a restyle does not run them again);
+  `CompatHotReloadTest.RestyleReplacesTheDiagnostics` covers it.
+- **Deviations from 3.2.1**: `HTMLUI-IMP-0001`'s suggestion names the editor's automatic import and
+  `jasperengine-editor import-ui`, not `import_files` (it has no `from_document` until
+  p4-mcp-tools); the tests check that it says how to import. The phase-1 poller's interval is
+  0.25 s, so 5.3's 2.5 s waits are ample.
+- **Tests, wave 1**: `load_count` is read from those Console reload lines (one per reload,
+  whoever reloads); computed styles and live diagnostics through `eval_lua` (`allow_edit_mode` in
+  edit mode, `UIDocument(scene, entity(...))`). `inspect_ui` is called where it exists
+  (`load_count()` in `test_html_ui_reload.py`, the end of `test_parity_cli_mcp`); those and the
+  examples part of `test_cli_ui_speed` (it reads `docs/mcp/guide/html-ui-examples`) are the
+  `WAVE-2` marks. Known limitation, as for every file type: an external edit stamped within a few
+  ms of the end of a call that may write files is taken as that call's own (the settle scan).
+
 ### 4.3 `p4-examples`: example library, embedding, goldens
 
 - **Goal:** 3.7 and 3.9 (`pngdiff`, goldens).
