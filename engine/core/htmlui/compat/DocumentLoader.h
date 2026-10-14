@@ -105,7 +105,7 @@ namespace jasperengine::htmlui::compat {
         std::vector<std::string> declaredFontFamilies;   // declared by @font-face
         std::vector<std::string> animationFillNames;
         std::vector<std::string> virtualPaths;        // the VirtualFiles this compile registered (owner)
-        // the @property rules the fork registers before RmlUi parses the sheets (phase 5, CompatAtProperty::registerAll)
+        // the @property rules the fork registers before RmlUi parses the sheets (phase 5, CompatAtProperty::registerFor, per loaded document)
         std::vector<RegisteredProperty> registeredProperties;
     };
 

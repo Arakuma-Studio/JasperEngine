@@ -969,12 +969,14 @@ drives a gradient angle, an opacity, a size and an effect parameter at once.
   a rule inside `@media` or `@supports` registers when the condition holds when the document loads
   (or is laid out again for a new viewport); inside a style rule it is invalid. When two rules
   name the same property, the last valid one wins.
-- **Process-global, first wins.** Registrations belong to the engine, not to the document, and are
-  never undone while it runs: a second document (or an edited one after a hot reload) that
-  registers the name with another definition gets `HTMLUI-AT-0013` and the first definition stays
-  until the engine (in the editor: the editor) restarts. Give every `@property` of a name the same
-  definition, or rename the property while you iterate on its definition. About 60 names can be
-  registered in all (the engine's property ids); past that a registration warns and is ignored.
+- **Edit and reload freely.** A document's registrations are its own: a hot reload registers the
+  edited definitions (syntax, inherits, initial-value) in edit mode and during play, and unloading
+  the document releases them. Only when two documents loaded at the same time register one name
+  with different definitions does one definition apply to both: the one of the document loaded
+  first. The other gets `HTMLUI-AT-0013` (naming the first) until the first unloads or registers
+  the same definition; then its own definition applies. Keep one definition per name across the
+  documents of a game (one shared stylesheet does it). A few thousand names can be registered at a
+  time; past that a registration warns (`HTMLUI-AT-0012`) and is ignored.
 - **From Lua**, `anime` animates a registered property as typed values, and every `var()` follows:
 
 ```lua

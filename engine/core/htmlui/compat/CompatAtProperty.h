@@ -11,7 +11,11 @@
 // a syntax the fork does not register back to phase 2's root-rule emulation. The document load
 // registers the rest with the fork (Rml::StyleSheetSpecification::RegisterCustomProperty) before
 // RmlUi parses the sheets, so declarations, transitions and keyframes of the names are typed.
-// Registrations are process-global: the first one of a name wins until RmlUi shuts down.
+// Registrations belong to the loaded documents (owners), reference-counted per name: a reload
+// replaces a document's registrations, an unload releases them, and a name no live document
+// registers is unregistered in the fork (its id is reused). Two live documents with different
+// definitions of a name: the first registered applies, the other gets at-property-conflict and
+// its definition applies once the first releases the name.
 
 #include "Export.h"
 #include "htmlui/compat/CompatAtPropertyTypes.h"

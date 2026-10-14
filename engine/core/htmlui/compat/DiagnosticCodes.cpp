@@ -228,13 +228,14 @@ namespace {
          "The @property rule's syntax is not one the engine registers (the types length, number, integer, percentage, "
          "length-percentage, color, angle and time, or *): combinations, lists and other types are not. The custom property "
          "falls back to an unregistered one with the initial value written on the root (it inherits and changes discretely), "
-         "as without the fork. The same applies when the document registers more custom properties than the engine has "
-         "property ids for."},
+         "as without the fork. The same applies when the live documents register more custom properties than the engine "
+         "has property ids for (a few thousand; a document that unloads gives its ids back)."},
         {codes::AtPropertyConflict, W, false, "at-property-conflict", "@property conflict",
-         "Registered custom properties are process-global: the first registration of a name wins for every document, until "
-         "the engine restarts. Another document (or an earlier version of this one, before a hot reload) registered the name "
-         "with another syntax, inherits or initial-value; that one stays. Rename the property, or give both rules the same "
-         "definition."},
+         "Another document loaded at the same time registered the name first with another syntax, inherits or "
+         "initial-value. A name has one definition in the engine at a time, so the first live document's applies to both; "
+         "this document's own definition applies once that document unloads or registers the same definition. A hot "
+         "reload of one document never conflicts with its own earlier version. Give both rules the same definition (a "
+         "shared stylesheet), or rename one of the properties."},
         {codes::AtPropertyInvalid, E, true, "at-property-invalid", "@property invalid",
          "Error: the @property rule is invalid and dropped, as in CSS: the name is not a custom property name, a descriptor "
          "(syntax, inherits, initial-value) is missing or invalid, the initial value does not match the syntax or is not "

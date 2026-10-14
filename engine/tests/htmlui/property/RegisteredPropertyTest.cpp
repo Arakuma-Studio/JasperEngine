@@ -11,13 +11,14 @@
 //   match, the codes, and the phase-2 behavior without ForkFeature::RegisteredProperties;
 // - load: inherited and non-inherited var() lookups, invalid values at computed-value time, the
 //   transition midpoint of a :hover with the UI clock pinned (HtmlUIClock::setFixedTime), keyframes
-//   at fixed times, an anime-driven registered property, the conflict of two documents (first wins,
-//   process-global), registration after use, @starting-style and transition-behavior, the
+//   at fixed times, an anime-driven registered property, the conflict of two live documents (the first
+//   registered applies until it unloads), release on unload and id reuse, a hot reload that
+//   changes a definition, the property id capacity, registration after use, @starting-style and transition-behavior, the
 //   unregistered fallback, the fork feature's probe;
 // - goldens: the fixtures of fixtures/p3/property (also compared with Chromium by BrowserParity)
 //   rendered by the engine into golden/property/<name>[.<capture>].png.
 //
-// Registrations are process-global and last until RmlUi shuts down: each test uses names of its own.
+// Registrations last while a document that registers them is loaded: each test uses names of its own.
 
 #include "FixtureRunner.h"
 #include "harness/ImageCompare.h"
