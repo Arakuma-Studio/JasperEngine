@@ -857,6 +857,19 @@ static SharedPtr<const StyleValue> InterpolateDecoratorLayers(const ImageLayerLi
 			declaration.properties = da.properties;
 		}
 		result->layers[i].decorator_index = (int)declarations->list.size();
+		if (da.instancer->InterpolatesAsImageLayer())
+		{
+			// the layer's text is the interpolated values (ToString and Equals compare the text: each frame's value
+			// differs from the last, so the element takes it), in property id order
+			Vector<std::pair<PropertyId, String>> values;
+			for (const auto& entry : declaration.properties.GetProperties())
+				values.emplace_back(entry.first, entry.second.ToString());
+			std::sort(values.begin(), values.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+			String text = declaration.type + "(";
+			for (size_t k = 0; k < values.size(); k++)
+				text += (k ? " " : "") + values[k].second;
+			result->layers[i].text = text + ")";
+		}
 		declarations->list.push_back(std::move(declaration));
 	}
 	if (!interpolated)
