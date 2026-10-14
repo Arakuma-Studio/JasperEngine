@@ -2246,10 +2246,11 @@ void editor::App::engineInit(int argc, char** argv) {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
     });
-    // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go
-    // from the builder's cache too, so they compile from the new source
-    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener([](const std::string&) {
-        jasperengine::editor::ShaderBuilder::invalidateCustomShaders();
+    // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from
+    // the builder's cache too, so they compile from the new source (and what draws with a forked
+    // shader the registry's reset reached re-binds, as after any shader edit)
+    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener([this](const std::string&) {
+        project.invalidateCustomShaders();
     });
 
     Engine::setAsyncLoading(true);
@@ -3231,6 +3232,7 @@ void editor::App::engineViewDestroyed(){
 }
 
 void editor::App::engineShutdown(){
+    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener(nullptr);
     Engine::systemShutdown();
 }
 
