@@ -204,6 +204,7 @@ namespace {
         }
     };
 
+
     void printRun(const char* what, const PerfRun& run){
         std::printf("[ effects  ]   %s: %.3f ms (update %.3f, render submission %.3f, end of frame %.3f)\n", what, run.medianMs,
                     run.updateMs, run.renderMs, run.endMs);
@@ -220,13 +221,15 @@ namespace {
                 perFrame(index);
             grid.frame();
         };
-        for (int i = 0; i < 30; i++)
+        const int warm = 30;
+        const int measured = 120;
+        for (int i = 0; i < warm; i++)
             frame(i);
         const EffectStats before = EffectRuntime::get().stats();
         std::vector<double> times, updates, renders, ends;
-        for (int i = 0; i < 120; i++){
+        for (int i = 0; i < measured; i++){
             const double start = threadCpuMs();
-            frame(30 + i);
+            frame(warm + i);
             times.push_back(threadCpuMs() - start);
             updates.push_back(grid.parts.update);
             renders.push_back(grid.parts.render);

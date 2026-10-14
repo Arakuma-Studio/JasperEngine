@@ -270,7 +270,11 @@ void EffectCompat::declareEffect(const hc::Rule& rule, hc::Session& session, hc:
     if (files.read)
         reader = [&files](const std::string& path, std::string& content){ return hc::readAssetFile(files, path, content); };
     const uint32_t line = session.files.line(at.file, at.offset);
-    EffectRegistry::get().declareProjectEffect(name, resolved.assetPath, session.files.path(file), (int)line, diags, reader);
+    if (EffectRegistry::get().declareProjectEffect(name, resolved.assetPath, session.files.path(file), (int)line, diags, reader) && session.result){
+        // its includes too: editing one hot-reloads the effect (p5-tooling)
+        for (const std::string& include : EffectRegistry::get().includeFilesOf(name))
+            session.result->dependencies.push_back(include);
+    }
     for (EffectDiagnostic& d : diags){
         if (d.code == hc::codes::EffectFileMissing){
             d.message = "@effect " + name + ": '" + *url + "' not found (no file at " + resolved.assetPath + "); dropped";

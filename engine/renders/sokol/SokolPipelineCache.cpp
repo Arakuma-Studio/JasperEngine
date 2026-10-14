@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "SokolCmdQueue.h"
 
+#include <atomic>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,7 @@ namespace {
     uint64_t missCount = 0;
     uint64_t applyCount = 0;
     uint32_t lastApplied = SG_INVALID_ID;
+    std::atomic<uint32_t> pipelineGeneration{1};
 
     uint64_t fnv(uint64_t h, const void* data, size_t size){
         const uint8_t* bytes = static_cast<const uint8_t*>(data);
@@ -200,7 +202,18 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
 }
 
 sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, const PipelineState& state){
-    const uint64_t baseHash = baseHashOf(base);
+    return get(base, baseHashOf(base), state);
+}
+
+uint64_t SokolPipelineCache::baseHash(const sg_pipeline_desc& base){
+    return baseHashOf(base);
+}
+
+uint32_t SokolPipelineCache::generation(){
+    return pipelineGeneration.load();
+}
+
+sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state){
     uint64_t key = baseHash ^ state.hash();
 
     std::lock_guard<std::mutex> lock(cacheMutex());
@@ -237,6 +250,7 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
         return;
 
     std::lock_guard<std::mutex> lock(cacheMutex());
+    pipelineGeneration++;
     auto& map = entries();
     for (auto it = map.begin(); it != map.end();){
         if (it->second.shader.id == shader.id){
@@ -252,6 +266,7 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
 
 void SokolPipelineCache::clear(){
     std::lock_guard<std::mutex> lock(cacheMutex());
+    pipelineGeneration++;
     auto& map = entries();
     for (auto& pair : map){
         destroyPipeline(pair.second.pipeline);

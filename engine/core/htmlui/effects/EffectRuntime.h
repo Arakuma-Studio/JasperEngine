@@ -120,6 +120,7 @@ namespace jasperengine::htmlui {
         float trail[32][4];
         float ripples[8][4];
         uint64_t preparedFrame = UINT64_MAX;
+        float seed = -1.f;                    // seedOf(element), once per instance (< 0: not yet)
     };
 
     struct EffectStats {

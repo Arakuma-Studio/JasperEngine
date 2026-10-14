@@ -615,8 +615,9 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
             const fs::path path = (root / fs::u8path(rel)).lexically_normal();
-            // a project UI effect's .frag (or one that is gone) reloads its documents now too (phase 5)
-            if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) ||
+            // a project UI effect's .frag (or one that is gone) and the includes effects may read
+            // reload their documents now too (phase 5)
+            if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 continue;

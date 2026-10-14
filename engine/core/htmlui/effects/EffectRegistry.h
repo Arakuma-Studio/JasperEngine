@@ -62,7 +62,8 @@ namespace jasperengine::htmlui {
         // A project file changed (hot reload): a declared effect's .frag is read again, its
         // instancers registered again (the old ones kept until shutdown: RmlUi may still use
         // them) and its shader variants dropped so they compile again. True when the file is a
-        // declared effect. A file that is gone or whose manifest no longer parses forgets the
+        // declared effect, or one of its include files (only its variants are dropped then). A file
+        // that is gone or whose manifest no longer parses forgets the
         // declaration (p5-tooling): the documents reloading next declare it again and report
         // why it fails (effect-file-missing, effect-manifest at the .frag line), and declare it
         // once it is back or fixed. UIDocumentSystem::reloadChangedFiles calls it for every
@@ -77,6 +78,10 @@ namespace jasperengine::htmlui {
         // effect's variants: the editor drops its compiled cache of project shaders there
         using ProjectEffectListener = std::function<void(const std::string& assetPath)>;
         void setProjectEffectListener(ProjectEffectListener listener);
+        // the files a declared project effect's includes resolve to or were looked for at (asset
+        // paths, without the .frag): what a document declaring it depends on besides the .frag,
+        // so an include edited reloads the documents and the effect (p5-tooling)
+        std::vector<std::string> includeFilesOf(const std::string& effectName) const;
         // the declared project effects are forgotten (another project, tests)
         void clearProjectEffects();
 
@@ -112,7 +117,11 @@ namespace jasperengine::htmlui {
             std::string declaredIn;
             int line = 0;
             std::string source;
+            // the files its includes resolve to or were looked for at (asset paths, the compiler's
+            // resolution: the .frag's directory, then the asset root): documents depend on them
+            std::vector<std::string> includes;
         };
+        std::vector<std::string> includeFilesOf(const std::string& fragPath, const FileReader& read) const;
 
         void ensureBuiltins() const;
         void registerRml(const EffectManifest& m);

@@ -48,6 +48,9 @@ SokolObject::SokolObject(){
     pipeline_desc = {};
     baseDesc = {};
     dynamicLoaded = false;
+    dynamicBaseHash = 0;
+    lastDynamicPipeline.id = SG_INVALID_ID;
+    lastDynamicGeneration = 0;
     loadFaceCulling = false;
     loadDepthWrite = true;
     loadCullingMode = CullingMode::BACK;
@@ -156,6 +159,9 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     pipeline_desc = {0};
     baseDesc = {};
     dynamicLoaded = false;
+    dynamicBaseHash = 0;
+    lastDynamicPipeline.id = SG_INVALID_ID;
+    lastDynamicGeneration = 0;
     resetPipelines();
 
     pipeline_desc.primitive_type = getPrimitiveType(primitiveType);
@@ -517,6 +523,8 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
     }
     baseDesc.label = "dynamic-pipeline";
     dynamicLoaded = baseDesc.shader.id != SG_INVALID_ID;
+    dynamicBaseHash = SokolPipelineCache::baseHash(baseDesc);
+    lastDynamicPipeline.id = SG_INVALID_ID;
     return dynamicLoaded;
 }
 
@@ -524,7 +532,16 @@ bool SokolObject::beginDraw(const PipelineState& state){
     if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
         return false;
 
-    sg_pipeline pipeline = SokolPipelineCache::get(baseDesc, state);
+    sg_pipeline pipeline;
+    const uint32_t generation = SokolPipelineCache::generation();
+    if (lastDynamicPipeline.id != SG_INVALID_ID && lastDynamicGeneration == generation && lastDynamicState == state){
+        pipeline = lastDynamicPipeline;
+    }else{
+        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state);
+        lastDynamicPipeline = pipeline;
+        lastDynamicState = state;
+        lastDynamicGeneration = generation;
+    }
     // a failed creation is never applied (see beginDraw(PipelineType))
     if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
         return false;
@@ -624,6 +641,9 @@ void SokolObject::destroy(){
     // dynamic pipelines stay in SokolPipelineCache until their shader goes
     baseDesc = {};
     dynamicLoaded = false;
+    dynamicBaseHash = 0;
+    lastDynamicPipeline.id = SG_INVALID_ID;
+    lastDynamicGeneration = 0;
     bindSlotIndex = 0;
     blendOverride = false;
     blendState = BlendState();

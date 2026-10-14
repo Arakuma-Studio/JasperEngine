@@ -56,6 +56,12 @@ namespace jasperengine{
         // its pipelines belong to SokolPipelineCache
         sg_pipeline_desc baseDesc;
         bool dynamicLoaded;
+        // the last pipeline of the dynamic path: consecutive draws with the same state skip the
+        // cache's lookup (valid while SokolPipelineCache::generation() is the same)
+        uint64_t dynamicBaseHash;
+        PipelineState lastDynamicState;
+        sg_pipeline lastDynamicPipeline;
+        uint32_t lastDynamicGeneration;
 
         // the face state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         bool loadFaceCulling;

@@ -190,6 +190,60 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     EXPECT_EQ(errors(), 0u);
 }
 
+// p5-tooling: a file written while a (re)load is reading the document's files (the editor
+// writing right after play stopped, an agent's next edit) is not taken as seen: the next
+// reloadChangedFiles reloads it. The hook runs after the files were read and before the load
+// records what they were, the window the stamps used to be taken in.
+TEST_F(UIDocumentReloadTest, FileChangedDuringAReloadIsReloadedNext){
+    struct HookReset {
+        ~HookReset(){ UIDocumentSystem::setLoadedHookForTesting(nullptr); }
+    } hookReset;
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_EQ(backgroundOf(rml->GetElementById("box")), "#ff0000");
+
+    auto colored = [](const char* color){
+        std::string css = reloadCss;
+        css.replace(css.find("#ff0000"), 7, color);
+        return css;
+    };
+    // a stylesheet-only reload, the stylesheet written again while it runs
+    int calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0)
+            write("reload.css", colored("#0000ff"));
+    });
+    write("reload.css", colored("#00ff00"));
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#00ff00") << "the reload read the file before the second write";
+    const std::vector<UIDocumentSystem::Reloaded> again = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(again.size(), 1u) << "the file written during the reload is seen as changed";
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#0000ff");
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).empty()) << "then current";
+
+    // a full reload (the document changed), the stylesheet written while it runs
+    calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0)
+            write("reload.css", colored("#ffff00"));
+    });
+    write("reload.rml", reloadHtml("    <p id=\"added\">added</p>\n"));
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml->GetElementById("added"), nullptr);
+    UIDocumentSystem::setLoadedHookForTesting(nullptr);
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u)
+        << "the stylesheet written during the full reload is seen as changed";
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#ffff00");
+    EXPECT_EQ(errors(), 0u);
+}
+
 TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();

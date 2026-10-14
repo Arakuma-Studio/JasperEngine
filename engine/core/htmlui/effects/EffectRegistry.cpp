@@ -14,6 +14,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/VirtualFiles.h"
 #include "pool/ShaderPool.h"
+#include "shader/ShaderVariantCompiler.h"
 
 #include "Log.h"
 
@@ -273,6 +274,7 @@ bool EffectRegistry::declareProjectEffect(const std::string& name, const std::st
     effect.declaredIn = declaredIn;
     effect.line = line;
     effect.source = source;
+    effect.includes = includeFilesOf(fragPath, read);
     ShaderPool::registerCustomShader(fragPath);
     if (initialised)
         registerRml(*effect.manifest);
@@ -283,44 +285,78 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
     ProjectEffectListener listener;
     {
         std::lock_guard<std::recursive_mutex> lock(mutex);
+        // the effects whose variants compile again: the one of this .frag, or those including it
+        std::vector<std::string> recompile;
         auto it = std::find_if(projects.begin(), projects.end(), [&](const auto& entry){ return entry.second.fragPath == assetPath; });
-        if (it == projects.end())
-            return false;
-        ProjectEffect& effect = it->second;
-        std::string source;
-        if (!hc::readAssetFile(hc::FileAccess(), assetPath, source))
-            source.clear();
-        std::vector<EffectDiagnostic> diags;
-        std::unique_ptr<EffectManifest> manifest;
-        if (!source.empty() && loadProjectManifest(it->first, assetPath, source, diags, manifest)){
-            // the old manifest stays alive: decorators made from it may still be drawn
-            graveyard.push_back(std::move(effect.manifest));
-            effect.manifest = std::move(manifest);
-            effect.source = source;
-            if (initialised)
-                registerRml(*effect.manifest);
+        if (it != projects.end()){
+            ProjectEffect& effect = it->second;
+            std::string source;
+            if (!hc::readAssetFile(hc::FileAccess(), assetPath, source))
+                source.clear();
+            std::vector<EffectDiagnostic> diags;
+            std::unique_ptr<EffectManifest> manifest;
+            if (!source.empty() && loadProjectManifest(it->first, assetPath, source, diags, manifest)){
+                // the old manifest stays alive: decorators made from it may still be drawn
+                graveyard.push_back(std::move(effect.manifest));
+                effect.manifest = std::move(manifest);
+                effect.source = source;
+                effect.includes = includeFilesOf(assetPath, FileReader());
+                if (initialised)
+                    registerRml(*effect.manifest);
+            }else{
+                if (source.empty())
+                    Log::error("[HTML UI] %s: the effect '%s' is gone (no file)", assetPath.c_str(), it->first.c_str());
+                for (const EffectDiagnostic& d : diags)
+                    Log::error("[HTML UI] %s:%u: %s", d.file.c_str(), d.line, d.message.c_str());
+                // forgotten: the next @effect reads the file again and reports why it fails, and
+                // declares it once it is back (the old manifest stays alive for its decorators); a
+                // cached compile would not declare it again
+                graveyard.push_back(std::move(effect.manifest));
+                projects.erase(it);
+                hc::DocumentLoader::clearCache();
+            }
+            recompile.push_back(assetPath);
         }else{
-            if (source.empty())
-                Log::error("[HTML UI] %s: the effect '%s' is gone (no file)", assetPath.c_str(), it->first.c_str());
-            for (const EffectDiagnostic& d : diags)
-                Log::error("[HTML UI] %s:%u: %s", d.file.c_str(), d.line, d.message.c_str());
-            // forgotten: the next @effect reads the file again and reports why it fails, and
-            // declares it once it is back (the old manifest stays alive for its decorators); a
-            // cached compile would not declare it again
-            graveyard.push_back(std::move(effect.manifest));
-            projects.erase(it);
-            hc::DocumentLoader::clearCache();
+            // an include of project effects (p5-tooling)
+            for (auto& entry : projects){
+                ProjectEffect& effect = entry.second;
+                if (std::find(effect.includes.begin(), effect.includes.end(), assetPath) == effect.includes.end())
+                    continue;
+                effect.includes = includeFilesOf(effect.fragPath, FileReader());
+                recompile.push_back(effect.fragPath);
+            }
+            if (recompile.empty())
+                return false;
         }
-        // the variants compile again from the new source
-        const uint16_t customId = ShaderPool::registerCustomShader(assetPath);
-        ShaderPool::remove(ShaderType::UI_EFFECT, 0, customId);
-        ShaderPool::remove(ShaderType::UI_EFFECT, 1, customId);
+        // the variants compile again from the new sources
+        for (const std::string& fragPath : recompile){
+            const uint16_t customId = ShaderPool::registerCustomShader(fragPath);
+            ShaderPool::remove(ShaderType::UI_EFFECT, 0, customId);
+            ShaderPool::remove(ShaderType::UI_EFFECT, 1, customId);
+        }
         ShaderPool::destroyCustomShaders();
         listener = projectEffectListener;
     }
     if (listener)
         listener(assetPath);
     return true;
+}
+
+std::vector<std::string> EffectRegistry::includeFilesOf(const std::string& fragPath, const FileReader& read) const{
+    // the compiler's own resolution, every path it reads or tries recorded
+    std::vector<std::string> files;
+    ShaderVariantCompiler::resolveCustomShaderSources(fragPath, [&](const std::string& path, std::string& content){
+        if (path != fragPath && std::find(files.begin(), files.end(), path) == files.end())
+            files.push_back(path);
+        return read ? read(path, content) : hc::readAssetFile(hc::FileAccess(), path, content);
+    });
+    return files;
+}
+
+std::vector<std::string> EffectRegistry::includeFilesOf(const std::string& effectName) const{
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    auto it = projects.find(effectName);
+    return it != projects.end() ? it->second.includes : std::vector<std::string>();
 }
 
 size_t EffectRegistry::forgetMissingProjectEffects(){

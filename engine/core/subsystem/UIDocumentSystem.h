@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <functional>
 #include <vector>
 
 typedef struct lua_State lua_State;
@@ -169,6 +170,10 @@ namespace jasperengine{
         // reloads each document of this scene that depends on one of `files` whose stamp
         // (mtime, size) differs from the one recorded at that document's last (re)load
         std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files);
+        // Tests: called after a document's files were read by a (re)load and before the load
+        // records what they were (p5-tooling: a file changed in that window is still seen as
+        // changed by the next reloadChangedFiles); nullptr removes it
+        static void setLoadedHookForTesting(std::function<void(Entity)> hook);
         bool setDebuggerVisible(bool visible);   // false when the debugger is not compiled in
         bool isDebuggerVisible() const;
         // seconds until a document of this scene needs the next update to animate (CSS

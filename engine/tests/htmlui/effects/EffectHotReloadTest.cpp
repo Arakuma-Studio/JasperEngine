@@ -18,6 +18,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 using namespace jasperengine;
 using namespace jasperengine::htmlui;
 using namespace jasperengine::test;
@@ -149,4 +151,29 @@ TEST_F(EffectHotReload, MissingFilesAreForgotten){
     hc::VirtualFiles::remove(kPath);
     EXPECT_EQ(EffectRegistry::get().forgetMissingProjectEffects(), 1u);
     EXPECT_EQ(EffectRegistry::get().find("hot-glow"), nullptr) << "a declaration whose file is gone is forgotten";
+}
+
+TEST_F(EffectHotReload, IncludesAreDependencies){
+    const char* fragPath = "@htmlui/test/effects/fx/inc-glow.frag";
+    const char* include = "@htmlui/test/effects/fx/inc-wave.glsl";
+    std::string source = frag("0.5");
+    source.replace(source.find("#include \"effects/lib/jfx_common.glsl\"\n"), 0, "#include \"inc-wave.glsl\"\n");
+    for (size_t at = source.find("hot-glow"); at != std::string::npos; at = source.find("hot-glow"))
+        source.replace(at, 8, "inc-glow");
+    hc::VirtualFiles::add(fragPath, source);
+    hc::VirtualFiles::add(include, "float inc_wave(float x){ return x; }\n");
+    std::vector<EffectDiagnostic> diags;
+    ASSERT_TRUE(EffectRegistry::get().declareProjectEffect("inc-glow", fragPath, "ui/inc.css", 1, diags));
+    // the include as the compiler resolves it (the .frag's directory first), not the .frag
+    const std::vector<std::string> includes = EffectRegistry::get().includeFilesOf("inc-glow");
+    EXPECT_NE(std::find(includes.begin(), includes.end(), include), includes.end()) << "the include is a dependency";
+    EXPECT_EQ(std::find(includes.begin(), includes.end(), fragPath), includes.end());
+    // editing it recompiles the effect: its variants are dropped, the editor is told
+    told.clear();
+    EXPECT_TRUE(EffectRegistry::get().onProjectFileChanged(include));
+    EXPECT_EQ(told, std::vector<std::string>{include});
+    ASSERT_NE(EffectRegistry::get().find("inc-glow"), nullptr) << "an include edit keeps the declaration";
+    EXPECT_FALSE(EffectRegistry::get().onProjectFileChanged("@htmlui/test/effects/fx/unrelated.glsl"));
+    hc::VirtualFiles::remove(fragPath);
+    hc::VirtualFiles::remove(include);
 }

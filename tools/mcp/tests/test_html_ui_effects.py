@@ -352,6 +352,17 @@ async def test_hot_reload_project_effect(ed: Editor):
     ed.check(same(recovered, S["t1"], REGIONS["tint"]["rect"]), "the fixed effect renders as before")
 
 
+async def test_include_edit_reloads(ed: Editor):
+    """An include of the project effect (fx/local-wave.glsl) is watched like its .frag."""
+    before, _ = stats(S["t1"], REGIONS["tint"]["rect"])
+    write(ed, "assets/ui/fx/local-wave.glsl", GLSL.replace("0.55 + 0.45 *", "0.1 + 0.1 *"))
+    darker = await wait_tint(ed, "include-edited", lambda mean, sd: sd > 2 and mean[1] < before[1] - 60)
+    S["include-edited"] = darker
+    write(ed, "assets/ui/fx/local-wave.glsl", GLSL)
+    restored = await wait_tint(ed, "include-restored", lambda mean, sd: abs(mean[1] - before[1]) <= MEAN_TOL and sd >= REGIONS["tint"]["sd"])
+    ed.check(same(restored, S["t1"], REGIONS["tint"]["rect"]), "the restored include renders as before")
+
+
 async def test_manifest_error(ed: Editor):
     bad = FRAG.replace("// @param      speed number 1 -5 5", "// @param      speed number 9 -5 5")
     raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/tint-wave.frag", "content": bad})
@@ -385,12 +396,12 @@ async def test_rename_frag_during_play(ed: Editor):
         await wait_tint(ed, "play-followed", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
     finally:
         await ed.call("play", action="stop")
-    # the edit-mode document follows the CSS edited during play (it reloads once play stops)
-    await wait_tint(ed, "edit-after-play", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+    # At once, while the edit-mode document is still reloading for the CSS edited during play: the
+    # files written now are not taken as seen by that reload (UIDocumentSystem stamps a document's
+    # files before reading them). The effect declared during play from the renamed file is gone
+    # with it, and the document, whose CSS is back to the text of a cached compile, declares its own.
     (ed.project / "assets/ui/fx/tint-wave2.frag").rename(ed.project / "assets/ui/fx/tint-wave.frag")
     write(ed, "assets/ui/effects.css", CSS)
-    # the effect declared during play from the renamed file is gone with it: the edit-mode
-    # document (whose CSS is back to the text of a cached compile) declares its own again
     await wait_tint(ed, "edit-restored", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
 
 

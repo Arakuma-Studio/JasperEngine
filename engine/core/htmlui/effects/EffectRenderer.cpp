@@ -340,6 +340,7 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     uploadCommon(*instance, *program, program->object);
     program->object.draw(0, indexCount, 1);
     renderer.stats.drawCalls++;
+    renderer.noteColorWrite();
     runtime.mutableStats().paintDraws++;
     runtime.mutableFrameStats().paintDraws++;
 }
