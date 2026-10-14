@@ -443,6 +443,14 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.vert_file = "htmlui_post.vert";
         args.frag_file = "htmlui_post.frag";
         addHtmlUIPostPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::UI_EFFECT){
+        // the fragment is the effect's (compile: effects/<name>.frag, or a project's .frag)
+        const bool filterForm = (properties & (1 << 0)) != 0;                   // 'Flt'
+        args.vert_file = filterForm ? "effects/effect_filter.vert" : "effects/effect_paint.vert";
+        args.frag_file = "";
+        args.defines.push_back({"JFX", "1"});
+        if (filterForm)
+            args.defines.push_back({"JFX_FILTER_FORM", "1"});
     }else{
         return false;
     }
@@ -561,6 +569,9 @@ void ShaderVariantCompiler::getCustomShaderPaths(const std::string& customShader
     if (separator != std::string::npos){
         vertFile = customShader.substr(0, separator);
         fragFile = customShader.substr(separator + 1);
+    }else if (customShader.size() > 5 && customShader.compare(customShader.size() - 5, 5, ".frag") == 0){
+        // fragment-only (a project UI effect): the vertex stage is the library's
+        fragFile = customShader;
     }else{
         vertFile = customShader + ".vert";
         fragFile = customShader + ".frag";
@@ -570,9 +581,11 @@ void ShaderVariantCompiler::getCustomShaderPaths(const std::string& customShader
 std::string ShaderVariantCompiler::getCustomShaderIncludeRoot(const std::string& customShader){
     std::string vertFile, fragFile;
     getCustomShaderPaths(customShader, vertFile, fragFile);
-    if (vertFile.empty())
+    // a fragment-only shader resolves against the fragment's directory
+    const std::string& entry = vertFile.empty() ? fragFile : vertFile;
+    if (entry.empty())
         return "";
-    return std::filesystem::path(vertFile).parent_path().generic_string();
+    return std::filesystem::path(entry).parent_path().generic_string();
 }
 
 std::vector<std::string> ShaderVariantCompiler::getIncludeKeys(const std::string& source){
@@ -642,7 +655,8 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
         return true;
     };
 
-    if (!loadEntryPoint(result.vertFile, "vertex") || !loadEntryPoint(result.fragFile, "fragment"))
+    // a fragment-only shader has no vertex entry point of its own
+    if ((!result.vertFile.empty() && !loadEntryPoint(result.vertFile, "vertex")) || !loadEntryPoint(result.fragFile, "fragment"))
         return result;
 
     // An empty include root means the entry point sits at the project root, where the
@@ -683,7 +697,7 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     };
 
     // copies: visiting can insert into result.files
-    const std::string vertSource = result.files[result.vertFile];
+    const std::string vertSource = result.vertFile.empty() ? std::string() : result.files[result.vertFile];
     const std::string fragSource = result.files[result.fragFile];
     visitSource(vertSource);
     visitSource(fragSource);
@@ -737,7 +751,20 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
              shaderType == ShaderType::GBUFFER))
         args.defines.push_back({"SKINNING_TEXTURE", "1"});
 
-    if (customId != 0) {
+    if (shaderType == ShaderType::UI_EFFECT && customId == 0)
+        return fail("A UI effect shader needs its effect (the custom shader id)");
+
+    if (ShaderPool::isLibraryCustomShader(customId)) {
+        // an effect of the engine library ("@effects/<name>"): its sources are built in
+        const std::string custom = ShaderPool::getCustomShaderName(customId);
+        const std::string prefix = "@effects/";
+        if (shaderType != ShaderType::UI_EFFECT || custom.rfind(prefix, 0) != 0)
+            return fail("Unknown library shader: " + custom);
+        const std::string fragFile = "effects/" + custom.substr(prefix.size()) + ".frag";
+        if (!args.fileBuffers.count(fragFile))
+            return fail("Unknown UI effect: " + custom.substr(prefix.size()));
+        args.frag_file = fragFile;
+    } else if (customId != 0) {
         if (!customSources)
             return fail("Custom shader requested without its sources");
         if (!customSources->valid)
@@ -745,10 +772,12 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
 
         // Overlay the fork's entry points and every project include they reach onto the
         // engine library. Resolution order is the entry point's own directory, the
-        // project root, then the engine library.
+        // project root, then the engine library. A fragment-only shader keeps the
+        // library's vertex stage.
         for (const auto& [path, content] : customSources->files)
             args.fileBuffers[path] = content;
-        args.vert_file = customSources->vertFile;
+        if (!customSources->vertFile.empty())
+            args.vert_file = customSources->vertFile;
         args.frag_file = customSources->fragFile;
     }
 

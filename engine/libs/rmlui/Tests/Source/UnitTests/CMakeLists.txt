@@ -28,6 +28,7 @@ add_executable(${TARGET_NAME}
 	ElementFormControlInput.cpp
 	ElementFormControlSelect.cpp
 	ElementImage.cpp
+	EffectHooks.cpp
 	ElementStyle.cpp
 	EventListener.cpp
 	Filter.cpp

@@ -827,6 +827,8 @@ namespace {
         {"all", ForkFeature::CssWideKeywords, "kw:initial,inherit,unset,revert,revert-layer"},
         // a list of property names: those that create a stacking context or a containing block do so (p3-integration)
         {"will-change", ForkFeature::GroupOpacity, "string"},
+        // p5-infra: the gradient-text filter list of effect layers (P5-1): the effects' jfx-* filters and the standard ones
+        {"-jfx-text-fill", ForkFeature::TextFillFilter, "@jfx_filter"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){
@@ -975,6 +977,27 @@ namespace {
     }
 
     bool checkForkComplex(std::string_view value, std::string_view kind, bool calc){
+        if (kind == "jfx_filter"){
+            if (value == "none")
+                return true;
+            static constexpr std::string_view standard[] = {"blur", "brightness", "contrast", "drop-shadow", "grayscale", "hue-rotate", "invert",
+                                                            "opacity", "saturate", "sepia"};
+            const Pieces items = split(value, ' ');
+            if (items.empty())
+                return false;
+            for (std::string_view item : items){
+                const size_t open = item.find('(');
+                if (open == std::string_view::npos || item.back() != ')')
+                    return false;
+                const std::string_view name = trim(item.substr(0, open));
+                bool known = startsWithNoCase(name, "jfx-") && name.size() > 4;
+                for (std::string_view n : standard)
+                    known = known || equalsNoCase(name, n);
+                if (!known)
+                    return false;
+            }
+            return true;
+        }
         if (kind.compare(0, 6, "align:") == 0)
             return checkAlignment(value, kind.substr(6));
         if (kind == "aspect_ratio")

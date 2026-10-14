@@ -8,6 +8,7 @@
 #include "io/FileData.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "shader/ShaderDataSerializer.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
 #include <cstdint>
 #include <cstdlib>
@@ -124,6 +125,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::HTMLUI_POST;
         return true;
     }
+    if (typeToken == "uieffect") {
+        shaderType = ShaderType::UI_EFFECT;
+        return true;
+    }
 
     return false;
 }
@@ -156,6 +161,28 @@ static std::set<ShaderKey>& notPrecompiledShaders(){
 };
 
 // Custom shader registry: index = customId-1, value = project-relative base path.
+// Bumped whenever the registry is reset (clear/clearUnused): ids held elsewhere are stale.
+static uint32_t customShaderGeneration = 1;
+static std::function<std::string(const std::string&)>& customShaderNameResolver(){
+    static std::function<std::string(const std::string&)>* resolver = new std::function<std::string(const std::string&)>();
+    return *resolver;
+}
+static std::function<std::string(const std::string&)>& uiEffectSpecResolver(){
+    static std::function<std::string(const std::string&)>* resolver = new std::function<std::string(const std::string&)>();
+    return *resolver;
+}
+
+namespace {
+    // UI effects of the engine library (phase 5): custom names "@effects/<name>", sources
+    // effects/<name>.frag; their basename is fx_<name> with '-' as '_' (a leading '_' of an
+    // internal effect stays)
+    const char* const libraryEffectPrefix = "@effects/";
+
+    bool startsWithText(const std::string& text, const char* prefix){
+        return text.rfind(prefix, 0) == 0;
+    }
+}
+
 static std::mutex& customShaderMutex(){
     static std::mutex* m = new std::mutex();
     return *m;
@@ -192,6 +219,14 @@ std::string ShaderPool::getCustomShaderName(uint16_t customId){
 
 std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
     std::string base = getCustomShaderName(customId);
+    if (startsWithText(base, libraryEffectPrefix)){
+        std::string name = base.substr(std::char_traits<char>::length(libraryEffectPrefix));
+        for (size_t i = 0; i < name.size(); i++){
+            if (name[i] == '-' || (name[i] == '_' && i > 0) || !(std::isalnum((unsigned char)name[i]) || name[i] == '_'))
+                name[i] = '_';
+        }
+        return "fx_" + name;
+    }
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
     for (char& c : base){
@@ -317,6 +352,25 @@ bool ShaderPool::getShaderCliSpec(const std::string& shaderStr, std::string& cli
         return false;
     }
 
+    // "uieffect_<basename>[_Flt]": the effect's name, not a property list
+    if (shaderType == ShaderType::UI_EFFECT) {
+        if (underscorePos == std::string::npos)
+            return false;
+        std::string basename = shaderStr.substr(underscorePos + 1);
+        const std::string filterSuffix = "_" + getShaderPropertyName(shaderType, 0, true);
+        const bool filterForm = basename.size() > filterSuffix.size() &&
+                                basename.compare(basename.size() - filterSuffix.size(), filterSuffix.size(), filterSuffix) == 0;
+        if (filterForm)
+            basename.resize(basename.size() - filterSuffix.size());
+        const std::string custom = resolveCustomShaderBasename(basename);
+        if (custom.empty())
+            return false;
+        cliSpec = typeToken + "/" + getUiEffectName(custom);
+        if (filterForm)
+            cliSpec += ":" + getShaderPropertyName(shaderType, 0, true);
+        return true;
+    }
+
     cliSpec = typeToken;
     if (underscorePos == std::string::npos) {
         return true;
@@ -419,6 +473,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI: return lowerCase ? "htmlui" : "HTML UI";
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
+        case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -442,6 +497,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
         case ShaderType::HTMLUI_POST: return 6;
+        case ShaderType::UI_EFFECT: return 1;
         default:                 return 0;
     }
 }
@@ -523,6 +579,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 3: return shortName ? "Shd" : "Drop Shadow";
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
+        }
+    } else if (shaderType == ShaderType::UI_EFFECT) {
+        switch (bit) {
+            case 0: return shortName ? "Flt" : "Filter form";
         }
     } else if (shaderType == ShaderType::POINTS) {
         switch (bit) {
@@ -834,12 +894,35 @@ bool ShaderPool::parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, 
     };
 
     const size_t separator = spec.find(':');
-    const std::string typePart  = separator == std::string::npos ? spec : spec.substr(0, separator);
+    std::string typePart  = separator == std::string::npos ? spec : spec.substr(0, separator);
     const std::string propsPart = separator == std::string::npos ? ""   : spec.substr(separator + 1);
+
+    // "uieffect/<name>": a UI effect names its effect after the type
+    std::string effectName;
+    const size_t slash = typePart.find('/');
+    if (slash != std::string::npos) {
+        effectName = typePart.substr(slash + 1);
+        typePart = typePart.substr(0, slash);
+    }
 
     ShaderType type;
     if (!parseSpecTypeName(typePart, type)) {
         return fail("Unknown shader type: " + typePart);
+    }
+
+    std::string custom = customShader;
+    if (type == ShaderType::UI_EFFECT) {
+        if (!effectName.empty()) {
+            if (effectName == "all")
+                return fail("uieffect/all names every built-in effect: expand it with expandShaderSpec");
+            custom = resolveUiEffect(effectName);
+            if (custom.empty())
+                return fail("Unknown UI effect: " + effectName);
+        } else if (custom.empty()) {
+            return fail("A UI effect spec names its effect: uieffect/<name>[:Flt]");
+        }
+    } else if (!effectName.empty()) {
+        return fail("Only UI effects take a name after the type: " + spec);
     }
 
     uint32_t properties = 0;
@@ -871,13 +954,126 @@ bool ShaderPool::parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, 
         }
     }
 
-    shaderKey = getShaderKey(type, properties, registerCustomShader(customShader));
+    shaderKey = getShaderKey(type, properties, registerCustomShader(custom));
+    return true;
+}
+
+bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey>& shaderKeys, std::string* error){
+    std::string lower;
+    for (char c : spec)
+        lower += (char)std::tolower((unsigned char)c);
+    if (lower != "uieffect/all") {
+        ShaderKey key;
+        if (!parseShaderSpec(spec, key, error))
+            return false;
+        shaderKeys.push_back(key);
+        return true;
+    }
+
+    // every effect of the library: a paint effect in both forms, a filter effect (and an
+    // internal one) in the filter form
+    const auto& library = ShaderVariantCompiler::getLibrarySources();
+    std::vector<std::string> names;
+    for (const auto& file : library) {
+        const std::string& path = file.first;
+        if (path.rfind("effects/", 0) != 0 || path.size() <= 13 || path.compare(path.size() - 5, 5, ".frag") != 0)
+            continue;
+        const std::string name = path.substr(8, path.size() - 13);
+        if (name.find('/') != std::string::npos)
+            continue;
+        names.push_back(name);
+    }
+    if (names.empty()) {
+        if (error)
+            *error = "This build has no UI effect library to expand uieffect/all from";
+        return false;
+    }
+    std::sort(names.begin(), names.end());
+    for (const std::string& name : names) {
+        const uint16_t customId = registerCustomShader(libraryEffectPrefix + name);
+        // the manifest's "// @kind paint|filter" line (internal effects have none: filter form)
+        const std::string& source = library.at("effects/" + name + ".frag");
+        const size_t kind = source.find("// @kind");
+        const size_t end = kind == std::string::npos ? kind : source.find('\n', kind);
+        const bool paint = kind != std::string::npos && source.substr(kind, end - kind).find("paint") != std::string::npos;
+        if (paint)
+            shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, 0, customId));
+        shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, 1, customId));
+    }
     return true;
 }
 
 bool ShaderPool::parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey){
+    // a UI effect: its basename back into the custom shader it names
+    if (shaderStr.rfind("uieffect_", 0) == 0) {
+        std::string basename = shaderStr.substr(9);
+        const bool filterForm = basename.size() > 4 && basename.compare(basename.size() - 4, 4, "_Flt") == 0;
+        if (filterForm)
+            basename.resize(basename.size() - 4);
+        const std::string custom = resolveCustomShaderBasename(basename);
+        if (custom.empty())
+            return false;
+        shaderKey = getShaderKey(ShaderType::UI_EFFECT, filterForm ? 1u : 0u, registerCustomShader(custom));
+        return true;
+    }
     std::string spec;
     return getShaderCliSpec(shaderStr, spec) && parseShaderSpec(spec, shaderKey);
+}
+
+bool ShaderPool::isLibraryCustomShader(uint16_t customId){
+    return customId != 0 && startsWithText(getCustomShaderName(customId), "@");
+}
+
+void ShaderPool::setCustomShaderNameResolver(std::function<std::string(const std::string& basename)> resolver){
+    customShaderNameResolver() = std::move(resolver);
+}
+
+void ShaderPool::setUiEffectResolver(std::function<std::string(const std::string& effectName)> resolver){
+    uiEffectSpecResolver() = std::move(resolver);
+}
+
+uint32_t ShaderPool::getCustomShaderGeneration(){
+    std::lock_guard<std::mutex> lock(customShaderMutex());
+    return customShaderGeneration;
+}
+
+std::string ShaderPool::resolveCustomShaderBasename(const std::string& basename){
+    // the library's effects map back without a resolver ("fx_cursor_trail", "fx__bright")
+    if (basename.rfind("fx_", 0) == 0 && basename.size() > 3) {
+        std::string name = basename.substr(3);
+        for (size_t i = 1; i < name.size(); i++) {
+            if (name[i] == '_')
+                name[i] = '-';
+        }
+        return libraryEffectPrefix + name;
+    }
+    const auto& resolver = customShaderNameResolver();
+    return resolver ? resolver(basename) : std::string();
+}
+
+std::string ShaderPool::resolveUiEffect(const std::string& effectName){
+    const auto& resolver = uiEffectSpecResolver();
+    if (resolver) {
+        const std::string custom = resolver(effectName);
+        if (!custom.empty())
+            return custom;
+    }
+    // without the effect registry: the library's sources (a build with the shader compiler)
+    if (ShaderVariantCompiler::getLibrarySources().count("effects/" + effectName + ".frag"))
+        return libraryEffectPrefix + effectName;
+    return std::string();
+}
+
+std::string ShaderPool::getUiEffectName(const std::string& customShader){
+    if (startsWithText(customShader, libraryEffectPrefix))
+        return customShader.substr(std::char_traits<char>::length(libraryEffectPrefix));
+    // a project effect: its .frag file's stem
+    const size_t slash = customShader.find_last_of('/');
+    std::string stem = slash == std::string::npos ? customShader : customShader.substr(slash + 1);
+    const size_t dot = stem.rfind('.');
+    if (dot != std::string::npos)
+        stem.resize(dot);
+    return stem;
 }
 
 bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId){
@@ -905,13 +1101,15 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
 
 void ShaderPool::destroyCustomShaders(){
     for (auto& entry : getMap()){
-        if (getCustomIdFromKey(entry.first) != 0 && entry.second && entry.second->isCreated()){
+        // the engine library's effects do not change with the project
+        if (getCustomIdFromKey(entry.first) != 0 && !isLibraryCustomShader(getCustomIdFromKey(entry.first)) &&
+            entry.second && entry.second->isCreated()){
             entry.second->destroyShader();
         }
     }
     // Forget custom-shader build failures so an edited source is retried on the next get().
     for (auto it = failedShaders().begin(); it != failedShaders().end();){
-        if (getCustomIdFromKey(*it) != 0){
+        if (getCustomIdFromKey(*it) != 0 && !isLibraryCustomShader(getCustomIdFromKey(*it))){
             it = failedShaders().erase(it);
         } else {
             ++it;
@@ -1098,6 +1296,7 @@ void ShaderPool::clear(){
 
     std::lock_guard<std::mutex> lock(customShaderMutex());
     customShaderNames().clear();
+    customShaderGeneration++;
 }
 
 void ShaderPool::clearUnused(){
@@ -1118,4 +1317,5 @@ void ShaderPool::clearUnused(){
     RuntimeShaderCompiler::shutdown();
     std::lock_guard<std::mutex> lock(customShaderMutex());
     customShaderNames().clear();
+    customShaderGeneration++;
 }

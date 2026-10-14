@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- The golden fixture of filter effects (phase-5 spec 5.2): the test card, the declaration on it. -->
+<html>
+<head>
+<style>
+html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #101218; }
+#fx { position: absolute; left: 20px; top: 20px; width: 320px; height: 200px; font-family: sans-serif; __DECL__; }
+#title { position: absolute; left: 12px; top: 6px; font-size: 28px; line-height: 36px; font-weight: bold; color: #fff; white-space: nowrap; }
+.sq { position: absolute; top: 52px; width: 40px; height: 40px; }
+#s1 { left: 12px; background: #e74c3c; }
+#s2 { left: 60px; background: #f1c40f; }
+#s3 { left: 108px; background: #2ecc71; }
+#s4 { left: 156px; background: #3498db; }
+#bar { position: absolute; left: 12px; top: 104px; width: 128px; height: 24px; background: linear-gradient(90deg, #ff0080, #ffd000 50%, #00bfff); }
+#card { position: absolute; left: 150px; top: 98px; width: 160px; height: 100px; }
+</style>
+</head>
+<body>
+<div id="fx">
+<div id="title">Effects 123</div>
+<div class="sq" id="s1"></div><div class="sq" id="s2"></div><div class="sq" id="s3"></div><div class="sq" id="s4"></div>
+<div id="bar"></div>
+<img id="card" src="/effects/testcard.png">
+</div>
+</body>
+</html>

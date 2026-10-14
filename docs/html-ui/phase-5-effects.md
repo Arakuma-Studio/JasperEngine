@@ -1273,6 +1273,69 @@ exercise every path:
 **Tests.** 5.1 (everything except `RegisteredPropertyTest`), 5.2/5.3 for the five reference
 effects, 5.6 for the five, a Vulkan golden run, and `test_protocol.py` + `test_ui_anchors.py`.
 
+#### p5-infra as implemented
+
+Built as specified (3.2–3.10, 3.12, 3.13, 3.16, deliverables 1–6), with these differences. Wave 2 builds on them.
+
+- **Effects are image layers of the fork's native lists.** With `ForkFeature::BackgroundLayers` (present), compat emits an
+  effect layer into the native `background-image`/`mask-image` list (`jfx-<name>(…)` among gradients and `url()`
+  layers, its paint area from the layer's `background-clip`); the `decorator` property path with a paint-area keyword is
+  kept for a fork without the feature (`EffectCompatTest.LegacyDecoratorsWithPaintAreas`). `transition: background-image`
+  keeps its name (no mapping to `decorator`). Two fork patches follow from this, recorded in `FORK.md`: **P5-2**
+  `Decorator::PaintsOwnClip` (the fork clip-masked rounded decorator layers in a pushed layer; effects clip themselves in
+  the shader, so their blend sees what is below and `@geometry bounds` glows are kept) and **P5-3**
+  `DecoratorInstancer::InterpolatesAsImageLayer` (image lists were discrete; opted-in decorator layers interpolate
+  property by property, and the interpolated layer's text carries the values). P5-1 is as specified; `-jfx-text-fill` is
+  registered after `ReserveUnnamed`.
+- **Shader interface.** `effect_filter.vert` is vertexless and has no `u_vs_effectFilter` block and no `v_layerPx`
+  varying: `v_texcoord` is top-down on every backend (the vertex shader flips it under `IS_GLSL`) and the filter form
+  computes the fragment's layer px as `v_texcoord * frame.layer.xy` (`jfx_layer_px()`). `frame.misc.w` is 1 when the
+  paint form clips to the area's rounded box (the spec left it 0): `main_paint.glsl` multiplies the coverage of
+  `jfx_box_sdf` over `radii`. `JfxContext` also has `sinceEnter` (`frame.pointerEx.w`).
+- **Palettes and reflection names.** SPIRV-Cross flattens uniform blocks on GL, and an array member cannot be passed to
+  a function whole: an effect with a palette param `p` writes `JFX_DECLARE_PALETTE(p)` after its params block, which
+  defines `jfx_palette_p(t, space)` (copies the array). SPIRV-Cross renames a member named like a GLSL builtin
+  (`noise` becomes `_noise`): `checkReflection` and `EffectRenderer` match a member with or without the `_` prefix.
+- **ShaderPool.** `expandShaderSpec("uieffect/all")` scans the embedded library (`effects/*.frag`, the kind from the
+  `// @kind` line), so the CLI expands it without the registry; `resolveUiEffect` falls back to the library too.
+  Library ids are `@effects/<name>`, basenames `fx_<name with - as _>` (`fx__bright`); `ShaderUniforms::writeUniformArray`
+  packs std140 arrays (palettes, the trail).
+- **RmlRenderer.** The `jfx` shader and filter handles are the instance address with bit 0 set (the handle owns the
+  instance); `EffectRenderer` (one per `RmlRenderer`) draws them, the filter passes through `RmlFilterContext`.
+  `EffectRuntime::beginFrame` runs from `RmlRenderer::beginFrame`, keyed on `SystemRender::getFrameCount()`; an animated
+  effect calls `RequestNextUpdate(0)` while the clock is not fixed.
+- **Runtime details the spec left open.** Trail: a sample per frame when the pointer moved 1 px or more, at most 32,
+  dropped after 4 s; ripples: a press inside adds one (strength 1), `trigger move` adds one per 40 px moved inside
+  (strength 0.6, the movement counted from where the pointer entered), at most 8, dropped after 4 s; a new ripple is as
+  old as its press. A long frame counts 0.25 s at most for integrated clocks, trails and ripples.
+- **Compat.** The function and at-rule handlers are registered on first use (`registerEffectCompatHandlers`, called by
+  the registry lookups in `Rewriters.cpp`), so `check --ui` works without RmlUi. `@effect` is handled in the flatten
+  pass (an `@effect` inside a style rule is a warning). A vendor-prefixed image property (`-webkit-mask-image`) takes
+  effects. A missing `@effect` file reads `'<src>' not found (no file at <asset path>)` (FX-0013).
+  `UIElement::getEffects` reports a gradient-text effect as property `background-image`, form `filter`.
+  `ForkFeature::RegisteredProperties` is left to p5-property.
+- **CLI.** `ui-effects --json` prints `{"effects": [...]}` (with `--validate`, also `"problems"`); an entry has every
+  manifest field (`name kind category summary source cost backdrop pointer time suggestFor params builtin path example
+  thumbnail`, and `prepass`/`margin`/`geometry` when set); a param has `name type default range description uniform`
+  (`min`/`max` normalised, `options`). `--project <dir>` adds every `.frag` of the project whose manifest starts with
+  `// @effect` (declared or not). `shaders`/`export --shader` take `uieffect/<name>[:Flt]` and `uieffect/all`.
+- **Docs generator.** `gen_effects_docs.py` reads the manifests from the `.frag` files with the registry's grammar
+  instead of running `ui-effects --json` (its `--check` needs no build); it also copies the thumbnails and writes
+  `LICENSE.shaders-com.txt` (which lists `original` effects that follow the kit, `frosted-glass`, and the include
+  library too).
+- **Guide examples** are the six of 3.2 adapted to the reference effects (`grain` and `holographic` become `stripes`,
+  `noise-dissolve` becomes `pixelate`, `conic-spin` becomes `stripes` with `angle var(--spin)`). The gradient-text
+  example uses `color: transparent`: by 3.2's own trigger, `color: #fff` drops the clip. `EffectGuideTest` renders
+  every css block of the section; the project effect of "Writing an effect" is the fixture
+  `fixtures/effects/fx/my-glow.frag`, which must equal the guide's block. `test_html_ui_docs.py` writes a `.frag` a
+  guide snippet declares from that block.
+- **Tests added beyond 5.1:** `EffectGuideTest`, `EffectShaderBuildTest` (5.6 for every built-in effect, in process),
+  and the fork's `EffectHooks.*` (run by `run-rmlui-tests.sh`). `EffectLifecycleTest` counts the renderer's live
+  geometry, textures, geometry buffers and sokol buffers and images. The golden driver's gradient-text goldens are
+  listed in `kTextEffects` of `EffectGoldenTest.cpp` (`stripes`; wave 2 adds its own).
+- **Tools not in the owned list:** `tools/htmlui/xcode_sync_effects.py` (the effects sources in the Xcode project, as
+  `xcode_sync_compat.py` does for compat).
+
 ### 4.2 `p5-property` (wave 1)
 **Goal.** Registered custom properties (3.11), so that transitions and keyframes animate
 typed custom properties and every `var()` follows.

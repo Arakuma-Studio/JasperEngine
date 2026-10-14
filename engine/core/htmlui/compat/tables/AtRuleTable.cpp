@@ -28,6 +28,7 @@ namespace {
         {"@supports", R, FF::None, R, "", "evaluated statically against the support tables", ""},
         {"@layer", R, FF::None, R, "", "flattened by layer order (Info on specificity conflicts)", ""},
         {"@property", A, FF::None, A, "initial value on the root", "initial value written on the root; inherits: false lost (Info)", ""},
+        {"@effect", R, FF::None, R, "", "declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014", ""},
         {"@container", U, FF::None, U, "", "contents dropped (Warning)", "use @media on the viewport size, or toggle classes from Lua"},
         {"@scope", U, FF::None, U, "", "contents dropped (Warning)", "use descendant selectors under a class"},
         {"@starting-style", U, FF::AnimationLonghands, N, "@starting-style", "contents dropped until the fork has AnimationLonghands (Warning)", "set the start values with a class and remove it from Lua after load, or use @keyframes"},

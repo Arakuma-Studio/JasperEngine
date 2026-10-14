@@ -16,8 +16,8 @@ namespace jasperengine::htmlui::compat {
     enum class Severity : uint8_t { Error, Warning, Info };
 
     // Areas of the stable diagnostic codes HTMLUI-<AREA>-NNNN (phase-2 §3.4, Appendix F).
-    // Append only: phase 5 adds FX after SVG.
-    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG };
+    // Append only: phase 5 added FX after SVG (the UI effects).
+    enum class DiagArea : uint8_t { GEN, HTML, CSS, SEL, AT, IMP, SVG, FX };
 
     struct DiagCode {
         DiagArea area = DiagArea::GEN;
@@ -148,6 +148,23 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode SvgRecolor{DiagArea::SVG, 1};
         inline constexpr DiagCode SvgUnsupportedContent{DiagArea::SVG, 2};
         inline constexpr DiagCode SvgInternalCss{DiagArea::SVG, 3};
+        // FX (phase 5, the UI effects: phase-5-effects.md 3.13)
+        inline constexpr DiagCode EffectUnknown{DiagArea::FX, 1};
+        inline constexpr DiagCode EffectWrongContext{DiagArea::FX, 2};
+        inline constexpr DiagCode EffectPositionalArg{DiagArea::FX, 3};
+        inline constexpr DiagCode EffectUnknownParam{DiagArea::FX, 4};
+        inline constexpr DiagCode EffectBadValue{DiagArea::FX, 5};
+        inline constexpr DiagCode EffectOutOfRange{DiagArea::FX, 6};
+        inline constexpr DiagCode EffectDuplicateParam{DiagArea::FX, 7};
+        inline constexpr DiagCode EffectBlendOnFilter{DiagArea::FX, 8};
+        inline constexpr DiagCode EffectIgnoredBackgroundProp{DiagArea::FX, 9};
+        inline constexpr DiagCode EffectUnsupportedBlend{DiagArea::FX, 10};
+        inline constexpr DiagCode EffectTextFill{DiagArea::FX, 11};
+        inline constexpr DiagCode EffectDeclareConflict{DiagArea::FX, 12};
+        inline constexpr DiagCode EffectFileMissing{DiagArea::FX, 13};
+        inline constexpr DiagCode EffectManifest{DiagArea::FX, 14};
+        inline constexpr DiagCode EffectShaderCompile{DiagArea::FX, 15};
+        inline constexpr DiagCode EffectCost{DiagArea::FX, 16};
     }
 
     // Hints shared by several reporters (phase-3 spec 2.2's replacement hints).

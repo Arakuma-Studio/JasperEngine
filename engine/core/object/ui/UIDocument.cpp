@@ -6,6 +6,7 @@
 #include "HtmlUIScriptInternal.h"
 
 #include "Engine.h"
+#include "htmlui/effects/EffectRuntime.h"
 #include "Log.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/compat/LuaHooks.h"
@@ -238,6 +239,14 @@ void UIDocument::removeDataModel(const std::string& name){
 void UIDocument::setDebuggerVisible(bool visible){
     if (Scene* main = Engine::getScene())
         main->getSystem<UIDocumentSystem>()->setDebuggerVisible(visible);
+}
+
+void UIDocument::setEffectTime(std::optional<double> seconds){
+    htmlui::EffectClock::setFixedTime(seconds);
+}
+
+double UIDocument::getEffectTime(){
+    return htmlui::EffectClock::now();
 }
 
 bool UIDocument::isDebuggerVisible(){

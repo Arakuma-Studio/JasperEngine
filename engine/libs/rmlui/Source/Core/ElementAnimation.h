@@ -7,6 +7,10 @@
 
 namespace Rml {
 
+class Element;
+class PropertyDictionary;
+struct DecoratorDeclaration;
+
 struct AnimationKey {
 	AnimationKey(float time, const Property& property, Tween tween, bool has_tween = true) :
 		time(time), property(property), tween(tween), has_tween(has_tween)
@@ -56,6 +60,11 @@ private:
     (with backwards fill), iterations of a duration (fractional and infinite counts), a direction, a fill mode and a
     play state that holds the local time while paused.
  */
+/// Fork (phase 5, P5-3): two declarations of one decorator function interpolated property by property (false when they
+/// are not compatible: other instancer, type, property count or paint area).
+bool InterpolateDecoratorDeclaration(PropertyDictionary& properties, const DecoratorDeclaration& d0, const DecoratorDeclaration& d1, float alpha,
+	Element& element);
+
 class ElementAnimation {
 public:
 	ElementAnimation() {}

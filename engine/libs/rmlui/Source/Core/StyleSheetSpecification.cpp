@@ -155,6 +155,11 @@ PropertyDefinition& StyleSheetSpecification::RegisterProperty(const String& prop
 	return instance->RegisterProperty(PropertyId::Invalid, property_name, default_value, inherited, forces_layout);
 }
 
+PropertyId StyleSheetSpecification::GetTextFillPropertyId()
+{
+	return instance ? instance->text_fill_id : PropertyId::Invalid;
+}
+
 const PropertyDefinition* StyleSheetSpecification::GetProperty(const String& property_name)
 {
 	return instance->properties.GetProperty(property_name);
@@ -767,6 +772,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
+
+	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers); after the
+	// reservation, so its id is past the defined ones
+	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
 
 	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
 	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");

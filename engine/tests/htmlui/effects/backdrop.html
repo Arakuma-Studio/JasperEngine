@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!-- The golden fixture of backdrop effects (phase-5 spec 5.2): the test card over the whole canvas, a
+     rounded panel over it with the declaration. -->
+<html>
+<head>
+<style>
+html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #101218; font-family: sans-serif; }
+#card { position: absolute; left: 0; top: 0; width: 360px; height: 240px; }
+#title { position: absolute; left: 16px; top: 96px; font-size: 40px; line-height: 48px; font-weight: bold; color: #fff; white-space: nowrap; }
+.sq { position: absolute; top: 160px; width: 40px; height: 40px; }
+#s1 { left: 90px; background: #e74c3c; }
+#s2 { left: 150px; background: #f1c40f; }
+#s3 { left: 210px; background: #2ecc71; }
+#s4 { left: 270px; background: #3498db; }
+#fx { position: absolute; left: 70px; top: 50px; width: 220px; height: 140px; border-radius: 16px; __DECL__; }
+</style>
+</head>
+<body>
+<img id="card" src="/effects/testcard.png">
+<div id="title">Effects 123</div>
+<div class="sq" id="s1"></div><div class="sq" id="s2"></div><div class="sq" id="s3"></div><div class="sq" id="s4"></div>
+<div id="fx"></div>
+</body>
+</html>

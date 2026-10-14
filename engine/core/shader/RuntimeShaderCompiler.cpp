@@ -301,8 +301,9 @@ ShaderBuildResult RuntimeShaderCompiler::request(ShaderKey key){
     Job job;
     job.key = key;
 
+    // a library id (a UI effect of the engine library) is built from the library alone
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-    if (customId != 0){
+    if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)){
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
         auto sourceIt = s.customSources.find(customShader);
         if (sourceIt == s.customSources.end()){

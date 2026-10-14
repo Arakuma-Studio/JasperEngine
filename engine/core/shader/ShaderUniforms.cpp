@@ -5,6 +5,7 @@
 
 #include "Log.h"
 
+#include <algorithm>
 #include <cstring>
 
 using namespace jasperengine;
@@ -169,6 +170,37 @@ void CustomUniformBlock::writeUniform(std::vector<uint8_t>& block, const ShaderU
             memcpy(block.data() + uniform.offset + i * 4, &intValue, 4);
         }else{
             memcpy(block.data() + uniform.offset + i * 4, &components[i], 4);
+        }
+    }
+}
+
+void CustomUniformBlock::writeUniformArray(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4* values, size_t count){
+    int components = 0;
+    bool isInt = false;
+    switch (uniform.type){
+        case ShaderUniformType::FLOAT:  components = 1; break;
+        case ShaderUniformType::FLOAT2: components = 2; break;
+        case ShaderUniformType::FLOAT3: components = 3; break;
+        case ShaderUniformType::FLOAT4: components = 4; break;
+        case ShaderUniformType::INT:    components = 1; isInt = true; break;
+        case ShaderUniformType::INT2:   components = 2; isInt = true; break;
+        case ShaderUniformType::INT3:   components = 3; isInt = true; break;
+        case ShaderUniformType::INT4:   components = 4; isInt = true; break;
+        default: return;
+    }
+    const size_t elements = std::min<size_t>(count, uniform.arrayCount > 0 ? uniform.arrayCount : 1);
+    for (size_t e = 0; e < elements; e++){
+        const size_t offset = uniform.offset + e * 16;
+        if (offset + components * 4 > block.size())
+            return;
+        const float c[4] = {values[e].x, values[e].y, values[e].z, values[e].w};
+        for (int i = 0; i < components; i++){
+            if (isInt){
+                const int intValue = (int)c[i];
+                memcpy(block.data() + offset + i * 4, &intValue, 4);
+            }else{
+                memcpy(block.data() + offset + i * 4, &c[i], 4);
+            }
         }
     }
 }

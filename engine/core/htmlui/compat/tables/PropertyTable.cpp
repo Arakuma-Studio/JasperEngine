@@ -26,6 +26,7 @@ namespace {
     const PropertySupport rows[] = {
         {"--*", N, FF::None, N, false, "", false, RW::None, "", "custom properties: values normalized, typed copies when needed", "", "css-variables-1"},
         {"-html-animation-fill", N, FF::None, N, false, "none", false, RW::None, "", "written by the rewriter for animation-fill-mode (AnimationFill runtime)", "", "compat"},
+        {"-jfx-text-fill", U, FF::TextFillFilter, N, false, "none", false, RW::None, "", "engine-internal (phase 5): the filter-form effect layers compat writes for background-clip: text with effect() layers (gradient text), applied before filter; not for authors. Without the fork feature dropped (Warning)", "use background-clip: text with effect() layers", "jasperengine"},
         {"-moz-appearance", R, FF::None, R, false, "none", false, RW::Appearance, "control companions (--html-check, --html-control-bg, ...)", "none / auto write the control companions; exact for the UA-styled controls", "", "gecko"},
         {"-moz-osx-font-smoothing", I, FF::None, I, true, "auto", false, RW::None, "", "font rendering hint; the font engine decides", "", "gecko"},
         {"-ms-flex", R, FF::None, R, false, "0 0 auto", false, RW::Flex, "flex", "legacy (IE 10) flexbox mapped to flex", "", "ms"},
@@ -105,7 +106,7 @@ namespace {
         {"backface-visibility", U, FF::None, U, false, "visible", false, RW::None, "", "not supported (Info)", "hide the element from Lua when it faces away", "css-transforms-2"},
         {"background", R, FF::BackgroundLayers, N, false, "none 0% 0% / auto repeat scroll padding-box border-box transparent", false, RW::Background, "background-color; decorator", "layers -> decorators (gradients native, url() through html-layer); first CSS layer on top", "", "css-backgrounds-3"},
         {"background-attachment", R, FF::BackgroundLayers, N, false, "scroll", false, RW::BackgroundLonghand, "html-layer arguments", "fixed exact for url() layers; local -> scroll (Info)", "", "css-backgrounds-3"},
-        {"background-blend-mode", U, FF::None, U, false, "normal", false, RW::None, "", "blend modes are not supported (Warning)", "pre-blend the images, or layer elements with opacity", "compositing-1"},
+        {"background-blend-mode", U, FF::None, U, false, "normal", false, RW::None, "", "blend modes are not supported (Warning); on effect() layers normal, multiply, screen and plus-lighter (lighter) set the effect's blend (others: HTMLUI-FX-0010)", "pre-blend the images, or layer elements with opacity", "compositing-1"},
         {"background-clip", R, FF::BackgroundLayers, N, false, "border-box", false, RW::BackgroundLonghand, "html-layer arguments / paint area", "text -> gradient-text fallback in a solid color (approximated, Warning)", "", "css-backgrounds-3"},
         {"background-color", N, FF::None, N, false, "transparent", false, RW::ColorValue, "", "colors normalized to hex", "", "css-backgrounds-3"},
         {"background-image", R, FF::BackgroundLayers, N, false, "none", false, RW::BackgroundLonghand, "decorator", "merged into the layer list: gradients native, url() -> html-layer, image-set() resolved; element(), cross-fade(), paint() unsupported", "", "css-backgrounds-3"},

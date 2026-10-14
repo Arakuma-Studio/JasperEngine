@@ -12,8 +12,10 @@
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/css/RewriteSession.h"
 
+#include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::htmlui::compat {
@@ -213,6 +215,57 @@ namespace jasperengine::htmlui::compat {
         // the text of a range of values as props::text writes a list (messages)
         std::string text(const ValueRange& range);
     }
+
+    // ---- function handlers (phase 5, the UI effects): image functions of background and mask
+    // layers, filter functions of filter lists and at-rules that a later phase adds (effect(),
+    // @effect). The handlers are registered on first use (ensureFunctionHandlers: the effects
+    // library registers effect() and @effect), so they work with and without RmlUi (check --ui).
+
+    // an image function of a background or mask layer
+    struct ImageLayerContext {
+        Session* session = nullptr;
+        DeclContext* declaration = nullptr;     // the declaration being rewritten (null: a var() value)
+        const ComponentValue* function = nullptr;
+        uint32_t file = 0;                      // the file the function is written in
+        SourceRef ref;                          // the function (the declaration when it has no extent)
+        std::string property;                   // "background", "background-image", "mask", "mask-image"
+        size_t layerIndex = 0;                  // 0 = the top layer
+        std::string clip;                       // the layer's paint area keyword ("border-box", ...)
+        bool sizeSet = false, positionSet = false, repeatSet = false;   // set for the layer
+        std::string blendMode;                  // the layer's background-blend-mode ("" none)
+        bool native = false;                    // a layer of the fork's background-image list (no paint area keyword)
+        bool textFill = false;                  // the layer fills the text (gradient text): its filter form
+    };
+    // a function of a filter or backdrop-filter list
+    struct FilterContext {
+        Session* session = nullptr;
+        DeclContext* declaration = nullptr;
+        const ComponentValue* function = nullptr;
+        uint32_t file = 0;
+        SourceRef ref;
+        std::string property;                   // "filter", "backdrop-filter"
+    };
+    // the RCSS item; nullopt when the function is dropped (reported by the handler)
+    using ImageFunctionHandler = std::function<std::optional<std::string>(const ImageLayerContext&, DiagnosticSink&)>;
+    using FilterFunctionHandler = std::function<std::optional<std::string>(const FilterContext&, DiagnosticSink&)>;
+    // a top-level at-rule; it is removed from the output (moving rules earlier is the handler's job)
+    using AtRuleHandler = std::function<void(const Rule&, Session&, DiagnosticSink&)>;
+    JASPERENGINE_API void registerImageFunctionHandler(std::string_view functionName, ImageFunctionHandler handler);
+    JASPERENGINE_API void registerFilterFunctionHandler(std::string_view functionName, FilterFunctionHandler handler);
+    JASPERENGINE_API void registerAtRuleHandler(std::string_view atKeyword, AtRuleHandler handler);
+    // by lower-case name; nullptr when none
+    const ImageFunctionHandler* findImageFunctionHandler(std::string_view functionName);
+    const FilterFunctionHandler* findFilterFunctionHandler(std::string_view functionName);
+    const AtRuleHandler* findAtRuleHandler(std::string_view atKeyword);
+    // A declaration whose value holds a handled function where its property takes none (an
+    // effect() in color, border-image, ...): reported (HTMLUI-FX-0002) and true, the caller
+    // drops the declaration. Custom properties hold anything.
+    bool rejectsHandledFunction(Session& session, const Declaration& declaration, const std::string& property);
+    // does the rule paint an effect layer (background-blend-mode applies to it; Background.cpp)
+    bool ruleHasEffectLayer(Session& session, const FlatRule& rule);
+    // gradient text with an effect layer the fork fills (-jfx-text-fill): the text color the
+    // rule makes transparent is written white by the background rewrite (Background.cpp)
+    bool ruleHasEffectTextFill(Session& session, const FlatRule& rule);
 
     // the html-shape mask decorator of a clip-path declaration (Effects.cpp); nullopt when none
     // or unsupported (reported)

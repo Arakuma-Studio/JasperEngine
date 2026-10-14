@@ -3571,7 +3571,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
     // v30: HTML UI gradient and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v30";
+    // v31: HTML UI effects (UI_EFFECT), library effects named by their custom-shader id.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v31";
 }
 
 void editor::App::pushTabNotificationStyle(){

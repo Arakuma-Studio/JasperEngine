@@ -32,6 +32,10 @@ namespace jasperengine {
     class ShaderRender;
     class RmlFilterContext;
 
+    namespace htmlui {
+        class EffectRenderer;
+    }
+
     struct HtmlUITexture;
     struct RmlGeometry;
     struct RmlGeometryPage;
@@ -237,6 +241,8 @@ namespace jasperengine {
 
     private:
         friend class RmlFilterContext;
+        // phase 5: the UI effects draw with the renderer's passes, geometry and state
+        friend class htmlui::EffectRenderer;
 
         enum class TargetKind { NONE, LAYER, POSTPROCESS, OTHER };
         // DROPPED: beginFrame could not draw (shaders compiling, no target); RmlUi's calls
@@ -374,6 +380,8 @@ namespace jasperengine {
         BufferRender compositeIndexBuffer;
         ObjectRender compositeObject;
         TextureRender placeholderWhite;
+        // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
+        std::unique_ptr<htmlui::EffectRenderer> effects;
     };
 
 }
