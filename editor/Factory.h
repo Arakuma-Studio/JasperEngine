@@ -100,6 +100,8 @@ namespace jasperengine::editor{
         static std::string formatActionState(ActionState state);
         static std::string formatLightState(LightState state);
         static std::string formatShadowQuality(ShadowQuality quality);
+        static std::string formatSceneColorScale(SceneColorScale scale);
+        static std::string formatPostProcessing(int indentSpaces, const PostProcessingSettings& settings, const std::string& variableName);
         static std::string formatAudioSourceState(AudioSourceState state);
         static std::string formatAudioSourceAttenuation(AudioSourceAttenuation attenuation);
         static std::string formatUIEventState(UIEventState state);
@@ -124,6 +126,21 @@ namespace jasperengine::editor{
         static std::string formatScriptPropertyValue(const ScriptPropertyValue& value, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
 
         static std::string formatTexture(int indentSpaces, const Texture& texture, const std::string& variableName, const fs::path& projectPath);
+        // shader library: the statements filling `target` (a shaderTextures vector) and the
+        // initializer of a shaderFeatures list
+        static std::string formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath);
+        static std::string formatShaderFeatures(const std::vector<std::string>& features);
+        // the shader-library fields of a Material named `target` that differ from the defaults
+        static std::string formatMaterialShaderLibrary(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath);
+        // phase 2: the stencil fields and colour write away from their defaults, of a Material,
+        // a MaterialPass or a UI/Points/LineRenderer component named `target`
+        static std::string formatStencilAndColorWrite(int indentSpaces, const MaterialStencil& stencil, int colorWrite, const std::string& target);
+        // the fields of an extra pass (a MaterialPass named `target`) away from their defaults
+        static std::string formatMaterialPass(int indentSpaces, const MaterialPass& pass, const std::string& target, const fs::path& projectPath);
+        // the same for a UI/Points/LineRenderer/Skybox component (blendMode, depthWrite when given)
+        static std::string formatComponentShaderLibrary(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures,
+            const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite,
+            const std::string& target, const fs::path& projectPath);
         // attributes, settings and bytes of a saved buffer; nothing for an empty one
         static std::string formatBufferContents(const std::string& ind, const std::string& target, const Buffer& buffer, const Buffer& defaults);
 

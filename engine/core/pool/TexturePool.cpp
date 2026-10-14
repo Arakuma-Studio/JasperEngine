@@ -85,6 +85,13 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 		return NULL;
 	}
 
+	// what the image's alpha says, for the users that take the texture from the pool
+	bool transparent = false;
+	for (int f = 0; f < numFaces; f++){
+		transparent = transparent || data->at(f).isTransparent();
+	}
+	shared->setTransparent(transparent);
+
 	map[id] = shared;
 	getInvalidated().erase(id);
 

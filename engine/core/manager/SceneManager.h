@@ -75,6 +75,8 @@ namespace jasperengine {
         static uint32_t currentId;
         static std::optional<uint32_t> pendingId;
         static std::map<uint32_t, Scene*> scenePtrs;
+        // a load factory is building its scenes (and running their scripts' init)
+        static bool factoryRunning;
 
         static uint32_t loadingSceneId;
         static float loadingDelay;

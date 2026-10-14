@@ -87,7 +87,8 @@ function RuntimeShaders:init()
     forked:setColor(0.9, 0.9, 0.9)
     forked.customShader = "assets/shaders/tinted"
 
-    self.objects = { ground = ground, bumpy = bumpy, unlit = unlit, rings = rings, strip = strip, forked = forked }
+    -- a GameObject lives as long as its Lua object: keep every one (the camera and light too)
+    self.objects = { camera = camera, light = light, ground = ground, bumpy = bumpy, unlit = unlit, rings = rings, strip = strip, forked = forked }
 end
 
 function RuntimeShaders:onUpdate()

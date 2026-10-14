@@ -10,8 +10,22 @@
 #  endif
 #endif
 
+// Lights of the legacy u_fs_lighting block, which forks written before per-object lights
+// declare: the engine fills it with the object's first MAX_LIGHTS pixel lights. A scene
+// itself may hold any number of lights.
 #ifndef MAX_LIGHTS
 #define MAX_LIGHTS 6
+#endif
+
+// Lights one object is lit by at most (SceneSettings::maxLightsPerObject is clamped to it);
+// the per-object lights blocks come in capacity tiers of 4, 8 and 16.
+#ifndef MAX_LIGHTS_PER_OBJECT
+#define MAX_LIGHTS_PER_OBJECT 16
+#endif
+
+// Tiles of the projected spot mask atlas: spot lights with a mask past it use the cone.
+#ifndef SPOT_MASK_ATLAS_TILES
+#define SPOT_MASK_ATLAS_TILES 6
 #endif
 
 // 2D lights (Light2DComponent). Also the row count of the 1D polar shadow atlas:
@@ -284,6 +298,9 @@ namespace jasperengine {
 
         static bool transformCoordPos(float& x, float& y);
         static void calculateCanvas();
+        // logs once that every scene is loaded and no shader build is pending
+        // (JASPERENGINE_READY_SIGNAL set: tools/smoke-test.sh waits for it)
+        static void signalReadyOnce();
         static void includeScene(Scene* scene);
         // Copy for iteration outside sceneListMutex: callbacks invoked while iterating are
         // free to add or remove scenes without invalidating the caller's traversal.
@@ -457,6 +474,9 @@ namespace jasperengine {
             float canvasHeight = 0.0f;
             // the camera's passes cull no face (the Scene view's debug toggle)
             bool disableFaceCulling = false;
+            // the scene's post-processing applies to the camera (the Game view; the Scene view
+            // has it off unless its display setting turns it on)
+            bool postProcessing = true;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

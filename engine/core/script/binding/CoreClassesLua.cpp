@@ -36,7 +36,10 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "pool/ShaderPool.h"
+#include "render/ObjectRender.h"
 #include "shader/ShaderVariantCollection.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderUniforms.h"
 #include "object/EntityHandle.h"
 
 using namespace jasperengine;
@@ -315,6 +318,101 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("BLEND", MaterialAlphaMode::BLEND)
         .endNamespace();
 
+    // shader library render state of a Material (and UI/points/lines blendMode, depthWrite)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialBlendMode")
+        .addVariable("AUTO", MaterialBlendMode::AUTO)
+        .addVariable("NONE", MaterialBlendMode::NONE)
+        .addVariable("ALPHA", MaterialBlendMode::ALPHA)
+        .addVariable("PREMULTIPLIED", MaterialBlendMode::PREMULTIPLIED)
+        .addVariable("ADDITIVE", MaterialBlendMode::ADDITIVE)
+        .addVariable("MULTIPLY", MaterialBlendMode::MULTIPLY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialCullMode")
+        .addVariable("AUTO", MaterialCullMode::AUTO)
+        .addVariable("BACK", MaterialCullMode::BACK)
+        .addVariable("FRONT", MaterialCullMode::FRONT)
+        .addVariable("OFF", MaterialCullMode::OFF)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialDepthWrite")
+        .addVariable("AUTO", MaterialDepthWrite::AUTO)
+        .addVariable("ENABLED", MaterialDepthWrite::ENABLED)
+        .addVariable("DISABLED", MaterialDepthWrite::DISABLED)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialDepthTest")
+        .addVariable("AUTO", MaterialDepthTest::AUTO)
+        .addVariable("LESS", MaterialDepthTest::LESS)
+        .addVariable("LESS_EQUAL", MaterialDepthTest::LESS_EQUAL)
+        .addVariable("EQUAL", MaterialDepthTest::EQUAL)
+        .addVariable("GREATER_EQUAL", MaterialDepthTest::GREATER_EQUAL)
+        .addVariable("GREATER", MaterialDepthTest::GREATER)
+        .addVariable("NOT_EQUAL", MaterialDepthTest::NOT_EQUAL)
+        .addVariable("ALWAYS", MaterialDepthTest::ALWAYS)
+        .endNamespace();
+
+    // stencil test of a Material (and UI/points/lines): AUTO takes the shader's @state,
+    // DISABLED turns it off, any other compare makes the whole MaterialStencil explicit
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilCompare")
+        .addVariable("AUTO", MaterialStencilCompare::AUTO)
+        .addVariable("DISABLED", MaterialStencilCompare::DISABLED)
+        .addVariable("NEVER", MaterialStencilCompare::NEVER)
+        .addVariable("LESS", MaterialStencilCompare::LESS)
+        .addVariable("EQUAL", MaterialStencilCompare::EQUAL)
+        .addVariable("LESS_EQUAL", MaterialStencilCompare::LESS_EQUAL)
+        .addVariable("GREATER", MaterialStencilCompare::GREATER)
+        .addVariable("NOT_EQUAL", MaterialStencilCompare::NOT_EQUAL)
+        .addVariable("GREATER_EQUAL", MaterialStencilCompare::GREATER_EQUAL)
+        .addVariable("ALWAYS", MaterialStencilCompare::ALWAYS)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialStencilOp")
+        .addVariable("KEEP", MaterialStencilOp::KEEP)
+        .addVariable("ZERO", MaterialStencilOp::ZERO)
+        .addVariable("REPLACE", MaterialStencilOp::REPLACE)
+        .addVariable("INCR_CLAMP", MaterialStencilOp::INCR_CLAMP)
+        .addVariable("DECR_CLAMP", MaterialStencilOp::DECR_CLAMP)
+        .addVariable("INVERT", MaterialStencilOp::INVERT)
+        .addVariable("INCR_WRAP", MaterialStencilOp::INCR_WRAP)
+        .addVariable("DECR_WRAP", MaterialStencilOp::DECR_WRAP)
+        .endNamespace();
+
+    // colorWrite values: AUTO (-1), NONE (0) or a sum of R, G, B, A
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialColorWrite")
+        .addVariable("AUTO", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_AUTO)
+        .addVariable("NONE", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_NONE)
+        .addVariable("R", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_R)
+        .addVariable("G", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_G)
+        .addVariable("B", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_B)
+        .addVariable("A", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_A)
+        .addVariable("RGB", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_RGB)
+        .addVariable("ALL", MaterialColorWriteBits::MATERIAL_COLOR_WRITE_ALL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialLighting")
+        .addVariable("AUTO", MaterialLighting::AUTO)
+        .addVariable("PIXEL", MaterialLighting::PIXEL)
+        .addVariable("VERTEX", MaterialLighting::VERTEX)
+        .addVariable("MIXED", MaterialLighting::MIXED)
+        .addVariable("NONE", MaterialLighting::NONE)
+        .endNamespace();
+
+    // shader library phase 2: Material.extraPass.order
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MaterialPassOrder")
+        .addVariable("AFTER", MaterialPassOrder::AFTER)
+        .addVariable("BEFORE", MaterialPassOrder::BEFORE)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("TextureFilter")
         .addVariable("NEAREST", TextureFilter::NEAREST)
@@ -394,6 +492,27 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("SceneColorScale")
+        .addVariable("FULL", SceneColorScale::FULL)
+        .addVariable("HALF", SceneColorScale::HALF)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TonemapMode")
+        .addVariable("NONE", TonemapMode::NONE)
+        .addVariable("ACES", TonemapMode::ACES)
+        .addVariable("NEUTRAL", TonemapMode::NEUTRAL)
+        .addVariable("REINHARD", TonemapMode::REINHARD)
+        .addVariable("AGX", TonemapMode::AGX)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("MonochromeMode")
+        .addVariable("GRAYSCALE", MonochromeMode::GRAYSCALE)
+        .addVariable("SEPIA", MonochromeMode::SEPIA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("UIEventState")
         .addVariable("NOT_SET", UIEventState::NOT_SET)
         .addVariable("ENABLED", UIEventState::ENABLED)
@@ -465,6 +584,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("SHADOW2D", ShaderType::SHADOW2D)
         .addVariable("BLIT", ShaderType::BLIT)
         .addVariable("POSTPROCESS", ShaderType::POSTPROCESS)
+        .addVariable("BLOOM", ShaderType::BLOOM)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
@@ -503,6 +623,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("isRuntimeCompilationSupported", &ShaderPool::isRuntimeCompilationSupported)
         .addStaticProperty("runtimeCompilation", &ShaderPool::isRuntimeCompilationEnabled, &ShaderPool::setRuntimeCompilationEnabled)
         .addStaticProperty("asyncCompilation", &ShaderPool::isAsyncCompilation, &ShaderPool::setAsyncCompilation)
+        .endClass();
+
+    // diagnostics: the pipelines renderable objects made and did not destroy yet
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ObjectRender>("ObjectRender")
+        .addStaticFunction("getLivePipelineCount", &ObjectRender::getLivePipelineCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -656,6 +782,68 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<const std::string&, float>(&PostProcessPass::setUniform))
         .addFunction("getUniform", &PostProcessPass::getUniform)
         .addFunction("removeUniform", &PostProcessPass::removeUniform)
+        // (phase 4) the pass's own textures by uniform, and its resolution scale
+        .addFunction("setTexture", &PostProcessPass::setTexture)
+        .addFunction("getTexture", &PostProcessPass::getTexture)
+        .addProperty("scale", &PostProcessPass::scale, &PostProcessPass::scale)
+        .endClass();
+
+    // a copy: edit it, then assign it back (scene.postProcessing = post)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PostProcessingSettings>("PostProcessingSettings")
+        .addConstructor<void (*) (void)>()
+        .addProperty("exposure", &PostProcessingSettings::exposure, &PostProcessingSettings::exposure)
+        .addProperty("tonemap", &PostProcessingSettings::tonemap, &PostProcessingSettings::tonemap)
+        .addProperty("colorGradingEnabled", &PostProcessingSettings::colorGradingEnabled, &PostProcessingSettings::colorGradingEnabled)
+        .addProperty("temperature", &PostProcessingSettings::temperature, &PostProcessingSettings::temperature)
+        .addProperty("tint", &PostProcessingSettings::tint, &PostProcessingSettings::tint)
+        .addProperty("contrast", &PostProcessingSettings::contrast, &PostProcessingSettings::contrast)
+        .addProperty("saturation", &PostProcessingSettings::saturation, &PostProcessingSettings::saturation)
+        .addProperty("lift", &PostProcessingSettings::lift, &PostProcessingSettings::lift)
+        .addProperty("gamma", &PostProcessingSettings::gamma, &PostProcessingSettings::gamma)
+        .addProperty("gain", &PostProcessingSettings::gain, &PostProcessingSettings::gain)
+        .addProperty("lutTexture", &PostProcessingSettings::lutTexture, &PostProcessingSettings::lutTexture)
+        .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
+        .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
+        .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
+        .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
+        .addProperty("monochromeIntensity", &PostProcessingSettings::monochromeIntensity, &PostProcessingSettings::monochromeIntensity)
+        .addProperty("vignetteEnabled", &PostProcessingSettings::vignetteEnabled, &PostProcessingSettings::vignetteEnabled)
+        .addProperty("vignetteIntensity", &PostProcessingSettings::vignetteIntensity, &PostProcessingSettings::vignetteIntensity)
+        .addProperty("vignetteSmoothness", &PostProcessingSettings::vignetteSmoothness, &PostProcessingSettings::vignetteSmoothness)
+        .addProperty("vignetteRoundness", &PostProcessingSettings::vignetteRoundness, &PostProcessingSettings::vignetteRoundness)
+        .addProperty("vignetteColor", &PostProcessingSettings::vignetteColor, &PostProcessingSettings::vignetteColor)
+        .addProperty("ditherEnabled", &PostProcessingSettings::ditherEnabled, &PostProcessingSettings::ditherEnabled)
+        .addProperty("fxaaEnabled", &PostProcessingSettings::fxaaEnabled, &PostProcessingSettings::fxaaEnabled)
+        .addProperty("chromaticAberrationEnabled", &PostProcessingSettings::chromaticAberrationEnabled, &PostProcessingSettings::chromaticAberrationEnabled)
+        .addProperty("chromaticAberrationIntensity", &PostProcessingSettings::chromaticAberrationIntensity, &PostProcessingSettings::chromaticAberrationIntensity)
+        .addProperty("pixelateEnabled", &PostProcessingSettings::pixelateEnabled, &PostProcessingSettings::pixelateEnabled)
+        .addProperty("pixelateSize", &PostProcessingSettings::pixelateSize, &PostProcessingSettings::pixelateSize)
+        .addProperty("crtEnabled", &PostProcessingSettings::crtEnabled, &PostProcessingSettings::crtEnabled)
+        .addProperty("crtScanlines", &PostProcessingSettings::crtScanlines, &PostProcessingSettings::crtScanlines)
+        .addProperty("crtMask", &PostProcessingSettings::crtMask, &PostProcessingSettings::crtMask)
+        .addProperty("crtCurvature", &PostProcessingSettings::crtCurvature, &PostProcessingSettings::crtCurvature)
+        .addProperty("crtVignette", &PostProcessingSettings::crtVignette, &PostProcessingSettings::crtVignette)
+        .addProperty("edgeDetectEnabled", &PostProcessingSettings::edgeDetectEnabled, &PostProcessingSettings::edgeDetectEnabled)
+        .addProperty("edgeDetectThreshold", &PostProcessingSettings::edgeDetectThreshold, &PostProcessingSettings::edgeDetectThreshold)
+        .addProperty("edgeDetectIntensity", &PostProcessingSettings::edgeDetectIntensity, &PostProcessingSettings::edgeDetectIntensity)
+        .addProperty("edgeDetectColor", &PostProcessingSettings::edgeDetectColor, &PostProcessingSettings::edgeDetectColor)
+        .addProperty("filmGrainEnabled", &PostProcessingSettings::filmGrainEnabled, &PostProcessingSettings::filmGrainEnabled)
+        .addProperty("filmGrainIntensity", &PostProcessingSettings::filmGrainIntensity, &PostProcessingSettings::filmGrainIntensity)
+        .addProperty("filmGrainResponse", &PostProcessingSettings::filmGrainResponse, &PostProcessingSettings::filmGrainResponse)
+        .addProperty("sharpenEnabled", &PostProcessingSettings::sharpenEnabled, &PostProcessingSettings::sharpenEnabled)
+        .addProperty("sharpenIntensity", &PostProcessingSettings::sharpenIntensity, &PostProcessingSettings::sharpenIntensity)
+        .addProperty("bloomEnabled", &PostProcessingSettings::bloomEnabled, &PostProcessingSettings::bloomEnabled)
+        .addProperty("bloomThreshold", &PostProcessingSettings::bloomThreshold, &PostProcessingSettings::bloomThreshold)
+        .addProperty("bloomKnee", &PostProcessingSettings::bloomKnee, &PostProcessingSettings::bloomKnee)
+        .addProperty("bloomIntensity", &PostProcessingSettings::bloomIntensity, &PostProcessingSettings::bloomIntensity)
+        .addProperty("bloomTint", &PostProcessingSettings::bloomTint, &PostProcessingSettings::bloomTint)
+        .addProperty("bloomScatter", &PostProcessingSettings::bloomScatter, &PostProcessingSettings::bloomScatter)
+        .addProperty("blurEnabled", &PostProcessingSettings::blurEnabled, &PostProcessingSettings::blurEnabled)
+        .addProperty("blurRadius", &PostProcessingSettings::blurRadius, &PostProcessingSettings::blurRadius)
+        .addProperty("blurIntensity", &PostProcessingSettings::blurIntensity, &PostProcessingSettings::blurIntensity)
+        .addProperty("renderScale", &PostProcessingSettings::renderScale, &PostProcessingSettings::renderScale)
+        .addProperty("msaaSamples", &PostProcessingSettings::msaaSamples, &PostProcessingSettings::msaaSamples)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -955,21 +1143,169 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        // Mesh::getMaterial hands back a copy, so these stay read-only: a write would look
-        // like it worked and change nothing. Use Mesh::setMaterial.
+        // the stencil state of a Material (material.stencil.compare = ... edits the material's
+        // own) or of a UI/points/lines object (a copy: set it back)
+        .beginClass<MaterialStencil>("MaterialStencil")
+        .addConstructor<void()>()
+        .addProperty("compare", &MaterialStencil::compare, &MaterialStencil::compare)
+        .addProperty("ref", &MaterialStencil::ref, &MaterialStencil::ref)
+        .addProperty("readMask", &MaterialStencil::readMask, &MaterialStencil::readMask)
+        .addProperty("writeMask", &MaterialStencil::writeMask, &MaterialStencil::writeMask)
+        .addProperty("pass", &MaterialStencil::pass, &MaterialStencil::pass)
+        .addProperty("fail", &MaterialStencil::fail, &MaterialStencil::fail)
+        .addProperty("depthFail", &MaterialStencil::depthFail, &MaterialStencil::depthFail)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        // A Material's extra draw (material.extraPass, edited in place on the Material copy,
+        // then mesh:setMaterial(m)): its own shader, parameters, textures, features and state.
+        // An empty shader means no extra pass.
+        .beginClass<MaterialPass>("MaterialPass")
+        .addConstructor<void (*) (void)>()
+        .addProperty("shader", &MaterialPass::shader, &MaterialPass::shader)
+        .addProperty("blendMode", &MaterialPass::blendMode, &MaterialPass::blendMode)
+        .addProperty("cullMode", &MaterialPass::cullMode, &MaterialPass::cullMode)
+        .addProperty("depthWrite", &MaterialPass::depthWrite, &MaterialPass::depthWrite)
+        .addProperty("depthTest", &MaterialPass::depthTest, &MaterialPass::depthTest)
+        .addProperty("depthOffsetFactor", &MaterialPass::depthOffsetFactor, &MaterialPass::depthOffsetFactor)
+        .addProperty("depthOffsetUnits", &MaterialPass::depthOffsetUnits, &MaterialPass::depthOffsetUnits)
+        .addProperty("stencil", &MaterialPass::stencil, &MaterialPass::stencil)
+        // MaterialColorWrite.AUTO (-1), NONE (0) or a sum of R, G, B, A
+        .addProperty("colorWrite", &MaterialPass::colorWrite, &MaterialPass::colorWrite)
+        .addProperty("order", &MaterialPass::order, &MaterialPass::order)
+        // a @property value of the pass's shader (colours linear); unset reads the manifest default
+        .addFunction("setShaderParam",
+            luabridge::overload<MaterialPass*, const std::string&, const Vector4&>(+[](MaterialPass* self, const std::string& name, const Vector4& value) {
+                ShaderUniforms::set(self->shaderParams, name, value);
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const Vector3&>(+[](MaterialPass* self, const std::string& name, const Vector3& value) {
+                // a colour given as (r, g, b) is opaque
+                ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(self->shader, name, value));
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const Vector2&>(+[](MaterialPass* self, const std::string& name, const Vector2& value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, float>(+[](MaterialPass* self, const std::string& name, float value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+            }))
+        .addFunction("getShaderParam", +[](const MaterialPass* self, const std::string& name) -> Vector4 {
+            return ShaderLibraryValues::getParam(self->shaderParams, self->shader, name);
+        })
+        .addFunction("removeShaderParam", +[](MaterialPass* self, const std::string& name) -> bool {
+            return ShaderUniforms::remove(self->shaderParams, name);
+        })
+        // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
+        .addFunction("setShaderTexture", +[](MaterialPass* self, const std::string& name, const std::string& path) {
+            ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
+        })
+        // a cube map (a @texture ... cube uniform): one image of the six faces, or six images
+        .addFunction("setShaderCubeTexture",
+            luabridge::overload<MaterialPass*, const std::string&, const std::string&>(+[](MaterialPass* self, const std::string& name, const std::string& path) {
+                ShaderLibraryValues::setCubeTexture(self->shaderTextures, name, path);
+            }),
+            luabridge::overload<MaterialPass*, const std::string&, const std::string&, const std::string&, const std::string&,
+                                const std::string&, const std::string&, const std::string&>(+[](MaterialPass* self, const std::string& name,
+                    const std::string& front, const std::string& back, const std::string& left, const std::string& right, const std::string& up, const std::string& down) {
+                ShaderLibraryValues::setCubeTextureFaces(self->shaderTextures, name, front, back, left, right, up, down);
+            }))
+        .addFunction("getShaderTexture", +[](const MaterialPass* self, const std::string& name) -> std::string {
+            return ShaderLibraryValues::getTexture(self->shaderTextures, name);
+        })
+        // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
+        .addFunction("setShaderFeature", +[](MaterialPass* self, const std::string& define, bool enabled) {
+            ShaderLibraryValues::setFeature(self->shaderFeatures, self->shader, define, enabled);
+        })
+        .addFunction("isShaderFeatureEnabled", +[](const MaterialPass* self, const std::string& define) -> bool {
+            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, self->shader, define);
+        })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        // Mesh::getMaterial hands back a copy: the values are written on it, then the copy is
+        // set back (m.roughnessFactor = 0.2; mesh:setMaterial(m)). Textures stay read-only.
         .beginClass<Material>("Material")
-        .addProperty("baseColorFactor", &Material::baseColorFactor)
-        .addProperty("metallicFactor", &Material::metallicFactor)
-        .addProperty("roughnessFactor", &Material::roughnessFactor)
-        .addProperty("alphaMode", &Material::alphaMode)
-        .addProperty("alphaCutoff", &Material::alphaCutoff)
-        .addProperty("foliageTransmission", &Material::foliageTransmission)
-        .addProperty("emissiveFactor", &Material::emissiveFactor)
+        .addProperty("baseColorFactor", &Material::baseColorFactor, &Material::baseColorFactor)
+        .addProperty("metallicFactor", &Material::metallicFactor, &Material::metallicFactor)
+        .addProperty("roughnessFactor", &Material::roughnessFactor, &Material::roughnessFactor)
+        .addProperty("alphaMode", &Material::alphaMode, &Material::alphaMode)
+        .addProperty("lighting", &Material::lighting, &Material::lighting)
+        .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
+        .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
+        .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
         .addProperty("occlusionTexture", &Material::occlusionTexture)
         .addProperty("normalTexture", &Material::normalTexture)
+        // shader library, writable on the copy getMaterial gives (then setMaterial it):
+        // shader is "" (built-in Lit), "library:<name>" or a project fork
+        .addProperty("shader", &Material::shader, &Material::shader)
+        .addProperty("blendMode", &Material::blendMode, &Material::blendMode)
+        .addProperty("cullMode", &Material::cullMode, &Material::cullMode)
+        .addProperty("depthWrite", &Material::depthWrite, &Material::depthWrite)
+        .addProperty("depthTest", &Material::depthTest, &Material::depthTest)
+        .addProperty("depthOffsetFactor", &Material::depthOffsetFactor, &Material::depthOffsetFactor)
+        .addProperty("depthOffsetUnits", &Material::depthOffsetUnits, &Material::depthOffsetUnits)
+        .addProperty("sortPriority", &Material::sortPriority, &Material::sortPriority)
+        .addProperty("stencil", &Material::stencil, &Material::stencil)
+        .addProperty("colorWrite", &Material::colorWrite, &Material::colorWrite)
+        // one optional extra draw of the submesh (outlines, masks), edited in place:
+        // m.extraPass.shader = "library:outline"; mesh:setMaterial(m)
+        .addProperty("extraPass",
+            // the material's own pass (made on first access): m.extraPass.order = ... edits it
+            +[](const Material* self) -> MaterialPass* { return &const_cast<Material*>(self)->extraPass.edit(); },
+            +[](Material* self, const MaterialPass& pass) { self->extraPass = pass; })
+        // a @property value of the shader (colours linear); unset reads the manifest default.
+        // The shader is the material's, else the one its submesh draws with (a copy from
+        // Mesh:getMaterial remembers it: the mesh's customShader or the scene default).
+        .addFunction("setShaderParam",
+            luabridge::overload<Material*, const std::string&, const Vector4&>(+[](Material* self, const std::string& name, const Vector4& value) {
+                ShaderUniforms::set(self->shaderParams, name, value);
+            }),
+            luabridge::overload<Material*, const std::string&, const Vector3&, lua_State*>(+[](Material* self, const std::string& name, const Vector3& value, lua_State* L) {
+                // a colour given as (r, g, b) is opaque
+                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+                ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(shader, name, value));
+            }),
+            luabridge::overload<Material*, const std::string&, const Vector2&>(+[](Material* self, const std::string& name, const Vector2& value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value.x, value.y, 0.0f, 0.0f));
+            }),
+            luabridge::overload<Material*, const std::string&, float>(+[](Material* self, const std::string& name, float value) {
+                ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
+            }))
+        .addFunction("getShaderParam", +[](const Material* self, const std::string& name, lua_State* L) -> Vector4 {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            return ShaderLibraryValues::getParam(self->shaderParams, shader, name);
+        })
+        .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
+            return ShaderUniforms::remove(self->shaderParams, name);
+        })
+        // the texture of a @texture uniform by path ("" removes it: the manifest default binds)
+        .addFunction("setShaderTexture", +[](Material* self, const std::string& name, const std::string& path) {
+            ShaderLibraryValues::setTexture(self->shaderTextures, name, path);
+        })
+        // a cube map (a @texture ... cube uniform): one image of the six faces, or six images
+        .addFunction("setShaderCubeTexture",
+            luabridge::overload<Material*, const std::string&, const std::string&>(+[](Material* self, const std::string& name, const std::string& path) {
+                ShaderLibraryValues::setCubeTexture(self->shaderTextures, name, path);
+            }),
+            luabridge::overload<Material*, const std::string&, const std::string&, const std::string&, const std::string&,
+                                const std::string&, const std::string&, const std::string&>(+[](Material* self, const std::string& name,
+                    const std::string& front, const std::string& back, const std::string& left, const std::string& right, const std::string& up, const std::string& down) {
+                ShaderLibraryValues::setCubeTextureFaces(self->shaderTextures, name, front, back, left, right, up, down);
+            }))
+        .addFunction("getShaderTexture", +[](const Material* self, const std::string& name) -> std::string {
+            return ShaderLibraryValues::getTexture(self->shaderTextures, name);
+        })
+        // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
+        .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled, lua_State* L) {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            ShaderLibraryValues::setFeature(self->shaderFeatures, shader, define, enabled);
+        })
+        .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define, lua_State* L) -> bool {
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, shader, define);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -995,7 +1331,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<FramebufferRender>("FramebufferRender")
         .addConstructor <void (*) (void)> ()
-        .addFunction("createFramebuffer", &FramebufferRender::createFramebuffer)
+        .addFunction("createFramebuffer", static_cast<bool (FramebufferRender::*)(TextureType, int, int, TextureFilter, TextureFilter, TextureWrap, TextureWrap, bool)>(&FramebufferRender::createFramebuffer))
         .addFunction("destroyFramebuffer", &FramebufferRender::destroyFramebuffer)
         .addFunction("isCreated", &FramebufferRender::isCreated)
         .addFunction("getColorTexture", &FramebufferRender::getColorTexture)
@@ -1073,6 +1409,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
+        .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)
@@ -1093,6 +1430,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
+        .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
+        // a copy (edit it and assign it back, which applies it)
+        .addProperty("postProcessing", [] (const Scene* self) { return PostProcessingSettings(self->getPostProcessing()); }, &Scene::setPostProcessing)
         .addProperty("ssaoDebug", &Scene::isSSAODebug, &Scene::setSSAODebug)
         .addProperty("ssrEnabled", &Scene::isSSREnabled, &Scene::setSSREnabled)
         .addProperty("ssrMaxDistance", &Scene::getSSRMaxDistance, &Scene::setSSRMaxDistance)

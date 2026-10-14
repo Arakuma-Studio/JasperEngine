@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LineRenderer.h"
+#include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
@@ -259,6 +260,100 @@ bool LineRenderer::removeShaderUniform(const std::string& name){
 
     lines.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 LineRenderer::getShaderParam(const std::string& name) const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return ShaderLibraryValues::getParam(lines.shaderUniforms, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, name);
+}
+
+void LineRenderer::setShaderTexture(const std::string& name, const std::string& path){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(lines.shaderTextures, name, path))
+        lines.needReload = true;
+}
+
+std::string LineRenderer::getShaderTexture(const std::string& name) const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return ShaderLibraryValues::getTexture(lines.shaderTextures, name);
+}
+
+void LineRenderer::setShaderFeature(const std::string& define, bool enabled){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, define, enabled))
+        lines.needReload = true;
+}
+
+bool LineRenderer::isShaderFeatureEnabled(const std::string& define) const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, define);
+}
+
+void LineRenderer::setBlendMode(MaterialBlendMode blendMode){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.blendMode != blendMode){
+        lines.blendMode = blendMode;
+        lines.needReload = true;
+    }
+}
+
+MaterialBlendMode LineRenderer::getBlendMode() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.blendMode;
+}
+
+void LineRenderer::setDepthWrite(MaterialDepthWrite depthWrite){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.depthWrite != depthWrite){
+        lines.depthWrite = depthWrite;
+        lines.needReload = true;
+    }
+}
+
+MaterialDepthWrite LineRenderer::getDepthWrite() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.depthWrite;
+}
+
+void LineRenderer::setStencil(const MaterialStencil& stencil){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.stencil != stencil){
+        lines.stencil = stencil;
+        lines.needReload = true;
+    }
+}
+
+MaterialStencil LineRenderer::getStencil() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.stencil;
+}
+
+void LineRenderer::setColorWrite(int colorWrite){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    if (lines.colorWrite != colorWrite){
+        lines.colorWrite = colorWrite;
+        lines.needReload = true;
+    }
+}
+
+int LineRenderer::getColorWrite() const{
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+
+    return lines.colorWrite;
 }
 
 void LineRenderer::setEnabled(bool enabled){

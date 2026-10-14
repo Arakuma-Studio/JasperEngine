@@ -245,6 +245,207 @@ std::string editor::Factory::formatShaderUniforms(const ShaderUniformValues& uni
     return out + "}";
 }
 
+std::string editor::Factory::formatShaderTextures(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures, const std::string& target, const fs::path& projectPath) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    for (const auto& [uniform, texture] : textures) {
+        if (texture.empty()) continue; // binds the manifest default, like no entry
+        code << ind << "{\n";
+        code << ind << "    Texture texture;\n";
+        code << formatTexture(indentSpaces + 4, texture, "texture", projectPath);
+        code << ind << "    " << target << ".push_back({" << formatString(uniform) << ", texture});\n";
+        code << ind << "}\n";
+    }
+    return code.str();
+}
+
+std::string editor::Factory::formatShaderFeatures(const std::vector<std::string>& features) {
+    std::string out = "{";
+    for (size_t i = 0; i < features.size(); i++) {
+        if (i > 0)
+            out += ", ";
+        out += formatString(features[i]);
+    }
+    return out + "}";
+}
+
+static std::string formatBlendMode(MaterialBlendMode mode) {
+    switch (mode) {
+        case MaterialBlendMode::NONE: return "MaterialBlendMode::NONE";
+        case MaterialBlendMode::ALPHA: return "MaterialBlendMode::ALPHA";
+        case MaterialBlendMode::PREMULTIPLIED: return "MaterialBlendMode::PREMULTIPLIED";
+        case MaterialBlendMode::ADDITIVE: return "MaterialBlendMode::ADDITIVE";
+        case MaterialBlendMode::MULTIPLY: return "MaterialBlendMode::MULTIPLY";
+        default: return "MaterialBlendMode::AUTO";
+    }
+}
+
+static std::string formatCullMode(MaterialCullMode mode) {
+    switch (mode) {
+        case MaterialCullMode::BACK: return "MaterialCullMode::BACK";
+        case MaterialCullMode::FRONT: return "MaterialCullMode::FRONT";
+        case MaterialCullMode::OFF: return "MaterialCullMode::OFF";
+        default: return "MaterialCullMode::AUTO";
+    }
+}
+
+static std::string formatDepthWrite(MaterialDepthWrite mode) {
+    switch (mode) {
+        case MaterialDepthWrite::ENABLED: return "MaterialDepthWrite::ENABLED";
+        case MaterialDepthWrite::DISABLED: return "MaterialDepthWrite::DISABLED";
+        default: return "MaterialDepthWrite::AUTO";
+    }
+}
+
+static std::string formatDepthTest(MaterialDepthTest mode) {
+    switch (mode) {
+        case MaterialDepthTest::LESS: return "MaterialDepthTest::LESS";
+        case MaterialDepthTest::LESS_EQUAL: return "MaterialDepthTest::LESS_EQUAL";
+        case MaterialDepthTest::EQUAL: return "MaterialDepthTest::EQUAL";
+        case MaterialDepthTest::GREATER_EQUAL: return "MaterialDepthTest::GREATER_EQUAL";
+        case MaterialDepthTest::GREATER: return "MaterialDepthTest::GREATER";
+        case MaterialDepthTest::NOT_EQUAL: return "MaterialDepthTest::NOT_EQUAL";
+        case MaterialDepthTest::ALWAYS: return "MaterialDepthTest::ALWAYS";
+        default: return "MaterialDepthTest::AUTO";
+    }
+}
+
+static std::string formatMaterialLighting(MaterialLighting mode) {
+    switch (mode) {
+        case MaterialLighting::PIXEL: return "MaterialLighting::PIXEL";
+        case MaterialLighting::VERTEX: return "MaterialLighting::VERTEX";
+        case MaterialLighting::MIXED: return "MaterialLighting::MIXED";
+        case MaterialLighting::NONE: return "MaterialLighting::NONE";
+        default: return "MaterialLighting::AUTO";
+    }
+}
+
+static std::string formatStencilCompare(MaterialStencilCompare compare) {
+    switch (compare) {
+        case MaterialStencilCompare::DISABLED: return "MaterialStencilCompare::DISABLED";
+        case MaterialStencilCompare::NEVER: return "MaterialStencilCompare::NEVER";
+        case MaterialStencilCompare::LESS: return "MaterialStencilCompare::LESS";
+        case MaterialStencilCompare::EQUAL: return "MaterialStencilCompare::EQUAL";
+        case MaterialStencilCompare::LESS_EQUAL: return "MaterialStencilCompare::LESS_EQUAL";
+        case MaterialStencilCompare::GREATER: return "MaterialStencilCompare::GREATER";
+        case MaterialStencilCompare::NOT_EQUAL: return "MaterialStencilCompare::NOT_EQUAL";
+        case MaterialStencilCompare::GREATER_EQUAL: return "MaterialStencilCompare::GREATER_EQUAL";
+        case MaterialStencilCompare::ALWAYS: return "MaterialStencilCompare::ALWAYS";
+        default: return "MaterialStencilCompare::AUTO";
+    }
+}
+
+static std::string formatStencilOp(MaterialStencilOp op) {
+    switch (op) {
+        case MaterialStencilOp::ZERO: return "MaterialStencilOp::ZERO";
+        case MaterialStencilOp::REPLACE: return "MaterialStencilOp::REPLACE";
+        case MaterialStencilOp::INCR_CLAMP: return "MaterialStencilOp::INCR_CLAMP";
+        case MaterialStencilOp::DECR_CLAMP: return "MaterialStencilOp::DECR_CLAMP";
+        case MaterialStencilOp::INVERT: return "MaterialStencilOp::INVERT";
+        case MaterialStencilOp::INCR_WRAP: return "MaterialStencilOp::INCR_WRAP";
+        case MaterialStencilOp::DECR_WRAP: return "MaterialStencilOp::DECR_WRAP";
+        default: return "MaterialStencilOp::KEEP";
+    }
+}
+
+std::string editor::Factory::formatStencilAndColorWrite(int indentSpaces, const MaterialStencil& stencil, int colorWrite, const std::string& target) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const MaterialStencil defaults;
+    if (stencil.compare != defaults.compare)
+        code << ind << target << ".stencil.compare = " << formatStencilCompare(stencil.compare) << ";\n";
+    if (stencil.ref != defaults.ref)
+        code << ind << target << ".stencil.ref = " << formatInt(stencil.ref) << ";\n";
+    if (stencil.readMask != defaults.readMask)
+        code << ind << target << ".stencil.readMask = " << formatInt(stencil.readMask) << ";\n";
+    if (stencil.writeMask != defaults.writeMask)
+        code << ind << target << ".stencil.writeMask = " << formatInt(stencil.writeMask) << ";\n";
+    if (stencil.pass != defaults.pass)
+        code << ind << target << ".stencil.pass = " << formatStencilOp(stencil.pass) << ";\n";
+    if (stencil.fail != defaults.fail)
+        code << ind << target << ".stencil.fail = " << formatStencilOp(stencil.fail) << ";\n";
+    if (stencil.depthFail != defaults.depthFail)
+        code << ind << target << ".stencil.depthFail = " << formatStencilOp(stencil.depthFail) << ";\n";
+    if (colorWrite != -1)
+        code << ind << target << ".colorWrite = " << formatInt(colorWrite) << ";\n";
+    return code.str();
+}
+
+std::string editor::Factory::formatMaterialPass(int indentSpaces, const MaterialPass& pass, const std::string& target, const fs::path& projectPath) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    if (!pass.shader.empty())
+        code << ind << target << ".shader = " << formatString(pass.shader) << ";\n";
+    if (!pass.shaderParams.empty())
+        code << ind << target << ".shaderParams = " << formatShaderUniforms(pass.shaderParams) << ";\n";
+    code << formatShaderTextures(indentSpaces, pass.shaderTextures, target + ".shaderTextures", projectPath);
+    if (!pass.shaderFeatures.empty())
+        code << ind << target << ".shaderFeatures = " << formatShaderFeatures(pass.shaderFeatures) << ";\n";
+    if (pass.blendMode != MaterialBlendMode::AUTO)
+        code << ind << target << ".blendMode = " << formatBlendMode(pass.blendMode) << ";\n";
+    if (pass.cullMode != MaterialCullMode::AUTO)
+        code << ind << target << ".cullMode = " << formatCullMode(pass.cullMode) << ";\n";
+    if (pass.depthWrite != MaterialDepthWrite::AUTO)
+        code << ind << target << ".depthWrite = " << formatDepthWrite(pass.depthWrite) << ";\n";
+    if (pass.depthTest != MaterialDepthTest::AUTO)
+        code << ind << target << ".depthTest = " << formatDepthTest(pass.depthTest) << ";\n";
+    if (pass.depthOffsetFactor != 0.0f)
+        code << ind << target << ".depthOffsetFactor = " << formatFloat(pass.depthOffsetFactor) << ";\n";
+    if (pass.depthOffsetUnits != 0.0f)
+        code << ind << target << ".depthOffsetUnits = " << formatFloat(pass.depthOffsetUnits) << ";\n";
+    code << formatStencilAndColorWrite(indentSpaces, pass.stencil, pass.colorWrite, target);
+    if (pass.order != MaterialPassOrder::AFTER)
+        code << ind << target << ".order = MaterialPassOrder::BEFORE;\n";
+    return code.str();
+}
+
+std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    if (!material.shader.empty())
+        code << ind << target << ".shader = " << formatString(material.shader) << ";\n";
+    if (!material.shaderParams.empty())
+        code << ind << target << ".shaderParams = " << formatShaderUniforms(material.shaderParams) << ";\n";
+    code << formatShaderTextures(indentSpaces, material.shaderTextures, target + ".shaderTextures", projectPath);
+    if (!material.shaderFeatures.empty())
+        code << ind << target << ".shaderFeatures = " << formatShaderFeatures(material.shaderFeatures) << ";\n";
+    if (material.blendMode != MaterialBlendMode::AUTO)
+        code << ind << target << ".blendMode = " << formatBlendMode(material.blendMode) << ";\n";
+    if (material.cullMode != MaterialCullMode::AUTO)
+        code << ind << target << ".cullMode = " << formatCullMode(material.cullMode) << ";\n";
+    if (material.depthWrite != MaterialDepthWrite::AUTO)
+        code << ind << target << ".depthWrite = " << formatDepthWrite(material.depthWrite) << ";\n";
+    if (material.depthTest != MaterialDepthTest::AUTO)
+        code << ind << target << ".depthTest = " << formatDepthTest(material.depthTest) << ";\n";
+    if (material.depthOffsetFactor != 0.0f)
+        code << ind << target << ".depthOffsetFactor = " << formatFloat(material.depthOffsetFactor) << ";\n";
+    if (material.depthOffsetUnits != 0.0f)
+        code << ind << target << ".depthOffsetUnits = " << formatFloat(material.depthOffsetUnits) << ";\n";
+    if (material.sortPriority != 0)
+        code << ind << target << ".sortPriority = " << formatInt(material.sortPriority) << ";\n";
+    if (material.lighting != MaterialLighting::AUTO)
+        code << ind << target << ".lighting = " << formatMaterialLighting(material.lighting) << ";\n";
+    // phase 2: stencil, colour write and the extra pass
+    code << formatStencilAndColorWrite(indentSpaces, material.stencil, material.colorWrite, target);
+    code << formatMaterialPass(indentSpaces, material.extraPass, target + ".extraPass.edit()", projectPath);
+    return code.str();
+}
+
+std::string editor::Factory::formatComponentShaderLibrary(int indentSpaces, const std::vector<std::pair<std::string, Texture>>& textures,
+        const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite,
+        const std::string& target, const fs::path& projectPath) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << formatShaderTextures(indentSpaces, textures, target + ".shaderTextures", projectPath);
+    if (!features.empty())
+        code << ind << target << ".shaderFeatures = " << formatShaderFeatures(features) << ";\n";
+    if (blendMode && *blendMode != MaterialBlendMode::AUTO)
+        code << ind << target << ".blendMode = " << formatBlendMode(*blendMode) << ";\n";
+    if (depthWrite && *depthWrite != MaterialDepthWrite::AUTO)
+        code << ind << target << ".depthWrite = " << formatDepthWrite(*depthWrite) << ";\n";
+    return code.str();
+}
+
 std::string editor::Factory::formatRect(const Rect& r) {
     return "Rect(" + formatFloat(r.getX()) + ", " + formatFloat(r.getY()) + ", " + formatFloat(r.getWidth()) + ", " + formatFloat(r.getHeight()) + ")";
 }
@@ -400,6 +601,14 @@ std::string editor::Factory::formatShadowQuality(ShadowQuality quality) {
         case ShadowQuality::MEDIUM: return "ShadowQuality::MEDIUM";
         case ShadowQuality::HIGH: return "ShadowQuality::HIGH";
         default: return "ShadowQuality::LOW";
+    }
+}
+
+std::string editor::Factory::formatSceneColorScale(SceneColorScale scale) {
+    switch (scale) {
+        case SceneColorScale::FULL: return "SceneColorScale::FULL";
+        case SceneColorScale::HALF: return "SceneColorScale::HALF";
+        default: return "SceneColorScale::HALF";
     }
 }
 
@@ -598,6 +807,7 @@ std::string editor::Factory::formatAttributeType(AttributeType type) {
         case AttributeType::TERRAINNODESIZE: return "AttributeType::TERRAINNODESIZE";
         case AttributeType::TERRAINNODERANGE: return "AttributeType::TERRAINNODERANGE";
         case AttributeType::TERRAINNODERESOLUTION: return "AttributeType::TERRAINNODERESOLUTION";
+        case AttributeType::SMOOTHNORMAL: return "AttributeType::SMOOTHNORMAL";
         default: return "AttributeType::POSITION";
     }
 }
@@ -613,6 +823,43 @@ std::string editor::Factory::formatAttributeDataType(AttributeDataType type) {
         case AttributeDataType::FLOAT: return "AttributeDataType::FLOAT";
         default: return "AttributeDataType::FLOAT";
     }
+}
+
+// the PostProcessingSettings fields away from their defaults, one assignment each
+std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostProcessingSettings& settings, const std::string& variableName) {
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    static const PostProcessingSettings defaults;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const void* value = settings.getFieldRef(field);
+        const void* def = defaults.getFieldRef(field);
+        std::string text;
+        switch (field.type) {
+            case FieldType::Bool:
+                if (*(const bool*)value != *(const bool*)def) text = formatBool(*(const bool*)value);
+                break;
+            case FieldType::Int:
+                if (*(const int*)value != *(const int*)def) text = std::to_string(*(const int*)value);
+                break;
+            case FieldType::Float:
+                if (*(const float*)value != *(const float*)def) text = formatFloat(*(const float*)value);
+                break;
+            case FieldType::Vector3:
+                if (*(const Vector3*)value != *(const Vector3*)def) text = formatVector3(*(const Vector3*)value);
+                break;
+            case FieldType::String:
+                if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
+                break;
+            case FieldType::Enum:
+                if (*(const int*)value != *(const int*)def)
+                    text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];
+                break;
+        }
+        if (!text.empty())
+            code << ind << variableName << "." << field.name << " = " << text << ";\n";
+    }
+    return code.str();
 }
 
 std::string editor::Factory::formatTextureFilter(TextureFilter filter) {
@@ -930,6 +1177,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].material.occlusionTexCoord = " << formatInt(submeshMaterial.occlusionTexCoord) << ";\n";
         if (submeshMaterial.normalTexCoord != 0)
             code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
+        // shader library: the shader, its values and the render state, when set
+        code << formatMaterialShaderLibrary(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
@@ -1102,6 +1351,8 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
         code << ind << "ui.customShader = " << formatString(ui.customShader) << ";\n";
     if (!ui.shaderUniforms.empty())
         code << ind << "ui.shaderUniforms = " << formatShaderUniforms(ui.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, "ui", projectPath);
+    code << formatStencilAndColorWrite(indentSpaces, ui.stencil, ui.colorWrite, "ui");
     code << formatTexture(indentSpaces, ui.texture, "ui.texture", projectPath);
     // flipY is worked out from the camera unless automaticFlipY is off
     code << ind << "ui.automaticFlipY = " << formatBool(ui.automaticFlipY) << ";\n";
@@ -1523,6 +1774,10 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
     code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
     code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
+    if (light.shading == LightShading::PIXEL)
+        code << ind << "light.shading = LightShading::PIXEL;\n";
+    else if (light.shading == LightShading::VERTEX)
+        code << ind << "light.shading = LightShading::VERTEX;\n";
     if (!light.enabled) code << ind << "light.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "LightComponent", "light", assignExisting);
     return code.str();
@@ -1752,6 +2007,7 @@ std::string editor::Factory::createSkyboxComponent(int indentSpaces, EntityRegis
         code << ind << "sky.customShader = " << formatString(sky.customShader) << ";\n";
     if (!sky.shaderUniforms.empty())
         code << ind << "sky.shaderUniforms = " << formatShaderUniforms(sky.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, "sky", projectPath);
 
     addComponentCode(code, ind, sceneName, entityName, entity, "SkyboxComponent", "sky", assignExisting);
     return code.str();
@@ -2795,8 +3051,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";
+    if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
+        out << ind2 << "scene->setSceneColorScale(" << formatSceneColorScale(scene->getSceneColorScale()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatFloat(scene->getGlobalIlluminationIntensity()) << ");\n";
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
+    if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
+        out << ind2 << "scene->setMaxLightsPerObject(" << scene->getMaxLightsPerObject() << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatVector3(scene->getAmbientLight2DColor()) << ");\n";
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
@@ -2833,8 +3093,19 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
         for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
             out << ind3 << "postProcess.push_back({" << formatString(pass.shader) << ", " << formatBool(pass.enabled) << ", "
                 << formatShaderUniforms(pass.uniforms) << "});\n";
+            // (phase 4) only when set, so the code of a chain without them is unchanged
+            out << formatShaderTextures(indentSpaces + 8, pass.textures, "postProcess.back().textures", projectPath);
+            if (pass.scale != 1.0f)
+                out << ind3 << "postProcess.back().scale = " << formatFloat(pass.scale) << ";\n";
         }
         out << ind3 << "scene->setPostProcessPasses(postProcess);\n";
+        out << ind2 << "}\n";
+    }
+    if (scene->getPostProcessing() != PostProcessingSettings()) {
+        out << ind2 << "{\n";
+        out << ind3 << "PostProcessingSettings postProcessing;\n";
+        out << formatPostProcessing(indentSpaces + 8, scene->getPostProcessing(), "postProcessing");
+        out << ind3 << "scene->setPostProcessing(postProcessing);\n";
         out << ind2 << "}\n";
     }
     out << ind << "}\n\n";
@@ -3319,6 +3590,8 @@ std::string editor::Factory::createPointsComponent(int indentSpaces, EntityRegis
         code << ind << "pointscomp.customShader = " << formatString(p.customShader) << ";\n";
     if (!p.shaderUniforms.empty())
         code << ind << "pointscomp.shaderUniforms = " << formatShaderUniforms(p.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, p.shaderTextures, p.shaderFeatures, &p.blendMode, &p.depthWrite, "pointscomp", projectPath);
+    code << formatStencilAndColorWrite(indentSpaces, p.stencil, p.colorWrite, "pointscomp");
     code << formatTexture(indentSpaces, p.texture, "pointscomp.texture", projectPath);
 
     if (p.numFramesRect > 0) {
@@ -3369,6 +3642,8 @@ std::string editor::Factory::createLineRendererComponent(int indentSpaces, Entit
         code << ind << "linescomp.customShader = " << formatString(l.customShader) << ";\n";
     if (!l.shaderUniforms.empty())
         code << ind << "linescomp.shaderUniforms = " << formatShaderUniforms(l.shaderUniforms) << ";\n";
+    code << formatComponentShaderLibrary(indentSpaces, l.shaderTextures, l.shaderFeatures, &l.blendMode, &l.depthWrite, "linescomp", fs::path());
+    code << formatStencilAndColorWrite(indentSpaces, l.stencil, l.colorWrite, "linescomp");
 
     for (size_t i = 0; i < l.lines.size(); i++) {
         const LineData& line = l.lines[i];

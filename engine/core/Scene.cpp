@@ -15,6 +15,8 @@
 #include "subsystem/PhysicsSystem.h"
 #include "util/Color.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 
 Scene::Scene() : EntityRegistry() {
@@ -202,11 +204,21 @@ bool Scene::isDepthPrepassEnabled() const{
     return settings.depthPrepassEnabled;
 }
 
+void Scene::setSceneColorScale(SceneColorScale scale){
+    // read by RenderSystem each frame, so no reload is needed
+    settings.sceneColorScale = scale;
+}
+
+SceneColorScale Scene::getSceneColorScale() const{
+    return settings.sceneColorScale;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;
-        // toggling SSAO changes the mesh shader variant (USE_SSAO), so recompile
-        getSystem<RenderSystem>()->needReloadMeshes();
+        // toggling SSAO changes the mesh shader variant (USE_SSAO), so recompile (the loaded
+        // variants draw meanwhile: every pass binds its AO texture or white)
+        getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -388,6 +400,15 @@ Vector3 Scene::getGlobalIlluminationColorLinear() const{
     return settings.globalIllumColor;
 }
 
+void Scene::setMaxLightsPerObject(int maxLightsPerObject){
+    // a new capacity tier reloads the meshes (RenderSystem::update)
+    settings.maxLightsPerObject = std::clamp(maxLightsPerObject, 1, MAX_LIGHTS_PER_OBJECT);
+}
+
+int Scene::getMaxLightsPerObject() const{
+    return settings.maxLightsPerObject;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);
@@ -532,8 +553,10 @@ void Scene::setPostProcessPasses(const std::vector<PostProcessPass>& passes){
     // only uniform values changed: keep the compiled chain
     bool sameChain = passes.size() == settings.postProcess.size();
     for (size_t i = 0; sameChain && i < passes.size(); i++){
+        // (textures are bound when the chain loads)
         sameChain = passes[i].shader == settings.postProcess[i].shader &&
-                    passes[i].enabled == settings.postProcess[i].enabled;
+                    passes[i].enabled == settings.postProcess[i].enabled &&
+                    passes[i].textures == settings.postProcess[i].textures;
     }
 
     settings.postProcess = passes;
@@ -583,6 +606,19 @@ bool Scene::removePostProcessUniform(unsigned int index, const std::string& name
 
     getSystem<RenderSystem>()->needUpdatePostProcessUniforms();
     return true;
+}
+
+const PostProcessingSettings& Scene::getPostProcessing() const{
+    return settings.postProcessing;
+}
+
+void Scene::setPostProcessing(const PostProcessingSettings& postProcessing){
+    PostProcessingSettings clamped = postProcessing;
+    clamped.clamp();
+    if (clamped == settings.postProcessing)
+        return;
+    settings.postProcessing = clamped;
+    getSystem<RenderSystem>()->needUpdatePostProcessing();
 }
 
 void Scene::setPostProcessPassEnabled(unsigned int index, bool enabled){

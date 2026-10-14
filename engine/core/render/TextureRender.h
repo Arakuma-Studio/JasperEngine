@@ -37,9 +37,11 @@ namespace jasperengine {
         bool createFramebufferTexture(
                 TextureType type, bool depth, bool shadowMap, int width, int height,
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-                ColorFormat colorFormat = ColorFormat::RGBA);
+                ColorFormat colorFormat = ColorFormat::RGBA, bool stencil = false);
 
         bool createDynamicTexture(const std::string& label, int width, int height);
+        // RGBA8, linear, clamped, rewritten by updateTexture at most once a frame
+        bool createDynamicColorTexture(const std::string& label, int width, int height);
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();
@@ -51,9 +53,20 @@ namespace jasperengine {
         const void* getVulkanImageHandler() const;
 
         uint32_t getViewId() const;
+        // the size of the image (0 when there is none)
+        int getWidth() const;
+        int getHeight() const;
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();
+
+        // whether the image it was made from has transparent texels (TextureData::isTransparent),
+        // for a Texture that found it in TexturePool and so never loaded the image itself
+        void setTransparent(bool transparent);
+        bool isTransparent() const;
+
+    private:
+        bool transparent = false;
     };
 }
 

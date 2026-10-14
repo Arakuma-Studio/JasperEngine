@@ -99,6 +99,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
         submesh.gbufferRender = ObjectRender();
+        // the clone's load makes its own extra pass (sharing it would let the clone write the
+        // original's parameter blocks, and leave its pipelines to whichever is freed last)
+        submesh.extraPass.reset();
         submesh.shader.reset();
         submesh.depthShader.reset();
         submesh.gbufferShader.reset();

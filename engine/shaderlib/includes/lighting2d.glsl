@@ -2,6 +2,30 @@
 // an optional virtual Z height for normal-map response; attenuation is a radial
 // falloff pow(1 - d/range, falloff). Shadows (USE_SHADOWS_2D) sample per-light
 // 1D polar depth rows (one atlas row per light) rendered from ShadowCaster2D segments.
+//
+// Declares the engine's 2D lights block (u_fs_lighting2d, filled for every mesh variant
+// with USE_LIGHT2D) and, with USE_SHADOWS_2D, the shadow atlas, so mesh.frag and library
+// shaders share one declaration. Fragment stage only. getNormal2D reads the surface
+// normal the including shader declares (v_tbn / v_normal with HAS_NORMALS, the normal map
+// with HAS_NORMAL_MAP); without HAS_NORMALS the normal is +Z.
+
+#ifndef LIGHTING2D_GLSL
+#define LIGHTING2D_GLSL
+
+uniform u_fs_lighting2d {
+    vec4 position_range[MAX_LIGHTS_2D];  //position.xy, height.z, range.w
+    vec4 color_intensity[MAX_LIGHTS_2D]; //color.rgb (linear) and intensity.w
+    vec4 falloff_shadow[MAX_LIGHTS_2D];  //falloff.x, shadowRow.y (-1.0 if no shadow), softness.z, bias.w
+    vec4 ambient;                        //ambient2D.rgb (linear, pre-multiplied by intensity) and numLights2D.w
+    vec4 atlasInfo;                      //1/atlasWidth.x, 1/MAX_LIGHTS_2D.y, atlasWidth.z
+} lighting2d;
+
+#ifdef USE_SHADOWS_2D
+    uniform texture2D u_shadow2DAtlas;
+    uniform sampler u_shadow2DAtlas_smp;
+
+    #include "includes/depth_util.glsl"
+#endif
 
 // Normal for the 2D light path. The lit path already has getNormalInfo(), but it
 // is compiled out under MATERIAL_UNLIT, so this is a minimal standalone version.
@@ -38,7 +62,7 @@ const int MAX_SHADOW2D_RADIUS = 6;  // 13 taps, Shadow2DQuality::HIGH
 // u wraps with fract() so the seam at theta = +-pi is continuous.
 float shadow2DCalculation(float row, vec2 lightToFrag, float dist01, float softness, float bias){
     float theta = atan(lightToFrag.y, lightToFrag.x); // [-pi, pi]
-    float u = theta / (2.0 * M_PI) + 0.5;
+    float u = theta * 0.15915494309189535 + 0.5; // theta / (2 pi)
     float v = (row + 0.5) * lighting2d.atlasInfo.y;
     #ifndef IS_GLSL
         // rows are placed with sokol's bottom-left viewport convention, same as
@@ -100,3 +124,5 @@ vec3 getLight2DIntensity(vec3 fragPos, vec3 n, bool includeAmbient){
     }
     return acc;
 }
+
+#endif

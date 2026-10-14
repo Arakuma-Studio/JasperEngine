@@ -6,9 +6,11 @@
 #include "Stream.h"
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
+#include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <cctype>
+#include <cstring>
 
 namespace {
 
@@ -101,6 +103,11 @@ namespace {
         return registry->findComponent<Component>(entity);
     }
 
+    bool endsWith(const std::string& text, const char* suffix) {
+        const size_t length = std::strlen(suffix);
+        return text.size() >= length && text.compare(text.size() - length, length, suffix) == 0;
+    }
+
     bool parseIndex(const std::string& text, size_t& pos, size_t& value) {
         if (pos >= text.size() || !std::isdigit(static_cast<unsigned char>(text[pos]))) {
             return false;
@@ -138,6 +145,21 @@ namespace {
         {"material.metallicRoughnessTexture", SubmeshOverride_MetallicRoughnessTexture},
         {"material.occlusionTexture", SubmeshOverride_OcclusionTexture},
         {"material.normalTexture", SubmeshOverride_NormalTexture},
+        {"material.shader", SubmeshOverride_Shader},
+        {"material.shaderParams", SubmeshOverride_ShaderParams},
+        {"material.shaderTextures", SubmeshOverride_ShaderTextures},
+        {"material.shaderFeatures", SubmeshOverride_ShaderFeatures},
+        {"material.blendMode", SubmeshOverride_BlendMode},
+        {"material.cullMode", SubmeshOverride_CullMode},
+        {"material.depthWrite", SubmeshOverride_DepthWrite},
+        {"material.depthTest", SubmeshOverride_DepthTest},
+        {"material.depthOffsetFactor", SubmeshOverride_DepthOffset},
+        {"material.depthOffsetUnits", SubmeshOverride_DepthOffset},
+        {"material.sortPriority", SubmeshOverride_SortPriority},
+        {"material.lighting", SubmeshOverride_Lighting},
+        {"material.stencil", SubmeshOverride_Stencil},
+        {"material.colorWrite", SubmeshOverride_ColorWrite},
+        {"material.extraPass", SubmeshOverride_ExtraPass},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -162,8 +184,107 @@ namespace {
                 return true;
             }
         }
+        // a field of the stencil or of the extra pass keeps the whole of it
+        if (field.compare(0, 17, "material.stencil.") == 0) {
+            fields = SubmeshOverride_Stencil;
+            return true;
+        }
+        if (field.compare(0, 19, "material.extraPass.") == 0) {
+            fields = SubmeshOverride_ExtraPass;
+            return true;
+        }
 
         return false;
+    }
+
+    // The shader library fields of a submesh material ("submeshes[N].material.<field>"). The
+    // shader, its features, textures and render state are resolved when the mesh loads, so a
+    // change reloads it; parameters only rewrite the uniform blocks.
+    const char* const kMaterialLibraryFields[] = {
+        "shader", "shaderParams", "shaderTextures", "shaderFeatures", "blendMode", "cullMode", "depthWrite",
+        "depthTest", "depthOffsetFactor", "depthOffsetUnits", "sortPriority", "lighting",
+        // phase 2
+        "stencil", "stencil.compare", "stencil.ref", "stencil.readMask", "stencil.writeMask", "stencil.pass",
+        "stencil.fail", "stencil.depthFail", "colorWrite", "extraPass", "extraPass.shader", "extraPass.shaderParams",
+        "extraPass.shaderTextures", "extraPass.shaderFeatures", "extraPass.blendMode", "extraPass.cullMode",
+        "extraPass.depthWrite", "extraPass.depthTest", "extraPass.depthOffsetFactor", "extraPass.depthOffsetUnits",
+        "extraPass.stencil", "extraPass.stencil.compare", "extraPass.stencil.ref", "extraPass.stencil.readMask",
+        "extraPass.stencil.writeMask", "extraPass.stencil.pass", "extraPass.stencil.fail", "extraPass.stencil.depthFail",
+        "extraPass.colorWrite", "extraPass.order"
+    };
+
+    // "stencil", "stencil.<field>" and "colorWrite" of a material, an extra pass or a
+    // UI/Points/LineRenderer component: pipeline state, so a change reloads with `flags`
+    PropertyData getStencilColorWriteProperty(MaterialStencil* stencil, MaterialStencil* defStencil, int* colorWrite, int* defColorWrite,
+                                              const std::string& field, uint64_t flags) {
+        auto data = [&](PropertyType type, auto member) -> PropertyData {
+            return {type, flags, defStencil ? (void*)&(defStencil->*member) : nullptr, stencil ? (void*)&(stencil->*member) : nullptr};
+        };
+        if (field == "colorWrite") return {PropertyType::Int, flags, (void*)defColorWrite, (void*)colorWrite};
+        if (field == "stencil") return {PropertyType::Custom, flags, (void*)defStencil, (void*)stencil};
+        if (field.compare(0, 8, "stencil.") != 0) return PropertyData();
+        const std::string name = field.substr(8);
+        if (name == "compare") return data(PropertyType::Enum, &MaterialStencil::compare);
+        if (name == "ref") return data(PropertyType::Int, &MaterialStencil::ref);
+        if (name == "readMask") return data(PropertyType::Int, &MaterialStencil::readMask);
+        if (name == "writeMask") return data(PropertyType::Int, &MaterialStencil::writeMask);
+        if (name == "pass") return data(PropertyType::Enum, &MaterialStencil::pass);
+        if (name == "fail") return data(PropertyType::Enum, &MaterialStencil::fail);
+        if (name == "depthFail") return data(PropertyType::Enum, &MaterialStencil::depthFail);
+        return PropertyData();
+    }
+
+    const char* const kComponentStencilFields[] = {
+        "stencil", "stencil.compare", "stencil.ref", "stencil.readMask", "stencil.writeMask", "stencil.pass",
+        "stencil.fail", "stencil.depthFail", "colorWrite"
+    };
+
+    // The fields of a material's extra pass ("extraPass.<field>"): all of it is resolved when
+    // the mesh loads but its parameters (rewritten into its blocks) and texture files (rebound)
+    PropertyData getMaterialPassProperty(MaterialPass* pass, MaterialPass* def, const std::string& field) {
+        auto data = [&](PropertyType type, uint64_t flags, auto member) -> PropertyData {
+            return {type, flags, def ? (void*)&(def->*member) : nullptr, pass ? (void*)&(pass->*member) : nullptr};
+        };
+        if (field == "shader") return data(PropertyType::String, UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, &MaterialPass::shader);
+        if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &MaterialPass::shaderParams);
+        if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &MaterialPass::shaderTextures);
+        if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &MaterialPass::shaderFeatures);
+        if (field == "blendMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &MaterialPass::blendMode);
+        if (field == "cullMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &MaterialPass::cullMode);
+        if (field == "depthWrite") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &MaterialPass::depthWrite);
+        if (field == "depthTest") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &MaterialPass::depthTest);
+        if (field == "depthOffsetFactor") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &MaterialPass::depthOffsetFactor);
+        if (field == "depthOffsetUnits") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &MaterialPass::depthOffsetUnits);
+        if (field == "order") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &MaterialPass::order);
+        return getStencilColorWriteProperty(pass ? &pass->stencil : nullptr, def ? &def->stencil : nullptr,
+                                            pass ? &pass->colorWrite : nullptr, def ? &def->colorWrite : nullptr, field, UpdateFlags_Mesh_Reload);
+    }
+
+    PropertyData getMaterialLibraryProperty(Material& material, Material* def, const std::string& field, bool hasRef) {
+        auto data = [&](PropertyType type, uint64_t flags, auto member) -> PropertyData {
+            return {type, flags, def ? (void*)&(def->*member) : nullptr, hasRef ? (void*)&(material.*member) : nullptr};
+        };
+        if (field == "shader") return data(PropertyType::String, UpdateFlags_Shader_Reload | UpdateFlags_Shader_Uniforms, &Material::shader);
+        if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderParams);
+        if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &Material::shaderTextures);
+        if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &Material::shaderFeatures);
+        if (field == "blendMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::blendMode);
+        if (field == "cullMode") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::cullMode);
+        if (field == "depthWrite") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthWrite);
+        if (field == "depthTest") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::depthTest);
+        if (field == "depthOffsetFactor") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &Material::depthOffsetFactor);
+        if (field == "depthOffsetUnits") return data(PropertyType::Float, UpdateFlags_Mesh_Reload, &Material::depthOffsetUnits);
+        if (field == "sortPriority") return data(PropertyType::Int, UpdateFlags_Mesh_Reload, &Material::sortPriority);
+        if (field == "lighting") return data(PropertyType::Enum, UpdateFlags_Mesh_Reload, &Material::lighting);
+        // phase 2: stencil and colour write are pipeline state; the extra pass is its own draw
+        // (a MaterialPass: the material's own, made on access, see MaterialExtraPass)
+        if (field == "extraPass")
+            return {PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture | UpdateFlags_Shader_Uniforms,
+                    def ? (void*)&def->extraPass.edit() : nullptr, hasRef ? (void*)&material.extraPass.edit() : nullptr};
+        if (field.compare(0, 10, "extraPass.") == 0)
+            return getMaterialPassProperty(hasRef ? &material.extraPass.edit() : nullptr, def ? &def->extraPass.edit() : nullptr, field.substr(10));
+        return getStencilColorWriteProperty(hasRef ? &material.stencil : nullptr, def ? &def->stencil : nullptr,
+                                            hasRef ? &material.colorWrite : nullptr, def ? &def->colorWrite : nullptr, field, UpdateFlags_Mesh_Reload);
     }
 
     void* getLightShadowNearRef(void* comp) {
@@ -190,6 +311,11 @@ namespace {
         makeFastProperty<UIComponent, Texture, &UIComponent::texture>("texture", PropertyType::Texture, UpdateFlags_UI_Texture),
         makeFastProperty<UIComponent, std::string, &UIComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        // shader library: resolved when the UI loads its shader
+        makeFastProperty<UIComponent, std::vector<std::pair<std::string, Texture>>, &UIComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, std::vector<std::string>, &UIComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, MaterialBlendMode, &UIComponent::blendMode>("blendMode", PropertyType::Enum, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, MaterialDepthWrite, &UIComponent::depthWrite>("depthWrite", PropertyType::Enum, UpdateFlags_Shader_Reload),
     };
 
     static const FastPropertyDescriptor kRectTransformProperties[] = {
@@ -399,9 +525,9 @@ namespace {
     };
 
     static const FastPropertyDescriptor kLightProperties[] = {
-        makeFastPropertyNoDefault<LightComponent, LightType, &LightComponent::type>("type", PropertyType::Enum, UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastPropertyNoDefault<LightComponent, LightType, &LightComponent::type>("type", PropertyType::Enum, UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, Vector3, &LightComponent::direction>("direction", PropertyType::Vector3, UpdateFlags_Transform),
-        makeFastProperty<LightComponent, bool, &LightComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, bool, &LightComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, float, &LightComponent::intensity>("intensity", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::range>("range", PropertyType::Float, UpdateFlags_LightShadowCamera),
         makeFastProperty<LightComponent, Vector3, &LightComponent::color>("color", PropertyType::Vector3, UpdateFlags_None),
@@ -411,11 +537,13 @@ namespace {
         // read by RenderSystem every frame (lighting and shadow casters)
         makeFastProperty<LightComponent, uint32_t, &LightComponent::cullingMask>("cullingMask", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, unsigned int, &LightComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_LightShadowMap | UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<LightComponent, bool, &LightComponent::automaticShadowCamera>("automaticShadowCamera", PropertyType::Bool, UpdateFlags_LightShadowCamera),
         {"shadowCameraNear", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowNearRef},
         {"shadowCameraFar", PropertyType::Float, UpdateFlags_LightShadowCamera, nullptr, &getLightShadowFarRef},
-        makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
+        // read by RenderSystem when it picks each mesh's lights
+        makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kLight2DProperties[] = {
@@ -424,7 +552,7 @@ namespace {
         makeFastProperty<Light2DComponent, float, &Light2DComponent::range>("range", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::falloff>("falloff", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::height>("height", PropertyType::Float, UpdateFlags_None),
-        makeFastProperty<Light2DComponent, bool, &Light2DComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_Scene_Mesh_Reload),
+        makeFastProperty<Light2DComponent, bool, &Light2DComponent::shadows>("shadows", PropertyType::Bool, UpdateFlags_Scene_Mesh_Variant),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::shadowBias>("shadowBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, float, &Light2DComponent::shadowSoftness>("shadowSoftness", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<Light2DComponent, unsigned int, &Light2DComponent::mapResolution>("mapResolution", PropertyType::UInt, UpdateFlags_None),
@@ -519,6 +647,8 @@ namespace {
         makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
+        makeFastProperty<SkyboxComponent, std::vector<std::pair<std::string, Texture>>, &SkyboxComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
+        makeFastProperty<SkyboxComponent, std::vector<std::string>, &SkyboxComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
     };
 
     static const FastPropertyDescriptor kTextProperties[] = {
@@ -590,6 +720,7 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),
         makeFastProperty<MeshComponent, bool, &MeshComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::autoTransparency>("autoTransparency", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        makeFastProperty<MeshComponent, CullingMode, &MeshComponent::cullingMode>("cullingMode", PropertyType::Enum, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, std::string, &MeshComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<MeshComponent, std::string, &MeshComponent::customDepthShader>("customDepthShader", PropertyType::String, UpdateFlags_Shader_Reload),
         makeFastProperty<MeshComponent, ShaderUniformValues, &MeshComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
@@ -631,7 +762,7 @@ namespace {
 
         pos++;
         if (pos == propertyName.size()) {
-            return {PropertyType::Custom, UpdateFlags_Mesh_Texture, (void*)&defSub, (void*)&sub};
+            return {PropertyType::Custom, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub, (void*)&sub};
         }
         if (propertyName[pos] != '.') {
             return PropertyData();
@@ -642,7 +773,8 @@ namespace {
         // submeshes[N].material
         if (propertyName.compare(fieldPos, 8, "material") == 0) {
             if (fieldPos + 8 == propertyName.size()) {
-                return {PropertyType::Material, UpdateFlags_Mesh_Texture, (void*)&defSub.material, (void*)&sub.material};
+                // a whole material may bring another shader, features or render state
+                return {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, (void*)&sub.material};
             }
             if (propertyName[fieldPos + 8] != '.') {
                 return PropertyData();
@@ -687,7 +819,7 @@ namespace {
             if (propertyName.compare(matFieldPos, 13, "normalTexture") == 0 && matFieldPos + 13 == propertyName.size()) {
                 return {PropertyType::Texture, UpdateFlags_Mesh_Texture, (void*)&defSub.material.normalTexture, (void*)&sub.material.normalTexture};
             }
-            return PropertyData();
+            return getMaterialLibraryProperty(sub.material, &defSub.material, propertyName.substr(matFieldPos), true);
         }
 
         // submeshes[N].primitiveType, faceCulling, textureShadow, textureRect
@@ -1108,7 +1240,12 @@ namespace {
     }
 
     PropertyData resolveUIPropertyFast(void* comp, const std::string& propertyName) {
-        return resolveDirectProperties(static_cast<UIComponent*>(comp), propertyName, kUIProperties);
+        PropertyData property = resolveDirectProperties(static_cast<UIComponent*>(comp), propertyName, kUIProperties);
+        if (property.ref || !comp) return property;
+        // phase 2: the stencil and colour write of its pipeline
+        UIComponent& def = getDefaultComponent<UIComponent>();
+        UIComponent* ui = static_cast<UIComponent*>(comp);
+        return getStencilColorWriteProperty(&ui->stencil, &def.stencil, &ui->colorWrite, &def.colorWrite, propertyName, UpdateFlags_Shader_Reload);
     }
 
     PropertyData resolveRectTransformPropertyFast(void* comp, const std::string& propertyName) {
@@ -2239,6 +2376,12 @@ namespace {
 
     void enumerateUIProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kUIProperties);
+        UIComponent& def = getDefaultComponent<UIComponent>();
+        UIComponent* ui = static_cast<UIComponent*>(comp);
+        for (const char* field : kComponentStencilFields) {
+            ps[field] = getStencilColorWriteProperty(ui ? &ui->stencil : nullptr, &def.stencil, ui ? &ui->colorWrite : nullptr,
+                                                     &def.colorWrite, field, UpdateFlags_Shader_Reload);
+        }
     }
 
     void enumerateRectTransformProperties(void* comp, std::map<std::string, PropertyData>& ps) {
@@ -2545,7 +2688,10 @@ namespace {
             Submesh& sub = compRef ? comp->submeshes[s] : def.submeshes[0];
             Submesh& defSub = def.submeshes[0];
 
-            ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
+            ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
+            for (const char* field : kMaterialLibraryFields) {
+                ps["submeshes[" + idx + "].material." + field] = getMaterialLibraryProperty(sub.material, &defSub.material, field, compRef != nullptr);
+            }
             ps["submeshes[" + idx + "].material.name"] = {PropertyType::String, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
             ps["submeshes[" + idx + "].material.baseColorFactor"] = {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, compRef ? (void*)&sub.material.baseColorFactor : nullptr};
             ps["submeshes[" + idx + "].material.metallicFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.metallicFactor, compRef ? (void*)&sub.material.metallicFactor : nullptr};
@@ -2774,6 +2920,15 @@ namespace {
         if (propertyName == "texture") return {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, &comp->texture};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
+        if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
+        if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
+        if (propertyName == "depthWrite") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, &comp->depthWrite};
+        if (propertyName == "colorWrite" || propertyName.compare(0, 7, "stencil") == 0) {
+            PropertyData stencil = getStencilColorWriteProperty(&comp->stencil, &def.stencil, &comp->colorWrite, &def.colorWrite,
+                                                                propertyName, UpdateFlags_Shader_Reload);
+            if (stencil.ref) return stencil;
+        }
 
         if (propertyName == "numFramesRect") {
             return {PropertyType::UInt, UpdateFlags_None, (void*)&def.numFramesRect, (void*)&comp->numFramesRect};
@@ -2857,6 +3012,14 @@ namespace {
         ps["texture"] = {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, comp ? &comp->texture : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
+        ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
+        ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
+        ps["depthWrite"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, comp ? &comp->depthWrite : nullptr};
+        for (const char* field : kComponentStencilFields) {
+            ps[field] = getStencilColorWriteProperty(comp ? &comp->stencil : nullptr, &def.stencil, comp ? &comp->colorWrite : nullptr,
+                                                     &def.colorWrite, field, UpdateFlags_Shader_Reload);
+        }
 
         static std::vector<PointData> defPoints;
         ps["points"] = {PropertyType::Custom, UpdateFlags_Points, (void*)&defPoints, comp ? (void*)&comp->points : nullptr};
@@ -2893,6 +3056,15 @@ namespace {
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
         if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
+        if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
+        if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
+        if (propertyName == "blendMode") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, &comp->blendMode};
+        if (propertyName == "depthWrite") return {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, &comp->depthWrite};
+        if (propertyName == "colorWrite" || propertyName.compare(0, 7, "stencil") == 0) {
+            PropertyData stencil = getStencilColorWriteProperty(&comp->stencil, &def.stencil, &comp->colorWrite, &def.colorWrite,
+                                                                propertyName, UpdateFlags_Shader_Reload);
+            if (stencil.ref) return stencil;
+        }
 
         if (propertyName == "lines") {
             static std::vector<LineData> defLines;
@@ -2939,6 +3111,14 @@ namespace {
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
         ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
+        ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
+        ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
+        ps["blendMode"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.blendMode, comp ? &comp->blendMode : nullptr};
+        ps["depthWrite"] = {PropertyType::Enum, UpdateFlags_Shader_Reload, &def.depthWrite, comp ? &comp->depthWrite : nullptr};
+        for (const char* field : kComponentStencilFields) {
+            ps[field] = getStencilColorWriteProperty(comp ? &comp->stencil : nullptr, &def.stencil, comp ? &comp->colorWrite : nullptr,
+                                                     &def.colorWrite, field, UpdateFlags_Shader_Reload);
+        }
 
         static std::vector<LineData> defLines;
         ps["lines"] = {PropertyType::Custom, UpdateFlags_Lines, (void*)&defLines, comp ? (void*)&comp->lines : nullptr};
@@ -4060,10 +4240,12 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
         // adding/removing a 2D light toggles the USE_LIGHT2D shader variant
         case ComponentType::Light2DComponent:
         case ComponentType::FogComponent:
+        case ComponentType::ReflectionProbeComponent:
+            // variants only: the loaded ones draw until the new ones are built
+            return UpdateFlags_Scene_Mesh_Variant;
         // adding/removing a mirror toggles the inverted-culling pipeline baked
         // into meshes, so they must reload
         case ComponentType::MirrorComponent:
-        case ComponentType::ReflectionProbeComponent:
             return UpdateFlags_Scene_Mesh_Reload;
         default:
             return UpdateFlags_None;
@@ -4166,9 +4348,15 @@ bool editor::Catalog::isCustomShaderBuildFailed(Scene* scene, Entity entity, Com
 
     switch (component) {
         case ComponentType::MeshComponent:
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity))
-                return failed(mesh->customShader, ShaderType::MESH, mesh->loaded, mesh->needReload,
-                              mesh->numSubmeshes > 0 ? mesh->submeshes[0].customShaderId : 0);
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                // a submesh drawing with its material's, the mesh's or the scene's shader
+                const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], sceneMeshShader);
+                    if (failed(shader, ShaderType::MESH, mesh->loaded, mesh->needReload, mesh->submeshes[s].customShaderId))
+                        return true;
+                }
+            }
             break;
         case ComponentType::UIComponent:
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
@@ -4200,6 +4388,262 @@ bool editor::Catalog::isCustomDepthShaderBuildFailed(Scene* scene, Entity entity
            mesh->numSubmeshes > 0 && mesh->submeshes[0].customDepthShaderId == 0;
 }
 
+bool editor::Catalog::splitShaderEntryProperty(const std::string& propertyName, std::string& collection, std::string& key) {
+    for (const char* name : {"shaderParams.", "shaderTextures.", "shaderUniforms."}) {
+        const size_t at = propertyName.find(name);
+        if (at == std::string::npos) continue;
+        const std::string prefix = propertyName.substr(0, at);
+        // a submesh material's, or its extra pass's ("...material.extraPass.shaderParams.<member>")
+        const bool material = prefix.compare(0, 10, "submeshes[") == 0 &&
+                              (endsWith(prefix, "].material.") || endsWith(prefix, "].material.extraPass."));
+        const bool component = prefix.empty();
+        // a material has shaderParams, a component shaderUniforms; both have shaderTextures
+        const std::string field(name, std::strlen(name) - 1);
+        if ((material && field == "shaderUniforms") || (component && field == "shaderParams") || (!material && !component)) {
+            return false;
+        }
+        key = propertyName.substr(at + std::strlen(name));
+        if (key.empty()) return false;
+        collection = prefix + field;
+        return true;
+    }
+    return false;
+}
+
+std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity entity, ComponentType component, const std::string& propertyName) {
+    if (!scene) return std::string();
+    switch (component) {
+        case ComponentType::MeshComponent: {
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh) return std::string();
+            size_t submesh = 0;
+            size_t pos = 10;
+            if (propertyName.compare(0, 10, "submeshes[") == 0 && parseIndex(propertyName, pos, submesh) && submesh < mesh->numSubmeshes) {
+                // the extra pass draws with its own shader only
+                if (propertyName.compare(pos, 21, "].material.extraPass.") == 0)
+                    return mesh->submeshes[submesh].material.extraPass->shader;
+                return RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[submesh], scene->getDefaultCustomShader(ShaderType::MESH));
+            }
+            return mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+        }
+        case ComponentType::UIComponent:
+            if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
+                return ui->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui->customShader;
+            break;
+        case ComponentType::PointsComponent:
+            if (PointsComponent* points = scene->findComponent<PointsComponent>(entity))
+                return points->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points->customShader;
+            break;
+        case ComponentType::LineRendererComponent:
+            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
+                return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+            break;
+        case ComponentType::SkyboxComponent:
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
+                return sky->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky->customShader;
+            break;
+        default:
+            break;
+    }
+    return std::string();
+}
+
+namespace {
+    // the manifest the runtime resolves lighting against: none for a shader without directives
+    const ShaderManifest* lightingManifest(const ShaderManifest* manifest) {
+        return (manifest && manifest->present) ? manifest : nullptr;
+    }
+}
+
+std::vector<MaterialLighting> editor::Catalog::getShaderLightingModes(const ShaderManifest* manifest) {
+    manifest = lightingManifest(manifest);
+    // RenderSystem decides: its default (what AUTO draws) first, then every other mode it accepts
+    const MaterialLighting defaultMode = RenderSystem::resolveLighting(MaterialLighting::AUTO, manifest);
+    std::vector<MaterialLighting> modes = {defaultMode};
+    for (MaterialLighting mode : {MaterialLighting::PIXEL, MaterialLighting::VERTEX, MaterialLighting::MIXED, MaterialLighting::NONE}) {
+        if (mode != defaultMode && RenderSystem::supportsLighting(mode, manifest)) modes.push_back(mode);
+    }
+    return modes;
+}
+
+bool editor::Catalog::supportsLighting(MaterialLighting mode, const ShaderManifest* manifest) {
+    return RenderSystem::supportsLighting(mode, lightingManifest(manifest));
+}
+
+std::string editor::Catalog::getSceneInputsLabel(uint32_t inputs) {
+    inputs &= ShaderRequire_SceneInputs;
+    if (inputs == ShaderRequire_SceneInputs) return "depth and colour";
+    if (inputs & ShaderRequire_SceneDepth) return "depth";
+    if (inputs & ShaderRequire_SceneColor) return "colour";
+    return std::string();
+}
+
+std::string editor::Catalog::getSceneInputsCost(uint32_t inputs, bool brief) {
+    const bool depth = (inputs & ShaderRequire_SceneDepth) != 0;
+    const bool color = (inputs & ShaderRequire_SceneColor) != 0;
+    if (!depth && !color) return std::string();
+    if (brief) {
+        return std::string(depth && color ? "a depth pre-pass and a colour copy" : depth ? "a depth pre-pass" : "a colour copy") +
+               " per camera";
+    }
+    std::string text = "Paid only by the camera passes where such a draw is visible (scene camera, render-to-texture and mirror cameras, editor views). ";
+    if (depth) {
+        text += "Scene depth: one more geometry pass of the opaque meshes per camera (none when SSAO, SSR or a depth-reading "
+                "post-process pass already draws one), and every mesh keeps a depth program. ";
+    }
+    if (color) {
+        text += "Scene colour: a copy of the opaque scene and the sky per camera, which splits its render pass (a store and load "
+                "of the targets on tile-based mobile GPUs); its resolution is the scene setting Scene Color > Scale "
+                "(scene_color_scale; half, the default, copies a quarter of the pixels). ";
+    }
+    text += "Avoid on low-end mobile. The draw must be in the transparent queue (a blend other than Opaque).";
+    return text;
+}
+
+std::string editor::Catalog::getShaderSceneInputsSummary(const ShaderManifest& manifest) {
+    const uint32_t possible = manifest.getPossibleSceneInputs();
+    if (!possible) return std::string();
+    // per input: always (@require), else the feature= rules that add it
+    auto when = [&manifest](uint32_t bit) {
+        if (manifest.require & bit) return std::string();
+        std::vector<std::string> defines;
+        for (const ShaderManifestRequireRule& rule : manifest.requireRules) {
+            const std::string define = (rule.negate ? "!" : "") + rule.define;
+            if ((rule.require & bit) && std::find(defines.begin(), defines.end(), define) == defines.end()) defines.push_back(define);
+        }
+        std::string text;
+        for (const std::string& define : defines) text += (text.empty() ? "" : " or ") + define;
+        return " (with " + text + ")";
+    };
+    const std::string depth = (possible & ShaderRequire_SceneDepth) ? when(ShaderRequire_SceneDepth) : std::string();
+    const std::string color = (possible & ShaderRequire_SceneColor) ? when(ShaderRequire_SceneColor) : std::string();
+    if (possible == ShaderRequire_SceneInputs) {
+        if (depth == color) return "Reads the scene depth and colour" + depth;
+        return "Reads the scene depth" + depth + " and colour" + color;
+    }
+    return (possible & ShaderRequire_SceneDepth) ? "Reads the scene depth" + depth : "Reads the scene colour" + color;
+}
+
+uint32_t editor::Catalog::getFeatureSceneInputs(const ShaderManifest& manifest, const std::string& define, bool whenOff) {
+    uint32_t inputs = 0;
+    for (const ShaderManifestRequireRule& rule : manifest.requireRules) {
+        if (rule.define == define && rule.negate == whenOff) inputs |= rule.require;
+    }
+    return inputs & ShaderRequire_SceneInputs & ~manifest.require;
+}
+
+uint32_t editor::Catalog::getShaderSceneInputs(const std::string& shader, const std::vector<std::string>& shaderFeatures) {
+    std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+    if (!manifest || !manifest->present) return 0;
+    return manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, shaderFeatures)) & ShaderRequire_SceneInputs;
+}
+
+uint32_t editor::Catalog::getMaterialSceneInputs(Scene* scene, Entity entity, unsigned int submesh, bool extraPass) {
+    const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    if (!mesh || submesh >= mesh->numSubmeshes) return 0;
+    const Submesh& sub = mesh->submeshes[submesh];
+    if (extraPass) {
+        const MaterialPass& pass = sub.material.extraPass;
+        return getShaderSceneInputs(pass.shader, pass.shaderFeatures);
+    }
+    return getShaderSceneInputs(RenderSystem::getSubmeshShader(*mesh, sub, scene->getDefaultCustomShader(ShaderType::MESH)),
+                                sub.material.shaderFeatures);
+}
+
+uint32_t editor::Catalog::getComponentSceneInputs(Scene* scene, Entity entity, ComponentType component) {
+    if (!scene) return 0;
+    if (component == ComponentType::MeshComponent) {
+        // the mesh's shader (its customShader, else the scene's) has no features of its own: the
+        // submeshes drawing with it pick its variants through their materials
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh) return 0;
+        const std::string& shader = mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+        uint32_t inputs = 0;
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+            if (mesh->submeshes[s].material.shader.empty()) inputs |= getShaderSceneInputs(shader, mesh->submeshes[s].material.shaderFeatures);
+        }
+        return inputs;
+    }
+    const std::vector<std::string>* features = getPropertyRef<std::vector<std::string>>(scene, entity, component, "shaderFeatures");
+    if (!features) return 0;
+    return getShaderSceneInputs(getShaderReferenceForProperty(scene, entity, component, "customShader"), *features);
+}
+
+uint32_t editor::Catalog::getSceneInputsInUse(Scene* scene) {
+    auto render = scene ? scene->getSystem<RenderSystem>() : nullptr;
+    if (!render) return 0;
+    const uint32_t usage = render->getSceneInputUsage();
+    return ((usage & 1u) ? ShaderRequire_SceneDepth : 0u) | ((usage & 2u) ? ShaderRequire_SceneColor : 0u);
+}
+
+editor::Catalog::SceneInputQueueFix editor::Catalog::getSceneInputQueueFix(Scene* scene, Entity entity, unsigned int submesh) {
+    const MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
+    if (!mesh || submesh >= mesh->numSubmeshes) return SceneInputQueueFix::NONE;
+    const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+    bool opaqueQueue = false;
+    if (!RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[submesh], sceneMeshShader, opaqueQueue) || !opaqueQueue)
+        return SceneInputQueueFix::NONE;
+    // without auto transparency the mesh's own Transparent decides the queue: no blend moves it
+    if (!mesh->autoTransparency) return SceneInputQueueFix::MESH_TRANSPARENT;
+    // only when Alpha does move it (a fork's @state queue= decides before the blend)
+    Submesh fixed = mesh->submeshes[submesh];
+    fixed.material.blendMode = MaterialBlendMode::ALPHA;
+    RenderSystem::getSubmeshSceneInputs(*mesh, fixed, sceneMeshShader, opaqueQueue);
+    return opaqueQueue ? SceneInputQueueFix::NONE : SceneInputQueueFix::ALPHA_BLEND;
+}
+
+std::string editor::Catalog::getSceneInputQueueFixProperty(SceneInputQueueFix fix, unsigned int submesh) {
+    switch (fix) {
+        case SceneInputQueueFix::ALPHA_BLEND: return "submeshes[" + std::to_string(submesh) + "].material.blendMode";
+        case SceneInputQueueFix::MESH_TRANSPARENT: return "transparent";
+        default: return "";
+    }
+}
+
+std::string editor::Catalog::getSceneInputQueueAdvice(SceneInputQueueFix fix, unsigned int submesh) {
+    switch (fix) {
+        case SceneInputQueueFix::ALPHA_BLEND:
+            return "set a blend mode other than opaque (submeshes[" + std::to_string(submesh) + "].material.blendMode)";
+        case SceneInputQueueFix::MESH_TRANSPARENT:
+            return "the mesh's Auto Transparency is off and its Transparent off, which keeps it opaque whatever the blend: "
+                   "turn the mesh's Transparent on (transparent)";
+        default:
+            return "its shader's state draws it in the opaque queue whatever the blend: use a shader whose @state is "
+                   "transparent, or turn the mesh's Auto Transparency off and its Transparent on";
+    }
+}
+
+uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Material& to) {
+    uint64_t flags = UpdateFlags_Mesh_Texture;
+    // resolved when the mesh loads: the shader, its variant and its pipelines
+    if (from.shader != to.shader || from.shaderFeatures != to.shaderFeatures || from.shaderTextures != to.shaderTextures ||
+            from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
+            from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
+            from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
+            from.lighting != to.lighting || from.alphaMode != to.alphaMode) {
+        flags |= UpdateFlags_Mesh_Reload;
+    }
+    // stencil and colour write are pipeline state too
+    if (from.stencil != to.stencil || from.colorWrite != to.colorWrite) {
+        flags |= UpdateFlags_Mesh_Reload;
+    }
+    // the extra pass: all of it but its parameters and texture files, as Mesh::setMaterial
+    MaterialPass fromPass = from.extraPass;
+    MaterialPass toPass = to.extraPass;
+    fromPass.shaderParams.clear();
+    toPass.shaderParams.clear();
+    for (auto& texture : fromPass.shaderTextures) texture.second = Texture();
+    for (auto& texture : toPass.shaderTextures) texture.second = Texture();
+    if (fromPass != toPass) {
+        flags |= UpdateFlags_Mesh_Reload;
+    }
+    if (from.shader != to.shader || from.shaderParams != to.shaderParams || from.extraPass->shaderParams != to.extraPass->shaderParams ||
+            from.extraPass->shader != to.extraPass->shader) {
+        flags |= UpdateFlags_Shader_Uniforms;
+    }
+    return flags;
+}
+
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
@@ -4216,6 +4660,16 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
         for (int i = 0; i < meshes->size(); i++) {
             MeshComponent& mesh = meshes->getComponentFromIndex(i);
             mesh.needReload = true;
+        }
+    }else if (updateFlags & UpdateFlags_Scene_Mesh_Variant){
+        // as RenderSystem::needReloadMeshVariants (the registry may be a prefab's, without one)
+        auto meshes = registry->getComponentArray<MeshComponent>();
+        for (int i = 0; i < meshes->size(); i++) {
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            if (mesh.loaded && !mesh.needReload)
+                mesh.needVariantReload = true;
+            else
+                mesh.needReload = true;
         }
     }
     if (updateFlags & (UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture)){
@@ -4823,9 +5277,25 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                 auto* source = Catalog::getPropertyRef<std::vector<Texture>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Texture>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
-            } else if (property == "shaderUniforms") {
+            } else if (endsWith(property, "material.extraPass")) {
+                auto* source = Catalog::getPropertyRef<MaterialPass>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<MaterialPass>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "stencil" || endsWith(property, ".stencil")) {
+                auto* source = Catalog::getPropertyRef<MaterialStencil>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<MaterialStencil>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderUniforms" || endsWith(property, "material.shaderParams") || endsWith(property, "extraPass.shaderParams")) {
                 auto* source = Catalog::getPropertyRef<ShaderUniformValues>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<ShaderUniformValues>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderTextures" || endsWith(property, "material.shaderTextures") || endsWith(property, "extraPass.shaderTextures")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::pair<std::string, Texture>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (property == "shaderFeatures" || endsWith(property, "material.shaderFeatures") || endsWith(property, "extraPass.shaderFeatures")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::string>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::string>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             }
             break;

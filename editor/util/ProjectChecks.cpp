@@ -11,6 +11,10 @@
 #include "script/LuaBinding.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "shader/ShaderManifest.h"
+#include "subsystem/RenderSystem.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
@@ -530,8 +534,15 @@ std::string forkKey(const editor::ProjectChecks::ShaderUse& use) {
 std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForksInUse(Project* project) {
     std::vector<ShaderUse> uses;
     std::set<std::pair<std::string, int>> seen;
-    auto add = [&](const std::string& base, ShaderType type) {
+    auto add = [&](std::string base, ShaderType type) {
         if (base.empty()) return;
+        // a bare library reference (a customShader, a scene default) is checked as the variant
+        // the engine draws from it: its default features and keyword values, and for a colour
+        // program the blend define of its default state
+        if (ShaderReference::isLibrary(base) && ShaderReference::getFeatures(base).empty()) {
+            base = (type == ShaderType::DEPTH) ? ShaderReference::getVariantReference(base, {})
+                                               : ShaderReference::getColorVariantReference(base, {}, MaterialBlendMode::AUTO);
+        }
         if (seen.insert({base, static_cast<int>(type)}).second) uses.push_back({base, static_cast<int>(type)});
     };
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
@@ -546,6 +557,27 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
                     if (auto* depth = Catalog::getPropertyRef<std::string>(scene, entity, component, "customDepthShader")) add(*depth, ShaderType::DEPTH);
                 }
             }
+            // shader library: each submesh's shader and depth program with the features its
+            // material enables, and the components' shaders with theirs, as they are compiled
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+                const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                    add(RenderSystem::getSubmeshShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader), ShaderType::MESH);
+                    add(RenderSystem::getSubmeshDepthShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader), ShaderType::DEPTH);
+                    // and its material's extra pass
+                    if (RenderSystem::hasExtraPass(mesh->submeshes[s], scene->findComponent<TerrainComponent>(entity) != nullptr))
+                        add(RenderSystem::getSubmeshExtraPassReference(mesh->submeshes[s]), ShaderType::MESH);
+                }
+            }
+            auto addComponent = [&](const std::string& customShader, const std::vector<std::string>& features, ShaderType componentType,
+                                    MaterialBlendMode blendMode) {
+                // as the component loads it: its features and blend mode (forks without a manifest: the path)
+                if (!customShader.empty()) add(RenderSystem::getComponentShaderReference(customShader, features, blendMode), componentType);
+            };
+            if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
+            if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
+            if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES, lines->blendMode);
+            if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX, MaterialBlendMode::AUTO);
         }
         const std::pair<const char*, ShaderType> defaults[] = {
             {"default_mesh_shader", ShaderType::MESH}, {"default_ui_shader", ShaderType::UI},
@@ -574,7 +606,8 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
         }
         bool found = false;
         for (const ShaderUse& use : forks) {
-            Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(use.base);
+            // the files it resolves to (an assets-relative fork path: under the assets directory)
+            Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(use.base);
             if (paths.vert == file || paths.frag == file) {
                 found = true;
                 if (covered.insert(forkKey(use)).second) result.push_back(use);
@@ -597,7 +630,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
     std::vector<ShaderUse> result = shaderForksInUse(project);
     std::set<std::string> usedFiles;
     for (const ShaderUse& use : result) {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(use.base);
+        Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(use.base);
         usedFiles.insert(paths.vert);
         usedFiles.insert(paths.frag);
     }
@@ -614,8 +647,12 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
 }
 
 int editor::ProjectChecks::guessShaderType(Project* project, const std::string& base) {
+    // a manifest says what it is
+    if (std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(base)) {
+        if (manifest->hasType) return static_cast<int>(manifest->type);
+    }
     std::string frag;
-    readFile(project->getProjectPath() / Util::resolveCustomShaderPaths(base).frag, frag);
+    project->readShaderFile(Util::resolveCustomShaderPaths(base).frag, frag);
     if (frag.find("u_fs_postParams") != std::string::npos || frag.find("postprocess") != std::string::npos) return static_cast<int>(ShaderType::POSTPROCESS);
     if (frag.find("includes/ui") != std::string::npos) return static_cast<int>(ShaderType::UI);
     if (frag.find("includes/sky") != std::string::npos) return static_cast<int>(ShaderType::SKYBOX);
@@ -661,21 +698,81 @@ void editor::ProjectChecks::invalidateShaderCaches(Project* project) {
 uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
     if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
     const uint16_t customId = ShaderPool::registerCustomShader(use.base);
-    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), 0, customId);
+    uint32_t properties = 0;
+    if (use.shaderType == static_cast<int>(ShaderType::MESH)) {
+        // a mesh shader with a manifest: the variant a mesh with UVs, normals and colours
+        // draws with in its default lighting mode (lit modes in a scene with lights), so
+        // what the lighting enables (textures sampled per pixel, the lights) is checked
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(use.base);
+        if (manifest && manifest->present) {
+            SubmeshShaderInputs inputs;
+            inputs.texCoord1 = true;
+            inputs.normal = true;
+            inputs.vertexColor4 = true;
+            inputs.manifest = manifest;
+            // the features of the reference decide its feature= @require inputs
+            inputs.features = ShaderReference::getFeatures(use.base);
+            MeshShaderEnvironment environment;
+            environment.lights = manifest->getDefaultLighting() != ShaderLightingMode::NONE;
+            properties = RenderSystem::getSubmeshShaderVariant(environment, inputs).properties;
+        }
+    }
+    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), properties, customId);
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::sceneInputFindings(Project* project, const std::vector<ShaderUse>* forks) {
+    std::vector<Finding> findings;
+    // the references the forks were collected as (shaderForksInUse: the submeshes' colour
+    // references and their extra passes')
+    std::set<std::string> checked;
+    if (forks) {
+        for (const ShaderUse& use : *forks) checked.insert(use.base);
+    }
+    const fs::path root = project->getProjectPath();
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        for (Entity entity : sceneProject->entities) {
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh || scene->findComponent<TerrainComponent>(entity)) continue;
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                bool opaqueQueue = false;
+                const uint32_t inputs = RenderSystem::getSubmeshSceneInputs(*mesh, mesh->submeshes[s], sceneMeshShader, opaqueQueue);
+                if (!inputs || !opaqueQueue) continue;
+                if (forks && !checked.count(RenderSystem::getSubmeshShaderReference(*mesh, mesh->submeshes[s], sceneMeshShader)) &&
+                        !(RenderSystem::hasExtraPass(mesh->submeshes[s], false) &&
+                          checked.count(RenderSystem::getSubmeshExtraPassReference(mesh->submeshes[s])))) continue;
+                const std::string what = (inputs == ShaderRequire_SceneInputs) ? "depth and colour" : (inputs & ShaderRequire_SceneDepth) ? "depth" : "colour";
+                findings.push_back({"shader", path, 0, 0, "error",
+                    "GameObject '" + scene->getEntityName(entity) + "' submesh " + std::to_string(s) + ": its shader reads the scene " + what +
+                    " but it draws in the opaque queue (it would read its own depth and a black scene colour); " +
+                    Catalog::getSceneInputQueueAdvice(Catalog::getSceneInputQueueFix(scene, entity, s), s)});
+            }
+        }
+    }
+    return findings;
 }
 
 std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std::string& base, const std::string& source) {
+    // a library shader's files are all in the engine library
+    if (ShaderReference::isLibrary(base)) {
+        return ShaderVariantCompiler::getLibrarySources().count(source) ? "engine/shaderlib/" + source : source;
+    }
+    // the files as the compiler's reader found them (Project::findShaderFile), project-relative
     const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
-    if (source == paths.vert || source == paths.frag) return source;
+    if (source == paths.vert || source == paths.frag) return project->resolveShaderFile(source);
     if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
-    const fs::path root = project->getProjectPath();
-    std::error_code ec;
+    const fs::path projectRoot = project->getProjectPath();
+    const fs::path assetsRoot = project->getAssetsPath();
     // the include resolution of ShaderVariantCompiler::resolveCustomShaderSources
     const std::string includeRoot = ShaderVariantCompiler::getCustomShaderIncludeRoot(base);
-    if (!includeRoot.empty() && includeRoot != "." && fs::is_regular_file(root / includeRoot / source, ec)) {
-        return (fs::path(includeRoot) / source).lexically_normal().generic_string();
+    if (!includeRoot.empty() && includeRoot != ".") {
+        const std::string local = (fs::path(includeRoot) / source).lexically_normal().generic_string();
+        if (!Project::findShaderFile(projectRoot, assetsRoot, local).empty()) return project->resolveShaderFile(local);
     }
-    if (fs::is_regular_file(root / source, ec)) return fs::path(source).lexically_normal().generic_string();
+    if (!Project::findShaderFile(projectRoot, assetsRoot, source).empty()) return project->resolveShaderFile(source);
     if (ShaderVariantCompiler::getLibrarySources().count(source)) return "engine/shaderlib/" + source;
     return source;
 }
@@ -686,8 +783,20 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
     const uint64_t before = Out::lastLogId();
     try {
         ShaderBuilder builder;
-        builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
+        const ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
+        // the manifest: its syntax, and its @property/@texture rows against what compiled
+        if (use.shaderType != static_cast<int>(ShaderType::DEPTH)) {
+            for (const ShaderManifestDiagnostic& d : validateShaderManifest(use.base, {&data}, true)) {
+                // a fork's manifest names its files as referenced: report them where they are
+                const std::string file = shaderSourcePath(project, use.base, d.file);
+                check.findings.push_back({"shader", file, d.line, 0, d.error ? "error" : "warning", "manifest: " + d.message});
+                if (!d.error) continue;
+                check.ok = false;
+                check.errors.push_back({{"severity", "error"}, {"source", file}, {"line", d.line}, {"message", "manifest: " + d.message}});
+                check.log += file + ":" + std::to_string(d.line) + ": error: manifest: " + d.message + "\n";
+            }
+        }
         return check;
     } catch (const std::exception& e) {
         check.ok = false;
@@ -724,11 +833,47 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 if (line.rfind("ERROR: ", 0) == 0) line = line.substr(7);
                 first = oneLine(line);
             }
-            check.findings.push_back({"shader", Util::resolveCustomShaderPaths(use.base).frag, 0, 0, "error",
+            const std::string entry = ShaderReference::isLibrary(use.base)
+                ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(use.base) + ".frag"
+                : project->resolveCustomShaderFiles(use.base).frag;
+            check.findings.push_back({"shader", entry, 0, 0, "error",
                                       first.empty() ? std::string(e.what()) : first});
         }
     }
     return check;
+}
+
+std::vector<ShaderManifestDiagnostic> editor::ProjectChecks::validateShaderManifest(const std::string& reference,
+                                                                                   const std::vector<const ShaderData*>& variants,
+                                                                                   bool onlyEnabledFeatures) {
+    std::shared_ptr<const ShaderManifest> cached = ShaderManifests::get(reference);
+    if (!cached || !cached->present) return {};
+    ShaderManifest manifest = *cached;
+    // the file the rows checked against reflection are reported in (the manifest's .frag)
+    const std::string file = ShaderReference::isLibrary(reference)
+        ? "engine/shaderlib/library/" + ShaderReference::getLibraryName(reference) + ".frag"
+        : Util::resolveCustomShaderPaths(reference).frag;
+    if (onlyEnabledFeatures) {
+        // a row behind a feature the compiled variant does not enable is not in it. The
+        // reference is the resolved variant, its defines exactly what was compiled: resolving
+        // it again would turn back on a default-on feature the variant has off
+        const std::vector<std::string> enabled = ShaderReference::getFeatures(reference);
+        auto off = [&enabled](const std::string& feature) {
+            return !ShaderManifest::isRowShown(feature, enabled);
+        };
+        manifest.properties.erase(std::remove_if(manifest.properties.begin(), manifest.properties.end(),
+            [&](const ShaderManifestProperty& p) { return off(p.feature); }), manifest.properties.end());
+        manifest.textures.erase(std::remove_if(manifest.textures.begin(), manifest.textures.end(),
+            [&](const ShaderManifestTexture& t) { return off(t.feature); }), manifest.textures.end());
+    }
+    manifest.validateReflection(variants, file);
+    if (onlyEnabledFeatures) {
+        // a member read only by disabled features is fine in this variant
+        manifest.diagnostics.erase(std::remove_if(manifest.diagnostics.begin(), manifest.diagnostics.end(),
+            [](const ShaderManifestDiagnostic& d) { return !d.error && d.message.find("has no @property") != std::string::npos; }),
+            manifest.diagnostics.end());
+    }
+    return manifest.diagnostics;
 }
 
 Json editor::ProjectChecks::toJson(const ShaderCheck& check) {

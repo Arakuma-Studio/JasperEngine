@@ -1,0 +1,19 @@
+name: ShaderLibraryExport
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+scenes:
+  - filepath: Lit.scene
+  - filepath: Blend.scene
+  - filepath: 2D.scene
+  - filepath: UI.scene
+  - filepath: Stencil.scene
+  - filepath: Phase3A.scene
+  - filepath: Phase3B.scene

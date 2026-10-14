@@ -9,6 +9,7 @@
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
 # SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism.
+# DOCKER_CPUS caps the CPUs the build container may use (e.g. DOCKER_CPUS=4 on a shared host).
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -61,9 +62,12 @@ mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
+CPU_FLAGS=()
+[[ -n "${DOCKER_CPUS:-}" ]] && CPU_FLAGS=(--cpus "$DOCKER_CPUS")
 
 run() {
-    docker run --rm "${TTY_FLAGS[@]}" \
+    # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
+    docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         --user "$(id -u):$(id -g)" \
         -v "$ROOT:/src" -w /src \
         -v "$MAIN/.git:$MAIN/.git:ro" \

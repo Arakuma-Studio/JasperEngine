@@ -58,6 +58,27 @@ namespace jasperengine{
         void setShaderUniform(const std::string& name, float value);
         Vector4 getShaderUniform(const std::string& name) const;
         bool removeShaderUniform(const std::string& name);
+
+        // shader library: a @property value (set with setShaderUniform), else the manifest
+        // default; the @texture uniforms by path ("" removes one: its default binds); the
+        // enabled @feature and chosen @keywords defines
+        Vector4 getShaderParam(const std::string& name) const;
+        void setShaderTexture(const std::string& name, const std::string& path);
+        std::string getShaderTexture(const std::string& name) const;
+        void setShaderFeature(const std::string& define, bool enabled);
+        bool isShaderFeatureEnabled(const std::string& define) const;
+        // AUTO keeps the built-in state: alpha blending, depth writes on
+        void setBlendMode(MaterialBlendMode blendMode);
+        MaterialBlendMode getBlendMode() const;
+        void setDepthWrite(MaterialDepthWrite depthWrite);
+        MaterialDepthWrite getDepthWrite() const;
+        // stencil test/write and colour channels (MaterialColorWriteBits, -1 AUTO); AUTO takes
+        // the shader's @state, else stencil off and every channel. getStencil gives a copy:
+        // set it back after changing a field
+        void setStencil(const MaterialStencil& stencil);
+        MaterialStencil getStencil() const;
+        void setColorWrite(int colorWrite);
+        int getColorWrite() const;
     };
 }
 

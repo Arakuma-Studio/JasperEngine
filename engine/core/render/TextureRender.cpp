@@ -40,9 +40,9 @@ bool TextureRender::createTextureCubeWithMips(
 bool TextureRender::createFramebufferTexture(
                 TextureType type, bool depth, bool shadowMap, int width, int height,
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-                ColorFormat colorFormat){
+                ColorFormat colorFormat, bool stencil){
     if (Engine::isViewLoaded() && !isCreated())
-        return backend.createFramebufferTexture(type, depth, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, colorFormat);
+        return backend.createFramebufferTexture(type, depth, shadowMap, width, height, minFilter, magFilter, wrapU, wrapV, colorFormat, stencil);
     else
         return false;
 }
@@ -52,12 +52,26 @@ bool TextureRender::createDynamicTexture(const std::string& label, int width, in
         backend.createDynamicTexture(label, width, height);
 }
 
+bool TextureRender::createDynamicColorTexture(const std::string& label, int width, int height){
+    return Engine::isViewLoaded() && !isCreated() &&
+        backend.createDynamicColorTexture(label, width, height);
+}
+
 void TextureRender::updateTexture(const void* data, size_t size){
     backend.updateTexture(data, size);
 }
 
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
+    transparent = false;
+}
+
+void TextureRender::setTransparent(bool transparent){
+    this->transparent = transparent;
+}
+
+bool TextureRender::isTransparent() const{
+    return transparent;
 }
 
 uint32_t TextureRender::getGLHandler() const{
@@ -82,6 +96,14 @@ const void* TextureRender::getVulkanImageHandler() const{
 
 uint32_t TextureRender::getViewId() const{
     return backend.getViewId();
+}
+
+int TextureRender::getWidth() const{
+    return backend.getWidth();
+}
+
+int TextureRender::getHeight() const{
+    return backend.getHeight();
 }
 
 bool TextureRender::isViewValid(uint32_t viewId){

@@ -19,7 +19,7 @@ namespace jasperengine{
 
     class Camera;
 
-    // LightState and ShadowQuality live in SceneSettings.h (they are scene-setting types).
+    // LightState, ShadowQuality and SceneColorScale live in SceneSettings.h (they are scene-setting types).
 
     enum class UIEventState {
         NOT_SET,
@@ -114,6 +114,9 @@ namespace jasperengine{
         void setDepthPrepassEnabled(bool enabled);
         bool isDepthPrepassEnabled() const;
 
+        void setSceneColorScale(SceneColorScale scale);
+        SceneColorScale getSceneColorScale() const;
+
         void setSSAOEnabled(bool ssaoEnabled);
         bool isSSAOEnabled() const;
 
@@ -175,6 +178,11 @@ namespace jasperengine{
         Vector3 getGlobalIlluminationColor() const;
         Vector3 getGlobalIlluminationColorLinear() const;
 
+        // lights each object is lit by (1..16); the other lights reaching it are folded into
+        // its spherical-harmonics ambient
+        void setMaxLightsPerObject(int maxLightsPerObject);
+        int getMaxLightsPerObject() const;
+
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
         void setAmbientLight2D(Vector3 color);
@@ -227,6 +235,12 @@ namespace jasperengine{
         bool removePostProcessUniform(unsigned int index, const std::string& name);
         void setPostProcessPassEnabled(unsigned int index, bool enabled);
         bool isPostProcessPassEnabled(unsigned int index) const;
+
+        // the engine's post-processing of the main camera (PostProcessingSettings in
+        // SceneSettings.h); setting it clamps the values and lets RenderSystem rebake what
+        // changed (the colour LUT, the shaders' post-processing define, the uber pass)
+        const PostProcessingSettings& getPostProcessing() const;
+        void setPostProcessing(const PostProcessingSettings& postProcessing);
 
         bool canReceiveUIEvents();
 

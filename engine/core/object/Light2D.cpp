@@ -89,7 +89,7 @@ void Light2D::setShadows(bool shadows){
         lightcomp.shadows = shadows;
 
         // USE_SHADOWS_2D is a shader variant, so meshes must rebuild
-        scene->getSystem<RenderSystem>()->needReloadMeshes();
+        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 

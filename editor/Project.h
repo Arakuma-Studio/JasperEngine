@@ -16,6 +16,7 @@
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
+#include "util/Util.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -864,13 +865,19 @@ namespace jasperengine::editor{
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
         static bool visitLuaPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         bool visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform);
+        // Reads every .material file of the project, calls visit on it and writes back the
+        // ones visit changed (returns true for)
+        bool visitMaterialFiles(const std::function<bool(Material&)>& visit);
+        // A transform of fork references over a material's shader and its extra pass's
+        static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
         // Runs an asset transform over every scene, prefab and material file,
         // marking what changed.
         void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
-        // Points/Lines/Sky) across all scenes and prefabs, flagging shader reloads
-        // and marking affected scenes/prefabs modified. The transform mutates the value in
-        // place and returns whether it changed.
+        // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
+        // fork shader of every submesh material and extra pass there and in .material files,
+        // flagging shader or mesh reloads and marking affected scenes/prefabs modified. The
+        // transform mutates the value in place and returns whether it changed.
         void applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform);
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
         bool detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds);
@@ -959,6 +966,16 @@ namespace jasperengine::editor{
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
         void collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
+        // a project script sets the scene's maxLightsPerObject (the export then ships the lit
+        // variants of every light capacity tier, see ShaderVariantCollector)
+        bool scriptsSetLightCapacity() const;
+        // a project script sets the scene's post-processing (both states of its colour variant bit ship)
+        bool scriptsSetPostProcessing() const;
+        // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
+        // getScriptableEffectFields), for the uber variants an export ships
+        std::vector<std::string> scriptsPostProcessingFields() const;
+        // a project script contains text
+        bool scriptsMention(const char* text) const;
         // The shader keys a loaded scene needs, derived from content without drawing anything:
         // its GameObjects and every prefab of the build (one a script spawns into it), in every
         // lighting setup they can make (see ShaderVariantCollector)
@@ -1058,6 +1075,25 @@ namespace jasperengine::editor{
         bool isInsideAssetsPath(const std::filesystem::path& path) const;
         std::filesystem::path resolveLuaPath(const std::filesystem::path& luaRelative) const;
         std::filesystem::path normalizeToLuaRelative(const std::filesystem::path& path) const;
+
+        // Shader fork files. A fork path (customShader, a material's shader, an include) is
+        // project-relative; one the project root does not have is looked up in the assets
+        // directory, the assets-relative spelling ("shaders/x" for "assets/shaders/x"). The
+        // game resolves both alike: its asset root holds the assets directory and, at their
+        // project-relative paths, every shader source (Exporter::copyCustomShaderSources,
+        // which wins on a clash, as the project root wins here). The one place of the rule:
+        // the absolute file, or empty when neither root has it.
+        static std::filesystem::path findShaderFile(const std::filesystem::path& projectRoot, const std::filesystem::path& assetsRoot,
+                                                    const std::string& relative);
+        // the project-relative path of the file a fork path resolves to (as given when none has
+        // it), to show, open and match it
+        std::string resolveShaderFile(const std::string& relative) const;
+        // Util::resolveCustomShaderPaths with each entry point through resolveShaderFile
+        Util::CustomShaderPaths resolveCustomShaderFiles(const std::string& customShader) const;
+        // reads a fork file as the shader compilers and manifests see it
+        bool readShaderFile(const std::string& relative, std::string& content) const;
+        // the project-relative files a fork path can name: itself and, under the assets directory
+        std::vector<std::string> shaderFileCandidates(const std::string& relative) const;
 
         // Applies new roots: referenced files outside them are moved in keeping their
         // layout, then every stored reference is rewritten and saved.

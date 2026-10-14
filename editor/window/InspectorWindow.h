@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "render/Render.h"
+#include "shader/ShaderManifest.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
@@ -325,7 +326,9 @@ namespace jasperengine::editor{
 
         bool canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType);
 
-        Texture getMaterialPreview(const Material& material, const std::string id, bool receiveIBL = true);
+        // meshShader: what the material draws with when it names no shader (the mesh's or the scene's)
+        Texture getMaterialPreview(const Material& material, const std::string id, bool receiveIBL = true,
+                                   const std::string& meshShader = std::string());
         Texture getDirectionPreview(const Vector3& direction, const std::string id);
         bool drawSpriteFramePreview(Texture* texture, const Rect& rect, const ImVec2& size, const char* itemId);
 
@@ -373,6 +376,56 @@ namespace jasperengine::editor{
         // drag field; true with newValue when it changed
         bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue);
         void drawShaderUniformWarnings(const std::vector<std::string>& warnings);
+        // ---- shader library (InspectorShaderLibrary.cpp) ----
+        // The Shader picker: the built-in shader, the library shaders of `type` grouped by
+        // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
+        // popup named popupName, which the caller draws)
+        // builtInLabel names the empty entry instead ("None" for an extra pass)
+        void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
+                                    const std::function<void(const std::string&)>& setShader, const std::string& popupName,
+                                    const char* builtInLabel = nullptr);
+        // The manifest rows of `shader` for one GameObject, into the current table: feature
+        // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
+        // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
+        // behind a feature that is off; each resets to the manifest default. They edit the
+        // collection properties given. False when the shader has no manifest.
+        bool drawShaderManifestRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::string& shader,
+                                    const std::string& paramsProperty, const std::string& texturesProperty,
+                                    const std::string& featuresProperty, const std::function<void()>& onValueChanged);
+        // The value widget of one manifest parameter (@property) at `value`, full width: colour
+        // pickers editing sRGB (stored linear), sliders for ranges, checkboxes for toggles, drag
+        // fields. True with `edited` when it changed; `continuous` false for a one-click change
+        // (its own undo step) and true while dragging (merged until released)
+        bool drawShaderPropertyValue(const ShaderManifestProperty& property, const std::string& id, const Vector4& value,
+                                     Vector4& edited, bool& continuous);
+        // A submesh material's Shader row and manifest rows; true when the built-in PBR rows
+        // apply (built-in Lit or a fork)
+        bool drawMaterialShaderRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                    unsigned int submesh, const RowSettings& settingsMaterial);
+        // A submesh material's Surface (blend, cull, depth write and test, depth offset, sort
+        // priority) and Lighting rows; Auto shows what it resolves to
+        void drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                     unsigned int submesh, const RowSettings& settingsMaterial);
+        // UI/Points/LineRenderer blend mode, depth write, stencil and colour write rows, into the current table
+        void drawComponentStateRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        // The Stencil rows (the test, with Auto naming the rule it resolves to; ref, masks and
+        // ops while it is explicit) and the Color Write row (Auto, or RGBA checkboxes) of a
+        // material (prefix "submeshes[N].material."), its extra pass ("...extraPass.") or a
+        // component (""), into the current table. resolveAuto: an entity's state with both on
+        // Auto. An edit changes only what it names on each selected GameObject.
+        void drawStencilColorWriteRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       const std::string& prefix, const std::function<RenderState(Entity)>& resolveAuto,
+                                       const RowSettings& settings);
+        // A submesh material's Extra pass section: its shader picker ("None" = no pass), its
+        // manifest rows, order, render state, stencil and colour write
+        void drawMaterialExtraPassRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       unsigned int submesh, const RowSettings& settingsMaterial);
+        // The Preset row of a submesh material: a menu of getMaterialPresets(), one applied to
+        // every selected submesh as one undo step
+        void drawMaterialPresetRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                   unsigned int submesh, const RowSettings& settingsMaterial);
+
         // Scene-level variant: edits a scene default shader property (e.g. "default_mesh_shader"),
         // used by every component of that type whose customShader is empty.
         void drawSceneShaderRow(SceneProject* sceneProject, ShaderType shaderType, const char* scenePropertyName, const char* label);
@@ -386,11 +439,24 @@ namespace jasperengine::editor{
             std::shared_ptr<ShaderRender> shader;
             CustomUniformBlock block; // u_fs_postParams, slot -1 when not declared
             bool buildFailed = false;
+            // the shader's manifest (library shaders, forks keeping theirs): the members it
+            // declares as @property rows show its labels, ranges and defaults
+            std::shared_ptr<const ShaderManifest> manifest;
         };
         PostProcessShader resolvePostProcessShader(const PostProcessPass& pass);
-        float getPostProcessLabelSize(const PostProcessShader& resolved);
+        float getPostProcessLabelSize(const PostProcessShader& resolved, const PostProcessPass& pass);
         void drawPostProcessUniforms(uint32_t sceneId, const std::vector<PostProcessPass>& passes, size_t index,
                                      const PostProcessShader& resolved);
+        // the user pass's own fields beyond shader, enabled and uniforms (InspectorPostProcessing.cpp)
+        void drawPostProcessPassFields(SceneProject* sceneProject, const std::vector<PostProcessPass>& passes, size_t index);
+
+        // The engine's post-processing (PostProcessingSettings, InspectorPostProcessing.cpp): effects
+        // by group with enable checkboxes and cost tiers, presets, the estimated cost readout
+        void drawScenePostProcessing(SceneProject* sceneProject);
+        void drawPostProcessingFieldRow(SceneProject* sceneProject, const PostProcessingSettings& settings,
+                                        const PostProcessingSettings::Field& field, const char* label,
+                                        const std::string& help, bool indent);
+        void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
 
         // Commits a planned fork as one undoable step and opens the new .vert/.frag in the
         // code editor. Alerts instead when the plan is invalid or the files cannot be written.

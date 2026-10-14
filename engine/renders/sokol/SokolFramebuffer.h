@@ -27,6 +27,20 @@ namespace jasperengine{
 
         int numColorAttachments;
 
+        // a multisampled target (createMultisampleFramebuffer): its colour and depth-stencil
+        // images, which are never sampled, and the resolve views of the targets it resolved
+        // into (by image, a few kept)
+        sg_image msaaColorImage;
+        sg_image msaaDepthImage;
+        int msaaSamples;
+        struct ResolveView{
+            uint32_t image = SG_INVALID_ID;
+            sg_view view = {SG_INVALID_ID};
+        };
+        static const int RESOLVE_VIEWS = 4;
+        ResolveView resolveViews[RESOLVE_VIEWS];
+        int nextResolveView;
+
         void initializeAttachments(size_t faces);
 
     public:
@@ -34,11 +48,26 @@ namespace jasperengine{
         SokolFramebuffer(const SokolFramebuffer& rhs);
         SokolFramebuffer& operator=(const SokolFramebuffer& rhs);
 
-        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
+        // depth: a depth-stencil attachment (colour passes that draw meshes), depth only, or
+        // none (a target only fullscreen effects draw into)
+        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth,
+                               ColorFormat colorFormat = ColorFormat::RGBA);
+        // A multisampled colour (RGBA8) and depth-stencil target that is drawn into and
+        // resolved, at the end of each pass, into the colour of a single-sampled target of the
+        // same size (getResolved); its images are never sampled. False when the backend cannot
+        // make it (samples: 2 or 4, see getMaxMsaaSamples)
+        bool createMultisampleFramebuffer(int width, int height, int samples);
+        int getMsaaSamples() const;
+        // the attachments of a pass drawing into this multisampled target and resolving into
+        // target's colour (a single-sampled 2D framebuffer of the same size)
+        sg_attachments getResolved(SokolFramebuffer& target);
+        // the highest sample count up to requested a multisampled RGBA8 + depth-stencil target
+        // can have on this device (1: none)
+        static int getMaxMsaaSamples(int requested);
         bool createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
         // Multi render target variant (2D only). formats[i] selects the pixel format
         // for color attachment i; pass numColor==1 for the regular single-target case.
-        bool createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats);
+        bool createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats, bool stencil);
         void destroyFramebuffer();
         bool isCreated();
 

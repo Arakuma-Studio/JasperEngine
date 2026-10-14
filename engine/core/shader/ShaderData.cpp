@@ -117,6 +117,8 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_terrainnode_range";
     }else if (type == AttributeType::TERRAINNODERESOLUTION){
         attrstr = "i_terrainnode_resolution";
+    }else if (type == AttributeType::SMOOTHNORMAL){
+        attrstr = "a_smoothNormal";
     }
 
     if (attrstr.empty()){

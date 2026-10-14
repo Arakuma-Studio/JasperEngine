@@ -28,8 +28,7 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-SkyboxComponent, ParticleSystemComponent, LineRendererComponent, RectTransformComponent,
-LayoutGroupComponent, Light2DComponent, ShadowCaster2DComponent, PositionTweenComponent...).
+ParticleSystemComponent, Light2DComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -50,17 +49,16 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
 
 ## The loop
-1. Inspect: `editor_status` (also the project's absolute path), the scene list, the
-   hierarchy, then the GameObjects you will touch.
+1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
+   touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
-5. Look: screenshot the Game view (and the Scene view for layout). Drive the game with
+5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
-6. Read the Console since your last cursor: compile errors, "Script crash in scene ..."
-   entries, Lua errors, missing assets.
+6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
@@ -71,12 +69,10 @@ A tool error says what was wrong and lists valid choices: fix the arguments, don
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
 in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). lua-language-server reads the generated .luarc.json, clangd the
-generated .clangd (-> .jasperengine/clangd/compile_commands.json). Your edits are picked up
-before your next tool call (script properties re-parsed, open buffers reloaded, shader forks
-recompiled, textures reloaded); that call's result then carries `external_changes` {changed,
-problems: [{path, line, message}]}: fix those problems first. During play they wait until
-play stops.
+folder (Lua API stubs). Your edits are picked up before your next tool call (script
+properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
+call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
+fix those problems first. During play they wait until play stops.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /
@@ -95,8 +91,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name; the
-templates do): lua-language-server then types self, properties included, and catches typos.
+GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
+then types self and its properties and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -178,7 +174,7 @@ R"JE(
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch), and returns its errors (Lua errors too) and the log tail.
+  launch); returns its errors (Lua ones too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -200,11 +196,10 @@ R"JE(
   actors, static for floors and level geometry, kinematic for scripted movers.
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
   or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
-  measured mesh bounds. Growing a collider's height grows it both ways about its center.
-- Mass comes from collider volume/area x density, never set directly. 3D: density 1000
-  (water), so a radius-1 sphere is ~4189 kg. 2D: density 1 per square meter of the
-  points-scaled shape, so a 100x100 point box is ~2.4 kg. Size forces as mass x acceleration;
-  if movement needs huge forces, lower the density instead.
+  measured mesh bounds.
+- Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
+  meter), never set directly. Size forces as mass x acceleration; if movement needs huge
+  forces, lower the density instead.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
@@ -227,16 +222,21 @@ R"JE(
   referenced, must be marked standalone or the build will not contain it.
 
 ## Shaders and materials
-Custom shaders are per component (Mesh, UI, Points, Lines, Sky) via customShader. Use
-fork_shader (copies the built-in .vert/.frag into the project and sets customShader in one
-undoable step); never point customShader at files that do not exist. Edit a fork minimally
-after reading it: keep #version, every #include, the engine uniform blocks, ALL texture and
-sampler declarations, the in/out varyings and the code that reads them, and the output
-variable; change the shading math near the end of main(). Your parameters go in your own
-block (uniform u_fs_customParams { float amount; vec4 tint; } customParams; one scalar kind,
-no arrays or matrices), set with set_shader_uniform; the engine fills `time` and `resolution`.
-A Mesh fork that displaces or discards also needs a forked depth shader. On a compile error
-the GameObject falls back to the built-in shader and the Console has the error.
+Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,
+textures, features). A mesh shader goes on a submesh material
+(set_properties submeshes[0].material.shader, or a .material file: create_material /
+update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
+.shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
+shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
+tune its extraPass and stencil. Shaders with scene_inputs (cost_note) add a depth
+pass or colour copy per camera and must draw transparent; avoid on low-end mobile. Fork only
+when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
+before editing: keep its declarations, includes, varyings and output, change the math near the
+end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
+forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
+Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
+post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
+(jasper://docs/post-processing).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

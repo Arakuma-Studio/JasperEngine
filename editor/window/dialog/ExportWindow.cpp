@@ -1238,7 +1238,7 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::DEPTH, ShaderType::GBUFFER, ShaderType::UI,
             ShaderType::SSAO, ShaderType::SSAO_BLUR,
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
-            ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS
+            ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;
@@ -1293,7 +1293,7 @@ void ExportWindow::drawAddShaderDialog() {
         // Preview
         uint32_t props = 0;
         for (int i = 0; i < propCount; i++) {
-            if (m_addShaderProps[i]) props |= (1 << i);
+            if (m_addShaderProps[i]) props |= (1u << i);
         }
         std::string preview = Exporter::getShaderDisplayName(selectedType, props);
         ImGui::Text("Preview: %s", preview.c_str());

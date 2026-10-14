@@ -1,3 +1,19 @@
+// 3D shadow maps: projective atlas (directional cascades and spots) and point atlas. The
+// blocks, textures and v_lightProjPos are declared by includes/lights.glsl (fragment stage,
+// USE_SHADOWS), or by a fork declaring the legacy u_fs_lighting block before including this.
+#ifndef SHADOWS_GLSL
+#define SHADOWS_GLSL
+
+// PCF tap radius from the scene's shadow quality, uniform-driven so quality changes need no
+// shader rebuild: Lit's camera block's, the frame block's, or the legacy block's cameraDir.w
+#if defined(LIT_FRAME_DECLARED)
+    #define SHADOW_PCF_RADIUS litFrame.cameraForward_pcf.w
+#elif defined(LIGHTS_FS_DECLARED)
+    #define SHADOW_PCF_RADIUS frame.lightingInfo.x
+#else
+    #define SHADOW_PCF_RADIUS lighting.cameraDir.w
+#endif
+
 // The PCF bounds come from a uniform, so every backend clamps them to the range
 // the engine can set: a loop the GPU cannot bound is a device hang, not a glitch.
 #ifdef IS_HLSL
@@ -130,9 +146,8 @@ float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
     vec2 slotMin = 0.5 * texel_size;
     vec2 slotMax = 1.0 - 0.5 * texel_size;
 
-    // PCF kernel radius from the scene's shadow quality (cameraDir.w), uniform-driven
-    // so quality changes need no shader rebuild: 0 = 1 tap, 1 = 3x3, 2 = 5x5, 3 = 7x7
-    int pcfRadius = clamp(int(lighting.cameraDir.w), 0, MAX_PCF_RADIUS);
+    // PCF kernel radius from the scene's shadow quality: 0 = 1 tap, 1 = 3x3, 2 = 5x5, 3 = 7x7
+    int pcfRadius = clamp(int(SHADOW_PCF_RADIUS), 0, MAX_PCF_RADIUS);
 
     if (pcfRadius > 0){
 
@@ -224,9 +239,9 @@ float shadowCubeCalculationPCF(int shadowMapIndex, vec3 fragToLight, float NdotL
 
     float bias = max(shadowConf.maxBias * (1.0 - NdotL), shadowConf.minBias);
 
-    // PCF ring count from the scene's shadow quality (cameraDir.w), uniform-driven:
+    // PCF ring count from the scene's shadow quality:
     // 0 = 1 tap, 1 = 9 taps (center + 1 ring), 2 = 17 taps, 3 = 25 taps
-    int pcfRings = clamp(int(lighting.cameraDir.w), 0, MAX_PCF_RINGS);
+    int pcfRings = clamp(int(SHADOW_PCF_RADIUS), 0, MAX_PCF_RINGS);
 
     if (pcfRings > 0){
 
@@ -259,3 +274,5 @@ float shadowCubeCalculationPCF(int shadowMapIndex, vec3 fragToLight, float NdotL
 
     return shadow;
 }
+
+#endif // SHADOWS_GLSL

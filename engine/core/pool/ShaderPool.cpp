@@ -8,6 +8,7 @@
 #include "io/FileData.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "shader/ShaderDataSerializer.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
 #include <cstdint>
 #include <cstdlib>
@@ -111,6 +112,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::POSTPROCESS;
         return true;
     }
+    if (typeToken == "bloom") {
+        shaderType = ShaderType::BLOOM;
+        return true;
+    }
 
     return false;
 }
@@ -178,12 +183,19 @@ std::string ShaderPool::getCustomShaderName(uint16_t customId){
 }
 
 std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
-    std::string base = getCustomShaderName(customId);
+    const std::string name = getCustomShaderName(customId);
+    std::string base = name;
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
     for (char& c : base){
         if (!(std::isalnum((unsigned char)c) || c == '_'))
             c = '_';
+    }
+    // A library reference or a feature suffix ("library:toon#RAMP,RIM") is not a path:
+    // the hash of the whole string keeps it apart from a fork whose path sanitizes alike
+    // and from the same shader with other features
+    if (name.find(':') != std::string::npos || name.find('#') != std::string::npos){
+        base += "_" + ShaderVariantCompiler::toHex(ShaderVariantCompiler::hash(name)).substr(0, 8);
     }
     return base;
 }
@@ -403,26 +415,38 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::SHADOW2D: return lowerCase ? "shadow2d" : "Shadow 2D";
         case ShaderType::BLIT:   return lowerCase ? "blit"   : "Blit";
         case ShaderType::POSTPROCESS: return lowerCase ? "postprocess" : "Post-process";
+        case ShaderType::BLOOM:  return lowerCase ? "bloom"  : "Bloom";
         default:                 return lowerCase ? "unknown": "Unknown";
+    }
+}
+
+uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:   return 1u << 31;
+        case ShaderType::POINTS: return 1u << 4;
+        case ShaderType::LINES:  return 1u << 2;
+        case ShaderType::SKYBOX: return 1u << 0;
+        default:                 return 0;
     }
 }
 
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 28;
-        case ShaderType::DEPTH:  return 9;
+        case ShaderType::MESH:   return 32;
+        case ShaderType::DEPTH:  return 14;
         case ShaderType::GBUFFER: return 10;
         case ShaderType::UI:     return 4;
-        case ShaderType::POINTS: return 4;
-        case ShaderType::LINES:  return 2;
-        case ShaderType::SKYBOX: return 0;
+        case ShaderType::POINTS: return 5;
+        case ShaderType::LINES:  return 3;
+        case ShaderType::SKYBOX: return 1;
         case ShaderType::SSAO:   return 0;
         case ShaderType::SSAO_BLUR: return 0;
         case ShaderType::SSR:    return 0;
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 0;
+        case ShaderType::BLIT:   return 13;
+        case ShaderType::BLOOM:  return 4;
         default:                 return 0;
     }
 }
@@ -458,6 +482,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 25: return shortName ? "Aop" : "Alpha Opaque";
             case 26: return shortName ? "Ifd" : "Instance Fade";
             case 27: return shortName ? "Tpb" : "Terrain PBR";
+            case 28: return shortName ? "Vtl" : "Vertex Lights";
+            // 29-30: light capacity tier, neither = 8 lights
+            case 29: return shortName ? "Lc4" : "Light Capacity 4";
+            case 30: return shortName ? "L16" : "Light Capacity 16";
+            // the post-processing colour (phase 4, USE_POST_COLOR): one global bit
+            case 31: return shortName ? "Pcl" : "Post Color";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -470,6 +500,13 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 6: return shortName ? "Ist" : "Instancing";
             case 7: return shortName ? "Ams" : "Alpha Mask";
             case 8: return shortName ? "Ifd" : "Instance Fade";
+            // inputs a library depth program asks for (@require), never set for the built-in one
+            case 9: return shortName ? "Nor" : "Normals";
+            case 10: return shortName ? "Vc3" : "Vertex Color 3";
+            case 11: return shortName ? "Vc4" : "Vertex Color 4";
+            case 12: return shortName ? "Uv1" : "UV1";
+            // the sprite texture rect the alpha-clip UV goes through
+            case 13: return shortName ? "Txr" : "Texture Rect";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -497,11 +534,42 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Vc3" : "Vertex Color 3";
             case 2: return shortName ? "Vc4" : "Vertex Color 4";
             case 3: return shortName ? "Txr" : "Texture Rect";
+            case 4: return shortName ? "Pcl" : "Post Color";
         }
     } else if (shaderType == ShaderType::LINES) {
         switch (bit) {
             case 0: return shortName ? "Vc3" : "Vertex Color 3";
             case 1: return shortName ? "Vc4" : "Vertex Color 4";
+            case 2: return shortName ? "Pcl" : "Post Color";
+        }
+    } else if (shaderType == ShaderType::SKYBOX) {
+        switch (bit) {
+            case 0: return shortName ? "Pcl" : "Post Color";
+        }
+    } else if (shaderType == ShaderType::BLIT) {
+        // the uber pass's features (RenderSystem::UberFeature); 0 is the plain blit
+        switch (bit) {
+            case 0: return shortName ? "Fxa" : "FXAA";
+            case 1: return shortName ? "Cab" : "Chromatic Aberration";
+            case 2: return shortName ? "Pix" : "Pixelate";
+            case 3: return shortName ? "Crt" : "CRT";
+            case 4: return shortName ? "Edg" : "Edge Detect";
+            case 5: return shortName ? "Grn" : "Film Grain";
+            case 6: return shortName ? "Shp" : "Sharpen";
+            case 7: return shortName ? "Lut" : "Color Grade LUT";
+            case 8: return shortName ? "Vig" : "Vignette";
+            case 9: return shortName ? "Dth" : "Dither";
+            case 10: return shortName ? "Blm" : "Bloom";
+            case 11: return shortName ? "Blr" : "Blur";
+            case 12: return shortName ? "Scl" : "Upscale";
+        }
+    } else if (shaderType == ShaderType::BLOOM) {
+        // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample
+        switch (bit) {
+            case 0: return shortName ? "Pre" : "Prefilter";
+            case 1: return shortName ? "Thr" : "Threshold";
+            case 2: return shortName ? "Ups" : "Upsample";
+            case 3: return shortName ? "Mix" : "Mix Level";
         }
     }
     return shortName ? "?" : "Unknown";
@@ -522,7 +590,7 @@ std::string ShaderPool::getShaderStr(ShaderType shaderType, uint32_t properties,
 
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
-        if (properties & (1 << i))
+        if (properties & (1u << i))
             propOut += getShaderPropertyName(shaderType, i, true);
     }
 
@@ -871,14 +939,19 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
 }
 
 void ShaderPool::destroyCustomShaders(){
+    // library shaders are embedded in the engine: their sources never change
+    auto isFork = [](ShaderKey key){
+        const uint16_t customId = getCustomIdFromKey(key);
+        return customId != 0 && getCustomShaderName(customId).compare(0, 8, "library:") != 0;
+    };
     for (auto& entry : getMap()){
-        if (getCustomIdFromKey(entry.first) != 0 && entry.second && entry.second->isCreated()){
+        if (isFork(entry.first) && entry.second && entry.second->isCreated()){
             entry.second->destroyShader();
         }
     }
     // Forget custom-shader build failures so an edited source is retried on the next get().
     for (auto it = failedShaders().begin(); it != failedShaders().end();){
-        if (getCustomIdFromKey(*it) != 0){
+        if (isFork(*it)){
             it = failedShaders().erase(it);
         } else {
             ++it;
@@ -928,7 +1001,8 @@ uint32_t ShaderPool::getMeshProperties(
     bool tangents, bool vertexColorVec3, bool vertexColorVec4, bool textureRect,
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
-    bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR){
+    bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
+    bool vertexLights, int lightCapacity){
     uint32_t prop = 0;
 
     prop |= unlit            ? (1 <<  0) : 0;
@@ -960,11 +1034,16 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= alphaOpaque      ? (1 << 25) : 0;
     prop |= instanceFade     ? (1 << 26) : 0;
     prop |= terrainPBR       ? (1 << 27) : 0;
+    prop |= vertexLights     ? (1 << 28) : 0;
+    // the default capacity (8) sets neither bit, so it keeps the keys it had before tiers
+    prop |= (lightCapacity == 4)  ? (1 << 29) : 0;
+    prop |= (lightCapacity == 16) ? (1 << 30) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade){
+uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect){
     uint32_t prop = 0;
 
     prop |= texture          ? (1 <<  0) : 0;
@@ -976,6 +1055,11 @@ uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= instanced        ? (1 <<  6) : 0;
     prop |= alphaMask        ? (1 <<  7) : 0;
     prop |= instanceFade     ? (1 <<  8) : 0;
+    prop |= normals          ? (1 <<  9) : 0;
+    prop |= vertexColorVec3  ? (1 << 10) : 0;
+    prop |= vertexColorVec4  ? (1 << 11) : 0;
+    prop |= uv1              ? (1 << 12) : 0;
+    prop |= textureRect      ? (1 << 13) : 0;
 
     return prop;
 }

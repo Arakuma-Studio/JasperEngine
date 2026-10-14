@@ -353,6 +353,31 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createDynamicColorTexture(const std::string& label, int width, int height){
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.dynamic_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_LINEAR;
+    samplerDesc.mag_filter = SG_FILTER_LINEAR;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::updateTexture(const void* data, size_t size){
     if (image.id == SG_INVALID_ID || !data || size == 0)
         return;
@@ -442,7 +467,7 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat){
+            ColorFormat colorFormat, bool stencil){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
@@ -472,10 +497,19 @@ bool SokolTexture::createFramebufferTexture(
     img_desc.sample_count = 1;
 
     if (depth){
-        img_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
-        img_desc.label = "framebuffer-depth-image";
+        // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth
+        // to sample), Metal Depth32Float_Stencil8, Vulkan D32_SFLOAT_S8_UINT; sokol samples
+        // its depth aspect. DEPTH: a 32-bit float depth (shadow maps)
+        img_desc.pixel_format = stencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
+        img_desc.label = stencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
-        img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+        if (colorFormat == ColorFormat::RED){
+            img_desc.pixel_format = SG_PIXELFORMAT_R8;
+        }else if (colorFormat == ColorFormat::SRGB8A8){
+            img_desc.pixel_format = SG_PIXELFORMAT_SRGB8A8;
+        }else{
+            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+        }
         img_desc.label = "framebuffer-color-image";
     }
 
@@ -567,6 +601,18 @@ const void* SokolTexture::getVulkanImageHandler() const{
     }
 
     return nullptr;
+}
+
+int SokolTexture::getWidth() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_width(image);
+}
+
+int SokolTexture::getHeight() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_height(image);
 }
 
 uint32_t SokolTexture::getViewId() const{

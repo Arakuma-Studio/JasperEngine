@@ -15,6 +15,8 @@ typedef int (*lua_CFunction) (lua_State *L);
 namespace jasperengine {
 
     class Scene;
+    class Vector3;
+    class Vector4;
     struct ScriptEntry;
 
     class JASPERENGINE_API LuaBinding {
@@ -48,6 +50,16 @@ namespace jasperengine {
         static void registerThreadClasses(lua_State *L);
 
         static void init();
+
+        // Shader library values from Lua (binding directory). A Material is a copy
+        // (Mesh:getMaterial): the shader its submesh draws with when the material names none
+        // (the mesh's customShader, else the scene default) is kept beside the copy's userdata
+        // at `index`, in a weak-keyed registry table, so its manifest defaults, default-on
+        // features and keyword groups resolve as the owner's.
+        static void setMaterialDrawnShader(lua_State* L, int index, const std::string& shader);
+        static std::string getMaterialDrawnShader(lua_State* L, int index);
+        // a Vector3 given for a @property of `shader`: a colour kind keeps an opaque alpha
+        static Vector4 getShaderParamValue(const std::string& shader, const std::string& name, const Vector3& value);
 
         // For editor scripts use
         static std::string normalizePtrTypeName(std::string value);

@@ -1,0 +1,39 @@
+# Shaders, lighting and post-processing
+
+Where to read about the engine's shader library, its lighting and its post-processing.
+
+## Using them
+
+| Document | What it covers |
+|---|---|
+| [library.md](library.md) | Reference of every library shader (`library:<name>`): parameters, textures, keywords, lighting modes and blends each supports. Generated from the manifests: `jasperengine-editor shaders --library all --doc docs/shaders/library.md` |
+| [library.md#lighting-modes](library.md#lighting-modes) | Lighting modes: per pixel, per vertex, mixed (each light's **Shading**) and none; **Max Lights Per Object** (1-16, compile tiers 4/8/16, the rest folded into the ambient) |
+| [library.md#blend-modes](library.md#blend-modes) | Blend modes and how a shader's output follows the blend drawn |
+| [../mcp/guide/shaders.md](../mcp/guide/shaders.md) | Working with shaders: library shaders on materials and components, presets, stencil and the extra pass (outlines), forking built-in shaders, editing rules, the custom parameter block, manifests, scene depth and colour |
+| [../mcp/guide/post-processing.md](../mcp/guide/post-processing.md) | Post-processing of the main camera: cost tiers (in-shader colour, uber pass, bloom/blur chain, custom passes), presets, the cost readout, mobile advice, every field, Lua, measuring with frame stats, limits |
+| [../mcp/guide/lua-api.md](../mcp/guide/lua-api.md) | Lua: `material.shader`, `setShaderParam` / `setShaderTexture` / `setShaderFeature`, `light.shading`, `scene.maxLightsPerObject`, `scene.postProcessing` (custom passes: the post-processing guide) |
+
+The same guides are served to coding agents by the editor's MCP server as
+`jasper://docs/shaders` and `jasper://docs/post-processing` (`list_shaders`, `check_shader`,
+`list_post_processing_presets` and `apply_post_processing_preset` are the matching tools).
+
+## Design
+
+The shader library was built in four phases; each spec ends with implementation notes that
+record the decisions, deviations, measurements and design limits of the shipped code.
+
+| Phase | Spec | Contents |
+|---|---|---|
+| 1 | [shader library and unified lighting](../superpowers/specs/2026-10-10-shader-library-phase1-design.md) | Manifests (`@shader`, `@property`, `@texture`, keywords, `@state`, `@require`), the shared includes, the first library shaders, unified lighting (unlimited lights, per-object list and cap, pixel/vertex/mixed modes) |
+| 2 | [extra passes and stencil](../superpowers/specs/2026-10-10-shader-library-phase2-design.md) | Stencil state, the material extra pass (outlines, silhouettes, masks), more library shaders |
+| 3 | [scene inputs](../superpowers/specs/2026-10-10-shader-library-phase3-design.md) | Scene depth and colour for mesh shaders (soft particles, depth-fade water, glass, heat haze, projected decals), the scene-colour copy's resolution, runtime variant switches without stalls |
+| 4 | [fast post-processing](../superpowers/specs/2026-10-10-shader-library-phase4-design.md) | The post-processing stack: in-shader colour (LUT), the uber pass, bloom and blur, custom passes with library post shaders, render scale, MSAA, the per-frame pass list |
+
+## Checking
+
+- `jasperengine-editor shaders --library all --backend all` compiles every library shader's
+  variant matrix on the six backends and validates the manifests.
+- Fixtures under `tools/fixtures/` (`shader-library`, `scene-inputs`, `stencil`,
+  `extra-pass`, `unified-lighting`, `post-processing`, `shader-library-export`...) run with
+  `tools/smoke-test.sh <fixture>`; `JASPERENGINE_READY_SIGNAL=1 JASPERENGINE_FRAME_STATS=1`
+  logs each frame's passes, draws and pass list.

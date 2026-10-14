@@ -13,6 +13,7 @@
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "shader/ShaderManifest.h"
 #include "util/SHA1.h"
 
 #include <cstring>
@@ -47,31 +48,42 @@ bool readTextFile(const std::filesystem::path& path, std::string& content) {
     return true;
 }
 
-std::string customSourceCacheKey(editor::Project* project, const std::string& customShader) {
-    return project->getProjectPath().lexically_normal().generic_string() + '\n' + customShader;
+// a library shader resolves the same in any project; its DEPTH variant is another program
+std::string customSourceCacheKey(editor::Project* project, const std::string& customShader, ShaderType shaderType) {
+    // (with the assets directory, which a fork path may be relative to: Project::findShaderFile)
+    const std::string root = (project && !ShaderReference::isLibrary(customShader))
+        ? project->getProjectPath().lexically_normal().generic_string() + '\n' + project->getAssetsPath().lexically_normal().generic_string()
+        : std::string();
+    return root + '\n' + customShader + '\n' + std::to_string(static_cast<int>(shaderType));
 }
 
 std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project* project,
-                                                                 const std::string& customShader) {
-    if (!project || customShader.empty()) {
+                                                                 const std::string& customShader,
+                                                                 ShaderType shaderType) {
+    const bool library = ShaderReference::isLibrary(customShader);
+    if ((!project && !library) || customShader.empty()) {
         auto invalid = std::make_shared<CustomSourceSnapshot>();
         invalid->sources.error = "Custom shader project or path is unavailable.";
         return invalid;
     }
 
-    std::string cacheKey = customSourceCacheKey(project, customShader);
+    std::string cacheKey = customSourceCacheKey(project, customShader, shaderType);
     std::lock_guard<std::mutex> lock(customSourceCacheMutex);
     if (auto it = customSourceCache.find(cacheKey); it != customSourceCache.end())
         return it->second;
 
-    const std::filesystem::path projectRoot = project->getProjectPath();
+    const std::filesystem::path projectRoot = project ? project->getProjectPath() : std::filesystem::path();
+    const std::filesystem::path assetsRoot = project ? project->getAssetsPath() : std::filesystem::path();
     auto snapshot = std::make_shared<CustomSourceSnapshot>();
-    snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader,
-        [&projectRoot](const std::string& relativePath, std::string& content) {
-            std::error_code ec;
-            const std::filesystem::path path = projectRoot / relativePath;
-            return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
-        });
+    ShaderVariantCompiler::FileReader reader;
+    if (project) {
+        // entry points and includes: project-relative, else assets-relative, as the game reads them
+        reader = [projectRoot, assetsRoot](const std::string& relativePath, std::string& content) {
+            const std::filesystem::path path = editor::Project::findShaderFile(projectRoot, assetsRoot, relativePath);
+            return !path.empty() && readTextFile(path, content);
+        };
+    }
+    snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader, reader, shaderType);
 
     // Failures are not cached: the file may be created or restored at any moment.
     if (!snapshot->sources.valid)
@@ -246,14 +258,14 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     const uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
     if (customId != 0) {
         std::string setupError;
-        if (!project) {
+        const std::string customShader = ShaderPool::getCustomShaderName(customId);
+        if (!project && !ShaderReference::isLibrary(customShader)) {
             setupError = "Custom shader requested without a project";
         } else {
-            const std::string customShader = ShaderPool::getCustomShaderName(customId);
             if (customShader.empty()) {
                 setupError = "Unknown custom shader id";
             } else {
-                custom = resolveCustomSources(project, customShader);
+                custom = resolveCustomSources(project, customShader, ShaderPool::getShaderTypeFromKey(shaderKey));
                 if (!custom->sources.valid) {
                     setupError = custom->sources.error.empty() ? "Could not resolve custom shader sources" : custom->sources.error;
                 }
@@ -309,6 +321,12 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
         "Shader %s (%s) generated successfully",
         getShaderDisplayName(shaderKey).c_str(),
         ShaderPool::getShaderLangStr(backend).c_str());
+    // a variant over the per-stage budget may not bind on some devices (GLES3: 16 texture units)
+    const std::string over = ShaderVariantCompiler::checkResourceBudget(shaderData);
+    if (!over.empty()){
+        Out::warning("Shader %s (%s) is over the resource budget: %s", getShaderDisplayName(shaderKey).c_str(),
+                     ShaderPool::getShaderLangStr(backend).c_str(), over.c_str());
+    }
 
     return shaderData;
 }
@@ -354,7 +372,7 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
         return true;
 
     const std::string customShader = ShaderPool::getCustomShaderName(customId);
-    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader);
+    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader, ShaderPool::getShaderTypeFromKey(shaderKey));
     if (!sources->sources.valid) {
         if (err)
             *err = sources->sources.error;
@@ -385,7 +403,7 @@ bool editor::ShaderBuilder::isCustomCacheStale(ShaderKey shaderKey, Project* pro
     if (customShader.empty())
         return true;
 
-    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader);
+    const std::shared_ptr<const CustomSourceSnapshot> sources = resolveCustomSources(project, customShader, ShaderPool::getShaderTypeFromKey(shaderKey));
     if (!sources->sources.valid)
         return true;
 
