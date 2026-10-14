@@ -393,6 +393,12 @@ def reloaded_htmls(ext: dict | None) -> list[str]:
     return [item["html"] for item in (ext or {}).get("ui_reloaded", [])]
 
 
+def reloaded_for_call(ext: dict | None, html: str) -> bool:
+    """The edit reloaded the document before the call: the pick-up did (ui_reloaded), or the editor's
+    poller (0.25 s tick) saw the write first and the pick-up found it current (ui_current, 5.3 case 4)."""
+    return reloaded_htmls(ext) == [html] or (ext is not None and not ext.get("ui_reloaded") and ext.get("ui_current") == 1)
+
+
 async def test_p4_setup(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "set_properties", "eval_lua", "read_console", "write_file")
     disk_write(ed, PANEL, PANEL_HTML)
@@ -504,10 +510,12 @@ BROKEN_PANEL = """<html>
 
 
 async def test_html_error_reported(ed: Editor):
+    reloads = await RELOADS.of(ed, "ui/pick/panel.html")
     disk_write(ed, PANEL, BROKEN_PANEL)
     r = await status(ed)
     ext = ext_of(r)
-    ed.check(ext is not None and reloaded_htmls(ext) == [PANEL], f"the html change reloads the document: {ext}")
+    ed.check(reloaded_for_call(ext, PANEL), f"the html change reloads the document: {ext}")
+    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), reloads + 1, "reloaded once")
     problems = [p for p in ext["problems"] if p["path"] == PANEL]
     script = [p for p in problems if p.get("code") == "HTMLUI-HTML-0006"]
     ed.check(script, f"the <script> is a problem: {ext['problems']}")
@@ -523,9 +531,12 @@ async def test_html_error_reported(ed: Editor):
     missing = [p for p in ext["problems"] if p.get("code") == "HTMLUI-GEN-0001"]
     ed.check(missing and missing[0]["line"] == 3 and missing[0]["severity"] == "error", f"missing css: {ext['problems']}")
     # fixed: no problems
+    reloads = await RELOADS.of(ed, "ui/pick/panel.html")
     disk_write(ed, PANEL, PANEL_HTML)
     ext = ext_of(await status(ed))
-    ed.check_eq((reloaded_htmls(ext), ext["problems"]), ([PANEL], []), "fixed")
+    ed.check(reloaded_for_call(ext, PANEL), f"the fix reloads the document: {ext}")
+    ed.check_eq(ext["problems"], [], "fixed")
+    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), reloads + 1, "reloaded once")
 
 
 async def test_orphan_css_checked(ed: Editor):
