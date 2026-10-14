@@ -461,3 +461,22 @@ TEST_CASE("registered_properties.universal_discrete")
 	CHECK(f.Value("parent", "--pick") == "#4060e0ff");
 	CHECK(f.Get("parent")->GetComputedValues().background_color() == Colourb(0x40, 0x60, 0xe0, 0xff));
 }
+
+TEST_CASE("registered_properties.mixed_cycle_and_fallbacks")
+{
+	TestsShell::GetContext();
+	Register("--r", RegisteredPropertySyntax::Length, false, "7px");
+	// (RmlUi reports the cycles and the undefined variable)
+	TestsShell::SetNumExpectedWarnings(4);
+	Fixture f(R"(
+		#parent { --u: var(--r); --r: var(--u); width: var(--u, 50px); height: var(--r); }
+		#child { --v: var(--nothing); width: var(--v, 10px); }
+	)");
+	// Chromium: --u (unregistered) is in a cycle with --r: guaranteed-invalid, so the var() takes its fallback; --r
+	// (registered) is invalid at computed-value time: its initial 7px. A custom property whose own var() fails is
+	// guaranteed-invalid too.
+	CHECK(f.Width("parent") == 50.f);
+	CHECK(f.Get("parent")->GetComputedValues().height().value == 7.f);
+	CHECK(f.Width("child") == 10.f);
+	TestsShell::SetNumExpectedWarnings(0);
+}

@@ -269,20 +269,22 @@ const Property* ElementStyle::TransitionPrePass(PropertyId id, const ComputeCont
 	return &transition_snapshot->applied;
 }
 
-void ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
-	bool& dirty_font_face_handle, PropertyIdSet& registered_applied)
+bool ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+	bool& dirty_font_face_handle)
 {
 	const TransitionList* list = GetTransitionList();
 	if (!list)
 	{
 		// Without transitions there is nothing to keep (running ones are cancelled by Element::HandleTransitionProperty).
 		transition_snapshot.reset();
-		return;
+		return false;
 	}
 
 	if (!transition_snapshot)
 		transition_snapshot = MakeUnique<TransitionSnapshot>();
 	TransitionSnapshot& snapshot = *transition_snapshot;
+	snapshot.registered_applied.Clear();
+	bool registered_applied = false;
 	const bool first_style = (!snapshot.initialized || !element->animation_displayed || snapshot.restart);
 
 	// The properties to look at: the changed ones the list covers; at the first style, every one the list covers.
@@ -339,8 +341,11 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 
 	auto Apply = [&](PropertyId id, const Property& applied) {
 		ComputeValue(context.values, context.dp_ratio, context.vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, &applied);
-		if (StyleSheetSpecification::IsRegisteredCustomProperty(id))
-			registered_applied.Insert(id);
+		if (StyleSheetSpecification::AnyRegisteredCustomProperties() && StyleSheetSpecification::IsRegisteredCustomProperty(id))
+		{
+			snapshot.registered_applied.Insert(id);
+			registered_applied = true;
+		}
 	};
 
 	// 'display' first: whether the element is displayed now depends on its transition (allow-discrete keeps it shown).
@@ -372,6 +377,7 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	snapshot.starting_definition.reset();
 	snapshot.starting_looked_up = false;
 	snapshot.restart = false;
+	return registered_applied;
 }
 
 bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied)

@@ -56,8 +56,9 @@ struct ElementStyleData {
 };
 static ControlledLifetimeResource<ElementStyleData> element_style_data;
 
-// The registered custom property where the last var() cycle closed (fork, phase 5): every registered property resolved
-// on the way back to it is in the cycle, so invalid at computed-value time; it is cleared when the resolution gets there.
+// The custom property where the last var() cycle closed, while custom properties are registered (fork, phase 5): every
+// custom property resolved on the way back to it is in the cycle (a registered one is invalid at computed-value time, an
+// unregistered one the guaranteed-invalid value); it is cleared when the resolution gets there.
 static String registered_cycle_root;
 
 static PseudoClassState operator|(PseudoClassState lhs, PseudoClassState rhs)
@@ -411,8 +412,7 @@ ElementStyle::SubstitutionResult ElementStyle::SubstituteVariableOnce(const Prop
 	const bool cycle_detected = (!cycle_chain.insert(var_name).second);
 	if (cycle_detected)
 	{
-		if (StyleSheetSpecification::AnyRegisteredCustomProperties() &&
-			StyleSheetSpecification::IsRegisteredCustomProperty(StyleSheetSpecification::GetPropertyId(var_name)))
+		if (StyleSheetSpecification::AnyRegisteredCustomProperties())
 			registered_cycle_root = var_name;
 		Log::Message(Log::LT_ERROR, "Invalid substitution, cycle detected with variable: %s. In element: %s", var_name.c_str(),
 			sources.element->GetAddress().c_str());
@@ -471,8 +471,19 @@ ElementStyle::SubstitutionResult ElementStyle::SubstituteVariableOnce(const Prop
 		// are fully determined here, so fetch them from their elements.
 		const PropertySources& next_sources = (property_element == sources.element ? sources : property_element->GetStyle()->GetPropertySources());
 
-		if (!SubstituteVariables(next_sources, custom_property->Get<String>(), variable_dependencies, next_cycle_chain, substitution_value))
+		// A custom property whose own var() fails, or that is in a var() cycle, is the guaranteed-invalid value: the var()
+		// takes its fallback (CSS Variables 1 §2.2, §3; fork, phase 5).
+		const bool substituted = SubstituteVariables(next_sources, custom_property->Get<String>(), variable_dependencies, next_cycle_chain,
+			substitution_value);
+		const bool in_cycle = !registered_cycle_root.empty();
+		if (in_cycle && registered_cycle_root == var_name)
+			registered_cycle_root.clear();
+		if (!substituted || in_cycle)
+		{
+			if (has_fallback)
+				return SubstituteResult(StringUtilities::StripWhitespace(StringView{value, end_name + 1, end_parenthesis - end_name - 1}));
 			return SubstitutionResult::Error;
+		}
 	}
 	else
 	{
@@ -1133,7 +1144,9 @@ const Property* ElementStyle::GetProperty(PropertyId id) const
 	{
 		// A registered custom property's computed value (fork, phase 5): relative lengths in px against the element that
 		// declares it, integers rounded.
-		if (const RegisteredCustomProperty* registration = StyleSheetSpecification::GetRegisteredCustomProperty(id))
+		const RegisteredCustomProperty* registration =
+			(StyleSheetSpecification::AnyRegisteredCustomProperties() ? StyleSheetSpecification::GetRegisteredCustomProperty(id) : nullptr);
+		if (registration)
 		{
 			element_style_data->returned_property_storage = ComputedRegisteredValue(*resolved, registration->syntax, result.element);
 			return &element_style_data->returned_property_storage;
@@ -1448,15 +1461,15 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// Registered custom properties (fork, phase 5): a changed one is a changed variable for the properties whose var() read
 	// it, here and in the children that inherit it (they get its id: their registered names are added by their own call).
 	// The names are local to this computation, not passed on to the children as changed variables.
-	Vector<String> registered_dirty_names;
-	if (StyleSheetSpecification::AnyRegisteredCustomProperties())
+	const bool any_registered = StyleSheetSpecification::AnyRegisteredCustomProperties();
+	bool registered_names_added = false;
+	if (any_registered)
 	{
 		const PropertyIdSet registered_dirty = dirty_properties & StyleSheetSpecification::GetRegisteredCustomProperties();
 		for (const PropertyId id : registered_dirty)
 		{
-			const String& name = StyleSheetSpecification::GetPropertyName(id);
-			if (dirty_variables.insert(name).second)
-				registered_dirty_names.push_back(name);
+			dirty_variables.insert(StyleSheetSpecification::GetPropertyName(id));
+			registered_names_added = true;
 		}
 	}
 
@@ -1519,7 +1532,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	// The pre-passes below compute font-size and line-height only when dirty: a var() of theirs whose variable changed makes
 	// them so (fork, phase 5; the main loop finds the other dependent properties).
-	if (!dirty_variables.empty())
+	if (var_font_metrics && !dirty_variables.empty())
 	{
 		for (const PropertyId id : {PropertyId::FontSize, PropertyId::LineHeight})
 		{
@@ -1592,7 +1605,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	bool dirty_font_face_handle = false;
 
 	// A registered length in em follows the font size (fork, phase 5): it changes as a variable too.
-	if (dirty_em_properties && StyleSheetSpecification::AnyRegisteredCustomProperties())
+	if (dirty_em_properties && any_registered)
 	{
 		for (const PropertyId id : StyleSheetSpecification::GetRegisteredCustomProperties())
 		{
@@ -1605,9 +1618,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			if (!em)
 				continue;
 			dirty_properties.Insert(id);
-			const String& name = StyleSheetSpecification::GetPropertyName(id);
-			if (dirty_variables.insert(name).second)
-				registered_dirty_names.push_back(name);
+			dirty_variables.insert(StyleSheetSpecification::GetPropertyName(id));
+			registered_names_added = true;
 		}
 	}
 
@@ -1622,6 +1634,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	const Units font_face_candidate_units = FontFaceCandidateUnits();
 	bool any_font_face_candidates = false;
 
+	var_font_metrics = false;
 	for (auto it = Iterate(); !it.AtEnd(); ++it)
 	{
 		variable_dependencies.clear();
@@ -1631,6 +1644,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		// The alignment properties looked up from the declarations (ComputedValues::justify_items(), ...) are declared.
 		switch (id)
 		{
+		case PropertyId::FontSize:
+		case PropertyId::LineHeight: var_font_metrics |= (id_property_pair.second.unit == Unit::VAR_EXPRESSION); break;
 		case PropertyId::JustifyItems: values.has_justify_items(true); break;
 		case PropertyId::JustifySelf: values.has_justify_self(true); break;
 		case PropertyId::AlignContent: values.has_align_content(true); break;
@@ -1700,20 +1715,17 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// 'overflow' computes from both axes (p3-layout).
 	ApplyOverflowFixUp(values);
 	// Transitions start on any change of a computed value (p3-animation).
-	PropertyIdSet registered_applied;
-	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle, registered_applied);
-
 	// A transition of a registered custom property that starts, reverses or ends now applies another value than the one
 	// the main loop read through var() (fork, phase 5): the properties that read it are computed again.
-	if (!registered_applied.Empty())
+	if (TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle))
 	{
 		SmallUnorderedSet<String> applied_names;
-		for (const PropertyId id : registered_applied)
+		for (const PropertyId id : transition_snapshot->registered_applied)
 		{
 			const String& name = StyleSheetSpecification::GetPropertyName(id);
 			applied_names.insert(name);
-			if (dirty_variables.insert(name).second)
-				registered_dirty_names.push_back(name);
+			dirty_variables.insert(name);
+			registered_names_added = true;
 		}
 		if (!expanded_shorthands.GetProperties().empty() || !inline_properties.GetVarShorthands().empty() ||
 			(definition && !definition->GetProperties().GetVarShorthands().empty()))
@@ -1843,8 +1855,17 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	if (dirty_properties.Contains(PropertyId::TextOverflow))
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
 
-	for (const String& name : registered_dirty_names)
-		dirty_variables.erase(name);
+	// (the registered names added above are this element's: its children get the ids of the inherited ones)
+	if (registered_names_added)
+	{
+		for (auto it = dirty_variables.begin(); it != dirty_variables.end();)
+		{
+			if (StyleSheetSpecification::IsRegisteredCustomProperty(StyleSheetSpecification::GetPropertyId(*it)))
+				it = dirty_variables.erase(it);
+			else
+				++it;
+		}
+	}
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	// Children that declare a non-inherited property 'inherit' follow it too.

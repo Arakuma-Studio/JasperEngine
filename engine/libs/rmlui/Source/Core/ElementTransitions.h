@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
+#include "../../Include/RmlUi/Core/PropertyIdSet.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -34,6 +35,8 @@ struct TransitionSnapshot {
 	// The element is shown again (it or an ancestor was 'display: none') without a change of its own style: its next
 	// style computation transitions from its starting style.
 	bool restart = false;
+	// The registered custom properties whose transition applied a value in the last style computation (fork, phase 5).
+	PropertyIdSet registered_applied;
 };
 
 /// The pseudo-class the style sheet parser gives the rules of @starting-style blocks, as a selector suffix.

@@ -334,10 +334,10 @@ private:
 	// value) if a transition starts or stops, else nullptr.
 	const Property* TransitionPrePass(PropertyId id, const ComputeContext& context);
 	// After the main loop: starts and updates the transitions of the changed properties, and computes the values they
-	// apply now (the registered custom properties among them are added to 'registered_applied': the properties whose
-	// var() read them are computed again, fork phase 5).
-	void TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
-		bool& dirty_font_face_handle, PropertyIdSet& registered_applied);
+	// apply now. True when registered custom properties are among them (TransitionSnapshot::registered_applied: the
+	// properties whose var() read them are computed again, fork phase 5).
+	bool TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+		bool& dirty_font_face_handle);
 	// Before the definition changes: keeps the before-change values of the changed properties the element has none for.
 	void CaptureBeforeChangeValues(const PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
 	// One property: compares its declared value with the before-change value and starts, reverses or cancels its
@@ -394,6 +394,9 @@ private:
 	PropertyIdSet dirty_properties;
 	// The element had a themed box when its values were last computed (fork, P4-G12).
 	bool themed_box = false;
+	// Its font-size or line-height held var() when its values were last computed (fork, phase 5): a changed variable
+	// then makes the pre-passes compute them.
+	bool var_font_metrics = false;
 	UnorderedSet<String> dirty_variables;
 	UnorderedSet<ShorthandId> dirty_var_shorthands;
 #ifdef RMLUI_MATH_EXPRESSIONS

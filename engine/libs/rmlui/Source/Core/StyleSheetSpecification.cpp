@@ -32,6 +32,7 @@
 namespace Rml {
 
 static StyleSheetSpecification* instance = nullptr;
+bool StyleSheetSpecification::any_registered_custom_properties = false;
 
 struct DefaultStyleSheetParsers : NonCopyMoveable {
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -222,6 +223,7 @@ StyleSheetSpecification::~StyleSheetSpecification()
 {
 	RMLUI_ASSERT(instance == this);
 	instance = nullptr;
+	any_registered_custom_properties = false;
 }
 
 PropertyDefinition& StyleSheetSpecification::RegisterProperty(PropertyId id, const String& property_name, const String& default_value, bool inherited,
@@ -442,6 +444,7 @@ void StyleSheetSpecification::MarkRegisteredCustomProperty(PropertyId id, const 
 	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
 	registered.ids.Insert(id);
 	registered.registrations[id] = registration;
+	any_registered_custom_properties = true;
 }
 
 bool StyleSheetSpecification::IsRegisteredCustomProperty(PropertyId id)
@@ -463,10 +466,6 @@ const PropertyIdSet& StyleSheetSpecification::GetRegisteredCustomProperties()
 	return instance->registered_custom_properties->ids;
 }
 
-bool StyleSheetSpecification::AnyRegisteredCustomProperties()
-{
-	return instance && !instance->registered_custom_properties->registrations.empty();
-}
 
 int StyleSheetSpecification::GetNumFreePropertyIds()
 {

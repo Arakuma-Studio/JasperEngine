@@ -114,7 +114,7 @@ public:
 	/// The id set of all registered custom properties.
 	static const PropertyIdSet& GetRegisteredCustomProperties();
 	/// True once a custom property is registered (until Rml::Shutdown): the style code skips its work for them before.
-	static bool AnyRegisteredCustomProperties();
+	static bool AnyRegisteredCustomProperties() { return any_registered_custom_properties; }
 	/// The number of property ids still free for RegisterProperty and RegisterCustomProperty (ids are limited to
 	/// PropertyId::MaxNumIds).
 	static int GetNumFreePropertyIds();
@@ -143,6 +143,7 @@ private:
 
 	// Registered custom properties (fork, phase 5).
 	UniquePtr<RegisteredCustomProperties> registered_custom_properties;
+	static bool any_registered_custom_properties;
 };
 
 } // namespace Rml
