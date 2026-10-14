@@ -11,6 +11,8 @@
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/SupportTables.h"
+#include "htmlui/effects/EffectManifest.h"
+#include "htmlui/effects/EffectRegistry.h"
 #include "pool/ShaderPool.h"
 #include "script/LuaBinding.h"
 #include "shader/ShaderBuilder.h"
@@ -37,6 +39,7 @@ using namespace jasperengine;
 using jasperengine::editor::Util;
 
 namespace fs = std::filesystem;
+namespace fx = ::jasperengine::htmlui;
 using Json = nlohmann::json;
 
 namespace {
@@ -935,7 +938,11 @@ bool editor::ProjectChecks::shaderTypeForComponent(ComponentType component, Shad
 namespace {
 
 std::string forkKey(const editor::ProjectChecks::ShaderUse& use) {
-    return use.base + "#" + std::to_string(use.shaderType);
+    return use.base + "#" + std::to_string(use.shaderType) + "#" + std::to_string(use.properties);
+}
+
+bool isUiEffectUse(const editor::ProjectChecks::ShaderUse& use) {
+    return use.shaderType == static_cast<int>(ShaderType::UI_EFFECT);
 }
 
 } // namespace
@@ -976,13 +983,23 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
     std::vector<ShaderUse> result;
     std::set<std::string> covered;
     const std::vector<ShaderUse> forks = shaderForksInUse(project);
+    auto addUses = [&](const std::vector<ShaderUse>& uses) {
+        for (const ShaderUse& use : uses) {
+            if (covered.insert(forkKey(use)).second) result.push_back(use);
+        }
+    };
     for (const std::string& file : files) {
         const std::string ext = lowerExtension(file);
         if (ext == ".glsl") {
             // an include can be reached by any fork (private copies, project-root overrides)
-            for (const ShaderUse& use : forks) {
-                if (covered.insert(forkKey(use)).second) result.push_back(use);
-            }
+            // and by any UI effect
+            addUses(forks);
+            for (const std::string& effect : uiEffectFiles(project)) addUses(uiEffectUses(project, effect));
+            continue;
+        }
+        // a UI effect: its own forms (not a fork's half)
+        if (ext == ".frag" && isUiEffectFile(project->getProjectPath() / fs::u8path(file))) {
+            addUses(uiEffectUses(project, file));
             continue;
         }
         bool found = false;
@@ -1023,10 +1040,54 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
         if (usedFiles.count(rel) || usedFiles.count(projectRelative(root, frag)) || !fs::is_regular_file(frag, ec)) continue;
         result.push_back({(fs::path(rel).parent_path() / fs::path(rel).stem()).generic_string(), -1});
     }
+    for (const std::string& effect : uiEffectFiles(project)) {
+        for (const ShaderUse& use : uiEffectUses(project, effect)) result.push_back(use);
+    }
     return result;
 }
 
+bool editor::ProjectChecks::isUiEffectFile(const fs::path& absolute) {
+    if (lowerExtension(absolute.generic_string()) != ".frag") return false;
+    std::string source;
+    return readFile(absolute, source) && fx::EffectManifestParser::hasEffectManifest(source);
+}
+
+std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::uiEffectUses(Project* project, const std::string& relativeFile) {
+    const fs::path root = project->getProjectPath();
+    const fs::path file = (root / fs::u8path(relativeFile)).lexically_normal();
+    // the name @effect registers: the asset path
+    std::string base = fs::path(relativeFile).generic_string();
+    const fs::path inAssets = file.lexically_relative(project->getAssetsPath().lexically_normal());
+    if (!inAssets.empty() && *inAssets.begin() != ".." && !inAssets.is_absolute()) base = inAssets.generic_string();
+    std::string source;
+    readFile(file, source);
+    fx::EffectManifest manifest;
+    std::vector<fx::EffectDiagnostic> diags;
+    const int type = static_cast<int>(ShaderType::UI_EFFECT);
+    if (fx::EffectManifestParser::parse(source, relativeFile, false, manifest, diags) && manifest.kind == fx::EffectKind::Paint) {
+        return {{base, type, 0}, {base, type, 1}};
+    }
+    return {{base, type, 1}};
+}
+
+std::vector<std::string> editor::ProjectChecks::uiEffectFiles(Project* project) {
+    std::vector<std::string> files;
+    const fs::path root = project->getProjectPath();
+    for (const fs::path& frag : findProjectFiles(root, {".frag"})) {
+        if (isUiEffectFile(frag)) files.push_back(projectRelative(root, frag));
+    }
+    return files;
+}
+
+fs::path editor::ProjectChecks::uiEffectFile(Project* project, const std::string& base) {
+    std::error_code ec;
+    const fs::path inAssets = (project->getAssetsPath() / fs::u8path(base)).lexically_normal();
+    if (fs::is_regular_file(inAssets, ec)) return inAssets;
+    return (project->getProjectPath() / fs::u8path(base)).lexically_normal();
+}
+
 int editor::ProjectChecks::guessShaderType(Project* project, const std::string& base) {
+    if (lowerExtension(base) == ".frag" && isUiEffectFile(uiEffectFile(project, base))) return static_cast<int>(ShaderType::UI_EFFECT);
     std::string frag;
     readFile(project->getProjectPath() / Util::resolveCustomShaderPaths(base).frag, frag);
     if (frag.find("u_fs_postParams") != std::string::npos || frag.find("postprocess") != std::string::npos) return static_cast<int>(ShaderType::POSTPROCESS);
@@ -1046,6 +1107,7 @@ std::string editor::ProjectChecks::shaderTypeName(int type) {
         case ShaderType::LINES: return "lines";
         case ShaderType::DEPTH: return "depth";
         case ShaderType::POSTPROCESS: return "post_process";
+        case ShaderType::UI_EFFECT: return "ui_effect";
         default: return "unknown";
     }
 }
@@ -1074,7 +1136,7 @@ void editor::ProjectChecks::invalidateShaderCaches(Project* project) {
 uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
     if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
     const uint16_t customId = ShaderPool::registerCustomShader(use.base);
-    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), 0, customId);
+    return ShaderPool::getShaderKey(static_cast<ShaderType>(use.shaderType), use.properties, customId);
 }
 
 std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std::string& base, const std::string& source) {
@@ -1093,14 +1155,93 @@ std::string editor::ProjectChecks::shaderSourcePath(Project* project, const std:
     return source;
 }
 
+namespace {
+
+// A UI effect's include as a project file (the include resolution of a fragment-only custom
+// shader: its directory, the project root, the engine library), project-relative
+std::string uiEffectSourcePath(editor::Project* project, const editor::ProjectChecks::ShaderUse& use, const std::string& source) {
+    const fs::path root = project->getProjectPath();
+    const fs::path frag = editor::ProjectChecks::uiEffectFile(project, use.base);
+    if (source == use.base || source.empty()) return editor::ProjectChecks::projectRelative(root, frag);
+    if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
+    std::error_code ec;
+    for (const fs::path& dir : {frag.parent_path(), root, project->getAssetsPath()}) {
+        if (fs::is_regular_file(dir / fs::u8path(source), ec)) {
+            return editor::ProjectChecks::projectRelative(root, (dir / fs::u8path(source)).lexically_normal());
+        }
+    }
+    if (ShaderVariantCompiler::getLibrarySources().count(source)) return "engine/shaderlib/" + source;
+    return source;
+}
+
+// The manifest of a UI effect use: false with the findings (HTMLUI-FX-0014) when it is wrong
+bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks::ShaderUse& use, fx::EffectManifest& manifest,
+                           std::vector<editor::ProjectChecks::Finding>& findings) {
+    const fs::path root = project->getProjectPath();
+    const fs::path file = editor::ProjectChecks::uiEffectFile(project, use.base);
+    const std::string rel = editor::ProjectChecks::projectRelative(root, file);
+    std::string source;
+    if (!editor::ProjectChecks::readFile(file, source)) {
+        findings.push_back({"shader", rel, 0, 0, "error", "the effect file is missing",
+                            fx::compat::codes::EffectFileMissing.id(), "restore it or remove its @effect"});
+        return false;
+    }
+    std::vector<fx::EffectDiagnostic> diags;
+    bool ok = fx::EffectManifestParser::parse(source, rel, false, manifest, diags);
+    if (ok) ok = fx::EffectManifestParser::validate(manifest, source, diags);
+    for (const fx::EffectDiagnostic& d : diags) {
+        const bool error = d.severity == fx::compat::Severity::Error;
+        if (error) ok = false;
+        if (d.severity == fx::compat::Severity::Info) continue;
+        findings.push_back({"shader", rel, static_cast<int>(d.line), static_cast<int>(d.column), error ? "error" : "warning", d.message,
+                            d.code.id(), d.suggestion});
+    }
+    if (ok) {
+        const fx::EffectManifest* builtin = fx::EffectRegistry::get().find(manifest.name);
+        if (builtin && builtin->builtin) {
+            findings.push_back({"shader", rel, manifest.line, 1, "error", "'" + manifest.name + "' is the name of a built-in effect",
+                                fx::compat::codes::EffectDeclareConflict.id(), "rename the effect (@effect and the file)"});
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+} // namespace
+
 editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey) {
     ShaderCheck check;
     check.use = use;
+    const bool effect = isUiEffectUse(use);
+    fx::EffectManifest manifest;
+    if (effect && !checkUiEffectManifest(project, use, manifest, check.findings)) {
+        check.ok = false;
+        for (const Finding& finding : check.findings) {
+            if (finding.severity != "error") continue;
+            check.errors.push_back({{"severity", "error"}, {"source", finding.path}, {"line", finding.line}, {"message", finding.message}});
+            check.log += toText(finding) + "\n";
+        }
+        return check;
+    }
     const uint64_t before = Out::lastLogId();
     try {
         ShaderBuilder builder;
-        builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
+        ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
+        if (effect) {
+            // the parameter block the shader declares is the manifest's
+            std::vector<std::string> mismatches;
+            if (!fx::EffectManifestParser::checkReflection(manifest, data, mismatches)) {
+                check.ok = false;
+                const std::string rel = projectRelative(project->getProjectPath(), uiEffectFile(project, use.base));
+                for (const std::string& mismatch : mismatches) {
+                    check.findings.push_back({"shader", rel, manifest.line, 1, "error", mismatch, fx::compat::codes::EffectManifest.id(),
+                                              "u_fs_effectParams declares one member per @param, of its type"});
+                    check.errors.push_back({{"severity", "error"}, {"source", rel}, {"line", manifest.line}, {"message", mismatch}});
+                    check.log += rel + ":" + std::to_string(manifest.line) + ": " + mismatch + "\n";
+                }
+            }
+        }
         return check;
     } catch (const std::exception& e) {
         check.ok = false;
@@ -1123,8 +1264,10 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
             if (message.find("compilation terminated") != std::string::npos) continue;
             std::string text = message;
             while (!text.empty() && text.back() == ' ') text.pop_back();
-            Finding finding{"shader", shaderSourcePath(project, use.base, error.value("source", std::string())),
+            const std::string source = error.value("source", std::string());
+            Finding finding{"shader", effect ? uiEffectSourcePath(project, use, source) : shaderSourcePath(project, use.base, source),
                             error.value("line", 0), 0, error.value("severity", std::string("error")), text};
+            if (effect) finding.code = fx::compat::codes::EffectShaderCompile.id();
             if (seen.insert(finding.path + ":" + std::to_string(finding.line) + ":" + finding.message).second) check.findings.push_back(finding);
         }
         if (check.findings.empty()) {
@@ -1137,8 +1280,9 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 if (line.rfind("ERROR: ", 0) == 0) line = line.substr(7);
                 first = oneLine(line);
             }
-            check.findings.push_back({"shader", Util::resolveCustomShaderPaths(use.base).frag, 0, 0, "error",
-                                      first.empty() ? std::string(e.what()) : first});
+            check.findings.push_back({"shader", effect ? uiEffectSourcePath(project, use, use.base) : Util::resolveCustomShaderPaths(use.base).frag,
+                                      0, 0, "error", first.empty() ? std::string(e.what()) : first,
+                                      effect ? fx::compat::codes::EffectShaderCompile.id() : std::string()});
         }
     }
     return check;
@@ -1146,9 +1290,22 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
 
 Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
     Json item = {{"shader", check.use.base}, {"type", shaderTypeName(check.use.shaderType)}, {"ok", check.ok}};
+    if (isUiEffectUse(check.use)) {
+        item["effect"] = ShaderPool::getUiEffectName(check.use.base);
+        item["form"] = (check.use.properties & 1u) ? "filter" : "paint";
+    }
     if (!check.ok) {
         item["errors"] = check.errors;
         item["log"] = check.log;
+        if (isUiEffectUse(check.use)) {
+            // the first error's code: the manifest's, else the compiler's
+            for (const Finding& finding : check.findings) {
+                if (finding.severity == "error" && !finding.code.empty()) {
+                    item["code"] = finding.code;
+                    break;
+                }
+            }
+        }
     }
     return item;
 }

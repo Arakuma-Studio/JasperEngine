@@ -8,6 +8,7 @@
 #include "EditorHost.h"
 #include "Generator.h"
 #include "pool/ShaderPool.h"
+#include "htmlui/effects/EffectRegistry.h"
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "Out.h"
@@ -18,6 +19,8 @@
 #include <cstdlib>
 
 namespace jasperengine::editor {
+
+namespace fx = ::jasperengine::htmlui;
 
 namespace {
     // Desktop exports build for the current host, so only expose backends
@@ -1239,7 +1242,7 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSAO, ShaderType::SSAO_BLUR,
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS,
-            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST
+            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;
@@ -1257,11 +1260,34 @@ void ExportWindow::drawAddShaderDialog() {
         if (ImGui::Combo("##shader_type", &m_addShaderTypeIndex, typeNames.data(), typeCount)) {
             // Reset properties when type changes
             memset(m_addShaderProps, 0, sizeof(m_addShaderProps));
+            m_addShaderEffectIndex = 0;
         }
 
         // Property checkboxes
         ShaderType selectedType = typeValues[m_addShaderTypeIndex];
         int propCount = ShaderPool::getShaderPropertyCount(selectedType);
+
+        // A UI effect (phase 5) is one of the effects: the engine's and the project's the
+        // documents declared (@effect); its identity rides in the custom shader id
+        const fx::EffectManifest* effect = nullptr;
+        if (selectedType == ShaderType::UI_EFFECT) {
+            const std::vector<const fx::EffectManifest*> effects = fx::EffectRegistry::get().all();
+            std::vector<std::string> effectLabels;
+            for (const fx::EffectManifest* m : effects) {
+                effectLabels.push_back(m->name + " (" + fx::effectKindName(m->kind) + (m->builtin ? "" : ", " + m->sourcePath) + ")");
+            }
+            std::vector<const char*> effectNames;
+            for (const std::string& label : effectLabels) effectNames.push_back(label.c_str());
+            if (m_addShaderEffectIndex >= (int)effects.size()) m_addShaderEffectIndex = 0;
+            ImGui::Text("Effect");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            ImGui::Combo("##shader_effect", &m_addShaderEffectIndex, effectNames.data(), (int)effectNames.size());
+            if (!effects.empty()) effect = effects[m_addShaderEffectIndex];
+            // a filter effect has the filter form only
+            if (effect && effect->kind == fx::EffectKind::Filter) m_addShaderProps[0] = true;
+            ImGui::TextDisabled("The filter form draws filter and backdrop-filter uses (and gradient text).");
+        }
 
         if (propCount > 0) {
             ImGui::Spacing();
@@ -1296,13 +1322,16 @@ void ExportWindow::drawAddShaderDialog() {
         for (int i = 0; i < propCount; i++) {
             if (m_addShaderProps[i]) props |= (1 << i);
         }
-        std::string preview = Exporter::getShaderDisplayName(selectedType, props);
+        ShaderKey newKey = ShaderPool::getShaderKey(selectedType, props);
+        if (selectedType == ShaderType::UI_EFFECT) {
+            newKey = effect ? ShaderPool::normalizeKey(fx::EffectRegistry::get().shaderKey(*effect, (props & 1u) != 0)) : 0;
+        }
+        std::string preview = Exporter::getShaderDisplayName(selectedType, props, ShaderPool::getCustomIdFromKey(newKey));
         ImGui::Text("Preview: %s", preview.c_str());
 
         ImGui::Spacing();
 
         // Check for duplicate
-        ShaderKey newKey = ShaderPool::getShaderKey(selectedType, props);
         bool isDuplicate = false;
         for (const auto& entry : m_shaderEntries) {
             if (entry.key == newKey && m_shaderExclusions.count(newKey) == 0) { isDuplicate = true; break; }
@@ -1316,7 +1345,7 @@ void ExportWindow::drawAddShaderDialog() {
         float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
         ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
-        ImGui::BeginDisabled(isDuplicate);
+        ImGui::BeginDisabled(isDuplicate || (selectedType == ShaderType::UI_EFFECT && !effect));
         if (ImGui::Button("Add", ImVec2(actionWidth, 0))) {
             includeShader(newKey);
             m_addShaderOpen = false;
