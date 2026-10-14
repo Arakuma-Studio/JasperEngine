@@ -333,6 +333,17 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
         state.velocity = Rml::Vector2f(0.f, 0.f);
         state.lastLocalValid = false;
     }
+    // the ripples age first (a ripple added below is as old as its press)
+    if (m.pointer == EffectPointer::Ripples){
+        int kept = 0;
+        for (int i = 0; i < state.rippleCount; i++){
+            Rml::Vector4f r = state.ripples[i];
+            r.z += dt;
+            if (r.z <= kRippleMaxAge)
+                state.ripples[kept++] = r;
+        }
+        state.rippleCount = kept;
+    }
     // entering and pressing
     if (inside){
         if (state.enterTime < 0.0)
@@ -382,19 +393,13 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
     }
     // ripples: aged; one per 40 px of movement when the effect's trigger is "move"
     if (m.pointer == EffectPointer::Ripples){
-        int kept = 0;
-        for (int i = 0; i < state.rippleCount; i++){
-            Rml::Vector4f r = state.ripples[i];
-            r.z += dt;
-            if (r.z <= kRippleMaxAge)
-                state.ripples[kept++] = r;
-        }
-        state.rippleCount = kept;
         const EffectParamDef* trigger = m.findParam("trigger");
         const bool onMove = trigger && trigger->type == EffectParamType::Enum && !trigger->options.empty() &&
                             trigger->options[(size_t)std::max(0, (int)std::lround(paramNumber(instance, "trigger")))] == "move";
         if (onMove && hasPointer && inside){
-            const Rml::Vector2f d = pointer->position - state.lastRippleSample;
+            // the movement inside the area counts (entering starts from where it entered)
+            const Rml::Vector2f d = state.rippleTracking ? pointer->position - state.lastRippleSample : Rml::Vector2f(0.f, 0.f);
+            state.rippleTracking = true;
             state.moveSinceRipple += std::sqrt(d.x * d.x + d.y * d.y);
             state.lastRippleSample = pointer->position;
             if (state.moveSinceRipple >= kRippleMoveStep){
@@ -404,8 +409,8 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
                 state.ripples[0] = Rml::Vector4f(pointer->position.x, pointer->position.y, 0.f, 0.6f);
                 state.rippleCount = std::min(state.rippleCount + 1, 8);
             }
-        }else if (hasPointer){
-            state.lastRippleSample = pointer->position;
+        }else{
+            state.rippleTracking = false;
         }
     }
 }

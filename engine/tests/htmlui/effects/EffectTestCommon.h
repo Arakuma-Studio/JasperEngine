@@ -120,6 +120,11 @@ namespace jasperengine::test::effects {
             return ok;
         }
 
+        // a document of the asset root (engine/tests/htmlui), e.g. "fixtures/effects/lib-test.html"
+        bool loadFile(const std::string& assetPath, std::string* error = nullptr){
+            return runner.load(assetPath, error);
+        }
+
         bool capture(jasperengine::test::compat::Image& image){
             FixtureRunner::Capture capture;
             if (!runner.capture(capture, true))

@@ -72,6 +72,7 @@ namespace jasperengine::htmlui {
         int rippleCount = 0;
         Rml::Vector2f lastRippleSample{0.f, 0.f};
         float moveSinceRipple = 0.f;
+        bool rippleTracking = false;            // the pointer was inside last frame (trigger move)
         uint64_t lastPressSeen = 0;
     };
 
