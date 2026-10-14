@@ -50,9 +50,10 @@ private:
 	struct Range {
 		PropertyIt it, end;
 		bool only_important;
-		const PropertyMap* properties;
 	};
 	Range ranges[6];
+	// The map of each range (for InEarlierRange; not in Range, which the loop below reads: kept as small as it was).
+	const PropertyMap* range_maps[6];
 	int num_ranges = 0;
 	int current = 0;
 	// The visited ids below PropertyIdSet's inline ids: every id RmlUi and the engine define (fork, phase 5: the
@@ -64,7 +65,10 @@ private:
 	void AddRange(const PropertyMap* properties, bool only_important)
 	{
 		if (properties && !properties->empty())
-			ranges[num_ranges++] = Range{properties->begin(), properties->end(), only_important, properties};
+		{
+			range_maps[num_ranges] = properties;
+			ranges[num_ranges++] = Range{properties->begin(), properties->end(), only_important};
+		}
 	}
 
 	bool IsFirstVisit(PropertyId id)
@@ -79,14 +83,25 @@ private:
 			word |= bit;
 			return true;
 		}
-		// A registered custom property: visited if an earlier range yielded it.
+		return !InEarlierRange(id);
+	}
+
+	// A registered custom property: visited if an earlier range yielded it. (Out of line: the loop above stays as small
+	// as it was.)
+#if defined(_MSC_VER)
+	__declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+	__attribute__((noinline))
+#endif
+	bool InEarlierRange(PropertyId id) const
+	{
 		for (int i = 0; i < current; i++)
 		{
-			auto it = ranges[i].properties->find(id);
-			if (it != ranges[i].properties->end() && (!ranges[i].only_important || it->second.important))
-				return false;
+			auto it = range_maps[i]->find(id);
+			if (it != range_maps[i]->end() && (!ranges[i].only_important || it->second.important))
+				return true;
 		}
-		return true;
+		return false;
 	}
 
 	void ProceedToNextValid()
