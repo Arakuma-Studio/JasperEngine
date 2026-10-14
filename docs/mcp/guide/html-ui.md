@@ -1655,6 +1655,36 @@ vec4 jfx_paint(JfxContext c){
   `jasperengine-editor ui-effects --validate --project <dir>` checks the manifest against the
   compiled shader.
 
+### Effects in the editor and MCP
+
+- **Finding one**: `list_ui_effects` lists the effects (name, kind, category, cost, summary, an
+  example); `name` gives one effect with every parameter (type, default, range), `category` and
+  `kind` filter. The project's `.frag` effects are in it too (`declared` says whether a document
+  declares one with `@effect`).
+- **What an element draws**: `inspect_ui` lists each element's effects under `effects` (the
+  property, the layer index, the form and every parameter's value as the engine reads it,
+  universal ones included) and marks them `fx:<name>` in the outline. `inspect_ui {file}` and
+  `jasperengine-editor check --ui` report the codes of "Effect diagnostics" with `line:col`.
+- **Stable images**: effects animate with time, so two screenshots differ. `set_ui_effect_time
+  {time: 1.5}` pins the effect clock in the edit and play views (renders are then identical, the
+  pointer aside); `{time: null}` makes it live again. Scripts do the same with
+  `UIDocument.setEffectTime(1.5)` and `UIDocument.setEffectTime(nil)`.
+- **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
+  returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is
+  `HTMLUI-FX-0014` at its line). An edit on disk comes back the same way in `external_changes`,
+  and the documents that declare the effect reload, also while playing; while the effect does not
+  compile it is not drawn. `check_shader {shader: "assets/ui/fx/my-glow.frag"}` and
+  `jasperengine-editor check` check it on demand; a renamed or deleted `.frag` is
+  `HTMLUI-FX-0013` until the `@effect` follows.
+- **Exports** ship the variants the documents use, read from the documents (their stylesheets,
+  `@media` blocks included, and style attributes) and from the project's Lua scripts: the paint
+  form for `background-image`/`mask-image`, the filter form for `filter`, `backdrop-filter` and
+  gradient text, both forms of a paint effect a script names. An effect only reachable another
+  way (a name a script builds at runtime) is added in Build Settings (Add Shader, type UI Effect)
+  or with `build_project {shaders: {add: ["uieffect/my-glow", "uieffect/my-glow:Flt"]}}`; the
+  game compiles nothing. A build with effects carries `licenses/shaders.com-LICENSE.txt` (the
+  MIT notice of the effects ported from shaders.com).
+
 ### Effect performance
 
 - Low-cost effects: use freely. Medium: up to about half the screen. High: at most two elements
