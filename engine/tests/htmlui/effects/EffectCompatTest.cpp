@@ -174,7 +174,7 @@ TEST_F(EffectCompatTest, GradientTextFill){
 TEST_F(EffectCompatTest, MaskImage){
     const Rewritten r = rewrite(".m { mask-image: effect(spotlight, radius 40px); }\n.n { -webkit-mask-image: effect(stripes); }");
     EXPECT_TRUE(r.has("mask-image: jfx-spotlight(v(#ffffffff) v(40px)")) << r.rcss;
-    EXPECT_TRUE(r.has("mask-image: jfx-stripes(")) << r.rcss;
+    EXPECT_TRUE(r.has("mask-image: jfx-stripes(")) << r.rcss << r.text();
     const Rewritten wrong = rewrite(".m { mask-image: effect(pixelate); }");
     EXPECT_NE(wrong.find(codes::EffectWrongContext), nullptr) << wrong.text();
 }

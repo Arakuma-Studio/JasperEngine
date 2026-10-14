@@ -295,9 +295,14 @@ std::string EffectCompat::paintSuggestion(const std::string& paintName){
 bool jasperengine::htmlui::compat::rejectsHandledFunction(Session& session, const Declaration& declaration, const std::string& property){
     if (declaration.isCustomProperty())
         return false;
+    std::string_view plain = property;
+    for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){
+        if (plain.substr(0, prefix.size()) == prefix)
+            plain = plain.substr(prefix.size());
+    }
     static const char* const allowed[] = {"background", "background-image", "mask", "mask-image", "filter", "backdrop-filter"};
     for (const char* name : allowed){
-        if (property == name)
+        if (plain == name)
             return false;
     }
     for (const ComponentValue& v : declaration.value){

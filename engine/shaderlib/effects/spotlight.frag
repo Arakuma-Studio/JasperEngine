@@ -32,10 +32,9 @@ vec4 jfx_paint(JfxContext c){
     float radius = max(params.radius, 1e-3);
     float inner = radius * (1.0 - clamp(params.softness, 0.0, 1.0));
     float d = length(c.px - center);
-    // a smooth (quadratic) falloff from the inner radius to the edge
+    // a smooth falloff from the inner radius to the edge (no visible ring where it starts)
     float t = clamp((d - inner) / max(radius - inner, 1e-3), 0.0, 1.0);
-    float light = (1.0 - t) * (1.0 - t);
-    light *= 1.0 - step(radius, d);
+    float light = 1.0 - t * t * (3.0 - 2.0 * t);
     return vec4(params.color.rgb, params.color.a * light * strength);
 }
 
