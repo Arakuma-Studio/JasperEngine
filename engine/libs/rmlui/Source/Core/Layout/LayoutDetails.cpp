@@ -1135,6 +1135,18 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 		return 0.f;
 	};
 
+	// A button in normal flow is as wide as its content with an auto width, a block-level one too (HTML's button layout: the
+	// fit-content inline size; Chromium), its auto margins taking the rest; as a flex or grid item it is sized as any item
+	// (fork, P4-G12).
+	bool button_fit_content = false;
+	if (width_auto && !absolutely_positioned && !replaced_element && element->HasButtonLayout())
+	{
+		Element* parent = element->GetParentNode();
+		const Style::Display parent_display = (parent ? parent->GetDisplay() : Style::Display::Block);
+		button_fit_content = !(parent_display == Style::Display::Flex || parent_display == Style::Display::InlineFlex ||
+			parent_display == Style::Display::Grid || parent_display == Style::Display::InlineGrid);
+	}
+
 	// If the width is set to auto, we need to calculate the width.
 	if (width_auto)
 	{
@@ -1144,7 +1156,7 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 			((computed.float_() != Style::Float::None) || (absolutely_positioned && inset_auto) ||
 				(computed.display() == Style::Display::InlineBlock || computed.display() == Style::Display::InlineFlex ||
 					computed.display() == Style::Display::InlineGrid) ||
-				(!absolutely_positioned && IsJustifiedFitContent(element)));
+				(!absolutely_positioned && IsJustifiedFitContent(element)) || button_fit_content);
 
 		if (!shrink_to_fit)
 		{
@@ -1161,9 +1173,13 @@ void LayoutDetails::BuildBoxWidth(Box& box, const ComputedValues& computed, floa
 			content_area.x = GetShrinkToFitWidth(element, containing_block);
 		}
 	}
-	// Otherwise, the margins that are set to auto will pick up the remaining width of the containing block.
-	else if (num_auto_margins > 0)
+	// Otherwise, the margins that are set to auto will pick up the remaining width of the containing block (also beside a
+	// fit-content block-level button).
+	if ((!width_auto || (button_fit_content && computed.display() != Style::Display::InlineBlock && computed.display() != Style::Display::InlineFlex &&
+							computed.display() != Style::Display::InlineGrid && computed.float_() == Style::Float::None)) &&
+		num_auto_margins > 0)
 	{
+		box.SetContent({content_area.x, box.GetSize().y});
 		float margin =
 			(containing_block.x - (GetInsetWidth() + box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin))) / float(num_auto_margins);
 		// Over-constrained: 'auto' margins are treated as 0 in normal flow (CSS 2.1 §10.3.3).

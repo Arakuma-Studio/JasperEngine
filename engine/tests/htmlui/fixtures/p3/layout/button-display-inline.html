@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: a button with display: inline is an inline-block</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  button, input { display: inline; margin: 4px 0 2px; font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  .s { width: 60px; height: 30px; padding: 2px 5px; border: 3px solid #556677; border-radius: 0; background: #dde4ee; }
+  .line { position: absolute; left: 10px; background: #f4f4f4; }
+  #l1 { top: 10px; width: 300px; }
+  #l2 { top: 60px; width: 300px; }
+  #l3 { top: 110px; width: 100px; }
+  #l4 { top: 110px; left: 130px; width: 180px; }
+</style>
+</head>
+<body><div class="line" id="l1">XX<button id="b1">XX</button>XX<button id="b2" class="s">XX</button>XX<button id="b3" style="display: inline-table">XX</button></div><div class="line" id="l2">XX<input type="button" id="i1" value="XX">XX<input type="submit" id="i2" class="s" value="XX">XX<input type="reset" id="i3" value="XX"></div><div class="line" id="l3">XX<button id="b4">XX XX XX XX XX XX XX XX</button>XX</div><div class="line" id="l4">XX<button id="b5" class="s" style="appearance: none; width: auto; height: auto"><span id="sp" style="display: block; width: 20px; height: 6px; background: #d06060"></span>X</button>XX</div></body>
+</html>

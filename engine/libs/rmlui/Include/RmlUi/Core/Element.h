@@ -168,6 +168,14 @@ public:
 	/// as Chromium decides: checkbox, radio and range inputs have them (laid out in their content box), text and button
 	/// inputs do not.
 	virtual bool HasGeneratedContentBoxes();
+	/// Fork (P4-G12): true when the element is drawn with its native (themed) look, CSS 'appearance' other than 'none'. RmlUi
+	/// has no 'appearance': false by default; an embedder's form controls answer it. A themed button computes 'display' as
+	/// Chromium's theme adjusts it; a themed checkbox or radio has a themed box (HasThemedBox).
+	virtual bool HasNativeAppearance() const;
+	/// Fork (P4-G12): the element's box is drawn by its theme, as Chromium draws a checkbox or a radio: its border, padding
+	/// and border radius compute to 0 and its background (colour, image layers, decorators) is not painted; the theme draws
+	/// in the element's own parts. False by default; checkbox and radio inputs with their native appearance.
+	virtual bool HasThemedBox() const;
 
 	/// Checks if a given point in screen coordinates lies within the bordered area of this element.
 	/// @param[in] point The point to test.

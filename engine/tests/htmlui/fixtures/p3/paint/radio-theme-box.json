@@ -1,0 +1,51 @@
+{
+ "comment": "a radio with its look, as Chromium's theme draws it: a circle of the box's smaller side, centered, a 1px ring, checked a dot of 60%; the author's background, border and radius have no effect; a light accent (a dark gap), disabled; hovered: the unchecked ring #4f4f4f, a checked accent 11% darker (lighter for a light accent); pressed: lighter (darker). Tolerance: the ring is a 1px circle, every pixel of it an anti-aliased edge: the fork's feathering fades an edge linearly over a pixel, Skia computes the covered area, so about 25 pixels of each radio differ by more than 24 levels, in clusters of 1-5 pixels (as paint/radius-percent-circle; phase-4 spec 4.3.3 G6); measured 1.556 % at most (hover-unchecked; 1.341-1.556 % over the captures, the same on glcore and Vulkan), largest cluster 5 px; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  270,
+  50
+ ],
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#r3"
+  },
+  {
+   "capture": "hover-unchecked"
+  },
+  {
+   "hover": "#r4"
+  },
+  {
+   "capture": "hover-checked"
+  },
+  {
+   "hover": "#r6"
+  },
+  {
+   "capture": "hover-light"
+  },
+  {
+   "press": "#r2"
+  },
+  {
+   "capture": "active-checked"
+  },
+  {
+   "release": true
+  },
+  {
+   "press": "#r1"
+  },
+  {
+   "capture": "active-unchecked"
+  },
+  {
+   "release": true
+  }
+ ],
+ "tolerance": {
+  "badPercent": 1.56
+ }
+}

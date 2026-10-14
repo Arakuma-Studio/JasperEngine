@@ -12,6 +12,7 @@
 #include "htmlui/HtmlUIInspectorInternal.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
+#include "htmlui/compat/runtime/HtmlFormSupport.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -721,6 +722,10 @@ bool UIElement::containsClass(const std::string& name) const{
 
 std::string UIElement::getStyle(const std::string& property) const{
     HTMLUI_ELEMENT(std::string())
+    // what Chromium's theme adjusts (a themed checkbox's box, a button's display): its value
+    std::string themed;
+    if (htmlui::compat::forms::themedComputedValue(element, Rml::StyleSheetSpecification::GetPropertyId(property), themed))
+        return themed;
     const Rml::Property* value = element->GetProperty(property);
     return value ? value->ToString() : std::string();
 }

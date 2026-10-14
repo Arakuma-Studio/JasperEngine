@@ -103,7 +103,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `math` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | use an image or SVG of the formula |
 | `menu` | native | UA display and spacing |  |
 | `meta` | rewritten | removed; charset other than utf-8 reported |  |
-| `meter` | rewritten | progress with value and max; min/low/high/optimum dropped (Info) |  |
+| `meter` | rewritten | progress with value and max (its look, also with appearance: none); min/low/high/optimum dropped (Info) |  |
 | `nav` | native | UA display and spacing |  |
 | `nobr` | native | UA inline styles |  |
 | `noembed` | native | obsolete; hidden by the UA sheet |  |
@@ -174,14 +174,14 @@ A construct that is not native is reported where it is written (`check --ui`, th
 |---|---|---|---|
 | `button` | native |  |  |
 | `checkbox` | native |  |  |
-| `color` | approximated | text showing the value; no picker (HTMLUI-HTML-0008) |  |
-| `date` | approximated | text with a format placeholder; no picker (HTMLUI-HTML-0008) |  |
-| `datetime-local` | approximated | text with a format placeholder; no picker (HTMLUI-HTML-0008) |  |
+| `color` | approximated | text showing the value; no swatch or picker, no ::before/::after (HTMLUI-HTML-0008) |  |
+| `date` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
+| `datetime-local` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `email` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
-| `file` | unsupported | disabled "Choose File" button (HTMLUI-HTML-0008) | pick files through the game, e.g. a Lua file dialog |
+| `file` | unsupported | disabled "Choose File" button, no ::before/::after (HTMLUI-HTML-0008) | pick files through the game, e.g. a Lua file dialog |
 | `hidden` | native | text input hidden by the UA sheet |  |
 | `image` | emulated | submit button drawing src |  |
-| `month` | approximated | text with a format placeholder; no picker (HTMLUI-HTML-0008) |  |
+| `month` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `number` | emulated | text with numeric filtering, step keys and clamping; no spinner (HTMLUI-HTML-0008) |  |
 | `password` | native |  |  |
 | `radio` | native |  |  |
@@ -191,9 +191,9 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `submit` | native |  |  |
 | `tel` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
 | `text` | native |  |  |
-| `time` | approximated | text with a format placeholder; no picker (HTMLUI-HTML-0008) |  |
+| `time` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 | `url` | approximated | text input; no validation or keyboard hints (HTMLUI-HTML-0008) |  |
-| `week` | approximated | text with a format placeholder; no picker (HTMLUI-HTML-0008) |  |
+| `week` | approximated | text with a format placeholder; no picker, no ::before/::after (HTMLUI-HTML-0008) |  |
 
 ## Attributes
 
@@ -1311,9 +1311,9 @@ Values of a property that are not handled like the property's other values; `<..
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
 | `-moz-appearance` | `auto` | rewritten | the UA control look written into the companions |  |
-| `-moz-appearance` | `none` | rewritten | control companions cleared (exact) |  |
+| `-moz-appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 | `-webkit-appearance` | `auto` | rewritten | the UA control look written into the companions |  |
-| `-webkit-appearance` | `none` | rewritten | control companions cleared (exact) |  |
+| `-webkit-appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 | `-webkit-background-clip` | `text` | approximated | with a transparent fill: gradient text drawn in a solid color (Warning); otherwise dropped (Info) (HTMLUI-CSS-0006) |  |
 | `-webkit-box-align` | `baseline` | rewritten | mapped to align-items |  |
 | `-webkit-box-align` | `center` | rewritten | mapped to align-items |  |
@@ -1385,7 +1385,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `animation-timing-function` | `step-start` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `animation-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `appearance` | `auto` | rewritten | the UA control look written into the companions |  |
-| `appearance` | `none` | rewritten | control companions cleared (exact) |  |
+| `appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 
 ### Values: b
 

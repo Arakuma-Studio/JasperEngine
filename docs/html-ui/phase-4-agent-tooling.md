@@ -1977,15 +1977,15 @@ unit test that fails without the fix.
   whatever `align-content` says, in the content box (padding, `min-height`, `display: block` and
   `flow-root` too); flex and grid buttons are flex and grid containers, as in Chromium. The
   baseline moves with the centered line; a button without a line has its baseline at its content
-  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stays an inline box:
-  Chromium makes it an inline-block; not changed.)
+  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stayed an inline box:
+  Chromium makes it an inline-block; fixed by p4-gaps2, 4.3.3.)
 - **G3, selects and text fields** (fork P4-G3): a select's value is centered in its content box and
   its arrow in its padding box, a single-line text field's line in its content box (not safely, as
   Chromium). The UA chevron (`compat/ua/arrow-down.svg`) is stroked at 2.1 instead of 1.6: at the
   same place its strokes rasterized lighter than Chromium's. Fixture `layout/select-height`.
-  Not changed: a select with `appearance: none` keeps no border in the engine (Chromium keeps
-  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions clear
-  it with the checkbox's.
+  Not changed: a select with `appearance: none` kept no border in the engine (Chromium keeps
+  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions cleared
+  it with the checkbox's (fixed by p4-gaps2, 4.3.3).
 - **G4, geometry of elements without a box**: RmlUi keeps the box an element had when it is
   hidden. The element API (`UIElement`: `getBoundingClientRect`, `getBoundingBox`,
   `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop/Left/Width/Height`, so Lua) and
@@ -1999,8 +1999,8 @@ unit test that fails without the fix.
   range have them (laid out in the input's content box), text-like and button-like types do not (a
   button input drew them); progress bars (and so the engine's `<meter>`) have them too. Chromium also draws them on `color`, `file` and the date/time types,
   which the engine approximates by a text field or a button: they draw none. A checkbox with
-  `appearance: none` and no size stays 13x13 (the UA sheet's size; Chromium sizes it by its
-  content). Fixture `pseudo/input-before-after`. The settings example's switches are now
+  `appearance: none` and no size stayed 13x13 (the UA sheet's size; Chromium sizes it by its
+  content; fixed by p4-gaps2, 4.3.3). Fixture `pseudo/input-before-after`. The settings example's switches are now
   `input[type=checkbox].switch` with `appearance: none`, the knob their `::before`.
 - **G6, `check --ui --files` on a stylesheet**: a stylesheet named on its own is checked in the
   context of the project's documents that load it (their checks' findings in the sheet and its
@@ -2041,6 +2041,150 @@ unit test that fails without the fix.
   rounded `<img>`, no wrapper), shop (`data-attr-disabled`), main_menu (no `--value` default); their
   goldens regenerated and inspected. The guide's notes say what now works (form-control
   pseudo-elements, centering, rounded pictures, boolean `data-attr`, geometry of hidden elements).
+
+#### 4.3.3 `p4-gaps2` as implemented (corrective package)
+
+The parity gaps 4.3.2 left (also in `CONTRACTS.md` and `FORK.md` P4-G10, P4-G11). Each has a
+browser-parity fixture with a Chromium reference, passing at the default tolerances, and a unit
+test that fails without the fix. Chromium was measured first (computed styles, boxes and pixels of
+the pinned headless shell with the references' fonts).
+
+- **G1, controls with `appearance: none`** (UA sheet and the `appearance` rewrite): the
+  companions cleared one shared look (`--html-control-bg`, `--html-control-border`) for selects and
+  checkboxes alike, so a select lost the 1px border Chromium keeps. Each control now has companions
+  of its own and gets exactly html.css's look without its theme: a select keeps `1px solid #767676`
+  on ButtonFace (`#efefef`) with no arrow and none of the menu list's inner padding
+  (`--html-select-bg`, `--html-select-padding`, `--html-select-arrow-width`; its border colour is no
+  companion any more); `<button>` and button, submit and reset inputs get `padding: 1px 6px;
+  border: 2px outset` ButtonBorder (black, Chromium 153), the same on hover and press
+  (`--html-button-padding`, `-border-width`, `-border-style`, `-border`, `-hover-bg`,
+  `-hover-border`, `-active-bg`, `-active-border`; the file input approximation keeps its button
+  look, as Chromium's inner button does); a progress bar (and so the engine's `<meter>`) is
+  html.css's `::-webkit-progress-bar`/`-value`: the whole box `#808080`, the value `#008000`, no
+  rounding (`--html-progress-border-width`, `-radius`, `-bg`, `-track`, `-fill-radius`, `-fill`).
+  Checked against Chromium with no other difference: textarea (its 1px frame), the text-like
+  fields (2px inset, p3-paint) and range (Chromium keeps the thumb's own look; so does the
+  engine). Found on the way and fixed: `input[type=search]` is `box-sizing: border-box` with a
+  185px default width (html.css; its auto and none looks are both 8px of padding and border); the
+  shadows `appearance: none` cleared were `none`, which is not a valid entry of the box-shadow list
+  the outline companion joins (`Invalid substitution` errors for a checked radio and the progress
+  track): an empty shadow `0 0 0 0 #0000`. `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks`
+  covers the new companions. Fixture `paint/appearance-none-controls` (Ahem with `line-height: 1`:
+  Chromium measures a select's `line-height: normal` with the fallback font when the web font
+  loads after the first layout, and never lays it out again); test
+  `AppearanceNone.ControlsKeepTheirOwnHtmlCssLook`.
+- **G2, a checkbox or radio with `appearance: none` and no size** (UA sheet, `HtmlInputElement`,
+  fork P4-G11): Chromium's theme only sizes an auto width or height (13px, the border box, each
+  on its own); without it the control is an inline-block sized by its content: 0x0 alone or with
+  `content: ""`, its `::before`/`::after` text or block, plus padding and border (border-box or
+  content-box), a positioned `::before` adding nothing. The UA sheet's size is the companion
+  `--html-check-size` (`13px`, `auto` under `none`); `HtmlInputElement::GetIntrinsicDimensions`
+  asks `HasNativeAppearance()` (G5): with the theme the intrinsic size is 13x13 (the themed box has
+  no border or padding, G6), without a ratio (RmlUi's was 16x16 with ratio 1); without it a checkbox or radio is not
+  replaced and is laid out as a block container. Checkboxes and radios are `overflow: visible`
+  (Chromium; the UA's `input { overflow: hidden }` clipped their generated boxes and made them
+  scroll containers, whose baseline is the bottom margin edge). Their baseline is their last
+  line's, and an empty `::before` gives none (P4-G11: zero-height line boxes do not exist for
+  baselines, CSS 2.1 §9.4.2; the fork took them). Fixture `layout/checkbox-content-size`; tests
+  `AppearanceNone.CheckboxIsSizedByItsContent`, `Layout.Baseline.ZeroHeightLines`. (The themed
+  checkbox in a box that is not 13x13, and the author's background on it: G6 below.)
+- **G3, `display: inline` buttons** (fork P4-G10): an element with `HasButtonLayout()` (the
+  engine's `<button>`, button, submit and reset inputs) computes `display: inline` and
+  `inline-table` as `inline-block` (HTML's button layout; Chromium's computed value with its
+  theme); with `appearance: none` Chromium keeps the computed `inline` but lays the button out the
+  same (the reported value: G8). Other display types: G9. Fixture `layout/button-display-inline`;
+  tests `form.input.button.display_inline`, `ButtonDisplay.InlineIsInlineBlock`.
+- **G4, the inputs the engine approximates** (`color`, `date`, `time`, `datetime-local`, `month`,
+  `week`, `file`): Chromium draws their `::before`/`::after` around its own shadow content (a
+  swatch, date fields, a button and a label), which the engine does not render; they stay without
+  generated boxes (`HasGeneratedContentBoxes`, P4-G5). Documented and diagnosed: their
+  input-type notes, so the `HTMLUI-HTML-0008` warning each one already gets at load and the
+  support matrix, say "no ::before/::after"; the `meter` row says it is drawn as a progress bar,
+  also with `appearance: none`; the guide lists them.
+- **G5, `appearance` is not inherited** (the coordinator's follow-up, as G6 … G9): the
+  `appearance` rewrite writes custom properties, which inherit, so a container's
+  `appearance: none` reached the controls in it (CSS UI 4: `appearance` is not inherited). The UA
+  sheet resets every appearance companion to its themed value on `input, select, button,
+  textarea, progress` (the meter is a progress): the author's `appearance` on the control
+  outranks it (the root band), an ancestor's no longer reaches it; the controls' parts inherit
+  from the control. (`--html-select-arrow-color` is gone: reset to `currentcolor` on the select it
+  drew the arrow in the select's own colour's fallback, black; the arrow is `currentcolor` and 0px
+  wide without the look.) accent-color's companions stay inherited, as accent-color is. The look itself
+  is `--html-appearance` (`auto`/`none`), which `HtmlInputElement` and `HtmlButtonElement` read
+  (`HasNativeAppearance`, fork P4-G12). Fixture `paint/appearance-not-inherited`; tests
+  `AppearanceNone.IsNotInherited`, `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` (every
+  companion `appearance` writes is reset on the controls, with the value `auto` writes).
+- **G6, the themed checkbox** (fork P4-G12, `HtmlInputElement`): Chromium's theme computes a
+  checkbox's or radio's border, padding and border radius as 0, does not paint its background
+  (an author's colour or image) and draws the control in a square of the box's smaller side,
+  centered (at half pixels), scaled with it. `HasThemedBox()` does the first two in the fork;
+  `HtmlInputElement` draws the theme as an SVG over the box (rasterized by LunaSVG, a virtual file
+  per drawing), in colours the UA sheet sets per state (`--html-theme-fill`, `-stroke`, `-mark`:
+  unchecked, checked, disabled, the accent and its contrast), which author styles do not reach.
+  The shapes were calibrated against the pinned Chromium (its own SVG renderer gives the native
+  control's pixels exactly): a checkbox is a rounded square (radius 2px) filled and stroked 1px
+  half a pixel inside its edge, checked the whole square filled and a check stroked 16% of the
+  side through (20%, 50%), (40%, 70%), (80%, 20%); a radio a circle filled and stroked likewise,
+  checked an accent ring and a dot of 60%; disabled, Chromium's translucent grays (measured over
+  black and white: `#f5f5f5ad`, `#bababaab`, checked `#c5c5c5c6` with a 60% white mark). The
+  checkbox's pixels now match Chromium's at the default tolerances (fixture
+  `paint/checkbox-theme-box`: boxes from 13x13 to 30x30, odd sizes, the author's background,
+  border, padding, radius, a content-box size, disabled, a light accent, and hovered and pressed:
+  G7). Radios are drawn with the fork's circle geometry (`MeshUtilities::GenerateBackgroundBorder`
+  of a `border-radius: 50%` box, its feathered edges, as P3-P1/P3-P2 draw borders; an SVG
+  rasterized by LunaSVG first), in the same colours: a ring and a dot of 60%. They do not reach
+  the strict metric, measured, so the fixture has none (nothing loosened): with Chromium's
+  geometry (a 1px ring inside the box, the dot 60%) 254 pixels of eight radios of 13 to 30px
+  (`paint/checkbox-theme-box` with a row of radios, 270x150) were off by more than 24 levels,
+  about 25 per radio, in 1-5 pixel clusters along the ring, against a limit of 40 for the whole
+  image; the closest variant (the ring 0.15px inside the box and 0.9px wide, the dot 0.2px
+  smaller; kept) 198; the LunaSVG drawing 207; eight variants measured. Chromium's native circles
+  are Skia's analytic coverage of a thin ring, every pixel of which is an edge pixel; the fork's
+  feathering fades an edge linearly over a pixel (the reason `paint/radius-percent-circle`, the
+  fork's filled `border-radius: 50%` circles, already needs a 0.31 % tolerance, not the default).
+  The radio's geometry and colours are checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`,
+  and the radios have their own fixture, `paint/radio-theme-box` (rest, hovered and pressed), at
+  the phase-3 policy for scattered anti-aliasing: `badPercent` 1.56, the measured 1.556 %, the
+  cluster limit at the default.
+  The check SVGs, `--html-check`
+  and the other companions of the CSS-drawn theme are gone (CONTRACTS). Found on the way:
+  radios without a name were one group (checking one unchecked the others; fork P4-G13); a
+  themed progress bar's value now carries the track's half-alpha line, as in Chromium
+  (`--html-progress-fill-line`).
+- **G7, hovered and pressed themed checkboxes and radios** (measured in Chromium, default and
+  custom accents): unchecked, the 1px frame is `#4f4f4f` hovered and `#8d8d8d` pressed (the UA
+  sheet's `:enabled:hover`/`:active` rules); checked, the accent colours (a checkbox's fill, a
+  radio's ring and dot) have their HSL lightness 11% lower hovered and 11% higher pressed, the
+  other way round for a light accent (one with the dark mark): `#0075ff` gives `#005cc8` and
+  `#3793ff`, `#f0c040` gives `#f4d174` and `#e6ac12` (within one level of Chromium's for every
+  accent measured). The sheet names the state (`--html-theme-shade: hover|active`),
+  `HtmlInputElement::themeColours` shades the accent; disabled controls are not shaded. Fixture
+  `paint/checkbox-theme-box`'s captures `hover-checked`, `hover-unchecked`, `hover-light`,
+  `active-checked`, `active-unchecked` (all at the default tolerances); test
+  `AppearanceNone.ThemedCheckboxIsACenteredSquare`.
+- **G8, computed values as Chromium reports them**: `UIElement::getStyle` (Lua) and the
+  inspector (`inspect_ui`, `assert_ui`) read the cascaded value; for what Chromium's theme
+  adjusts they report its computed value (`forms::themedComputedValue`): a themed checkbox's or
+  radio's border widths, styles, padding and radii (`0px`, `none`), a themed button's display
+  (`inline-block` for `inline`, `block` for `table`, …), and with `appearance: none` the declared
+  display (`inline`) while the fork lays it out as an inline-block (its computed value).
+  A themed checkbox's background is reported as declared (Chromium does too; it is not painted).
+  Test `ButtonDisplay.ComputedAsChromiumReportsIt`.
+- **G9, buttons with other display types** (fork P4-G12, P4-G14): with the look, Chromium's
+  theme computes `table` and `list-item` as `block` and the internal table types and
+  `inline-table` as `inline-block`; without it HTML's button layout makes them `flow-root` (no
+  marker) or `inline-block`. And a block-level button is as wide as its content (HTML: the
+  fit-content width; Chromium), its auto margins taking the rest, a flex or grid item stretched
+  as any: the engine's filled the line (`display: block` buttons, common in written CSS).
+  Fixture `layout/button-display-types`; tests `form.input.themed_box`,
+  `form.input.button.block_fit_content`, `ButtonDisplay.ComputedAsChromiumReportsIt`.
+- **Examples and goldens**: no example worked around the gaps. The settings example's selects
+  (`appearance: none` with their own border, padding and chevron) lose the menu list's 4px inner
+  padding and 16px arrow box, as in Chromium; they are on the Graphics tab, outside its golden
+  (Audio), so no golden image changed (`test_html_ui_examples.py`, every C++ golden and fixture
+  reference unchanged). The guide's form-control paragraph says what `appearance: none` leaves on
+  each control, that an unsized custom checkbox needs a size, and that inline buttons are
+  inline-blocks.
 
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 

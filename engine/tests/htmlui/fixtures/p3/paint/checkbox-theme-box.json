@@ -1,0 +1,48 @@
+{
+ "comment": "a checkbox with its look, as Chromium's theme draws it: in a box that is not 13x13 a square of the box's smaller side, centered (at half pixels too), its frame 1px, its check scaled; the author's background (colour or image), border, padding and border radius have no effect (border and padding compute to 0, so a content-box size is the box); checked, disabled, a light accent-color (a dark check); hovered: the unchecked frame darker (#4f4f4f), a checked one's accent 11% darker in HSL lightness (lighter for a light accent); pressed: the frame lighter (#8d8d8d), the accent 11% lighter. (Radios are drawn with the same geometry and colours, a circle with a 1px ring and a 60% dot, but are not compared here: about 25 pixels of each radio's anti-aliased ring differ from Skia's by more than 24 levels, see the phase-4 spec 4.3.3 G6.)",
+ "viewport": [
+  270,
+  100
+ ],
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#c12"
+  },
+  {
+   "capture": "hover-checked"
+  },
+  {
+   "hover": "#c4"
+  },
+  {
+   "capture": "hover-unchecked"
+  },
+  {
+   "hover": "#c11"
+  },
+  {
+   "capture": "hover-light"
+  },
+  {
+   "press": "#c3"
+  },
+  {
+   "capture": "active-checked"
+  },
+  {
+   "release": true
+  },
+  {
+   "press": "#c1"
+  },
+  {
+   "capture": "active-unchecked"
+  },
+  {
+   "release": true
+  }
+ ]
+}

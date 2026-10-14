@@ -1,0 +1,18 @@
+{
+ "comment": "form controls with appearance: none look as Chromium's html.css styles them, with no theme: a select keeps its 1px solid border and ButtonFace background, without the menu list's inner padding or arrow; buttons and button inputs are html.css's padding: 1px 6px and 2px outset ButtonBorder, unchanged when hovered (the theme's hover look is gone); a textarea keeps its 1px solid frame; text-like fields (search is border-box) the 2px inset border; a range draws its thumb only (the thumb keeps its own appearance); a progress bar is html.css's grey bar with a green value. Ahem text with line-height: 1 (a select's line-height: normal is measured with the fallback font before Ahem loads, in Chromium).",
+ "viewport": [
+  340,
+  200
+ ],
+ "steps": [
+  {
+   "capture": "rest"
+  },
+  {
+   "hover": "#b1"
+  },
+  {
+   "capture": "hover"
+  }
+ ]
+}

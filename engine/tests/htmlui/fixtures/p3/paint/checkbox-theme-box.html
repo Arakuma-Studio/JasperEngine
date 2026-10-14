@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: a themed checkbox is a centered square, its theme ignores the author's box styles</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  input { position: absolute; margin: 0; }
+  /* boxes that are not 13x13: the theme draws a square of the smaller side, centered */
+  #c1 { left: 10px; top: 10px; width: 20px; height: 13px; }
+  #c2 { left: 40px; top: 10px; width: 30px; height: 20px; }
+  #c3 { left: 80px; top: 10px; width: 30px; height: 30px; }
+  #c4 { left: 120px; top: 10px; width: 13px; height: 30px; }
+  /* the author's background, border, padding and border radius: no effect while themed */
+  #c5 { left: 10px; top: 60px; background: #e02020; }
+  #c6 { left: 40px; top: 60px; border: 3px solid #2040e0; }
+  #c7 { left: 70px; top: 60px; padding: 4px; border-radius: 6px; }
+  #c8 { left: 100px; top: 60px; width: 30px; height: 20px; background: #e02020; border: 2px solid #2040e0; box-sizing: content-box; }
+  #c9 { left: 220px; top: 60px; width: 20px; height: 20px; }
+  /* disabled, a light accent (a dark mark), a plain checked one */
+  #c10 { left: 160px; top: 60px; }
+  #c11 { left: 190px; top: 60px; accent-color: #f0c040; }
+  #c12 { left: 150px; top: 10px; }
+</style>
+</head>
+<body><input type="checkbox" id="c1"><input type="checkbox" id="c2" checked><input type="checkbox" id="c3" checked><input type="checkbox" id="c4"><input type="checkbox" id="c5"><input type="checkbox" id="c6" checked><input type="checkbox" id="c7"><input type="checkbox" id="c8" checked><input type="checkbox" id="c9" checked disabled><input type="checkbox" id="c10" disabled><input type="checkbox" id="c11" checked><input type="checkbox" id="c12" checked></body>
+</html>

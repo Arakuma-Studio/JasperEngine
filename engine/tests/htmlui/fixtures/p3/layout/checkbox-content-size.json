@@ -1,0 +1,4 @@
+{
+ "comment": "a checkbox or radio with appearance: none and no size is an inline-block sized by its content, as in Chromium: 0x0 without generated content or with an empty string, its ::before/::after text or block, padding and border (border-box or content-box); a positioned ::before adds nothing; an explicit width or height applies to one dimension. With its look (appearance: auto) an auto width and height are the theme's 13px. The boxes sit on the line's baseline. Ahem text.",
+ "viewport": [400, 180]
+}

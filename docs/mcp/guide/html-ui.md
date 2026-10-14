@@ -261,11 +261,22 @@ Every rule you write beats every user-agent rule. Every element's status:
 
 Form controls: `accent-color` colors checkboxes, radios, sliders and progress bars;
 `appearance: none` removes a control's own look so your `background`, `border` and
-`::-webkit-slider-thumb` styles draw alone (a checkbox or radio then has no border or checked
-fill of its own, as in Chrome). As in Chrome, checkbox, radio and range inputs draw `::before`
-and `::after` (laid out in the input's box), so a switch is one element: an
-`input[type="checkbox"]` with `appearance: none`, a track `background` and the knob its
-`::before`, moved by `:checked::before`; text and button inputs draw none. A button's content
+`::-webkit-slider-thumb` styles draw alone, leaving what Chrome's default stylesheet gives it: a
+checkbox or radio has no border, checked fill or size of its own (give it a `width` and
+`height`, or it is sized by its `::before`/`::after`, padding and border: 0x0 without); a
+`<select>` keeps its 1px gray border on a light gray background, without its arrow or inner
+padding; a button gets a 2px outset border and `padding: 1px 6px`; a text field a 2px inset
+border; a `<progress>` a gray bar with a green value. As in Chrome, checkbox, radio and range
+inputs draw `::before` and `::after` (laid out in the input's box), so a switch is one element:
+an `input[type="checkbox"]` with `appearance: none`, a size, a track `background` and the knob
+its `::before`, moved by `:checked::before`; text and button inputs draw none, nor do the types
+the engine approximates (`color`, the date and time types, `file`). `appearance` applies to the
+element itself, not to the controls inside it. With its look a checkbox or radio is Chrome's:
+your `background`, `border`, `padding` and `border-radius` on it have no effect (style it with
+`appearance: none` instead), and in a box that is not 13x13 it is drawn as a square of the
+smaller side, centered, darker when hovered and lighter when pressed. A button with `display: inline` is an inline-block, and a block-level
+button (`display: block`, `flex`, …) is as wide as its label unless you give it a width, as in
+Chrome (`margin: 0 auto` centers it). A button's content
 and a `<select>`'s or a text field's line are centered vertically in a taller box, and
 `border-radius` clips an `<img>`, `<svg>` or `<lottie>` picture to its rounded content box. As
 in a browser, a reset such as `* { margin: 0; padding: 0 }` does not reach a control's inner
@@ -275,7 +286,7 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 | Element | Behavior |
 |---|---|
 | `<button>` | `type="submit"` (the default) submits its `<form>` (the `submit` event carries the button's `name`/`value` and every named control), `reset` resets it, `button` does nothing; `form="id"` works; `disabled` gets `:disabled` and no click; Enter and Space activate a focused button |
-| `<input>` | `text`, `password` (shows `*`), `search`, `email`, `url`, `tel`; `number` (filters typing, Up/Down step by `step` within `min`/`max`, clamps on blur/Enter); `range` (a slider), `checkbox`, `radio` (Space toggles); `date`, `time`, `datetime-local`, `month`, `week` and `color` are text fields showing the format or value (no picker, `HTMLUI-HTML-0008`); `image` submits and shows `src`; `file` is a disabled button; Enter in a text field submits its form; `autofocus` |
+| `<input>` | `text`, `password` (shows `*`), `search`, `email`, `url`, `tel`; `number` (filters typing, Up/Down step by `step` within `min`/`max`, clamps on blur/Enter); `range` (a slider), `checkbox`, `radio` (Space toggles); `date`, `time`, `datetime-local`, `month`, `week` and `color` are text fields showing the format or value (no picker, no `::before`/`::after`, `HTMLUI-HTML-0008`); `image` submits and shows `src`; `file` is a disabled button; Enter in a text field submits its form; `autofocus` |
 | `<select>`, `<textarea>`, `<progress>`, `<meter>` | a drop-down, a multi-line field, a bar (`meter` drawn as `progress`) |
 | `<label>` | a click activates its control (`for="id"`, or the control inside it) |
 | `<a href>` | Enter activates; `#id` scrolls to the element; another link dispatches `htmlnavigate` on the document (`href`, `url`, `fragment`, `document`, `external`): a `.html` link loads that document in the same component unless a listener calls `preventDefault()`; external links only notify |

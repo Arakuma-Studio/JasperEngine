@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: an appearance: none checkbox or radio is sized by its content</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  input { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .n { appearance: none; background-color: #dde4ee; }
+  .line { position: absolute; left: 10px; width: 380px; background: #f4f4f4; }
+  #l1 { top: 10px; }
+  #l2 { top: 50px; }
+  #l3 { top: 90px; }
+  #l4 { top: 140px; }
+  /* generated content: text, an empty string, a block, a positioned box */
+  .t::before { content: "XX"; color: #3060c0; }
+  .e::before { content: ""; }
+  .b::before { content: ""; display: block; width: 12px; height: 8px; background: #d06060; }
+  .x::after { content: "X"; color: #d06060; }
+  .abs { position: relative; }
+  .abs::before { content: ""; position: absolute; left: 0; top: 0; width: 20px; height: 6px; background: #d06060; }
+  /* padding and border */
+  .pb { padding: 3px 4px; border: 2px solid #556677; }
+</style>
+</head>
+<body><div class="line" id="l1">XX<input type="checkbox" class="n" id="c1">XX<input type="radio" class="n" id="r1">XX<input type="checkbox" class="n t" id="c2">XX<input type="radio" class="n t" id="r2">XX<input type="checkbox" class="n e" id="c3">XX</div><div class="line" id="l2">XX<input type="checkbox" class="n b" id="c4">XX<input type="checkbox" class="n abs" id="c5">XX<input type="checkbox" class="n pb" id="c6">XX<input type="radio" class="n pb t x" id="r3">XX<input type="checkbox" class="n pb" id="c7" style="box-sizing: content-box">XX</div><div class="line" id="l3">XX<input type="checkbox" class="n t" id="c8" style="width: 30px">XX<input type="checkbox" class="n t" id="c9" style="height: 30px">XX<input type="radio" class="n b" id="r4" style="width: 24px; height: 14px">XX</div><div class="line" id="l4">XX<input type="checkbox" id="c10" style="width: auto; height: auto">XX<input type="radio" id="r5" style="width: auto; height: auto">XX<input type="checkbox" id="c11" checked style="width: auto; height: auto">XX</div></body>
+</html>

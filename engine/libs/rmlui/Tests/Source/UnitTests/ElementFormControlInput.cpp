@@ -2,7 +2,10 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
+#include <RmlUi/Core/ComputedValues.h>
+#include <RmlUi/Core/ElementInstancer.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Input.h>
 #include <doctest.h>
@@ -165,6 +168,197 @@ TEST_CASE("form.input.button.centered_content")
 	CHECK(empty_button->GetBaseline() == doctest::Approx(9.f));
 	CHECK(document->GetElementById("div")->GetBaseline() == doctest::Approx(0.f));
 
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G10): a button whose display is inline (or inline-table) is an inline-block, as HTML's button layout and
+// Chromium have it: its size and padding apply, it is one box on the line; it follows the input's type.
+TEST_CASE("form.input.button.display_inline")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+
+	const String document_rml = R"(<rml>
+	<head>
+		<style>
+			body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+			input, span { display: inline; width: 60px; height: 30px; padding: 2px 5px; }
+		</style>
+	</head>
+	<body>
+		<p>x <input type="button" id="button" value="Go"/> x <input type="submit" id="table" style="display: inline-table" value="Go"/> x <input type="text" id="text"/> <span id="span">x</span></p>
+	</body>
+	</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	Element* button = document->GetElementById("button");
+	Element* table = document->GetElementById("table");
+	Element* text = document->GetElementById("text");
+	Element* span = document->GetElementById("span");
+	CHECK(button->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(table->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(button->GetBox().GetSize() == Vector2f(60.f, 30.f));
+	CHECK(button->GetBox().GetEdge(BoxArea::Padding, BoxEdge::Left) == doctest::Approx(5.f));
+	// Other elements keep 'inline': a text field (replaced: an inline-level box anyway), a span (its width does not apply).
+	CHECK(text->GetDisplay() == Style::Display::Inline);
+	CHECK(span->GetDisplay() == Style::Display::Inline);
+	CHECK(span->GetBox().GetSize().x < 60.f);
+
+	// The display follows the type.
+	text->SetAttribute("type", "button");
+	button->SetAttribute("type", "text");
+	context->Update();
+	CHECK(text->GetDisplay() == Style::Display::InlineBlock);
+	CHECK(button->GetDisplay() == Style::Display::Inline);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+namespace {
+// An embedder's input with an 'appearance': its native look unless it has the class 'none' (fork, P4-G12).
+class ThemedInput : public ElementFormControlInput {
+public:
+	explicit ThemedInput(const String& tag) : ElementFormControlInput(tag) {}
+	bool HasNativeAppearance() const override { return !const_cast<ThemedInput*>(this)->IsClassSet("none"); }
+};
+} // namespace
+
+// Fork (P4-G12): a themed checkbox or radio has no border, padding, border radius or painted background (Chromium's theme);
+// without its look the author's apply. A button's display types as Chromium's theme and HTML's button layout give them.
+TEST_CASE("form.input.themed_box")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	static ElementInstancerGeneric<ThemedInput> instancer;
+	Factory::RegisterElementInstancer("tinput", &instancer);
+
+	const String document_rml = R"(<rml>
+	<head>
+		<style>
+			body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+			tinput { display: inline-block; box-sizing: border-box; width: 30px; height: 20px; border: 3px solid #f00; padding: 4px;
+				border-radius: 6px; background-color: #f00; decorator: horizontal-gradient(#f00 #00f); }
+			.b { display: table-cell; width: auto; height: auto; }
+			.none { cursor: pointer; } /* (the embedder's appearance changes a declaration: its values are computed again) */
+			#plain { display: inline-block; width: 30px; height: 20px; padding: 4px; }
+		</style>
+	</head>
+	<body>
+		<tinput type="checkbox" id="checkbox"/><tinput type="radio" id="radio"/><tinput type="text" id="text"/>
+		<tinput type="button" id="cell" class="b" value="x"/><tinput type="button" id="table" class="b" style="display: table" value="x"/>
+		<tinput type="button" id="item" class="b" style="display: list-item" value="x"/><input type="checkbox" id="plain"/>
+	</body>
+	</rml>)";
+
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	const auto themed = [&](const char* id) {
+		const ComputedValues& computed = document->GetElementById(id)->GetComputedValues();
+		return computed.border_top_width() == 0.f && computed.border_left_width() == 0.f && computed.padding_top().value == 0.f &&
+			computed.padding_left().value == 0.f && !computed.has_border_radius() && computed.background_color().alpha == 0 &&
+			!computed.has_decorator();
+	};
+	const auto plain = [&](const char* id) {
+		const ComputedValues& computed = document->GetElementById(id)->GetComputedValues();
+		return computed.border_top_width() == 3.f && computed.padding_top().value == 4.f && computed.has_border_radius() &&
+			computed.background_color().alpha == 255 && computed.has_decorator();
+	};
+	CHECK(themed("checkbox"));
+	CHECK(themed("radio"));
+	CHECK(plain("text"));
+	CHECK(document->GetElementById("checkbox")->GetBox().GetSize(BoxArea::Border) == Vector2f(30.f, 20.f));
+	CHECK(document->GetElementById("checkbox")->GetBox().GetSize(BoxArea::Content) == Vector2f(30.f, 20.f));
+
+	// Without the look (and relaid out).
+	Element* checkbox = document->GetElementById("checkbox");
+	checkbox->SetClass("none", true);
+	context->Update();
+	CHECK(plain("checkbox"));
+	CHECK(checkbox->GetBox().GetSize(BoxArea::Content) == Vector2f(16.f, 6.f));
+	checkbox->SetClass("none", false);
+	context->Update();
+	CHECK(themed("checkbox"));
+	CHECK(checkbox->GetBox().GetSize(BoxArea::Content) == Vector2f(30.f, 20.f));
+
+	// RmlUi's own input has no appearance: unchanged.
+	CHECK(document->GetElementById("plain")->GetComputedValues().padding_top().value == 4.f);
+
+	// Buttons: table and list-item are blocks; an internal table type is an inline-block with the look, a block without.
+	CHECK(document->GetElementById("table")->GetDisplay() == Style::Display::Block);
+	CHECK(document->GetElementById("item")->GetDisplay() == Style::Display::Block);
+	Element* cell = document->GetElementById("cell");
+	CHECK(cell->GetDisplay() == Style::Display::InlineBlock);
+	cell->SetClass("none", true);
+	context->Update();
+	CHECK(cell->GetDisplay() == Style::Display::Block);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G14): a block-level button in normal flow is as wide as its content (HTML's button layout: fit-content), its
+// auto margins taking the rest; a flex item is sized as any.
+TEST_CASE("form.input.button.block_fit_content")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head><style>
+		body { width: 600px; height: 600px; font-family: LatoLatin; font-size: 16px; }
+		div { display: block; width: 300px; }
+		input { display: block; padding: 0 5px; }
+		#flex { display: flex; flex-direction: column; }
+	</style></head><body>
+		<div><input type="button" id="block" value="Go"/><input type="button" id="centered" style="margin: 0 auto" value="Go"/>
+		<input type="button" id="wide" style="width: 100%" value="Go"/><input type="button" id="flexbutton" style="display: flex" value="Go"/></div>
+		<div id="flex"><input type="button" id="item" value="Go"/></div>
+		<div><div id="plain" style="padding: 0 5px">Go</div></div>
+	</body></rml>)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	const auto width = [&](const char* id) { return document->GetElementById(id)->GetBox().GetSize(BoxArea::Border).x; };
+	const float fit = width("block");
+	CHECK(fit < 100.f);
+	CHECK(fit > 10.f);
+	CHECK(width("centered") == doctest::Approx(fit));
+	CHECK(document->GetElementById("centered")->GetBox().GetEdge(BoxArea::Margin, BoxEdge::Left) == doctest::Approx((300.f - fit) * 0.5f));
+	CHECK(width("wide") == doctest::Approx(310.f)); // (content-box: and its padding)
+	CHECK(width("flexbutton") < 100.f);
+	CHECK(width("item") == doctest::Approx(300.f));
+	CHECK(width("plain") == doctest::Approx(310.f));
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G13): radios without a name are in no group (HTML): checking one leaves the others; radios with one name are.
+TEST_CASE("form.input.radio.unnamed")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head/><body>
+		<input type="radio" id="a" checked=""/><input type="radio" id="b" checked=""/>
+		<input type="radio" name="n" id="c" checked=""/><input type="radio" name="n" id="d" checked=""/>
+	</body></rml>)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	CHECK(document->GetElementById("a")->HasAttribute("checked"));
+	CHECK(document->GetElementById("b")->HasAttribute("checked"));
+	CHECK(!document->GetElementById("c")->HasAttribute("checked"));
+	CHECK(document->GetElementById("d")->HasAttribute("checked"));
+	document->GetElementById("a")->RemoveAttribute("checked");
+	document->GetElementById("a")->SetAttribute("checked", "");
+	context->Update();
+	CHECK(document->GetElementById("b")->HasAttribute("checked"));
 	document->Close();
 	TestsShell::ShutdownShell();
 }

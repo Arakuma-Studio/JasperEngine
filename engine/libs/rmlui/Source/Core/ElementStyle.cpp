@@ -1191,6 +1191,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	const FontFaceHandle font_face_before = values.font_face_handle();
 	const float font_size_before = values.font_size();
 	const Style::LineHeight line_height_before = values.line_height();
+	const Style::Display display_before = values.display();
 
 	// The next flag is just a small optimization, if the element was just created we don't need to copy all the default values.
 	if (!values_are_default_initialized)
@@ -1413,6 +1414,66 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// Values (p3-values): the values that depend on the font face.
 	ComputeFontRelativeValues(values, font_unit_scope, values_are_default_initialized ? FontFaceHandle(0) : font_face_before, loop_font_face, dp_ratio,
 		vp_dimensions, font_size, document_font_size, property_storage, any_font_face_candidates);
+
+	// A button laid out as an inline box is an inline-block: HTML's button layout (an outer display type of 'inline'
+	// behaves as 'inline-block'), and Chromium's computed value (fork, P4-G10). Its other display types (fork, P4-G12):
+	// 'table' and 'list-item' are blocks (button layout: 'flow-root'; Chromium's theme computes 'block'), the internal
+	// table types are inline-blocks with the native appearance (Chromium's theme) and blocks without (button layout).
+	if (element->HasButtonLayout())
+	{
+		switch (values.display())
+		{
+		case Style::Display::Inline:
+		case Style::Display::InlineTable: values.display(Style::Display::InlineBlock); break;
+		case Style::Display::Table:
+		case Style::Display::ListItem: values.display(Style::Display::Block); break;
+		case Style::Display::TableRow:
+		case Style::Display::TableRowGroup:
+		case Style::Display::TableColumn:
+		case Style::Display::TableColumnGroup:
+		case Style::Display::TableCell:
+			values.display(element->HasNativeAppearance() ? Style::Display::InlineBlock : Style::Display::Block);
+			break;
+		default: break;
+		}
+	}
+	// (it follows the native appearance, which no property of its own declares)
+	if (!values_are_default_initialized && values.display() != display_before)
+		dirty_properties.Insert(PropertyId::Display);
+
+	// A themed box (Chromium's checkbox and radio, fork P4-G12): no border, padding or border radius, and no background
+	// painted; the theme draws in the element's parts. The properties it overrides are dirty when it comes or goes.
+	const bool now_themed_box = element->HasThemedBox();
+	if (now_themed_box)
+	{
+		values.border_top_width(0.f);
+		values.border_right_width(0.f);
+		values.border_bottom_width(0.f);
+		values.border_left_width(0.f);
+		values.padding_top(Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+		values.padding_right(Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+		values.padding_bottom(Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+		values.padding_left(Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+		for (int corner = 0; corner < 4; corner++)
+		{
+			values.border_radius(corner, 0, Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+			values.border_radius(corner, 1, Style::LengthPercentage(Style::LengthPercentage::Length, 0.f));
+		}
+		values.background_color(Colourb(0, 0, 0, 0));
+		values.has_background_image(false);
+		values.has_decorator(false);
+	}
+	if (now_themed_box != themed_box)
+	{
+		themed_box = now_themed_box;
+		for (PropertyId id : {PropertyId::BorderTopWidth, PropertyId::BorderRightWidth, PropertyId::BorderBottomWidth, PropertyId::BorderLeftWidth,
+				 PropertyId::PaddingTop, PropertyId::PaddingRight, PropertyId::PaddingBottom, PropertyId::PaddingLeft,
+				 PropertyId::RmlUi_BorderTopLeftRadiusX, PropertyId::RmlUi_BorderTopLeftRadiusY, PropertyId::RmlUi_BorderTopRightRadiusX,
+				 PropertyId::RmlUi_BorderTopRightRadiusY, PropertyId::RmlUi_BorderBottomRightRadiusX, PropertyId::RmlUi_BorderBottomRightRadiusY,
+				 PropertyId::RmlUi_BorderBottomLeftRadiusX, PropertyId::RmlUi_BorderBottomLeftRadiusY, PropertyId::BackgroundColor,
+				 PropertyId::BackgroundImage, PropertyId::Decorator})
+			dirty_properties.Insert(id);
+	}
 
 	// Next, pass inheritable dirty properties onto our children
 	PropertyIdSet dirty_inherited_properties = (dirty_properties & StyleSheetSpecification::GetRegisteredInheritedProperties());

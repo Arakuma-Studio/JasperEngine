@@ -332,6 +332,12 @@ input {
     overflow: hidden;
 }
 
+/* html.css: a search field is border-box (its default width the text field's border box) */
+input[type="search"] {
+    box-sizing: border-box;
+    width: 185px;
+}
+
 input::placeholder, textarea::placeholder {
     color: #757575;
 }
@@ -360,12 +366,16 @@ input:disabled, textarea:disabled {
 }
 
 /* buttons: `padding: 1px 6px; border: 2px outset ButtonBorder` laid out, painted as a 1px
-   #767676 frame with 2px corners */
+   #767676 frame with 2px corners. Without the look (`appearance: none`, the companions) they are
+   html.css's: that padding and a 2px outset black border (ButtonBorder), the same on hover and
+   press. */
 button, input[type="button"], input[type="submit"], input[type="reset"], input[type="file"] {
     box-sizing: border-box;
     width: auto;
-    padding: 2px 7px;
-    border: 1px solid #767676;
+    padding: var(--html-button-padding, 2px 7px);
+    border-width: var(--html-button-border-width, 1px);
+    border-style: var(--html-button-border-style, solid);
+    border-color: var(--html-button-border, #767676);
     border-radius: var(--html-control-radius, 2px);
     background-color: ButtonFace;
     color: ButtonText;
@@ -378,16 +388,24 @@ button {
     white-space: normal;
 }
 
+/* the file input approximation (a disabled "Choose File" button) keeps its look: Chromium's
+   appearance applies to its inner button, which `appearance: none` on the input leaves */
+input[type="file"] {
+    padding: 2px 7px;
+    border-width: 1px;
+    border-style: solid;
+}
+
 button:enabled:hover, input[type="button"]:enabled:hover, input[type="submit"]:enabled:hover,
 input[type="reset"]:enabled:hover {
-    background-color: #e5e5e5;
-    border-color: #4f4f4f;
+    background-color: var(--html-button-hover-bg, #e5e5e5);
+    border-color: var(--html-button-hover-border, #4f4f4f);
 }
 
 button:enabled:active, input[type="button"]:enabled:active, input[type="submit"]:enabled:active,
 input[type="reset"]:enabled:active {
-    background-color: #f5f5f5;
-    border-color: #8d8d8d;
+    background-color: var(--html-button-active-bg, #f5f5f5);
+    border-color: var(--html-button-active-border, #8d8d8d);
 }
 
 button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled,
@@ -406,20 +424,28 @@ input[type="image"] {
     cursor: pointer;
 }
 
-/* checkbox and radio: 13x13, painted like Chromium's theme. The frame, the rounding, the
-   check and the ring are the theme's: without it (`appearance: none`, the companions) the
-   control has no border, background or radius, as Chromium's html.css gives it none. */
+/* checkbox and radio: 13x13, painted like Chromium's theme. As in Chromium, the theme draws the
+   control: its border, padding and border radius are 0 and its background is not painted
+   (fork P4-G12, HasThemedBox); HtmlInputElement draws the theme (a square of the box's smaller
+   side, centered: Chromium's shapes) in the colours below, which author styles do not reach.
+   Without the theme (`appearance: none`) the control is html.css's: no border, padding or
+   background, and no size: it is sized by its content (its ::before and ::after, padding and
+   border), as an inline-block (HtmlInputElement). */
 input[type="checkbox"], input[type="radio"] {
     box-sizing: border-box;
-    width: 13px;
-    height: 13px;
+    width: var(--html-check-size, 13px);
+    height: var(--html-check-size, 13px);
     padding: 0;
-    border-width: var(--html-control-border-width, 1px);
-    border-style: solid;
-    border-color: var(--html-control-border, #767676);
-    border-radius: var(--html-check-radius, 2px);
-    background-color: var(--html-control-bg, #ffffff);
+    border-width: 0;
+    background-color: transparent;
+    /* not clipped (Chromium): ::before and ::after may leave the box, and the baseline of one
+       sized by its content is its last line's */
+    overflow: visible;
     cursor: default;
+    --html-theme-fill: var(--html-control-bg, #ffffff);
+    --html-theme-stroke: var(--html-control-border, #767676);
+    --html-theme-mark: #00000000;
+    --html-theme-shade: none;
 }
 
 /* a checkbox's baseline is its border box's bottom edge (Chromium's themed control), not its
@@ -432,29 +458,59 @@ input[type="checkbox"] {
 
 input[type="radio"] {
     margin: 3px 3px 0 5px;
-    border-radius: var(--html-radio-radius, 9999px);
 }
 
+/* checked: the checkbox filled with the accent and its mark in the accent's contrast; the radio
+   an accent ring and dot on the contrast colour */
 input[type="checkbox"]:checked {
-    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    decorator: var(--html-check, html-layer("/@htmlui/ua/check.svg" 100% 100% 50% 50% no-repeat no-repeat padding-box border-box scroll));
+    --html-theme-fill: var(--html-check-fill, var(--html-accent, #0075ff));
+    --html-theme-stroke: #00000000;
+    --html-theme-mark: var(--html-accent-contrast, #ffffff);
 }
 
-/* the checked radio: an accent ring, a white gap and an accent dot */
 input[type="radio"]:checked {
-    border-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    background-color: var(--html-check-fill, var(--html-accent, #0075ff));
-    box-shadow: var(--html-radio-ring, inset 0 0 0 1.5px var(--html-accent-contrast, #ffffff));
+    --html-theme-fill: var(--html-accent-contrast, #ffffff);
+    --html-theme-stroke: var(--html-check-fill, var(--html-accent, #0075ff));
+    --html-theme-mark: var(--html-check-fill, var(--html-accent, #0075ff));
 }
 
+/* hovered and pressed (Chromium): the unchecked frame darker (#4f4f4f) and lighter (#8d8d8d); a
+   checked control's accent colours shaded by HtmlInputElement (--html-theme-shade) */
+input[type="checkbox"]:enabled:hover, input[type="radio"]:enabled:hover {
+    --html-theme-stroke: #4f4f4f;
+    --html-theme-shade: hover;
+}
+
+input[type="checkbox"]:enabled:active, input[type="radio"]:enabled:active {
+    --html-theme-stroke: #8d8d8d;
+    --html-theme-shade: active;
+}
+
+input[type="checkbox"]:checked:enabled:hover, input[type="checkbox"]:checked:enabled:active {
+    --html-theme-stroke: #00000000;
+}
+
+input[type="radio"]:checked:enabled:hover, input[type="radio"]:checked:enabled:active {
+    --html-theme-stroke: var(--html-check-fill, var(--html-accent, #0075ff));
+}
+
+/* disabled: Chromium's light theme draws it gray and translucent, whatever the accent (measured
+   over black and white backgrounds); a checked checkbox's mark is white at 60% */
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
-    border-color: var(--html-control-disabled-border, #7676764d);
+    --html-theme-fill: #f5f5f5ad;
+    --html-theme-stroke: var(--html-control-disabled-border, #bababaab);
 }
 
-input[type="checkbox"]:checked:disabled, input[type="radio"]:checked:disabled {
-    border-color: var(--html-check-disabled-fill, #0075ff4d);
-    background-color: var(--html-check-disabled-fill, #0075ff4d);
+input[type="checkbox"]:checked:disabled {
+    --html-theme-fill: var(--html-check-disabled-fill, #c5c5c5c6);
+    --html-theme-stroke: #00000000;
+    --html-theme-mark: #ffffff99;
+}
+
+input[type="radio"]:checked:disabled {
+    --html-theme-fill: #f5f5f5ad;
+    --html-theme-stroke: var(--html-check-disabled-fill, #c5c5c5c6);
+    --html-theme-mark: var(--html-check-disabled-fill, #c5c5c5c6);
 }
 
 /* range: 129x16 with a 2px margin; RmlUi's slider widget parts. Chromium paints an 8px track
@@ -527,34 +583,43 @@ input[type="range"]:disabled sliderbar, input[type="range"]:disabled sliderprogr
    tall, centered, with a 1px line inside the track that the value covers. The fill is RmlUi's
    `fill`, laid out in the content box. The track is the padding box between two transparent
    borders: its colour is an inset shadow (a background colour would also cover the border
-   box, as CSS paints it). */
+   box, as CSS paints it). Without the look (`appearance: none`, the companions) the bar is
+   html.css's ::-webkit-progress-bar and -value: the whole box gray, the value green. */
 progress {
     box-sizing: border-box;
     width: 10em;
     height: 1em;
     vertical-align: -0.2em;
-    border-width: 0.25em 0;
+    border-top-width: var(--html-progress-border-width, 0.25em);
+    border-bottom-width: var(--html-progress-border-width, 0.25em);
+    border-left-width: 0;
+    border-right-width: 0;
     border-style: solid;
     border-color: transparent;
-    border-radius: 0.5em;
-    background-color: transparent;
-    box-shadow: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
+    border-radius: var(--html-progress-radius, 0.5em);
+    background-color: var(--html-progress-bg, #00000000);
+    box-shadow: var(--html-progress-track, inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef);
 }
 
+/* the track's 1px line is stroked over the value too, at half alpha (Chromium): above, below and
+   at its start */
 progress fill {
-    border-radius: 0.25em 0 0 0.25em;
-    background-color: var(--html-accent, #0075ff);
+    border-radius: var(--html-progress-fill-radius, 0.25em 0 0 0.25em);
+    background-color: var(--html-progress-fill, var(--html-accent, #0075ff));
+    box-shadow: var(--html-progress-fill-line, inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680);
 }
 
-/* select: a white box with a 1px frame and Chromium's chevron */
+/* select: a white box with a 1px frame and Chromium's chevron. Without the look (`appearance:
+   none`, the companions) html.css's: the same 1px #767676 border on ButtonFace, no arrow, and
+   none of the menu list's inner padding. */
 select {
     box-sizing: border-box;
     padding: 0;
     border-width: 1px;
     border-style: solid;
-    border-color: var(--html-control-border, #767676);
+    border-color: #767676;
     border-radius: var(--html-control-radius, 2px);
-    background-color: var(--html-control-bg, #ffffff);
+    background-color: var(--html-select-bg, #ffffff);
     color: FieldText;
     white-space: pre;
     cursor: default;
@@ -562,13 +627,13 @@ select {
 
 /* Chromium's internal menulist padding, which author padding adds to */
 select selectvalue {
-    padding: 1px 0 1px 4px;
+    padding: var(--html-select-padding, 1px 0 1px 4px);
 }
 
 /* the chevron is drawn in the select's text color (Chromium): the color through the arrow's mask */
 select selectarrow {
-    width: 16px;
-    background-color: var(--html-select-arrow-color, currentcolor);
+    width: var(--html-select-arrow-width, 16px);
+    background-color: currentcolor;
     mask-image: var(--html-select-arrow, url("/@htmlui/ua/arrow-down.svg"));
     mask-size: 10px 6px;
     mask-position: 3px 50%;
@@ -757,6 +822,57 @@ scrollbarcorner {
 }
 
 /* 8. Companion resets: these companions must not inherit (3.9.8) ------------------------- */
+
+/* `appearance` is not inherited (CSS UI 4): the companions an `appearance` declaration writes
+   take the themed look's values again on every control, so a container's `appearance: none`
+   does not reach the controls in it; an author `appearance` on the control wins (author rules
+   outrank this sheet). Their parts (select arrow, slider, progress fill) inherit
+   them from the control. accent-color's companions (--html-accent, --html-accent-contrast) are
+   inherited, as accent-color is. */
+input, select, button, textarea, progress {
+    --html-appearance: auto;
+    --html-check-baseline: -3px;
+    --html-control-bg: #ffffff;
+    --html-control-border: #767676;
+    --html-field-padding: 2px 3px;
+    --html-field-border-width: 1px;
+    --html-field-border-style: solid;
+    --html-control-radius: 2px;
+    --html-check-fill: var(--html-accent, #0075ff);
+    --html-control-disabled-border: #bababaab;
+    --html-check-disabled-fill: #c5c5c5c6;
+    --html-select-arrow: url("/@htmlui/ua/arrow-down.svg");
+    --html-thumb: none;
+    --html-slider-fill: var(--html-accent, #0075ff);
+    --html-slider-height: 16px;
+    --html-slider-track-margin: 4px;
+    --html-slider-track-inset: 1px;
+    --html-slider-thumb-margin: -2px;
+    --html-slider-thumb-transform: scale(0.9375);
+    --html-slider-track-height: 6px;
+    --html-slider-track-border: 1px;
+    --html-slider-track-bg: #efefef;
+    --html-slider-track-border-color: #b2b2b2;
+    --html-check-size: 13px;
+    --html-select-bg: #ffffff;
+    --html-select-padding: 1px 0 1px 4px;
+    --html-select-arrow-width: 16px;
+    --html-button-padding: 2px 7px;
+    --html-button-border-width: 1px;
+    --html-button-border-style: solid;
+    --html-button-border: #767676;
+    --html-button-hover-bg: #e5e5e5;
+    --html-button-hover-border: #4f4f4f;
+    --html-button-active-bg: #f5f5f5;
+    --html-button-active-border: #8d8d8d;
+    --html-progress-border-width: 0.25em;
+    --html-progress-radius: 0.5em;
+    --html-progress-bg: #00000000;
+    --html-progress-track: inset 0 0 0 1px #b2b2b2, inset 0 0 0 1em #efefef;
+    --html-progress-fill-radius: 0.25em 0 0 0.25em;
+    --html-progress-fill: var(--html-accent, #0075ff);
+    --html-progress-fill-line: inset 0 1px 0 0 #76767680, inset 0 -1px 0 0 #76767680, inset 1px 0 0 0 #76767680;
+}
 
 * {
     --html-box-shadow: 0 0 0 0 #0000;
