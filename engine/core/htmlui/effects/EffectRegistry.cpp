@@ -11,6 +11,7 @@
 #include "EffectRuntime.h"
 #include "EffectSyntax.h"
 
+#include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/VirtualFiles.h"
 #include "pool/ShaderPool.h"
 
@@ -237,15 +238,22 @@ bool EffectRegistry::declareProjectEffect(const std::string& name, const std::st
     }
     if (isReservedEffectName(name))
         return conflict("'" + name + "' is the name of a CSS function; @effect cannot declare it", "rename the effect");
+    auto readFile = [&](const std::string& path, std::string& content){
+        return read ? read(path, content) : hc::readAssetFile(hc::FileAccess(), path, content);
+    };
     auto existing = projects.find(name);
     if (existing != projects.end()){
         if (existing->second.fragPath == fragPath)
             return true;
-        return conflict("'" + name + "' is already declared with src " + existing->second.fragPath + " (" + existing->second.declaredIn + ":" +
-                        std::to_string(existing->second.line) + "); the first declaration is used", "rename the effect");
+        // p5-tooling: the other file is gone (renamed, deleted; the declaration is stale): the
+        // new declaration replaces it
+        std::string old;
+        if (readFile(existing->second.fragPath, old))
+            return conflict("'" + name + "' is already declared with src " + existing->second.fragPath + " (" + existing->second.declaredIn + ":" +
+                            std::to_string(existing->second.line) + "); the first declaration is used", "rename the effect");
     }
     std::string source;
-    const bool found = read ? read(fragPath, source) : hc::readAssetFile(hc::FileAccess(), fragPath, source);
+    const bool found = readFile(fragPath, source);
     if (!found){
         diags.push_back(makeEffectDiagnostic(hc::codes::EffectFileMissing, "@effect " + name + ": no file at " + fragPath,
                                              "src resolves against the stylesheet, like url()"));
@@ -254,6 +262,11 @@ bool EffectRegistry::declareProjectEffect(const std::string& name, const std::st
     std::unique_ptr<EffectManifest> manifest;
     if (!loadProjectManifest(name, fragPath, source, diags, manifest))
         return false;
+    if (existing != projects.end()){
+        // the replaced manifest stays alive: decorators made from it may still be drawn
+        graveyard.push_back(std::move(existing->second.manifest));
+        projects.erase(existing);
+    }
     ProjectEffect& effect = projects[name];
     effect.manifest = std::move(manifest);
     effect.fragPath = fragPath;
@@ -292,9 +305,11 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
             for (const EffectDiagnostic& d : diags)
                 Log::error("[HTML UI] %s:%u: %s", d.file.c_str(), d.line, d.message.c_str());
             // forgotten: the next @effect reads the file again and reports why it fails, and
-            // declares it once it is back (the old manifest stays alive for its decorators)
+            // declares it once it is back (the old manifest stays alive for its decorators); a
+            // cached compile would not declare it again
             graveyard.push_back(std::move(effect.manifest));
             projects.erase(it);
+            hc::DocumentLoader::clearCache();
         }
         // the variants compile again from the new source
         const uint16_t customId = ShaderPool::registerCustomShader(assetPath);
@@ -306,6 +321,26 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
     if (listener)
         listener(assetPath);
     return true;
+}
+
+size_t EffectRegistry::forgetMissingProjectEffects(){
+    std::vector<std::string> gone;
+    {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        for (auto it = projects.begin(); it != projects.end();){
+            if (hc::assetFileExists(hc::FileAccess(), it->second.fragPath)){
+                ++it;
+                continue;
+            }
+            Log::verbose("[HTML UI] %s: the effect '%s' is gone (no file)", it->second.fragPath.c_str(), it->first.c_str());
+            gone.push_back(it->second.fragPath);
+            graveyard.push_back(std::move(it->second.manifest));
+            it = projects.erase(it);
+        }
+    }
+    if (!gone.empty())
+        hc::DocumentLoader::clearCache();
+    return gone.size();
 }
 
 void EffectRegistry::setProjectEffectListener(ProjectEffectListener listener){
@@ -335,9 +370,14 @@ void EffectRegistry::registerRml(const EffectManifest& m){
     auto filter = std::make_unique<EffectFilterInstancer>(m);
     Rml::Factory::RegisterFilterInstancer(type, filter.get());
     auto& slot = rmlState()->filters[m.name];
+    const bool replaced = (bool)slot;
     if (slot)
         rmlState()->oldFilters.push_back(std::move(slot));
     slot = std::move(filter);
+    // p5-tooling: RmlUi keeps parsed style sheets with their instanced decorators and filters; a
+    // sheet of the same text (the @effect src is not in the RCSS) would keep the replaced ones
+    if (replaced)
+        Rml::Factory::ClearStyleSheetCache();
 }
 
 void EffectRegistry::installShaderResolvers(){

@@ -585,6 +585,9 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
     for (const std::string& file : files){
         asked.insert(normalizeHtmlUIPath(file));
     }
+    // phase 5 (p5-tooling): a declared project effect whose .frag is gone is forgotten first, so
+    // the documents compiled next declare theirs again
+    htmlui::EffectRegistry::get().forgetMissingProjectEffects();
     // p2-html (hook H2): compiles that read a changed file are stale (the manifest reloads too)
     for (const std::string& path : asked){
         htmlui::compat::DocumentLoader::invalidate(path);

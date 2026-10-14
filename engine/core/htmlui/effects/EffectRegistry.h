@@ -55,7 +55,8 @@ namespace jasperengine::htmlui {
         // `read` (default: the assets), parses and checks its manifest, registers the effect's
         // instancers and its custom shader. Errors: effect-declare-conflict (a built-in name, or
         // another src), effect-file-missing, effect-manifest (at the .frag's line, also when the
-        // manifest's @effect is not `name`). A repeated identical declaration is fine.
+        // manifest's @effect is not `name`). A repeated identical declaration is fine; one whose
+        // earlier src no longer exists replaces it (p5-tooling: a .frag renamed and the CSS following).
         bool declareProjectEffect(const std::string& name, const std::string& fragPath, const std::string& declaredIn, int line,
                                   std::vector<EffectDiagnostic>& diags, const FileReader& read = FileReader());
         // A project file changed (hot reload): a declared effect's .frag is read again, its
@@ -67,6 +68,11 @@ namespace jasperengine::htmlui {
         // once it is back or fixed. UIDocumentSystem::reloadChangedFiles calls it for every
         // changed .frag a document reads, before the reload.
         bool onProjectFileChanged(const std::string& assetPath);
+        // Forgets every declared project effect whose file no longer exists (renamed or deleted
+        // while no document that reads it was loaded: a stopped play scene's) and drops the
+        // compatibility layer's cached compiles, so documents declare their effects again;
+        // UIDocumentSystem::reloadChangedFiles calls it first. The count forgotten
+        size_t forgetMissingProjectEffects();
         // Called (outside the registry's lock) after onProjectFileChanged dropped a project
         // effect's variants: the editor drops its compiled cache of project shaders there
         using ProjectEffectListener = std::function<void(const std::string& assetPath)>;

@@ -121,3 +121,32 @@ TEST_F(EffectHotReload, DeletedFileIsForgottenAndReportedMissing){
     EffectRegistry::get().clearProjectEffects();
     EXPECT_FALSE(EffectRegistry::get().onProjectFileChanged(kPath));
 }
+
+TEST_F(EffectHotReload, StaleDeclarationIsReplaced){
+    std::vector<EffectDiagnostic> diags;
+    ASSERT_TRUE(declare(diags));
+    const char* renamed = "@htmlui/test/effects/fx/hot-glow-2.frag";
+    hc::VirtualFiles::add(renamed, frag("0.5"));
+    // both files exist: another src is a conflict, the first declaration is used
+    diags.clear();
+    EXPECT_FALSE(EffectRegistry::get().declareProjectEffect("hot-glow", renamed, "ui/hot.css", 1, diags));
+    EXPECT_TRUE(hasCode(diags, hc::codes::EffectDeclareConflict));
+    // renamed (the first file is gone) and the CSS follows: the new src replaces the stale one
+    hc::VirtualFiles::remove(kPath);
+    diags.clear();
+    EXPECT_TRUE(EffectRegistry::get().declareProjectEffect("hot-glow", renamed, "ui/hot.css", 1, diags));
+    ASSERT_NE(EffectRegistry::get().find("hot-glow"), nullptr);
+    EXPECT_EQ(EffectRegistry::get().find("hot-glow")->sourcePath, renamed);
+    EffectRegistry::get().clearProjectEffects();
+    hc::VirtualFiles::remove(renamed);
+}
+
+TEST_F(EffectHotReload, MissingFilesAreForgotten){
+    std::vector<EffectDiagnostic> diags;
+    ASSERT_TRUE(declare(diags));
+    EXPECT_EQ(EffectRegistry::get().forgetMissingProjectEffects(), 0u) << "the file exists";
+    ASSERT_NE(EffectRegistry::get().find("hot-glow"), nullptr);
+    hc::VirtualFiles::remove(kPath);
+    EXPECT_EQ(EffectRegistry::get().forgetMissingProjectEffects(), 1u);
+    EXPECT_EQ(EffectRegistry::get().find("hot-glow"), nullptr) << "a declaration whose file is gone is forgotten";
+}

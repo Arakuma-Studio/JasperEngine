@@ -385,8 +385,12 @@ async def test_rename_frag_during_play(ed: Editor):
         await wait_tint(ed, "play-followed", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
     finally:
         await ed.call("play", action="stop")
+    # the edit-mode document follows the CSS edited during play (it reloads once play stops)
+    await wait_tint(ed, "edit-after-play", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
     (ed.project / "assets/ui/fx/tint-wave2.frag").rename(ed.project / "assets/ui/fx/tint-wave.frag")
     write(ed, "assets/ui/effects.css", CSS)
+    # the effect declared during play from the renamed file is gone with it: the edit-mode
+    # document (whose CSS is back to the text of a cached compile) declares its own again
     await wait_tint(ed, "edit-restored", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
 
 

@@ -1439,6 +1439,17 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   `EffectRegistry::setProjectEffectListener(fn)`: called after a project effect's variants were
   dropped; the editor (`App.cpp`) drops `ShaderBuilder`'s compiled cache of project shaders there
   (the engine cannot reach it), so the editor's own poller (`HtmlUIWatcher`) recompiles too.
+  Renaming a `.frag` during play showed three more gaps, fixed in the registry:
+  `declareProjectEffect` replaces a declaration whose earlier src no longer exists (it was an
+  `HTMLUI-FX-0012` conflict until restart); `forgetMissingProjectEffects()` (called first by
+  `reloadChangedFiles`) forgets declarations whose file is gone even when no loaded document reads
+  it (the stopped play scene's), and forgetting one clears compat's compile cache
+  (`DocumentLoader::clearCache`: a cache hit runs no `@effect`, so the edit-mode document whose CSS
+  is back to an earlier text would keep the stale binding); re-registering an effect's instancers
+  clears RmlUi's style-sheet cache (`Rml::Factory::ClearStyleSheetCache`: the RCSS text of a sheet
+  does not change with its `@effect` src, so a cached sheet kept the replaced decorators). Observed,
+  not fixed (phase 1): files changed while a document is reloading right after play stops can be
+  stamped as seen and never reloaded; the test waits for the edit view first.
   `w4::isHtmlUiFile` takes `.frag`; during play `McpAutoSync` reloads the documents of a changed
   effect `.frag` (or a removed `.frag`) now instead of deferring it as a shader.
 - **`check`** (`ProjectChecks`). `ShaderUse` gained `properties` (the form). `isUiEffectFile`,
