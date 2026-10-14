@@ -1443,7 +1443,7 @@ Chromium with `getComputedStyle` before it was built). Where the code differs fr
 - **`transition-property` names** keep their case for custom properties (`css/props/Transition.cpp`,
   additive; `--Spin` is not `--spin`).
 - **Capacity**: registered properties take ids from RmlUi's 256 property ids (the engine uses the
-  others: 59 are free, `RegisteredPropertyTest.PropertyIdCapacity`); a registration past the last free
+  others: 58 are free with p5-infra merged, `RegisteredPropertyTest.PropertyIdCapacity`); a registration past the last free
   id stays unregistered with a warning
   (`at-property-unsupported-syntax`). `PropertyIdSet` was not widened: it is in every style hot path.
 - **No Lua `CSS.registerProperty`**: 3.12 has none; `anime` animates registered properties as typed
