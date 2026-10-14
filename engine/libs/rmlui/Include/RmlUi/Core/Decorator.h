@@ -45,6 +45,11 @@ public:
 	/// other decorators return none and are painted with GenerateElementData over the layer's clip box.
 	virtual CompiledShader CompileImageShader(Element* element, Vector2f size) const;
 
+	/// Fork (phase 5, P5-2): the decorator clips itself to the rounded box of the area it is generated for (or draws
+	/// beyond it on purpose), so a background or mask layer painted with it needs no clip mask: it draws into the current
+	/// layer, where its blending sees what lies below it.
+	virtual bool PaintsOwnClip() const;
+
 	/// Value specifying an invalid or non-existent Decorator data handle.
 	/// @note This value will prevent the decorator from being rendered on the given element.
 	static const DecoratorDataHandle INVALID_DECORATORDATAHANDLE = 0;
