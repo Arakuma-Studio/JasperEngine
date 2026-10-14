@@ -1399,6 +1399,88 @@ build-settings round-trip of `uieffect/<name>` additions, hot reload of project 
 the `.sdat` list and the license file), `test_checks.py`, `test_autosync.py`,
 `test_protocol.py` and `test_ui_anchors.py`.
 
+#### p5-tooling as implemented
+
+Built as specified (3.8 collection and export, 3.10 hot reload and `check`, 3.13 MCP tools, 3.16
+notice, 5.4-5.7), with these differences. Wave 2 builds on them.
+
+- **Collection** (`ShaderVariantCollector`). `collectScene(scene, content, prefabs, keys, projectRoot)`
+  takes the project root (`Project::collectRequiredShaderKeys` passes it; empty = no effects) and
+  calls `collectUiEffects(documents, projectRoot, keys)` for the scene's and its prefabs' UI
+  Documents. A document is compiled through compat with the project's files
+  (`DocumentLoader::compile(path, options, ProjectChecks::projectFiles(root))`, not cached), which
+  also declares its `@effect`s; `scanUiEffects` reads the typed RCSS (`jfx-<name>(`) of its sheets,
+  hints, `!important` sheet and style attributes, and every file the compile read **as written**
+  (comments blanked), so an effect only a `@media` block the conversion drops on this device uses
+  (`(hover: none)`, `(pointer: coarse)`: static features evaluated at load) is collected too. The
+  form comes from the declaration's property: `background(-image)`, `mask(-image)`, `decorator` →
+  paint; `filter`, `backdrop-filter`, `-jfx-text-fill` (gradient text) → filter; a custom property
+  (`--bg: effect(...)`) → both. The documents' own scripts and every `.lua` of the project are
+  scanned for `effect(<name>`; a paint effect named there adds both forms. A declared project effect
+  is exported where it is used, like a built-in: a declared but unused one is not (the "unused effect
+  not exported" case); so is a `.frag` nothing declares. `addUiEffectKeys` adds `_bright` for a
+  prepass with a threshold.
+- **Notice.** `Exporter::writeEffectLicense` copies `shaderlib/effects/LICENSE.shaders-com.txt` to
+  `<export>/licenses/shaders.com-LICENSE.txt` whenever the exported keys contain **any** UI_EFFECT
+  variant, not only a built-in whose `@source` is shaders.com: every effect (a project one too) is
+  compiled with the include library, which ports kit functions under that license (the notice says
+  so). Desktop and Web copy it next to the player (`copyLicenses`); a stale one is removed.
+- **Project effects in an assets directory.** A project effect's custom name is its asset path (as
+  `@effect` registers it and the shipped game reads it); `ShaderBuilder::resolveCustomSources` read
+  custom sources from the project root only, so an effect failed to build ("Shader build failed")
+  in a project whose `assetsDir` is not its root (the MCP fixture). A fragment-only custom shader's
+  files are now read from the assets directory first, then the project root.
+- **Hot reload.** `UIDocumentSystem::reloadChangedFiles` calls `EffectRegistry::onProjectFileChanged`
+  for every `.frag` whose stamp changed, before the documents reload. `onProjectFileChanged` now
+  **forgets** a declaration whose file is gone or whose manifest no longer parses (it kept the old
+  manifest, so the reloading document re-declared nothing and reported nothing): the reload reports
+  `HTMLUI-FX-0013`/`-0014` (at the `.frag` line) in the document's diagnostics and the effect is
+  not drawn; the fixed or restored file is declared again by the next reload. New
+  `EffectRegistry::setProjectEffectListener(fn)`: called after a project effect's variants were
+  dropped; the editor (`App.cpp`) drops `ShaderBuilder`'s compiled cache of project shaders there
+  (the engine cannot reach it), so the editor's own poller (`HtmlUIWatcher`) recompiles too.
+  `w4::isHtmlUiFile` takes `.frag`; during play `McpAutoSync` reloads the documents of a changed
+  effect `.frag` (or a removed `.frag`) now instead of deferring it as a shader.
+- **`check`** (`ProjectChecks`). `ShaderUse` gained `properties` (the form). `isUiEffectFile`,
+  `uiEffectUses` (paint: both forms; filter, or a manifest that does not parse: the filter form),
+  `uiEffectFiles`, `uiEffectFile`; `shaderForksUsingFiles` gives an effect `.frag`'s forms (a `.glsl`
+  checks every effect too), `shaderForksInProject` adds every effect `.frag`; `guessShaderType` and
+  `shaderTypeName` know `ui_effect`. `runShaderCheck` checks the manifest first (`HTMLUI-FX-0014` at
+  its line; a built-in's name `HTMLUI-FX-0012`; a missing file `-0013`), then compiles (errors
+  `HTMLUI-FX-0015` at the `.frag` or include line, sources shown project-relative), then checks the
+  compiled parameter block against the manifest (`checkReflection`; `HTMLUI-FX-0014` at the
+  `@param` line). `toJson(ShaderCheck)` adds `effect`, `form` and, on failure, `code`. The two forms
+  of a paint effect fail alike: `check`, `check_shader` and the auto-sync report an error once.
+  `uiEffectJson`/`uiEffectExample` moved from `CommandLine.cpp` (the `ui-effects --json` entry) so
+  `list_ui_effects` gives the same entries.
+- **MCP.** `list_ui_effects {name?, category?, kind?}`: `{count, effects}`; the parameters are in
+  each entry when a name is given or at most 12 match, else `param_names` (83 full entries are
+  ~60 KB); project effects add `declared` and `path` (project-relative) and the project's `.frag`
+  effects nothing declares are listed too; an unknown name or category is an error with the
+  nearest names / the categories. `set_ui_effect_time {time: number|null}`: `{time, clock}`,
+  activity Control, every HTML UI scene redrawn. `inspect_ui`: `InspectElement::effects`
+  (`InspectEffect {property, index, name, form, params}`, from `collectEffectUses`), the JSON key
+  `effects` (omitted when empty), `fx:<name>` in the outline; its description says "effects" (+9).
+  `write_file` and `check_shader` (which takes an effect `.frag`) name the form and code
+  (`<shader> (paint form) [HTMLUI-FX-0015]: line N: ...`). `build_project`'s `shaders.add/exclude`
+  and `generate_shaders`' `shaders` also take specs (`uieffect/<name>[:Flt]`, `uieffect/all`).
+  Budget (`tool_budget.py`, fixture): before 133 tools, 99,006 characters; after 135, 99,843:
+  `list_ui_effects` 559, `set_ui_effect_time` 269, `inspect_ui` 1,806 → 1,815; `test_budget` caps
+  `list_ui_effects` 900, `set_ui_effect_time` 500, `inspect_ui` 1,806 + 150 and the total
+  99,800 + 837. `gen_tool_docs.py` `MODULES` has `UIEffectTools` in "HTML/CSS UI".
+- **Tests against the reference effects.** Wave 1 has 5 effects, so 5.5 uses them: `aurora` →
+  `stripes`, `holographic` text → `stripes` with `background-clip: text`, `sheen` with a hover
+  transition → `spotlight`; `list_ui_effects` returns every registered effect (not >= 83) and
+  `category: "glass"` returns `frosted-glass` (wave 2 adds the other three). 5.4's cost table
+  enumerates `EffectRegistry::all()`, so wave 2's effects join it with no change. 5.4's metric is
+  the main thread's CPU time of a frame (`RenderTestContext`: compat runtime, `Context::Update`, the
+  render submission and its composite), the median of 120 frames, the least of up to 5 runs as in
+  `PerfFixtures.h`; the cost table's time is the process's CPU time of a render + readback (the GL
+  driver's threads draw). The export test is `test_html_ui_effects_export.py` (its CLI export
+  builds GLSL 410 and GLSL 300 es, the web's, so 5.6's "web export contains glsl300es" is checked
+  there; the Desktop player is built without the runtime shader compiler). `EffectHotReloadTest`
+  covers the registry's reload rules.
+
 ### 4.4 `p5-fx-paint` (wave 2)
 **Goal.** Port or author the 28 paint effects of Appendix A.2: gradients, noise, patterns,
 energy and space.
