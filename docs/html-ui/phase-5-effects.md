@@ -1362,7 +1362,7 @@ Chromium with `getComputedStyle` before it was built). Where the code differs fr
   - `transition: all` and the `all` shorthand leave custom properties alone (Chromium; CSS Cascade
     4): a registered property transitions only when the list names it.
   - transitions' after-change values read registered properties without animation layers
-    (`PropertySources::declared_only`), so a keyframes-animated `--x` never starts the transitions
+    (the scoped `ElementStyle::declared_only`), so a keyframes-animated `--x` never starts the transitions
     of the properties that read it (phase 3's rule for ancestors' animations);
   - a transition of a registered property that starts, reverses or ends recomputes, in the same
     style pass, the properties whose `var()` read it (the second `rmlui:` commit; a discrete `*`

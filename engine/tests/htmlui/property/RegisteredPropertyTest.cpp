@@ -33,6 +33,7 @@
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ForkFeatures.h"
+#include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/VirtualFiles.h"
 #include "object/ui/UIElementInternal.h"
 
@@ -41,6 +42,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -391,6 +393,42 @@ TEST(RegisteredPropertyTest, ForkFeatureProbe){
     ASSERT_TRUE(probed.has_value());
     EXPECT_TRUE(*probed);
     EXPECT_EQ(Rml::GetNumContexts(), 0);
+    HtmlUI::release();
+}
+
+// Registered properties take RmlUi's free property ids (256 in all; the engine's own properties use the rest): what is
+// left with every engine property registered, and a registration past the last id stays unregistered with a warning.
+TEST(RegisteredPropertyTest, PropertyIdCapacity){
+    ASSERT_TRUE(HtmlUI::acquire());
+    const int free = Rml::StyleSheetSpecification::GetNumFreePropertyIds();
+    std::cout << "[ PROPERTY ] " << free << " property ids free for registered custom properties\n";
+    EXPECT_GE(free, 32);
+    RecordProperty("free_property_ids", free);
+
+    // (only when this test's RmlUi ends with it: the ids it takes come back at Rml::Shutdown)
+    if (HtmlUI::getReferenceCount() == 1){
+        SourceFiles files;
+        const uint32_t file = files.add("ui/capacity.css", "@property --cap { syntax: '<length>'; inherits: false; initial-value: 0px; }");
+        std::vector<RegisteredProperty> properties;
+        for (int i = 0; i <= free; i++){
+            RegisteredProperty property;
+            property.name = "--rp-cap-" + std::to_string(i);
+            property.syntax = "<length>";
+            property.type = AtPropertySyntax::Length;
+            property.inherits = false;
+            property.hasInitialValue = true;
+            property.initialValue = "0px";
+            property.ref = SourceRef{file, 0, 10};
+            properties.push_back(property);
+        }
+        const std::vector<Diagnostic> diagnostics = CompatAtProperty::registerAll(properties, files);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetNumFreePropertyIds(), 0);
+        ASSERT_EQ(diagnostics.size(), 1u);
+        EXPECT_EQ(diagnostics[0].code, codeNamed("at-property-unsupported-syntax"));
+        EXPECT_NE(diagnostics[0].message.find("--rp-cap-" + std::to_string(free)), std::string::npos) << diagnostics[0].message;
+        EXPECT_NE(diagnostics[0].message.find("no property id left"), std::string::npos) << diagnostics[0].message;
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rp-cap-" + std::to_string(free)), Rml::PropertyId::Invalid);
+    }
     HtmlUI::release();
 }
 
