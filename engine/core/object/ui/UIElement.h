@@ -29,6 +29,17 @@ namespace jasperengine{
     // getBoundingClientRect, document px
     struct UIRect { float x, y, width, height, top, left, right, bottom; };
 
+    // An effect an element uses (phase 5, getEffects): the property it is in ("background-image",
+    // "mask-image", "filter", "backdrop-filter"), its 1-based index there, the effect's name, its
+    // form ("paint" or "filter") and every parameter as canonical CSS text (universal ones too)
+    struct UIEffectInfo {
+        std::string property;
+        int index = 0;
+        std::string name;
+        std::string form;
+        std::vector<std::pair<std::string, std::string>> params;
+    };
+
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
     // Lottie control by p1-vector (htmlui/vector/UIElementLottie.cpp). On an invalid handle
     // every C++ method returns a default and logs a warning (once per method).
@@ -135,6 +146,10 @@ namespace jasperengine{
         void show(); void showModal(); void close(const std::string& returnValue = std::string());
         std::string getCssText() const;             // the inline declarations
         void setCssText(const std::string& css);    // replaces them
+
+        // --- phase 5 (p5-infra): the UI effects the element uses (CSS effect()), in property order ---
+
+        std::vector<UIEffectInfo> getEffects() const;
 
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 

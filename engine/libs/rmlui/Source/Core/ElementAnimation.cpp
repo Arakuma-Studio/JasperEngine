@@ -1387,4 +1387,10 @@ const Property* ElementAnimation::GetStartValue() const
 	return &tracks[0].GetKeys().front().property;
 }
 
+bool InterpolateDecoratorDeclaration(PropertyDictionary& properties, const DecoratorDeclaration& d0, const DecoratorDeclaration& d1, float alpha,
+	Element& element)
+{
+	return InterpolateEffectProperties(properties, EffectDeclarationView(d0), EffectDeclarationView(d1), alpha, element);
+}
+
 } // namespace Rml

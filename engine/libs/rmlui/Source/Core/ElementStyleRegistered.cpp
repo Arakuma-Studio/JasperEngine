@@ -21,7 +21,7 @@ namespace Rml {
 /*
     Registered custom properties (fork, phase 5; CSS Properties and Values API 1): the parts of ElementStyle for them, in
     a file of their own so that the code of ElementStyle.cpp (ComputeValues above all) is compiled as before for documents
-    without registrations. FORK.md P5-1.
+    without registrations. FORK.md P5-4.
 */
 
 namespace {

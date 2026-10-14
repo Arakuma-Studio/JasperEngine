@@ -59,6 +59,7 @@ SECTIONS = [
     "Examples",
     "Performance",
     "C++",
+    "Effects",
 ]
 
 FENCE = re.compile(r"^```(\w*)\s*$")
@@ -181,6 +182,12 @@ def placeholder_asset(path: Path) -> None:
         shutil.copy(FIXTURES / "p1" / "lottie" / "shapes.json", path)
     elif ext in (".ttf", ".otf"):
         shutil.copy(REPO / "libs" / "imgui" / "misc" / "fonts" / "Karla-Regular.ttf", path)
+    elif ext == ".frag":
+        # a project effect (phase 5): the guide's own text block of that effect
+        found = [b["code"] for b in guide_blocks() if b["lang"] == "text" and f"// @effect     {path.stem}\n" in b["code"]]
+        if len(found) != 1:
+            fail(f"the guide has no effect file for {path.name}")
+        path.write_text(found[0])
     else:
         fail(f"a guide snippet refers to {path.name}, a kind no placeholder exists for")
 
@@ -284,7 +291,7 @@ async def test_guide_css_html_snippets_clean():
         # fragments name images, animations and fonts the reader provides: provide real ones
         code, data = run_json(project, "--ui")
         for f in data["findings"]:
-            if f.get("code") == "HTMLUI-GEN-0001" and f["path"].startswith("assets/ui/guide_snippet_"):
+            if f.get("code") in ("HTMLUI-GEN-0001", "HTMLUI-FX-0013") and f["path"].startswith("assets/ui/guide_snippet_"):
                 m = re.search(r"'([^']+)' not found", f["message"])
                 check(m, f"a missing-file finding without the file: {f}")
                 placeholder_asset((project / f["path"]).parent / m.group(1))

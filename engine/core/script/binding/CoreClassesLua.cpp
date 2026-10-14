@@ -473,6 +473,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HTMLUI", ShaderType::HTMLUI)
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
+        .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an

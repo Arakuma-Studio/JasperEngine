@@ -13,6 +13,7 @@
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
+#include "htmlui/effects/EffectInstancers.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -1150,6 +1151,21 @@ std::string UIElement::getCssText() const{
         text += Rml::StyleSheetSpecification::GetPropertyName(pair.first) + ": " + pair.second.ToString() + ";";
     }
     return text;
+}
+
+std::vector<UIEffectInfo> UIElement::getEffects() const{
+    HTMLUI_ELEMENT(std::vector<UIEffectInfo>())
+    std::vector<UIEffectInfo> effects;
+    for (htmlui::EffectUse& use : htmlui::collectEffectUses(element)){
+        UIEffectInfo info;
+        info.property = use.property;
+        info.index = use.index;
+        info.name = use.name;
+        info.form = use.filterForm ? "filter" : "paint";
+        info.params = std::move(use.params);
+        effects.push_back(std::move(info));
+    }
+    return effects;
 }
 
 void UIElement::setCssText(const std::string& css){

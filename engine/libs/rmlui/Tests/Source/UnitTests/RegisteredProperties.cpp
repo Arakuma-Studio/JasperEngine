@@ -13,7 +13,7 @@
 
 using namespace Rml;
 
-// Registered custom properties (fork, phase 5; docs/html-ui/phase-5-effects.md 3.11, FORK.md P5-1): '@property' as the
+// Registered custom properties (fork, phase 5; docs/html-ui/phase-5-effects.md 3.11, FORK.md P5-4): '@property' as the
 // compat layer registers it, StyleSheetSpecification::RegisterCustomProperty. A registered '--name' is a typed property:
 // inherited or not, with an initial value, transitioned and animated, and var(--name) substitutes its computed value.
 // Every Chromium value checked here was read from Chromium 153 (getComputedStyle) for the same CSS.

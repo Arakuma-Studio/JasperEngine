@@ -3,7 +3,7 @@
 
 // Registered custom properties (phase-5 §3.11, §4.2 p5-property): `@property` through the whole
 // pipeline, compat (CompatAtProperty: parsing, hoisting, diagnostics, the fallback) and the fork
-// (FORK.md P5-1: typed properties, var() lookup, transitions, keyframes).
+// (FORK.md P5-4: typed properties, var() lookup, transitions, keyframes).
 //
 // - compile: registrations and their normalized initial values, the last valid rule winning,
 //   hoisting, @media/@supports, invalid rules (HTMLUI-AT at-property-invalid), unsupported syntaxes

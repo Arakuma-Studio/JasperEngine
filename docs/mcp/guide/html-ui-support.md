@@ -380,6 +380,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 |---|---|---|---|
 | `--*` | native | custom properties: values normalized, typed copies when needed |  |
 | `-html-animation-fill` | native | written by the rewriter for animation-fill-mode (AnimationFill runtime) |  |
+| `-jfx-text-fill` | native | engine-internal (phase 5): the filter-form effect layers compat writes for background-clip: text with effect() layers (gradient text), applied before filter; not for authors. Without the fork feature dropped (Warning) | use background-clip: text with effect() layers |
 | `-moz-appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
 | `-moz-osx-font-smoothing` | ignored | font rendering hint; the font engine decides (HTMLUI-CSS-0003) |  |
 | `-ms-flex` | rewritten | legacy (IE 10) flexbox mapped to flex |  |
@@ -461,7 +462,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `aspect-ratio` | native | no aspect-ratio layout until the fork has BoxParity; on img/svg the intrinsic ratio applies | set an explicit height, or height: 0; padding-bottom: <ratio %> |
 | `azimuth` | ignored | aural / speech styling; no effect in a game UI (HTMLUI-CSS-0003) |  |
 
-### Properties: backdrop-filter to border-block-start-radius
+### Properties: backdrop-filter to border-block-start-color
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -469,7 +470,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `backface-visibility` | unsupported | not supported (Info) (HTMLUI-CSS-0002) | hide the element from Lua when it faces away |
 | `background` | native | layers -> decorators (gradients native, url() through html-layer); first CSS layer on top |  |
 | `background-attachment` | native | fixed exact for url() layers; local -> scroll (Info) |  |
-| `background-blend-mode` | unsupported | blend modes are not supported (Warning) (HTMLUI-CSS-0002) | pre-blend the images, or layer elements with opacity |
+| `background-blend-mode` | unsupported | blend modes are not supported (Warning); on effect() layers normal, multiply, screen and plus-lighter (lighter) set the effect's blend (others: HTMLUI-FX-0010) (HTMLUI-CSS-0002) | pre-blend the images, or layer elements with opacity |
 | `background-clip` | native | text -> gradient-text fallback in a solid color (approximated, Warning) |  |
 | `background-color` | native | colors normalized to hex |  |
 | `background-image` | native | merged into the layer list: gradients native, url() -> html-layer, image-set() resolved; element(), cross-fade(), paint() unsupported |  |
@@ -511,12 +512,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-block-start` | rewritten | physical top/bottom; styles as for border |  |
 | `border-block-start-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-block-start-color` | rewritten | physical top/bottom |  |
-| `border-block-start-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
 
-### Properties: border-block-start-style to border-left-clip
+### Properties: border-block-start-radius to border-inline-width
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `border-block-start-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
 | `border-block-start-style` | rewritten | physical top/bottom; styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
 | `border-block-start-width` | rewritten | physical top/bottom |  |
 | `border-block-style` | rewritten | physical top/bottom; styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
@@ -558,13 +559,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `border-inline-start-width` | rewritten | physical left/right (LTR; an RTL root swaps them) |  |
 | `border-inline-style` | rewritten | physical left/right (LTR; an RTL root swaps them); styles as for border-style (the fork's with BorderStyle; without it none/hidden -> width 0, other styles solid) |  |
 | `border-inline-width` | rewritten | physical left/right (LTR; an RTL root swaps them) |  |
-| `border-left` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
-| `border-left-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 
-### Properties: border-left-color to break-inside
+### Properties: border-left to break-inside
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `border-left` | native | width and color longhands per side; style none/hidden -> width 0, other styles solid until the fork has BorderStyle; missing color -> current color companion |  |
+| `border-left-clip` | unsupported | partial borders (CSS Borders 4 draft) are not supported (HTMLUI-CSS-0002) | use separate elements for the visible border segments |
 | `border-left-color` | native | colors normalized; currentcolor through the --html-current-color companion |  |
 | `border-left-radius` | unsupported | side radius shorthand (CSS Borders 4 draft) is not supported (HTMLUI-CSS-0002) | set the two corner radii, e.g. border-top-left-radius and border-top-right-radius |
 | `border-left-style` | native | none/hidden -> width 0; other styles drawn solid until the fork has BorderStyle |  |
@@ -1314,7 +1315,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `-moz-appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
 | `-webkit-appearance` | `auto` | rewritten | the UA control look written into the companions |  |
 | `-webkit-appearance` | `none` | rewritten | each control as Chromium's html.css styles it without its theme (exact): checkboxes and radios bare and sized by their content, selects keep their 1px border on ButtonFace without arrow or inner padding, buttons a 2px outset border, progress bars a gray bar with a green value |  |
-| `-webkit-background-clip` | `text` | approximated | with a transparent fill: gradient text drawn in a solid color (Warning); otherwise dropped (Info) (HTMLUI-CSS-0006) |  |
+| `-webkit-background-clip` | `text` | approximated | with a transparent fill: gradient text drawn in a solid color (Warning), exact for effect() layers (-jfx-text-fill, TextFillFilter: HTMLUI-FX-0011 Info); otherwise dropped (Info) (HTMLUI-CSS-0006) |  |
 | `-webkit-box-align` | `baseline` | rewritten | mapped to align-items |  |
 | `-webkit-box-align` | `center` | rewritten | mapped to align-items |  |
 | `-webkit-box-align` | `end` | rewritten | mapped to align-items |  |
@@ -1392,9 +1393,11 @@ Values of a property that are not handled like the property's other values; `<..
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
 | `backdrop-filter` | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
+| `backdrop-filter` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): filter effects and paint effects in filter form, processing what is behind the element; unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
 | `backdrop-filter` | `url()` | unsupported | SVG filters are not supported (Warning) (HTMLUI-CSS-0004) | use the built-in filter functions |
 | `background` | `-webkit-image-set()` | rewritten | candidate chosen by the dp ratio |  |
 | `background` | `cross-fade()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
+| `background` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): a paint effect as an image layer (its paint area from background-clip); unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
 | `background` | `element()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
 | `background` | `image()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
 | `background` | `image-set()` | rewritten | candidate chosen by the dp ratio |  |
@@ -1402,9 +1405,10 @@ Values of a property that are not handled like the property's other values; `<..
 | `background` | `url()` | rewritten | compat html-layer decorator |  |
 | `background-attachment` | `fixed` | rewritten | positioned against the viewport; exact for url() layers |  |
 | `background-attachment` | `local` | approximated | local scrolling backgrounds drawn as scroll (Info) (HTMLUI-CSS-0005) |  |
-| `background-clip` | `text` | approximated | with a transparent fill: gradient text drawn in a solid color (Warning); otherwise dropped (Info) (HTMLUI-CSS-0006) |  |
+| `background-clip` | `text` | approximated | with a transparent fill: gradient text drawn in a solid color (Warning), exact for effect() layers (-jfx-text-fill, TextFillFilter: HTMLUI-FX-0011 Info); otherwise dropped (Info) (HTMLUI-CSS-0006) |  |
 | `background-image` | `-webkit-image-set()` | rewritten | candidate chosen by the dp ratio |  |
 | `background-image` | `cross-fade()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
+| `background-image` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): a paint effect as an image layer (its paint area from background-clip); unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
 | `background-image` | `element()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
 | `background-image` | `image()` | unsupported | image function not supported; layer dropped (Warning) (HTMLUI-CSS-0004) | use url() or a gradient |
 | `background-image` | `image-set()` | rewritten | candidate chosen by the dp ratio |  |
@@ -1526,6 +1530,7 @@ Values of a property that are not handled like the property's other values; `<..
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
 | `filter` | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
+| `filter` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): filter effects and paint effects in filter form, in list order with the standard functions; unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
 | `filter` | `url()` | unsupported | SVG filters are not supported (Warning) (HTMLUI-CSS-0004) | use the built-in filter functions |
 | `flex` | `<number>` | rewritten | a single number expanded |  |
 | `flex` | `auto` | rewritten | expanded |  |
@@ -1606,6 +1611,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `list-style-type` | `upper-alpha` | emulated | marker drawn by the list marker emulation |  |
 | `list-style-type` | `upper-latin` | emulated | marker drawn by the list marker emulation |  |
 | `list-style-type` | `upper-roman` | emulated | marker drawn by the list marker emulation |  |
+| `mask-image` | `effect()` | rewritten | a phase-5 UI effect (jasper://docs/html-ui-effects): a paint effect; its alpha masks the element; unknown names, parameters and values are reported (HTMLUI-FX-*) |  |
 | `max-height` | `-webkit-fill-available` | native | fill-available approximated (Info) until the fork has BoxParity |  |
 | `max-height` | `fit-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
 | `max-height` | `fit-content()` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
@@ -1766,6 +1772,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `cross-fade()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
 | `cubic-bezier()` | native | nearest RmlUi tween until the fork has TimingFunctions |  |
 | `drop-shadow()` | rewritten | arguments reordered for RmlUi |  |
+| `effect()` | rewritten | phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002) |  |
 | `element()` | unsupported | image function not supported; layer dropped (HTMLUI-CSS-0015) | use url() or a gradient |
 | `ellipse()` | emulated | clip-path shape drawn by the html-shape decorator |  |
 | `env()` | rewritten | safe-area-inset-* -> 0px (or the fallback); other variables -> the fallback or dropped (Info) |  |
@@ -2049,6 +2056,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `@counter-style` | ignored | custom counter styles are not supported; dropped (Info) (HTMLUI-AT-0001) | use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none |
 | `@decorator` | native | RmlUi extension |  |
 | `@document` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | put the rules in the stylesheet of the document they target |
+| `@effect` | rewritten | declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014 |  |
 | `@font-face` | rewritten | TTF/OTF source selection and descriptors |  |
 | `@font-feature-values` | ignored | font features are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@font-palette-values` | ignored | font palettes are not supported; dropped (Info) (HTMLUI-AT-0001) |  |
@@ -2181,6 +2189,27 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-CSS-0021` | by case (warning) | **Animation approximated** (`animation-approximated`): Part of an animation is approximated: per-keyframe easing dropped, a fractional iteration count rounded, the backwards fill mode not applied during the delay, ... |
 | `HTMLUI-CSS-0022` | by case (warning) | **Font source** (`font-source`): An @font-face source was skipped (WOFF/WOFF2/SVG/EOT, local(): Info), or the rule has no TrueType/OpenType source and was dropped (Warning). Convert the font to TTF or OTF; remote fonts are imported as TTF by the editor. |
 | `HTMLUI-CSS-0023` | info | **Unknown font family** (`unknown-font-family`): No @font-face declares the family and the engine does not know it; the text uses the next family of the list or the engine's fallback font. |
+
+### FX
+
+| Code | Severity | Meaning |
+|---|---|---|
+| `HTMLUI-FX-0001` | error | **Unknown effect** (`effect-unknown`): effect() names no built-in effect and no effect declared with @effect; the layer or filter is dropped. The suggestion lists the nearest names and the effects made for what the name describes. Every effect is listed in jasper://docs/html-ui-effects. |
+| `HTMLUI-FX-0002` | error | **Effect in the wrong property** (`effect-wrong-context`): A paint effect goes in background, background-image, mask-image, filter or backdrop-filter; a filter effect only in filter or backdrop-filter; effect() in any other property is dropped. The suggestion says where the effect is allowed and names its paint or filter counterpart when there is one. |
+| `HTMLUI-FX-0003` | error | **Effect argument without a name** (`effect-positional-arg`): Every argument of effect() is named: effect(aurora, speed 2), not effect(aurora, 2). The argument is dropped; the suggestion lists the effect's parameters. |
+| `HTMLUI-FX-0004` | warning | **Unknown effect parameter** (`effect-unknown-param`): The effect has no parameter of that name; the argument is ignored. The suggestion names the nearest parameter. |
+| `HTMLUI-FX-0005` | warning | **Bad effect parameter value** (`effect-bad-value`): The value does not parse as the parameter's type (number, length, angle, time, colour, position, keyword, palette); the default is used. The suggestion gives the expected type and range. |
+| `HTMLUI-FX-0006` | warning | **Effect parameter out of range** (`effect-out-of-range`): The value is outside the parameter's range and was clamped to it. |
+| `HTMLUI-FX-0007` | warning | **Duplicate effect parameter** (`effect-duplicate-param`): The parameter is given more than once; the last value wins. |
+| `HTMLUI-FX-0008` | warning | **blend on a filter effect** (`effect-blend-on-filter`): The blend parameter applies to paint effects; a filter effect ignores it. Remove it. |
+| `HTMLUI-FX-0009` | warning | **Background property ignored for an effect layer** (`effect-ignored-background-prop`): background-size, background-position and background-repeat do not apply to an effect layer: an effect always covers its paint area. Use the effect's own parameters (scale, center, ...). |
+| `HTMLUI-FX-0010` | warning | **Blend mode not supported for an effect layer** (`effect-unsupported-blend`): An effect layer takes background-blend-mode normal, multiply, screen and plus-lighter (also lighter); other modes are drawn as normal. |
+| `HTMLUI-FX-0011` | info | **Text colour set for an effect fill** (`effect-text-fill`): background-clip: text with an effect layer fills the content with the effect: the transparent text colour was set to white so the text has an alpha to fill. Unlike a browser, all of the element's content is filled, not only its glyphs. |
+| `HTMLUI-FX-0012` | error | **Effect declaration conflict** (`effect-declare-conflict`): @effect declares a name that is a built-in effect, or that another @effect declared with another src; the first declaration wins (effect names are global to the game). Rename the effect. |
+| `HTMLUI-FX-0013` | error | **Effect file not found** (`effect-file-missing`): The src of @effect names no file; src resolves against the stylesheet like url(). The message has the path checked. |
+| `HTMLUI-FX-0014` | error | **Invalid effect manifest** (`effect-manifest`): The project effect's .frag has an invalid manifest (the // @ lines after #version 450), reported at its line: a missing @effect or @kind, an unknown directive or type, a default outside its range, a main include that does not match the kind, or an @effect name other than the one CSS declares. |
+| `HTMLUI-FX-0015` | error | **Effect shader does not compile** (`effect-shader-compile`): The editor could not compile the project effect's fragment shader; the compiler messages are mapped to lines of the .frag. The effect draws nothing until it compiles. |
+| `HTMLUI-FX-0016` | info | **Many expensive effects** (`effect-cost`): The document uses more than four high-cost effects; each costs a lot per pixel. Keep high-cost effects to a couple of elements or a quarter of the screen (the guide's performance section). |
 
 ### GEN
 

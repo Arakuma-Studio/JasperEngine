@@ -90,8 +90,14 @@ namespace jasperengine{
         // "type[:Prop,Prop...]" or "type:<mask>", as in Build Settings and the editor's
         // shaders command ("mesh:Ult,Vc4", "depth:Ski", "mesh:0x41"). A custom shader is
         // given apart (customShader: its project-relative base path, "" for built-in).
+        // UI effects (phase 5) name their effect: "uieffect/<name>[:Flt]" (a built-in effect of
+        // the engine library, else a project effect the effect registry knows)
         static bool parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, std::string* error = nullptr, const std::string& customShader = "");
-        // a built-in getShaderStr() back into its key
+        // parseShaderSpec, plus "uieffect/all": every effect of the engine library, a paint
+        // effect in both forms, a filter (or internal) effect in the filter form
+        static bool expandShaderSpec(const std::string& spec, std::vector<ShaderKey>& shaderKeys, std::string* error = nullptr);
+        // a built-in getShaderStr() back into its key (UI effects: library effects, and project
+        // effects through the custom shader name resolver)
         static bool parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey);
 
         static std::string getShaderStr(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
@@ -129,9 +135,28 @@ namespace jasperengine{
         static uint16_t registerCustomShader(const std::string& baseName);
         static std::string getCustomShaderName(uint16_t customId);     // project-relative base, "" if none
         static std::string getCustomShaderBasename(uint16_t customId); // filesystem-safe token, "" if none
+        // A custom name starting with '@' is a library id: its sources are in the engine
+        // library, not in the project ("@effects/<name>", the UI effects of phase 5; basename
+        // fx_<name>, '-' as '_'). Its variants are built-ins for caching, export and reload.
+        static bool isLibraryCustomShader(uint16_t customId);
+        // Project custom shaders whose basename cannot be mapped back by itself (a UI effect's
+        // .frag): the effect registry resolves them (parseShaderStr, getPrecompiledShaderKeys)
+        static void setCustomShaderNameResolver(std::function<std::string(const std::string& basename)> resolver);
+        // the custom name of a UI effect named in a spec ("uieffect/<name>"), set by the effect
+        // registry; "" when unknown (the library's own effects resolve without it)
+        static void setUiEffectResolver(std::function<std::string(const std::string& effectName)> resolver);
+        // the custom name a basename stands for ("" when unknown)
+        static std::string resolveCustomShaderBasename(const std::string& basename);
+        // "@effects/<name>" or a project effect's .frag for a UI effect name ("" when unknown)
+        static std::string resolveUiEffect(const std::string& effectName);
+        // the effect name of a UI effect's custom name (a project .frag: its stem)
+        static std::string getUiEffectName(const std::string& customShader);
+        // Bumped when the custom shader registry is reset (clear, clearUnused): every id
+        // registered before is stale and must be registered again
+        static uint32_t getCustomShaderGeneration();
 
-        // Frees the GPU handle of every cached forked-shader variant so the next get()
-        // rebuilds (used by the editor after a shader source is edited). The pool keeps
+        // Frees the GPU handle of every cached forked-shader variant (library ids excepted)
+        // so the next get() rebuilds (used by the editor after a shader source is edited). The pool keeps
         // the ShaderRender objects, so meshes holding them stay valid and re-bind on
         // their needReload pass.
         static void destroyCustomShaders();

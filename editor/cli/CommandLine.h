@@ -28,6 +28,9 @@ namespace jasperengine::editor {
         // Prints the HTML/CSS compatibility support tables as JSON (developer: docs generation)
         static int runUiSupportCommand(int argc, char** argv, const char* executableName);
 
+        // Lists the HTML UI effects (built-in and a project's), as text or JSON; --validate compiles them
+        static int runUiEffectsCommand(int argc, char** argv, const char* executableName);
+
         // Imports the remote resources of HTML UI documents (editor/htmlui/HtmlUiImportCli.h)
         static int runImportUiCommand(int argc, char** argv, const char* executableName);
 

@@ -119,6 +119,8 @@ namespace {
         {ForkFeature::ColorFunctions, SampleKind::Declaration, "background-color: rgba(var(--rgb), 0.2)", "", "HTMLUI-CSS-0016"},
         {ForkFeature::ColorFunctions, SampleKind::Declaration, "border-top-color: color-mix(in srgb, var(--a) 40%, white)", "", "HTMLUI-CSS-0016"},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "all: revert", "margin-top:var(--html-unset)", ""},
+        // p5-infra: the gradient-text filter list of effect layers (P5-1); without the feature it is dropped
+        {ForkFeature::TextFillFilter, SampleKind::Declaration, "-jfx-text-fill: jfx-pixelate(v(8px) v(0) v(0) v(100%) v(1) v(0s))", "", "HTMLUI-CSS-0002"},
         {ForkFeature::TimingFunctions, SampleKind::Declaration, "transition: opacity 0.2s ease-in-out", "quadratic-in-out", ""},
         {ForkFeature::Important, SampleKind::Rule, "color: red !important", ".sample{color:#ff0000ff;", ""},
         {ForkFeature::CssWideKeywords, SampleKind::Declaration, "color: inherit", "var(", ""},

@@ -96,6 +96,9 @@ public:
 
 	static const PropertySpecification& GetPropertySpecification();
 
+	/// Fork (phase 5, P5-1): the id of '-jfx-text-fill', a filter list the element applies before its 'filter' list (the
+	/// engine's gradient text: effect layers clipped to the text, in their filter form). Invalid before Initialise.
+	static PropertyId GetTextFillPropertyId();
 	/// Registered custom properties (fork, phase 5; CSS Properties and Values API 1). A registered '--name' is a property like
 	/// the others, typed by the parser of its syntax, inherited or not, with an initial value: the cascade, transitions and
 	/// animations treat it as one, and var(--name) substitutes its computed value on the element (ElementStyle). A value
@@ -141,6 +144,7 @@ private:
 
 	UniquePtr<DefaultStyleSheetParsers> default_parsers;
 
+	PropertyId text_fill_id = PropertyId::Invalid;
 	// Registered custom properties (fork, phase 5).
 	UniquePtr<RegisteredCustomProperties> registered_custom_properties;
 	static bool any_registered_custom_properties;

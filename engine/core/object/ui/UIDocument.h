@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,14 @@ namespace jasperengine{
         // documents (per scene: every document of the scene's context follows)
         void setColorScheme(const std::string& scheme);
         void setReducedMotion(bool reduced);
+
+        // --- phase 5 (p5-infra) ---
+        // Freezes every UI effect at `seconds` of the effect clock (nullopt: they run on the UI
+        // clock again). Effects only: CSS animations, Lottie and anime keep running. Integrated
+        // clocks use their closed form, the pointer smoothing snaps: renders are deterministic.
+        static void setEffectTime(std::optional<double> seconds);
+        // the effect clock: the fixed time when one is set, else the UI clock
+        static double getEffectTime();
     };
 
 }

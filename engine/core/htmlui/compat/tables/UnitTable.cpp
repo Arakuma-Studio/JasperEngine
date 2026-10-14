@@ -101,6 +101,7 @@ namespace {
         {"cross-fade", U, FF::None, U, "", "image function not supported; layer dropped", "use url() or a gradient"},
         {"cubic-bezier", F, FF::TimingFunctions, N, "nearest tween", "nearest RmlUi tween until the fork has TimingFunctions", ""},
         {"drop-shadow", R, FF::None, R, "drop-shadow(<color> <x> <y> <blur>)", "arguments reordered for RmlUi", ""},
+        {"effect", R, FF::None, R, "jfx-<name>(...)", "phase-5 UI effects in background-image, background, mask-image, filter and backdrop-filter (jasper://docs/html-ui-effects); elsewhere dropped (HTMLUI-FX-0002)", ""},
         {"element", U, FF::None, U, "", "image function not supported; layer dropped", "use url() or a gradient"},
         {"ellipse", E, FF::None, E, "html-shape", "clip-path shape drawn by the html-shape decorator", ""},
         {"env", R, FF::None, R, "", "safe-area-inset-* -> 0px (or the fallback); other variables -> the fallback or dropped (Info)", ""},

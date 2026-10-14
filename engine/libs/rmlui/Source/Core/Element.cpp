@@ -2348,7 +2348,10 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	bool border_radius_changed = false;
 	for (int i = 0; i < 8; i++)
 		border_radius_changed |= changed_properties.Contains(PropertyId(int(PropertyId::RmlUi_BorderTopLeftRadiusX) + i));
+	// Fork (phase 5, P5-1): '-jfx-text-fill' is part of the element's filters.
+	const PropertyId text_fill_id = StyleSheetSpecification::GetTextFillPropertyId();
 	const bool filter_or_mask_changed = (changed_properties.Contains(PropertyId::Filter) || changed_properties.Contains(PropertyId::BackdropFilter) ||
+		(text_fill_id != PropertyId::Invalid && changed_properties.Contains(text_fill_id)) ||
 		changed_properties.Contains(PropertyId::MaskImage) || changed_properties.Contains(PropertyId::MaskSize) ||
 		changed_properties.Contains(PropertyId::MaskPositionX) || changed_properties.Contains(PropertyId::MaskPositionY) ||
 		changed_properties.Contains(PropertyId::MaskRepeat));

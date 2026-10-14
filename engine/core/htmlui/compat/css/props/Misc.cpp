@@ -157,6 +157,10 @@ void jasperengine::htmlui::compat::rewriteColorValue(DeclContext& context){
         unsupportedValue(context, "write a CSS color");
         return;
     }
+    // phase 5: gradient text with an effect: the background rewrite writes the text white
+    if (context.name == "color" && context.rule && w[0].isToken(TokenType::Hash) && w[0].token.value.size() == 8 &&
+        w[0].token.value.compare(6, 2, "00") == 0 && ruleHasEffectTextFill(context.session, *context.rule))
+        return;
     context.emit(context.name, text(w[0]));
 }
 

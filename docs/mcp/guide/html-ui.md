@@ -382,7 +382,8 @@ Native or exactly rewritten, as in Chrome:
   `prefers-color-scheme` and `prefers-reduced-motion` switched from Lua; `hover` and `pointer`
   evaluated once at load: `none`/`coarse` on touch devices), `@supports` (evaluated against
   the engine's tables), `@layer`, `@import`, CSS nesting, `@keyframes`, `@starting-style`,
-  `@font-face`, `@property` (initial value only).
+  `@font-face`, `@property` (registered: typed, animated, `inherits: false`; see "Animating custom
+  properties (@property)").
 - **Painting**: backgrounds with several layers, `url()`, every size, position, repeat, origin,
   clip and `fixed`/`local` attachment; linear, radial and conic gradients and their `repeating-`
   forms (at most **16 color stops**, the rest dropped with a warning); `border` with every style
@@ -1513,3 +1514,265 @@ shop.onChange("gold", [](const UIValue& value){ });
 - Inspection and layout assertions from C++ (what `inspect_ui`/`assert_ui` use):
   `htmlui::HtmlUIInspector` and `htmlui::HtmlUIAssertions` (`htmlui/HtmlUIInspector.h`,
   `htmlui/HtmlUIAssertions.h`).
+
+## Effects
+
+Effects are GPU shaders you use from CSS like images and filters: `effect(<name>, <param>
+<value>, ...)` in `background-image`, `mask-image`, `filter` and `backdrop-filter`. The engine
+ships a library of them (gradients, noise, patterns, light, glass, blurs, stylize, colour,
+distortion, transitions, pointer effects); every effect, its parameters and a thumbnail are in
+the catalogue `jasper://docs/html-ui-effects` (`jasperengine-editor ui-effects` lists them).
+A project can add its own (Writing an effect, below).
+
+### Effects: quick reference
+
+- Names are kebab-case; arguments are always named (`speed 2`, not `2`), separated by commas,
+  in any order. Omitted parameters take their defaults: `effect(stripes)` works.
+- **Paint effects** draw an image: an image layer in `background-image`/`background`, or a
+  mask in `mask-image`. In `filter`/`backdrop-filter` (their *filter form*) they recolour the
+  content inside its alpha.
+- **Filter effects** process pixels: `filter` processes the element and its children,
+  `backdrop-filter` what lies behind the element (effects made for it are marked backdrop in
+  the catalogue, like `frosted-glass`).
+- Effects mix with everything else in the same property, in CSS order: gradients and `url()`
+  layers, `blur()`, `drop-shadow()` and the other filter functions.
+- Any other property (`color`, `border-image`, `content`, ...) does not take `effect()`: the
+  declaration is dropped with an error.
+
+The examples below are rendered by the engine's tests:
+
+```css
+/* layered: an effect over a gradient over a colour, rounded */
+.card { background: effect(stripes, density 12, color-a #ffffff14, color-b #00000000), #101218 linear-gradient(#223, #112); border-radius: 12px; }
+/* gradient text */
+.logo { color: transparent; font-size: 48px; font-weight: bold; background-image: effect(stripes, color-a #ff4fd8, color-b #4fc3ff, speed 0.6); background-clip: text; }
+/* an exit driven by keyframes: the content dissolves into big pixels */
+@keyframes vanish { from { filter: effect(pixelate, size 1px) } to { filter: effect(pixelate, size 48px, opacity 100%) } }
+.closing { animation: vanish 0.6s ease-in forwards; }
+/* a pointer light over a frosted panel */
+.menu { backdrop-filter: effect(frosted-glass, blur 12px); background-image: effect(spotlight, radius 180px, intensity 0.25); border-radius: 16px; }
+```
+
+### Where `effect()` goes, layers and paint areas
+
+| Property | Takes | Notes |
+|---|---|---|
+| `background-image`, `background` | paint effects | image layers: the first listed is on top, `background-color` below all of them |
+| `mask-image`, `-webkit-mask-image` | paint effects | the effect's alpha masks the element |
+| `filter` | filter effects, paint effects (filter form) | applied left to right with the standard functions |
+| `backdrop-filter` | filter effects, paint effects (filter form) | processes what is behind the element |
+
+- **Paint area**: each effect layer follows its `background-clip` (`border-box` by default,
+  `padding-box`, `content-box`) and the element's `border-radius`.
+- `background-size`, `background-position` and `background-repeat` do not apply to effect
+  layers (a warning): an effect always covers its area. Use its own parameters (`scale`,
+  `center`, `density`...) instead.
+- `background-blend-mode` sets how an effect layer blends with what is below it: `normal`,
+  `multiply`, `screen`, `plus-lighter` (or `lighter`: additive). Other modes give a warning and
+  draw `normal`. The `blend` parameter does the same inside `effect()`.
+
+### Effect parameters
+
+Every value is CSS, checked against the parameter's type and range (the catalogue lists both).
+A value of the wrong type gives a warning and the default; a value out of range is clamped with
+a warning.
+
+| Type | Write | Notes |
+|---|---|---|
+| number, integer | `2`, `0.35` | integers are rounded |
+| percentage | `40%` or `0.4` | |
+| length | `12px`, `1.5em`, `2rem`, `10vw`, `5vmin`, `25%` | `%` is of the effect area's shorter side |
+| angle | `45deg`, `0.5turn`, `1rad`, `100grad`, or `45` (degrees) | |
+| time | `2s`, `400ms` | |
+| color | any CSS colour: `#ff8a00`, `#f80c`, `rgb(0 0 0 / 50%)`, `hsl()`, `oklch()`, `transparent`, `currentColor` | |
+| position | `center`, `30% 70%`, `left 20px top 10%` | 0 to 1 across the area |
+| enum | one of the listed words | |
+| boolean | `on`, `off`, `true`, `false`, `yes`, `no`, `1`, `0` | |
+| palette | 2 to 8 colours separated by spaces, each with an optional stop: `#00aaff #ff00aa`, `red orange 30% gold` | stops must not decrease |
+
+Every effect also takes four **universal parameters**:
+
+| Param | Type | Default | Meaning |
+|---|---|---|---|
+| `opacity` | percentage | `100%` | paint: multiplies the effect's alpha; filter: mixes the result with the unfiltered pixels (`0%`: no effect) |
+| `time-scale` | number, -10 to 10 | `1` | multiplies the effect's clock; `0` freezes it |
+| `time-offset` | time | `0s` | added to the clock: desynchronises repeated elements |
+| `blend` | `normal`, `add`, `screen`, `multiply` | `normal` | paint effects only (a warning on a filter effect) |
+
+### Animating effects
+
+- **Time**: animated effects move by themselves on the UI clock (the clock of CSS animations
+  and `anime`: it keeps running while the game is paused). Their speed parameters change the
+  rate smoothly, without a jump.
+- **Transitions and `@keyframes`** interpolate the parameters of the *same* effect:
+  `transition: background-image 300ms` between `effect(stripes, density 4)` and
+  `effect(stripes, density 8)` animates the density; filter lists animate the same way. A
+  different effect, or a different number of layers, switches at once.
+- **Custom properties**: `effect(stripes, speed var(--s))` follows `--s` when a class or a
+  script changes it. An unregistered custom property changes at once; a registered one
+  (`@property`) transitions and animates:
+
+```css
+@property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes turn { to { --spin: 360deg; } }
+.ring { background-image: effect(stripes, angle var(--spin), speed 0); animation: turn 4s linear infinite; border-radius: 50%; }
+```
+
+- **`anime`** animates a custom property the effect reads, for effects driven from Lua:
+
+```lua
+local card = doc:querySelector(".card")
+anime.animate(card, { ["--glow"] = 0.8, duration = 400, ease = "outQuad" })   -- .card uses effect(..., intensity var(--glow))
+for _, fx in ipairs(card:getEffects()) do print(fx.property, fx.name, fx.params.intensity) end
+```
+
+- **Deterministic captures** (screenshots, tests): `UIDocument.setEffectTime(1.5)` freezes every
+  effect at 1.5 s while the rest of the UI keeps running; `UIDocument.setEffectTime(nil)`
+  resumes. `el:getEffects()` lists an element's effects with their current parameters
+  (`property`, `index`, `name`, `form` and `params`, the canonical text of each parameter).
+- Cost: a parameter changed by a transition, a keyframe, `var()` or `anime` rebuilds that
+  element's effect on that frame (CPU only, no shader compile); time-only animation rebuilds
+  nothing. For many elements prefer the effect's own `speed` to animating a parameter.
+
+### Gradient text with effects
+
+`background-clip: text` with a transparent text fill paints the text with the element's effect
+layers, exactly: the text keeps its anti-aliasing, and a `drop-shadow()` in `filter` shadows
+the painted text.
+
+```css
+.title { color: transparent; background-image: effect(stripes, color-a #ffd36b, color-b #ff6b3d, angle 60deg, density 3); background-clip: text; }
+```
+
+- The trigger is CSS's: `background-clip: text` (or `-webkit-background-clip`) together with
+  `color: transparent` or `-webkit-text-fill-color: transparent`. With an opaque text colour the
+  clip is dropped, as in a browser, where opaque text hides the background.
+- The engine draws the text white and paints the effect over it (an info diagnostic says so).
+- Unlike a browser it paints the whole content of the element, not only its glyphs: keep such
+  an element to its text (no images or coloured boxes inside).
+
+### Backdrop effects
+
+`backdrop-filter: effect(frosted-glass, blur 12px)` blurs, tints and lights what lies behind a
+panel; its `border-radius` shapes the glass. Put the panel over something with detail (an image,
+the game view, other UI): over a flat colour glass shows nothing. A paint effect in
+`backdrop-filter` recolours what is behind (`backdrop-filter: effect(stripes, opacity 30%)`).
+Backdrop effects copy the layer below once more than a `filter` does; blurring ones (prepass
+effects such as `frosted-glass`) are the costliest per pixel: use them on panels, not full
+screen.
+
+### Writing an effect
+
+A project effect is one fragment file with a manifest, declared in CSS with `@effect`. Its
+`src` resolves like `url()`, relative to the stylesheet; the name must be lowercase kebab-case,
+must not be a built-in effect, and must equal the manifest's `@effect`.
+
+```css
+@effect my-glow { src: url("fx/my-glow.frag"); }
+.badge { background-image: effect(my-glow, intensity 0.7); border-radius: 12px; }
+```
+
+`assets/ui/fx/my-glow.frag`, a complete paint effect:
+
+```text
+#version 450
+// @effect     my-glow
+// @kind       paint
+// @category   light
+// @summary    A soft glow from the centre of the element, pulsing
+// @source     original
+// @cost       low
+// @time       speed
+// @param      color color #59a6ff -- Glow colour
+// @param      intensity number 0.6 0 1 -- Strength of the glow
+// @param      speed number 1 0 5 -- Pulses per second
+
+#include "effects/lib/jfx_common.glsl"
+
+uniform u_fs_effectParams {
+    vec4 color;
+    float intensity;
+    float speed;
+} params;
+
+vec4 jfx_paint(JfxContext c){
+    vec2 p = (c.uv - 0.5) * 2.0;
+    float pulse = 0.75 + 0.25 * sin(c.anim.x * 6.2831853);
+    float glow = exp(-dot(p, p) * 2.5) * params.intensity * pulse;
+    return vec4(params.color.rgb, params.color.a * glow);
+}
+
+#include "effects/lib/main_paint.glsl"
+```
+
+- **Manifest**: comment lines right after `#version 450`. Required: `@effect`, `@kind`
+  (`paint` or `filter`), `@category`, `@summary`, `@source`, `@cost` (`low`, `medium`,
+  `high`). Optional: `@time` (up to 4 rate parameters, integrated into `c.anim` so a rate
+  change never jumps), `@pointer` (`position`, `trail`, `ripples`), `@backdrop yes`,
+  `@prepass blur <param>` and `@margin <param>*3` (filters that read around a pixel),
+  `@suggest-for <words>`. Each parameter is `// @param <name> <type> <default> [<min> <max>] -- <description>`;
+  an enum lists its options as `a|b|c`; a default with spaces is quoted.
+- **Uniforms**: `u_fs_effectParams` has one member per parameter, named in camelCase
+  (`light-angle` is `lightAngle`), `vec4` for colours, `vec2` for positions, `float` for the
+  rest (lengths in CSS px, angles in radians, times in seconds, enums as their index). A
+  palette `p` is `vec4 p[8]; vec4 pStops[2]; float pCount;`. Nothing else goes in the block.
+- **The function**: a paint effect defines `vec4 jfx_paint(JfxContext c)` and ends with
+  `#include "effects/lib/main_paint.glsl"`; a filter effect defines `vec4 jfx_filter(JfxContext c)`
+  and ends with `#include "effects/lib/main_filter.glsl"`, reading the content with
+  `jfx_src(localPx)` (`effects/lib/jfx_sample.glsl`). Return straight-alpha, linear sRGB
+  (colours from parameters already are); clipping to the rounded area, opacity and blending
+  are done for you.
+- **The context** `c`: `uv` (0 to 1 over the area, y down), `px` and `size` (CSS px), `aspect`,
+  `time`, `anim`, `dt`, `dpr`, the pointer (`pointer`, `pointerSmooth`, `pointerInside`,
+  `pointerPresence`, `pointerDown`, `pointerVelocity`, `sincePress`, `sinceEnter`), `radii`
+  and a per-element `seed`.
+- **Includes** resolve against the file's folder, the project and the engine library:
+  `effects/lib/jfx_color.glsl` (sRGB, OKLab/OKLCH/HSL mixing, palettes),
+  `effects/lib/jfx_noise.glsl` (value, Perlin, simplex, Worley, fbm, curl, domain warp),
+  `effects/lib/jfx_hash.glsl`, `effects/lib/jfx_sdf.glsl` (shapes), `effects/lib/jfx_geom.glsl`,
+  `effects/lib/jfx_blend.glsl`, `effects/lib/jfx_tone.glsl`.
+- Saving the `.frag` reloads the documents that declared it. `check --ui` reports the CSS
+  side, `jasperengine-editor check` compiles the effect and reports `file:line` errors, and
+  `jasperengine-editor ui-effects --validate --project <dir>` checks the manifest against the
+  compiled shader.
+
+### Effect performance
+
+- Low-cost effects: use freely. Medium: up to about half the screen. High: at most two elements
+  or a quarter of the screen (more than four high-cost effects in a document give an info).
+- Each element with an effect costs one draw (paint) or one pass over its region (filter); a
+  blurring effect adds a few passes. Shaders and pipelines are shared: nothing compiles per
+  element, per frame or per parameter change.
+- `backdrop-filter` effects pay one extra copy of what is below; blurring effects are the
+  costliest per pixel.
+- Prefer time-driven parameters (`speed`) to animating a parameter every frame on many elements.
+
+### Effect diagnostics
+
+| Code | Severity | When |
+|---|---|---|
+| `HTMLUI-FX-0001` | error | unknown effect name (the message suggests the nearest names, e.g. `glassmorphism` gives `frosted-glass`); the layer or filter is dropped |
+| `HTMLUI-FX-0002` | error | a paint effect where only filters go (or the reverse), or `effect()` in another property |
+| `HTMLUI-FX-0003` | error | an argument without a parameter name |
+| `HTMLUI-FX-0004` | warning | unknown parameter (`speeed` suggests `speed`); ignored |
+| `HTMLUI-FX-0005` | warning | a value of the wrong type; the default is used |
+| `HTMLUI-FX-0006` | warning | a value out of range; clamped |
+| `HTMLUI-FX-0007` | warning | a parameter given twice; the last wins |
+| `HTMLUI-FX-0008` | warning | `blend` on a filter effect |
+| `HTMLUI-FX-0009` | warning | `background-size`/`-position`/`-repeat` on an effect layer |
+| `HTMLUI-FX-0010` | warning | a `background-blend-mode` effect layers cannot use |
+| `HTMLUI-FX-0011` | info | gradient text: the text colour was set to white |
+| `HTMLUI-FX-0012` | error | `@effect` with a built-in name, or a name declared with another `src` |
+| `HTMLUI-FX-0013` | error | the `@effect` file is missing |
+| `HTMLUI-FX-0014` | error | the effect's manifest is invalid (reported at the `.frag` line) |
+| `HTMLUI-FX-0015` | error | the project effect does not compile (reported at the `.frag` line) |
+| `HTMLUI-FX-0016` | info | more than four high-cost effects in one document |
+
+### Effects in a browser
+
+Browsers do not know `effect()` and `@effect`: they drop those declarations and keep the rest.
+Put a plain value first and the effect after it, so the same file previews in a browser:
+
+```css
+.hero { background: #0b0d14; background-image: effect(stripes, color-a #141a2a, color-b #0b0d14, density 8); }
+```

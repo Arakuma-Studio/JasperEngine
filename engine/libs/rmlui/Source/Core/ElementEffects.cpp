@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Filter.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ElementBackgroundLayers.h"
 #include "ElementStyle.h"
 
@@ -95,8 +96,13 @@ void ElementEffects::InstanceEffects()
 
 	if (computed.has_filter() || computed.has_backdrop_filter())
 	{
-		for (const auto id : {PropertyId::Filter, PropertyId::BackdropFilter})
+		// Fork (phase 5, P5-1): '-jfx-text-fill' is applied before the element's 'filter' list, so a filter set by another
+		// rule never replaces it, and a drop-shadow() of 'filter' shadows the filled text.
+		const PropertyId text_fill_id = StyleSheetSpecification::GetTextFillPropertyId();
+		for (const auto id : {text_fill_id, PropertyId::Filter, PropertyId::BackdropFilter})
 		{
+			if (id == PropertyId::Invalid)
+				continue;
 			const Property* property = element->GetStyle()->GetLocalPropertyWithResolvedVariables(id);
 			if (!property || property->unit != Unit::FILTER)
 				continue;
@@ -105,7 +111,7 @@ void ElementEffects::InstanceEffects()
 			if (!filters_ptr)
 				continue;
 
-			FilterEntryList& list = (id == PropertyId::Filter ? filters : backdrop_filters);
+			FilterEntryList& list = (id == PropertyId::BackdropFilter ? backdrop_filters : filters);
 			list.reserve(filters_ptr->list.size());
 
 			for (const FilterDeclaration& declaration : filters_ptr->list)

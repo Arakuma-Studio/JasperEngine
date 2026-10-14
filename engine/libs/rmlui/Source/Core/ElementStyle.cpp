@@ -1401,6 +1401,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	// The border colors this element declares; the others are 'currentcolor', their initial value.
 	int declared_border_colors = 0;
+	// Fork (phase 5, P5-1): '-jfx-text-fill' is a filter list applied before 'filter': the element has filters with it.
+	const PropertyId text_fill_id = StyleSheetSpecification::GetTextFillPropertyId();
+	bool has_text_fill = false;
 
 	// A specified value that may hold 'ch' or 'ex' (ComputeFontRelativeValues).
 	const Units font_face_candidate_units = FontFaceCandidateUnits();
@@ -1478,8 +1481,15 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 			property->unit == Unit::DECORATOR)
 			property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
 
+		if (id == text_fill_id && text_fill_id != PropertyId::Invalid)
+			has_text_fill = (property->unit == Unit::FILTER && property->value.GetType() == Variant::FILTERSPTR &&
+				property->value.GetReference<FiltersPtr>() && !property->value.GetReference<FiltersPtr>()->list.empty());
+
 		ComputeValue(values, dp_ratio, vp_dimensions, property_font_size, document_font_size, dirty_font_face_handle, id, property);
 	}
+
+	if (has_text_fill)
+		values.has_filter(true);
 
 	// 'overflow' computes from both axes (p3-layout).
 	ApplyOverflowFixUp(values);
