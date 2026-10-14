@@ -2142,7 +2142,10 @@ the pinned headless shell with the references' fonts).
   are Skia's analytic coverage of a thin ring, every pixel of which is an edge pixel; the fork's
   feathering fades an edge linearly over a pixel (the reason `paint/radius-percent-circle`, the
   fork's filled `border-radius: 50%` circles, already needs a 0.31 % tolerance, not the default).
-  The radio's geometry and colours are checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`.
+  The radio's geometry and colours are checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`,
+  and the radios have their own fixture, `paint/radio-theme-box` (rest, hovered and pressed), at
+  the phase-3 policy for scattered anti-aliasing: `badPercent` 1.56, the measured 1.556 %, the
+  cluster limit at the default.
   The check SVGs, `--html-check`
   and the other companions of the CSS-drawn theme are gone (CONTRACTS). Found on the way:
   radios without a name were one group (checking one unchecked the others; fork P4-G13); a
