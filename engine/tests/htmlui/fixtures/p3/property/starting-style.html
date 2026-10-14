@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: @starting-style and transition-behavior with registered properties</title>
+<style>
+  @property --ss-w { syntax: '<length>'; inherits: false; initial-value: 0px; }
+  @property --ss-pick { syntax: '*'; inherits: false; initial-value: #e04040; }
+  html, body { margin: 0; }
+  #panel { display: none; position: absolute; left: 20px; top: 20px; height: 40px; background-color: #3060c0;
+           --ss-w: 240px; width: var(--ss-w); transition: --ss-w 1s linear; }
+  #panel.open { display: block; }
+  @starting-style { #panel.open { --ss-w: 40px; } }
+  /* '*' properties change discretely: with allow-discrete they flip at half the transition */
+  #flip { position: absolute; left: 20px; top: 80px; width: 240px; height: 40px; background-color: var(--ss-pick);
+          transition: --ss-pick 1s linear allow-discrete; }
+  #flip.blue { --ss-pick: #4060e0; }
+  #plain { position: absolute; left: 20px; top: 130px; width: 240px; height: 20px; background-color: var(--ss-pick);
+           transition: --ss-pick 1s linear; }
+  #plain.blue { --ss-pick: #4060e0; }
+</style>
+</head>
+<body>
+<div id="panel"></div>
+<div id="flip"></div>
+<div id="plain"></div>
+</body>
+</html>

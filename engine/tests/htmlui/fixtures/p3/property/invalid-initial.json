@@ -1,0 +1,7 @@
+{
+ "comment": "A registered property's value that does not match its syntax (declared, or after var() substitution) is invalid at computed-value time: 'unset', so the initial value for inherits: false (30px, #40a060) and the parent's value for inherits: true (150px).",
+ "viewport": [300, 170],
+ "steps": [
+  {"capture": ""}
+ ]
+}

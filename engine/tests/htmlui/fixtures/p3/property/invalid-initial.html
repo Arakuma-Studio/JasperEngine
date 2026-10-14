@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: values invalid at computed-value time fall back to the initial value</title>
+<style>
+  @property --ii-w { syntax: '<length>'; inherits: false; initial-value: 30px; }
+  @property --ii-c { syntax: '<color>'; inherits: false; initial-value: #40a060; }
+  @property --ii-in { syntax: '<length>'; inherits: true; initial-value: 30px; }
+  html, body { margin: 0; }
+  #parent { position: absolute; left: 10px; top: 10px; width: 280px; --ii-in: 150px; }
+  #parent > div { height: 24px; margin-bottom: 6px; background-color: #2050a0; }
+  /* the last declaration wins at parse time, then does not match the syntax: the initial 30px */
+  #cascade { --ii-w: 200px; --ii-w: red; width: var(--ii-w); }
+  /* a substitution that does not match: the initial value too */
+  #substituted { --ii-text: blue; --ii-w: var(--ii-text); width: var(--ii-w); }
+  #color { width: 200px; --ii-c: 10px; background-color: var(--ii-c) !important; }
+  /* inherited: invalid means the parent's value (150px) */
+  #inherited { --ii-in: var(--ii-text-missing, red); width: var(--ii-in); }
+  #valid { --ii-w: 220px; width: var(--ii-w); }
+</style>
+</head>
+<body>
+<div id="parent">
+  <div id="cascade"></div>
+  <div id="substituted"></div>
+  <div id="color"></div>
+  <div id="inherited"></div>
+  <div id="valid"></div>
+</div>
+</body>
+</html>

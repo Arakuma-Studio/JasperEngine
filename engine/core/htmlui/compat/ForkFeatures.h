@@ -33,6 +33,7 @@ namespace jasperengine::htmlui::compat {
         Has, FocusPseudoClasses, SelectorsLevel4, ListMarkers,
         Outline, ObjectFit, BackgroundLayers,       // p3-paint
         RelativeFontWeight, ColorFunctions,         // p3-values (appended by p3-integration)
+        RegisteredProperties,                       // phase 5, p5-property (@property)
         Count
     };
 

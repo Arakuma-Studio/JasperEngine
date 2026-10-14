@@ -211,6 +211,8 @@ namespace jasperengine::htmlui::compat {
         std::vector<const StylesheetInput*> inputs;
 
         CustomPropertyIndex vars;
+        // the @property rules registered by the document (phase 5, CompatAtProperty; flatten pass)
+        std::vector<RegisteredProperty> registeredProperties;
 
         // document-wide facts (pre-pass)
         bool usesBorderImage = false;

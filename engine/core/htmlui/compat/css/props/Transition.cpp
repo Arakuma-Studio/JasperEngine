@@ -528,6 +528,11 @@ namespace {
     // text-shadow as font-effect without TextShadow, translate / rotate / scale as transform without
     // IndividualTransforms, ...); unknown names as written (CSS keeps them in the lists).
     size_t nativeTransitionNames(Session& session, std::string_view written, std::string_view (&names)[2], bool firstOnly){
+        // a custom property name is case-sensitive (a registered --Spin is not --spin; phase 5)
+        if (written.size() > 2 && written[0] == '-' && written[1] == '-'){
+            names[0] = Arena::current().copy(written);
+            return 1;
+        }
         const std::string lower = lowerAscii(written);
         std::string_view name = Arena::current().copy(lower);
         for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){

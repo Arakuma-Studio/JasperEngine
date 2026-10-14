@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/Hash.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -502,6 +503,7 @@ namespace {
         document->animationFillNames = std::move(result.animationFillNames);
         document->fontFamilies = std::move(result.fontFamilies);
         document->declaredFontFamilies = std::move(result.declaredFontFamilies);
+        document->registeredProperties = std::move(result.registeredProperties);
         document->diagnostics = sink.take();
         document->compiled = true;
 
@@ -826,10 +828,15 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     for (const Diagnostic& unknown : checkFontFamilies(*compiled))
         HtmlUI::getFontEngine().markFamilyReported(unknown.subject);
 
+    // the document's registered custom properties (phase 5) before RmlUi parses its sheets and style attributes
+    const std::vector<Diagnostic> registration = CompatAtProperty::registerAll(compiled->registeredProperties, compiled->files);
+
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
     if (!document){
         unregisterDocument(binding->translatorHandle);
-        logDiagnostics(compiled->sourcePath, compiled->diagnostics, options.verboseDiagnostics);
+        std::vector<Diagnostic> logged = compiled->diagnostics;
+        logged.insert(logged.end(), registration.begin(), registration.end());
+        logDiagnostics(compiled->sourcePath, logged, options.verboseDiagnostics);
         return nullptr;
     }
     // the HTML root's background, or the body's, is the canvas's (CSS Backgrounds 3 §2.11.2):
@@ -841,10 +848,12 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     std::vector<Diagnostic> runtime = std::move(binding->diagnostics);
     binding->diagnostics = compiled->diagnostics;
     std::vector<Diagnostic> fonts = checkFontFamilies(*compiled);
+    binding->diagnostics.insert(binding->diagnostics.end(), registration.begin(), registration.end());
     binding->diagnostics.insert(binding->diagnostics.end(), runtime.begin(), runtime.end());
     binding->diagnostics.insert(binding->diagnostics.end(), fonts.begin(), fonts.end());
 
     std::vector<Diagnostic> logged = compiled->diagnostics;
+    logged.insert(logged.end(), registration.begin(), registration.end());
     logged.insert(logged.end(), fonts.begin(), fonts.end());
     logDiagnostics(compiled->sourcePath, logged, options.verboseDiagnostics);
 
@@ -871,9 +880,14 @@ void DocumentLoader::addRuntimeDiagnostic(const Rml::ElementDocument* document, 
 
 // ---- restyle ----
 
-void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocument& compiled, const CompatOptions&){
+void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocument& compiled, const CompatOptions& options){
     if (!document)
         return;
+
+    // the compile's registered custom properties (phase 5) before RmlUi parses the sheets
+    const std::vector<Diagnostic> registration = CompatAtProperty::registerAll(compiled.registeredProperties, compiled.files);
+    if (!registration.empty())
+        logDiagnostics(compiled.sourcePath, registration, options.verboseDiagnostics);
 
     // the head's sheets in order, as ElementDocument::ProcessHeader combines them
     std::shared_ptr<Rml::StyleSheetContainer> combined;
@@ -932,6 +946,9 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_p
             std::vector<Diagnostic> diagnostics = compiled->diagnostics;
             const std::vector<Diagnostic> fonts = checkFontFamilies(*compiled);
             diagnostics.insert(diagnostics.end(), fonts.begin(), fonts.end());
+            // (the registration of its custom properties: what the restyle below logs)
+            const std::vector<Diagnostic> registration = CompatAtProperty::registerAll(compiled->registeredProperties, compiled->files);
+            diagnostics.insert(diagnostics.end(), registration.begin(), registration.end());
             for (const Diagnostic& diagnostic : binding->diagnostics){
                 if (diagnostic.code == codes::LuaScriptError)
                     diagnostics.push_back(diagnostic);

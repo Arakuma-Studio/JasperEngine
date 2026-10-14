@@ -6,6 +6,7 @@
 
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/RmlLogTranslator.h"
@@ -116,6 +117,9 @@ namespace {
         context->SetDensityIndependentPixelRatio(compiled.options.dpRatio > 0.0f ? compiled.options.dpRatio : 1.0f);
         for (const std::string& model : dataModelNames(compiled.rml))
             context->CreateDataModel(model, nullptr, true);
+
+        // the registered custom properties (phase 5) before RmlUi parses the sheets
+        diagnostics = CompatAtProperty::registerAll(compiled.registeredProperties, compiled.files);
 
         // fresh parses of the sheets (the factory caches them by path)
         Rml::Factory::ClearStyleSheetCache();

@@ -224,6 +224,23 @@ namespace {
          "@property is emulated by setting the initial value on the root element; inherits: false cannot be honored."},
         {codes::FontFaceDescriptor, I, false, "font-face-descriptor", "@font-face descriptor",
          "An @font-face descriptor was dropped or approximated (unicode-range, font-display, variable weight ranges, ...)."},
+        {codes::AtPropertyUnsupportedSyntax, W, false, "at-property-unsupported-syntax", "@property syntax not supported",
+         "The @property rule's syntax is not one the engine registers (<length>, <number>, <integer>, <percentage>, "
+         "<length-percentage>, <color>, <angle>, <time> or *): combinations, lists and other types are not. The custom property "
+         "falls back to an unregistered one with the initial value written on the root (it inherits and changes discretely), "
+         "as without the fork. The same applies when the document registers more custom properties than the engine has "
+         "property ids for."},
+        {codes::AtPropertyConflict, W, false, "at-property-conflict", "@property conflict",
+         "Registered custom properties are process-global: the first registration of a name wins for every document, until "
+         "the engine restarts. Another document (or an earlier version of this one, before a hot reload) registered the name "
+         "with another syntax, inherits or initial-value; that one stays. Rename the property, or give both rules the same "
+         "definition."},
+        {codes::AtPropertyInvalid, E, true, "at-property-invalid", "@property invalid",
+         "Error: the @property rule is invalid and dropped, as in CSS: the name is not a custom property name, a descriptor "
+         "(syntax, inherits, initial-value) is missing or invalid, the initial value does not match the syntax or is not "
+         "computationally independent (em, rem, %, var()), or the rule is nested in a style rule. Warning: a declaration of a "
+         "registered custom property does not match its syntax; it is invalid at computed-value time, so the property takes "
+         "its initial value (inherited: its parent's value)."},
 
         // ---- IMP
         {codes::NotImported, E, false, "not-imported", "Remote resource not imported",
