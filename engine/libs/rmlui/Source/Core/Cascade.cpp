@@ -164,7 +164,8 @@ namespace Cascade {
 		case PropertyId::NavDown:
 		case PropertyId::NavLeft:
 		case PropertyId::Drag: return false;
-		default: return true;
+		// Custom properties, registered ones too (fork, phase 5): 'all' never reaches them (CSS Cascade 4 §3.2).
+		default: return !StyleSheetSpecification::IsRegisteredCustomProperty(id);
 		}
 	}
 

@@ -15,6 +15,7 @@ struct ElementAnimationStyle;
 struct TransitionSnapshot;
 class AllPropertiesIterator;
 enum class RelativeTarget;
+enum class RegisteredPropertySyntax : uint8_t;
 
 enum class PseudoClassState : uint8_t { Clear = 0, Set = 1, Override = 2 };
 using PseudoClassMap = SmallUnorderedMap<String, PseudoClassState>;
@@ -210,6 +211,9 @@ private:
 		const ElementDefinition* definition;
 		const PropertyDictionary& inline_properties;
 		const AnimationLayers* animation_layers = nullptr;
+		// The declarations only (transitions' after-change values): the registered custom properties var() reads are taken
+		// without the animation layers of the element's ancestors too (fork, phase 5).
+		bool declared_only = false;
 	};
 	struct DirtyPropertiesRef {
 		PropertyIdSet& properties;
@@ -288,6 +292,18 @@ private:
 	const Property* GetLocalPropertyForCompute(PropertyId id) const;
 	static PropertyElementPair GetSpecifiedCustomProperty(const PropertySources& sources, const String& name);
 	static PropertyElementPair GetSpecifiedShorthand(const PropertySources& sources, ShorthandId id);
+
+	// Registered custom properties (fork, phase 5): var(--name) of a registered name substitutes the computed value of the
+	// property on the element of 'sources' (its animated value, else the inherited one for 'inherits: true', else the
+	// initial value; a value invalid at computed-value time is 'unset'), serialized: numbers in their shortest form, lengths
+	// in px, angles in deg, times in s, colors as #rrggbbaa. False for the guaranteed-invalid value.
+	static bool SubstituteRegisteredProperty(const PropertySources& sources, PropertyId id, SmallUnorderedSet<String>& variable_dependencies,
+		SmallUnorderedSet<String>& cycle_chain, String& result);
+	// A registered property's value in computed form for the element: lengths in px, angles in deg, integers rounded.
+	static Property ComputedRegisteredValue(const Property& property, RegisteredPropertySyntax syntax, Element* element);
+	static String SerializeRegisteredValue(const Property& computed, RegisteredPropertySyntax syntax);
+	// The local property of the element of 'sources', without animation layers when they are declarations only.
+	static const Property* GetLocalPropertyOf(const PropertySources& sources, Element* element, PropertyId id);
 
 	enum class SubstitutionResult { Substituted, NoVariablesFound, Error };
 	static SubstitutionResult SubstituteVariableOnce(const PropertySources& sources, const String& value,

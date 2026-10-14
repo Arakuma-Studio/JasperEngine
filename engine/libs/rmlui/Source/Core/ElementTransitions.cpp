@@ -61,6 +61,21 @@ namespace {
 		return GetTransitionLonghandIds().Contains(id) || GetAnimationLonghandIds().Contains(id);
 	}
 
+	// The transition of a property: 'all' leaves custom properties alone, registered ones too (as Chromium does); they
+	// transition when the list names them (fork, phase 5).
+	const Transition* FindTransition(const TransitionList& list, PropertyId id)
+	{
+		const Transition* found = list.Find(id);
+		if (found && found->id == PropertyId::Invalid && StyleSheetSpecification::IsRegisteredCustomProperty(id))
+		{
+			for (auto it = list.transitions.rbegin(); it != list.transitions.rend(); ++it)
+				if (it->id == id)
+					return &*it;
+			return nullptr;
+		}
+		return found;
+	}
+
 } // namespace
 
 const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage) const
@@ -75,7 +90,11 @@ const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage)
 		{
 			SmallUnorderedSet<String> variable_dependencies;
 			Property resolved_storage;
-			if (const Property* resolved = style->ResolveVariables(id, property, variable_dependencies, resolved_storage))
+			// The registered custom properties its var() read are taken without animation layers too (fork, phase 5).
+			PropertySources sources = style->GetPropertySources();
+			sources.animation_layers = nullptr;
+			sources.declared_only = true;
+			if (const Property* resolved = ResolveVariables(sources, style->expanded_shorthands, id, property, variable_dependencies, resolved_storage))
 			{
 				storage = *resolved;
 				return &storage;
@@ -336,6 +355,9 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	{
 		if (IsAnimationProperty(id) || !StyleSheetSpecification::GetProperty(id))
 			continue;
+		// (a registered custom property that only 'all' covers keeps no before-change value: none of its changes starts one)
+		if (list->all && StyleSheetSpecification::IsRegisteredCustomProperty(id) && !FindTransition(*list, id))
+			continue;
 		Property applied;
 		if (TransitionProperty(id, first_style, displayed, context, applied))
 			Apply(id, applied);
@@ -411,7 +433,7 @@ bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool disp
 			return false;
 
 	const TransitionList* list = GetTransitionList();
-	const Transition* found = (list ? list->Find(id) : nullptr);
+	const Transition* found = (list ? FindTransition(*list, id) : nullptr);
 	const PropertyDefinition* property_definition = StyleSheetSpecification::GetProperty(id);
 	if (!found || !displayed)
 	{

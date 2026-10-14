@@ -45,6 +45,8 @@ public:
 			[](const String& name) { return name.empty(); });
 	}
 	size_t GetNumReserved() const { return num_reserved; }
+	/// The number of ids given so far (defined, reserved and custom), the next custom id.
+	size_t GetNumIds() const { return name_map.size(); }
 
 	bool AssertAllInserted(ID number_of_defined_ids) const
 	{
