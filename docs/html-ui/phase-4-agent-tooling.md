@@ -3094,3 +3094,82 @@ Run on `html-ui` after all five packages merged, from a clean build
 
 - [ ] Every package report lists its additive touches outside its owned files, and every
       difference found between 3.2 and the merged phase 0-3 code.
+
+---
+
+## 7. Phase 4 acceptance (p4-accept)
+
+Run on `hui/p4-accept`, branched from `html-ui` at `36afa490a` (all eight packages merged:
+p4-checks, p4-inspector, p4-guide, p4-examples, p4-input, p4-gaps, p4-mcp-tools, p4-gaps2), from
+a clean worktree (no `build/` but the gradle cache), on the Linux host. CPU-capped: `JOBS=2` for
+every build and test container, the MCP suite with `-j 1` and `LP_NUM_THREADS=2`, the RmlUi tests,
+reference renders and slow-build tests pinned to two CPUs (`taskset -c 0,1`), one heavy job at a
+time.
+
+### 7.1 Section 6, item by item
+
+| §6 item | Evidence on the merged tree | Result |
+|---|---|---|
+| Linux editor and engine build, zero new warnings; Web compiles `HtmlUIInspector`/`HtmlUIAssertions` | `JOBS=2 tools/build.sh linux`: exit 0, the no-exported-`Rml::`/lexbor symbol checks pass; one warning in the whole build, `-Wstringop-overflow` in `engine/core/math/Matrix3.cpp:51` (unchanged since 2026-10-01, before phase 4). `JOBS=2 tools/build.sh web`: exit 0, 0 warnings, `core/htmlui/HtmlUIInspector.cpp.o` and `HtmlUIAssertions.cpp.o` built. Android (`flock /tmp/htmlui-android.lock`): APK for the four ABIs, 0 warnings | pass |
+| `jasperengine-htmlui-tests` passes (`InspectorTest`, `AssertionsTest`, `ExamplesCompatTest`) | glcore: 2917 tests, 2844 passed, 0 failed, 73 skipped (the 73 Taffy fixtures the phase-3 baseline excludes: "1595 fixtures, 73 excluded, 1522 compared, 0 known failures"), 74.7 s, `CompatPerf.*`/`CompatCssPerf.*` included. Vulkan (lavapipe): the same 2844 / 0 / 73, 74.3 s. `InspectorTest` 22, `AssertionsTest` 11 (4.1.1's 21 and 10 plus p4-mcp-tools' `WithViewportTransforms` and `TextFitsInATransformedBox`), `ExamplesCompat` 2, `InputPassThroughTest` 10, `InputGamepadTest` 14, `DataBindingDomTest` 2 | pass |
+| `check --ui` / default `check`, text and JSON, exit codes, 6-key non-UI JSON | `test_html_ui_checks.py` (`test_cli_usage_ui`, `test_cli_default_includes_ui`, `test_cli_ui_findings_text_and_json`, `test_cli_ui_files_and_exclusions`, `test_cli_ui_dedupe`, `test_cli_ui_stylesheet_variables`, `test_cli_ui_speed`, `test_parity_cli_mcp`), `test_checks.py` (11 cases) | pass |
+| `--hook`: UI errors always, warnings once; state version 2, version 1 accepted | `test_html_ui_checks.py::test_hook_ui_warnings_once`, `test_checks.py::test_cli_hook_mode`, `test_trial_fixes.py` hook cases, `test_html_ui_agent_sim.py::test_hook_feedback_like_claude_code` | pass |
+| `ui-support` JSON; `gen_html_ui_support.py --check` | `test_ui_support_json_and_generated_doc`; `gen_html_ui_support.py --check`: "current (1870 features, 86 codes)" | pass |
+| Tracked types; reload before the next call in edit mode and in play | `test_html_ui_reload.py` (23: `test_tracked_extensions`, `test_css_edit_reloads_before_call`, `test_reload_during_play`, `test_image_dependency_reload`, `test_texture_mode_document`, `test_rapid_saves_during_play`, ...) | pass |
+| No double reload (5.3 cases 3-4, 7); `ui_reloaded` and full problem entries | `test_no_double_reload_autosync_first`, `test_no_double_reload_poller_first`, `test_html_error_reported` (fixed, 7.2), `test_mcp_write_not_external`, `test_sync_files_reports_ui` | pass |
+| The three tools with the schemas, outputs, errors and annotations of 3.6; `send_input` and `import_files` extensions | `test_html_ui_tools.py` (37), `test_html_ui_gamepad.py` (8) | pass |
+| Budget (`test_budget`), TOOLS.md "HTML/CSS UI" section, README sentence | `[budget] 133 tools, 99006 chars; inspect_ui 1806, assert_ui 2128, create_ui_document 1289, send_input 1995, import_files 869` (4.5.1's numbers); `gen_tool_docs.py` regenerated TOOLS.md (133 tools, `## HTML/CSS UI`): identical to the committed file but for the editor version in its first line; `docs/mcp/README.md` "~99K" | pass |
+| 9 examples + `blank`: compat-clean, inspected golden, play test with interaction, manifest `assert_ui` at every viewport, zero LuaLS warnings | `ExamplesCompat.*`; `test_html_ui_examples.py` (56: `_compat_clean`, `_edit_mode`, `_play_golden` with the gamepad/pointer interaction of 4.6.1, `_asserts` at every manifest viewport, `test_lua_scripts_have_no_luals_diagnostics` with lua-language-server installed); the ten goldens of `engine/tests/htmlui/golden/examples/` looked at again here: no clipping, overlap, missing glyph or icon | pass |
+| Examples in every project's `.jasperengine/engine-api/html-ui-examples/`, served as `jasper://examples/html-ui/...`, instantiable with the renames of 3.7.4 | `_files_in_project`, `test_project_copy_is_the_library`, `test_project_copy_follows_the_editor`, `test_html_ui_tools.py::test_examples_resources`, `test_create_template_renames`; `HtmlUiExamplesTest` in `htmlui-editor-tests` | pass |
+| Guide: 16 sections, every name exists, Lua parses; guide and matrix under `jasper://docs/` | `test_html_ui_docs.py` (13: `test_guide_structure`, `test_guide_names_exist`, `test_guide_lua_names_in_stubs`, `test_guide_lua_snippets_parse`, `test_guide_css_html_snippets_clean`, `test_guide_snippets_play`, `test_guide_served`, `test_guide_cpp_snippet_parses` with clangd installed, ...) | pass |
+| Instructions section, `test_instructions_name_real_tools`, AGENTS.md section, docs updated | `test_autosync.py::test_instructions_name_real_tools`, `test_html_ui_docs.py::test_agents_md_section`, `test_trial_fixes.py::test_agents_md_and_claude_md`; `checks.md` brought up to date here (7.2) | pass |
+| `search_engine_api` finds the Lua UI API and matrix rows | `test_html_ui_docs.py::test_search_engine_api_ui`, `test_docs.py::test_search_engine_api` | pass |
+| `-k html_ui` with no skip but LuaLS-not-installed | both full runs: no `html_ui` skip except `test_html_ui_export.py::test_desktop_build_runs_the_document` without `JASPER_SLOW_BUILD`, which passes with it (7.3); LuaLS and clangd are installed, so their tests ran | pass |
+| `test_protocol`, `test_autosync`, `test_checks`, `test_stubs`, `test_ui_anchors`, `test_play`, `test_assets`, `test_docs` | run 2: 12, 12, 11, 12, 7, 14, 8, 5 passed, 0 failed (`test_play.py::test_cpp_build_failure_reported` with `JASPER_SLOW_TESTS=1`: 7.3) | pass |
+| Agent simulation (5.7) end to end | `test_html_ui_agent_sim.py` (6) | pass |
+| Package reports list additive touches and 3.2 differences | the "as implemented" sections 4.1.1-4.6.1 (each lists its files outside its ownership and what it found against 3.2: 4.1.1 the accessors of 3.2.2, 4.2.1 "Deviations from 3.2.1", 4.3.1 "Engine fixes the examples found", 4.4.1 "Differences from 3.8.1 found in the code", 4.5.1 additive touches and fixes in others' files); every phase-4 fork commit has a `FORK.md` row with its commit ids and tests (P4-1 … P4-6, P4-E1, P4-G1 … P4-G14; no phase-4 commit touches `engine/libs/rmlui` outside an `rmlui:` commit); `CONTRACTS.md` rows for every interface | pass |
+
+### 7.2 What the acceptance run found and changed
+
+| Kind | What was wrong | Fix |
+|---|---|---|
+| Flaky test | `test_html_ui_reload.py::test_html_error_reported` failed once in the first full MCP run: it required `ui_reloaded == [panel]` after an external `.html` edit, but the phase-1 poller (0.25 s tick) can see the write between the disk write and the call; the pick-up then finds the document current (`ui_current` 1, problems still reported), which 5.3 case 4 defines as correct and every other reload check of the file accepts | the step and the "fixed" step accept either path (`reloaded_for_call`) and now also count exactly one reload per edit from the Console's reload lines. Reproduced every time with a 0.6 s pause after the write (the old assertion fails, the new one passes); the file then passed 3 runs of 23/23 and the second full run |
+| Stale doc | `docs/mcp/checks.md` said a `.css` given to `--files` "is checked on its own"; since p4-gaps (4.3.2 G6) it is checked in the context of the documents that load it, and a sheet alone does not judge variables it does not declare | `--files` row and the "Stylesheets" bullet describe both |
+| Stale doc | `DESIGN.md` deviation 10 listed only P4-1 … P4-5 among the phase-4 fork patches | it lists P4-6, P4-E1 and the corrective packages' P4-G1 … P4-G14 too, with their sections |
+
+Searched and found current (no change needed): "gamepads don't reach documents" (gone; the guide's
+"Focus, keys and gamepads" describes 4.6.1), inline SVG icons in the examples (they use
+`data-lucide`), the edit-mode `data-style` syntax noise (gone with P4-4, no exemption left in the
+tests), `data-attr-disabled` caveats (the guide states the boolean-attribute rule of P4-G9),
+13x13 checkbox claims (the guide says the themed control is drawn as a square of the smaller
+side, and an unsized `appearance: none` checkbox is sized by its content), `WAVE-2` marks (none
+left), `require_tools` on phase-4 tools (none: the remaining calls name tools that exist and only
+skip against the fake server), TODO/FIXME added in phase 4 (none). AGENTS.md, the instructions,
+the guide, TOOLS.md, the support matrix, the examples manifest and the guide's examples table,
+CONTRACTS.md and FORK.md agree with each other and with the code.
+
+### 7.3 Other runs
+
+- `JOBS=2 tools/htmlui/run-rmlui-tests.sh`: 406 test cases, 18,100 assertions, all passing, no
+  warning.
+- `JOBS=2 tools/build.sh htmlui-editor-tests`: 63 tests, 62 passed, 1 skipped
+  (`GoogleFonts.LiveNetwork`, only with `HTMLUI_LIVE_NETWORK=1`).
+- MCP suite (`LP_NUM_THREADS=2 ... tools/mcp/run-tests.sh -j 1`, 40 files): run 1, 461 passed,
+  1 failed (7.2), 4 skipped, 1846 s; run 2 with the fix, 462 passed, 0 failed, 4 skipped, 1849 s.
+  The 4 skips are the slow-build/slow-test gates, run on their own below.
+- Slow tests (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1`, `taskset -c 0,1`): `test_play.py`,
+  `test_html_ui_export.py`, `test_build.py`, `test_playctl.py` whole, 37 passed, 0 failed, 0 skipped,
+  2298 s: `test_cpp_build_failure_reported`, `test_desktop_build_runs_the_document` (a Desktop
+  player built from source runs the exported document, 941 s), `test_desktop_build_and_run` (633 s),
+  `test_desktop_player_driven` (669 s).
+- `gen_html_ui_support.py --check`: current. `gen_tool_docs.py`: TOOLS.md identical but for the
+  version line. `xcode_sync_rmlui.py --check`, `xcode_sync_compat.py --check`: pass.
+- `render-reference.mjs --all --check`: the 8 phase-2 pages, 24 files, all the same.
+  `--fixtures all --check --jobs 2`: 189 browser-parity fixtures (458 files, every P4 fixture
+  among them) and 1,522 Taffy fixtures' boxes, all the same as committed, with the pinned
+  Chromium 153 headless shell (revision 1243, playwright-core 1.63.0).
+
+### 7.4 Not verified here
+
+Windows, macOS and iOS cannot be built on this host. Phase 4 changed no platform layer (4.6.1
+"Platforms"); the Xcode project's source lists were checked with the two `--check` scripts.
