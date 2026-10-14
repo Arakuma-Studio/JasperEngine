@@ -122,8 +122,8 @@ REGIONS = {
     "button": {"rect": (444, 304, 796, 516), "sd": 6},
     "tint": {"rect": (840, 300, 1200, 520), "sd": 15},
 }
-MEAN = {}          # filled from the first run's measurements (printed); see EXPECTED below
-EXPECTED: dict = {}
+EXPECTED = {"hero": (146, 68, 171), "glass": (168, 176, 130), "pix": (96, 98, 65), "title": (41, 61, 50),
+            "button": (114, 113, 90), "tint": (34, 185, 97)}
 MEAN_TOL = 18
 
 
@@ -208,3 +208,190 @@ async def test_determinism_and_live_clock(ed: Editor):
     live = await shot(ed, "live")
     ed.check(not same(S["t1"], live, REGIONS["hero"]["rect"]), "the live clock moves the stripes")
     await ed.call("set_ui_effect_time", time=1.5)
+
+
+def line_col(text: str, needle: str, occurrence: int = 1) -> tuple[int, int]:
+    seen = 0
+    for i, line in enumerate(text.split("\n")):
+        if needle in line:
+            seen += 1
+            if seen == occurrence:
+                return i + 1, line.index(needle) + 1
+    raise AssertionError(f"no line with {needle!r}")
+
+
+async def inspect(ed: Editor, selector: str) -> tuple[dict, str]:
+    raw = await ed.call_raw("inspect_ui", {"scene": S["scene"], "entity": S["entity"], "selector": selector, "depth": 0})
+    ed.check(not raw.is_error, raw.text)
+    elements = raw.value["elements"]
+    ed.check_eq(len(elements), 1, f"{selector} matches one element")
+    return elements[0], raw.text
+
+
+async def test_inspect_ui_effects(ed: Editor):
+    hero, text = await inspect(ed, ".hero")
+    ed.check("fx:stripes" in text, f"the outline names the effect: {text}")
+    ed.check_eq([(e["property"], e["index"], e["name"], e["form"]) for e in hero["effects"]],
+                [("background-image", 1, "stripes", "paint")], "the hero's effects")
+    params = hero["effects"][0]["params"]
+    ed.check_eq((params.get("color-a"), params.get("color-b"), params.get("density"), params.get("speed")),
+                ("#ff3355ff", "#2255ffff", "6", "0.5"), f"canonical parameter values: {params}")
+    for universal in ("opacity", "time-scale", "time-offset", "blend"):
+        ed.check(universal in params, f"the universal parameter {universal} is listed: {params}")
+    cases = {".glass": ("backdrop-filter", "frosted-glass", "filter"), ".pix": ("filter", "pixelate", "filter"),
+             ".title": ("background-image", "stripes", "filter"), ".button": ("background-image", "spotlight", "paint"),
+             ".tint": ("background-image", "tint-wave", "paint")}
+    for selector, (prop, name, form) in cases.items():
+        element, text = await inspect(ed, selector)
+        ed.check_eq([(e["property"], e["name"], e["form"]) for e in element.get("effects", [])], [(prop, name, form)], selector)
+        ed.check(f"fx:{name}" in text, f"{selector}: fx:{name} in {text}")
+    behind, text = await inspect(ed, ".behind")
+    ed.check("effects" not in behind and "fx:" not in text, f"no effects key without effects: {behind}")
+
+
+async def test_list_ui_effects(ed: Editor):
+    write(ed, "assets/ui/fx/spare-glow.frag", FRAG.replace("tint-wave", "spare-glow").replace('#include "local-wave.glsl"\n', "")
+          .replace("local_wave(c.uv.x, c.anim.x)", "1.0"))
+    everything = await ed.call("list_ui_effects")
+    names = [e["name"] for e in everything["effects"]]
+    ed.check_eq(everything["count"], len(names), "count")
+    for name in ("cursor-trail", "frosted-glass", "pixelate", "spotlight", "stripes", "tint-wave", "spare-glow"):
+        ed.check(name in names, f"{name} listed: {names}")
+    ed.check_eq(names, sorted(names), "sorted by name")
+    builtin = [e for e in everything["effects"] if e["builtin"]]
+    ed.check(len(builtin) >= 5 and all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
+    if len(names) > 12:
+        ed.check(all("params" not in e and "param_names" in e for e in everything["effects"]), "a long list leaves the params out")
+
+    glass = await ed.call("list_ui_effects", category="glass")
+    ed.check("frosted-glass" in [e["name"] for e in glass["effects"]], f"glass: {glass}")
+    ed.check(all(e["category"] == "glass" for e in glass["effects"]), "only glass")
+    filters = await ed.call("list_ui_effects", kind="filter")
+    ed.check(filters["count"] >= 2 and all(e["kind"] == "filter" for e in filters["effects"]), f"filters: {filters}")
+
+    raw = await ed.call_raw("list_ui_effects", {"name": "tint-wave"})
+    one = raw.value["effects"]
+    ed.check_eq(len(one), 1, "one effect by name")
+    tint = one[0]
+    ed.check_eq((tint["builtin"], tint["declared"], tint["path"], tint["kind"]),
+                (False, True, "assets/ui/fx/tint-wave.frag", "paint"), f"the project effect: {tint}")
+    ed.check_eq([(p["name"], p["type"], p["default"]) for p in tint["params"]], [("color", "color", "#3388ff"), ("speed", "number", "1")],
+                "its parameters")
+    ed.check("- speed number 1 [-5..5]: Waves per second" in raw.text, raw.text)
+    spare = (await ed.call("list_ui_effects", name="spare-glow"))["effects"][0]
+    ed.check_eq((spare["builtin"], spare["declared"]), (False, False), f"a .frag no document declares: {spare}")
+
+    error = await ed.call("list_ui_effects", name="stripez", expect_error=True)
+    ed.check("stripes" in error, f"the nearest name: {error}")
+    error = await ed.call("list_ui_effects", category="nope", expect_error=True)
+    ed.check("glass" in error and "pattern" in error, f"the categories: {error}")
+
+
+BAD_CSS = """.a { background-image: effect(glassmorphism); }
+.b { background-image: effect(stripes, speeed 2); }
+.c { color: effect(pixelate); }
+"""
+
+
+async def test_check_ui_effect_diagnostics(ed: Editor):
+    write(ed, "assets/ui/bad.css", BAD_CSS)
+    r = await ed.call("inspect_ui", file="assets/ui/bad.css")
+    found = {d["code"]: d for d in r["diagnostics"]}
+    cases = [("HTMLUI-FX-0001", "glassmorphism", "frosted-glass"), ("HTMLUI-FX-0004", "speeed", "speed"),
+             ("HTMLUI-FX-0002", "effect(pixelate)", "filter")]
+    for code, needle, suggestion in cases:
+        ed.check(code in found, f"{code} reported: {r['diagnostics']}")
+        d = found[code]
+        line, col = line_col(BAD_CSS, needle)
+        ed.check_eq((d["path"], d["line"], d["col"]), ("assets/ui/bad.css", line, col), f"{code} at the {needle}")
+        ed.check(suggestion in d.get("suggestion", ""), f"{code} suggests {suggestion}: {d}")
+    ed.check_eq(found["HTMLUI-FX-0001"]["severity"], "error", "effect-unknown is an error")
+    ed.check_eq(found["HTMLUI-FX-0004"]["severity"], "warning", "effect-unknown-param is a warning")
+    (ed.project / "assets/ui/bad.css").unlink()
+
+
+async def wait_tint(ed: Editor, label: str, predicate, seconds: float = 60.0) -> Shot:
+    """Screenshots until the tint region satisfies predicate(mean, sd)."""
+    deadline = time.monotonic() + seconds
+    while True:
+        image = await shot(ed, label)
+        mean, sd = stats(image, REGIONS["tint"]["rect"])
+        if predicate(mean, sd):
+            return image
+        if time.monotonic() > deadline:
+            ed.fail(f"{label}: the tint region stays at mean {tuple(round(v) for v in mean)} sd {sd:.1f}")
+        await asyncio.sleep(0.5)
+
+
+async def test_hot_reload_project_effect(ed: Editor):
+    before, _ = stats(S["t1"], REGIONS["tint"]["rect"])
+    # an external edit of the .frag: the documents reload and the variants compile again
+    write(ed, "assets/ui/fx/tint-wave.frag", FRAG.replace("vec3(1.0, 1.0, 1.0)", "vec3(1.0, 0.1, 1.0)"))
+    changed = await wait_tint(ed, "frag-edited", lambda mean, sd: sd > 5 and mean[1] < before[1] - 60)
+    S["edited"] = stats(changed, REGIONS["tint"]["rect"])[0]
+
+    # a GLSL error: write_file compiles it (each form) and says where
+    broken = FRAG.replace("vec3(1.0, 1.0, 1.0)", "vec3(1.0, 0.1)")
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/tint-wave.frag", "content": broken})
+    ed.check(not raw.is_error, raw.text)
+    results = raw.value.get("shader_check", [])
+    failed = [r for r in results if not r.get("ok")]
+    ed.check(failed, f"the shader check fails: {raw.text}")
+    line, _ = line_col(broken, "vec3(1.0, 0.1)")
+    for r in failed:
+        ed.check_eq((r.get("effect"), r.get("code")), ("tint-wave", "HTMLUI-FX-0015"), f"effect-shader-compile: {r}")
+        ed.check(any(e["line"] == line for e in r.get("errors", [])), f"the error at the .frag line {line}: {r}")
+    ed.check("[HTMLUI-FX-0015]" in raw.text and f"line {line}:" in raw.text, raw.text)
+    # the effect does not draw while it does not compile (the black background shows)
+    await wait_tint(ed, "frag-broken", lambda mean, sd: sd < 3)
+
+    # fixed: the render recovers
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/tint-wave.frag", "content": FRAG})
+    ed.check(not raw.is_error and all(r.get("ok") for r in raw.value.get("shader_check", [])) and "Shader compiles." in raw.text, raw.text)
+    recovered = await wait_tint(ed, "frag-fixed", lambda mean, sd: sd >= REGIONS["tint"]["sd"] and abs(mean[1] - before[1]) <= MEAN_TOL)
+    ed.check(same(recovered, S["t1"], REGIONS["tint"]["rect"]), "the fixed effect renders as before")
+
+
+async def test_manifest_error(ed: Editor):
+    bad = FRAG.replace("// @param      speed number 1 -5 5", "// @param      speed number 9 -5 5")
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/tint-wave.frag", "content": bad})
+    results = raw.value.get("shader_check", [])
+    line, _ = line_col(bad, "@param      speed")
+    ed.check(results and all(r.get("code") == "HTMLUI-FX-0014" and not r["ok"] for r in results), f"effect-manifest: {raw.text}")
+    ed.check(any(e["line"] == line for e in results[0].get("errors", [])), f"at the manifest line {line}: {results}")
+    # the document reloads and reports it at the .frag line; the effect is not drawn
+    await wait_tint(ed, "manifest-broken", lambda mean, sd: sd < 3)
+    r = await ed.call("inspect_ui", scene=S["scene"], entity=S["entity"], selector=".tint", depth=0)
+    diags = r.get("diagnostics", [])
+    ed.check(any(d.get("code") == "HTMLUI-FX-0014" and d.get("path") == "assets/ui/fx/tint-wave.frag" and d.get("line") == line
+                 for d in diags), f"the live document reports effect-manifest at the .frag line: {diags}")
+    await ed.call("write_file", path="assets/ui/fx/tint-wave.frag", content=FRAG)
+    await wait_tint(ed, "manifest-fixed", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+
+
+async def test_rename_frag_during_play(ed: Editor):
+    await ed.call("play", action="start", scene=S["scene"])
+    try:
+        await ed.call("set_ui_effect_time", time=1.5)
+        await wait_tint(ed, "play", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+        # renamed: the document reports the missing file and draws without the effect
+        (ed.project / "assets/ui/fx/tint-wave.frag").rename(ed.project / "assets/ui/fx/tint-wave2.frag")
+        await wait_tint(ed, "play-renamed", lambda mean, sd: sd < 3)
+        r = await ed.call("inspect_ui", entity=S["entity"], selector=".tint", depth=0)
+        text = str(r)
+        ed.check("HTMLUI-FX-0013" in text, f"effect-file-missing while the .frag is gone: {text[:3000]}")
+        # the CSS follows the rename: drawn again, in play
+        write(ed, "assets/ui/effects.css", CSS.replace("fx/tint-wave.frag", "fx/tint-wave2.frag"))
+        await wait_tint(ed, "play-followed", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+    finally:
+        await ed.call("play", action="stop")
+    (ed.project / "assets/ui/fx/tint-wave2.frag").rename(ed.project / "assets/ui/fx/tint-wave.frag")
+    write(ed, "assets/ui/effects.css", CSS)
+    await wait_tint(ed, "edit-restored", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+
+
+async def test_no_errors_left(ed: Editor):
+    await ed.call("set_ui_effect_time", time=None)
+    r = await ed.call("inspect_ui", scene=S["scene"], entity=S["entity"], selector=".tint", depth=0)
+    ed.check(r["document"]["diagnostics_count"]["error"] == 0, f"the document is clean again: {r['document']}")
+    await ed.check_alive()

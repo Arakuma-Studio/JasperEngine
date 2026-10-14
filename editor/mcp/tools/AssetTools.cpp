@@ -1039,7 +1039,11 @@ void writeFileTool(const CallPtr& call) {
                     text += " SHADER COMPILE ERRORS:";
                     for (const Json& r : results) {
                         if (r.value("ok", false)) continue;
-                        text += "\n" + r.value("shader", std::string()) + ": ";
+                        text += "\n" + r.value("shader", std::string());
+                        // a UI effect: its form and the diagnostic code (HTMLUI-FX-0015 effect-shader-compile, -0014 effect-manifest)
+                        if (r.contains("effect")) text += " (" + r.value("form", std::string()) + " form)";
+                        if (r.contains("code")) text += " [" + r.value("code", std::string()) + "]";
+                        text += ": ";
                         if (r.contains("errors") && !r["errors"].empty()) {
                             for (const Json& e : r["errors"]) text += "\n  line " + std::to_string(e["line"].get<int>()) + ": " + e["message"].get<std::string>();
                         } else {
@@ -1990,7 +1994,11 @@ void checkShaderTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     std::vector<ProjectChecks::ShaderUse> forks;
-    if (args.contains("shader") && args["shader"].is_string()) {
+    // a project UI effect (phase 5): its .frag, checked in each of its forms
+    if (args.contains("shader") && args["shader"].is_string() &&
+        ProjectChecks::isUiEffectFile(project->getProjectPath() / fs::u8path(args["shader"].get<std::string>()))) {
+        forks = ProjectChecks::uiEffectUses(project, args["shader"].get<std::string>());
+    } else if (args.contains("shader") && args["shader"].is_string()) {
         std::string base = args["shader"].get<std::string>();
         for (const char* ext : {".vert", ".frag"}) {
             if (base.size() > 5 && base.compare(base.size() - 5, 5, ext) == 0 && base.find('|') == std::string::npos) base = base.substr(0, base.size() - 5);
