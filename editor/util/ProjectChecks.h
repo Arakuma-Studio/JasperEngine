@@ -20,6 +20,10 @@
 
 struct lua_State;
 
+namespace jasperengine::htmlui {
+    struct EffectManifest;
+}
+
 namespace jasperengine::editor {
 
     class Project;
@@ -185,6 +189,15 @@ namespace jasperengine::editor {
         //  diagnostics: [{code, name, severity, summary}]} (support computed with the fork
         // features present)
         static nlohmann::json uiSupportJson();
+
+        // ---- HTML UI effects (phase 5)
+
+        // An effect as `ui-effects --json` and MCP list_ui_effects give it: every manifest field
+        // (name kind category summary source cost backdrop pointer time suggestFor params builtin
+        // path, prepass/margin/geometry when set), an example declaration and the thumbnail path
+        static nlohmann::json uiEffectJson(const jasperengine::htmlui::EffectManifest& manifest);
+        // "background-image: effect(stripes, angle 45deg);" (its first simple parameter)
+        static std::string uiEffectExample(const jasperengine::htmlui::EffectManifest& manifest);
 
         // ---- shaders
 

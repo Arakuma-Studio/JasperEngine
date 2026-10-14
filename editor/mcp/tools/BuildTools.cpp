@@ -248,6 +248,17 @@ bool parseShaderKey(const Json& value, ShaderKey& out) {
     return false;
 }
 
+// A key, or a shader spec as the CLI takes it ("mesh:Ult", "uieffect/<name>[:Flt]",
+// "uieffect/all": several keys)
+bool parseShaderKeys(const Json& value, std::vector<ShaderKey>& out) {
+    ShaderKey key;
+    if (parseShaderKey(value, key)) {
+        out.push_back(key);
+        return true;
+    }
+    return value.is_string() && ShaderPool::expandShaderSpec(value.get<std::string>(), out);
+}
+
 std::string shaderName(ShaderKey key) {
     return Exporter::getShaderDisplayName(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key),
                                           ShaderPool::getCustomIdFromKey(key));
@@ -851,18 +862,21 @@ void buildProjectTool(const CallPtr& call) {
                 return;
             }
             for (const Json& item : shaders[field]) {
-                ShaderKey key;
-                if (!parseShaderKey(item, key)) {
-                    call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\").");
+                std::vector<ShaderKey> parsed;
+                if (!parseShaderKeys(item, parsed)) {
+                    call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
+                               "(\"uieffect/<name>[:Flt]\").");
                     return;
                 }
-                key = ShaderPool::normalizeKey(key);
-                if (std::string(field) == "add") {
-                    exclusions.erase(key);
-                    additions.insert(key);
-                } else {
-                    additions.erase(key);
-                    exclusions.insert(key);
+                for (ShaderKey key : parsed) {
+                    key = ShaderPool::normalizeKey(key);
+                    if (std::string(field) == "add") {
+                        exclusions.erase(key);
+                        additions.insert(key);
+                    } else {
+                        additions.erase(key);
+                        exclusions.insert(key);
+                    }
                 }
             }
         }
@@ -934,12 +948,13 @@ void generateShadersTool(const CallPtr& call) {
     std::set<ShaderKey> keys;
     if (args.contains("shaders") && args["shaders"].is_array() && !args["shaders"].empty()) {
         for (const Json& item : args["shaders"]) {
-            ShaderKey key;
-            if (!parseShaderKey(item, key)) {
-                call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\").");
+            std::vector<ShaderKey> parsed;
+            if (!parseShaderKeys(item, parsed)) {
+                call->fail("Bad shader key " + item.dump() + ": use the key strings get_build_info lists (\"0x...\") or a spec "
+                           "(\"uieffect/<name>[:Flt]\").");
                 return;
             }
-            keys.insert(ShaderPool::normalizeKey(key));
+            for (ShaderKey key : parsed) keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
         keys = sceneShaderKeys(project);

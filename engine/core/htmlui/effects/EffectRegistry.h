@@ -61,8 +61,16 @@ namespace jasperengine::htmlui {
         // A project file changed (hot reload): a declared effect's .frag is read again, its
         // instancers registered again (the old ones kept until shutdown: RmlUi may still use
         // them) and its shader variants dropped so they compile again. True when the file is a
-        // declared effect.
+        // declared effect. A file that is gone or whose manifest no longer parses forgets the
+        // declaration (p5-tooling): the documents reloading next declare it again and report
+        // why it fails (effect-file-missing, effect-manifest at the .frag line), and declare it
+        // once it is back or fixed. UIDocumentSystem::reloadChangedFiles calls it for every
+        // changed .frag a document reads, before the reload.
         bool onProjectFileChanged(const std::string& assetPath);
+        // Called (outside the registry's lock) after onProjectFileChanged dropped a project
+        // effect's variants: the editor drops its compiled cache of project shaders there
+        using ProjectEffectListener = std::function<void(const std::string& assetPath)>;
+        void setProjectEffectListener(ProjectEffectListener listener);
         // the declared project effects are forgotten (another project, tests)
         void clearProjectEffects();
 
@@ -106,6 +114,7 @@ namespace jasperengine::htmlui {
         bool loadProjectManifest(const std::string& name, const std::string& fragPath, const std::string& source,
                                  std::vector<EffectDiagnostic>& diags, std::unique_ptr<EffectManifest>& out) const;
 
+        ProjectEffectListener projectEffectListener;
         mutable std::recursive_mutex mutex;
         mutable bool builtinsLoaded = false;
         mutable std::vector<std::unique_ptr<EffectManifest>> builtinList;

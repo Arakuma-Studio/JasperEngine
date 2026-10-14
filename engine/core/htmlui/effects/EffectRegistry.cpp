@@ -267,17 +267,19 @@ bool EffectRegistry::declareProjectEffect(const std::string& name, const std::st
 }
 
 bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
-    std::lock_guard<std::recursive_mutex> lock(mutex);
-    for (auto& entry : projects){
-        ProjectEffect& effect = entry.second;
-        if (effect.fragPath != assetPath)
-            continue;
+    ProjectEffectListener listener;
+    {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        auto it = std::find_if(projects.begin(), projects.end(), [&](const auto& entry){ return entry.second.fragPath == assetPath; });
+        if (it == projects.end())
+            return false;
+        ProjectEffect& effect = it->second;
         std::string source;
         if (!hc::readAssetFile(hc::FileAccess(), assetPath, source))
             source.clear();
         std::vector<EffectDiagnostic> diags;
         std::unique_ptr<EffectManifest> manifest;
-        if (!source.empty() && loadProjectManifest(entry.first, assetPath, source, diags, manifest)){
+        if (!source.empty() && loadProjectManifest(it->first, assetPath, source, diags, manifest)){
             // the old manifest stays alive: decorators made from it may still be drawn
             graveyard.push_back(std::move(effect.manifest));
             effect.manifest = std::move(manifest);
@@ -285,17 +287,30 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
             if (initialised)
                 registerRml(*effect.manifest);
         }else{
+            if (source.empty())
+                Log::error("[HTML UI] %s: the effect '%s' is gone (no file)", assetPath.c_str(), it->first.c_str());
             for (const EffectDiagnostic& d : diags)
                 Log::error("[HTML UI] %s:%u: %s", d.file.c_str(), d.line, d.message.c_str());
+            // forgotten: the next @effect reads the file again and reports why it fails, and
+            // declares it once it is back (the old manifest stays alive for its decorators)
+            graveyard.push_back(std::move(effect.manifest));
+            projects.erase(it);
         }
         // the variants compile again from the new source
         const uint16_t customId = ShaderPool::registerCustomShader(assetPath);
         ShaderPool::remove(ShaderType::UI_EFFECT, 0, customId);
         ShaderPool::remove(ShaderType::UI_EFFECT, 1, customId);
         ShaderPool::destroyCustomShaders();
-        return true;
+        listener = projectEffectListener;
     }
-    return false;
+    if (listener)
+        listener(assetPath);
+    return true;
+}
+
+void EffectRegistry::setProjectEffectListener(ProjectEffectListener listener){
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    projectEffectListener = std::move(listener);
 }
 
 void EffectRegistry::clearProjectEffects(){

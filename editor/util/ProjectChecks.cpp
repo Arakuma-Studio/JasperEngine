@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <map>
@@ -920,6 +921,94 @@ Json editor::ProjectChecks::uiSupportJson() {
                                {"help", info.help ? info.help : ""}});
     }
     return {{"version", 1}, {"editor_version", JASPERENGINE_EDITOR_VERSION}, {"features", features}, {"diagnostics", diagnostics}};
+}
+
+// ======================================================================== HTML UI effects
+
+namespace {
+
+    // a parameter's range as written in manifests ("-180deg..180deg", "0%..100%")
+    std::string effectRangeText(const fx::EffectParamDef& def) {
+        if (def.type == fx::EffectParamType::Enum)
+            return "";
+        if (!def.hasRange)
+            return "";
+        auto number = [](double v) {
+            char text[64];
+            std::snprintf(text, sizeof(text), "%.6g", v);
+            return std::string(text);
+        };
+        auto value = [&](float v) {
+            switch (def.type) {
+                case fx::EffectParamType::Angle: return number(v * 180.0 / 3.14159265358979323846) + "deg";
+                case fx::EffectParamType::Time: return number(v) + "s";
+                case fx::EffectParamType::Length: return number(v) + "px";
+                case fx::EffectParamType::Percentage: return number(v * 100.0) + "%";
+                default: return number(v);
+            }
+        };
+        return value(def.minValue) + ".." + value(def.maxValue);
+    }
+
+    // one CSS declaration using the effect (its first simple parameter at its default)
+    std::string effectExampleOf(const fx::EffectManifest& m) {
+        std::string call = "effect(" + m.name;
+        for (const fx::EffectParamDef& def : m.params) {
+            if (def.type == fx::EffectParamType::Palette || def.type == fx::EffectParamType::Position ||
+                def.type == fx::EffectParamType::Color || def.defaultText.empty())
+                continue;
+            call += ", " + def.name + " " + def.defaultText;
+            break;
+        }
+        call += ")";
+        if (m.kind == fx::EffectKind::Paint)
+            return "background-image: " + call + ";";
+        return std::string(m.backdrop ? "backdrop-filter: " : "filter: ") + call + ";";
+    }
+
+    nlohmann::json effectJsonOf(const fx::EffectManifest& m) {
+        nlohmann::json params = nlohmann::json::array();
+        for (const fx::EffectParamDef& def : m.params) {
+            nlohmann::json p = {{"name", def.name}, {"type", fx::effectParamTypeName(def.type)}, {"default", def.defaultText},
+                                {"range", effectRangeText(def)}, {"description", def.description}, {"uniform", def.uniform}};
+            if (def.hasRange && def.type != fx::EffectParamType::Enum) {
+                p["min"] = def.minValue;
+                p["max"] = def.maxValue;
+            }
+            if (!def.options.empty())
+                p["options"] = def.options;
+            params.push_back(std::move(p));
+        }
+        auto scaled = [](const fx::EffectScaledParam& s) {
+            if (s.param.empty())
+                return nlohmann::json(std::to_string(s.addPx) + "px");
+            return nlohmann::json({{"param", s.param}, {"scale", s.scale}, {"addPx", s.addPx}});
+        };
+        nlohmann::json entry = {
+            {"name", m.name}, {"kind", fx::effectKindName(m.kind)}, {"category", m.category}, {"summary", m.summary},
+            {"source", m.source}, {"cost", fx::effectCostName(m.cost)}, {"backdrop", m.backdrop},
+            {"pointer", fx::effectPointerName(m.pointer)}, {"time", m.timeParams}, {"suggestFor", m.suggestFor},
+            {"params", params}, {"builtin", m.builtin}, {"path", m.builtin ? "engine/shaderlib/" + m.sourcePath : m.sourcePath},
+            {"example", effectExampleOf(m)},
+            {"thumbnail", m.builtin ? "docs/mcp/guide/img/effects/" + m.name + ".png" : std::string()}};
+        if (m.hasPrepass) {
+            entry["prepass"] = {{"blur", scaled(m.prepassSigma)}, {"threshold", m.prepassThreshold}};
+        }
+        if (!m.margin.param.empty() || m.margin.addPx != 0.f)
+            entry["margin"] = scaled(m.margin);
+        if (m.boundsGeometry)
+            entry["geometry"] = {{"bounds", scaled(m.boundsExtent)}};
+        return entry;
+    }
+
+}
+
+Json editor::ProjectChecks::uiEffectJson(const fx::EffectManifest& manifest) {
+    return effectJsonOf(manifest);
+}
+
+std::string editor::ProjectChecks::uiEffectExample(const fx::EffectManifest& manifest) {
+    return effectExampleOf(manifest);
 }
 
 // ======================================================================== shaders

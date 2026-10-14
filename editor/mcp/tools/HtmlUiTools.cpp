@@ -690,6 +690,17 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
     if (!e.pseudo.empty()) out["pseudo"] = e.pseudo;
     const std::vector<std::string> flags = flagList(e.flags);
     if (!flags.empty()) out["flags"] = flags;
+    // the UI effects it draws with (phase 5, UIElement::getEffects); omitted when none
+    if (!e.effects.empty()) {
+        Json effects = Json::array();
+        for (const hui::InspectEffect& effect : e.effects) {
+            Json params = Json::object();
+            for (const auto& [name, value] : effect.params) params[name] = value;
+            effects.push_back({{"property", effect.property}, {"index", effect.index}, {"name", effect.name}, {"form", effect.form},
+                               {"params", params}});
+        }
+        out["effects"] = effects;
+    }
     if (styles && !styles->empty()) {
         Json map = Json::object();
         for (const hui::InspectStyle& s : *styles) map[s.property] = s.value;
@@ -698,7 +709,7 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
     return out;
 }
 
-// "button#play.btn.primary "Play" [472,248 336x56] :hover !overflow-x {color: rgb(...)}"
+// "button#play.btn.primary "Play" [472,248 336x56] :hover !overflow-x fx:sheen {color: rgb(...)}"
 std::string elementLine(const hui::InspectElement& e, const std::vector<hui::InspectStyle>* styles) {
     std::string line(static_cast<size_t>(std::max(0, e.depth)) * 2, ' ');
     line += e.tag;
@@ -711,6 +722,7 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
         const bool problem = f == "overflow-x" || f == "overflow-y" || f == "clipped";
         line += " " + std::string(problem ? "!" : "") + f;
     }
+    for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name;
     if (styles && !styles->empty()) {
         line += " {";
         for (size_t i = 0; i < styles->size(); i++) line += (i ? "; " : "") + (*styles)[i].property + ": " + (*styles)[i].value;

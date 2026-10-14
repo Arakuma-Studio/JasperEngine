@@ -34,6 +34,7 @@
 #include "util/DefaultFontArabic.h"
 
 #include "shader/ShaderBuilder.h"
+#include "htmlui/effects/EffectRegistry.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -2244,6 +2245,11 @@ void editor::App::engineInit(int argc, char** argv) {
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
+    });
+    // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go
+    // from the builder's cache too, so they compile from the new source
+    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener([](const std::string&) {
+        jasperengine::editor::ShaderBuilder::invalidateCustomShaders();
     });
 
     Engine::setAsyncLoading(true);

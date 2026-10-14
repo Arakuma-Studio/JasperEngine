@@ -41,6 +41,7 @@ MODULES: list[tuple[str, str]] = [
     ("BuildTools", "Build and export"),
     ("WorldTools", "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models"),
     ("HtmlUiTools", "HTML/CSS UI"),
+    ("UIEffectTools", "HTML/CSS UI"),
 ]
 GROUPS = [title for _, title in MODULES]
 

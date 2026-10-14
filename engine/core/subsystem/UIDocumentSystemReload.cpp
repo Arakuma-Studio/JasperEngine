@@ -16,6 +16,7 @@
 #include "htmlui/RmlFontEngine.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
+#include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
@@ -27,6 +28,7 @@
 #include <RmlUi/Core/Property.h>
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -222,6 +224,15 @@ namespace {
             case HtmlUIReference::FONT: return ChangeKind::FONT;
             default: return ChangeKind::FULL;
         }
+    }
+
+    // a project effect's source (@effect src), the only .frag a document reads
+    bool isEffectSourcePath(const std::string& path){
+        if (path.size() < 5)
+            return false;
+        std::string ext = path.substr(path.size() - 5);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+        return ext == ".frag";
     }
 
     void appendUnique(std::vector<std::string>& list, const std::string& value){
@@ -589,6 +600,8 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         std::vector<std::string> fonts;
     };
     std::vector<Action> actions;
+    // the project effects (@effect .frag) among the changed files (phase 5)
+    std::set<std::string> changedEffects;
 
     auto components = scene->getComponentArray<UIDocumentComponent>();
     for (size_t i = 0; i < components->size(); i++){
@@ -622,6 +635,8 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
                 continue;
             stampIt->second = now;
             changed = true;
+            if (isEffectSourcePath(path))
+                changedEffects.insert(path);
 
             ChangeKind kind = changeKindOf(path, record.filename);
             // p2-html: an import may only change CSS; compatRestyle falls back to a full reload
@@ -637,6 +652,11 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         if (changed)
             actions.push_back(action);
     }
+
+    // phase 5 (p5-tooling): a project effect's manifest is read again and its variants dropped
+    // before the documents that declared it reload (a .frag a document reads changes in full)
+    for (const std::string& path : changedEffects)
+        htmlui::EffectRegistry::get().onProjectFileChanged(path);
 
     std::set<std::string> fontsReloaded;
     std::set<std::string> imagesReleased;
