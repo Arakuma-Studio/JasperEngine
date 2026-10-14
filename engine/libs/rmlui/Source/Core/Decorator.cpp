@@ -63,6 +63,11 @@ bool Decorator::PaintsOwnClip() const
 	return false;
 }
 
+bool DecoratorInstancer::InterpolatesAsImageLayer() const
+{
+	return false;
+}
+
 CompiledShader Decorator::CompileImageShader(Element* /*element*/, Vector2f /*size*/) const
 {
 	return CompiledShader();

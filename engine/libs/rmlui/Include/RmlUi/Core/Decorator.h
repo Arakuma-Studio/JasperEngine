@@ -88,6 +88,11 @@ public:
 	/// @return A shared_ptr to the decorator if it was instanced successfully.
 	virtual SharedPtr<Decorator> InstanceDecorator(const String& name, const PropertyDictionary& properties,
 		const DecoratorInstancerInterface& instancer_interface) = 0;
+
+	/// Fork (phase 5, P5-3): two background or mask image lists of the same structure whose differing layers are this
+	/// instancer's decorator functions interpolate property by property, as the 'decorator' property does (an image list
+	/// with any other function is discrete, as in Chromium). The engine's effects opt in.
+	virtual bool InterpolatesAsImageLayer() const;
 };
 
 class RMLUICORE_API DecoratorInstancerInterface {

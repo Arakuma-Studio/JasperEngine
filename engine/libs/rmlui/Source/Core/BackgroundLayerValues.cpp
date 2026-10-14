@@ -1,4 +1,7 @@
 #include "BackgroundLayerValues.h"
+#include "ElementAnimation.h"
+#include "../../Include/RmlUi/Core/Decorator.h"
+#include "../../Include/RmlUi/Core/StyleSheetTypes.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Math.h"
 #include "../../Include/RmlUi/Core/Property.h"
@@ -803,9 +806,71 @@ namespace {
 	}
 } // namespace
 
-SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& /*element*/) const
+// Fork (phase 5, P5-3): the same layers, the differing ones decorator functions of one instancer that opts in
+// (DecoratorInstancer::InterpolatesAsImageLayer, the engine's effects), interpolated property by property.
+static SharedPtr<const StyleValue> InterpolateDecoratorLayers(const ImageLayerList& from, const ImageLayerList& to, float alpha, Element& element)
+{
+	if (from.layers.size() != to.layers.size() || from.layers.empty() || !from.decorators || !to.decorators)
+		return nullptr;
+	auto result = MakeShared<ImageLayerList>();
+	result->mask = from.mask;
+	result->layers = from.layers;
+	auto declarations = MakeShared<DecoratorDeclarationList>();
+	bool interpolated = false;
+	for (size_t i = 0; i < from.layers.size(); i++)
+	{
+		const ImageLayer& a = from.layers[i];
+		const ImageLayer& b = to.layers[i];
+		if (a.kind != b.kind)
+			return nullptr;
+		if (a.kind != ImageLayer::Kind::Decorator)
+		{
+			if (a.kind == ImageLayer::Kind::CrossFade || a.url != b.url)
+				return nullptr;
+			continue;
+		}
+		if (a.decorator_index < 0 || a.decorator_index >= (int)from.decorators->list.size() || b.decorator_index < 0 ||
+			b.decorator_index >= (int)to.decorators->list.size())
+			return nullptr;
+		const DecoratorDeclaration& da = from.decorators->list[a.decorator_index];
+		const DecoratorDeclaration& db = to.decorators->list[b.decorator_index];
+		if (!da.instancer || da.instancer != db.instancer)
+			return nullptr;
+		DecoratorDeclaration declaration{da.type, da.instancer, PropertyDictionary(), da.paint_area};
+		if (da.instancer->InterpolatesAsImageLayer())
+		{
+			if (!InterpolateDecoratorDeclaration(declaration.properties, da, db, alpha, element))
+				return nullptr;
+			interpolated = true;
+		}
+		else
+		{
+			// another decorator function (a gradient) interpolates only when it does not change
+			if (da.type != db.type || da.paint_area != db.paint_area || da.properties.GetNumProperties() != db.properties.GetNumProperties())
+				return nullptr;
+			for (const auto& entry : da.properties.GetProperties())
+			{
+				const Property* other = db.properties.GetProperty(entry.first);
+				if (!other || !(*other == entry.second))
+					return nullptr;
+			}
+			declaration.properties = da.properties;
+		}
+		result->layers[i].decorator_index = (int)declarations->list.size();
+		declarations->list.push_back(std::move(declaration));
+	}
+	if (!interpolated)
+		return nullptr;
+	// (an empty value: the style sheet does not cache the interpolated decorators)
+	result->decorators = std::move(declarations);
+	return result;
+}
+
+SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& element) const
 {
 	const ImageLayerList& to = static_cast<const ImageLayerList&>(to_value);
+	if (SharedPtr<const StyleValue> layers = InterpolateDecoratorLayers(*this, to, alpha, element))
+		return layers;
 	if (!OnlyImages(*this) || !OnlyImages(to))
 		return nullptr;
 
