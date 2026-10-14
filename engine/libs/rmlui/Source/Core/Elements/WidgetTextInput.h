@@ -119,6 +119,9 @@ protected:
 	virtual int AttributeIndexToDisplayIndex(int attribute_index, const String& attribute_value);
 	/// Called when the user pressed enter.
 	virtual void LineBreak() = 0;
+	/// Fork (P4-G3): how far the text, its selection and the cursor are moved down in the content box: a single-line field
+	/// centers its line (Chromium), also when it is shorter than the line.
+	virtual float GetTextOffsetTop() const;
 
 	/// Gets the parent element containing the widget.
 	Element* GetElement() const;

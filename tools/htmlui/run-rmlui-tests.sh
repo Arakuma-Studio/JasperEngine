@@ -12,7 +12,8 @@
 #   doctest arguments, e.g. -- --test-case="*calc*" --success=false
 #
 # Environment:
-#   JOBS=3                   build parallelism (BRIEF.md: at most 3, 4 when told)
+#   JOBS=3                   build parallelism (BRIEF.md: at most 3, 4 when told); CPUS
+#                            (default JOBS) caps the container's CPUs (docker --cpus)
 #   RUN_BENCHMARKS=1         also build and run rmlui_benchmarks (BENCHMARK_ARGS: doctest
 #                            arguments for them, e.g. BENCHMARK_ARGS='--test-case=*Selector*')
 #   RUN=0                    build only
@@ -121,7 +122,7 @@ if [[ $IN_DOCKER -eq 0 ]]; then
         [[ $CLEAN -eq 1 ]] && ARGS+=(--clean)
         TTY_FLAGS=()
         [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
-        exec docker run --rm "${TTY_FLAGS[@]}" --user "$(id -u):$(id -g)" \
+        exec docker run --rm "${TTY_FLAGS[@]}" --cpus "${CPUS:-$JOBS}" --user "$(id -u):$(id -g)" \
             -v "$ROOT:/src" -w /src -v "$MAIN/build/.cache/ccache:/ccache" \
             -e HOME=/src/build/.cache/home -e CCACHE_DIR=/ccache \
             -e JOBS="$JOBS" -e RUN_BENCHMARKS="${RUN_BENCHMARKS:-0}" -e BENCHMARK_ARGS="${BENCHMARK_ARGS:-}" \

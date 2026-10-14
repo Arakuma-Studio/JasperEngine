@@ -598,11 +598,7 @@ void UILottieElement::generateGeometry(){
         return;
 
     const Rml::ComputedValues& computed = GetComputedValues();
-    const Rml::ColourbPremultiplied colour = computed.image_color().ToPremultiplied(GetDrawOpacity());
-
-    Rml::Mesh mesh = geometry.Release(Rml::Geometry::ReleaseMode::ClearMesh);
-    Rml::MeshUtilities::GenerateQuad(mesh, Rml::Vector2f(0, 0), Rml::Vector2f(renderSize), colour, Rml::Vector2f(0, 0), Rml::Vector2f(1, 1));
-    geometry = renderManager->MakeGeometry(std::move(mesh));
+    pictureColour = computed.image_color().ToPremultiplied(GetDrawOpacity());
     geometryDirty = false;
 }
 
@@ -698,7 +694,11 @@ void UILottieElement::OnRender(){
         uploadPending = false;
     }
 
-    geometry.Render(GetAbsoluteOffset(Rml::BoxArea::Content).Round(), drawTexture);
+    // at the content box's pixel, trimmed to the content edge curve of a rounded box as an <img>
+    // (the fork's P4-G1)
+    const Rml::Vector2f origin = GetAbsoluteOffset(Rml::BoxArea::Content).Round() - GetAbsoluteOffset(Rml::BoxArea::Border);
+    geometry.Set(Rml::Rectanglef::FromPositionSize(origin, Rml::Vector2f(renderSize)), pictureColour);
+    geometry.Render(this, drawTexture);
 }
 
 void UILottieElement::ProcessDefaultAction(Rml::Event& event){

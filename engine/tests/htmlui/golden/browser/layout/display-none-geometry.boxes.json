@@ -1,0 +1,208 @@
+{
+ "fixture": "layout/display-none-geometry.html",
+ "viewport": [
+  360,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "shown": [
+   {
+    "id": "panel",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 228,
+    "h": 158
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 34,
+    "y": 34,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "scroller",
+    "tag": "div",
+    "x": 34,
+    "y": 82,
+    "w": 200,
+    "h": 50
+   },
+   {
+    "id": "tall",
+    "tag": "div",
+    "x": 34,
+    "y": 82,
+    "w": 185,
+    "h": 120
+   },
+   {
+    "id": "chip",
+    "tag": "span",
+    "x": 34,
+    "y": 140,
+    "w": 30,
+    "h": 20
+   },
+   {
+    "id": "after",
+    "tag": "div",
+    "x": 260,
+    "y": 20,
+    "w": 80,
+    "h": 60
+   },
+   {
+    "id": "contents",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "in-contents",
+    "tag": "div",
+    "x": 260,
+    "y": 100,
+    "w": 80,
+    "h": 30
+   }
+  ],
+  "hidden": [
+   {
+    "id": "panel",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "scroller",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "tall",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "chip",
+    "tag": "span",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "after",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "contents",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "in-contents",
+    "tag": "div",
+    "x": 260,
+    "y": 100,
+    "w": 80,
+    "h": 30
+   }
+  ],
+  "back": [
+   {
+    "id": "panel",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 228,
+    "h": 158
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 34,
+    "y": 34,
+    "w": 200,
+    "h": 40
+   },
+   {
+    "id": "scroller",
+    "tag": "div",
+    "x": 34,
+    "y": 82,
+    "w": 200,
+    "h": 50
+   },
+   {
+    "id": "tall",
+    "tag": "div",
+    "x": 34,
+    "y": 82,
+    "w": 185,
+    "h": 120
+   },
+   {
+    "id": "chip",
+    "tag": "span",
+    "x": 34,
+    "y": 140,
+    "w": 30,
+    "h": 20
+   },
+   {
+    "id": "after",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "contents",
+    "tag": "div",
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   {
+    "id": "in-contents",
+    "tag": "div",
+    "x": 260,
+    "y": 100,
+    "w": 80,
+    "h": 30
+   }
+  ]
+ }
+}

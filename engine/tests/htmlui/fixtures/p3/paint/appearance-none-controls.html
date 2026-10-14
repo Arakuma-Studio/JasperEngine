@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: form controls with appearance: none (Chromium's html.css look)</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  input, select, textarea, button, progress { position: absolute; margin: 0; appearance: none; font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  /* selects: html.css's 1px border and ButtonFace background, no inner padding, no arrow */
+  #s1 { left: 10px; top: 10px; }
+  #s2 { left: 60px; top: 10px; width: 70px; height: 24px; }
+  #s3 { left: 140px; top: 10px; padding: 3px 5px; border-color: #3366cc; background-color: #f4c430; }
+  #s4 { left: 200px; top: 10px; width: 60px; border-width: 3px; border-radius: 5px; }
+  /* buttons: html.css's padding: 1px 6px and border: 2px outset ButtonBorder */
+  #b1 { left: 10px; top: 50px; }
+  #b2 { left: 60px; top: 50px; width: 60px; height: 24px; }
+  #i1 { left: 130px; top: 50px; }
+  #i2 { left: 180px; top: 50px; }
+  #i3 { left: 230px; top: 50px; }
+  #b3 { left: 280px; top: 50px; border-color: #3366cc; }
+  /* textarea and text fields */
+  #t1 { left: 10px; top: 90px; width: 60px; height: 30px; resize: none; }
+  #f1 { left: 90px; top: 90px; width: 60px; }
+  #f2 { left: 170px; top: 90px; width: 60px; }
+  #f3 { left: 250px; top: 90px; width: 60px; }
+  #f4 { left: 90px; top: 120px; width: 60px; }
+  #f5 { left: 170px; top: 120px; width: 60px; }
+  #f6 { left: 250px; top: 120px; width: 60px; }
+  /* range and progress */
+  #r1 { left: 10px; top: 150px; }
+  #p1 { left: 160px; top: 150px; }
+  #p2 { left: 160px; top: 170px; width: 80px; height: 12px; }
+</style>
+</head>
+<body><select id="s1"><option>XXX</option></select><select id="s2"><option>XXX</option></select><select id="s3"><option>XX</option></select><select id="s4"><option>XX</option></select><button id="b1">XX</button><button id="b2">XX</button><input id="i1" type="button" value="XX"><input id="i2" type="submit" value="XX"><input id="i3" type="reset" value="XX"><button id="b3">XX</button><textarea id="t1">XX</textarea><input id="f1" value="XX"><input id="f2" type="search" value="XX"><input id="f3" type="number" value="12"><input id="f4" type="password" value="XX"><input id="f5" type="email" value="XX"><input id="f6" type="url" value="XX"><input id="r1" type="range" value="30"><progress id="p1" value="0.3"></progress><progress id="p2" max="4" value="3"></progress></body>
+</html>

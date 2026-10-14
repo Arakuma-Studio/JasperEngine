@@ -578,8 +578,63 @@ TEST_CASE("form.select.arrow_position")
 	REQUIRE(arrow);
 	const float select_right = select->GetAbsoluteOffset(BoxArea::Border).x + 200.f;
 	CHECK(arrow->GetAbsoluteOffset(BoxArea::Border).x + arrow->GetBox().GetSize(BoxArea::Border).x == doctest::Approx(select_right - 1.f));
-	// the content height (no vertical padding taken)
-	CHECK(arrow->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(30.f - 2.f - 12.f));
+	// Fork (P4-G3): the padding box's height, so that the arrow centered in it stays centered whatever the vertical padding
+	// (Chromium).
+	CHECK(arrow->GetBox().GetSize(BoxArea::Border).y == doctest::Approx(30.f - 2.f));
+	CHECK(arrow->GetAbsoluteOffset(BoxArea::Border).y == doctest::Approx(select->GetAbsoluteOffset(BoxArea::Padding).y));
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+// Fork (P4-G3): the value of a select taller than one line is centered vertically in its content box (Chromium), also when
+// the select is shorter than the line (not 'safe').
+TEST_CASE("form.select.value_centered")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 300px; }
+		select { display: block; width: 200px; box-sizing: border-box; border: 1px solid #000; font-family: LatoLatin; font-size: 16px; }
+	</style>
+</head>
+<body>
+	<select id="auto"><option value="a">A</option></select>
+	<select id="tall" style="height: 50px;"><option value="a">A</option></select>
+	<select id="padded" style="height: 50px; padding: 10px 0 20px;"><option value="a">A</option></select>
+	<select id="short" style="height: 8px;"><option value="a">A</option></select>
+</body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+
+	// The value's border box, from its select's content box.
+	const auto value_top = [&](const char* id, float& value_height, float& content_height) {
+		Element* select = document->GetElementById(id);
+		Element* value = nullptr;
+		for (int i = 0; i < select->GetNumChildren(true); i++)
+			if (select->GetChild(i)->GetTagName() == "selectvalue")
+				value = select->GetChild(i);
+		REQUIRE(value);
+		value_height = value->GetBox().GetSize(BoxArea::Border).y;
+		content_height = select->GetBox().GetSize(BoxArea::Content).y;
+		return value->GetAbsoluteOffset(BoxArea::Border).y - select->GetAbsoluteOffset(BoxArea::Content).y;
+	};
+
+	float value_height = 0.f, content_height = 0.f;
+	CHECK(value_top("auto", value_height, content_height) == doctest::Approx(0.f));
+	for (const char* id : {"tall", "padded", "short"})
+	{
+		const float top = value_top(id, value_height, content_height);
+		CHECK(top == doctest::Approx(0.5f * (content_height - value_height)));
+	}
+	CHECK(value_top("short", value_height, content_height) < 0.f);
 
 	document->Close();
 	TestsShell::ShutdownShell();

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<!--
+  Dialogue: a conversation box at the bottom of the screen.
+  Shows: a circular portrait (an <img> of an SVG asset with border-radius), a name plate overlapping
+  the box, layered gradients, a bouncing continue marker (keyframes), and choice buttons that
+  DialogueUI.lua creates with createElement / appendChild. The text is typed at 40 characters
+  per second of game time in onUpdate; a click or Space completes the line, then advances.
+  DialogueUI:say(speaker, text, choices) is the API; the conversation is a Lua table.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dialogue</title>
+  <link rel="stylesheet" href="dialogue.css">
+</head>
+<body>
+  <div class="scrim"></div>
+
+  <section class="dialogue" id="dialogue" aria-live="polite">
+    <img class="portrait" src="assets/portrait.svg" alt="">
+
+    <div class="body">
+      <p class="speaker" id="speaker">Captain Mira</p>
+      <p class="dialogue-text" id="line">The archive doors are sealed and the tide is rising. We have one shot at this.</p>
+      <div class="choices" id="choices"></div>
+    </div>
+
+    <span class="continue" aria-hidden="true"><i data-lucide="chevrons-down"></i></span>
+  </section>
+
+  <p class="hint"><kbd>Space</kbd> or click to continue &middot; <kbd>1</kbd>&ndash;<kbd>3</kbd> to choose</p>
+</body>
+</html>

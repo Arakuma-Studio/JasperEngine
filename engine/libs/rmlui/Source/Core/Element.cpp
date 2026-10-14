@@ -2146,6 +2146,26 @@ bool Element::GetBorderTopCut(BorderTopCut& /*cut*/)
 	return false;
 }
 
+bool Element::HasButtonLayout() const
+{
+	return false;
+}
+
+bool Element::HasGeneratedContentBoxes()
+{
+	return !IsReplaced();
+}
+
+bool Element::HasNativeAppearance() const
+{
+	return false;
+}
+
+bool Element::HasThemedBox() const
+{
+	return false;
+}
+
 void Element::DirtyBorderTopCut()
 {
 	meta->background_border.DirtyBackground();
@@ -3601,6 +3621,17 @@ bool Element::UpdateAnimationDisplay()
 	if (!animations.empty())
 		dirty_transition = true;
 	return displayed && meta->style.RestartTransitionsFromStartingStyle();
+}
+
+void Element::UpdateTransformStates()
+{
+	// Parents first: an element combines its transform with its parent's state. Everything is marked dirty, since a
+	// new layout moves boxes without dirtying the transforms that depend on their position.
+	DirtyTransformState(true, true);
+	UpdateTransformState();
+	const int num_children = GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+		GetChild(i)->UpdateTransformStates();
 }
 
 void Element::DirtyTransformState(bool perspective_dirty, bool transform_dirty)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Core/Element.h"
+#include "../Core/ElementUtilities.h"
 #include "../Core/Geometry.h"
 #include "../Core/Header.h"
 
@@ -89,7 +90,9 @@ private:
 	bool svg_dirty = false;
 
 	SharedPtr<SVG::SVGData> handle;
-	Geometry fitted_geometry; // src: the part of the image drawn, relative to the content box
+	// The picture drawn: src, the part of the image object-fit shows; inline, the rasterised content box. Trimmed to the
+	// content edge curve of a rounded box (fork, P4-G1).
+	ReplacedContentGeometry picture;
 	ColourbPremultiplied fitted_colour;
 };
 } // namespace Rml

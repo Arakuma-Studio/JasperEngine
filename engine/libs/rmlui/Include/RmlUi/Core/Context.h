@@ -126,6 +126,12 @@ public:
 	/// @param[in] element Used internally.
 	/// @return The element under the point, or nullptr if nothing is.
 	Element* GetElementAtPoint(Vector2f point, const Element* ignore_element = nullptr, Element* element = nullptr) const;
+	/// Fork (phase 4): elements the pointer passes through. An element under the point for which the filter returns true
+	/// is not hit itself, as with 'pointer-events: none' on that element alone: its descendants are still hit, and the
+	/// point goes on to what is below it (a lower document, or nothing). Every hit test of the context (hover, presses,
+	/// touches, drag hover) uses it. An empty filter (the default) passes through nothing.
+	/// @param[in] filter The test, called with an element the point is within.
+	void SetPointerPassThrough(Function<bool(Element*)> filter);
 
 	/// Brings the document to the front of the document stack.
 	/// @param[in] document The document to pull to the front of the stack.
@@ -343,6 +349,9 @@ private:
 	// Input state; stored from the most recent input events we receive from the application.
 	Vector2i mouse_position;
 	bool mouse_active;
+
+	// Fork (phase 4): SetPointerPassThrough.
+	Function<bool(Element*)> pointer_pass_through;
 
 	// The current state of Touches, required to implement proper inertia scrolling.
 	struct TouchState {

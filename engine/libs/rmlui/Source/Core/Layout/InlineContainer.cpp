@@ -237,11 +237,15 @@ Vector2f InlineContainer::GetStaticPositionEstimate(bool inline_level_box) const
 	return result;
 }
 
+// A zero-height line box (nothing but empty inline boxes or empty text) does not exist for the purpose of baselines (CSS 2.1
+// §9.4.2, Chromium): an inline-block whose content is an empty ::before has its baseline at its bottom margin edge (fork, P4-G11).
 bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
-	if (!line_boxes.empty())
+	for (auto it = line_boxes.rbegin(); it != line_boxes.rend(); ++it)
 	{
-		out_baseline = line_boxes.back()->GetPosition().y + line_boxes.back()->GetBaseline();
+		if ((*it)->CanCollapseLine())
+			continue;
+		out_baseline = (*it)->GetPosition().y + (*it)->GetBaseline();
 		return true;
 	}
 	return false;
@@ -249,9 +253,11 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 
 bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	if (!line_boxes.empty())
+	for (const auto& line_box : line_boxes)
 	{
-		out_baseline = line_boxes.front()->GetPosition().y + line_boxes.front()->GetBaseline();
+		if (line_box->CanCollapseLine())
+			continue;
+		out_baseline = line_box->GetPosition().y + line_box->GetBaseline();
 		return true;
 	}
 	return false;

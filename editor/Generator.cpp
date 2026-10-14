@@ -13,6 +13,7 @@
 #include "util/Util.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
+#include "util/HtmlUiExamples.h"
 #include "json.hpp"
 #include "lua.h"
 
@@ -1423,9 +1424,18 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- C++ API: the headers in `" + engineApiRelativePath.generic_string() + "/`; `.clangd` (with `" + (relativeInternalPath / "clangd").generic_string() +
                      "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp`. "
                      "C++ scripts build when a scene plays, or with the `compile_scripts` tool.\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, C++ build; exit code 1 on errors). "
+    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
+    agentsContent += "## HTML/CSS UI\n\n";
+    agentsContent += "Game UI (menus, HUDs, dialogs) is written in standard HTML and CSS with Lua logic, one document per GameObject "
+                     "(UI Document component; MCP: `create_ui_document`). Put documents under `assets/ui/`. There is no JavaScript: a "
+                     "`<script>` or `onclick` is reported; use the Lua element API (`UIDocument(self.scene, self.entity):querySelector(...)`, "
+                     "`addEventListener`, `classList`, data models, `anime.animate`). `jasperengine-editor check --ui` (also in the default "
+                     "check and the hook) reports every construct the engine drops or rewrites, with file:line:col and a fix. "
+                     "A page without a background lets the pointer through to the documents below and the game unless it listens for the pointer. "
+                     "Supported CSS: the `jasper://docs/html-ui-support` resource; guide: `jasper://docs/html-ui`; complete examples to copy: `" +
+                     (engineApiRelativePath / "html-ui-examples").generic_string() + "/`.\n\n";
     agentsContent += "## Source references\n\n";
     agentsContent += "- Runtime API headers used by this project (snapshot): `" + engineApiRelativePath.generic_string() + "`\n";
     agentsContent += "- Full engine **and editor** source (upstream): https://github.com/JasperRaccoon/JasperEngine\n\n";
@@ -1612,7 +1622,36 @@ bool mergeLuaRcPlugin(nlohmann::json& root, const std::string& plugin) {
 // .luarc.json at the project root, read by lua-language-server (and the VS Code Lua extension).
 // An existing file is merged into: only a missing library entry, Lua version or the engine's
 // plugin is added, in the style (dotted or nested keys) the file already uses.
-void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin) {
+// workspace.ignoreDir of .luarc.json: the HTML UI examples' copy is reference material, not
+// project code (its Lua classes would be defined twice once a template is instantiated). The
+// server's default (.vscode) is kept when the file has no list yet. Returns whether `root` changed.
+bool mergeLuaRcIgnoreDir(nlohmann::json& root, const std::string& dir) {
+    using Json = nlohmann::json;
+    Json* entry = nullptr;
+    if (root.contains("workspace.ignoreDir")) {
+        entry = &root["workspace.ignoreDir"];
+    } else if (root.contains("workspace") && root["workspace"].is_object()) {
+        entry = &root["workspace"]["ignoreDir"];
+    } else {
+        entry = &root["workspace.ignoreDir"];
+    }
+    if (entry->is_null()) {
+        *entry = Json::array({".vscode", dir});
+        return true;
+    }
+    if (!entry->is_array()) {
+        return false;
+    }
+    for (const auto& value : *entry) {
+        if (value.is_string() && normalizeLibraryEntry(value.get<std::string>()) == normalizeLibraryEntry(dir)) {
+            return false;
+        }
+    }
+    entry->push_back(dir);
+    return true;
+}
+
+void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin, const std::string& ignoreDir) {
     using Json = nlohmann::json;
     const fs::path file = projectPath / ".luarc.json";
     const std::string luaVersion = "Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR;
@@ -1624,6 +1663,7 @@ void writeLuaRc(const fs::path& projectPath, const std::string& library, const s
         root["runtime.version"] = luaVersion;
         root["workspace.library"] = Json::array({library});
         root["runtime.plugin"] = plugin;
+        mergeLuaRcIgnoreDir(root, ignoreDir);
         FileUtils::writeIfChanged(file, root.dump(4) + "\n");
         return;
     }
@@ -1680,6 +1720,9 @@ void writeLuaRc(const fs::path& projectPath, const std::string& library, const s
     }
 
     if (mergeLuaRcPlugin(root, plugin)) {
+        changed = true;
+    }
+    if (mergeLuaRcIgnoreDir(root, ignoreDir)) {
         changed = true;
     }
 
@@ -1800,9 +1843,14 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
         const fs::path pluginRelative = relativeInternalPath / "engine-api" / luastubs::luaLsPlugin.name;
         writeLuaApiStubs(projectPath / stubsRelative);
         writeLuaLsPlugin(projectPath / pluginRelative);
-        writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string());
+        writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string(),
+                   (relativeInternalPath / "engine-api" / "html-ui-examples").generic_string());
         writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);
         writeClangdConfig(projectPath, (relativeInternalPath / "clangd").generic_string());
+        std::string examplesError;
+        if (!HtmlUiExamples::writeTo(projectInternalPath / "engine-api" / "html-ui-examples", examplesError)) {
+            Out::error("Failed to write the HTML UI examples: %s", examplesError.c_str());
+        }
     } catch (const std::exception& e) {
         Out::error("Failed to write the code tool files (Lua API stubs, .luarc.json, .clangd): %s", e.what());
     }

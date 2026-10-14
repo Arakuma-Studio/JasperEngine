@@ -1,0 +1,4 @@
+{
+ "comment": "buttons and button inputs with other display types, as Chromium lays them out: with their look its theme makes table and list-item blocks and the internal table types and inline-table inline-blocks; without it (appearance: none) HTML's button layout makes inline-table an inline-block and the others flow-roots (blocks, no marker). Ahem text.",
+ "viewport": [330, 200]
+}

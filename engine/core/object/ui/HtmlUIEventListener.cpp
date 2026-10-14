@@ -96,11 +96,13 @@ namespace {
                 return;
 
             const std::string& type = event.GetType();
-            if (type == "keydown"){
+            // a gamepad's key events say themselves whether they repeat (p4-input)
+            const bool gamepad = event.GetParameters().count("gamepad") > 0;
+            if (type == "keydown" && !gamepad){
                 const int key = event.GetParameter<int>("key_identifier", 0);
                 repeatedKeyDown = heldKeys.count(key) ? &event : nullptr;
                 heldKeys.insert(key);
-            }else if (type == "keyup"){
+            }else if (type == "keyup" && !gamepad){
                 heldKeys.erase(event.GetParameter<int>("key_identifier", 0));
             }else if (type == "focus"){
                 if (isTextControl(target)){
@@ -207,6 +209,8 @@ void HtmlUIEventNames::installChangeSynthesizer(Rml::Context* context){
 }
 
 bool HtmlUIEventNames::isRepeat(const Rml::Event* event){
+    if (event && event->GetParameters().count("gamepad"))
+        return event->GetType() == "keydown" && event->GetParameter<int>("repeat", 0) != 0;
     return event && event == repeatedKeyDown && event->GetType() == "keydown";
 }
 

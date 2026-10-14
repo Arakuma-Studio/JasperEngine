@@ -215,6 +215,9 @@ private:
 
 	// The vertical position of the next block box to be added to this box, relative to our box's top content edge.
 	float box_cursor = 0.f;
+	// How far 'align-content' (or a button's centering) moved our content down, when we are the root of a block formatting
+	// context: our lines report their baselines without it.
+	float content_alignment_offset = 0.f;
 
 	// Stores the floated boxes in the current block formatting context, if we are the root of the formatting context.
 	UniquePtr<FloatedBoxSpace> root_space;

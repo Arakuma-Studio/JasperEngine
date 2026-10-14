@@ -1584,6 +1584,8 @@ not-installed skips.
 **Wave 1** (parallel, starting from `html-ui` with phases 0-3): `p4-inspector`, `p4-checks`,
 `p4-examples`, `p4-guide`.
 **Wave 2** (after wave 1 is merged): `p4-mcp-tools`.
+**Corrective** (after `p4-guide`, next to `p4-examples`, before `p4-mcp-tools`): `p4-input`
+(4.6), for what `p4-guide` found missing in the code.
 
 ### 4.1 `p4-inspector`: engine inspection and assertion API
 
@@ -1605,6 +1607,146 @@ not-installed skips.
   - zero new warnings;
   - built in the Linux editor build and the Web build; this file has no GL code.
 - **Tests:** 5.1.
+
+#### 4.1.1 `p4-inspector` as implemented
+
+Where the implementation differs from or makes precise §3.3 (and what it found in §3.2.2):
+
+- **Files.** `engine/core/htmlui/HtmlUIInspector.{h,cpp}`, `HtmlUIAssertions.{h,cpp}`, plus
+  `HtmlUIInspectorInternal.h` (engine-internal: the document of an entity, selectors, refs,
+  boxes, clip regions and hit tests over RmlUi elements, shared by the two `.cpp`). Tests
+  `engine/tests/htmlui/InspectorTest.cpp`, `AssertionsTest.cpp` and their fixture
+  `InspectorTestCommon.h` (each test writes its files into its own directory, made the assets
+  directory, in a 1280×720 canvas). The test CMake globs `*.cpp`, so it needed no line; the
+  engine CMake lists the two sources after the htmlui block; the Xcode workspace lists the five
+  files in the iOS and macOS engine targets (ids `48544D4C` + sha1 of `p4-inspector:<kind>:<name>`).
+  `UIDocumentSystem` was not changed: every accessor of §3.2.2 exists (`pushDataModel` is
+  non-const and takes `(lua_State*, Entity, name)`; texture-mode documents are found with
+  `getTextureContext`; `getCompiledDocument` follows viewport/root restyles through `compiledOf`).
+- **Headers.** As §3.3, with include guards (the engine's style) instead of `#pragma once`.
+  `InspectStyle` gains `file`, `line`, `column`: the location `source` names (empty/0 for
+  `user-agent`, `default`, `inherited from …`), so a tool rewrites the path without parsing
+  `source`. `HtmlUIInspector::withViewport` gains an overload with the entity: the context its
+  document is in (a texture-mode document's own context, at its texture size), else the
+  scene's; the scene-only form lays out the screen context.
+- **Paths are asset-relative** everywhere (`DocumentInfo::html`, `dependencies`, the
+  diagnostics, `InspectStyle::source`/`file`: `ui/menu.css:42:3`), as the engine's paths are
+  (CONTRACTS "Paths"); the header comments of §3.3 said project-relative. The MCP tools prefix
+  the assets directory at their boundary.
+- **Selectors.** An HTML document's selectors are CSS, rewritten as Lua's `querySelector` does
+  (`CssRewriter::rewriteSelector`: `body`, `html`, `:focus`, …); an `.rml` document's are RCSS
+  as written. The `<html>` root can match (`query("html")`). A rewrite error, an empty result
+  or an RmlUi rejection (its warning captured, not logged) is the error
+  `selector "div[[" is not valid: <reason>`. A selector naming a pseudo-element (`::before`,
+  `:after`, `::marker`, …) is refused the same way: pseudo-elements are not elements in RmlUi
+  (non-DOM children; their hits go to their element). `""` is `<body>` for `query` only;
+  `HtmlUIAssertions` errors with `selector is empty`. SVG internals are never matched or
+  listed (`<svg>` is a leaf).
+- **Refs.** `html` for an HTML document's root, `body` for `<body>` (an `.rml` document's
+  root is `body`). `#id` only for an id that is unique in the document and needs no CSS escape
+  (`[A-Za-z_-][A-Za-z0-9_-]*`); other ids are stepped through. Steps are
+  `tag:nth-child(n)` counting element siblings as RmlUi does; the tag is left out (bare
+  `:nth-child(n)`) for an element whose RML tag the selector rewrite does not name by its DOM
+  name. Element `tag`s are DOM names (`LuaHooks::localName`); `htmlui-*` classes, the
+  `data-htmlui-*` attributes and the root's internal id are hidden as Lua hides them.
+- **Boxes** are bounding rects through CSS transforms, as `UIElement::getBoundingClientRect`
+  (the nearest transform state of the element or an ancestor); an inline element's border box
+  unites its line fragments. Every call first runs `ElementDocument::UpdateDocument`;
+  transforms are the ones of the last drawn frame (RmlUi computes them when rendering).
+- **Flags.** `hidden` is `display: none` on the element or an ancestor, or the computed
+  (inherited) `visibility` — a `visibility: visible` child of a hidden parent is visible, as in
+  CSS. Elements under `display: none` get only `hidden`/`transparent` (they have no layout).
+  `clipped` uses the clip regions below; `overflowX/Y` RmlUi's scroll vs client size (layout
+  records the scrollable overflow of every block box, `overflow: visible` included).
+- **Clip regions** follow `ElementUtilities::GetClippingRegion` in floats: the containing-block
+  chain (`GetOffsetParent`), `clip: none|always|<n>`, the scrollport without scrollbars,
+  `overflow: clip` per axis with `overflow-clip-margin`.
+- **Hit tests** search the entity's document only (`Context::GetElementAtPoint` from it), climb
+  from non-DOM parts (scrollbars, pseudo-elements) to their element, and return nothing where
+  the engine lets the pointer through to the game: a document or HTML `<body>` without a
+  background (`HtmlUIContext::passesPointerThrough`). The stack ends at `<body>` (or is
+  `[html]` when the root itself is hit; with the routing rule above, such a page is never the
+  hit). `InspectorTest.HitTestFollowsTheEngineRouting` checks
+  "empty" against `UIDocumentSystem::eventOnPointerMove` returning "not consumed".
+- **Values** (`detail`, `styles`): lengths in px with at most 2 decimals (`em`, `rem`, `vw`, …
+  resolved for the element, `font-size` its computed size), percentages as written, numbers
+  with at most 3 decimals, colours `rgb()`/`rgba()` (alpha 2 decimals), `currentcolor` resolved,
+  keywords and other values as RmlUi prints them. A shorthand name gives its longhands' values
+  (one value when they agree: `padding` → `4px 6px 4px 6px`). Custom properties (`--accent`)
+  give their specified value as the compat rewrite wrote it (colours as `#rrggbbaa`). A CSS
+  property the compat tables know but RmlUi has no value for gives value `""` and source
+  `not supported`. An unknown name is the error `unknown CSS property "colr" (did you mean
+  color?)` (closest CSS name by edit distance, the text §3.6.1 shows). `properties` empty:
+  the seven always-shown properties, then every longhand whose value is not its registered
+  initial value, by CSS name, each name once.
+- **Sources.** RmlUi's `Property::source` gives the rule's RCSS line; the inspector finds the
+  rule in the compiled sheet that line maps to (the sheets as `DocumentLoader::registerDocument`
+  maps them: author files, inline `<style>`s, presentational hints, the `!important` sheet),
+  scans the rule's block for the last declaration of the property or of a shorthand that sets
+  it, and maps that line to `file:line:col` of the authored declaration (`ui/vp.css:5:10` for a
+  one-line rule inside `@media`). `selector` is the authored selector list of the rule, or the
+  piece of it that matches the element (`.btn.primary` of `.btn.primary, .other`); hints have
+  none. `user-agent` is the UA sheet's origin. A local value in the element's inline
+  properties, or set without a sheet (a script's `style`, an animation), is
+  `<html>:<line> (style attribute)` (the element's line, `locateElement`). Not local: an
+  inherited property names the nearest ancestor that sets it (`inherited from #panel`), else
+  `default`. `.rml` documents give RmlUi's `path:line` and rule name.
+- **`withViewport`** sets whole-pixel dimensions (`HtmlUIContext::setDimensions`, which also
+  restyles viewport-compiled documents) and `HtmlUIContext::update()`, from 1 to 16384 px per
+  side. The restore finds the context again and skips it when `fn` removed it (a texture-mode
+  document reloaded as a screen one).
+- **Assertions** (messages are one sentence with px at most 1 decimal, ratios 2):
+  - `Exists`/`Count`: `matched 3, expected exactly 2` / `at least` / `at most`, ref = the selector.
+  - `Visible`: `display: none [on <ref>]`, `visibility: hidden`, `effective opacity 0.02 (below
+    0.05)`, `border box is 0px x 40px`, `border box [x,y wxh] is outside the WxH viewport`,
+    `fully clipped by the overflow of <ref>`; `unobstructed` takes the context's topmost element
+    at the centre of the visible part: `covered by <ref> at (x, y)` (otherRef/otherRect the
+    cover), `covered by #sheet of the UI document ui/top.html at (x, y)` (an element of another
+    document; a transparent page is not one: the pointer passes through it, see below),
+    `pointer-events: none: the pointer goes through it at (x, y)`.
+  - `TextFits`: text line boxes come from the layout (each line's baseline, the strut's
+    whole-pixel ascent/descent and half-leading as `InlineBoxBase::GetStrut`, the line height)
+    and the font engine's width of each line's text (RmlUi fills its own widths only when it
+    draws), hanging white space left out; compared in layout space (no transforms) with the
+    content box of the element, or of its block container for inline text. Hidden elements are
+    skipped. `text is 212px wide in a 118px content box (94px over)`, `… tall …`,
+    `text is cut by the overflow of <ref> (Npx hidden)`, `text wraps to N lines (single line
+    expected)`, joined with `; ` per element. `allow_scroll` also ignores the clip of those
+    scroll containers. Ellipsised text (`text-overflow`) does not fit.
+  - `NoOverlap`: rect/otherRect are the two border boxes, the intersection is in the message
+    (`overlaps #b by 20px x 10px at [80,90 20x10]`); a `with` set matching nothing fails
+    (`with selector matched nothing`); `matched` counts both sets' distinct elements.
+  - `WithinParent`/`WithinViewport`: `extends past the padding box of <ref>: 30px right, 20px
+    bottom` / `extends past the 1280x720 viewport: 40px right`; a `container` no ancestor
+    matches fails (`no ancestor matches ".x"`).
+  - `Contrast` checks the visible elements with own text among the matches and their
+    descendants (the matches themselves when none has text): the element and its ancestors are
+    composited as rendering groups (background colour, image, content, then the group's
+    opacity), the text over its own background first. Image layers (decorators and the fork's
+    `background-image` layers) and the transparent root are resolved by computing with two
+    extremes: a difference makes the element inconclusive (or, for the root, uses `background`).
+    `contrast 1.23:1 (#777777 on #888888) is below 4.5:1` (` (large text)` when 3:1 applied).
+  - `MinSize` skips hidden and transparent matches; a zero-size one fails:
+    `is 40x40px, smaller than 44x44px`.
+- **Input routing through stacked documents (fixed here, at the coordinator's request).** An
+  upper screen document used to keep the pointer from the documents below even where it was
+  transparent: its `<html>` is `min-height: 100%`, so it was the hit, `isContent` called it
+  not content, and the engine passed the pointer to the game. Now a page that paints no
+  background, and whose document has no pointer listener (on `<html>` or `<body>`: a listening
+  page takes the pointer on its empty parts, as in a browser), is not hit at all and the
+  pointer goes on to the next document below in z-order, then to the game (fork patch P4-1 `Rml::Context::SetPointerPassThrough`,
+  `HtmlUIContext::passesPointerThrough`, phase-1 spec §3.6.2 "as implemented",
+  `TestInputPassThrough.cpp`). `hitTest` stays per entity; `unobstructed` fails only on an
+  element of another document over the element.
+- **Tests:** `InspectorTest` 21 cases (§5.1 1-10, plus empty and whitespace-only documents,
+  pseudo-classes, pseudo-elements, texture-mode documents, reloads between queries and inside
+  `withViewport`, stylesheet restyles, unicode text and ids, `.rml` documents, data models, a
+  3 302-element tree), `AssertionsTest` 10 cases (every kind: pass, fail with its numbers, edge
+  cases of §5.1, other viewports, a document over another), `InputPassThroughTest` 10 cases
+  (clicks and hover through an upper page, listening pages taking the pointer (body, document,
+  wheel, `data-event-*`, "click outside" closing a dropdown, removal restoring the pass-through), the upper element winning, capture and drag over
+  another document, both pages empty, three layers, painted pages, `pointer-events: none`),
+  `PointerPassThrough.documents` in the vendored RmlUi suite.
 
 ### 4.2 `p4-checks`: `check --ui`, hook, `ui-support`, hot reload pick-up
 
@@ -1634,6 +1776,67 @@ not-installed skips.
   phase-end run, wave 2 replaces those skips with the real tool calls (owned by `p4-mcp-tools`;
   see 4.5).
 
+#### 4.2.1 `p4-checks` as implemented
+
+Where the code differs from 3.4, 3.5 and 5.2-5.3 (also in `CONTRACTS.md`):
+
+- **`ProjectChecks`** (`editor/util/ProjectChecks.{h,cpp}`): as 3.4.1, plus
+  - `UiCheck::files`: the project-relative files the check covered (checked, or read by a
+    document: linked sheets, imports). The hook memory uses it to drop fixed warnings.
+  - `assetsRootFromProjectFile(root)` (project.yaml `assetsDir`, default the project root),
+    `uiFinding(root, assetsRoot, Diagnostic)` (a compat diagnostic as a `Finding`, used by
+    `w4::syncHtmlUi` too) and `uiSupportJson()` (the `ui-support` JSON, so later tools can reuse it).
+  - `checkUiFiles` checks only files inside the assets directory (compat paths are
+    asset-relative; an `.html` elsewhere cannot be a UI document), skips the web shell with `--files`
+    too (the hook would otherwise flag it on every edit), and converts at the project's canvas size
+    (project.yaml `canvasWidth`/`canvasHeight`), as documents load.
+- **CLI**: as 3.4.2. Hook exit: 2 when there are errors or newly shown UI warnings; non-UI
+  warnings keep their old behaviour (printed, exit 0 without errors). The memory is keyed by the
+  finding's path (a warning located in a linked css is remembered at the css); after a run every
+  covered file takes its current set; entries of files that no longer exist are dropped.
+- **`ui-support`**: as 3.4.2, plus: `value` rows carry `property`, `attribute` rows `element`; a
+  row with a code also has `severity` (the severity it is reported with); `diagnostics` entries are
+  `{code, name, severity (the default), by_case, summary, help}`. The tables have no code column,
+  so the code is chosen per kind and status from the codes the rewriters report (unsupported
+  property `HTMLUI-CSS-0002`, value `-0004`, selector `HTMLUI-SEL-0001`, at-rule `HTMLUI-AT-0001`,
+  element `HTMLUI-HTML-0002`, `on*` `HTMLUI-HTML-0005`, ...); an approximated row is
+  `approximated-visible` (Warning) or `approximated-minor` (Info) by the first `(Warning…)` /
+  `(Info…)` marker of its note, the convention of the tables' notes. Native, rewritten and emulated
+  rows have no code. After phase 3 no row is `fallback` (1870 rows; 86 codes).
+- **Matrix** (`gen_html_ui_support.py`): the Markdown names no editor version (it is
+  `git describe`, so the committed file would be stale after every commit); the JSON has it.
+  Extra sub-tables: input types (Elements), values / functions / units, media features (At-rules);
+  the Notes column ends with the row's code.
+- **`w4::syncHtmlUi`** returns `{reloaded, current, problems}` as 3.5.2. `syncFiles` and
+  `external_changes` name them `ui_reloaded` and `ui_current` (5.3's "`current` is 1" is
+  `ui_current`). `w4::isHtmlUiFile(path)` (W4Shared.h) is the file filter. A live document whose
+  `.html` was deleted gives an error problem (`HTMLUI-GEN-0001`, "the document file is missing").
+  Each reload logs the poller's line, `[HTML UI] Restyled|Reloaded <file> in scene '<name>'`.
+- **Play** (3.5.3): changed `.html/.htm/.css`, fonts and `.json/.lottie` go through `w4::syncFiles`
+  (which calls `syncHtmlUi`), so open code-editor buffers and `sync_files`' snapshot stay current
+  too; images go through `syncHtmlUi` and stay deferred. The `deferred` text is set only when non-UI
+  files wait.
+- **Text**: `Reloaded UI: <html> in "<GameObject>" (styles only), ...; N document(s) were already
+  current.` (four documents listed, then `and N more`).
+- **`McpAutoSync`**: the `images` map is `assets` (images, fonts, `.json/.lottie`); new statics
+  `isUiCodeFile`, `isAssetFile`, `compactProblems`, `addUiReport`.
+- **Phase-2 fix**: `DocumentLoader::restyle(document, shared_ptr, options)` kept the first load's
+  diagnostics after a stylesheet-only reload, so `getDiagnostics` (and the pick-up's problems)
+  showed stale CSS findings. The binding now takes the new compile's diagnostics, its font check,
+  and the document scripts' Lua errors (a restyle does not run them again);
+  `CompatHotReloadTest.RestyleReplacesTheDiagnostics` covers it.
+- **Deviations from 3.2.1**: `HTMLUI-IMP-0001`'s suggestion names the editor's automatic import and
+  `jasperengine-editor import-ui`, not `import_files` (it has no `from_document` until
+  p4-mcp-tools); the tests check that it says how to import. The phase-1 poller's interval is
+  0.25 s, so 5.3's 2.5 s waits are ample.
+- **Tests, wave 1**: `load_count` is read from those Console reload lines (one per reload,
+  whoever reloads); computed styles and live diagnostics through `eval_lua` (`allow_edit_mode` in
+  edit mode, `UIDocument(scene, entity(...))`). `inspect_ui` is called where it exists
+  (`load_count()` in `test_html_ui_reload.py`, the end of `test_parity_cli_mcp`); those and the
+  examples part of `test_cli_ui_speed` (it reads `docs/mcp/guide/html-ui-examples`) are the
+  `WAVE-2` marks. Known limitation, as for every file type: an external edit stamped within a few
+  ms of the end of a call that may write files is taken as that call's own (the settle scan).
+
 ### 4.3 `p4-examples`: example library, embedding, goldens
 
 - **Goal:** 3.7 and 3.9 (`pngdiff`, goldens).
@@ -1660,6 +1863,329 @@ not-installed skips.
   `create_entity` + `add_component uidocument` + `set_properties` + `attach_script`, with files
   copied in by the test.
 
+#### 4.3.1 `p4-examples` as implemented
+
+Where the code differs from 3.7, 3.9 and 5.4 (also in `CONTRACTS.md`):
+
+- **Icons**: the examples use the engine's built-in Lucide icons, `<i data-lucide="play"></i>`
+  (phase 2 made them native: the same inline SVG `lucide.createIcons()` makes, `currentColor`),
+  not hand-copied inline SVG markup. The item pictures of `inventory` and `shop`
+  (`assets/items/*.svg`) are Lucide icons saved as files with a fixed stroke colour (an `<img>`
+  is drawn from them in Chromium too); `LICENSE-lucide.txt` covers both, `NOTICE.md` has a line
+  for the copies. The Lottie spinner and the other SVGs (logo, compass, portrait) are ours.
+- **Markup** (the public surface of 3.7.2 kept, with these differences): `dialogue` is a
+  `section.dialogue` and its choices are `button.choice` children of `div#choices` (a `<ul>`
+  holds only `<li>`; `.choice:nth-child(2)` is the second choice), created by Lua with
+  `createElement`/`createTextNode`/`appendChild`; `shop` cards are `article.card`; `main_menu`'s
+  `h1.logo` sits in `header#brand` with an SVG emblem, and every menu button logs
+  `main_menu: <id>` (`#settings` also opens the panel: 5.4's ArrowDown + Enter checks it).
+- **Data binding**: buy buttons used `data-attrif-disabled="gold < item.price"` (RmlUi's boolean
+  attribute view; `data-attr-disabled` wrote `disabled="false"`, which disabled; since `p4-gaps`
+  they use `data-attr-disabled`, 4.3.2 G9);
+  drag and drop is the engine's CSS property `drag: drag-drop` on `.slot` (browsers ignore it;
+  RmlUi has no `drag` attribute) with `data-event-dragstart="pick(i)"` /
+  `data-event-dragdrop="drop(i)"`. A `data-for` element stays in the DOM, hidden, as the
+  **last** child of its parent: `.slot:nth-child(1)` is the first slot. *(p4-input, 4.6.1: the
+  Lua DOM, the inspector and `assert_ui` leave the template out, so `.slot` counts 24, as the
+  manifest's `count .slot = 24` says.)*
+- **Settings switches**: an invisible `<input type="checkbox">` over a `span.knob` whose
+  `::before` is the knob (`input:checked + .knob`): the engine generated no `::before`/`::after`
+  on `<input>` (Chromium does). Since `p4-gaps` the switch is the checkbox itself (4.3.2 G5).
+- **HUD**: `HudUI:damage(n)` takes the shield first, so 5.4's step is `damage(80)` (50 shield,
+  then 30 health: `#health-fill` at 70%). The score is shown with thousands separators.
+- **Loading**: 5.4's "wait 1.5 s" is the 90 frames every example plays first (3 s of
+  `duration`: 50%). `#press-key` is `data-if`: it stays in the DOM, so the test reads
+  `offsetHeight > 0`.
+- **Toasts**: at most 5 showing; a sixth sends the oldest away with its exit animation (removed
+  when it ends). The countdown bar is a CSS animation whose duration Lua sets.
+- **Lua**: as 3.7.1, plus: listener functions are made once in `init` and added again in
+  `onDocumentLoad` (adding a function twice is ignored); properties are declared with
+  `---@field` under the class (the editor's script stubs skip what a script declares), so the
+  scripts check clean with or without the project's generated stubs.
+- **examples.json**: `assets` lists every asset file; `checks` use `assert_ui`'s field names
+  (`single_line`, `unobstructed`, `allow_scroll`, `container`, `background`); viewports per
+  example (portrait 720x1280 where the layout is meant for it: menus, dialogue, toasts, loading).
+- **`HtmlUiExamples`**: as 3.7.3 plus `find(path)`, `pascalName(stem)` (words of ASCII letters and
+  digits capitalized and joined; other characters dropped, since a Lua name is ASCII; `Document`
+  when nothing is left, `Ui` in front of a digit) and `titleName(stem)`. `names()` lists the
+  examples, then the templates (`blank`). `instantiate` normalizes `\` and a leading `./`,
+  rejects paths that leave the project, also renames `'assets/` in Lua, and gives `blank` the
+  title in `<title>` and `<h1>`. `writeTo` writes only changed files (`FileUtils::writeFile`) and
+  removes files and folders no longer embedded. The CMake block numbers the arrays
+  (`html_ui_example_<n>`), the files sorted by path.
+- **Project copy and lua-language-server**: `.luarc.json` gains `workspace.ignoreDir`
+  `[".vscode", ".jasperengine/engine-api/html-ui-examples"]` (merged into a user's file like
+  `workspace.library`): the copy is reference material, and its Lua classes would otherwise be
+  defined twice once a template is instantiated (`duplicate-set-field`).
+- **Goldens** (3.9): the play test sets `configure_game_view {aspect: "project", scale: 1,
+  maximize_on_play: true}`: the headless editor's Game view (1600x900 window) shows the canvas at
+  1415x796 while playing (904x509 without maximizing). The crop is box-filtered down to
+  1280x720 for the committed golden and both are compared at 640x360 (tolerance 24, at most 1%).
+  The test scenes clear to `(0.09, 0.1, 0.13)`. The two runs had to agree within the tolerance on
+  all but 0.01% of the pixels: the antialiased edges of rounded boxes under blurred shadows varied
+  by a few pixels between play sessions (5 to 42 of 1.1 M pixels measured; `p4-gaps` found the
+  cause, 4.3.2 G7, and the runs agree exactly).
+  Play keeps the document the editor loaded, so CSS animations that run from the load have a
+  phase that depends on the wall time spent in edit mode: the test reloads `main_menu` (infinite
+  keyframes, no data model) once play is held (`RESTART_CSS`); a document that makes a data model
+  is reloaded by `createDataModel` at play time anyway.
+- **Tests, wave 1**: the scenes are built with `create_scene` (2D), `create_entity`,
+  `add_component`, `set_properties` and `attach_script` from the project copy's files
+  (`assets/ui/<n>/`, Lua in `scripts/`); elements are found with `eval_lua`
+  (`getBoundingClientRect`) and driven with canvas coordinates. `WAVE-2` marks: the resource
+  check in `test_<n>_files_in_project`, `test_<n>_asserts` (`assert_ui`), `ensure_scene`
+  (`create_ui_document {template}`), `center` (`send_input {target}`), the `inspect_ui` hover
+  check of `main_menu`. `instantiate`'s renames are tested in C++
+  (`editor/htmlui/tests/HtmlUiExamplesTest.cpp`, `htmlui-editor-tests`: every template
+  instantiated under another stem compiles clean), as is `writeTo`.
+- **Engine fixes the examples found** (in other packages' files, reported):
+  - fork P4-E1 (`FORK.md`): a background with `var()` in both its image and its size crashed
+    (the image list read from the style's one returned-property storage was freed by the next
+    `var()` longhand); transitions with `var()` in two longhands did not run;
+  - `UIDocumentSystemReload.cpp`: the reload a late `createDataModel` makes restored the old
+    elements' form values into bound controls, which wrote them into the model (a settings
+    screen lost every model value);
+  - `RmlRenderer::SaveLayerIntoTexture`: a box shadow larger than the context (rendered in tiles,
+    P3-I14) drew its background and border scaled and shifted on a scaled canvas (the editor's
+    Game view, high-DPI screens).
+- **Parity gaps found and worked around in the examples** (fixed by `p4-gaps`, 4.3.2):
+  `border-radius` on an `<img>` does not clip the picture (a wrapper with `overflow: hidden`
+  does); a `<button>` taller than its content does not center it vertically as Chromium does
+  (the examples use flex); a `<select>` with a fixed `height` keeps its text at the top (padding
+  instead); no `::before`/`::after` on `<input>`; `offsetWidth`/`offsetHeight` of an element
+  hidden with `display: none` (`data-if`) keep their last value instead of 0; `check --ui --files` on a stylesheet alone warns
+  about a shorthand whose `var()` only an inline style defines (a default in the sheet avoids it).
+
+#### 4.3.2 `p4-gaps` as implemented (corrective package)
+
+The parity gaps 4.3.1 lists, and the examples' non-deterministic goldens, fixed at their root
+(also in `CONTRACTS.md` and `FORK.md` P4-G1 … P4-G9). Each has a browser-parity fixture in the
+matching `fixtures/p3/<area>/` with a Chromium reference, passing at the default tolerances, and a
+unit test that fails without the fix.
+
+- **G1, `border-radius` on replaced elements** (fork P4-G1): replaced content is trimmed to the
+  *content* edge curve (CSS Backgrounds 3 §5.3, Chromium; HtmlImageElement clipped to the padding
+  box curve, the fork's img, the SVG plugin's svg (an `<img>` with an SVG source is one), `<lottie>`
+  and `input type=image` not at all). The fork's `ReplacedContentGeometry` draws the picture as the
+  content box filled like a background (the feathered curves of a background, the quad's texture
+  coordinates) when it covers the content box or lies inside the curve, and under a clip mask
+  (`ScopedReplacedContentClip`) when it crosses the curve (`object-fit: contain` in a pill): a
+  stencil mask alone aliased the curves. Fixture `paint/replaced-radius` (pastel pictures on grey:
+  the strict metric judges the trimmed shape, not curve rasterization, see its sidecar).
+- **G2, buttons** (fork P4-G2): `Element::HasButtonLayout()` (the engine's `<button>`, button and
+  submit inputs): as a block container the content is centered vertically as one block, safely,
+  whatever `align-content` says, in the content box (padding, `min-height`, `display: block` and
+  `flow-root` too); flex and grid buttons are flex and grid containers, as in Chromium. The
+  baseline moves with the centered line; a button without a line has its baseline at its content
+  box's bottom. Fixture `layout/button-centering`. (A `display: inline` button stayed an inline box:
+  Chromium makes it an inline-block; fixed by p4-gaps2, 4.3.3.)
+- **G3, selects and text fields** (fork P4-G3): a select's value is centered in its content box and
+  its arrow in its padding box, a single-line text field's line in its content box (not safely, as
+  Chromium). The UA chevron (`compat/ua/arrow-down.svg`) is stroked at 2.1 instead of 1.6: at the
+  same place its strokes rasterized lighter than Chromium's. Fixture `layout/select-height`.
+  Not changed: a select with `appearance: none` kept no border in the engine (Chromium keeps
+  html.css's 1px border, and drops the menu list's 4px inner start padding); the companions cleared
+  it with the checkbox's (fixed by p4-gaps2, 4.3.3).
+- **G4, geometry of elements without a box**: RmlUi keeps the box an element had when it is
+  hidden. The element API (`UIElement`: `getBoundingClientRect`, `getBoundingBox`,
+  `offsetLeft/Top/Width/Height`, `clientWidth/Height`, `scrollTop/Left/Width/Height`, so Lua) and
+  the inspector's boxes (`inspect_ui`, `assert_ui`) report 0 for an element with `display: none`
+  on it or an ancestor (a false `data-if`), `display: contents`, or outside a document
+  (`inspect::hasLayoutBox`), as browsers do. The fork's own getters are unchanged (RmlUi reads them
+  internally). Fixture `layout/display-none-geometry`; `GeometryApiParity.MatchesChromium` compares
+  the API and the inspector with its Chromium boxes.
+- **G5, `::before`/`::after` on inputs** (fork P4-G5): `Element::HasGeneratedContentBoxes()` decides
+  whether they exist (default: not replaced); inputs answer as Chromium 153: checkbox, radio and
+  range have them (laid out in the input's content box), text-like and button-like types do not (a
+  button input drew them); progress bars (and so the engine's `<meter>`) have them too. Chromium also draws them on `color`, `file` and the date/time types,
+  which the engine approximates by a text field or a button: they draw none. A checkbox with
+  `appearance: none` and no size stayed 13x13 (the UA sheet's size; Chromium sizes it by its
+  content; fixed by p4-gaps2, 4.3.3). Fixture `pseudo/input-before-after`. The settings example's switches are now
+  `input[type=checkbox].switch` with `appearance: none`, the knob their `::before`.
+- **G6, `check --ui --files` on a stylesheet**: a stylesheet named on its own is checked in the
+  context of the project's documents that load it (their checks' findings in the sheet and its
+  imports): a variable a style attribute or another sheet defines is no finding, one no document
+  defines (a typo) is. `compat::checkStylesheet` (a sheet no document loads) does not report
+  HTMLUI-CSS-0012 for a declaration that needs a variable the sheet and its imports do not
+  declare (any of them); one they declare with two values is still reported. Never a false
+  positive, typos caught when the documents are known. Tests `test_cli_ui_stylesheet_variables`,
+  `CompatApi.CheckStylesheetLeavesUndeclaredVariablesToItsDocuments`. `main_menu.css` lost the
+  `--value` default that avoided the warning.
+- **G7, non-deterministic rendering** (fork P4-G7): the box-shadow cache's key had no pixel size,
+  so after the editor's Game view changed scale (play, maximized) an element kept the shadow
+  texture (with its background and border) made at the old size while another element held it,
+  or got a new one: the same frame had other curve edges from session to session. The key holds
+  the feathering and the element's feather unit; background image layers' rounded clips follow the
+  feather unit too. `test_html_ui_examples.py` compares its two runs at exactly 0 %
+  (`RUNS_MAX_FRACTION = 0.0`, 4.3.1 had 0.01 %). A second cause, found through a flaky
+  `MsaaScissor.HtmlUIClipEdge` (one failure in a full run, a few unexpected pixels): the readbacks
+  (`glGetTexImage` in the test harness's `Readback.cpp` and in the editor's
+  `GraphicUtils::readFramebufferPixels`, which MCP screenshots use) returned a texture with some
+  16x16 blocks not rasterized yet, about one render in 70 of a new context: GL requires the read to
+  wait for the commands that render into the texture, Mesa 23.2.1's llvmpipe with its rasterizer
+  threads did not always (a second read of the same texture was whole, and the screen it was
+  composited onto was too; 1000 renders of each sample count gave one image each once the read
+  waited). Both readbacks call `glFinish()` first: the renderer itself was deterministic, and no
+  test accepts more than before. `MsaaScissor.HtmlUIClipEdgeReadsBackTheSameImage` renders the page
+  in 200 new contexts and requires one image (it failed 5 runs out of 5 without the `glFinish`).
+  Vulkan's readback already waited (`vkQueueWaitIdle`).
+- **G8, the guide's examples table** follows `examples.json` (`main_menu` uses the built-in Lucide
+  icons, `data-lucide`; `hud`'s damage flash; `shop`'s quantity dialog and `data-attr-disabled`);
+  `test_guide_examples_table` checks the rows, their order and their checks against the manifest.
+- **G9, `data-attr-<boolean attribute>`** (fork P4-G9): on HTML's boolean attributes a false value
+  removes the attribute and true sets it empty (`data-attrif-*` unchanged); other attributes and
+  string or number values are written as before. The shop example's buy buttons use
+  `data-attr-disabled`. Tests `data_binding.data-attr-boolean`,
+  `ScriptDataModelTest.BooleanAttributesFollowTheModel`.
+- **Examples changed**: settings (switches, selects with a height), dialogue (the portrait is a
+  rounded `<img>`, no wrapper), shop (`data-attr-disabled`), main_menu (no `--value` default); their
+  goldens regenerated and inspected. The guide's notes say what now works (form-control
+  pseudo-elements, centering, rounded pictures, boolean `data-attr`, geometry of hidden elements).
+
+#### 4.3.3 `p4-gaps2` as implemented (corrective package)
+
+The parity gaps 4.3.2 left (also in `CONTRACTS.md` and `FORK.md` P4-G10, P4-G11). Each has a
+browser-parity fixture with a Chromium reference, passing at the default tolerances, and a unit
+test that fails without the fix. Chromium was measured first (computed styles, boxes and pixels of
+the pinned headless shell with the references' fonts).
+
+- **G1, controls with `appearance: none`** (UA sheet and the `appearance` rewrite): the
+  companions cleared one shared look (`--html-control-bg`, `--html-control-border`) for selects and
+  checkboxes alike, so a select lost the 1px border Chromium keeps. Each control now has companions
+  of its own and gets exactly html.css's look without its theme: a select keeps `1px solid #767676`
+  on ButtonFace (`#efefef`) with no arrow and none of the menu list's inner padding
+  (`--html-select-bg`, `--html-select-padding`, `--html-select-arrow-width`; its border colour is no
+  companion any more); `<button>` and button, submit and reset inputs get `padding: 1px 6px;
+  border: 2px outset` ButtonBorder (black, Chromium 153), the same on hover and press
+  (`--html-button-padding`, `-border-width`, `-border-style`, `-border`, `-hover-bg`,
+  `-hover-border`, `-active-bg`, `-active-border`; the file input approximation keeps its button
+  look, as Chromium's inner button does); a progress bar (and so the engine's `<meter>`) is
+  html.css's `::-webkit-progress-bar`/`-value`: the whole box `#808080`, the value `#008000`, no
+  rounding (`--html-progress-border-width`, `-radius`, `-bg`, `-track`, `-fill-radius`, `-fill`).
+  Checked against Chromium with no other difference: textarea (its 1px frame), the text-like
+  fields (2px inset, p3-paint) and range (Chromium keeps the thumb's own look; so does the
+  engine). Found on the way and fixed: `input[type=search]` is `box-sizing: border-box` with a
+  185px default width (html.css; its auto and none looks are both 8px of padding and border); the
+  shadows `appearance: none` cleared were `none`, which is not a valid entry of the box-shadow list
+  the outline companion joins (`Invalid substitution` errors for a checked radio and the progress
+  track): an empty shadow `0 0 0 0 #0000`. `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks`
+  covers the new companions. Fixture `paint/appearance-none-controls` (Ahem with `line-height: 1`:
+  Chromium measures a select's `line-height: normal` with the fallback font when the web font
+  loads after the first layout, and never lays it out again); test
+  `AppearanceNone.ControlsKeepTheirOwnHtmlCssLook`.
+- **G2, a checkbox or radio with `appearance: none` and no size** (UA sheet, `HtmlInputElement`,
+  fork P4-G11): Chromium's theme only sizes an auto width or height (13px, the border box, each
+  on its own); without it the control is an inline-block sized by its content: 0x0 alone or with
+  `content: ""`, its `::before`/`::after` text or block, plus padding and border (border-box or
+  content-box), a positioned `::before` adding nothing. The UA sheet's size is the companion
+  `--html-check-size` (`13px`, `auto` under `none`); `HtmlInputElement::GetIntrinsicDimensions`
+  asks `HasNativeAppearance()` (G5): with the theme the intrinsic size is 13x13 (the themed box has
+  no border or padding, G6), without a ratio (RmlUi's was 16x16 with ratio 1); without it a checkbox or radio is not
+  replaced and is laid out as a block container. Checkboxes and radios are `overflow: visible`
+  (Chromium; the UA's `input { overflow: hidden }` clipped their generated boxes and made them
+  scroll containers, whose baseline is the bottom margin edge). Their baseline is their last
+  line's, and an empty `::before` gives none (P4-G11: zero-height line boxes do not exist for
+  baselines, CSS 2.1 §9.4.2; the fork took them). Fixture `layout/checkbox-content-size`; tests
+  `AppearanceNone.CheckboxIsSizedByItsContent`, `Layout.Baseline.ZeroHeightLines`. (The themed
+  checkbox in a box that is not 13x13, and the author's background on it: G6 below.)
+- **G3, `display: inline` buttons** (fork P4-G10): an element with `HasButtonLayout()` (the
+  engine's `<button>`, button, submit and reset inputs) computes `display: inline` and
+  `inline-table` as `inline-block` (HTML's button layout; Chromium's computed value with its
+  theme); with `appearance: none` Chromium keeps the computed `inline` but lays the button out the
+  same (the reported value: G8). Other display types: G9. Fixture `layout/button-display-inline`;
+  tests `form.input.button.display_inline`, `ButtonDisplay.InlineIsInlineBlock`.
+- **G4, the inputs the engine approximates** (`color`, `date`, `time`, `datetime-local`, `month`,
+  `week`, `file`): Chromium draws their `::before`/`::after` around its own shadow content (a
+  swatch, date fields, a button and a label), which the engine does not render; they stay without
+  generated boxes (`HasGeneratedContentBoxes`, P4-G5). Documented and diagnosed: their
+  input-type notes, so the `HTMLUI-HTML-0008` warning each one already gets at load and the
+  support matrix, say "no ::before/::after"; the `meter` row says it is drawn as a progress bar,
+  also with `appearance: none`; the guide lists them.
+- **G5, `appearance` is not inherited** (the coordinator's follow-up, as G6 … G9): the
+  `appearance` rewrite writes custom properties, which inherit, so a container's
+  `appearance: none` reached the controls in it (CSS UI 4: `appearance` is not inherited). The UA
+  sheet resets every appearance companion to its themed value on `input, select, button,
+  textarea, progress` (the meter is a progress): the author's `appearance` on the control
+  outranks it (the root band), an ancestor's no longer reaches it; the controls' parts inherit
+  from the control. (`--html-select-arrow-color` is gone: reset to `currentcolor` on the select it
+  drew the arrow in the select's own colour's fallback, black; the arrow is `currentcolor` and 0px
+  wide without the look.) accent-color's companions stay inherited, as accent-color is. The look itself
+  is `--html-appearance` (`auto`/`none`), which `HtmlInputElement` and `HtmlButtonElement` read
+  (`HasNativeAppearance`, fork P4-G12). Fixture `paint/appearance-not-inherited`; tests
+  `AppearanceNone.IsNotInherited`, `CompatUaSheet.AppearanceAutoWritesTheSheetsFallbacks` (every
+  companion `appearance` writes is reset on the controls, with the value `auto` writes).
+- **G6, the themed checkbox** (fork P4-G12, `HtmlInputElement`): Chromium's theme computes a
+  checkbox's or radio's border, padding and border radius as 0, does not paint its background
+  (an author's colour or image) and draws the control in a square of the box's smaller side,
+  centered (at half pixels), scaled with it. `HasThemedBox()` does the first two in the fork;
+  `HtmlInputElement` draws the theme as an SVG over the box (rasterized by LunaSVG, a virtual file
+  per drawing), in colours the UA sheet sets per state (`--html-theme-fill`, `-stroke`, `-mark`:
+  unchecked, checked, disabled, the accent and its contrast), which author styles do not reach.
+  The shapes were calibrated against the pinned Chromium (its own SVG renderer gives the native
+  control's pixels exactly): a checkbox is a rounded square (radius 2px) filled and stroked 1px
+  half a pixel inside its edge, checked the whole square filled and a check stroked 16% of the
+  side through (20%, 50%), (40%, 70%), (80%, 20%); a radio a circle filled and stroked likewise,
+  checked an accent ring and a dot of 60%; disabled, Chromium's translucent grays (measured over
+  black and white: `#f5f5f5ad`, `#bababaab`, checked `#c5c5c5c6` with a 60% white mark). The
+  checkbox's pixels now match Chromium's at the default tolerances (fixture
+  `paint/checkbox-theme-box`: boxes from 13x13 to 30x30, odd sizes, the author's background,
+  border, padding, radius, a content-box size, disabled, a light accent, and hovered and pressed:
+  G7). Radios are drawn with the fork's circle geometry (`MeshUtilities::GenerateBackgroundBorder`
+  of a `border-radius: 50%` box, its feathered edges, as P3-P1/P3-P2 draw borders; an SVG
+  rasterized by LunaSVG first), in the same colours: a ring and a dot of 60%. They do not reach
+  the strict metric, measured, so the fixture has none (nothing loosened): with Chromium's
+  geometry (a 1px ring inside the box, the dot 60%) 254 pixels of eight radios of 13 to 30px
+  (`paint/checkbox-theme-box` with a row of radios, 270x150) were off by more than 24 levels,
+  about 25 per radio, in 1-5 pixel clusters along the ring, against a limit of 40 for the whole
+  image; the closest variant (the ring 0.15px inside the box and 0.9px wide, the dot 0.2px
+  smaller; kept) 198; the LunaSVG drawing 207; eight variants measured. Chromium's native circles
+  are Skia's analytic coverage of a thin ring, every pixel of which is an edge pixel; the fork's
+  feathering fades an edge linearly over a pixel (the reason `paint/radius-percent-circle`, the
+  fork's filled `border-radius: 50%` circles, already needs a 0.31 % tolerance, not the default).
+  The radio's geometry and colours are checked by `AppearanceNone.ThemedCheckboxIsACenteredSquare`,
+  and the radios have their own fixture, `paint/radio-theme-box` (rest, hovered and pressed), at
+  the phase-3 policy for scattered anti-aliasing: `badPercent` 1.56, the measured 1.556 %, the
+  cluster limit at the default.
+  The check SVGs, `--html-check`
+  and the other companions of the CSS-drawn theme are gone (CONTRACTS). Found on the way:
+  radios without a name were one group (checking one unchecked the others; fork P4-G13); a
+  themed progress bar's value now carries the track's half-alpha line, as in Chromium
+  (`--html-progress-fill-line`).
+- **G7, hovered and pressed themed checkboxes and radios** (measured in Chromium, default and
+  custom accents): unchecked, the 1px frame is `#4f4f4f` hovered and `#8d8d8d` pressed (the UA
+  sheet's `:enabled:hover`/`:active` rules); checked, the accent colours (a checkbox's fill, a
+  radio's ring and dot) have their HSL lightness 11% lower hovered and 11% higher pressed, the
+  other way round for a light accent (one with the dark mark): `#0075ff` gives `#005cc8` and
+  `#3793ff`, `#f0c040` gives `#f4d174` and `#e6ac12` (within one level of Chromium's for every
+  accent measured). The sheet names the state (`--html-theme-shade: hover|active`),
+  `HtmlInputElement::themeColours` shades the accent; disabled controls are not shaded. Fixture
+  `paint/checkbox-theme-box`'s captures `hover-checked`, `hover-unchecked`, `hover-light`,
+  `active-checked`, `active-unchecked` (all at the default tolerances); test
+  `AppearanceNone.ThemedCheckboxIsACenteredSquare`.
+- **G8, computed values as Chromium reports them**: `UIElement::getStyle` (Lua) and the
+  inspector (`inspect_ui`, `assert_ui`) read the cascaded value; for what Chromium's theme
+  adjusts they report its computed value (`forms::themedComputedValue`): a themed checkbox's or
+  radio's border widths, styles, padding and radii (`0px`, `none`), a themed button's display
+  (`inline-block` for `inline`, `block` for `table`, …), and with `appearance: none` the declared
+  display (`inline`) while the fork lays it out as an inline-block (its computed value).
+  A themed checkbox's background is reported as declared (Chromium does too; it is not painted).
+  Test `ButtonDisplay.ComputedAsChromiumReportsIt`.
+- **G9, buttons with other display types** (fork P4-G12, P4-G14): with the look, Chromium's
+  theme computes `table` and `list-item` as `block` and the internal table types and
+  `inline-table` as `inline-block`; without it HTML's button layout makes them `flow-root` (no
+  marker) or `inline-block`. And a block-level button is as wide as its content (HTML: the
+  fit-content width; Chromium), its auto margins taking the rest, a flex or grid item stretched
+  as any: the engine's filled the line (`display: block` buttons, common in written CSS).
+  Fixture `layout/button-display-types`; tests `form.input.themed_box`,
+  `form.input.button.block_fit_content`, `ButtonDisplay.ComputedAsChromiumReportsIt`.
+- **Examples and goldens**: no example worked around the gaps. The settings example's selects
+  (`appearance: none` with their own border, padding and chevron) lose the menu list's 4px inner
+  padding and 16px arrow box, as in Chromium; they are on the Graphics tab, outside its golden
+  (Audio), so no golden image changed (`test_html_ui_examples.py`, every C++ golden and fixture
+  reference unchanged). The guide's form-control paragraph says what `appearance: none` leaves on
+  each control, that an unsized custom checkbox needs a size, and that inline buttons are
+  inline-blocks.
+
 ### 4.4 `p4-guide`: guide, AGENTS.md, stubs, API search
 
 - **Goal:** 3.8.1, 3.8.2 (README part), 3.8.4, 3.8.5.
@@ -1675,6 +2201,86 @@ not-installed skips.
 - **Deliverables:** the guide (all 16 sections), the AGENTS.md section, the stubs and API
   search, README updates.
 - **Tests:** 5.5. Tool-name checks against `tools/list` skip until wave 2.
+
+#### 4.4.1 `p4-guide` as implemented
+
+Where the result differs from or makes precise 3.8.1, 3.8.2 (README), 3.8.4, 3.8.5 and 5.5 (also in
+`CONTRACTS.md`):
+
+- **Guide** (`docs/mcp/guide/html-ui.md`, 86 KB, down from 97 KB): the 16 sections by the titles
+  of 3.8.1, every phase-1/2/3 fact moved into the matching section (the component and texture
+  mode into 1, `.rml` into 4, the rewrites/limits tables condensed into 5 "CSS that works" /
+  "CSS that differs" with their codes, imports and Lucide into 9, editor workflow and hot
+  reload into 12), plus a "What Chromium parity means, and where it stops" subsection, the
+  pointer pass-through rule in bold in 10, and the edit-mode notes. DocsTools serves a `## `
+  section above 6 KB as its `### ` subsections (the section's lead-in goes with the first one),
+  so the big sections open with a subsection of their own ("UI Documents: the model",
+  "Elements and default styles", "The element API") and subsection titles say what they are
+  ("CSS that works", "UI events"); every served part is under 7.5 KB.
+- **Snippets** are the guide's own, not copied from the example files (p4-examples was built in
+  parallel and is not merged into this branch): a menu (`assets/ui/menu.html`, `menu.css`,
+  `scripts/MenuUI.lua`: clicks, keyboard and gamepad focus, an anime stagger, the bind-on-load
+  pattern), a HUD (`hud.html`, `hud.css`, `scripts/HudUI.lua`: data binding, a click-through
+  panel), `scripts/Terminal.lua` (texture mode) and fragments. Convention: every
+  ```` ```html ````/```` ```css ````/```` ```lua ```` block is good; a block preceded by a line
+  `` `<project path>`: `` is a complete file; bad examples live in tables. The examples table
+  of section 14 follows 3.7.2.
+- **Differences from 3.8.1 found in the code** (all three fixed since by `p4-input`, 4.6.1; the
+  guide now says what 4.6.1 describes): gamepads did not reach documents (3.8.1 §10 said they
+  do): the guide said so and the menu script handled `onGamepadButtonDown` in Lua. In edit mode
+  a `data-style-*` expression of a model no script created yet evaluated with empty values and
+  RmlUi logged `Syntax error parsing inline property declaration 'width: %;'` once per load: the
+  guide explained it. RmlUi keeps the `data-for` element in the DOM (hidden, after its rows):
+  the guide said `querySelectorAll` counts it.
+- **Stubs** (`generate_lua_stubs.py`): `HtmlUITypes.lua` is generated and holds
+  `---@alias UIEventType` (the names of `HtmlUIEventListener.cpp`, RmlUi's event table and the
+  engine's elements: `click` ... `transitioncancel`, `toggle`, `close`, `cancel`,
+  `htmlnavigate`, the `<lottie>` events; `mouseenter`, `mouseleave`, `pointer*`, `touch*`,
+  `contextmenu`, `beforeinput`, `composition*` left out) and `---@class UIDiagnostic`. A custom
+  event name of `dispatchEvent` needs `---@cast name UIEventType` to listen to it.
+  `getDiagnostics` returns `UIDiagnostic[]`, `getTargetTexture` `Framebuffer|nil`,
+  `setColorScheme` / `insertAdjacentHTML` take their literal values. `HTML_UI_CLASS_DOCS` adds
+  the guide's URI to `UIDocument`, `UIElement`, `UIEvent` and `anime`; `HTML_UI_FIELD_OVERRIDES`
+  replaces stale field docs (`tagName` is upper case in `.html` documents, `innerHTML` is HTML,
+  `body`, `documentElement`). The parameter classes 3.8.5 names (`AnimeParams`,
+  `AnimeStaggerOptions`, `AnimeTimelineOptions`, `AnimeSpringOptions`) exist since phase 1 as
+  `AnimeAnimationParams`, `AnimeStaggerParams`, `AnimeTimelineParams`, `AnimeSpringParams` (in
+  `engine/core/script/binding/stubs/anime.lua`), `UIRect` comes from the binding, and the typed
+  `createDataModel`/`getDataModel`/`classList`/`style`/`dataset`/anime overrides were phase 1's:
+  kept as they are.
+- **API search** (`generate_api_suggestions.py`): `anime` is bound with
+  `beginClass<Anime>("anime")` + `addStaticFunction`, which the parser already reads (no
+  namespace case was needed). `MANUAL_SYMBOLS` replaces the details built from C++ headers (wrong
+  for Lua: `removeEventListener(uint64_t listenerId)`, `createDataModel(string, UIValue)`, the
+  empty `anime.animate()`) with the Lua signatures, and adds `UIDataModel` (class and proxy
+  methods) and `anime.utils` / `anime.eases`. `searchDocs` needed nothing.
+- **AGENTS.md**: the section of 3.8.4 plus one sentence on pointer pass-through; the examples
+  path is computed like the other engine-api paths. AGENTS.md is written when the project is
+  first read through `jasper://project/AGENTS.md`, played or built (not by `create_project`
+  itself), so `test_agents_md_section` reads the resource.
+- **README** (`docs/mcp/README.md`): the intro bullet, the pick-up paragraph (HTML UI and asset
+  types, live reload in edit mode and play, `ui_reloaded`, the UI `problems` keys) and the
+  budget sentence of 3.6.7 (its numbers are p4-mcp-tools'); `docs/mcp/guide/README.md` rows for
+  `html-ui.md` and `html-ui-support.md`, and the examples folder.
+- **Tests** (`test_html_ui_docs.py`, 11 cases): 5.5's cases, with these differences:
+  `test_guide_names_exist` is split: the Lua-name part runs now
+  (`test_guide_lua_names_in_stubs`: every `doc:`/`el:`/`document:` call and `anime.*` /
+  `anime.utils.*` / `anime.eases.*` name of the guide is in the generated stubs), the tool part
+  skips until wave 2 (`WAVE-2`; it allows the output field names the guide explains and the
+  project-setting values). `check_script` runs a chunk's top level, so a fragment is checked
+  inside a function (complete files as they are), and the Lua of `<script type="text/lua">`
+  blocks too. `test_guide_css_html_snippets_clean` runs `check --ui` (CLI) on every html/css
+  block, giving fragments real files for what they name. Added: `test_guide_structure` (the
+  16 titles in order, the rules the guide must state) and `test_guide_snippets_play` (the
+  complete files and fragments loaded in a UI scene: clean in edit mode; in play the menu's
+  icons, entrance animation, focus, ArrowDown/Enter, gamepad dpad/A, a click through the
+  transparent HUD page, the HUD's `{{ }}`, `data-style-width`, `data-class-low`, `data-for`,
+  `data-event-click`, the element-API, anime (timeline call, table animation) and pass-through
+  fragments run through `eval_lua` as a script would, Lottie playing, `@font-face` loading,
+  `font-effect`, texture mode; no Console error or warning). `test_luals_ui_stubs` checks the
+  guide's complete scripts, a `GOOD_UI_LUA` and, when present, the example scripts in a
+  workspace with the project's stubs (`test_stubs.lua_workspace`); `BAD_UI_LUA` also has
+  `mouseenter`, `classList.add` with a dot and `el.onclick = f`.
 
 ### 4.5 `p4-mcp-tools`: tools, send_input/import_files extensions, resources, instructions, agent simulation
 
@@ -1706,6 +2312,260 @@ not-installed skips.
   - TOOLS.md regenerated with `gen_tool_docs.py`.
 - **Tests:** 5.6, 5.7, plus the whole HTML UI suite and `test_protocol.py`, `test_autosync.py`,
   `test_checks.py`, `test_stubs.py`, `test_ui_anchors.py`, `test_play.py`, `test_assets.py`.
+
+#### 4.5.1 `p4-mcp-tools` as implemented
+
+Where the code differs from or makes precise 3.6, 3.8.3, 5.6 and 5.7 (also in `CONTRACTS.md`):
+
+- **Files.** `editor/mcp/tools/HtmlUiTools.cpp` (the three tools, the document resolution, the
+  outlined images, the resources, `htmlui_mcp::elementCenter`), `HtmlUiShared.h`. Registered last
+  (`McpTools.h`, `McpServer.cpp`), one source line in `CMakeLists.txt`; the Xcode project lists no
+  editor source, so it needed nothing.
+- **Paths.** The inspector, the assertions and the component speak asset-relative paths
+  (4.1.1); the tools convert at their boundary: `document.html`, diagnostics (through
+  `ProjectChecks::uiFinding`, the CLI's conversion, so the sets compare equal) and style
+  sources (`InspectStyle::file` replaced by its project-relative path).
+- **Document resolution.** As 3.6, plus: the other open (edit) or running (play) scenes are
+  searched only when `scene` is omitted; an `entity` that is not in the default scene is looked
+  up in those scenes too (one match wins, several are an error listing them). The load wait
+  ends at once when the load failed (`UIDocumentComponent::loadFailed`) instead of after 5 s; a
+  document without a filename is its own error (`set_properties ... filename`).
+- **Output additions.** Every tool that returns an image adds `image: {canvas_rect: [x, y, w, h],
+  width, height}` to its structured result (the canvas px the cropped image shows: the edit-mode
+  Game view draws the canvas at about 0.7 scale, so callers map rects with it) and, when there is
+  no image, `image_note` (why). `inspect_ui` with `viewport` adds `document.laid_out_at`.
+  `send_input` results list `targets: [{event, target, point: [x, y] canvas px, document: {scene,
+  entity, html}}]` (3.6.4's "the event result reports the resolved point") and a text line each.
+- **`inspect_ui`.** `entity` also conflicts with `file` (the same message). With `at` the result
+  has `hit` and no `elements`; `detail: full` and `styles` then apply to the hit stack. The text
+  cap (12,000 characters) applies to the outline; `detail: full` text is capped separately and
+  the structured details are complete. `file` outside the assets directory is an error (compat
+  paths are asset-relative, as `check --ui` skips such files). Screenshot outlines: the
+  selector's matches (or the topmost hit), not their listed descendants.
+- **`assert_ui`.** Other viewports run through `HtmlUIInspector::withViewport(scene, entity, ...)`
+  (the context the document is in, 4.1.1). `checks` in the result: one entry per (viewport,
+  check), `index` naming the check; `failures` carry `other_ref`/`other_rect` when there is a
+  partner; inconclusive contrast elements also get a text line. `screenshot: always` outlines
+  every visible match of `selector` and `with` in cyan, failures over them. Argument errors are
+  tool errors: an unknown `type`, a missing `selector`, `count` without `count`/`min`/`max`, more
+  than 6 viewports.
+- **`create_ui_document`.** The GameObject is one `CreateEntityCmd(..., UI_DOCUMENT)` (what the
+  Hierarchy's *Create > UI > UI Document* runs: Transform + UI Document), not GAMEOBJECT +
+  `AddComponentCmd`. Order inside the step: the GameObject and its `properties` / `sort_order`
+  first (so an unknown property fails before any file is written), then the files (project
+  history), then `filename`, then `attach_script`: the document loads once, with its files there
+  (`load_count` 1). `properties.filename` is refused (use `html`). `script` defaults to true for
+  the examples and false for `blank` (3.7.4); an existing html with an example template still gets
+  the template's Lua written (if missing) and attached. The default name is
+  `HtmlUiExamples::titleName(stem)` ("Title Screen"). `files_kept` lists the kept html first.
+- **`send_input`.** The `events` items stay free-form, but their schema declares `target`,
+  `to_target` and `document` (+92 characters) so the names are discoverable (the guide and
+  instructions name `to_target`). A click resolves its target once (down and up at the same
+  point); a drag or swipe resolves both ends when it starts. Texture-mode documents are skipped
+  (their elements are not at canvas points); naming one in `document` is an error. `document`
+  resolves among the running scenes' documents.
+- **`import_files`.** The importers run on a worker thread (they block on the network) and the
+  call waits up to 10 minutes; the main thread then rewrites the file, calls
+  `ImportManifest::reload()` (as the editor's automatic import does) and syncs the written files
+  and the manifest. Local and remote sources mix in one call. For the remote kinds `to_dir` must
+  be inside the assets directory. `remote` has one entry per URL (or per icon / font request),
+  plus the document's other written files; `rewrite` replaces each URL also in its HTML-escaped
+  form (`&amp;`). Nothing imported and something failed: `isError`.
+- **HTMLUI-IMP-0001 / -0009** (3.6.5): the suggestions and the registry help name
+  `MCP import_files from_document`; the `.diag.txt` goldens and `compat_url_test.cpp` follow.
+- **`w3::luaToJson`** (`PlayTools.cpp`): data-model proxies are userdata with `__pairs`; the
+  serializer walks them like tables (only for `luaToJson`: `eval_lua` output is unchanged).
+- **Transforms at other viewports** (fork P4-6, `HtmlUIInspector.cpp` `withContext`): 4.1.1's
+  boxes use the last render's transforms, so inside `withViewport` a panel centered with
+  `translateX(-50%)` kept its offset from the current size (the `dialogue` and `loading` manifest
+  checks failed at 720x1280). `Element::UpdateTransformStates()` (new, public) recomputes them;
+  `withViewport` calls it after the layout at the requested size and after restoring
+  (`InspectorTest.WithViewportTransforms`).
+- **TextFits through transforms** (`HtmlUIAssertions.cpp`, p4-inspector's file): the clip regions
+  are boxes through their CSS transforms (`boxRect`), the text line boxes are in layout space; the
+  text now goes through its element's transform before the clip test (`inspect::transformedRect`).
+  The `loading` example's card (`left: 50%; translateX(-50%)`) failed `text_fits` at 1024x768 and
+  720x1280 with "cut by the overflow of #loading", its untransformed layout box running past the
+  page (`AssertionsTest.TextFitsInATransformedBox`).
+- **`send_input` targets and opacity.** `elementCenter` takes the first match that is shown (not
+  `display: none` / `visibility: hidden` / zero size), an opaque one first, else a transparent one:
+  the pointer reaches an `opacity: 0` element, as in a browser (the `settings` switches are an
+  invisible checkbox over a styled knob). `found` also gives the element's `ref`.
+- **`select_scene` fix** (`SceneTools.cpp`): it also focuses the scene's window
+  (`SceneWindow::requestPlayFocus`). A focused Scene view selects its own scene every frame, so the
+  selection did not stick and the Game view (and the "scene the Game view shows" rule of the
+  images) kept the other scene.
+- **Instructions.** The "UI" bullet of "2D and 3D" names both systems and points to the new
+  section; the earlier "HTML/CSS UI" bullet's facts moved into the section (the Console line
+  format, `check --ui`), which also states the shared rules of 3.6.7 once (entity resolution,
+  refs, boxes in canvas px, the load wait). 18.5 KB in four chunks.
+- **Resources.** The index lists `blank` too, marked "(template)"; an unknown file is a
+  resource-not-found error naming the examples.
+- **Budget** (`tool_budget.py`, fixture project): before, 130 tools, 93,151 characters
+  (`send_input` 1,780, `import_files` 452; 3.6.7 measured 92,956 earlier); after, 133 tools,
+  99,006: `inspect_ui` 1,806, `assert_ui` 2,128, `create_ui_document` 1,289 (its parameter
+  descriptions shortened to fit), `send_input` 1,995 (+215), `import_files` 869 (+417).
+  `test_budget` asserts these caps against those baselines.
+- **Wave-1 marks replaced:** `test_html_ui_checks.py` (the parity check's `inspect_ui {file}` and
+  live-document comparison; the example trees of `test_cli_ui_speed` are required),
+  `test_html_ui_reload.py` (`load_count()` always reads `inspect_ui`), `test_html_ui_examples.py`
+  (`ensure_scene` is `create_ui_document {template}` with `script: true`, clicks / hovers / the
+  drag use `send_input {target}`, the `inspect_ui` hover check, the resource check, the
+  `_asserts` tests, whose image check maps through `image.canvas_rect`), `test_html_ui_docs.py`
+  (`test_guide_names_exist`, `click()` with `target`).
+- **Tests.** `test_html_ui_tools.py` (37 cases: 5.6's 29 plus create with a unicode path, a
+  3000-element document, quick successive reloads, play-mode inspection with Lua-made state, the
+  gamepad focus seen by `inspect_ui`, stacked documents with pointer pass-through, texture-mode
+  documents refused as targets, ...), `test_html_ui_agent_sim.py` (6 cases, 5.7; the simulated
+  agent writes the Lua with `create_ui_document {script: true}` and fixes in two rounds, the CSS
+  warnings after reading them; the mirror starts empty, so the editor's automatic import fails
+  and leaves the page as the CLI sees it, and fills before `import_files`).
+
+### 4.6 `p4-input`: gamepads in documents, two data-binding fixes (corrective)
+
+- **Goal:** what 4.4.1 found missing: 3.8.1 §10 (pointer, keyboard **and gamepad** reach the
+  focused document first) made true, designed as a browser-like extension; no Console line for a
+  well-formed `data-style-*` binding of a model that does not exist yet; the `data-for` template
+  out of DOM queries.
+- **Owned:** the gamepad parts of `Engine.cpp`/`Engine.h` and `UIDocumentSystemInput.cpp`,
+  `engine/tests/htmlui/TestInputGamepad.cpp`, `TestDataBindingDom.cpp`,
+  `tools/mcp/tests/test_html_ui_gamepad.py`; fork patches P4-2 … P4-5.
+- **Deps:** `p4-guide` merged. `p4-mcp-tools` also edits `PlayTools.cpp` (`target`); `p4-input`
+  does not need to (`send_input` already sends gamepad buttons and axes).
+
+#### 4.6.1 `p4-input` as implemented
+
+**Gamepad: the model.** The W3C Gamepad API is polled and gives a page no events and no
+navigation; game UIs map the pad to keyboard-like navigation instead. The model chosen is the
+one Edge on Xbox and Windows (UWP) uses for gamepad key events, extended with the keyboard
+meaning of the navigation buttons:
+
+- Every button, the four directions of the left stick and the two triggers are **keys**:
+  `keydown`/`keyup` at the focused element (else the focused document), bubbling, cancelable.
+  `event.code` names the pad key in Edge's names: `GamepadDPadUp/Down/Left/Right`,
+  `GamepadLeftThumbstickUp/Down/Left/Right`, `GamepadA`, `GamepadB`, `GamepadX`, `GamepadY`,
+  `GamepadLeftShoulder`, `GamepadRightShoulder`, `GamepadLeftTrigger`, `GamepadRightTrigger`,
+  `GamepadView` (Back), `GamepadMenu` (Start), `GamepadLeftThumbstickButton`,
+  `GamepadRightThumbstickButton`, and `GamepadGuide` (no Edge name). `event.key` is what the key
+  means: `ArrowUp` … for the d-pad and the stick, `Enter` for A, `Escape` for B, the code for the
+  others; `event.keyCode` the engine key it stands for (`D_KEY_UP` …, `D_KEY_ENTER`,
+  `D_KEY_ESCAPE`, else 0); `event.gamepad` the pad id (-1 for the keyboard; `UIEvent::getGamepad`).
+  So a listener written for the keyboard serves the pad, and one that needs the pad tells them
+  apart by `code`. The engine's Lua gamepad API (`onGamepadButtonDown/Up`, `onGamepadAxisMove`,
+  `Input.isGamepadButtonPressed/getGamepadAxis`) stays the game's.
+- **Default actions** (skipped when a listener calls `preventDefault()`, or when the event was
+  stopped, which is how controls report that they used it; a listener that moved the focus
+  counts as having handled it):
+  - directions: the focused element's `nav-<direction>` decides when it declares one (RmlUi's
+    arrow-key rules: `none`, `#id`, `auto`, `horizontal`, `vertical`, `tree-order`); otherwise
+    spatial navigation (`ElementDocument::FindNavigationTarget`, fork P4-2): the nearest focusable
+    element (visible, `tab-index: auto`, not `focus: none` or disabled) whose box lies in that
+    direction (it ends beyond the source's edge and starts at most halfway into the smaller box),
+    by the CSS Spatial Navigation distance as Chromium weighs it, `euclidean + along + w ×
+    across-gap − √across-overlap` with `w` 30 for left/right (a sideways step stays in its row)
+    and 2 for up/down (a vertical step may drift across columns: a settings row's label on the
+    left, its control on the right), ties in tree order; first among the elements of the nearest scroll container around the focus (items
+    scrolled out of view included: a list scrolls to its next item before the focus leaves),
+    then the whole document, where an element inside another scroll container counts only if it
+    intersects that container's visible box. No wrap-around. The target gets `Focus(true)`
+    (`:focus-visible`) and `ScrollIntoView` with `Nearest` alignment. A focused range adjusts
+    (the controls see the arrow: `WidgetSlider`), an open select moves through its options
+    (`WidgetDropDown`); a text field and a closed select never keep the d-pad (they see no key,
+    `KI_UNKNOWN`).
+  - A: the keyboard's activation: `KI_RETURN` for the controls (RmlUi's document clicks a
+    focused `tab-index: auto` element, compat's `activateFromKey` clicks buttons, links and
+    summaries, a select opens or chooses), `KI_SPACE` on a checkbox or radio (it toggles on the
+    release, as in HTML), nothing on a text field (no line break, no implicit submit; the virtual
+    keyboard is requested, as a tap does). `:active` on the focused element from the down to the
+    up (not when prevented).
+  - B: `KI_ESCAPE` for the controls (a modal `<dialog>` cancels and closes); an open select
+    closes (`HideSelectBox`). Otherwise nothing: menus close in their `keydown` listener.
+  - any key shows `:focus-visible` on the focused element (also one a click focused).
+  - The key the controls see is the event's `key_identifier` parameter; scripts see the pad's key
+    and code (`gamepad`, `gamepad_key`, `repeat` parameters). The fork's text widget leaves events
+    with a `gamepad` parameter to the document (P4-3), so the d-pad leaves a field and B reaches
+    the menu.
+- **Gamepad focus and consuming.** The documents take the pad while an element **in the Tab
+  order** (`tab-index: auto`: a button, link, form control, `tabindex="0"`) of a shown document
+  has the focus of the context keys go to (the screen's, or the texture-mode document that took
+  the last press, as for keys). RmlUi focuses any clicked element (`focus: auto` is the
+  default), so a clicked HUD panel or a `tabindex="-1"` element has the keys but not the pad: the
+  d-pad stays the game's. With such a focus, the directions and A are always consumed (also at
+  the edge of a menu: the player does not move while a menu is used); B and the other keys when
+  a listener or a control stopped or prevented them; an up when its down was consumed (the game
+  never gets an up without a down). Without one, the keys still go to the focused document (as
+  keyboard keys do) and nothing is consumed. Consumed keys skip `onGamepadButtonDown/Up` while
+  `Engine::ignoreEventsHandledByUI`.
+- **Axes.** The left stick is a d-pad: a direction is pressed when its axis passes 0.5 and is
+  the dominant one, and held until its own component drops below 0.3 (hysteresis, no flapping at
+  the diagonal). Triggers (rest −1) press past 0 (half way) and release below −0.2. Left-stick
+  axis moves are consumed while a document has gamepad focus or the held stick direction was
+  consumed; trigger moves while the trigger key's down was consumed; the right stick never. An
+  axis the documents take is first reported to the game once at its rest value (0, triggers −1),
+  so a player walking when a menu opens stops. Polling (`Input.getGamepadAxis`) always reads the
+  device; `Engine::wantsGamepadNavigation()` (Lua `Engine.wantsGamepadNavigation()`) tells a
+  polling game that a document has gamepad focus.
+- **Repeat.** A held d-pad or stick direction whose down a document consumed repeats after
+  0.4 s, then every 0.1 s (`keydown` with `repeat`), on the UI clock (`HtmlUIClock::now()`,
+  `Engine::updateGamepadNavigation` after `flushCharInput` at the start of `systemDraw`): frozen
+  with a held simulation, deterministic under a fixed time; a long frame gives one repeat, not a
+  burst. A down that arrives again without its up is a repeat.
+- **Routing** (`Engine.cpp`): the documents first, top scene layer first, the first scene whose
+  documents consume stops the walk (`dispatchToDocuments`, as keys); ups and the disconnect's
+  releases go to every scene's documents. `UIDocumentSystem::eventOnGamepadKeyDown(int gamepad,
+  GamepadUIKey, bool repeat)`, `eventOnGamepadKeyUp`, `hasGamepadFocus`; `GamepadUIKey`
+  (`UIDocumentSystem.h`); `RmlKeyMap::gamepadDomCode/gamepadDomKey/gamepadEngineKey`. A
+  disconnect releases what the pad held (`:active`, ups).
+- **Platforms.** Every platform layer already funnels its pads into `Engine::systemGamepad*`
+  (Linux evdev `GamepadLinux.cpp` and the editor's `BackendLinux.cpp`, Windows XInput
+  `GamepadWin.cpp`, macOS and iOS GameController `JasperEngineGameController.mm`, Android
+  `NativeEngine.cpp` (GameActivity), Web `JasperEngineWeb.cpp` (the Gamepad API, polled per
+  frame), the editor's MCP `send_input`): the routing is platform-independent, with the stick's
+  down-positive Y every layer already produces. Built and tested here: Linux (glcore, Vulkan),
+  Web and Android builds; Windows, macOS and iOS not built (no code of theirs changed).
+
+**Data binding.**
+
+- `data-style-*` (fork P4-4): in a model created with `allow_missing_variables` (the engine's
+  placeholder models of edit mode, and Lua models), an expression that reads a variable the
+  model does not have yet leaves the property unset (removed) instead of setting the empty
+  default's text (`health + '%'` was `width: %`, a syntax warning per load). The variable's
+  arrival sets it. A value invalid with every variable present still warns. The guide's note is
+  gone; `test_html_ui_docs.py` no longer exempts the line.
+- `data-for` template: the Lua DOM (`UIDocument`/`UIElement` `querySelector(All)`,
+  `getElementById`, `children`, `childElementCount`, `first/lastElementChild`,
+  `next/previousElementSibling`) and the inspector (`inspect::isElement`: `query`, the tree,
+  refs) skip the hidden element RmlUi keeps after the rows (`UIElementAccess::isDataForTemplate`:
+  it carries `data-for`, the rows do not). Structural selectors and sibling combinators skip it
+  too (fork P4-5), so `li:last-child` is the last row, as with the comment node a browser
+  framework leaves. Rows keep their order (inserted before the template). There is no
+  `getElementsBy*` in the Lua API.
+
+**Examples** (merged from `p4-examples` while this package ran): the `x > 0 ? x + '%' : '0'`
+workaround of the hud, loading and inventory bindings is gone (plain `x + '%'`); the inventory
+test counts `.grid > .slot` as 24 without `:not([data-for])`. The menus are gamepad-navigable,
+checked in `test_html_ui_examples.py` after each golden (the goldens are unchanged):
+`main_menu` (the d-pad through the buttons, A presses, the d-pad stays on the open settings
+panel and B closes it), `pause_menu` (Start opens on Resume, B closes; `onGamepadButtonDown`,
+as its Escape uses `onKeyDown`), `settings` (the first tab has the focus at load; tabs, every
+control of the tab, the footer; ranges adjust, switches toggle, selects open and choose; Escape
+or B is Back), `inventory` (slots `tabindex="0"`, the tooltip follows the focus, A picks up and
+puts down, B cancels or closes, View toggles the window, the first gamepad key focuses the first
+slot), and the shop's confirmation dialog (the d-pad stays on its buttons, B cancels and gives
+the focus back to the card's Buy).
+
+**Tests.** `engine/tests/htmlui/TestInputGamepad.cpp` (14: grid and list navigation with
+scrolling, `nav-*` overrides, activation and `:active` with a checkbox and `preventDefault`, B as
+a cancelable Escape and its pass to the game, a modal dialog, range adjust, select open/navigate/
+choose/close, a text field that does not trap, consume vs game with the axis rest value and
+`ignoreEventsHandledByUI` off, `:focus-visible`, repeat timing on the fixture clock with the
+stick, shoulders/triggers/other buttons as keys and a disconnect, a clicked panel);
+`TestTextureMode.cpp` `GamepadKeysFollowTheKeys`; `TestDataBindingDom.cpp` (2); RmlUi unit
+tests `Navigation.FindNavigationTarget`, `form.input.text.gamepad_keys`,
+`data_binding.style_missing_variables`, `data_binding.for_template_not_a_sibling`;
+`tools/mcp/tests/test_html_ui_gamepad.py` (8, play mode through `send_input` gamepad events:
+d-pad and A, focus-visible screenshot, B, shoulder and trigger, range and stick repeat, the
+unfocused pad is the game's, edit-mode silence, data-for rows).
 
 ---
 
@@ -2234,3 +3094,82 @@ Run on `html-ui` after all five packages merged, from a clean build
 
 - [ ] Every package report lists its additive touches outside its owned files, and every
       difference found between 3.2 and the merged phase 0-3 code.
+
+---
+
+## 7. Phase 4 acceptance (p4-accept)
+
+Run on `hui/p4-accept`, branched from `html-ui` at `36afa490a` (all eight packages merged:
+p4-checks, p4-inspector, p4-guide, p4-examples, p4-input, p4-gaps, p4-mcp-tools, p4-gaps2), from
+a clean worktree (no `build/` but the gradle cache), on the Linux host. CPU-capped: `JOBS=2` for
+every build and test container, the MCP suite with `-j 1` and `LP_NUM_THREADS=2`, the RmlUi tests,
+reference renders and slow-build tests pinned to two CPUs (`taskset -c 0,1`), one heavy job at a
+time.
+
+### 7.1 Section 6, item by item
+
+| §6 item | Evidence on the merged tree | Result |
+|---|---|---|
+| Linux editor and engine build, zero new warnings; Web compiles `HtmlUIInspector`/`HtmlUIAssertions` | `JOBS=2 tools/build.sh linux`: exit 0, the no-exported-`Rml::`/lexbor symbol checks pass; one warning in the whole build, `-Wstringop-overflow` in `engine/core/math/Matrix3.cpp:51` (unchanged since 2026-10-01, before phase 4). `JOBS=2 tools/build.sh web`: exit 0, 0 warnings, `core/htmlui/HtmlUIInspector.cpp.o` and `HtmlUIAssertions.cpp.o` built. Android (`flock /tmp/htmlui-android.lock`): APK for the four ABIs, 0 warnings | pass |
+| `jasperengine-htmlui-tests` passes (`InspectorTest`, `AssertionsTest`, `ExamplesCompatTest`) | glcore: 2917 tests, 2844 passed, 0 failed, 73 skipped (the 73 Taffy fixtures the phase-3 baseline excludes: "1595 fixtures, 73 excluded, 1522 compared, 0 known failures"), 74.7 s, `CompatPerf.*`/`CompatCssPerf.*` included. Vulkan (lavapipe): the same 2844 / 0 / 73, 74.3 s. `InspectorTest` 22, `AssertionsTest` 11 (4.1.1's 21 and 10 plus p4-mcp-tools' `WithViewportTransforms` and `TextFitsInATransformedBox`), `ExamplesCompat` 2, `InputPassThroughTest` 10, `InputGamepadTest` 14, `DataBindingDomTest` 2 | pass |
+| `check --ui` / default `check`, text and JSON, exit codes, 6-key non-UI JSON | `test_html_ui_checks.py` (`test_cli_usage_ui`, `test_cli_default_includes_ui`, `test_cli_ui_findings_text_and_json`, `test_cli_ui_files_and_exclusions`, `test_cli_ui_dedupe`, `test_cli_ui_stylesheet_variables`, `test_cli_ui_speed`, `test_parity_cli_mcp`), `test_checks.py` (11 cases) | pass |
+| `--hook`: UI errors always, warnings once; state version 2, version 1 accepted | `test_html_ui_checks.py::test_hook_ui_warnings_once`, `test_checks.py::test_cli_hook_mode`, `test_trial_fixes.py` hook cases, `test_html_ui_agent_sim.py::test_hook_feedback_like_claude_code` | pass |
+| `ui-support` JSON; `gen_html_ui_support.py --check` | `test_ui_support_json_and_generated_doc`; `gen_html_ui_support.py --check`: "current (1870 features, 86 codes)" | pass |
+| Tracked types; reload before the next call in edit mode and in play | `test_html_ui_reload.py` (23: `test_tracked_extensions`, `test_css_edit_reloads_before_call`, `test_reload_during_play`, `test_image_dependency_reload`, `test_texture_mode_document`, `test_rapid_saves_during_play`, ...) | pass |
+| No double reload (5.3 cases 3-4, 7); `ui_reloaded` and full problem entries | `test_no_double_reload_autosync_first`, `test_no_double_reload_poller_first`, `test_html_error_reported` (fixed, 7.2), `test_mcp_write_not_external`, `test_sync_files_reports_ui` | pass |
+| The three tools with the schemas, outputs, errors and annotations of 3.6; `send_input` and `import_files` extensions | `test_html_ui_tools.py` (37), `test_html_ui_gamepad.py` (8) | pass |
+| Budget (`test_budget`), TOOLS.md "HTML/CSS UI" section, README sentence | `[budget] 133 tools, 99006 chars; inspect_ui 1806, assert_ui 2128, create_ui_document 1289, send_input 1995, import_files 869` (4.5.1's numbers); `gen_tool_docs.py` regenerated TOOLS.md (133 tools, `## HTML/CSS UI`): identical to the committed file but for the editor version in its first line; `docs/mcp/README.md` "~99K" | pass |
+| 9 examples + `blank`: compat-clean, inspected golden, play test with interaction, manifest `assert_ui` at every viewport, zero LuaLS warnings | `ExamplesCompat.*`; `test_html_ui_examples.py` (56: `_compat_clean`, `_edit_mode`, `_play_golden` with the gamepad/pointer interaction of 4.6.1, `_asserts` at every manifest viewport, `test_lua_scripts_have_no_luals_diagnostics` with lua-language-server installed); the ten goldens of `engine/tests/htmlui/golden/examples/` looked at again here: no clipping, overlap, missing glyph or icon | pass |
+| Examples in every project's `.jasperengine/engine-api/html-ui-examples/`, served as `jasper://examples/html-ui/...`, instantiable with the renames of 3.7.4 | `_files_in_project`, `test_project_copy_is_the_library`, `test_project_copy_follows_the_editor`, `test_html_ui_tools.py::test_examples_resources`, `test_create_template_renames`; `HtmlUiExamplesTest` in `htmlui-editor-tests` | pass |
+| Guide: 16 sections, every name exists, Lua parses; guide and matrix under `jasper://docs/` | `test_html_ui_docs.py` (13: `test_guide_structure`, `test_guide_names_exist`, `test_guide_lua_names_in_stubs`, `test_guide_lua_snippets_parse`, `test_guide_css_html_snippets_clean`, `test_guide_snippets_play`, `test_guide_served`, `test_guide_cpp_snippet_parses` with clangd installed, ...) | pass |
+| Instructions section, `test_instructions_name_real_tools`, AGENTS.md section, docs updated | `test_autosync.py::test_instructions_name_real_tools`, `test_html_ui_docs.py::test_agents_md_section`, `test_trial_fixes.py::test_agents_md_and_claude_md`; `checks.md` brought up to date here (7.2) | pass |
+| `search_engine_api` finds the Lua UI API and matrix rows | `test_html_ui_docs.py::test_search_engine_api_ui`, `test_docs.py::test_search_engine_api` | pass |
+| `-k html_ui` with no skip but LuaLS-not-installed | both full runs: no `html_ui` skip except `test_html_ui_export.py::test_desktop_build_runs_the_document` without `JASPER_SLOW_BUILD`, which passes with it (7.3); LuaLS and clangd are installed, so their tests ran | pass |
+| `test_protocol`, `test_autosync`, `test_checks`, `test_stubs`, `test_ui_anchors`, `test_play`, `test_assets`, `test_docs` | run 2: 12, 12, 11, 12, 7, 14, 8, 5 passed, 0 failed (`test_play.py::test_cpp_build_failure_reported` with `JASPER_SLOW_TESTS=1`: 7.3) | pass |
+| Agent simulation (5.7) end to end | `test_html_ui_agent_sim.py` (6) | pass |
+| Package reports list additive touches and 3.2 differences | the "as implemented" sections 4.1.1-4.6.1 (each lists its files outside its ownership and what it found against 3.2: 4.1.1 the accessors of 3.2.2, 4.2.1 "Deviations from 3.2.1", 4.3.1 "Engine fixes the examples found", 4.4.1 "Differences from 3.8.1 found in the code", 4.5.1 additive touches and fixes in others' files); every phase-4 fork commit has a `FORK.md` row with its commit ids and tests (P4-1 … P4-6, P4-E1, P4-G1 … P4-G14; no phase-4 commit touches `engine/libs/rmlui` outside an `rmlui:` commit); `CONTRACTS.md` rows for every interface | pass |
+
+### 7.2 What the acceptance run found and changed
+
+| Kind | What was wrong | Fix |
+|---|---|---|
+| Flaky test | `test_html_ui_reload.py::test_html_error_reported` failed once in the first full MCP run: it required `ui_reloaded == [panel]` after an external `.html` edit, but the phase-1 poller (0.25 s tick) can see the write between the disk write and the call; the pick-up then finds the document current (`ui_current` 1, problems still reported), which 5.3 case 4 defines as correct and every other reload check of the file accepts | the step and the "fixed" step accept either path (`reloaded_for_call`) and now also count exactly one reload per edit from the Console's reload lines. Reproduced every time with a 0.6 s pause after the write (the old assertion fails, the new one passes); the file then passed 3 runs of 23/23 and the second full run |
+| Stale doc | `docs/mcp/checks.md` said a `.css` given to `--files` "is checked on its own"; since p4-gaps (4.3.2 G6) it is checked in the context of the documents that load it, and a sheet alone does not judge variables it does not declare | `--files` row and the "Stylesheets" bullet describe both |
+| Stale doc | `DESIGN.md` deviation 10 listed only P4-1 … P4-5 among the phase-4 fork patches | it lists P4-6, P4-E1 and the corrective packages' P4-G1 … P4-G14 too, with their sections |
+
+Searched and found current (no change needed): "gamepads don't reach documents" (gone; the guide's
+"Focus, keys and gamepads" describes 4.6.1), inline SVG icons in the examples (they use
+`data-lucide`), the edit-mode `data-style` syntax noise (gone with P4-4, no exemption left in the
+tests), `data-attr-disabled` caveats (the guide states the boolean-attribute rule of P4-G9),
+13x13 checkbox claims (the guide says the themed control is drawn as a square of the smaller
+side, and an unsized `appearance: none` checkbox is sized by its content), `WAVE-2` marks (none
+left), `require_tools` on phase-4 tools (none: the remaining calls name tools that exist and only
+skip against the fake server), TODO/FIXME added in phase 4 (none). AGENTS.md, the instructions,
+the guide, TOOLS.md, the support matrix, the examples manifest and the guide's examples table,
+CONTRACTS.md and FORK.md agree with each other and with the code.
+
+### 7.3 Other runs
+
+- `JOBS=2 tools/htmlui/run-rmlui-tests.sh`: 406 test cases, 18,100 assertions, all passing, no
+  warning.
+- `JOBS=2 tools/build.sh htmlui-editor-tests`: 63 tests, 62 passed, 1 skipped
+  (`GoogleFonts.LiveNetwork`, only with `HTMLUI_LIVE_NETWORK=1`).
+- MCP suite (`LP_NUM_THREADS=2 ... tools/mcp/run-tests.sh -j 1`, 40 files): run 1, 461 passed,
+  1 failed (7.2), 4 skipped, 1846 s; run 2 with the fix, 462 passed, 0 failed, 4 skipped, 1849 s.
+  The 4 skips are the slow-build/slow-test gates, run on their own below.
+- Slow tests (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1`, `taskset -c 0,1`): `test_play.py`,
+  `test_html_ui_export.py`, `test_build.py`, `test_playctl.py` whole, 37 passed, 0 failed, 0 skipped,
+  2298 s: `test_cpp_build_failure_reported`, `test_desktop_build_runs_the_document` (a Desktop
+  player built from source runs the exported document, 941 s), `test_desktop_build_and_run` (633 s),
+  `test_desktop_player_driven` (669 s).
+- `gen_html_ui_support.py --check`: current. `gen_tool_docs.py`: TOOLS.md identical but for the
+  version line. `xcode_sync_rmlui.py --check`, `xcode_sync_compat.py --check`: pass.
+- `render-reference.mjs --all --check`: the 8 phase-2 pages, 24 files, all the same.
+  `--fixtures all --check --jobs 2`: 189 browser-parity fixtures (458 files, every P4 fixture
+  among them) and 1,522 Taffy fixtures' boxes, all the same as committed, with the pinned
+  Chromium 153 headless shell (revision 1243, playwright-core 1.63.0).
+
+### 7.4 Not verified here
+
+Windows, macOS and iOS cannot be built on this host. Phase 4 changed no platform layer (4.6.1
+"Platforms"); the Xcode project's source lists were checked with the two `--check` scripts.

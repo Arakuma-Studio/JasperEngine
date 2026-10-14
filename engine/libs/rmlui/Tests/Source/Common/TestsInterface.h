@@ -57,6 +57,7 @@ public:
 		size_t composite_layers_plus; // with BlendMode::Plus (cross-faded background images)
 		size_t generate_texture_with_wrap; // GenerateTextureWithWrap with an axis repeated (also counted in generate_texture)
 		size_t save_layer_into_texture;    // SaveLayerIntoTexture: tiles of a texture larger than the window
+		size_t save_layer_as_texture;      // SaveLayerAsTexture: a texture rendered from a layer (box shadows, P4-G7)
 	};
 
 	Rml::CompiledGeometryHandle CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices) override;
@@ -88,6 +89,7 @@ public:
 
 	Rml::LayerHandle PushLayer() override;
 	Rml::TextureHandle SaveLayerIntoTexture(Rml::TextureHandle texture, Rml::Vector2i texture_dimensions, Rml::Vector2i destination_offset) override;
+	Rml::TextureHandle SaveLayerAsTexture() override;
 	void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
 		Rml::Span<const Rml::CompiledFilterHandle> filters) override;
 	void PopLayer() override;

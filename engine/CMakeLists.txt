@@ -840,6 +840,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/HtmlUIInspector.cpp
+    core/htmlui/HtmlUIAssertions.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp

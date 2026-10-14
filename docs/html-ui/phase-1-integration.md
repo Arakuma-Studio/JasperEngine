@@ -1027,6 +1027,37 @@ after the screen context declined the event.
   - Elements with `pointer-events: none` are skipped by RmlUi's hit test, so transparent
     full-screen containers pass clicks through when authors set it, as over a web canvas.
     The user guide documents this rule.
+  - *As implemented (p4-inspector, at the coordinator's request):* a page that paints no
+    background — an `ElementDocument`, or the RML `htmlbody` of an HTML document, with no
+    `background-color` alpha, decorator or background image layer (for a document with the
+    fork's canvas background, nor its canvas body) — is not hit at all
+    (`HtmlUIContext::passesPointerThrough`, installed with the fork hook
+    `Rml::Context::SetPointerPassThrough`, FORK.md P4-1). RmlUi's hit test then goes on to
+    the documents below in z-order, so a click on the empty part of an upper document
+    reaches the lower document's element, and the game only when no document has an element
+    there. Before, the upper document's full-screen page (`html { min-height: 100% }`) was
+    the hover element, did not block, and the event went to the game: lower documents never
+    got the pointer. *The listener exception:* a page whose document listens for the
+    pointer is hit like an element, so it takes the pointer on its empty parts, as a browser
+    page does ("click outside closes the menu"). "Listens" means a listener for click,
+    dblclick, mousedown/up/move/over/out, wheel, contextmenu, pointer* or touch* on the
+    document element (`<html>`, `UIDocument:addEventListener`) or on the HTML `<body>`, added
+    with `addEventListener` (Lua or C++, `HtmlUIEventListener`) or as a `data-event-<type>`
+    binding (the engine's inline handlers; `on*` attributes are JavaScript and are dropped,
+    HTMLUI-HTML-0005). The decision is per document, not per event type: the context has one
+    hover chain that every pointer event follows (`:hover`, the cursor, the target of moves,
+    presses, clicks and the wheel), so a page that took the wheel but passed presses would
+    give a click a different target than its press. Removing the last such listener restores
+    the pass-through (the next pointer event sees it). A `<body>` is as tall as its content,
+    as in a browser: a body listener gets the events inside the body's box, a document
+    listener every empty part. Every hit test of the context follows the rule (hover, press, release,
+    wheel, touch, drag hover), so the cursor, `:hover` and the consume rules agree. A press
+    keeps its capture (`capturedButtons`/`capturedTouches`, the active element, RmlUi's drag
+    element) while the pointer moves over another document. A primary press or touch that no
+    document takes releases the focus (to the focused element's document), so keys and text
+    go back to the game, as the press on an empty page did. Texture-mode documents already
+    passed a transparent page on to the next document in ray order (§3.12.3); their contexts
+    use the same rule. Tests: `engine/tests/htmlui/TestInputPassThrough.cpp`.
 - **Up:** consumed iff its down was consumed, or the rule above holds.
 - **Wheel:** consumed iff `ProcessMouseWheel` returns false, or the hover element is
   blocking.

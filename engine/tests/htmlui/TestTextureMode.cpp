@@ -625,6 +625,55 @@ TEST_F(TextureModeTest, KeysTextAndDataModels){
     EXPECT_EQ(system().getTextureContext(entity)->getRmlContext()->GetDataModels().count("form"), 1u);
 }
 
+// p4-input: gamepad keys follow the keyboard's rule: the texture document that took the last
+// press gets them; a press on the screen document takes them back
+TEST_F(TextureModeTest, GamepadKeysFollowTheKeys){
+    Primitive& surface = wall(0, 0, 0);
+    UIDocument document = textureDocument("p1/texture_form.rml", surface.getEntity());
+    UIDocument screen = fixture->addDocument("p1/texture_input.rml");
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    const Entity entity = document.getEntity();
+    screen.hide();
+    GpuEnvironment::drawFrames(1);
+
+    Rml::Element* name = element(entity, "name");
+    ASSERT_NE(name, nullptr);
+    CountingListener keys;
+    name->AddEventListener(Rml::EventId::Keydown, &keys);
+    EXPECT_FALSE(system().hasGamepadFocus());
+    EXPECT_FALSE(system().eventOnGamepadKeyDown(0, GamepadUIKey::A, false)) << "nothing focused: the game's";
+    EXPECT_FALSE(system().eventOnGamepadKeyUp(0, GamepadUIKey::A));
+
+    const Vector2 field = project(scene(), Vector3(-0.5f, 0.75f, 0));   // #name
+    EXPECT_TRUE(system().eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    EXPECT_TRUE(system().eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, field.x, field.y, 0, false));
+    ASSERT_EQ(system().getTextureFocus(), entity);
+    EXPECT_TRUE(system().hasGamepadFocus());
+
+    // A on the texture document's text field: consumed, and the field edits nothing
+    EXPECT_TRUE(system().eventOnGamepadKeyDown(0, GamepadUIKey::A, false));
+    EXPECT_TRUE(system().eventOnGamepadKeyUp(0, GamepadUIKey::A));
+    EXPECT_EQ(keys.count, 1);
+    EXPECT_EQ(name->GetAttribute<Rml::String>("value", ""), "");
+    // the d-pad is the document's even with nothing else to focus
+    EXPECT_TRUE(system().eventOnGamepadKeyDown(0, GamepadUIKey::DPAD_DOWN, false));
+    EXPECT_TRUE(system().eventOnGamepadKeyUp(0, GamepadUIKey::DPAD_DOWN));
+    EXPECT_EQ(keys.count, 2);
+
+    // a press on the screen document takes the keys back to the screen context, where the clicked
+    // panel has the focus but is not in the Tab order: the gamepad is the game's
+    screen.show();
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(system().eventOnPointerDown(0, D_MOUSE_BUTTON_LEFT, 10, 10, 0, false));
+    EXPECT_TRUE(system().eventOnPointerUp(0, D_MOUSE_BUTTON_LEFT, 10, 10, 0, false));
+    EXPECT_EQ(system().getTextureFocus(), NULL_ENTITY);
+    EXPECT_FALSE(system().hasGamepadFocus());
+    EXPECT_FALSE(system().eventOnGamepadKeyDown(0, GamepadUIKey::A, false));
+    EXPECT_FALSE(system().eventOnGamepadKeyUp(0, GamepadUIKey::A));
+    EXPECT_EQ(keys.count, 2);
+    name->RemoveEventListener(Rml::EventId::Keydown, &keys);
+}
+
 TEST_F(TextureModeTest, StatePreservingReload){
     Primitive& surface = wall(0, 0, 0);
     UIDocument document = textureDocument("p1/texture_form.rml", surface.getEntity());

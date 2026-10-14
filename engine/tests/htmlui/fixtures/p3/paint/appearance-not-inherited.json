@@ -1,0 +1,4 @@
+{
+ "comment": "appearance is not inherited (CSS UI 4): a container with appearance: none leaves the checkboxes, select, button and text field inside it with their look (range and progress: AppearanceNone.IsNotInherited); a control's own appearance: none still removes it. Ahem text with line-height: 1 (a select's line-height: normal is measured with the fallback font before Ahem loads, in Chromium).",
+ "viewport": [340, 120]
+}

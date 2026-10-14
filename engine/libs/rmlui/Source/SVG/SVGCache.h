@@ -20,6 +20,10 @@ namespace SVG {
 		Texture texture;
 		Vector2f intrinsic_dimensions;
 		const SVGKey& cache_key;
+
+		/// Fork (P4-G1): the size and colour of the quad 'geometry' draws (at the origin, texture coordinates 0 to 1).
+		Vector2i GetDimensions() const;
+		ColourbPremultiplied GetColour() const;
 	};
 
 	class SVGCache {

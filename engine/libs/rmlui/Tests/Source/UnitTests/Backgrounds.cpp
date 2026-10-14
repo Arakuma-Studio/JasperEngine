@@ -293,6 +293,56 @@ TEST_CASE("Backgrounds.computed_and_drawn")
 	context->Update();
 }
 
+// Longhands holding var() are resolved into the style's one returned-property storage: with var() in both the image and the
+// size, resolving the size replaced the image list while the layer was generated from it (a crash, phase 4's examples).
+TEST_CASE("Backgrounds.var_in_image_and_size")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	TestsRenderInterface* render = TestsShell::GetTestsRenderInterface();
+
+	const String rml = R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; }
+		#v { display: block; width: 120px; height: 6px; --from: #ff0000; --to: #0000ff; --value: 80%;
+		     background-image: linear-gradient(90deg, var(--from), var(--to)); background-size: var(--value) 100%;
+		     background-repeat: no-repeat; background-position: var(--value) 0; }
+	</style>
+</head>
+<body><div id="v"/></body>
+</rml>
+)";
+	ElementDocument* document = context->LoadDocumentFromMemory(rml);
+	REQUIRE(document);
+	document->Show();
+	if (render)
+		render->Reset();
+	for (int i = 0; i < 3; i++)
+	{
+		context->Update();
+		context->Render();
+	}
+
+	Element* v = document->GetElementById("v");
+	CHECK(v->GetComputedValues().has_background_image());
+	if (render)
+	{
+		bool red_first = false;
+		for (const auto& shader : render->GetCompiledShaders())
+		{
+			auto it = shader.parameters.find("color_stop_list");
+			if (shader.name == "linear-gradient" && it != shader.parameters.end())
+				red_first |= (it->second.GetReference<ColorStopList>().front().color == ColourbPremultiplied(255, 0, 0, 255));
+		}
+		CHECK(red_first);
+	}
+
+	document->Close();
+	context->Update();
+}
+
 TEST_CASE("Backgrounds.interpolation")
 {
 	Context* context = TestsShell::GetContext();

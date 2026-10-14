@@ -9,6 +9,7 @@
 #include "htmlui/compat/runtime/HtmlLayerDecorator.h"
 
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Geometry.h>
 
 #include <string>
@@ -65,8 +66,7 @@ namespace jasperengine::htmlui::compat {
         bool loaded = false;
         bool sourceDirty = true;
         bool geometryDirty = true;
-        Rml::Geometry geometry;
-        Rml::Geometry clipGeometry;   // the rounded padding box (empty without border-radius)
+        Rml::ReplacedContentGeometry geometry;
         Rml::Texture texture;
     };
 

@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>bound controls</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    input, select { display: block; width: 160px; }
+  </style>
+</head>
+<body>
+  <div data-model="form">
+    <input type="range" id="volume" min="0" max="100" data-value="volume">
+    <input type="checkbox" id="music" data-checked="music">
+    <select id="quality" data-value="quality">
+      <option value="low">Low</option>
+      <option value="high">High</option>
+    </select>
+    <input type="text" id="name" data-value="name">
+    <input type="text" id="free">
+  </div>
+</body>
+</html>

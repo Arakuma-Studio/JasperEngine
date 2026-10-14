@@ -123,9 +123,9 @@ async def test_element_api(ed: Editor):
         local b = doc:getElementById('button')
         b.classList:add('hot')
         b.style.width = '170px'
-        -- data-for keeps its element in the DOM, hidden, as the template of the rows
+        -- the rows only: the hidden template RmlUi keeps for data-for is no element (p4-input)
         return b.id, b.tagName, b.textContent, b.classList:contains('hot'), b.style.width,
-               doc:getElementById('list').childElementCount - 1, #doc:querySelectorAll('.row') - 1,
+               doc:getElementById('list').childElementCount, #doc:querySelectorAll('.row'),
                doc:querySelector('#gold').textContent, doc:getElementById('nope') == nil, doc.title
     """)
     # an .html document: tagName is the DOM's, upper case (phase 2, compat layer hook H5)
@@ -164,7 +164,7 @@ async def test_data_bound_list_grows(ed: Editor):
     await ed.call("wait", frames=3)
     values = await lua(ed, """
         local doc = object('Menu', 'UIDocument')
-        return doc:getElementById('list').childElementCount - 1, doc:getElementById('gold').textContent,
+        return doc:getElementById('list').childElementCount, doc:getElementById('gold').textContent,
                #shop.items, shop.items[3].name
     """)
     ed.check_eq(values, [3, "25", 3, "Bow"], "the list grew")

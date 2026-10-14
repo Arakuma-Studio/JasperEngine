@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gaps: border-radius trims replaced content</title>
+<style>
+  html, body { margin: 0; background: #c8c8c8; }
+  img, svg { position: absolute; width: 80px; height: 80px; background-color: #a8bca8; image-rendering: pixelated; }
+  #plain { left: 10px; top: 10px; border-radius: 24px; }
+  #padded { left: 110px; top: 10px; border-radius: 30px; padding: 12px; border: 4px solid #98a8c0; }
+  #circle { left: 230px; top: 10px; border-radius: 50%; object-fit: cover; }
+  #none { left: 330px; top: 10px; border-radius: 50%; object-fit: none; }
+  #elliptic { left: 430px; top: 10px; width: 120px; border-radius: 60px / 20px; object-fit: fill; }
+  #contain { left: 10px; top: 130px; width: 120px; height: 60px; border-radius: 50%; object-fit: contain; }
+  #svg-file { left: 150px; top: 120px; border-radius: 20px 0 40px 0; object-fit: cover; }
+  #svg-inline { left: 250px; top: 120px; border-radius: 50%; }
+  #svg-padded { left: 350px; top: 120px; border-radius: 28px; padding: 8px; border: 2px solid #98a8c0; }
+  #small-radius { left: 470px; top: 120px; border-radius: 4px; padding: 10px; }
+</style>
+</head>
+<body><img id="plain" src="img/pastel-quad.png"><img id="padded" src="img/pastel-quad.png"><img id="circle" src="img/pastel-quad.png"><img id="none" src="img/pastel-quad.png"><img id="elliptic" src="img/pastel-quad.png"><img id="contain" src="img/pastel-quad.png"><img id="svg-file" src="img/pastel-bands.svg"><svg id="svg-inline" viewBox="0 0 20 20" preserveAspectRatio="none"><rect width="20" height="10" fill="#e09a9a"/><rect y="10" width="20" height="10" fill="#9ab4e0"/></svg><svg id="svg-padded" viewBox="0 0 20 20" preserveAspectRatio="none"><rect width="20" height="10" fill="#e09a9a"/><rect y="10" width="20" height="10" fill="#9ab4e0"/></svg><img id="small-radius" src="img/pastel-quad.png"></body>
+</html>

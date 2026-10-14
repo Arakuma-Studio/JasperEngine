@@ -1,0 +1,4 @@
+{
+ "comment": "a <button> or a button-type input with display: inline (or inline-table) is laid out as an inline-block, as HTML's button layout and Chromium have it: sized, padded and bordered as one atomic box on the line, its text wrapped inside it, a block child laid out in it, with its look or appearance: none. Ahem text.",
+ "viewport": [320, 200]
+}

@@ -1,0 +1,40 @@
+/* Design tokens: change them here, use them everywhere with var() */
+:root {
+  --bg: rgba(12, 16, 28, 0.72);
+  --text: #f4f6fb;
+  --accent: #6aa8ff;
+  --radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: #f4f6fb;
+}
+
+/* A full-screen layer that centers its content */
+.screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+}
+
+h1 {
+  margin: 0;
+  padding: 0.75rem 1.5rem;
+  font-size: clamp(1.75rem, 4vw, 2.75rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}

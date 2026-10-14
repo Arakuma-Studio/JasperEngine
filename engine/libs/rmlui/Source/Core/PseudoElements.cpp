@@ -285,6 +285,15 @@ void PseudoElements::Update(Element& element)
 	if (element.GetTagName() == "#text")
 		return;
 
+	// Replaced elements and most form controls have no ::before or ::after box (fork, P4-G5); asked only of an element that
+	// a rule would give one (a replaced element answers by its intrinsic dimensions).
+	int generated_content_boxes = -1;
+	auto HasGeneratedContentBoxes = [&]() {
+		if (generated_content_boxes < 0)
+			generated_content_boxes = (element.HasGeneratedContentBoxes() ? 1 : 0);
+		return generated_content_boxes == 1;
+	};
+
 	bool changed = false;
 
 	for (PseudoElementType type : {PseudoElementType::Before, PseudoElementType::After, PseudoElementType::Marker})
@@ -299,7 +308,7 @@ void PseudoElements::Update(Element& element)
 		if (type == PseudoElementType::Marker)
 			generate = ListMarker::IsGenerated(element, definition.get());
 		else
-			generate = (definition && GeneratesContent(*definition, element));
+			generate = (definition && GeneratesContent(*definition, element) && HasGeneratedContentBoxes());
 
 		if (!generate)
 		{

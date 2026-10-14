@@ -9,8 +9,10 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "htmlui/HtmlUIInspectorInternal.h"
 #include "htmlui/compat/LuaHooks.h"
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
+#include "htmlui/compat/runtime/HtmlFormSupport.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -64,8 +66,9 @@ namespace {
         }
     }
 
+    // an element of the DOM scripts see: no text node, no data-for template
     bool isElementNode(Rml::Element* element){
-        return element && !rmlui_dynamic_cast<Rml::ElementText*>(element);
+        return element && !rmlui_dynamic_cast<Rml::ElementText*>(element) && !UIElementAccess::isDataForTemplate(element);
     }
 
     Rml::Element* rootOf(Rml::Element* element){
@@ -371,6 +374,9 @@ void UIElement::removeStyleProperty(const std::string& name){
 
 Rect UIElement::getBoundingBox() const{
     HTMLUI_ELEMENT(Rect(0, 0, 0, 0))
+    // no box (display: none, or not in a document): 0, as getBoundingClientRect
+    if (!htmlui::inspect::hasLayoutBox(element))
+        return Rect(0, 0, 0, 0);
 
     const Rml::Vector2f position = element->GetAbsoluteOffset(Rml::BoxArea::Border);
     const Rml::Vector2f size = element->GetBox().GetSize(Rml::BoxArea::Border);
@@ -490,7 +496,21 @@ int UIElement::getChildElementCount() const{
 
 UIElement UIElement::querySelector(const std::string& selector) const{
     HTMLUI_ELEMENT(UIElement())
-    return wrap(element->QuerySelector(selectorFor(element, selector)));
+    const std::string rewritten = selectorFor(element, selector);
+    Rml::Element* found = element->QuerySelector(rewritten);
+    // past a data-for template: the first match that is not one
+    if (UIElementAccess::isDataForTemplate(found)){
+        Rml::ElementList elements;
+        element->QuerySelectorAll(elements, rewritten);
+        found = nullptr;
+        for (Rml::Element* candidate : elements){
+            if (!UIElementAccess::isDataForTemplate(candidate)){
+                found = candidate;
+                break;
+            }
+        }
+    }
+    return wrap(found);
 }
 
 std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) const{
@@ -500,7 +520,8 @@ std::vector<UIElement> UIElement::querySelectorAll(const std::string& selector) 
     std::vector<UIElement> result;
     result.reserve(elements.size());
     for (Rml::Element* found : elements){
-        result.push_back(wrap(found));
+        if (!UIElementAccess::isDataForTemplate(found))
+            result.push_back(wrap(found));
     }
     return result;
 }
@@ -701,6 +722,10 @@ bool UIElement::containsClass(const std::string& name) const{
 
 std::string UIElement::getStyle(const std::string& property) const{
     HTMLUI_ELEMENT(std::string())
+    // what Chromium's theme adjusts (a themed checkbox's box, a button's display): its value
+    std::string themed;
+    if (htmlui::compat::forms::themedComputedValue(element, Rml::StyleSheetSpecification::GetPropertyId(property), themed))
+        return themed;
     const Rml::Property* value = element->GetProperty(property);
     return value ? value->ToString() : std::string();
 }
@@ -828,7 +853,7 @@ void UIElement::scrollBy(float dx, float dy, bool smooth){
 
 float UIElement::getScrollTop() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollTop();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollTop() : 0.0f;
 }
 
 void UIElement::setScrollTop(float value){
@@ -838,7 +863,7 @@ void UIElement::setScrollTop(float value){
 
 float UIElement::getScrollLeft() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollLeft();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollLeft() : 0.0f;
 }
 
 void UIElement::setScrollLeft(float value){
@@ -848,46 +873,50 @@ void UIElement::setScrollLeft(float value){
 
 float UIElement::getScrollWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollWidth() : 0.0f;
 }
 
 float UIElement::getScrollHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetScrollHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetScrollHeight() : 0.0f;
 }
 
 float UIElement::getClientWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetClientWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetClientWidth() : 0.0f;
 }
 
 float UIElement::getClientHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetClientHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetClientHeight() : 0.0f;
 }
 
 float UIElement::getOffsetWidth() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetWidth();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetWidth() : 0.0f;
 }
 
 float UIElement::getOffsetHeight() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetHeight();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetHeight() : 0.0f;
 }
 
 float UIElement::getOffsetLeft() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetLeft();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetLeft() : 0.0f;
 }
 
 float UIElement::getOffsetTop() const{
     HTMLUI_ELEMENT(0.0f)
-    return element->GetOffsetTop();
+    return htmlui::inspect::hasLayoutBox(element) ? element->GetOffsetTop() : 0.0f;
 }
 
 UIRect UIElement::getBoundingClientRect() const{
     HTMLUI_ELEMENT((UIRect{0, 0, 0, 0, 0, 0, 0, 0}))
+    // an element without a box (display: none on it or an ancestor, display: contents, not in
+    // a document): all zeros, as in a browser (RmlUi keeps the box it had last)
+    if (!htmlui::inspect::hasLayoutBox(element))
+        return UIRect{0, 0, 0, 0, 0, 0, 0, 0};
 
     // the border box in document px, through the element's transforms as in a browser
     const Rml::Vector2f position = element->GetAbsoluteOffset(Rml::BoxArea::Border);

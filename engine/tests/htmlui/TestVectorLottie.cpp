@@ -310,6 +310,43 @@ TEST_F(LottieElementTest, LoadsJsonWithIntrinsicSize){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u);
 }
 
+// P4-G1: a rounded <lottie> draws its frame trimmed to the content edge curve, by the mesh (the
+// feathered curves of a background), as an <img>; a square one draws a quad
+TEST_F(LottieElementTest, BorderRadiusTrimsTheFrame){
+    JASPER_REQUIRE_GPU();
+    UILottieElement* lottie = load("src=\"shapes.json\"", "width: 100px; height: 100px;");
+    ASSERT_NE(lottie, nullptr);
+    settle(0.0);
+    const auto frameVertices = [this](){
+        for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+            if (draw.texture)
+                return recording.getGeometry(draw.geometry)->vertices.size();
+        }
+        return size_t(0);
+    };
+    EXPECT_EQ(frameVertices(), 4u);
+
+    lottie->SetProperty("border-radius", "50%");
+    frame(0.0);
+    EXPECT_GT(frameVertices(), 16u);
+    // the trimmed mesh stays inside the content box and maps it to the whole frame
+    for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
+        if (!draw.texture)
+            continue;
+        for (const Rml::Vertex& vertex : recording.getGeometry(draw.geometry)->vertices){
+            // (the feathered ring reaches a little over the edge)
+            EXPECT_GE(vertex.position.x, -1.5f);
+            EXPECT_LE(vertex.position.x, 101.5f);
+            EXPECT_NEAR(vertex.tex_coord.x, vertex.position.x / 100.0f, 1e-4f);
+            EXPECT_NEAR(vertex.tex_coord.y, vertex.position.y / 100.0f, 1e-4f);
+        }
+    }
+
+    lottie->RemoveProperty("border-radius");
+    frame(0.0);
+    EXPECT_EQ(frameVertices(), 4u);
+}
+
 TEST_F(LottieElementTest, OneTextureUpdatedOnlyOnFrameChanges){
     JASPER_REQUIRE_GPU();
     UILottieElement* lottie = load("src=\"shapes.json\" autoplay=\"\" loop=\"\"");

@@ -9,6 +9,7 @@
 #include "compat/runtime/RuntimeRegistry.h"
 #include "compat/CompatOptions.h"
 #include "compat/DocumentLoader.h"
+#include "object/ui/HtmlUIEventListener.h"
 
 #include "Engine.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -37,21 +38,47 @@ namespace {
         return document && document->GetParentNode();
     }
 
-    // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, and
-    // either an element inside a document or a document that paints its background (a
-    // background colour with alpha, or a decorator), as a browser canvas would. A transparent
-    // document lets the pointer through to the game. The <body> of an HTML document (RML
-    // htmlbody, phase 2) is part of that canvas: transparent, it lets the pointer through too.
+    // An element that takes the pointer (phase-1 spec §3.6.2): not the context root, attached,
+    // and not a page the pointer passes through (HtmlUIContext::passesPointerThrough).
     bool isContent(Rml::Context* context, Rml::Element* element){
         if (!element || element == context->GetRootElement())
             return false;
-        if (rmlui_dynamic_cast<Rml::ElementDocument*>(element) ||
-            (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element))){
-            const Rml::Style::ComputedValues& values = element->GetComputedValues();
-            if (values.background_color().alpha == 0 && !values.has_decorator())
-                return false;
-        }
+        if (HtmlUIContext::passesPointerThrough(element))
+            return false;
         return isAttached(element);
+    }
+
+    // a DOM pointer event type: what makes a listening page take the pointer
+    bool isPointerEvent(const std::string& type){
+        static const char* const types[] = {"click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout",
+                                            "wheel", "mousescroll", "contextmenu"};
+        for (const char* name : types){
+            if (type == name)
+                return true;
+        }
+        return type.compare(0, 7, "pointer") == 0 || type.compare(0, 5, "touch") == 0;
+    }
+
+    // a pointer listener on the element: addEventListener (Lua or C++) or a data-event-* binding
+    // (the engine's inline handlers: on* attributes are JavaScript, dropped by the compat layer)
+    bool listensForPointer(Rml::Element* element){
+        if (!element)
+            return false;
+        for (HtmlUIEventListener* listener : HtmlUIEventListener::listenersOf(element)){
+            if (isPointerEvent(listener->getDomType()) || isPointerEvent(listener->getRmlType()))
+                return true;
+        }
+        for (const auto& attribute : element->GetAttributes()){
+            if (attribute.first.compare(0, 11, "data-event-") == 0 && isPointerEvent(attribute.first.substr(11)))
+                return true;
+        }
+        return false;
+    }
+
+    // a background colour with alpha, a decorator or a background image layer
+    bool paintsBackground(const Rml::Element* element){
+        const Rml::Style::ComputedValues& values = element->GetComputedValues();
+        return values.background_color().alpha != 0 || values.has_decorator() || values.has_background_image();
     }
 
     // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
@@ -110,6 +137,8 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
         return false;
     }
     textInputHandler->setContext(context);
+    // a transparent page passes the pointer on to the documents below it, then to the game
+    context->SetPointerPassThrough([](Rml::Element* element){ return passesPointerThrough(element); });
     // the caret area: context pixels to canvas pixels (texture contexts set their own mapper)
     textInputHandler->setCanvasMapper([this](const Rect& area){
         const Rml::Vector2i size = this->dimensions;
@@ -124,6 +153,46 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
     applyThemes();
 
     return true;
+}
+
+void HtmlUIContext::releaseFocus(){
+    // a primary press no document takes goes to the game: the focus leaves the element that had
+    // it (as a press on an empty page focused that page before transparent pages passed the
+    // pointer through), so keys and text are the game's again
+    Rml::Element* focus = context ? context->GetFocusElement() : nullptr;
+    if (!focus || focus == context->GetRootElement())
+        return;
+    Rml::ElementDocument* document = focus->GetOwnerDocument();
+    if (document && focus != document)
+        document->Focus();
+}
+
+bool HtmlUIContext::passesPointerThrough(Rml::Element* element){
+    if (!element)
+        return false;
+    Rml::ElementDocument* document = rmlui_dynamic_cast<Rml::ElementDocument*>(element);
+    const bool page = document || (element->GetTagName() == "htmlbody" && htmlui::compat::DocumentLoader::isCompatDocument(element));
+    if (!page || paintsBackground(element))
+        return false;
+    if (!document)
+        document = element->GetOwnerDocument();
+    // the document and its <body> (the HTML body, or the canvas body of the fork's canvas background)
+    Rml::Element* body = nullptr;
+    if (document){
+        const std::string bodyTag = document->HasCanvasBackground() && !document->GetCanvasBodyTag().empty() ? document->GetCanvasBodyTag()
+                                                                                                           : std::string("htmlbody");
+        for (int i = 0; i < document->GetNumChildren() && !body; i++){
+            if (document->GetChild(i)->GetTagName() == bodyTag)
+                body = document->GetChild(i);
+        }
+    }
+    // the body's background painted over the whole canvas (the fork's canvas background, phase 3)
+    if (element == document && body && document->HasCanvasBackground() && paintsBackground(body))
+        return false;
+    // a page that listens for the pointer takes it on its empty parts, as a browser page does
+    // ("click outside closes the menu"); per document: the context has one hover chain, which
+    // every pointer event (moves, presses, clicks, wheel) follows
+    return !(listensForPointer(document) || listensForPointer(body));
 }
 
 void HtmlUIContext::destroy(){
@@ -267,6 +336,7 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
             activeElement = hover->GetObserverPtr();
         }else{
             activeElement.reset();
+            releaseFocus();
         }
     }
 

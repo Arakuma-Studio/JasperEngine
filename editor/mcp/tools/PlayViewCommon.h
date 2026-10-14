@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+struct lua_State;
+
 namespace jasperengine::editor {
     class Project;
     struct SceneProject;
@@ -114,5 +116,10 @@ namespace jasperengine::editor::mcp::w3 {
     Entity resolveLiveEntity(Project* project, SceneProject* scene, const Json& ref, std::string& error);
     // The scene's GameObjects, plus what the running game created
     std::vector<Entity> liveEntities(Project* project, SceneProject* scene);
+
+    // The Lua value at `index` as JSON, as eval_lua returns values (tables nested maxDepth deep, at
+    // most maxItems entries each); userdata with a __pairs metamethod (HTML UI data-model proxies)
+    // are walked like tables. For inspect_ui models.
+    Json luaToJson(Project* project, lua_State* L, int index, int maxDepth, size_t maxItems);
 
 }

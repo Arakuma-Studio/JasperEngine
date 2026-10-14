@@ -924,6 +924,20 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_p
     if (it != bindings().end()){
         std::shared_ptr<Binding> binding = it->second;
         unregisterDocument(binding->translatorHandle);
+        if (binding->compiled != compiled){
+            // the diagnostics are the new compile's (phase 4: a stylesheet-only reload reports
+            // what the edited sheet has now), its font check, and the errors of the document's
+            // scripts, which a restyle does not run again; RmlUi's messages about the new
+            // sheets follow through the translator
+            std::vector<Diagnostic> diagnostics = compiled->diagnostics;
+            const std::vector<Diagnostic> fonts = checkFontFamilies(*compiled);
+            diagnostics.insert(diagnostics.end(), fonts.begin(), fonts.end());
+            for (const Diagnostic& diagnostic : binding->diagnostics){
+                if (diagnostic.code == codes::LuaScriptError)
+                    diagnostics.push_back(diagnostic);
+            }
+            binding->diagnostics = std::move(diagnostics);
+        }
         binding->compiled = compiled;
         binding->translatorHandle = registerBinding(binding);
     }

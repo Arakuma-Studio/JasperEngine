@@ -4,6 +4,7 @@
 #include "RmlKeyMap.h"
 
 #include "Input.h"
+#include "subsystem/UIDocumentSystem.h"
 
 #include <cstddef>
 
@@ -229,4 +230,64 @@ void RmlKeyMap::setAppleModifiers(bool enabled){
 
 bool RmlKeyMap::isAppleModifiers(){
     return appleModifiers;
+}
+
+namespace {
+
+    struct GamepadKeyName {
+        const char* code;
+        const char* key;   // null: the code
+        int engineKey;
+    };
+
+    // in GamepadUIKey order
+    const GamepadKeyName gamepadKeyNames[] = {
+        {"GamepadDPadUp", "ArrowUp", D_KEY_UP},
+        {"GamepadDPadDown", "ArrowDown", D_KEY_DOWN},
+        {"GamepadDPadLeft", "ArrowLeft", D_KEY_LEFT},
+        {"GamepadDPadRight", "ArrowRight", D_KEY_RIGHT},
+        {"GamepadLeftThumbstickUp", "ArrowUp", D_KEY_UP},
+        {"GamepadLeftThumbstickDown", "ArrowDown", D_KEY_DOWN},
+        {"GamepadLeftThumbstickLeft", "ArrowLeft", D_KEY_LEFT},
+        {"GamepadLeftThumbstickRight", "ArrowRight", D_KEY_RIGHT},
+        {"GamepadA", "Enter", D_KEY_ENTER},
+        {"GamepadB", "Escape", D_KEY_ESCAPE},
+        {"GamepadX", nullptr, D_KEY_UNKNOWN},
+        {"GamepadY", nullptr, D_KEY_UNKNOWN},
+        {"GamepadLeftShoulder", nullptr, D_KEY_UNKNOWN},
+        {"GamepadRightShoulder", nullptr, D_KEY_UNKNOWN},
+        {"GamepadLeftTrigger", nullptr, D_KEY_UNKNOWN},
+        {"GamepadRightTrigger", nullptr, D_KEY_UNKNOWN},
+        {"GamepadView", nullptr, D_KEY_UNKNOWN},
+        {"GamepadMenu", nullptr, D_KEY_UNKNOWN},
+        {"GamepadGuide", nullptr, D_KEY_UNKNOWN},
+        {"GamepadLeftThumbstickButton", nullptr, D_KEY_UNKNOWN},
+        {"GamepadRightThumbstickButton", nullptr, D_KEY_UNKNOWN},
+    };
+
+    static_assert(sizeof(gamepadKeyNames) / sizeof(gamepadKeyNames[0]) == (size_t)GamepadUIKey::COUNT, "a name per GamepadUIKey");
+
+    const GamepadKeyName* gamepadKeyName(int gamepadKey){
+        if (gamepadKey < 0 || gamepadKey >= (int)(sizeof(gamepadKeyNames) / sizeof(gamepadKeyNames[0])))
+            return nullptr;
+        return &gamepadKeyNames[gamepadKey];
+    }
+
+}
+
+std::string RmlKeyMap::gamepadDomCode(int gamepadKey){
+    const GamepadKeyName* name = gamepadKeyName(gamepadKey);
+    return name ? name->code : "";
+}
+
+std::string RmlKeyMap::gamepadDomKey(int gamepadKey){
+    const GamepadKeyName* name = gamepadKeyName(gamepadKey);
+    if (!name)
+        return "";
+    return name->key ? name->key : name->code;
+}
+
+int RmlKeyMap::gamepadEngineKey(int gamepadKey){
+    const GamepadKeyName* name = gamepadKeyName(gamepadKey);
+    return name ? name->engineKey : D_KEY_UNKNOWN;
 }

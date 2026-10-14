@@ -1,0 +1,92 @@
+{
+ "fixture": "paint/replaced-radius.html",
+ "viewport": [
+  580,
+  220
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "plain",
+    "tag": "img",
+    "x": 10,
+    "y": 10,
+    "w": 80,
+    "h": 80
+   },
+   {
+    "id": "padded",
+    "tag": "img",
+    "x": 110,
+    "y": 10,
+    "w": 112,
+    "h": 112
+   },
+   {
+    "id": "circle",
+    "tag": "img",
+    "x": 230,
+    "y": 10,
+    "w": 80,
+    "h": 80
+   },
+   {
+    "id": "none",
+    "tag": "img",
+    "x": 330,
+    "y": 10,
+    "w": 80,
+    "h": 80
+   },
+   {
+    "id": "elliptic",
+    "tag": "img",
+    "x": 430,
+    "y": 10,
+    "w": 120,
+    "h": 80
+   },
+   {
+    "id": "contain",
+    "tag": "img",
+    "x": 10,
+    "y": 130,
+    "w": 120,
+    "h": 60
+   },
+   {
+    "id": "svg-file",
+    "tag": "img",
+    "x": 150,
+    "y": 120,
+    "w": 80,
+    "h": 80
+   },
+   {
+    "id": "svg-inline",
+    "tag": "svg",
+    "x": 250,
+    "y": 120,
+    "w": 80,
+    "h": 80
+   },
+   {
+    "id": "svg-padded",
+    "tag": "svg",
+    "x": 350,
+    "y": 120,
+    "w": 100,
+    "h": 100
+   },
+   {
+    "id": "small-radius",
+    "tag": "img",
+    "x": 470,
+    "y": 120,
+    "w": 100,
+    "h": 100
+   }
+  ]
+ }
+}

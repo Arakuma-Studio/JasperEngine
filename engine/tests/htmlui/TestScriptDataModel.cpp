@@ -206,6 +206,84 @@ TEST_F(ScriptDataModelTest, CreateAfterLoadReloadsTheDocument){
     EXPECT_EQ(documentSystem(scene()).getDataModelNames(document->getEntity()), (std::vector<std::string>{"shop", "unused"}));
 }
 
+// A late createDataModel reloads the document to bind it (above). The form values a reload keeps
+// for elements with an id are not restored into bound controls: the model holds their values, and
+// the old elements' defaults (a range at its minimum, an unchecked box, the first option) written
+// back would have replaced the model's (found by phase 4's settings example).
+TEST_F(ScriptDataModelTest, CreateAfterLoadKeepsTheModelValuesOfBoundControls){
+    ASSERT_TRUE(document->load("p4/bound_controls.html"));
+    update();
+    EXPECT_LUA(R"(
+        doc:getElementById("free").value = "kept"
+        model = doc:createDataModel("form", { volume = 70, music = true, quality = "high", name = "Ada" })
+        assert(model.volume == 70, tostring(model.volume))
+        assert(model.music == true, tostring(model.music))
+        assert(model.quality == "high", tostring(model.quality))
+        assert(model.name == "Ada", tostring(model.name))
+    )");
+    update();
+    update();
+    EXPECT_LUA(R"(
+        assert(model.volume == 70 and model.music == true and model.quality == "high" and model.name == "Ada")
+        assert(tonumber(doc:getElementById("volume").value) == 70, doc:getElementById("volume").value)
+        assert(doc:getElementById("music").checked == true)
+        assert(doc:getElementById("quality").value == "high", doc:getElementById("quality").value)
+        assert(doc:getElementById("name").value == "Ada", doc:getElementById("name").value)
+        -- an unbound control with an id keeps its value across the reload, as before
+        assert(doc:getElementById("free").value == "kept", doc:getElementById("free").value)
+    )");
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+}
+
+// p4-gaps (P4-G9): data-attr-<boolean attribute> with false removes the attribute (HTML: present
+// or absent; disabled="false" disabled the button), true sets it; data-attrif-* works as before
+TEST_F(ScriptDataModelTest, BooleanAttributesFollowTheModel){
+    EXPECT_LUA(R"(
+        model = doc:createDataModel("shop", { gold = 3, price = 5, bought = 0, owned = false, locked = false, label = "Note" })
+    )");
+    ASSERT_TRUE(document->load("p4/boolean_attributes.html"));
+    update();
+    update();
+    EXPECT_LUA(R"(
+        local buy, buyIf = doc:getElementById("buy"), doc:getElementById("buy-if")
+        assert(buy:hasAttribute("disabled") and buy:getAttribute("disabled") == "", tostring(buy:getAttribute("disabled")))
+        assert(buyIf:hasAttribute("disabled"))
+        assert(not doc:getElementById("owned"):hasAttribute("checked"))
+        assert(not doc:getElementById("owned").checked)
+        local note = doc:getElementById("note")
+        assert(not note:hasAttribute("readonly"))
+        assert(note:hasAttribute("required"))
+        assert(note:getAttribute("placeholder") == "Note")
+        assert(doc:getElementById("hint"):hasAttribute("hidden"))
+        assert(doc:getElementById("hint").offsetHeight == 0)
+        model.gold = 9
+        model.owned = true
+        model.locked = true
+    )");
+    update();
+    EXPECT_LUA(R"(
+        local buy = doc:getElementById("buy")
+        assert(not buy:hasAttribute("disabled"), tostring(buy:getAttribute("disabled")))
+        assert(not doc:getElementById("buy-if"):hasAttribute("disabled"))
+        assert(doc:getElementById("owned"):hasAttribute("checked"))
+        local note = doc:getElementById("note")
+        assert(note:hasAttribute("readonly") and not note:hasAttribute("required"))
+        assert(not doc:getElementById("hint"):hasAttribute("hidden"))
+        assert(doc:getElementById("hint").offsetHeight > 0)
+    )");
+    // the enabled button takes the click
+    document->getElementById("buy").click();
+    update();
+    EXPECT_LUA("assert(model.bought == 1, tostring(model.bought))");
+    EXPECT_LUA("model.gold = 1");
+    update();
+    EXPECT_LUA(R"(assert(doc:getElementById("buy"):hasAttribute("disabled")))");
+    document->getElementById("buy").click();
+    update();
+    EXPECT_LUA("assert(model.bought == 1, tostring(model.bought))");
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+}
+
 TEST_F(ScriptDataModelTest, CppApi){
     UIValue initial = UIValue::object();
     initial["gold"] = 10;

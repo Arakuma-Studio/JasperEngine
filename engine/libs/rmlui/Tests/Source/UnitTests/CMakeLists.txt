@@ -85,6 +85,8 @@ add_executable(${TARGET_NAME}
 	PositionFixed.cpp
 	PositionSticky.cpp
 	PluginDataModel.cpp
+	PointerPassThrough.cpp
+	TransformStates.cpp
 	Position.cpp
 )
 

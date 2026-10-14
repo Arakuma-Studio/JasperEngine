@@ -18,10 +18,9 @@
 #include "TemplateCache.h"
 #include "XMLParseTools.h"
 #include <limits.h>
+#include <limits>
 
 namespace Rml {
-
-enum class NavigationSearchDirection { Up, Down, Left, Right };
 
 namespace {
 	constexpr int Infinite = INT_MAX;
@@ -117,6 +116,92 @@ namespace {
 			}
 
 			SearchNavigationTarget(best_result, child, direction, bounding_box, exclude_element);
+		}
+	}
+
+	// Spatial navigation of FindNavigationTarget (gamepads): the CSS Spatial Navigation distance between the element
+	// navigated from and a candidate in the direction; false when the candidate is not in that direction.
+	bool GetSpatialNavigationDistance(const Rectanglef& from, const Rectanglef& to, NavigationSearchDirection direction, float& out_distance)
+	{
+		const bool horizontal = (direction == NavigationSearchDirection::Left || direction == NavigationSearchDirection::Right);
+		const bool forward = (direction == NavigationSearchDirection::Right || direction == NavigationSearchDirection::Down);
+		const int axis = horizontal ? 0 : 1;
+		const int cross = horizontal ? 1 : 0;
+
+		// in the direction: it ends beyond the source and starts at most halfway into the smaller of the two (so
+		// boxes that overlap a little, through negative margins or rounding, still follow each other)
+		const float tolerance = 0.5f * Math::Min(from.Size()[axis], to.Size()[axis]);
+		float main = 0.f;
+		if (forward)
+		{
+			if (to.p1[axis] <= from.p1[axis] || to.p0[axis] < from.p1[axis] - tolerance)
+				return false;
+			main = Math::Max(0.f, to.p0[axis] - from.p1[axis]);
+		}
+		else
+		{
+			if (to.p0[axis] >= from.p0[axis] || to.p1[axis] > from.p0[axis] + tolerance)
+				return false;
+			main = Math::Max(0.f, from.p0[axis] - to.p1[axis]);
+		}
+
+		const float gap = Math::Max(0.f, Math::Max(to.p0[cross] - from.p1[cross], from.p0[cross] - to.p1[cross]));
+		const float overlap = Math::Max(0.f, Math::Min(from.p1[cross], to.p1[cross]) - Math::Max(from.p0[cross], to.p0[cross]));
+
+		// Chromium's weights: a sideways step must stay in its row, a vertical one may drift across columns (a label on
+		// the left, its control on the right)
+		const float cross_axis_weight = horizontal ? 30.f : 2.f;
+		out_distance = Math::SquareRoot(main * main + gap * gap) + main + cross_axis_weight * gap - Math::SquareRoot(overlap);
+		return true;
+	}
+
+	struct SpatialNavigationResult {
+		Element* element = nullptr;
+		float distance = 0.f;
+	};
+
+	Rectanglef GetBorderRectangle(Element* element)
+	{
+		return Rectanglef::FromPositionSize(element->GetAbsoluteOffset(BoxArea::Border), element->GetBox().GetSize(BoxArea::Border));
+	}
+
+	// The descendants of element that minimize the distance. Unlike SearchNavigationTarget, it goes into scroll
+	// containers; a candidate must intersect visible_area, which each scroll container entered narrows to its padding box.
+	void SearchSpatialNavigationTarget(SpatialNavigationResult& best_result, Element* element, NavigationSearchDirection direction,
+		const Rectanglef& from, Element* exclude_element, const Rectanglef& visible_area)
+	{
+		const int num_children = element->GetNumChildren();
+		for (int child_index = 0; child_index < num_children; child_index++)
+		{
+			Element* child = element->GetChild(child_index);
+			if (child == exclude_element)
+				continue;
+
+			const CanFocus can_focus = CanFocusElement(child);
+			if (can_focus == CanFocus::NoAndNoChildren)
+				continue;
+
+			if (can_focus == CanFocus::Yes)
+			{
+				const Rectanglef target_box = GetBorderRectangle(child);
+				float distance = 0.f;
+				if (target_box.Intersects(visible_area) && GetSpatialNavigationDistance(from, target_box, direction, distance) &&
+					(!best_result.element || distance < best_result.distance))
+				{
+					best_result.element = child;
+					best_result.distance = distance;
+				}
+			}
+
+			Rectanglef child_area = visible_area;
+			if (IsScrollContainer(child))
+			{
+				const Rectanglef padding_box =
+					Rectanglef::FromPositionSize(child->GetAbsoluteOffset(BoxArea::Padding), child->GetBox().GetSize(BoxArea::Padding));
+				child_area = child_area.Intersect(padding_box);
+			}
+
+			SearchSpatialNavigationTarget(best_result, child, direction, from, exclude_element, child_area);
 		}
 	}
 
@@ -865,6 +950,51 @@ Element* ElementDocument::FindNextNavigationElement(Element* current_element, Na
 	default: break;
 	}
 	return nullptr;
+}
+
+Element* ElementDocument::FindNavigationTarget(Element* current_element, NavigationSearchDirection direction)
+{
+	if (!current_element || current_element->GetOwnerDocument() != this)
+		return nullptr;
+
+	PropertyId property_id = PropertyId::NavUp;
+	switch (direction)
+	{
+	case NavigationSearchDirection::Up: property_id = PropertyId::NavUp; break;
+	case NavigationSearchDirection::Down: property_id = PropertyId::NavDown; break;
+	case NavigationSearchDirection::Left: property_id = PropertyId::NavLeft; break;
+	case NavigationSearchDirection::Right: property_id = PropertyId::NavRight; break;
+	}
+
+	// a declared nav-* property decides, as for the arrow keys
+	if (const Property* nav_property = current_element->GetLocalProperty(property_id))
+		return FindNextNavigationElement(current_element, direction, *nav_property);
+
+	if (current_element == this)
+		return FindNextTabElement(this, direction == NavigationSearchDirection::Down || direction == NavigationSearchDirection::Right);
+
+	// positions of this frame, also after a change since the last update
+	UpdateDocument();
+
+	const Rectanglef from = GetBorderRectangle(current_element);
+	const float infinity = std::numeric_limits<float>::max();
+	const Rectanglef everywhere = Rectanglef::FromCorners(Vector2f(-infinity), Vector2f(infinity));
+
+	// first inside the nearest scroll container: a list scrolls to its next item before the focus leaves it
+	for (Element* ancestor = current_element->GetParentNode(); ancestor && ancestor != this; ancestor = ancestor->GetParentNode())
+	{
+		if (!IsScrollContainer(ancestor))
+			continue;
+		SpatialNavigationResult result;
+		SearchSpatialNavigationTarget(result, ancestor, direction, from, current_element, everywhere);
+		if (result.element)
+			return result.element;
+		break;
+	}
+
+	SpatialNavigationResult result;
+	SearchSpatialNavigationTarget(result, this, direction, from, current_element, everywhere);
+	return result.element;
 }
 
 } // namespace Rml

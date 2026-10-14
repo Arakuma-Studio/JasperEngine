@@ -229,8 +229,8 @@ namespace {
         {codes::NotImported, E, false, "not-imported", "Remote resource not imported",
          "The document references a remote URL that has no entry in the project's import manifest "
          "(assets/htmlui-imports/manifest.json); a fallback is used. The editor imports it when it loads the document "
-         "(Editor Settings > HTML UI > Import Remote Resources), and so does jasperengine-editor import-ui; the runtime "
-         "never downloads."},
+         "(Editor Settings > HTML UI > Import Remote Resources), and so do jasperengine-editor import-ui and MCP import_files "
+         "from_document; the runtime never downloads."},
         {codes::DownloadFailed, E, false, "download-failed", "Download failed",
          "The editor could not download a remote resource (network error, HTTP error, timeout, unknown Google Fonts family)."},
         {codes::UnsupportedContent, W, false, "unsupported-content", "Unsupported content",
@@ -246,7 +246,8 @@ namespace {
         {codes::LicenseNote, I, false, "license-note", "License note",
          "The license of an imported resource was recorded, or it is unknown and must be verified before shipping."},
         {codes::ManifestFileMissing, W, false, "manifest-file-missing", "Manifest file missing",
-         "An import manifest entry points to a file that does not exist; re-import the resource."},
+         "An import manifest entry points to a file that does not exist; re-import the resource (load the document in the "
+         "editor, jasperengine-editor import-ui, or MCP import_files from_document)."},
 
         // ---- SVG
         {codes::SvgRecolor, I, false, "svg-recolor", "SVG recolored",

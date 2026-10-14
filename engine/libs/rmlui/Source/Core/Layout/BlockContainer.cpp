@@ -75,8 +75,8 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	}
 
 	// 'align-content' (CSS Box Alignment 3 §5.1, block containers; it makes us the root of a block formatting context): the
-	// content moves as one in the free space.
-	if (root_space && element->GetComputedValues().align_content() != Style::AlignContent::Normal)
+	// content moves as one in the free space. A button centers it (fork, P4-G2).
+	if (root_space && (element->GetComputedValues().align_content() != Style::AlignContent::Normal || element->HasButtonLayout()))
 		AlignContent();
 
 	// The margins below our border bottom, for our parent. An empty box (no in-flow content, no height, no vertical padding or
@@ -147,6 +147,12 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 			const float bottom_position =
 				position.y + box.GetSizeAcross(BoxDirection::Vertical, BoxArea::Border) + box.GetEdge(BoxArea::Margin, BoxEdge::Bottom);
 			element_baseline = bottom_position - baseline;
+		}
+		// A button without a line has its baseline at its content box's bottom (Chromium; fork, P4-G2).
+		else if (element->HasButtonLayout())
+		{
+			element_baseline = box.GetEdge(BoxArea::Margin, BoxEdge::Bottom) + box.GetEdge(BoxArea::Border, BoxEdge::Bottom) +
+				box.GetEdge(BoxArea::Padding, BoxEdge::Bottom);
 		}
 	}
 
@@ -672,9 +678,12 @@ void BlockContainer::AlignContent()
 	content_height = Math::Max(content_height, space->GetDimensions(FloatedBoxEdge::Margin).y - (position.y + box.GetPosition().y));
 	const float free_space = box.GetSize().y - element->GetElementScroll()->GetScrollbarSize(ElementScroll::HORIZONTAL) - content_height;
 
-	// A single alignment subject: the distributed values fall back to their 'safe' positional value.
+	// A single alignment subject: the distributed values fall back to their 'safe' positional value. A button's content is
+	// centered, safely, whatever its 'align-content' (Chromium's anonymous button content box has auto vertical margins).
+	const bool button = element->HasButtonLayout();
+	const AlignContent align_content = (button ? AlignContent::Center : computed.align_content());
 	float offset = 0.f;
-	switch (computed.align_content())
+	switch (align_content)
 	{
 	case AlignContent::Center:
 	case AlignContent::SpaceAround:
@@ -683,12 +692,14 @@ void BlockContainer::AlignContent()
 	case AlignContent::FlexEnd: offset = free_space; break;
 	default: break;
 	}
-	const bool distributed = (computed.align_content() == AlignContent::SpaceAround || computed.align_content() == AlignContent::SpaceEvenly);
-	if (free_space < 0.f && (distributed || computed.align_content_overflow() == Style::OverflowAlignment::Safe))
+	const bool distributed = (align_content == AlignContent::SpaceAround || align_content == AlignContent::SpaceEvenly);
+	if (free_space < 0.f && (button || distributed || computed.align_content_overflow() == Style::OverflowAlignment::Safe))
 		offset = 0.f;
 	if (offset == 0.f)
 		return;
 
+	// The baselines of our lines move with them.
+	content_alignment_offset = offset;
 	LayoutDetails::ShiftContentOffsets(element, offset);
 	for (ContainerBox* container = this; container; container = container->GetParent())
 		container->ShiftStaticPositions(element, Vector2f(0.f, offset));
@@ -735,6 +746,7 @@ void BlockContainer::ResetContents()
 	queued_float_elements.clear();
 
 	box_cursor = 0;
+	content_alignment_offset = 0;
 	trailing_after_clearance = false;
 	trailing_margin_set = CollapsibleMarginSet();
 	adjoining_floats = false;
@@ -869,6 +881,7 @@ bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 	{
 		if (GetChildBaseline(*child_box, false, out_baseline))
 		{
+			out_baseline += content_alignment_offset;
 			// The baseline of a scroll container stays within its border box (CSS Box Alignment 3 §9.1).
 			if (IsScrollContainer())
 				out_baseline = Math::Clamp(out_baseline, position.y, position.y + box.GetSize(BoxArea::Border).y);
@@ -884,7 +897,10 @@ bool BlockContainer::GetBaselineOfLastLine(float& out_baseline) const
 	for (int i = (int)child_boxes.size() - 1; i >= 0; i--)
 	{
 		if (GetChildBaseline(*child_boxes[i], true, out_baseline))
+		{
+			out_baseline += content_alignment_offset;
 			return true;
+		}
 	}
 
 	return false;

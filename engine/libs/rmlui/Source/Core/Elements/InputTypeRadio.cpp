@@ -71,7 +71,10 @@ bool InputTypeRadio::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
 
 void InputTypeRadio::PopRadioSet()
 {
-	// Uncheck all other radio buttons with our name in the form.
+	// Uncheck all other radio buttons with our name in the form. A radio without a name is in no group (HTML; fork, P4-G13).
+	if (element->GetName().empty())
+		return;
+
 	String stop_tag;
 	Element* parent = element->GetParentNode();
 	while (parent != nullptr && rmlui_dynamic_cast<ElementForm*>(parent) == nullptr)

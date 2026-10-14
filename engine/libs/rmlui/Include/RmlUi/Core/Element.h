@@ -158,6 +158,24 @@ public:
 	/// Returns true if the element is replaced, thereby handling its own rendering.
 	/// @return True if the element is a replaced element.
 	bool IsReplaced();
+	/// Fork (P4-G2): true for an element laid out as an HTML button (Chromium's anonymous button content box): as a block
+	/// container it is the root of a block formatting context and its content is centered vertically in its content box as one
+	/// block, 'safe' (content taller than the box starts at its top), whatever 'align-content' says. A button laid out as a flex
+	/// or grid container is laid out as any other.
+	virtual bool HasButtonLayout() const;
+	/// Fork (P4-G5): whether the element's ::before and ::after boxes are generated and laid out. By default an element that
+	/// is not replaced has them and a replaced one (an image, a text field, a select) does not; a form control overrides it
+	/// as Chromium decides: checkbox, radio and range inputs have them (laid out in their content box), text and button
+	/// inputs do not.
+	virtual bool HasGeneratedContentBoxes();
+	/// Fork (P4-G12): true when the element is drawn with its native (themed) look, CSS 'appearance' other than 'none'. RmlUi
+	/// has no 'appearance': false by default; an embedder's form controls answer it. A themed button computes 'display' as
+	/// Chromium's theme adjusts it; a themed checkbox or radio has a themed box (HasThemedBox).
+	virtual bool HasNativeAppearance() const;
+	/// Fork (P4-G12): the element's box is drawn by its theme, as Chromium draws a checkbox or a radio: its border, padding
+	/// and border radius compute to 0 and its background (colour, image layers, decorators) is not painted; the theme draws
+	/// in the element's own parts. False by default; checkbox and radio inputs with their native appearance.
+	virtual bool HasThemedBox() const;
 
 	/// Checks if a given point in screen coordinates lies within the bordered area of this element.
 	/// @param[in] point The point to test.
@@ -599,6 +617,10 @@ public:
 	Element* GetClosestScrollableContainer();
 	/// Returns the element's transform state.
 	const TransformState* GetTransformState() const noexcept;
+	/// Recomputes the transform state (CSS transforms and perspective) of this element and its descendants from
+	/// the current layout, as rendering does for each element it draws. For tools that read transformed boxes
+	/// between a layout and the next render (fork, phase 4: P4-6).
+	void UpdateTransformStates();
 	/// Returns the data model of this element.
 	DataModel* GetDataModel() const;
 	//@}

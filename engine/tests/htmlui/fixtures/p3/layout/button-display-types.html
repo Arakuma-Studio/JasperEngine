@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>layout: buttons with table and list-item display types</title>
+<style>
+  html, body { margin: 0; background: #ffffff; }
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  button, input { margin: 0; font-family: "Ahem"; font-size: 10px; line-height: 1; color: #223344; }
+  .n { appearance: none; }
+  .line { position: absolute; width: 150px; background: #f4f4f4; }
+  #l1 { left: 10px; top: 10px; }
+  #l2 { left: 170px; top: 10px; }
+</style>
+</head>
+<body><div class="line" id="l1">XX<button id="a1" style="display: table">XX</button>XX<button id="a2" style="display: list-item">XX</button>XX<button id="a3" style="display: table-cell">XX</button><input type="button" id="a4" style="display: table-row" value="XX">XX<button id="a5" style="display: inline-table">XX</button>XX</div><div class="line" id="l2">XX<button class="n" id="n1" style="display: table">XX</button>XX<button class="n" id="n2" style="display: list-item; list-style-position: inside">XX</button>XX<button class="n" id="n3" style="display: table-cell">XX</button><input type="button" class="n" id="n4" style="display: table-row" value="XX">XX<button class="n" id="n5" style="display: inline-table">XX</button>XX</div></body>
+</html>

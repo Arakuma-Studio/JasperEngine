@@ -1,0 +1,4 @@
+{
+ "comment": "a select taller than one line centers its value in its content box (Chromium's menu list) and its arrow in its padding box, with author padding, min-height, a larger font, a border; its baseline is the centered line's. Ahem labels.",
+ "viewport": [510, 140]
+}

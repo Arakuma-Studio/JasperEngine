@@ -5,6 +5,7 @@
 
 #include "htmlui/compat/runtime/HtmlInputElement.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementForm.h>
@@ -13,6 +14,10 @@
 #include <RmlUi/Core/Event.h>
 #include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/ObserverPtr.h>
+#include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/PropertyDefinition.h>
+#include <RmlUi/Core/StringUtilities.h>
+#include <RmlUi/Core/StyleSheetSpecification.h>
 
 #include <algorithm>
 #include <cctype>
@@ -93,6 +98,60 @@ std::string forms::lowerAttribute(Rml::Element* element, const char* name, const
 
 bool forms::isDisabled(Rml::Element* element){
     return element && element->HasAttribute("disabled");
+}
+
+bool forms::hasNativeAppearance(const Rml::Element* element){
+    if (!element)
+        return false;
+    const Rml::Property* appearance = const_cast<Rml::Element*>(element)->GetProperty("--html-appearance");
+    return !appearance || Rml::StringUtilities::StripWhitespace(appearance->Get<Rml::String>()) != "none";
+}
+
+bool forms::themedComputedValue(Rml::Element* element, Rml::PropertyId id, std::string& text){
+    using Rml::PropertyId;
+    if (!element)
+        return false;
+    if (id == PropertyId::Display && element->HasButtonLayout()){
+        // with the look Chromium's theme computes it; without, the declared value stays (laid out as the fork computes)
+        if (!element->HasNativeAppearance())
+            return false;
+        using Rml::Style::Display;
+        switch (element->GetComputedValues().display()){
+            case Display::Block: text = "block"; return true;
+            case Display::InlineBlock: text = "inline-block"; return true;
+            default: return false;   // as declared (flex, grid, flow-root, ...)
+        }
+    }
+    if (!element->HasThemedBox())
+        return false;
+    switch (id){
+        case PropertyId::BorderTopWidth:
+        case PropertyId::BorderRightWidth:
+        case PropertyId::BorderBottomWidth:
+        case PropertyId::BorderLeftWidth:
+        case PropertyId::PaddingTop:
+        case PropertyId::PaddingRight:
+        case PropertyId::PaddingBottom:
+        case PropertyId::PaddingLeft:
+        case PropertyId::RmlUi_BorderTopLeftRadiusX:
+        case PropertyId::RmlUi_BorderTopLeftRadiusY:
+        case PropertyId::RmlUi_BorderTopRightRadiusX:
+        case PropertyId::RmlUi_BorderTopRightRadiusY:
+        case PropertyId::RmlUi_BorderBottomRightRadiusX:
+        case PropertyId::RmlUi_BorderBottomRightRadiusY:
+        case PropertyId::RmlUi_BorderBottomLeftRadiusX:
+        case PropertyId::RmlUi_BorderBottomLeftRadiusY:
+            text = "0px";
+            return true;
+        case PropertyId::BorderTopStyle:
+        case PropertyId::BorderRightStyle:
+        case PropertyId::BorderBottomStyle:
+        case PropertyId::BorderLeftStyle:
+            text = "none";
+            return true;
+        default:
+            return false;
+    }
 }
 
 Rml::ElementForm* forms::formOf(Rml::Element* control){

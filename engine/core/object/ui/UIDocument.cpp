@@ -110,7 +110,11 @@ int UIDocument::getSortOrder() const{
 
 UIElement UIDocument::getElementById(const std::string& id) const{
     loadedDocument(scene, entity);
-    return scene->getSystem<UIDocumentSystem>()->getElementById(entity, id);
+    UIElement element = scene->getSystem<UIDocumentSystem>()->getElementById(entity, id);
+    // the rows of a data-for come before their template; a template without rows is no element
+    if (UIElementAccess::isDataForTemplate(UIElementAccess::get(element)))
+        return UIElement();
+    return element;
 }
 
 UIElement UIDocument::getBody() const{
@@ -128,7 +132,21 @@ UIElement UIDocument::querySelector(const std::string& selector) const{
         return UIElement();
     // HTML documents: CSS names (body, template, :focus, ...) -> RML (p2-html, hook H5)
     const bool compat = htmlui::compat::LuaHooks::isCompat(document);
-    return UIElementAccess::wrap(document->QuerySelector(compat ? htmlui::compat::LuaHooks::selector(selector) : selector));
+    const std::string rewritten = compat ? htmlui::compat::LuaHooks::selector(selector) : selector;
+    Rml::Element* found = document->QuerySelector(rewritten);
+    // past a data-for template: the first match that is not one
+    if (UIElementAccess::isDataForTemplate(found)){
+        Rml::ElementList elements;
+        document->QuerySelectorAll(elements, rewritten);
+        found = nullptr;
+        for (Rml::Element* candidate : elements){
+            if (!UIElementAccess::isDataForTemplate(candidate)){
+                found = candidate;
+                break;
+            }
+        }
+    }
+    return UIElementAccess::wrap(found);
 }
 
 std::vector<UIElement> UIDocument::querySelectorAll(const std::string& selector) const{
@@ -141,7 +159,8 @@ std::vector<UIElement> UIDocument::querySelectorAll(const std::string& selector)
     document->QuerySelectorAll(elements, compat ? htmlui::compat::LuaHooks::selector(selector) : selector);
     result.reserve(elements.size());
     for (Rml::Element* element : elements){
-        result.push_back(UIElementAccess::wrap(element));
+        if (!UIElementAccess::isDataForTemplate(element))
+            result.push_back(UIElementAccess::wrap(element));
     }
     return result;
 }

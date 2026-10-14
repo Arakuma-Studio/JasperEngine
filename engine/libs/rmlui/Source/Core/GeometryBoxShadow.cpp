@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/MeshUtilities.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/RenderManager.h"
+#include "ElementBackgroundBorder.h"
 #include "ElementStyle.h"
 #include "GeometryBorderStyles.h"
 #include "PropertyParserColour.h"
@@ -123,6 +124,8 @@ BoxShadowGeometryInfo GeometryBoxShadow::Resolve(Element* element, ColourbPremul
 	geometry_info.border_render_boxes = std::move(border_render_boxes);
 	geometry_info.shadow_list = std::move(shadow_list);
 	geometry_info.opacity = opacity;
+	geometry_info.feathering = GetGeometryFeathering();
+	geometry_info.feather_unit = ElementBackgroundBorder::GetFeatherUnit(element);
 	return geometry_info;
 }
 
@@ -139,8 +142,8 @@ void GeometryBoxShadow::GenerateTexture(CallbackTexture& out_shadow_texture, Geo
 	{
 		const RenderBox background_box =
 			GeometryBorderStyles::BackgroundRenderBox(info.border_render_boxes[i], info.padding_render_boxes[i], info.border_colors.data());
-		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, info.background_color, no_border);
-		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], transparent, info.border_colors.data());
+		MeshUtilities::GenerateBackgroundBorder(mesh, background_box, info.background_color, no_border, info.feather_unit);
+		MeshUtilities::GenerateBackgroundBorder(mesh, info.padding_render_boxes[i], transparent, info.border_colors.data(), info.feather_unit);
 	}
 	out_background_border_geometry = render_manager.MakeGeometry(std::move(mesh));
 

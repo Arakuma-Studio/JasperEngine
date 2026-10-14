@@ -17,6 +17,8 @@ protected:
 	void SanitizeValue(String& value) override;
 	/// Called when the user pressed enter.
 	void LineBreak() override;
+	/// Fork (P4-G3): the line is centered in the content box.
+	float GetTextOffsetTop() const override;
 };
 
 } // namespace Rml

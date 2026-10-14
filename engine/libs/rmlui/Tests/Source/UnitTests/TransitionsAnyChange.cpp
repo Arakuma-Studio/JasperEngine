@@ -139,6 +139,23 @@ TEST_CASE("TransitionsAnyChange.var_and_inherited")
 	CHECK(f.b->GetComputedValues().color() == Colourb(255, 0, 0));
 }
 
+// Longhands holding var() are resolved into the style's one returned-property storage: the transition list kept the items
+// of every longhand it read while the next one was resolved (they were freed with var() in two longhands).
+TEST_CASE("TransitionsAnyChange.var_in_several_longhands")
+{
+	Fixture f(R"(
+		#parent { --what: width; --time: 1s; --ease: linear; }
+		#a { width: 10px; transition-property: var(--what); transition-duration: var(--time); transition-timing-function: var(--ease); }
+	)");
+
+	f.a->SetProperty("width", "30px");
+	f.Update();
+	f.clock.AdvanceTo(0.5);
+	CHECK(Width(f.a) == doctest::Approx(20.f));
+	f.clock.AdvanceTo(1.5);
+	CHECK(Width(f.a) == doctest::Approx(30.f));
+}
+
 TEST_CASE("TransitionsAnyChange.class_toggle_and_reversing")
 {
 	Fixture f(R"(

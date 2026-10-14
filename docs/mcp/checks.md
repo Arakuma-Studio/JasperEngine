@@ -1,12 +1,12 @@
 # Project checks: `jasperengine-editor check`
 
-The checks the MCP tools run (`check_script`, `check_shader`, `compile_scripts`) are also a CLI
-subcommand, so an agent that edits files with its own tools, a shell, a CI job or an agent hook
-gets the same findings without an editor running. Both sides call the same code
-(`editor/util/ProjectChecks.{h,cpp}`).
+The checks the MCP tools run (`check_script`, `check_shader`, `compile_scripts`, and the HTML/CSS
+UI diagnostics the automatic pick-up reports) are also a CLI subcommand, so an agent that edits
+files with its own tools, a shell, a CI job or an agent hook gets the same findings without an
+editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -15,8 +15,9 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--lua` | Every `.lua` file of the project: syntax (compiled, not run), then the script's top level run in an isolated Lua state to read its `properties`, as the editor does (see below). |
 | `--shaders` | Every shader fork: the forks the scenes, prefabs and scene settings use, and every `.vert`/`.frag` pair no scene uses yet (its type guessed from the fragment shader). Compiled with the engine's shader compiler for the editor's backend, exactly as `check_shader` does, includes resolved as the engine resolves them. |
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
-| `--all` | All three. Without `--lua/--shaders/--cpp/--all`: `--lua --shaders` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork; a `.glsl` checks every fork (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
+| `--all` | All four. Without `--lua/--shaders/--cpp/--ui/--all`: `--lua --shaders --ui` (C++ only when asked, since it builds). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork; a `.glsl` checks every fork (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -34,13 +35,16 @@ shaders/Water.frag:229: error: 'wobble' : undeclared identifier
 shaders/inc/noise.glsl:14: error: 'hash3' : no matching overloaded function found
 scripts/Spinner.cpp:31:16: error: 'undefinedThing' was not declared in this scope
 cpp: error: the C++ build failed without a file:line diagnostic (CMake configuration or linking?); last output: ...
+assets/ui/shop.css:13:8: warning: 'mix-blend-mode' is not supported; dropped (fix: use opacity, or pre-blended images) [HTMLUI-CSS-0002]
+assets/ui/shop.html:8:3: error: JavaScript is not run (the engine has no JavaScript engine) (fix: use <script type="text/lua"> with the element API (document:querySelector, addEventListener, ...)) [HTMLUI-HTML-0006]
 ```
 
 `path:line:col: severity: message`, with an unknown column or line left out (Lua and glslang give
-no column); a problem without a file starts with the tool name. Then a summary on stderr (unless
-`--quiet`): `check: 1 error, 0 warnings (lua 7 files, shaders 1 fork) in 0.22s`. Engine and compiler
-logs are discarded; when a C++ build fails without a file:line, its last 30 output lines follow on
-stderr.
+no column); a problem without a file starts with the tool name. UI findings add the fix, ` (fix:
+...)`, when there is one, then the code, ` [HTMLUI-CSS-0002]`. Then a summary on stderr (unless
+`--quiet`): `check: 1 error, 3 warnings (lua 7 files, shaders 1 fork, ui 2 files) in 0.22s`. Engine
+and compiler logs are discarded; when a C++ build fails without a file:line, its last 30 output
+lines follow on stderr.
 
 JSON (`--format json`):
 
@@ -48,20 +52,26 @@ JSON (`--format json`):
 {
  "ok": false,
  "errors": 1,
- "warnings": 0,
- "checked": {"lua": 7, "shaders": 1},
+ "warnings": 1,
+ "checked": {"lua": 7, "shaders": 1, "ui": 2},
  "findings": [
   {"tool": "lua", "path": "scripts/Enemy.lua", "line": 12, "col": 0, "severity": "error",
-   "message": "unexpected symbol near '='"}
+   "message": "unexpected symbol near '='"},
+  {"tool": "ui", "path": "assets/ui/shop.css", "line": 13, "col": 8, "severity": "warning",
+   "message": "'mix-blend-mode' is not supported; dropped", "code": "HTMLUI-CSS-0002",
+   "suggestion": "use opacity, or pre-blended images"}
  ],
  "seconds": 0.22
 }
 ```
 
-`tool` is `lua`, `shader` or `cpp`; `path` is project-relative (absolute for a file outside the
+`tool` is `lua`, `shader`, `cpp` or `ui`; `path` is project-relative (absolute for a file outside the
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
-`warning`. `checked` counts what ran: Lua files, shader forks, C++ scripts.
+`warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
+when there is a fix, `suggestion`; the other tools' findings have exactly the six keys above.
+`checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
+stylesheets checked on their own).
 
 Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (bad option, no
 `project.yaml`, the project fails to load).
@@ -92,6 +102,42 @@ anything:
 So the CLI and `check_script` agree, and a top level that depends on real engine values (rare: it
 runs before any scene; an engine value used as a property default, say) reads them as stand-ins.
 
+## What the UI check runs
+
+The HTML/CSS check is the engine's own compatibility layer (`engine/core/htmlui/compat`), the code
+that converts a document when it loads in the editor or the game, so its findings are what the
+Console shows when the document loads, what MCP reports after an edit (`external_changes.problems`)
+and what `inspect_ui {file}` returns. It runs without the engine: no window, no RmlUi, only parsing.
+
+- **Documents**: every `.html`/`.htm` of the project's assets directory (project.yaml `assetsDir`)
+  is converted as a document: its markup, its `<style>` and linked stylesheets, their `@import`s,
+  and the existence of every image, font, SVG and Lottie file they reference (paths resolve as the
+  engine resolves them, relative to the file or, with a leading `/`, to the assets directory; a
+  path that climbs out of the assets directory is missing). A finding located in a linked
+  stylesheet is reported at that stylesheet's path, and once, however many documents link it.
+- **Stylesheets**: every `.css` no document links is checked on its own; then a declaration that
+  reads a custom property the sheet and its imports do not declare is no finding (a document's
+  style attribute or another sheet may declare it). A `.css` named with `--files` that documents
+  load is checked in their context: a variable one of them defines is no finding, a typo is.
+- **Not checked**: files in hidden or `build` directories, files outside the assets directory, and
+  the web export's page template (project.yaml `web.customHtmlShell`), which is a browser page.
+- **Severities**: errors are what breaks the UI (a missing file; a remote URL that is not imported,
+  since games load no URLs; JavaScript, `<script>` or `on*` attributes, which never run); warnings
+  are constructs dropped or drawn differently (an unsupported property, value, selector or at-rule,
+  an element the engine can't draw); notes (lossless rewrites) are not listed. Every finding has a
+  stable code (`HTMLUI-<AREA>-NNNN`) and most a fix. The documents are converted at the project's
+  canvas size (project.yaml `canvasWidth`/`canvasHeight`), as they load.
+
+What every element, attribute, property, value, selector and at-rule does in the engine is in the
+generated support matrix, `docs/mcp/guide/html-ui-support.md` (served as
+`jasper://docs/html-ui-support`). `jasperengine-editor ui-support` prints the same tables as JSON
+(`{version, editor_version, features: [{kind, name, support, note, suggestion, code?, severity?, ...}],
+diagnostics: [{code, name, severity, by_case, summary, help}]}`; `kind` is `element`, `attribute`,
+`input_type`, `property`, `value`, `function`, `unit`, `selector`, `pseudo_class`, `pseudo_element`,
+`at_rule` or `media_feature`; `support` is `native`, `rewritten`, `approximated`, `emulated`,
+`fallback`, `unsupported` or `ignored`, with the fork features of this build), and
+`tools/mcp/gen_html_ui_support.py` renders it (`--check` fails when the committed matrix is stale).
+
 ## Examples
 
 ```sh
@@ -99,7 +145,10 @@ runs before any scene; an engine value used as a property default, say) reads th
 jasperengine-editor check --project .
 
 # after editing files
-jasperengine-editor check --project . --files scripts/Enemy.lua shaders/Water.frag
+jasperengine-editor check --project . --files scripts/Enemy.lua shaders/Water.frag assets/ui/menu.html
+
+# only the HTML/CSS UI
+jasperengine-editor check --project . --ui
 
 # CI: all checks, machine-readable
 jasperengine-editor check --project . --all --format json > check.json
@@ -114,11 +163,21 @@ So each `--hook` run checks:
 
 - the files the hook input names: Claude Code's `tool_input.file_path` / `notebook_path`, the
   `*** Add File:` / `*** Update File:` / `*** Move to:` lines of a Codex `apply_patch`;
-- and every Lua, shader and C++ file of the project that changed since the previous `--hook` run,
-  whatever the tool was. The stamps (mtime, size) of those files are kept in
+- and every Lua, shader, C++, `.html`, `.htm` and `.css` file of the project that changed since the
+  previous `--hook` run, whatever the tool was. The stamps (mtime, size) of those files are kept in
   `.jasperengine/check-hook-state.json`; a change is checked once, by the first run after it. The
   first run (no state yet) checks the files changed in the last 10 minutes, not the project's
   older problems.
+
+**UI warnings are shown once.** A UI error (a missing file, JavaScript, a remote URL) is printed by
+every run that checks its file, but a UI warning (a dropped property, say) only by the run after
+the edit that introduced it: the state file remembers the warnings already shown per file
+(`"version": 2`, `"ui_reported": {"assets/ui/menu.css": ["HTMLUI-CSS-0002|'mix-blend-mode' is not
+supported; dropped", ...]}`, keyed by code and message, not line, so moving code does not show it
+again). A fixed warning drops out, so bringing it back shows it again. After shown UI warnings
+comes one last line, `(UI warnings are shown once, after the edit that introduced them;
+jasperengine-editor check --ui lists them all)`. A version-1 state file (before UI files were
+tracked) is read as before.
 
 When nothing changed, the run only lists the project's files (about 10 ms for the fixture, plus
 the process start, about 0.3 s on the test host) and exits 0 without starting the engine. Each run appends one line to `.jasperengine/check-hook.log`
@@ -130,9 +189,10 @@ checked:
 2026-10-06T09:46:46Z tool=Read files=- nothing changed exit 0 0.01s
 ```
 
-Exit codes: **2** when there are errors, with the problems on stderr (the agent sees them), **0**
-otherwise (also when nothing it checks changed), **1** when it can't run (bad stdin, no project),
-which the agent's harness shows the user only. Add `--cpp` to also build the C++ scripts when a
+Exit codes: **2** when there are errors or new UI warnings, with the problems on stderr (the agent
+sees them), **0** otherwise (also when nothing it checks changed, and when the only UI warnings were
+shown before), **1** when it can't run (bad stdin, no project), which the agent's harness shows the
+user only. The log line counts the shown UI warnings as warnings. Add `--cpp` to also build the C++ scripts when a
 C++ file changed (seconds to tens of seconds). The edit itself is never undone.
 
 ### Claude Code
@@ -211,7 +271,7 @@ This misses shell edits; `--hook` doesn't.
 ## CI
 
 ```yaml
-- name: Check scripts and shaders
+- name: Check scripts, shaders, C++ and UI
   run: jasperengine-editor check --project . --all
 ```
 

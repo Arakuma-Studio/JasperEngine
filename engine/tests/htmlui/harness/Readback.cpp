@@ -180,6 +180,11 @@ bool jasperengine::test::readTexturePixels(TextureRender& texture, int width, in
     // errors of earlier GL calls are not this readback's
     while (glGetError() != GL_NO_ERROR) {}
 
+    // Every command that renders into the texture finished first. GL makes glGetTexImage wait for
+    // them; Mesa's llvmpipe (23.2.1, the test image's) did not always: with its rasterizer threads
+    // a readback of a texture drawn and then sampled in the frame returned some 16x16 blocks of it
+    // not yet rasterized (1 in 70 renders of MsaaScissor.HtmlUIClipEdge; a second read was whole)
+    glFinish();
     pixels.resize(static_cast<size_t>(width) * height * bytesPerPixel);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glBindTexture(GL_TEXTURE_2D, handle);

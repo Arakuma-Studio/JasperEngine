@@ -7,8 +7,10 @@
 #include "Export.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
+#include <RmlUi/Core/ElementUtilities.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
 #include <RmlUi/Core/Geometry.h>
+#include <RmlUi/Core/Mesh.h>
 
 #include <memory>
 #include <string>
@@ -60,6 +62,17 @@ namespace jasperengine::htmlui::compat {
         // number inputs: the value clamped to min/max (false when nothing changed)
         bool clampToRange();
 
+        // a themed checkbox or radio: Chromium's theme as an SVG drawing of `size` (its box), in
+        // the colours of the user-agent sheet's --html-theme-fill, -stroke and -mark
+        std::string themeSvg(Rml::Vector2f size);
+        // a themed radio: Chromium's theme as the fork's circle geometry (relative to the box)
+        Rml::Mesh themeRadioMesh(Rml::Vector2f size, float featherUnit, float opacity);
+        // the theme's colours for the control's state (hover and press shades included)
+        struct ThemeColours {
+            Rml::Colourb fill, stroke, mark;   // transparent: not drawn
+        };
+        ThemeColours themeColours();
+
     protected:
         void OnAttributeChange(const Rml::ElementAttributes& changed_attributes) override;
         void OnUpdate() override;
@@ -67,6 +80,9 @@ namespace jasperengine::htmlui::compat {
         void OnResize() override;
         bool GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ratio) override;
         float GetBaseline() const override;
+        // CSS `appearance` is not none (the --html-appearance companion; the fork's P4-G12): a
+        // checkbox or radio is then drawn by its theme (renderTheme), as in Chromium
+        bool HasNativeAppearance() const override;
         void ProcessDefaultAction(Rml::Event& event) override;
 
     private:
@@ -74,6 +90,9 @@ namespace jasperengine::htmlui::compat {
         friend class Behavior;
 
         void applyType();
+        // a themed checkbox or radio: Chromium's theme drawn as an SVG over its box, in the colours
+        // of the user-agent sheet's --html-theme-fill, -stroke and -mark (themeSvg)
+        void renderTheme();
         void sanitizeNumber();
         bool implicitSubmit();
 
@@ -83,12 +102,19 @@ namespace jasperengine::htmlui::compat {
         bool defaultChecked = false;
         bool updated = false;
         bool sanitizing = false;
+        // themed checkbox and radio
+        decorators::Image themeImage;
+        std::string themeXml;
+        Rml::ReplacedContentGeometry themeGeometry;
+        Rml::Texture themeTexture;
+        Rml::Geometry themeMesh;              // a radio
+        std::string themeMeshKey;
 
         // type=image
         decorators::Image image;
         bool imageLoaded = false;
         bool imageDirty = true;
-        Rml::Geometry imageGeometry;
+        Rml::ReplacedContentGeometry imageGeometry;
         Rml::Texture imageTexture;
     };
 

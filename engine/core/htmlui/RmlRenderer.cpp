@@ -1560,6 +1560,16 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
     if (activeFramebuffer == layer)
         endPass();
 
+    // textureDimensions and destinationOffset are in document px; the layer holds target pixels.
+    // The texture is made at the target's scale, as SaveLayerAsTexture makes its texture the size
+    // of the scissor region in target pixels (a scaled canvas: the document drawn at screen
+    // resolution), and is drawn over textureDimensions document px like that one.
+    const float sx = (contextSize.x > 0) ? (float)targetSize.x / (float)contextSize.x : 1.0f;
+    const float sy = (contextSize.y > 0) ? (float)targetSize.y / (float)contextSize.y : 1.0f;
+    const Rml::Vector2i scaledDimensions(std::max(1, (int)std::ceil((float)textureDimensions.x * sx)),
+                                         std::max(1, (int)std::ceil((float)textureDimensions.y * sy)));
+    const Rml::Vector2i scaledOffset((int)std::lround((float)destinationOffset.x * sx), (int)std::lround((float)destinationOffset.y * sy));
+
     HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(textureHandle);
     LoadAction load = LoadAction::LOAD;
     if (!texture){
@@ -1567,8 +1577,8 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
         created->kind = HtmlUITexture::Kind::RENDER_TARGET;
         created->ownedTarget = std::make_unique<Framebuffer>();
         FramebufferDesc desc;
-        desc.width = textureDimensions.x;
-        desc.height = textureDimensions.y;
+        desc.width = scaledDimensions.x;
+        desc.height = scaledDimensions.y;
         desc.color = ColorFormat::RGBA;
         desc.depth = DepthStencilFormat::NONE;
         desc.sampleCount = 1;
@@ -1586,7 +1596,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
         // the first tile clears the whole texture
         load = LoadAction::CLEAR;
     }else if (texture->kind != HtmlUITexture::Kind::RENDER_TARGET || !texture->ownedTarget ||
-               texture->width != textureDimensions.x || texture->height != textureDimensions.y){
+               texture->width != scaledDimensions.x || texture->height != scaledDimensions.y){
         return 0;
     }
 
@@ -1598,7 +1608,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
     copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
     copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
     copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
-    copy.viewport = Rml::Rectanglei::FromPositionSize(destinationOffset, bounds.Size());
+    copy.viewport = Rml::Rectanglei::FromPositionSize(scaledOffset, bounds.Size());
     copy.scissor = copy.viewport;
     drawPost(*texture->ownedTarget, load, copy, postTargetState(BlendMode::NONE));
     endPass();

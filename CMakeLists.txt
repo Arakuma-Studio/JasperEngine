@@ -360,6 +360,29 @@ string(APPEND mcp_docs_header "static const McpEmbeddedDoc mcp_embedded_docs[] =
 file(WRITE "${GENERATED_DIR}/mcp_docs.h.in" "${mcp_docs_header}")
 configure_file("${GENERATED_DIR}/mcp_docs.h.in" "${GENERATED_DIR}/mcp_docs.h" COPYONLY)
 
+# HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
+# into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
+# as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
+set(HTML_UI_EXAMPLES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/docs/mcp/guide/html-ui-examples")
+file(GLOB_RECURSE HTML_UI_EXAMPLE_FILES CONFIGURE_DEPENDS "${HTML_UI_EXAMPLES_DIR}/*")
+list(SORT HTML_UI_EXAMPLE_FILES)
+set(html_ui_examples_header "// Generated from docs/mcp/guide/html-ui-examples by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(html_ui_examples_entries "")
+set(html_ui_example_index 0)
+foreach(html_ui_example IN LISTS HTML_UI_EXAMPLE_FILES)
+    file(RELATIVE_PATH html_ui_example_path "${HTML_UI_EXAMPLES_DIR}" "${html_ui_example}")
+    file(READ "${html_ui_example}" html_ui_example_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," html_ui_example_bytes "${html_ui_example_hex}")
+    string(APPEND html_ui_examples_header "static const unsigned char html_ui_example_${html_ui_example_index}[] = {${html_ui_example_bytes}0x00};\n")
+    string(APPEND html_ui_examples_entries "    { \"${html_ui_example_path}\", html_ui_example_${html_ui_example_index}, sizeof(html_ui_example_${html_ui_example_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${html_ui_example}")
+    math(EXPR html_ui_example_index "${html_ui_example_index} + 1")
+endforeach()
+string(APPEND html_ui_examples_header "\nstruct HtmlUiEmbeddedFile { const char* path; const unsigned char* data; unsigned int size; };\n")
+string(APPEND html_ui_examples_header "static const HtmlUiEmbeddedFile html_ui_embedded_files[] = {\n${html_ui_examples_entries}};\n")
+file(WRITE "${GENERATED_DIR}/html_ui_examples.h.in" "${html_ui_examples_header}")
+configure_file("${GENERATED_DIR}/html_ui_examples.h.in" "${GENERATED_DIR}/html_ui_examples.h" COPYONLY)
+
 # Generate engine API suggestions header from Lua bindings and C++ headers
 set(BINDING_DIR "${CMAKE_SOURCE_DIR}/engine/core/script/binding")
 set(ENGINE_CORE_DIR "${CMAKE_SOURCE_DIR}/engine/core")
@@ -568,6 +591,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -582,6 +606,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp

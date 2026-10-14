@@ -499,3 +499,47 @@ TEST_CASE("Layout.TextAlignLegacy")
 	document->Close();
 	TestsShell::ShutdownShell();
 }
+
+// Fork (P4-G11): a line box with nothing but empty inline boxes is a zero-height line that does not exist for baselines
+// (CSS 2.1 §9.4.2, Chromium): an inline-block whose only content is an empty span, an empty block or an empty ::before has
+// its baseline at its bottom margin edge, as an empty one; a line with text gives it its baseline.
+TEST_CASE("Layout.Baseline.ZeroHeightLines")
+{
+	const String document_rml = R"(
+<rml>
+<head>
+	<style>
+		body { width: 400px; height: 300px; margin: 0; padding: 0; font-family: LatoLatin; font-size: 16px; }
+		.ib { display: inline-block; width: 20px; height: 30px; margin-bottom: 3px; }
+		.block { display: block; height: 4px; }
+		#before::before { content: ""; }
+		#text-before::before { content: "x"; }
+	</style>
+</head>
+<body>
+	<div><div class="ib" id="empty"/><div class="ib" id="span"><span/></div><div class="ib" id="block"><div class="block"><span/></div></div><div class="ib" id="before"/><div class="ib" id="text">x</div><div class="ib" id="text-before"/><div class="ib" id="text-then-empty">x<div class="block"><span/></div></div></div>
+</body>
+</rml>
+)";
+
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	ElementDocument* document = context->LoadDocumentFromMemory(document_rml);
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+
+	// Element::GetBaseline: the baseline's height above the bottom margin edge.
+	auto baseline = [&](const char* id) { return document->GetElementById(id)->GetBaseline(); };
+	CHECK(baseline("empty") == doctest::Approx(0.f));
+	CHECK(baseline("span") == doctest::Approx(0.f));
+	CHECK(baseline("block") == doctest::Approx(0.f));
+	CHECK(baseline("before") == doctest::Approx(0.f));
+	CHECK(baseline("text") > 3.f);
+	CHECK(baseline("text-before") > 3.f);
+	// The last line that exists: the text's, above the empty block.
+	CHECK(baseline("text-then-empty") > 3.f);
+
+	document->Close();
+	TestsShell::ShutdownShell();
+}

@@ -1,0 +1,4 @@
+{
+ "comment": "border-radius trims the content of replaced elements to the content edge curve (CSS Backgrounds 3 5.3): raster and SVG-file <img>, inline <svg>, with borders and padding (the curve's radii reduced by them; a radius smaller than the padding leaves the picture square), object-fit cover, none (inside the curve) and contain (across the curve: the clip-mask path), elliptical radii. Pictures, backgrounds and borders are moderate-contrast pastels on a grey page: a curve's anti-aliased edge pixels differ from Skia's coverage by a fraction of the contrast (paint/radius-percent-circle measures it on black on white), so the strict metric judges the shape of the trimmed picture, not the rasterizer.",
+ "viewport": [580, 220]
+}
