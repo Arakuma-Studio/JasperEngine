@@ -273,7 +273,7 @@ void EffectCompat::declareEffect(const hc::Rule& rule, hc::Session& session, hc:
     EffectRegistry::get().declareProjectEffect(name, resolved.assetPath, session.files.path(file), (int)line, diags, reader);
     for (EffectDiagnostic& d : diags){
         if (d.code == hc::codes::EffectFileMissing){
-            d.message = "@effect " + name + ": no file at " + resolved.assetPath + "; dropped";
+            d.message = "@effect " + name + ": '" + *url + "' not found (no file at " + resolved.assetPath + "); dropped";
             d.line = 0;
             d.column = 0;
             sink.report(d, urlRef);
