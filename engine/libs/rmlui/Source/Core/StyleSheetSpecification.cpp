@@ -499,8 +499,6 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	RegisterProperty(PropertyId::Filter, "filter", "", false, false).AddParser("filter", "filter");
 	RegisterProperty(PropertyId::BackdropFilter, "backdrop-filter", "", false, false).AddParser("filter");
-	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers)
-	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
 
 	RegisterProperty(PropertyId::BoxShadow, "box-shadow", "none", false, false).AddParser("box_shadow");
 
@@ -774,6 +772,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
+
+	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers); after the
+	// reservation, so its id is past the defined ones
+	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
 
 	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
 	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");
