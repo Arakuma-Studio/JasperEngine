@@ -66,29 +66,6 @@ vec4 fam_from_space(vec4 c, float space){
     return vec4(jfx_from_space(c.rgb, space), c.a);
 }
 
-// FAM_DECLARE_PALETTE_IN_SPACE(<member>), after the params block (as JFX_DECLARE_PALETTE):
-// vec4 fam_palette_in_space_<member>(t, space), colorStops.ts gradientStopsInSpace: the palette at
-// t (clamped) accumulated in the working space, segment by segment, without the closing
-// back-conversion (fam_from_space). Returns (working-space colour, alpha).
-#define FAM_DECLARE_PALETTE_IN_SPACE(member) \
-    vec4 fam_palette_in_space_##member(float t, float space){ \
-        float clampedT = clamp(t, 0.0, 1.0); \
-        int n = int(clamp(params.member##Count, 1.0, 8.0) + 0.5); \
-        vec4 running = fam_to_space(params.member[0], space); \
-        float posA = params.member##Stops[0].x; \
-        for (int i = 1; i < 8; i++){ \
-            if (i >= n) \
-                break; \
-            vec4 four = params.member##Stops[i / 4]; \
-            int k = i - (i / 4) * 4; \
-            float posB = k == 0 ? four.x : (k == 1 ? four.y : (k == 2 ? four.z : four.w)); \
-            float seg = clamp((clampedT - posA) / max(posB - posA, 1e-6), 0.0, 1.0); \
-            running = fam_mix_in_space(running, fam_to_space(params.member[i], space), seg); \
-            posA = posB; \
-        } \
-        return running; \
-    }
-
 // ---- gradient parameter edge modes and repeats (gradientPaints.ts)
 
 // gradientEdgeMirror: reflect at the ends (WGSL mod of a positive value)

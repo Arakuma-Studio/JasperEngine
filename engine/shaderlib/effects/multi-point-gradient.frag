@@ -68,6 +68,14 @@ vec4 jfx_paint(JfxContext c){
     float acc4 = acc3 + wD;
     float t4 = wE / (acc4 + wE);
     float space = params.colorSpace;
+    // the linear space on a branch of its own, the same mixes without the colour-space
+    // conversions (software rasterisers evaluate every space of jfx_mix_colors otherwise)
+    if (space < 0.5){
+        vec4 lin = fam_mix_in_space(params.colorA, params.colorB, t1);
+        lin = fam_mix_in_space(lin, params.colorC, t2);
+        lin = fam_mix_in_space(lin, params.colorD, t3);
+        return fam_mix_in_space(lin, params.colorE, t4);
+    }
     vec4 acc = jfx_mix_colors(params.colorA, params.colorB, t1, space);
     acc = jfx_mix_colors(acc, params.colorC, t2, space);
     acc = jfx_mix_colors(acc, params.colorD, t3, space);

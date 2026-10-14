@@ -52,7 +52,19 @@ uniform u_fs_effectParams {
     float colorSpeed;
 } params;
 
-FAM_DECLARE_PALETTE_IN_SPACE(colors)
+// colorStops.ts gradientStopsInSpace over stops already in the working space (the kit converts
+// them once per frame on the CPU, convertedColorsArray; here once per fragment)
+vec3 strands_stops_in_space(vec4 conv[8], float positions[8], int n, float t){
+    float clampedT = clamp(t, 0.0, 1.0);
+    vec4 running = conv[0];
+    for (int i = 1; i < 8; i++){
+        if (i >= n)
+            break;
+        float seg = clamp((clampedT - positions[i - 1]) / max(positions[i] - positions[i - 1], 1e-6), 0.0, 1.0);
+        running = fam_mix_in_space(running, conv[i], seg);
+    }
+    return running.rgb;
+}
 
 vec4 jfx_paint(JfxContext c){
     float waveT = c.anim.x;
@@ -82,6 +94,17 @@ vec4 jfx_paint(JfxContext c){
     float shimmerBase = progress * 8.0 + waveT * 2.0;
     float colorBase = progress * params.colorScale + colorT;
 
+    // the palette's stops in the working space
+    int stopCount = int(clamp(params.colorsCount, 1.0, 8.0) + 0.5);
+    vec4 conv[8];
+    float positions[8];
+    for (int i = 0; i < 8; i++){
+        conv[i] = i < stopCount ? fam_to_space(params.colors[i], params.colorSpace) : vec4(0.0);
+        vec4 four = params.colorsStops[i / 4];
+        int k = i - (i / 4) * 4;
+        positions[i] = k == 0 ? four.x : (k == 1 ? four.y : (k == 2 ? four.z : four.w));
+    }
+
     vec3 accumColor = vec3(0.0);
     float accumWeight = 0.0;
     int n = int(floor(params.lineCount + 0.5));
@@ -101,12 +124,14 @@ vec4 jfx_paint(JfxContext c){
         float line = 1.0 - smoothstep(thickness, thickness + softness, dd);
         float shimmer = sin(shimmerBase + fi) * 0.15 + 0.85;
         // the colour coordinate's seamless ping-pong, looked up in the working space
-        float cc = colorBase + norm * params.colorVariance;
-        float colorCoord = 1.0 - abs(fract(cc * 0.5) * 2.0 - 1.0);
-        vec3 strandColor = fam_palette_in_space_colors(colorCoord, params.colorSpace).rgb;
         float weight = line * shimmer;
-        accumColor += strandColor * weight;
-        accumWeight += weight;
+        // (a strand that does not cover this pixel adds nothing: its colour is not looked up)
+        if (weight > 0.0){
+            float cc = colorBase + norm * params.colorVariance;
+            float colorCoord = 1.0 - abs(fract(cc * 0.5) * 2.0 - 1.0);
+            accumColor += strands_stops_in_space(conv, positions, stopCount, colorCoord) * weight;
+            accumWeight += weight;
+        }
     }
 
     // the weighted mean colour, back to rgb, the pow 0.85 tone lift; coverage is the alpha
