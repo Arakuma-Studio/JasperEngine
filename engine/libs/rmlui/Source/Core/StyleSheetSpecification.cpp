@@ -29,6 +29,8 @@
 #include "TextShadow.h"
 #include "ValuesShorthands.h"
 
+#include <algorithm>
+
 namespace Rml {
 
 static StyleSheetSpecification* instance = nullptr;
@@ -206,11 +208,16 @@ struct RegisteredCustomProperties : NonCopyMoveable {
 	PropertyIdSet ids;
 	UnorderedMap<PropertyId, RegisteredCustomProperty> registrations;
 	UniquePtr<PropertyParserRegistered> parsers[NumSyntaxes];
+	// Unregistered: their ids, oldest first (taken again by a name only when no fresh id is left, or by the name they
+	// had), the id each name had last, and their definitions (elements may still hold values that point to them).
+	Vector<PropertyId> free_ids;
+	UnorderedMap<String, PropertyId> last_ids;
+	Vector<UniquePtr<PropertyDefinition>> retired;
 };
 
 StyleSheetSpecification::StyleSheetSpecification() :
 	// Reserve space for all defined ids and some more for custom properties
-	properties((size_t)PropertyId::MaxNumIds, 2 * (size_t)ShorthandId::NumDefinedIds)
+	properties((size_t)PropertyId::NumDefinedIds + 128, 2 * (size_t)ShorthandId::NumDefinedIds)
 {
 	RMLUI_ASSERT(instance == nullptr);
 	instance = this;
@@ -425,8 +432,34 @@ PropertyId StyleSheetSpecification::RegisterCustomProperty(const String& name, R
 	else if (syntax != RegisteredPropertySyntax::Universal)
 		return PropertyId::Invalid;
 
-	PropertyDefinition& definition =
-		instance->RegisterProperty(PropertyId::Invalid, name, StringUtilities::StripWhitespace(initial_value), inherits, false);
+	// The id: the one the name had last if it is free (a document registering again after a reload keeps its ids), else
+	// a fresh one, else the oldest free one.
+	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	PropertySpecification& specification = instance->properties;
+	size_t free_index = registered.free_ids.size();
+	const auto last = registered.last_ids.find(name);
+	if (last != registered.last_ids.end())
+		free_index = size_t(std::find(registered.free_ids.begin(), registered.free_ids.end(), last->second) - registered.free_ids.begin());
+	if (free_index == registered.free_ids.size() && specification.property_map->GetNumIds() >= (size_t)PropertyId::MaxNumIds)
+		free_index = 0;
+	PropertyDefinition* new_definition = nullptr;
+	if (free_index < registered.free_ids.size())
+	{
+		const PropertyId id = registered.free_ids[free_index];
+		if (!specification.property_map->AssignName(id, name))
+			return PropertyId::Invalid;
+		registered.free_ids.erase(registered.free_ids.begin() + free_index);
+		// (the old definition stays alive: values parsed with it may remain on elements)
+		registered.retired.push_back(std::move(specification.properties[(size_t)id]));
+		specification.properties[(size_t)id] = MakeUnique<PropertyDefinition>(id, StringUtilities::StripWhitespace(initial_value), inherits, false);
+		specification.property_ids.Insert(id);
+		if (inherits)
+			specification.property_ids_inherited.Insert(id);
+		new_definition = specification.properties[(size_t)id].get();
+	}
+	else
+		new_definition = &instance->RegisterProperty(PropertyId::Invalid, name, StringUtilities::StripWhitespace(initial_value), inherits, false);
+	PropertyDefinition& definition = *new_definition;
 	if (definition.GetId() == PropertyId::Invalid)
 		return PropertyId::Invalid;
 	if (syntax == RegisteredPropertySyntax::Universal)
@@ -450,6 +483,25 @@ void StyleSheetSpecification::MarkRegisteredCustomProperty(PropertyId id, const 
 	registered.ids.Insert(id);
 	registered.registrations[id] = registration;
 	any_registered_custom_properties = true;
+}
+
+bool StyleSheetSpecification::UnregisterCustomProperty(PropertyId id)
+{
+	if (!IsRegisteredCustomProperty(id))
+		return false;
+	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	PropertySpecification& specification = instance->properties;
+	registered.ids.Erase(id);
+	registered.registrations.erase(id);
+	specification.property_ids.Erase(id);
+	specification.property_ids_inherited.Erase(id);
+	specification.property_ids_forcing_layout.Erase(id);
+	const String name = specification.property_map->GetName(id);
+	specification.property_map->ReleaseName(id);
+	registered.free_ids.push_back(id);
+	registered.last_ids[name] = id;
+	any_registered_custom_properties = !registered.registrations.empty();
+	return true;
 }
 
 bool StyleSheetSpecification::IsRegisteredCustomProperty(PropertyId id)
@@ -476,7 +528,8 @@ int StyleSheetSpecification::GetNumFreePropertyIds()
 {
 	// The next id GetOrCreateId gives is one past the last name (reserved ids included).
 	const size_t next = (size_t)instance->properties.property_map->GetNumIds();
-	return next >= (size_t)PropertyId::MaxNumIds ? 0 : int((size_t)PropertyId::MaxNumIds - next);
+	const size_t fresh = (next >= (size_t)PropertyId::MaxNumIds ? 0 : (size_t)PropertyId::MaxNumIds - next);
+	return int(fresh + instance->registered_custom_properties->free_ids.size());
 }
 
 void StyleSheetSpecification::RegisterDefaultParsers()

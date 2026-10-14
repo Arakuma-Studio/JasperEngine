@@ -63,12 +63,12 @@ private:
 
 	bool IsFirstVisit(PropertyId id)
 	{
-		if (!visited_properties.Contains(id))
-		{
+		// (the first range has no earlier one, and the last no later one that reads the set: fork, phase 5)
+		if (current > 0 && visited_properties.Contains(id))
+			return false;
+		if (current + 1 < num_ranges)
 			visited_properties.Insert(id);
-			return true;
-		}
-		return false;
+		return true;
 	}
 
 	void ProceedToNextValid()

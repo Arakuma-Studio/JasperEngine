@@ -11,6 +11,7 @@ class IdNameMap {
 	Vector<String> name_map; // IDs are indices into the name_map
 	UnorderedMap<String, ID> reverse_map;
 	size_t num_reserved = 0; // Defined IDs without a name, see ReserveUnnamed().
+	size_t num_released = 0; // Custom IDs whose name was released (fork, phase 5: unregistered custom properties).
 
 protected:
 	IdNameMap(size_t num_ids_to_reserve)
@@ -45,6 +46,33 @@ public:
 			[](const String& name) { return name.empty(); });
 	}
 	size_t GetNumReserved() const { return num_reserved; }
+
+	// Fork (phase 5, registered custom properties): a custom id's name stops resolving to it (the id keeps its last name
+	// for GetName), and a released id takes a name again.
+	void ReleaseName(ID id)
+	{
+		const size_t index = static_cast<size_t>(id);
+		if (index >= name_map.size())
+			return;
+		auto it = reverse_map.find(name_map[index]);
+		if (it == reverse_map.end() || it->second != id)
+			return;
+		reverse_map.erase(it);
+		num_released += 1;
+	}
+	bool AssignName(ID id, const String& name)
+	{
+		const size_t index = static_cast<size_t>(id);
+		if (index >= name_map.size() || num_released == 0 || reverse_map.count(name) != 0)
+			return false;
+		auto it = reverse_map.find(name_map[index]);
+		if (it != reverse_map.end() && it->second == id)
+			return false; // (not released)
+		name_map[index] = name;
+		reverse_map.emplace(name, id);
+		num_released -= 1;
+		return true;
+	}
 	/// The number of ids given so far (defined, reserved and custom), the next custom id.
 	size_t GetNumIds() const { return name_map.size(); }
 
@@ -72,7 +100,7 @@ public:
 	ID GetOrCreateId(const String& name)
 	{
 		// All predefined properties must be set (or reserved) before possibly adding custom properties here
-		RMLUI_ASSERT(name_map.size() == reverse_map.size() + num_reserved);
+		RMLUI_ASSERT(name_map.size() == reverse_map.size() + num_reserved + num_released);
 
 		ID next_id = static_cast<ID>(name_map.size());
 

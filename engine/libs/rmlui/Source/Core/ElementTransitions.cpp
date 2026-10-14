@@ -231,8 +231,8 @@ void ElementStyle::CaptureBeforeChangeValues(const PropertyIdSet& changed_proper
 	if (!definition || changed_properties.Empty())
 		return;
 	const PropertyIdSet& transition_ids = GetTransitionLonghandIds();
-	bool transitions = (transition_snapshot != nullptr) || !(definition->GetPropertyIds() & transition_ids).Empty() ||
-		(new_definition && !(new_definition->GetPropertyIds() & transition_ids).Empty());
+	bool transitions = (transition_snapshot != nullptr) || definition->GetPropertyIds().Intersects(transition_ids) ||
+		(new_definition && new_definition->GetPropertyIds().Intersects(transition_ids));
 	for (auto it = transition_ids.begin(); !transitions && it != transition_ids.end(); ++it)
 		transitions = (inline_properties.GetProperty(*it) != nullptr);
 	if (!transitions)

@@ -480,3 +480,93 @@ TEST_CASE("registered_properties.mixed_cycle_and_fallbacks")
 	CHECK(f.Width("child") == 10.f);
 	TestsShell::SetNumExpectedWarnings(0);
 }
+
+TEST_CASE("registered_properties.unregister_and_reuse")
+{
+	TestsShell::GetContext();
+	const int free_before = StyleSheetSpecification::GetNumFreePropertyIds();
+	CHECK(free_before > 3500); // PropertyId::MaxNumIds is 4096
+
+	const PropertyId a = Register("--life-a", RegisteredPropertySyntax::Length, false, "1px");
+	REQUIRE(a != PropertyId::Invalid);
+	CHECK(StyleSheetSpecification::GetNumFreePropertyIds() == free_before - 1);
+
+	// Unregistered: a plain custom property again, its id free
+	CHECK(StyleSheetSpecification::UnregisterCustomProperty(a));
+	CHECK_FALSE(StyleSheetSpecification::UnregisterCustomProperty(a));
+	CHECK(StyleSheetSpecification::GetPropertyId("--life-a") == PropertyId::Invalid);
+	CHECK_FALSE(StyleSheetSpecification::IsRegisteredCustomProperty(a));
+	CHECK_FALSE(StyleSheetSpecification::GetRegisteredProperties().Contains(a));
+	CHECK(StyleSheetSpecification::GetNumFreePropertyIds() == free_before);
+	PropertyDictionary dictionary;
+	REQUIRE(StyleSheetSpecification::ParsePropertyDeclaration(dictionary, "--life-a", "red"));
+	CHECK(dictionary.GetCustomProperties().size() == 1);
+
+	// Registered again with another definition: the name keeps its id
+	const PropertyId again = Register("--life-a", RegisteredPropertySyntax::Color, true, "#ff0000");
+	CHECK(again == a);
+	CHECK(StyleSheetSpecification::GetRegisteredCustomProperty(a)->syntax == RegisteredPropertySyntax::Color);
+	CHECK(StyleSheetSpecification::GetProperty(a)->IsInherited());
+	CHECK(StyleSheetSpecification::GetRegisteredInheritedProperties().Contains(a));
+	CHECK(StyleSheetSpecification::GetProperty(a)->GetDefaultValue()->ToString() == "#ff0000");
+
+	// Another name takes a fresh id while there are fresh ids
+	CHECK(StyleSheetSpecification::UnregisterCustomProperty(a));
+	const PropertyId b = Register("--life-b", RegisteredPropertySyntax::Number, false, "0");
+	CHECK(b != a);
+	CHECK(b != PropertyId::Invalid);
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("registered_properties.many_ids")
+{
+	TestsShell::GetContext();
+	// Hundreds of registrations: the ids beyond the inline ones of PropertyIdSet
+	Vector<PropertyId> ids;
+	for (int i = 0; i < 600; i++)
+	{
+		const PropertyId id = Register("--many-" + ToString(i), RegisteredPropertySyntax::Length, i % 2 == 0, "0px");
+		REQUIRE(id != PropertyId::Invalid);
+		ids.push_back(id);
+	}
+	CHECK(size_t(ids.back()) > 600);
+	PropertyIdSet set;
+	for (PropertyId id : ids)
+		set.Insert(id);
+	set.Insert(PropertyId::Width);
+	CHECK(set.Size() == 601);
+	CHECK(set.Contains(ids[599]));
+	CHECK(set.Contains(PropertyId::Width));
+	CHECK_FALSE(set.Contains(PropertyId::Invalid));
+	PropertyIdSet copy = set;
+	CHECK((copy & StyleSheetSpecification::GetRegisteredInheritedProperties()).Size() == 300);
+	CHECK(copy.Intersects(StyleSheetSpecification::GetRegisteredCustomProperties()));
+	size_t iterated = 0;
+	for (PropertyId id : copy)
+	{
+		CHECK(id != PropertyId::Invalid);
+		iterated++;
+	}
+	CHECK(iterated == 601);
+	for (PropertyId id : ids)
+		copy.Erase(id);
+	CHECK(copy.Size() == 1);
+	copy.Erase(PropertyId::Width);
+	CHECK(copy.Empty());
+	PropertyIdSet moved = std::move(set);
+	CHECK(moved.Size() == 601);
+	CHECK_FALSE(set.Contains(ids[599])); // (the moved-from set keeps no high id)
+	set.Clear();
+	CHECK(set.Empty());
+
+	// a document styled through high ids
+	Fixture f(R"(
+		#parent { --many-598: 33px; --many-599: 44px; width: var(--many-598); }
+		#child { width: var(--many-599); }
+	)");
+	CHECK(f.Width("parent") == 33.f);
+	CHECK(f.Width("child") == 0.f); // --many-599 is not inherited (odd index): its initial value
+	f.Get("parent")->SetProperty("--many-598", "55px");
+	f.context->Update();
+	CHECK(f.Width("parent") == 55.f);
+}

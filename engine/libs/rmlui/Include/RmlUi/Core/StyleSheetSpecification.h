@@ -109,6 +109,11 @@ public:
 	/// property name or the name of another property, when the initial value does not match the syntax, or when no id is
 	/// free (GetNumFreePropertyIds).
 	static PropertyId RegisterCustomProperty(const String& name, RegisteredPropertySyntax syntax, bool inherits, const String& initial_value);
+	/// Unregisters a registered custom property (the last document that registers it is gone, or registers it again with
+	/// another definition): its name is a plain custom property again and its id is free. Values that elements still hold
+	/// under the id keep a valid definition; the id is given again to the name, or to another name only when no fresh id
+	/// is left. Returns false when the id is not a registered custom property.
+	static bool UnregisterCustomProperty(PropertyId id);
 	/// Marks a property registered with RegisterProperty as a registered custom property (RegisterCustomProperty does).
 	static void MarkRegisteredCustomProperty(PropertyId id, const RegisteredCustomProperty& registration = RegisteredCustomProperty());
 	static bool IsRegisteredCustomProperty(PropertyId id);
@@ -118,8 +123,8 @@ public:
 	static const PropertyIdSet& GetRegisteredCustomProperties();
 	/// True once a custom property is registered (until Rml::Shutdown): the style code skips its work for them before.
 	static bool AnyRegisteredCustomProperties() { return any_registered_custom_properties; }
-	/// The number of property ids still free for RegisterProperty and RegisterCustomProperty (ids are limited to
-	/// PropertyId::MaxNumIds).
+	/// The number of property ids still free for RegisterCustomProperty (ids are limited to PropertyId::MaxNumIds, 4096;
+	/// unregistered ones count).
 	static int GetNumFreePropertyIds();
 
 private:

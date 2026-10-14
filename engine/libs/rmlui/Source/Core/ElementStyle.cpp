@@ -1673,8 +1673,8 @@ const AnimationList* ElementStyle::GetAnimationList() const
 
 void ElementStyle::UpdateAnimationLists(const PropertyIdSet& dirty)
 {
-	const bool transitions_dirty = !(dirty & GetTransitionLonghandIds()).Empty();
-	const bool animations_dirty = !(dirty & GetAnimationLonghandIds()).Empty();
+	const bool transitions_dirty = dirty.Intersects(GetTransitionLonghandIds());
+	const bool animations_dirty = dirty.Intersects(GetAnimationLonghandIds());
 	if (!transitions_dirty && !animations_dirty)
 		return;
 
