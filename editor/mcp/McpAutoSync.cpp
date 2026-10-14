@@ -697,6 +697,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     // Compile the forks those files belong to, so their errors come with this call
     w4::checkShadersAsync(call, forks, [run, report, shaderFiles](Json results) mutable {
         Json& problems = report["problems"];
+        // shared by the results: a UI effect's forms (phase 5) report the same error once
+        std::set<std::string> seen;
         for (const Json& result : results) {
             if (result.value("ok", false)) continue;
             const std::string base = result.value("shader", std::string());
@@ -711,7 +713,6 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             }
             const Json errors = result.value("errors", Json::array());
             size_t added = 0;
-            std::set<std::string> seen;
             for (const Json& error : errors) {
                 if (error.value("severity", std::string("error")) != "error") continue;
                 const std::string message = shortMessage(error.value("message", std::string()), 300);
@@ -722,8 +723,11 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
                 const std::string where = namesFile ? source : path;
                 const int line = error.value("line", 0);
                 if (!seen.insert(where + ":" + std::to_string(line) + ":" + message).second) continue;
-                problems.push_back({{"path", where}, {"line", line},
-                                    {"message", "Shader " + base + " (" + result.value("type", std::string()) + ") does not compile: " + message}});
+                Json problem = {{"path", where}, {"line", line},
+                                {"message", "Shader " + base + " (" + result.value("type", std::string()) + ") does not compile: " + message}};
+                // a UI effect (phase 5): effect-shader-compile, or effect-manifest
+                if (result.contains("code")) problem["code"] = result["code"];
+                problems.push_back(problem);
                 if (++added >= 10) break;
             }
             if (added == 0) {

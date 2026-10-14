@@ -1739,7 +1739,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.title = "Inspect UI Document";
         tool.description =
             "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px = "
-            "send_input coords, flags overflow/clipped/hidden/offscreen), diagnostics, and with detail full the box model + "
+            "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics, and with detail full the box model + "
             "computed styles with the file:line of the rule that set each. at: hit test. file: a .html/.css's diagnostics "
             "without a document (same as `jasperengine-editor check --ui`). Edit mode has no Lua: dynamic content appears in play.";
         tool.inputSchema = object({

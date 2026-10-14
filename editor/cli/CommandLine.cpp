@@ -1939,7 +1939,13 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         for (ProjectChecks::ShaderUse& use : forks) {
             const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
-            run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
+            // a UI effect's forms (phase 5) share their source: an error is reported once
+            for (const ProjectChecks::Finding& finding : check.findings) {
+                const bool seen = std::any_of(run.findings.begin(), run.findings.end(), [&](const ProjectChecks::Finding& f) {
+                    return f.path == finding.path && f.line == finding.line && f.col == finding.col && f.message == finding.message;
+                });
+                if (!seen) run.findings.push_back(finding);
+            }
         }
         run.checked.push_back({"shaders", forks.size()});
     }

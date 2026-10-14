@@ -1251,7 +1251,9 @@ namespace {
 std::string uiEffectSourcePath(editor::Project* project, const editor::ProjectChecks::ShaderUse& use, const std::string& source) {
     const fs::path root = project->getProjectPath();
     const fs::path frag = editor::ProjectChecks::uiEffectFile(project, use.base);
-    if (source == use.base || source.empty()) return editor::ProjectChecks::projectRelative(root, frag);
+    // glslang names the entry point by its key, or by a number ("0:12") when it has no name
+    const bool numbered = !source.empty() && std::all_of(source.begin(), source.end(), [](unsigned char c) { return std::isdigit(c); });
+    if (source == use.base || source.empty() || numbered) return editor::ProjectChecks::projectRelative(root, frag);
     if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
     std::error_code ec;
     for (const fs::path& dir : {frag.parent_path(), root, project->getAssetsPath()}) {
@@ -1324,10 +1326,19 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
                 check.ok = false;
                 const std::string rel = projectRelative(project->getProjectPath(), uiEffectFile(project, use.base));
                 for (const std::string& mismatch : mismatches) {
-                    check.findings.push_back({"shader", rel, manifest.line, 1, "error", mismatch, fx::compat::codes::EffectManifest.id(),
+                    // at the @param line of the parameter it names, else at the manifest
+                    int line = manifest.line;
+                    for (const fx::EffectParamDef& param : manifest.params) {
+                        if (param.line > 0 && (mismatch.find("'" + param.name + "'") != std::string::npos ||
+                                               mismatch.find("'" + param.uniform + "'") != std::string::npos)) {
+                            line = param.line;
+                            break;
+                        }
+                    }
+                    check.findings.push_back({"shader", rel, line, 1, "error", mismatch, fx::compat::codes::EffectManifest.id(),
                                               "u_fs_effectParams declares one member per @param, of its type"});
-                    check.errors.push_back({{"severity", "error"}, {"source", rel}, {"line", manifest.line}, {"message", mismatch}});
-                    check.log += rel + ":" + std::to_string(manifest.line) + ": " + mismatch + "\n";
+                    check.errors.push_back({{"severity", "error"}, {"source", rel}, {"line", line}, {"message", mismatch}});
+                    check.log += rel + ":" + std::to_string(line) + ": " + mismatch + "\n";
                 }
             }
         }
@@ -1346,6 +1357,10 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         if (log.size() > 6000) log = log.substr(0, 6000) + "\n...";
         check.errors = parseShaderLog(log);
         check.log = log;
+        if (effect) {
+            // a UI effect's sources by their project paths (the compiler names the asset path)
+            for (Json& error : check.errors) error["source"] = uiEffectSourcePath(project, use, error.value("source", std::string()));
+        }
 
         std::set<std::string> seen;
         for (const Json& error : check.errors) {
@@ -1354,7 +1369,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
             std::string text = message;
             while (!text.empty() && text.back() == ' ') text.pop_back();
             const std::string source = error.value("source", std::string());
-            Finding finding{"shader", effect ? uiEffectSourcePath(project, use, source) : shaderSourcePath(project, use.base, source),
+            Finding finding{"shader", effect ? source : shaderSourcePath(project, use.base, source),
                             error.value("line", 0), 0, error.value("severity", std::string("error")), text};
             if (effect) finding.code = fx::compat::codes::EffectShaderCompile.id();
             if (seen.insert(finding.path + ":" + std::to_string(finding.line) + ":" + finding.message).second) check.findings.push_back(finding);

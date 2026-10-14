@@ -345,6 +345,72 @@ async def test_cli_shaders():
         check_eq((code, data["checked"]), (0, {"shaders": 1}), "a .vert without a .frag is not a fork")
 
 
+EFFECT_FRAG = """#version 450
+// @effect     check-glow
+// @kind       paint
+// @category   light
+// @summary    A project effect of the check tests
+// @cost       low
+// @param      color color #ff8800 -- Colour
+// @param      amount number 0.5 0 1 -- Strength
+
+#include "effects/lib/jfx_common.glsl"
+
+uniform u_fs_effectParams {
+    vec4 color;
+    float amount;
+} params;
+
+vec4 jfx_paint(JfxContext c){
+    return params.color * params.amount;
+}
+
+#include "effects/lib/main_paint.glsl"
+"""
+
+
+async def test_cli_ui_effects():
+    """Project UI effects (phase 5): every .frag whose manifest starts with // @effect is compiled
+    in its forms by `check`; a GLSL error is effect-shader-compile at the .frag line, a manifest
+    error effect-manifest at its line, a parameter block that does not match the manifest too."""
+    with scratch_project() as project:
+        frag = "assets/ui/fx/check-glow.frag"
+        write(project, frag, EFFECT_FRAG)
+        code, data = run_json(project, "--shaders")
+        check_eq((code, data["checked"]), (0, {"shaders": 2}), f"a paint effect: both forms compile: {data}")
+
+        broken = EFFECT_FRAG.replace("return params.color * params.amount;", "return params.color * undefined_amount;")
+        line = broken.split("\n").index("    return params.color * undefined_amount;") + 1
+        write(project, frag, broken)
+        r = run_check(project, "--files", frag)
+        check_eq(r.returncode, 1, f"broken effect: {r.stdout}{r.stderr}")
+        first = r.stdout.splitlines()[0]
+        check(first.startswith(f"{frag}:{line}: error: ") and "undefined_amount" in first and first.endswith("[HTMLUI-FX-0015]"),
+              f"compiler-style effect-shader-compile at the .frag line: {first}")
+        code, data = run_json(project, "--files", frag)
+        check(all(f["code"] == "HTMLUI-FX-0015" and f["path"] == frag for f in data["findings"]), f"codes: {data['findings']}")
+
+        bad = EFFECT_FRAG.replace("// @param      amount number 0.5 0 1", "// @param      amount number 3 0 1")
+        line = bad.split("\n").index("// @param      amount number 3 0 1 -- Strength") + 1
+        write(project, frag, bad)
+        code, data = run_json(project, "--files", frag)
+        check_eq(code, 1, f"manifest error: {data}")
+        manifest = [f for f in data["findings"] if f["code"] == "HTMLUI-FX-0014"]
+        check(manifest and manifest[0]["path"] == frag and manifest[0]["line"] == line, f"effect-manifest at line {line}: {data['findings']}")
+
+        mismatch = EFFECT_FRAG.replace("    float amount;\n} params;", "} params;").replace("params.color * params.amount", "params.color")
+        write(project, frag, mismatch)
+        code, data = run_json(project, "--files", frag)
+        check(code == 1 and any(f["code"] == "HTMLUI-FX-0014" and "amount" in f["message"] for f in data["findings"]),
+              f"the parameter block does not declare amount: {data['findings']}")
+
+        # a filter effect has the filter form only; an unrelated .frag is not an effect
+        write(project, frag, EFFECT_FRAG.replace("// @kind       paint", "// @kind       filter")
+              .replace("main_paint", "main_filter").replace("vec4 jfx_paint(JfxContext c){", "vec4 jfx_filter(JfxContext c){"))
+        code, data = run_json(project, "--shaders")
+        check_eq((code, data["checked"]), (0, {"shaders": 1}), f"a filter effect: one form: {data}")
+
+
 # ---------------------------------------------------------------------------- MCP: same findings
 
 async def test_check_script_findings_match_cli(ed: Editor):

@@ -94,7 +94,13 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
         for (size_t i = 0; i < job->forks.size(); i++) {
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(project, job->forks[i], job->keys[i]);
             job->results.push_back(ProjectChecks::toJson(check));
-            job->findings.insert(job->findings.end(), check.findings.begin(), check.findings.end());
+            // a UI effect's forms (phase 5) share their source: an error is reported once
+            for (const ProjectChecks::Finding& finding : check.findings) {
+                const bool seen = std::any_of(job->findings.begin(), job->findings.end(), [&](const ProjectChecks::Finding& f) {
+                    return f.path == finding.path && f.line == finding.line && f.col == finding.col && f.message == finding.message;
+                });
+                if (!seen) job->findings.push_back(finding);
+            }
         }
         job->finished = true;
     }).detach();
