@@ -101,6 +101,7 @@ struct ExportCliOptions {
     std::string startScene;
     std::set<ShaderBackend> backends;
     std::set<ShaderKey> shaderKeys;
+    std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
     bool listScenes = false;
 };
@@ -109,6 +110,7 @@ struct ShaderCliOptions {
     fs::path targetDir;
     std::set<ShaderBackend> backends;
     std::set<ShaderKey> shaderKeys;
+    std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine is up
     ShaderOutputFormat outputFormat = ShaderOutputFormat::Binary;
     bool help = false;
 };
@@ -341,6 +343,7 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
                 return false;
             }
             options.shaderKeys.insert(keys.begin(), keys.end());
+            options.shaderSpecs.push_back(value);
         } else if (arg == "--list-scenes") {
             options.listScenes = true;
         } else {
@@ -393,6 +396,7 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
                 return false;
             }
             options.shaderKeys.insert(keys.begin(), keys.end());
+            options.shaderSpecs.push_back(value);
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -415,6 +419,20 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
     }
 
     return true;
+}
+
+// The keys of the --shader specs again: a spec naming a custom shader (a UI effect,
+// uieffect/<name>) registers its id in ShaderPool, which the engine's start and a project's
+// load reset, so the keys are made again after them.
+static void expandShaderSpecsAgain(const std::vector<std::string>& specs, std::set<ShaderKey>& keys) {
+    if (specs.empty())
+        return;
+    keys.clear();
+    for (const std::string& spec : specs) {
+        std::vector<ShaderKey> expanded;
+        if (ShaderPool::expandShaderSpec(spec, expanded))
+            keys.insert(expanded.begin(), expanded.end());
+    }
 }
 
 static fs::path normalizeProjectPath(const fs::path& path) {
@@ -525,6 +543,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
     config.selectedBackends   = options.backends;
+    expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
     // What the Build Settings window adds to and removes from the collected shaders, as an
     // export from the window does; an explicit --shader list is the whole set
@@ -579,6 +598,8 @@ int CommandLine::runShadersCommand(int argc, char** argv, const char* executable
     EngineRuntimeGuard engineRuntime;
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(true);
+
+    expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
 
     ExportConfig config;
     config.targetDir = options.targetDir;
@@ -2165,11 +2186,13 @@ int CommandLine::runUiSupportCommand(int argc, char** argv, const char* executab
 // (tools/htmlui/gen_effects_docs.py documents the same manifests), --validate compiles every
 // effect in both forms for glcore and checks its manifest against the reflection
 
+namespace fx = ::jasperengine::htmlui;
+
 namespace {
 
     // a parameter's range as written in manifests ("-180deg..180deg", "0%..100%")
-    std::string effectRangeText(const htmlui::EffectParamDef& def) {
-        if (def.type == htmlui::EffectParamType::Enum)
+    std::string effectRangeText(const fx::EffectParamDef& def) {
+        if (def.type == fx::EffectParamType::Enum)
             return "";
         if (!def.hasRange)
             return "";
@@ -2180,10 +2203,10 @@ namespace {
         };
         auto value = [&](float v) {
             switch (def.type) {
-                case htmlui::EffectParamType::Angle: return number(v * 180.0 / 3.14159265358979323846) + "deg";
-                case htmlui::EffectParamType::Time: return number(v) + "s";
-                case htmlui::EffectParamType::Length: return number(v) + "px";
-                case htmlui::EffectParamType::Percentage: return number(v * 100.0) + "%";
+                case fx::EffectParamType::Angle: return number(v * 180.0 / 3.14159265358979323846) + "deg";
+                case fx::EffectParamType::Time: return number(v) + "s";
+                case fx::EffectParamType::Length: return number(v) + "px";
+                case fx::EffectParamType::Percentage: return number(v * 100.0) + "%";
                 default: return number(v);
             }
         };
@@ -2191,27 +2214,27 @@ namespace {
     }
 
     // one CSS declaration using the effect (its first simple parameter at its default)
-    std::string effectExample(const htmlui::EffectManifest& m) {
+    std::string effectExample(const fx::EffectManifest& m) {
         std::string call = "effect(" + m.name;
-        for (const htmlui::EffectParamDef& def : m.params) {
-            if (def.type == htmlui::EffectParamType::Palette || def.type == htmlui::EffectParamType::Position ||
-                def.type == htmlui::EffectParamType::Color || def.defaultText.empty())
+        for (const fx::EffectParamDef& def : m.params) {
+            if (def.type == fx::EffectParamType::Palette || def.type == fx::EffectParamType::Position ||
+                def.type == fx::EffectParamType::Color || def.defaultText.empty())
                 continue;
             call += ", " + def.name + " " + def.defaultText;
             break;
         }
         call += ")";
-        if (m.kind == htmlui::EffectKind::Paint)
+        if (m.kind == fx::EffectKind::Paint)
             return "background-image: " + call + ";";
         return std::string(m.backdrop ? "backdrop-filter: " : "filter: ") + call + ";";
     }
 
-    nlohmann::json effectJson(const htmlui::EffectManifest& m) {
+    nlohmann::json effectJson(const fx::EffectManifest& m) {
         nlohmann::json params = nlohmann::json::array();
-        for (const htmlui::EffectParamDef& def : m.params) {
-            nlohmann::json p = {{"name", def.name}, {"type", htmlui::effectParamTypeName(def.type)}, {"default", def.defaultText},
+        for (const fx::EffectParamDef& def : m.params) {
+            nlohmann::json p = {{"name", def.name}, {"type", fx::effectParamTypeName(def.type)}, {"default", def.defaultText},
                                 {"range", effectRangeText(def)}, {"description", def.description}, {"uniform", def.uniform}};
-            if (def.hasRange && def.type != htmlui::EffectParamType::Enum) {
+            if (def.hasRange && def.type != fx::EffectParamType::Enum) {
                 p["min"] = def.minValue;
                 p["max"] = def.maxValue;
             }
@@ -2219,15 +2242,15 @@ namespace {
                 p["options"] = def.options;
             params.push_back(std::move(p));
         }
-        auto scaled = [](const htmlui::EffectScaledParam& s) {
+        auto scaled = [](const fx::EffectScaledParam& s) {
             if (s.param.empty())
                 return nlohmann::json(std::to_string(s.addPx) + "px");
             return nlohmann::json({{"param", s.param}, {"scale", s.scale}, {"addPx", s.addPx}});
         };
         nlohmann::json entry = {
-            {"name", m.name}, {"kind", htmlui::effectKindName(m.kind)}, {"category", m.category}, {"summary", m.summary},
-            {"source", m.source}, {"cost", htmlui::effectCostName(m.cost)}, {"backdrop", m.backdrop},
-            {"pointer", htmlui::effectPointerName(m.pointer)}, {"time", m.timeParams}, {"suggestFor", m.suggestFor},
+            {"name", m.name}, {"kind", fx::effectKindName(m.kind)}, {"category", m.category}, {"summary", m.summary},
+            {"source", m.source}, {"cost", fx::effectCostName(m.cost)}, {"backdrop", m.backdrop},
+            {"pointer", fx::effectPointerName(m.pointer)}, {"time", m.timeParams}, {"suggestFor", m.suggestFor},
             {"params", params}, {"builtin", m.builtin}, {"path", m.builtin ? "engine/shaderlib/" + m.sourcePath : m.sourcePath},
             {"example", effectExample(m)},
             {"thumbnail", m.builtin ? "docs/mcp/guide/img/effects/" + m.name + ".png" : std::string()}};
@@ -2267,7 +2290,7 @@ namespace {
             if (!it->is_regular_file(ec) || path.extension() != ".frag")
                 continue;
             std::string source;
-            if (readFileText(path, source) && htmlui::EffectManifestParser::hasEffectManifest(source))
+            if (readFileText(path, source) && fx::EffectManifestParser::hasEffectManifest(source))
                 files.push_back(fs::relative(path, project, ec).generic_string());
         }
         std::sort(files.begin(), files.end());
@@ -2314,15 +2337,15 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
         }
     }
 
-    htmlui::EffectRegistry& registry = htmlui::EffectRegistry::get();
-    std::vector<const htmlui::EffectManifest*> effects = registry.builtins();
+    fx::EffectRegistry& registry = fx::EffectRegistry::get();
+    std::vector<const fx::EffectManifest*> effects = registry.builtins();
     std::vector<std::string> problems;
-    for (const htmlui::EffectDiagnostic& d : registry.builtinDiagnostics())
+    for (const fx::EffectDiagnostic& d : registry.builtinDiagnostics())
         problems.push_back(d.file + ":" + std::to_string(d.line) + ": " + d.message);
 
     // project effects: parsed (and validated) from their files
     fs::path project;
-    std::vector<std::unique_ptr<htmlui::EffectManifest>> projectManifests;
+    std::vector<std::unique_ptr<fx::EffectManifest>> projectManifests;
     std::map<std::string, std::string> projectSources;
     if (!projectDir.empty()) {
         project = normalizeProjectPath(fs::path(projectDir));
@@ -2333,12 +2356,12 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
         for (const std::string& file : findProjectEffectFiles(project)) {
             std::string source;
             readFileText(project / file, source);
-            auto manifest = std::make_unique<htmlui::EffectManifest>();
-            std::vector<htmlui::EffectDiagnostic> diags;
-            const bool ok = htmlui::EffectManifestParser::parse(source, file, false, *manifest, diags) &&
-                            htmlui::EffectManifestParser::validate(*manifest, source, diags);
-            for (const htmlui::EffectDiagnostic& d : diags) {
-                if (d.severity == htmlui::compat::Severity::Error)
+            auto manifest = std::make_unique<fx::EffectManifest>();
+            std::vector<fx::EffectDiagnostic> diags;
+            const bool ok = fx::EffectManifestParser::parse(source, file, false, *manifest, diags) &&
+                            fx::EffectManifestParser::validate(*manifest, source, diags);
+            for (const fx::EffectDiagnostic& d : diags) {
+                if (d.severity == fx::compat::Severity::Error)
                     problems.push_back(file + ":" + std::to_string(d.line) + ": " + d.message);
             }
             if (!ok)
@@ -2358,7 +2381,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
             std::cerr << commandName << " ui-effects: this build has no shader compiler\n";
             return 1;
         }
-        for (const htmlui::EffectManifest* m : effects) {
+        for (const fx::EffectManifest* m : effects) {
             CustomShaderSources sources;
             uint16_t customId = 0;
             if (m->builtin) {
@@ -2372,7 +2395,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
                     continue;
                 }
             }
-            for (int filterForm = m->kind == htmlui::EffectKind::Paint ? 0 : 1; filterForm <= 1; filterForm++) {
+            for (int filterForm = m->kind == fx::EffectKind::Paint ? 0 : 1; filterForm <= 1; filterForm++) {
                 const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI_EFFECT, (uint32_t)filterForm, customId);
                 ShaderData data;
                 std::string compileError, log;
@@ -2382,7 +2405,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
                     continue;
                 }
                 std::vector<std::string> mismatches;
-                if (!htmlui::EffectManifestParser::checkReflection(*m, data, mismatches)) {
+                if (!fx::EffectManifestParser::checkReflection(*m, data, mismatches)) {
                     for (const std::string& mismatch : mismatches)
                         problems.push_back(m->name + " (" + form + "): " + mismatch);
                 }
@@ -2392,15 +2415,15 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
 
     if (json) {
         nlohmann::json list = nlohmann::json::array();
-        for (const htmlui::EffectManifest* m : effects)
+        for (const fx::EffectManifest* m : effects)
             list.push_back(effectJson(*m));
         nlohmann::json out = {{"effects", list}};
         if (validate)
             out["problems"] = problems;
         std::cout << out.dump(1) << std::endl;
     } else {
-        for (const htmlui::EffectManifest* m : effects) {
-            std::cout << m->name << "  " << htmlui::effectKindName(m->kind) << ", " << m->category << ", cost " << htmlui::effectCostName(m->cost)
+        for (const fx::EffectManifest* m : effects) {
+            std::cout << m->name << "  " << fx::effectKindName(m->kind) << ", " << m->category << ", cost " << fx::effectCostName(m->cost)
                       << (m->backdrop ? ", backdrop" : "") << (m->builtin ? "" : ", project " + m->sourcePath) << "\n    " << m->summary << "\n    "
                       << effectExample(*m) << "\n";
         }
