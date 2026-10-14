@@ -17,7 +17,7 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--all` | All four. Without `--lua/--shaders/--cpp/--ui/--all`: `--lua --shaders --ui` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork; a `.glsl` checks every fork (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked on its own. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork; a `.glsl` checks every fork (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -115,7 +115,10 @@ and what `inspect_ui {file}` returns. It runs without the engine: no window, no 
   engine resolves them, relative to the file or, with a leading `/`, to the assets directory; a
   path that climbs out of the assets directory is missing). A finding located in a linked
   stylesheet is reported at that stylesheet's path, and once, however many documents link it.
-- **Stylesheets**: every `.css` no document links is checked on its own.
+- **Stylesheets**: every `.css` no document links is checked on its own; then a declaration that
+  reads a custom property the sheet and its imports do not declare is no finding (a document's
+  style attribute or another sheet may declare it). A `.css` named with `--files` that documents
+  load is checked in their context: a variable one of them defines is no finding, a typo is.
 - **Not checked**: files in hidden or `build` directories, files outside the assets directory, and
   the web export's page template (project.yaml `web.customHtmlShell`), which is a browser page.
 - **Severities**: errors are what breaks the UI (a missing file; a remote URL that is not imported,
