@@ -66,7 +66,7 @@ body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }
         background-image: effect(stripes, color-a #ff3355, color-b #2255ff, density 6); }
 .title { left: 40px; top: 300px; width: 360px; height: 100px; font-size: 80px; font-weight: bold; color: transparent;
          background-image: effect(stripes, color-a #ffcc00, color-b #00ccff); background-clip: text; }
-.pix { left: 440px; top: 40px; width: 360px; height: 220px; filter: effect(pixelate, size 24px); }
+.pix { left: 440px; top: 40px; width: 360px; height: 220px; filter: effect(pixelate, size 24px, gap 0.25); }
 .pix div { position: absolute; top: 0; width: 50%; height: 100%; }
 .b1 { left: 0; background-color: #e74c3c; }
 .b2 { left: 50%; background-color: #2ecc71; }
@@ -290,6 +290,12 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
     png = raw.images[0][0]
     (ed.scratch.root / "html-ui-effects-player.png").write_bytes(png)
+    # pixelate's cells: the gaps between them show the page (a plain red/green box has none)
+    w, h, ch, rows = decode_png(png)
+    sx, sy = w / 1280.0, h / 720.0
+    gaps = sum(1 for y in range(int(50 * sy), int(250 * sy), 2) for x in range(int(450 * sx), int(790 * sx), 2)
+               if near(tuple(rows[y][x * ch:x * ch + 3]), (0x10, 0x12, 0x18), 12))
+    ed.check(gaps > 300, f"the player draws pixelate's cells ({gaps} gap samples)")
     red, blue, green = stripes_seen(png)
     ed.check(red > 200 and blue > 200, f"the player draws the stripes (red {red}, blue {blue} samples)")
     ed.check(green > 100, f"the player draws the project effect (green {green} samples)")
