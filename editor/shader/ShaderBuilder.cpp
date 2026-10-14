@@ -65,10 +65,18 @@ std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project
         return it->second;
 
     const std::filesystem::path projectRoot = project->getProjectPath();
+    // A project UI effect (a fragment-only custom shader, phase 5) is named by its asset path,
+    // as @effect declares it and the shipped game's runtime compiler reads it: its files are
+    // read from the assets directory first (the project root when that is the same)
+    const bool fragmentOnly = customShader.find('|') == std::string::npos && customShader.size() > 5 &&
+                              customShader.compare(customShader.size() - 5, 5, ".frag") == 0;
+    const std::filesystem::path assetsRoot = fragmentOnly ? project->getAssetsPath() : std::filesystem::path();
     auto snapshot = std::make_shared<CustomSourceSnapshot>();
     snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader,
-        [&projectRoot](const std::string& relativePath, std::string& content) {
+        [&projectRoot, &assetsRoot](const std::string& relativePath, std::string& content) {
             std::error_code ec;
+            if (!assetsRoot.empty() && std::filesystem::is_regular_file(assetsRoot / relativePath, ec))
+                return readTextFile(assetsRoot / relativePath, content);
             const std::filesystem::path path = projectRoot / relativePath;
             return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
         });
