@@ -2004,6 +2004,20 @@ OVERRIDES[('UIElement', 'insertAdjacentHTML')] = {
     'doc': ['Parses `html` (like innerHTML) and inserts it relative to the element.'],
     'overloads': [([('position', '"beforebegin"|"afterbegin"|"beforeend"|"afterend"'), ('html', 'string')], '')]}
 
+# HTML UI effects (phase 5, p5-infra, spec 3.12): the effect clock and an element's effects
+OVERRIDES[('UIElement', 'getEffects')] = {
+    'doc': ['The effects the element uses (effect() in background-image, mask-image, filter, backdrop-filter),',
+            'in property order, with the canonical CSS text of every parameter (universal ones included).',
+            'Catalogue: jasper://docs/html-ui-effects.'],
+    'overloads': [([], 'UIEffectInfo[]')]}
+OVERRIDES[('UIDocument', 'setEffectTime')] = {
+    'doc': ['Freezes every HTML UI effect at `seconds` of effect time (screenshots, tests); nil runs them again.',
+            'Only the effects: CSS animations, transitions and anime keep running.'],
+    'overloads': [([('seconds', 'number?')], '')]}
+OVERRIDES[('UIDocument', 'getEffectTime')] = {
+    'doc': ['The effects\' clock in seconds: the fixed time when one is set, else the UI clock.'],
+    'overloads': [([], 'number')]}
+
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
 HTML_UI_CLASS_DOCS = {
     'UIDocument': ['Get it with `UIDocument(self.scene, self.entity)` in a script on the document\'s GameObject.',
@@ -2098,7 +2112,15 @@ def html_ui_types_file():
           '---@field file string # asset-relative ("ui/menu.css"), "" when generated',
           '---@field line integer # 1-based, 0 = unknown',
           '---@field column integer # 1-based, 0 = unknown',
-          '---@field text string # the whole line as the Console prints it']
+          '---@field text string # the whole line as the Console prints it',
+          '',
+          '---An effect of UIElement:getEffects() (the effects: jasper://docs/html-ui-effects)',
+          '---@class UIEffectInfo',
+          '---@field property "background-image"|"mask-image"|"filter"|"backdrop-filter"',
+          '---@field index integer # 1-based: the layer or function in the property',
+          '---@field name string # the effect, "frosted-glass"',
+          '---@field form "paint"|"filter" # paint: an image layer; filter: in filter, backdrop-filter or gradient text',
+          '---@field params table<string, string> # every parameter\'s canonical CSS text, universal ones included']
     return FILE_HEADER + '\n'.join(L) + '\n'
 
 # Precise LuaLS types of parameters whose C++ type says nothing (luabridge::LuaRef becomes

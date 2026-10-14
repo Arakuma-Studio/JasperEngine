@@ -1256,7 +1256,6 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("hasAttribute", &UIElement::hasAttribute)
         .addFunction("removeAttribute", &UIElement::removeAttribute)
         .addFunction("getAttributes", &UIElement::getAttributes)
-        // phase 5: the effects the element uses, {property, index, name, form, params = {[name] = css}}
         .addFunction("getEffects", [](const UIElement* self, lua_State* L) -> luabridge::LuaRef {
             luabridge::LuaRef list = luabridge::newTable(L);
             int index = 1;
@@ -1506,7 +1505,6 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         })
         .addFunction("setColorScheme", &UIDocument::setColorScheme)
         .addFunction("setReducedMotion", &UIDocument::setReducedMotion)
-        // phase 5: the effect clock; nil runs it again
         .addStaticFunction("setEffectTime", [](std::optional<double> seconds){ UIDocument::setEffectTime(seconds); })
         .addStaticFunction("getEffectTime", &UIDocument::getEffectTime)
         .endClass();
