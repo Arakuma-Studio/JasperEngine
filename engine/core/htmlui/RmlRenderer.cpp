@@ -1052,9 +1052,13 @@ RmlRenderer::TargetRegions& RmlRenderer::regionsOf(const Framebuffer& framebuffe
 void RmlRenderer::noteColorWrite(){
     if (!activeRegions)
         return;
-    const Rml::Rectanglei written = intersect(appliedViewport, appliedScissor);
+    Rml::Rectanglei written = intersect(appliedViewport, appliedScissor);
     if (isEmpty(written))
         return;
+    // A pixel of margin: Mesa's MSAA rasterizer covers samples of the row above and the column left
+    // of a scissor (MsaaScissor.HtmlUIClipEdge); a resolve limited to the scissor would drop them and
+    // differ from a full one. The resolve is clamped to the target (endPass).
+    written = written.Extend(1);
     activeRegions->content = unite(activeRegions->content, written);
     activeRegions->stale = unite(activeRegions->stale, written);
 }

@@ -1555,7 +1555,11 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   in a project whose `assetsDir` is not its root (the MCP fixture). A fragment-only custom shader's
   files are now read from the assets directory first, then the project root.
 - **Hot reload.** `UIDocumentSystem::reloadChangedFiles` calls `EffectRegistry::onProjectFileChanged`
-  for every `.frag` whose stamp changed, before the documents reload. `onProjectFileChanged` now
+  for every file whose stamp changed, before the documents reload: a project effect's `.frag`
+  re-parses and recompiles it, and a `.glsl` it `#include`s recompiles every effect including it
+  (`ProjectEffect::includes`, every path the includes resolved to or were looked for at;
+  `includeFilesOf(name)`; compat adds them to the document's dependencies, so the document
+  reloader stamps them and reloads the document when one changes). `onProjectFileChanged` now
   **forgets** a declaration whose file is gone or whose manifest no longer parses (it kept the old
   manifest, so the reloading document re-declared nothing and reported nothing): the reload reports
   `HTMLUI-FX-0013`/`-0014` (at the `.frag` line) in the document's diagnostics and the effect is
@@ -1571,11 +1575,18 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   (`DocumentLoader::clearCache`: a cache hit runs no `@effect`, so the edit-mode document whose CSS
   is back to an earlier text would keep the stale binding); re-registering an effect's instancers
   clears RmlUi's style-sheet cache (`Rml::Factory::ClearStyleSheetCache`: the RCSS text of a sheet
-  does not change with its `@effect` src, so a cached sheet kept the replaced decorators). Observed,
-  not fixed (phase 1): files changed while a document is reloading right after play stops can be
-  stamped as seen and never reloaded; the test waits for the edit view first.
-  `w4::isHtmlUiFile` takes `.frag`; during play `McpAutoSync` reloads the documents of a changed
-  effect `.frag` (or a removed `.frag`) now instead of deferring it as a shader.
+  does not change with its `@effect` src, so a cached sheet kept the replaced decorators). The
+  phase-1 race (a file changed while a document was reloading, e.g. right after play stops, was
+  stamped as seen and never reloaded) is fixed: the reloader takes the stamps of the files it
+  expects to read (the previous load's files, the document, the scanner's references) *before*
+  loading and records those (`HtmlUIReloadState::stampsOf`, `recordStamps(document, before)`), so
+  a write during the load leaves a stamp that differs next time. `TestDocumentReload.
+  FileChangedDuringAReloadIsReloadedNext` writes the file inside that window through
+  `UIDocumentSystem::setLoadedHookForTesting` (style-sheet-only and full reloads); the MCP rename
+  test no longer waits for the edit view. `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
+  `McpAutoSync` reloads the documents of a changed effect `.frag`, `.glsl` (or a removed `.frag`)
+  instead of deferring it as a shader. `test_include_edit_reloads` (MCP) and
+  `EffectHotReloadTest.IncludesAreDependencies` cover the includes.
 - **`check`** (`ProjectChecks`). `ShaderUse` gained `properties` (the form). `isUiEffectFile`,
   `uiEffectUses` (paint: both forms; filter, or a manifest that does not parse: the filter form),
   `uiEffectFiles`, `uiEffectFile`; `shaderForksUsingFiles` gives an effect `.frag`'s forms (a `.glsl`
