@@ -1,0 +1,68 @@
+{
+ "fixture": "property/non-inherited.html",
+ "viewport": [
+  300,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 280,
+    "h": 180
+   },
+   {
+    "id": "own",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 20,
+    "h": 30
+   },
+   {
+    "id": "down",
+    "tag": "div",
+    "x": 10,
+    "y": 46,
+    "w": 120,
+    "h": 30
+   },
+   {
+    "id": "em",
+    "tag": "div",
+    "x": 10,
+    "y": 82,
+    "w": 60,
+    "h": 30
+   },
+   {
+    "id": "color",
+    "tag": "div",
+    "x": 10,
+    "y": 118,
+    "w": 200,
+    "h": 30
+   },
+   {
+    "id": "grandparent-reset",
+    "tag": "div",
+    "x": 10,
+    "y": 154,
+    "w": 200,
+    "h": 30
+   },
+   {
+    "id": "deep",
+    "tag": "div",
+    "x": 10,
+    "y": 154,
+    "w": 120,
+    "h": 10
+   }
+  ]
+ }
+}

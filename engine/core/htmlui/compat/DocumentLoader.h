@@ -105,6 +105,8 @@ namespace jasperengine::htmlui::compat {
         std::vector<std::string> declaredFontFamilies;   // declared by @font-face
         std::vector<std::string> animationFillNames;
         std::vector<std::string> virtualPaths;        // the VirtualFiles this compile registered (owner)
+        // the @property rules the fork registers before RmlUi parses the sheets (phase 5, CompatAtProperty::registerFor, per loaded document)
+        std::vector<RegisteredProperty> registeredProperties;
     };
 
     // HTML fragments (innerHTML, insertAdjacentHTML, outerHTML)
@@ -157,6 +159,10 @@ namespace jasperengine::htmlui::compat {
         // the cache, hints, author sheets, !important, in head order): DOM, element handles,
         // listeners, scroll and focus stay (stylesheet-only hot reload).
         static void restyle(Rml::ElementDocument* document, const CompatDocument& compiled, const CompatOptions& options);
+        // The documents whose registered custom properties (phase 5) waited for a name another
+        // document held with another definition, and hold it now, are restyled (called before
+        // the contexts update: compat::updateRuntime).
+        static void updateRegisteredProperties();
         // the same, and the document is bound to the new compile from now on (compiledOf,
         // RmlUi's messages about its sheets)
         static void restyle(Rml::ElementDocument* document, const std::shared_ptr<const CompatDocument>& compiled,
@@ -173,6 +179,9 @@ namespace jasperengine::htmlui::compat {
         static bool sameRml(const CompatDocument& a, const CompatDocument& b);
 
         static void clearCache();
+        // the document's style sheet container rebuilt from the compile's sheets (restyle, without
+        // the registration of its custom properties)
+        static void restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled);
         static size_t cacheSize();
         // compiles the document's source again with `options` and restyles it (restyleForViewport,
         // restyleForRoot)

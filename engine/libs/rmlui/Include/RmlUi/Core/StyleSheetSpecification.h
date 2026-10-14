@@ -8,6 +8,20 @@ namespace Rml {
 
 class PropertyParser;
 struct DefaultStyleSheetParsers;
+struct RegisteredCustomProperties;
+
+/// The syntax of a registered custom property (CSS Properties and Values API 1, '@property'; fork, phase 5). Each one is
+/// read by its own parser: 'Universal' ('*') keeps the value as written; 'Time' is a number of seconds.
+enum class RegisteredPropertySyntax : uint8_t { Universal, Number, Integer, Length, Percentage, LengthPercentage, Color, Angle, Time };
+
+/// The registration of a registered custom property.
+struct RegisteredCustomProperty {
+	RegisteredPropertySyntax syntax = RegisteredPropertySyntax::Universal;
+	bool inherits = true;
+	// False only for the universal syntax without 'initial-value': its initial value is the guaranteed-invalid value.
+	bool has_initial_value = true;
+	String initial_value;
+};
 
 class RMLUICORE_API StyleSheetSpecification {
 public:
@@ -85,6 +99,33 @@ public:
 	/// Fork (phase 5, P5-1): the id of '-jfx-text-fill', a filter list the element applies before its 'filter' list (the
 	/// engine's gradient text: effect layers clipped to the text, in their filter form). Invalid before Initialise.
 	static PropertyId GetTextFillPropertyId();
+	/// Registered custom properties (fork, phase 5; CSS Properties and Values API 1). A registered '--name' is a property like
+	/// the others, typed by the parser of its syntax, inherited or not, with an initial value: the cascade, transitions and
+	/// animations treat it as one, and var(--name) substitutes its computed value on the element (ElementStyle). A value
+	/// that does not match the syntax is kept as written and is invalid at computed-value time, as in CSS.
+	/// Registers '--name' with the parser of its syntax and marks it. An empty initial value is none (the universal syntax
+	/// only). Returns the property's id: a name already registered is left as it is (its id is returned whatever its
+	/// registration; compare it with GetRegisteredCustomProperty). Returns PropertyId::Invalid when the name is not a custom
+	/// property name or the name of another property, when the initial value does not match the syntax, or when no id is
+	/// free (GetNumFreePropertyIds).
+	static PropertyId RegisterCustomProperty(const String& name, RegisteredPropertySyntax syntax, bool inherits, const String& initial_value);
+	/// Unregisters a registered custom property (the last document that registers it is gone, or registers it again with
+	/// another definition): its name is a plain custom property again and its id is free. Values that elements still hold
+	/// under the id keep a valid definition; the id is given again to the name, or to another name only when no fresh id
+	/// is left. Returns false when the id is not a registered custom property.
+	static bool UnregisterCustomProperty(PropertyId id);
+	/// Marks a property registered with RegisterProperty as a registered custom property (RegisterCustomProperty does).
+	static void MarkRegisteredCustomProperty(PropertyId id, const RegisteredCustomProperty& registration = RegisteredCustomProperty());
+	static bool IsRegisteredCustomProperty(PropertyId id);
+	/// The registration of a registered custom property, nullptr for other ids.
+	static const RegisteredCustomProperty* GetRegisteredCustomProperty(PropertyId id);
+	/// The id set of all registered custom properties.
+	static const PropertyIdSet& GetRegisteredCustomProperties();
+	/// True once a custom property is registered (until Rml::Shutdown): the style code skips its work for them before.
+	static bool AnyRegisteredCustomProperties() { return any_registered_custom_properties; }
+	/// The number of property ids still free for RegisterCustomProperty (ids are limited to PropertyId::MaxNumIds, 4096;
+	/// unregistered ones count).
+	static int GetNumFreePropertyIds();
 
 private:
 	StyleSheetSpecification();
@@ -109,6 +150,9 @@ private:
 	UniquePtr<DefaultStyleSheetParsers> default_parsers;
 
 	PropertyId text_fill_id = PropertyId::Invalid;
+	// Registered custom properties (fork, phase 5).
+	UniquePtr<RegisteredCustomProperties> registered_custom_properties;
+	static bool any_registered_custom_properties;
 };
 
 } // namespace Rml

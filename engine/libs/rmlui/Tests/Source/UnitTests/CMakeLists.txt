@@ -58,6 +58,7 @@ add_executable(${TARGET_NAME}
 	RootFontSize.cpp
 	PropertySpecification.cpp
 	PseudoElements.cpp
+	RegisteredProperties.cpp
 	Selectors.cpp
 	SelectorsHas.cpp
 	ShorthandTypes.cpp

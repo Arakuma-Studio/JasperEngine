@@ -134,6 +134,9 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode KeyframesInvalid{DiagArea::AT, 9};
         inline constexpr DiagCode PropertyApproximated{DiagArea::AT, 10};
         inline constexpr DiagCode FontFaceDescriptor{DiagArea::AT, 11};
+        inline constexpr DiagCode AtPropertyUnsupportedSyntax{DiagArea::AT, 12};   // phase 5, p5-property
+        inline constexpr DiagCode AtPropertyConflict{DiagArea::AT, 13};            // phase 5, p5-property
+        inline constexpr DiagCode AtPropertyInvalid{DiagArea::AT, 14};             // phase 5, p5-property
         // IMP
         inline constexpr DiagCode NotImported{DiagArea::IMP, 1};
         inline constexpr DiagCode DownloadFailed{DiagArea::IMP, 2};

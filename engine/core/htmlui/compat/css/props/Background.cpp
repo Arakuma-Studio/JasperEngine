@@ -15,6 +15,7 @@
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/ColorValue.h"
@@ -315,6 +316,8 @@ namespace {
         Words colors;
         bool reportedHint = false;
         bool any = false;
+        // the fork's layers substitute a var() stop position (a registered <percentage> animates the stop; phase 5)
+        const bool native = scope.context && scope.context->fork(ForkFeature::BackgroundLayers);
         for (size_t i = first; i < groups.size(); i++){
             const Words w = wordsOf(groups[i]);
             if (w.empty())
@@ -333,7 +336,7 @@ namespace {
             for (const ComponentValue* v : w){
                 if (!color && (isColor(scope.session, *v) || isVar(*v))){
                     color = v;
-                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v))){
+                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v)) || (native && isVar(*v))){
                     if (positionCount < 2)
                         positions[positionCount] = v;
                     positionCount++;
@@ -404,6 +407,15 @@ namespace {
         bool headIsStop = false;
         if (!head.empty() && (isColor(scope.session, *head[0]) || isVar(*head[0])))
             headIsStop = true;
+        // a var() of a registered <angle> is the gradient's angle, which the fork's layers substitute (phase 5)
+        const bool angleVar = linear && head.size() == 1 && isVar(*head[0]) && scope.context &&
+                              scope.context->fork(ForkFeature::BackgroundLayers) && [&](){
+                                  const RegisteredProperty* registered = CompatAtProperty::find(scope.session,
+                                                                                                CustomPropertyIndex::varName(*head[0]));
+                                  return registered && registered->type == AtPropertySyntax::Angle;
+                              }();
+        if (angleVar)
+            headIsStop = false;
         if (head.empty() && groups[0].size() > 0)
             headIsStop = false;
         out += name;
@@ -412,7 +424,9 @@ namespace {
         bool lostOffset = false;
         if (!headIsStop && !head.empty()){
             if (linear){
-                if (head.size() == 1 && isAngle(*head[0])){
+                if (angleVar){
+                    appendSerialized(out, *head[0]);
+                }else if (head.size() == 1 && isAngle(*head[0])){
                     double angle = head[0]->token.number;
                     if (legacy)
                         angle = std::fmod(90.0 - angle + 360.0 * 4, 360.0);
@@ -552,6 +566,10 @@ namespace {
                         if (angle.isToken(TokenType::Number) && angle.token.number == 0){
                             out += "from 0deg";
                         }else if (isAngle(angle)){
+                            out += "from ";
+                            appendSerialized(out, angle);
+                        }else if (isVar(angle) && scope.context && scope.context->fork(ForkFeature::BackgroundLayers)){
+                            // the fork's layers substitute it (a registered <angle> animates the gradient; phase 5)
                             out += "from ";
                             appendSerialized(out, angle);
                         }else{

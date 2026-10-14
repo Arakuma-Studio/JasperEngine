@@ -1,0 +1,64 @@
+{
+ "fixture": "property/transition-length-color.html",
+ "viewport": [
+  300,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "rest": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 40,
+    "h": 60
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 20,
+    "y": 84,
+    "w": 40,
+    "h": 16
+   }
+  ],
+  "half": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 140,
+    "h": 60
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 20,
+    "y": 84,
+    "w": 40,
+    "h": 16
+   }
+  ],
+  "end": [
+   {
+    "id": "box",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 240,
+    "h": 60
+   },
+   {
+    "id": "inner",
+    "tag": "div",
+    "x": 20,
+    "y": 84,
+    "w": 40,
+    "h": 16
+   }
+  ]
+ }
+}

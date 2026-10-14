@@ -2294,10 +2294,7 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	if (!IsLayoutDirty())
 	{
 		// Force a relayout if any of the changed properties require it.
-		const PropertyIdSet changed_properties_forcing_layout =
-			(changed_properties & StyleSheetSpecification::GetRegisteredPropertiesForcingLayout());
-
-		if (!changed_properties_forcing_layout.Empty())
+		if (changed_properties.Intersects(StyleSheetSpecification::GetRegisteredPropertiesForcingLayout()))
 		{
 			DirtyLayout();
 		}
@@ -2522,9 +2519,9 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 
 	// -- Animation (p3-animation) --
 	// The animation and transition lists are built from their longhands (PropertyParserAnimation).
-	if (!(changed_properties & GetAnimationLonghandIds()).Empty())
+	if (changed_properties.Intersects(GetAnimationLonghandIds()))
 		dirty_animation = true;
-	if (!(changed_properties & GetTransitionLonghandIds()).Empty())
+	if (changed_properties.Intersects(GetTransitionLonghandIds()))
 		dirty_transition = true;
 
 	// -- Grid (p3-grid) --

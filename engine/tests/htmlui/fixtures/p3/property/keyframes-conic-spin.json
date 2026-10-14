@@ -1,0 +1,12 @@
+{
+ "comment": "Infinite keyframes animate a registered <angle> (0deg to 360deg in 4 s); the conic gradient's 'from' and a transform read it through var(): 90deg at 1 s, 180deg at 2 s, and 90deg again at 5 s (the second iteration). (The captures are at quarter turns: the edges of a bar at other angles are anti-aliased differently by the engine and Skia, which this fixture does not test.)",
+ "viewport": [300, 160],
+ "steps": [
+  {"advance": 1.0},
+  {"capture": "a"},
+  {"advance": 1.0},
+  {"capture": "b"},
+  {"advance": 3.0},
+  {"capture": "c"}
+ ]
+}

@@ -866,7 +866,8 @@ float jfx_grain(vec2 px, float t, float animated);   // colorOps.ts:267 filmGrai
   - Another syntax (including `*`) gives `at-property-unsupported-syntax` (warning) and falls
     back to phase 2's root rule.
   - Re-registering with a different definition gives `at-property-conflict` (warning, first
-    wins, process-global).
+    wins, process-global). *(As implemented: per live document, see 4.2.1 "`p5-property` as implemented":
+    a hot reload re-registers, an unload releases.)*
   - A missing `initial-value` for a non-`*` syntax gives `at-property-invalid` (error, as in
     CSS).
 - **Fork patch** `rmlui: registered custom properties (var() reads typed --props)`, recorded in
@@ -1364,6 +1365,129 @@ lookup, serialisation and dirty propagation, and hoisting.
 **Tests.** `RegisteredPropertyTest`: parse/registration, conflict, unsupported syntax,
 inherited and non-inherited var lookup, transition midpoint value, keyframes at fixed times,
 anime-driven registered property, unregistered fallback; plus goldens.
+
+#### 4.2.1 `p5-property` as implemented
+
+Registered custom properties as Chromium 153 has them (each behaviour below was read from the pinned
+Chromium with `getComputedStyle` before it was built). Where the code differs from 3.11 (also in
+`CONTRACTS.md`):
+
+- **Where compat reads `@property`.** Phase 2's branch is in the flatten pass of
+  `css/CssRewriter.cpp` (not `css/AtRules.cpp`); with `ForkFeature::RegisteredProperties` it calls
+  `CompatAtProperty::take`, which records the rule, drops it, or hands it back to the root-rule
+  emulation (`Outcome::Fallback`). `CompatAtProperty::finish` (after the flatten pass, before the
+  pre-pass) puts the registrations in the rewrite result and their initial values in the custom
+  property index. Every `@property` of every sheet is known before any declaration is rewritten
+  (hoisting: a rule after the declarations that use the name applies to them, as in CSS).
+- **Registration at load, not in the compile.** The compile is pure (no RmlUi; `check --ui` and the
+  cache run it off the main thread), so it records `CompatDocument::registeredProperties` and
+  `DocumentLoader::load` (and `restyle`, and `check --ui`'s RmlUi verification) registers them
+  before RmlUi parses the sheets and the `style` attributes (`CompatAtProperty::registerFor`).
+  Conflicts are found there: `at-property-conflict` is a load-time diagnostic of the document
+  (`UIDocument::getDiagnostics`, the Console), not a `check --ui` finding.
+- **Registrations per document** (the coordinator's review: an agent edits CSS, hot reloads and
+  iterates without restarting the editor). Each loaded document is an owner
+  (`CompatAtProperty::newOwner`, in load order) of the names it registers, reference-counted in
+  `CompatAtProperty`'s registry: `registerFor(owner, ...)` replaces the owner's registrations (a hot
+  reload, `DocumentLoader::restyle` or a reload of the document, registers the new definitions; the
+  names it no longer registers, or registers differently, are released first), `release(owner)`
+  (the document's unload, `BindingListener::OnDetach`) drops them. A name no live document
+  registers is unregistered in the fork (`StyleSheetSpecification::UnregisterCustomProperty`): it
+  is a plain custom property again and its id is free for any later registration. So editing a
+  definition (syntax, inherits, initial-value) and hot reloading applies it, in edit mode and in
+  play, with no restart (`RegisteredPropertyTest.HotReloadAppliesAChangedDefinition`, the MCP test
+  `test_html_ui_reload.py::test_property_*`).
+- **Two live documents, two definitions of one name**: the property ids are global (one definition
+  of a name in RmlUi at a time), so a per-document definition is not possible without a property id
+  per document and name, which every style lookup would have to map. Deterministic rule: the
+  definition registered first applies (the live document that registered it first, by load order);
+  the later document gets `at-property-conflict` (warning, naming the other document) and its
+  declarations parse with the applying definition. When the applying document unloads (or registers
+  the same definition), the waiting document with the lowest owner number gets its own definition
+  registered and is restyled at the next update (`CompatAtProperty::takePendingOwners`,
+  `DocumentLoader::updateRegisteredProperties` in `updateRuntime`), and its conflict diagnostic is
+  removed. Conflicts are reported once per frame, after the frame's reloads
+  (`takeConflictedOwners`, `conflictsOf`), so the edit-mode and play documents of one sheet, which
+  reload one after the other, never report a transient conflict. Identical definitions share the
+  name (no diagnostic). `check --ui`'s RmlUi verification registers with a temporary owner and
+  releases it.
+- **Fork API.** `StyleSheetSpecification::RegisterCustomProperty(name, RegisteredPropertySyntax,
+  inherits, initial)` registers, adds the parser and marks in one call;
+  `MarkRegisteredCustomProperty(id, registration)` takes the registration (syntax, inherits, initial
+  value) besides the id. Each syntax has a parser of its own (`registered_<syntax>`), stricter than
+  the spec's mapping: `<percentage>` takes percentages only (not `length_percent`), `<angle>` no
+  unitless zero, `<integer>` integer literals (an expression is rounded), one token or one math
+  function (RmlUi's number parser read `1px 2px` as `1px`). `<time>` is a fork parser reading `s`
+  and `ms` into seconds: compat writes the value as declared (no `ms` conversion).
+- **`*` is registered** (3.11 sent it to the fallback): Chromium honours `inherits: false` and the
+  optional `initial-value` for it, and transitions it discretely with `allow-discrete`.
+  `<transform-function>`, `<transform-list>`, combinations (`|`) and lists (`+`, `#`) fall back with
+  `at-property-unsupported-syntax`.
+- **Values that do not match** (not in 3.11): as in CSS, a declaration of a registered property is
+  valid at parse time whatever its value; one that does not match the syntax (declared, or after
+  `var()` substitution) is invalid at computed-value time: `unset`, the initial value (`inherits:
+  false`) or the parent's value. The fork keeps it as written (`Unit::VAR_EXPRESSION` without
+  `var(`). Compat reports the ones it can check statically with `at-property-invalid` as a
+  **Warning** (the code is "by case": Error for an invalid rule).
+- **Invalid rules** (3.11 named only a missing `initial-value`): as Chromium, also a missing or
+  unquoted `syntax`, an invalid syntax string (data type names are case-sensitive), a missing or
+  non-boolean `inherits`, an initial value with `var()`, with font-relative units, or of another
+  type, a name that is not `--*`, and `@property` nested in a style rule. Viewport units and
+  `currentcolor` are accepted as initial values (Chromium does).
+- **Several rules of one name in a document**: the last valid one wins (Chromium); `at-property-
+  conflict` is only for a name another live document registered first with another definition
+  (above). A hot reload that changes a definition applies it (the document's old registration is
+  released first).
+- **Conditional group rules**: Chromium registers a rule inside `@media`/`@supports` while the
+  condition holds. Compat evaluates `@supports` statically (as for every rule) and `@media` against
+  the compile's viewport, resolution and themes, and sets `dependsOnViewport` so a resize compiles
+  again; the recompiled document's restyle registers the new set (a rule whose condition stopped
+  holding is released).
+- **Serialisation for `var()`**: numbers in the shortest decimal text that reads back as the same
+  float (no exponent below 1e9), lengths in px against the element that declares the value (the
+  inherited value is the parent's pixels), percentages with `%`, angles in deg, times in s, integers
+  rounded (halves up), colours `#rrggbbaa`, `currentcolor` kept (it resolves where it is used, as in
+  Chromium). `Element::GetProperty("--x")` returns the computed value too.
+- **Found in the fork while building it** (all in P5-4, FORK.md):
+  - `transition: all` and the `all` shorthand leave custom properties alone (Chromium; CSS Cascade
+    4): a registered property transitions only when the list names it.
+  - transitions' after-change values read registered properties without animation layers
+    (the scoped `ElementStyle::declared_only`), so a keyframes-animated `--x` never starts the transitions
+    of the properties that read it (phase 3's rule for ancestors' animations);
+  - a transition of a registered property that starts, reverses or ends recomputes, in the same
+    style pass, the properties whose `var()` read it (the second `rmlui:` commit; a discrete `*`
+    transition showed its end value until it flipped);
+  - a `var()` in `font-size` or `line-height` whose variable changed makes their pre-pass compute
+    them (they were computed only when dirty themselves; unregistered variables too);
+  - `var()` cycles through registered properties make every member invalid at computed-value time
+    (an unregistered member is the guaranteed-invalid value), and a `var()` of a custom property that
+    is guaranteed-invalid (in a cycle, or whose own `var()` fails) takes its fallback, as in CSS
+    (before, the property that read it failed with it; unregistered variables too).
+- **Gradients with `var()`** (compat, `css/props/Background.cpp`, additive): with the fork's
+  background layers, `conic-gradient(from var(--spin), …)`, a `linear-gradient(var(--a), …)` whose
+  variable is a registered `<angle>`, and `var()` stop positions are written for the fork to
+  substitute; they were dropped as gradients compat could not write (`HTMLUI-CSS-0004`).
+- **`transition-property` names** keep their case for custom properties (`css/props/Transition.cpp`,
+  additive; `--Spin` is not `--spin`).
+- **Capacity**: registered properties take ids from RmlUi's property ids, raised from 256 to 4096 in
+  the fork (P5-4): about 3850 are free for registrations (`RegisteredPropertyTest.PropertyIdCapacity`
+  expects at least 3800), and released names give their ids back (a name re-registered takes its
+  last id if it is free, else a fresh id, else the oldest free one), so an editor session does not
+  run out over time. A registration past the last free id stays unregistered with a warning
+  (`at-property-unsupported-syntax`, "no property id left"). `PropertyIdSet` keeps the ids below 256
+  inline and the others in a heap array allocated on first use, so the style hot paths cost what
+  they did (FORK.md P5-4, benchmarks).
+- **No Lua `CSS.registerProperty`**: 3.12 has none; `anime` animates registered properties as typed
+  values (C++ `Anime`, Lua `anime.animate(el, { ["--x"] = … })`).
+- **Fixtures and goldens**: the browser-parity fixtures are `fixtures/p3/property/*` (area `property`
+  of `fixtures/p3/manifest.json`, owner `p5-property`), because `FixtureRunner`, `BrowserParity` and
+  `render-reference.mjs --fixtures property` read that tree; Chromium's references are
+  `golden/browser/property/`, the engine's goldens of the same captures `golden/property/`
+  (`RegisteredPropertyGolden`). The `conic-spin` effect golden stays P5-fx-paint's.
+- **Effect parameters** (after p5-infra merged): `RegisteredPropertyEffectTest` checks that a
+  registered `var()` in `effect()` arguments follows keyframes (the guide's `--spin` example, its
+  frames rendered) and transitions (`<angle>`, `<number>` parameters at the midpoint), and that an
+  unregistered one changes at once.
 
 ### 4.3 `p5-tooling` (wave 2)
 **Goal.** Editor and shipping integration, end-to-end and performance verification.

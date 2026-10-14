@@ -115,7 +115,7 @@ namespace jasperengine::test {
     };
     FixtureList loadFixtureList(const std::string& path);   // a missing file is an empty list
 
-    // the packages of phase 3 that may own a known failure (spec 4)
+    // the packages of phase 3 that may own a known failure (spec 4), and p5-property (fixtures/p3/property)
     bool isPhase3Package(const std::string& name);
 
     // Taffy references: golden/browser/taffy/<suite>.boxes.json
