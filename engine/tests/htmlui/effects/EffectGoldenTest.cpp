@@ -27,7 +27,7 @@ namespace {
     // paint effects that also get a gradient-text golden (<name>.text): the filter form through
     // -jfx-text-fill (the wave-2 packages add theirs: aurora, conic-spin, gradient-pan, plasma,
     // holographic, sheen)
-    const std::set<std::string> kTextEffects = {"stripes"};
+    const std::set<std::string> kTextEffects = {"aurora", "conic-spin", "gradient-pan", "plasma", "stripes"};
 
     bool updatingGoldens(){
         const char* value = std::getenv("JASPER_HTMLUI_UPDATE_GOLDEN");

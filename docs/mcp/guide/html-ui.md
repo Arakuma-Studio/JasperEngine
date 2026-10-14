@@ -1544,8 +1544,10 @@ A project can add its own (Writing an effect, below).
 The examples below are rendered by the engine's tests:
 
 ```css
-/* layered: an effect over a gradient over a colour, rounded */
-.card { background: effect(stripes, density 12, color-a #ffffff14, color-b #00000000), #101218 linear-gradient(#223, #112); border-radius: 12px; }
+/* an aurora over a dark background */
+.hero { background: #0b0d14; background-image: effect(aurora, speed 2, color-b #44ccff); }
+/* layered: film grain over a gradient over a colour, rounded */
+.card { background: effect(grain, amount 0.08), #101218 linear-gradient(#223, #112); border-radius: 12px; }
 /* gradient text */
 .logo { color: transparent; font-size: 48px; font-weight: bold; background-image: effect(stripes, color-a #ff4fd8, color-b #4fc3ff, speed 0.6); background-clip: text; }
 /* an exit driven by keyframes: the content dissolves into big pixels */
@@ -1610,14 +1612,14 @@ Every effect also takes four **universal parameters**:
   `transition: background-image 300ms` between `effect(stripes, density 4)` and
   `effect(stripes, density 8)` animates the density; filter lists animate the same way. A
   different effect, or a different number of layers, switches at once.
-- **Custom properties**: `effect(stripes, speed var(--s))` follows `--s` when a class or a
+- **Custom properties**: `effect(aurora, speed var(--s))` follows `--s` when a class or a
   script changes it. An unregistered custom property changes at once; a registered one
   (`@property`) transitions and animates:
 
 ```css
 @property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes turn { to { --spin: 360deg; } }
-.ring { background-image: effect(stripes, angle var(--spin), speed 0); animation: turn 4s linear infinite; border-radius: 50%; }
+.ring { background-image: effect(conic-spin, rotation var(--spin), speed 0); animation: turn 4s linear infinite; border-radius: 50%; }
 ```
 
 - **`anime`** animates a custom property the effect reads, for effects driven from Lua:
@@ -1643,7 +1645,8 @@ layers, exactly: the text keeps its anti-aliasing, and a `drop-shadow()` in `fil
 the painted text.
 
 ```css
-.title { color: transparent; background-image: effect(stripes, color-a #ffd36b, color-b #ff6b3d, angle 60deg, density 3); background-clip: text; }
+.title { color: transparent; background-image: effect(gradient-pan, colors #ffd36b #ff6b3d #ffd36b, speed 0.3); background-clip: text; }
+.banner { color: transparent; font-weight: bold; background-image: effect(aurora, intensity 100); background-clip: text; }
 ```
 
 - The trigger is CSS's: `background-clip: text` (or `-webkit-background-clip`) together with
