@@ -1453,6 +1453,10 @@ Chromium with `getComputedStyle` before it was built). Where the code differs fr
   `render-reference.mjs --fixtures property` read that tree; Chromium's references are
   `golden/browser/property/`, the engine's goldens of the same captures `golden/property/`
   (`RegisteredPropertyGolden`). The `conic-spin` effect golden stays P5-fx-paint's.
+- **Effect parameters** (after p5-infra merged): `RegisteredPropertyEffectTest` checks that a
+  registered `var()` in `effect()` arguments follows keyframes (the guide's `--spin` example, its
+  frames rendered) and transitions (`<angle>`, `<number>` parameters at the midpoint), and that an
+  unregistered one changes at once.
 
 ### 4.3 `p5-tooling` (wave 2)
 **Goal.** Editor and shipping integration, end-to-end and performance verification.
