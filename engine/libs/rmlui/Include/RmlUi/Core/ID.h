@@ -370,7 +370,7 @@ enum class PropertyId : uint16_t {
 	FirstCustomId = NumDefinedIds,
 
 	// The maximum number of IDs. This limits the number of possible custom IDs to MaxNumIds - FirstCustomId.
-	MaxNumIds = 256
+	MaxNumIds = 4096
 };
 
 enum class MediaQueryId : uint8_t {

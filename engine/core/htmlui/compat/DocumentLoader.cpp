@@ -3,6 +3,7 @@
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/Hash.h"
 #include "htmlui/compat/ImportManifest.h"
@@ -502,6 +503,7 @@ namespace {
         document->animationFillNames = std::move(result.animationFillNames);
         document->fontFamilies = std::move(result.fontFamilies);
         document->declaredFontFamilies = std::move(result.declaredFontFamilies);
+        document->registeredProperties = std::move(result.registeredProperties);
         document->diagnostics = sink.take();
         document->compiled = true;
 
@@ -568,6 +570,7 @@ namespace {
         std::shared_ptr<const CompatDocument> compiled;
         uint64_t translatorHandle = 0;
         std::vector<Diagnostic> diagnostics;   // compile + runtime
+        uint64_t propertyOwner = 0;            // its @property registrations (CompatAtProperty, phase 5)
     };
 
     std::unordered_map<const Rml::ElementDocument*, std::shared_ptr<Binding>>& bindings(){
@@ -591,6 +594,8 @@ namespace {
             if (it != map.end()){
                 if (it->second->translatorHandle)
                     RmlLogTranslator::remove(it->second->translatorHandle);
+                // its registered custom properties: the names no other document registers are freed
+                CompatAtProperty::release(it->second->propertyOwner);
                 map.erase(it);
             }
             delete this;
@@ -826,10 +831,18 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     for (const Diagnostic& unknown : checkFontFamilies(*compiled))
         HtmlUI::getFontEngine().markFamilyReported(unknown.subject);
 
+    // the document's registered custom properties (phase 5) before RmlUi parses its sheets and style attributes
+    binding->propertyOwner = CompatAtProperty::newOwner();
+    const std::vector<Diagnostic> registration =
+        CompatAtProperty::registerFor(binding->propertyOwner, compiled->sourcePath, compiled->registeredProperties, compiled->files);
+
     Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled->rml, compiled->sourcePath);
     if (!document){
+        CompatAtProperty::release(binding->propertyOwner);
         unregisterDocument(binding->translatorHandle);
-        logDiagnostics(compiled->sourcePath, compiled->diagnostics, options.verboseDiagnostics);
+        std::vector<Diagnostic> logged = compiled->diagnostics;
+        logged.insert(logged.end(), registration.begin(), registration.end());
+        logDiagnostics(compiled->sourcePath, logged, options.verboseDiagnostics);
         return nullptr;
     }
     // the HTML root's background, or the body's, is the canvas's (CSS Backgrounds 3 §2.11.2):
@@ -841,10 +854,12 @@ Rml::ElementDocument* DocumentLoader::load(Rml::Context* context, const std::str
     std::vector<Diagnostic> runtime = std::move(binding->diagnostics);
     binding->diagnostics = compiled->diagnostics;
     std::vector<Diagnostic> fonts = checkFontFamilies(*compiled);
+    binding->diagnostics.insert(binding->diagnostics.end(), registration.begin(), registration.end());
     binding->diagnostics.insert(binding->diagnostics.end(), runtime.begin(), runtime.end());
     binding->diagnostics.insert(binding->diagnostics.end(), fonts.begin(), fonts.end());
 
     std::vector<Diagnostic> logged = compiled->diagnostics;
+    logged.insert(logged.end(), registration.begin(), registration.end());
     logged.insert(logged.end(), fonts.begin(), fonts.end());
     logDiagnostics(compiled->sourcePath, logged, options.verboseDiagnostics);
 
@@ -871,10 +886,38 @@ void DocumentLoader::addRuntimeDiagnostic(const Rml::ElementDocument* document, 
 
 // ---- restyle ----
 
-void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocument& compiled, const CompatOptions&){
+namespace {
+
+    // The document's registered custom properties are the compile's now (phase 5): before RmlUi parses its sheets.
+    std::vector<Diagnostic> registerProperties(const Rml::ElementDocument* document, const CompatDocument& compiled){
+        auto it = bindings().find(document);
+        if (it == bindings().end() || !it->second->propertyOwner)
+            return {};
+        return CompatAtProperty::registerFor(it->second->propertyOwner, compiled.sourcePath, compiled.registeredProperties, compiled.files);
+    }
+
+    // The registration's diagnostics in the document's: the conflicts of the previous registration replaced.
+    void setRegistrationDiagnostics(Binding& binding, const std::vector<Diagnostic>& registration){
+        binding.diagnostics.erase(std::remove_if(binding.diagnostics.begin(), binding.diagnostics.end(),
+                                                 [](const Diagnostic& d){ return d.code == codes::AtPropertyConflict; }),
+                                  binding.diagnostics.end());
+        binding.diagnostics.insert(binding.diagnostics.end(), registration.begin(), registration.end());
+    }
+
+}
+
+void DocumentLoader::restyle(Rml::ElementDocument* document, const CompatDocument& compiled, const CompatOptions& options){
     if (!document)
         return;
 
+    // the compile's registered custom properties (phase 5) before RmlUi parses the sheets
+    const std::vector<Diagnostic> registration = registerProperties(document, compiled);
+    if (!registration.empty())
+        logDiagnostics(compiled.sourcePath, registration, options.verboseDiagnostics);
+    restyleSheets(document, compiled);
+}
+
+void DocumentLoader::restyleSheets(Rml::ElementDocument* document, const CompatDocument& compiled){
     // the head's sheets in order, as ElementDocument::ProcessHeader combines them
     std::shared_ptr<Rml::StyleSheetContainer> combined;
     auto addFile = [&combined](const std::string& path, bool userAgent = false){
@@ -940,8 +983,43 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_p
         }
         binding->compiled = compiled;
         binding->translatorHandle = registerBinding(binding);
+        // its registered custom properties are the new compile's (a changed @property applies)
+        const std::vector<Diagnostic> registration = registerProperties(document, *compiled);
+        setRegistrationDiagnostics(*binding, registration);
+        if (!registration.empty())
+            logDiagnostics(compiled->sourcePath, registration, options.verboseDiagnostics);
+        restyleSheets(document, *compiled);
+        return;
     }
     restyle(document, *compiled, options);
+}
+
+void DocumentLoader::updateRegisteredProperties(){
+    // documents that waited for a name another document held with another definition, and hold it now (phase 5)
+    const std::vector<uint64_t> owners = CompatAtProperty::takePendingOwners();
+    const std::vector<uint64_t> conflicted = CompatAtProperty::takeConflictedOwners();
+    if (owners.empty() && conflicted.empty())
+        return;
+    std::vector<std::pair<Rml::ElementDocument*, std::shared_ptr<Binding>>> waiting, reported;
+    for (auto& [document, binding] : bindings()){
+        if (std::find(owners.begin(), owners.end(), binding->propertyOwner) != owners.end())
+            waiting.emplace_back(const_cast<Rml::ElementDocument*>(document), binding);
+        else if (std::find(conflicted.begin(), conflicted.end(), binding->propertyOwner) != conflicted.end())
+            reported.emplace_back(const_cast<Rml::ElementDocument*>(document), binding);
+    }
+    for (auto& [document, binding] : waiting){
+        registerProperties(document, *binding->compiled);
+        restyleSheets(document, *binding->compiled);
+        reported.emplace_back(document, binding);
+    }
+    // the conflicts that remain once the frame's reloads are done (none for a document that holds its names now)
+    for (auto& [document, binding] : reported){
+        const std::vector<Diagnostic> conflicts = CompatAtProperty::conflictsOf(binding->propertyOwner, binding->compiled->files);
+        setRegistrationDiagnostics(*binding, conflicts);
+        if (!conflicts.empty())
+            logDiagnostics(binding->compiled->sourcePath, conflicts, binding->compiled->options.verboseDiagnostics);
+    }
+    // (a restyle above may have registered for owners still waiting: they are listed for the next update)
 }
 
 std::shared_ptr<const CompatDocument> DocumentLoader::restyleForViewport(Rml::ElementDocument* document,

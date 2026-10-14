@@ -1,0 +1,62 @@
+{
+ "fixture": "property/unregistered-fallback.html",
+ "viewport": [
+  300,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 260,
+    "h": 120
+   },
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 240,
+    "h": 40
+   },
+   {
+    "id": "reg",
+    "tag": "div",
+    "x": 20,
+    "y": 70,
+    "w": 140,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 260,
+    "h": 120
+   },
+   {
+    "id": "plain",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 240,
+    "h": 40
+   },
+   {
+    "id": "reg",
+    "tag": "div",
+    "x": 20,
+    "y": 70,
+    "w": 240,
+    "h": 40
+   }
+  ]
+ }
+}

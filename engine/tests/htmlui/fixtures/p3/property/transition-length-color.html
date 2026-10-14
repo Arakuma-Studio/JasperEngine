@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: transition midpoint of a registered length and color</title>
+<style>
+  @property --tlc-w { syntax: '<length>'; inherits: false; initial-value: 40px; }
+  @property --tlc-c { syntax: '<color>'; inherits: false; initial-value: #2050d0; }
+  html, body { margin: 0; }
+  #box { position: absolute; left: 20px; top: 20px; width: var(--tlc-w); height: 60px; background-color: var(--tlc-c);
+         transition: --tlc-w 1s linear, --tlc-c 1s linear; }
+  #box:hover { --tlc-w: 240px; --tlc-c: rgb(224 160 32 / 50%); }
+  /* not inherited: the child reads the initial value, whatever its parent transitions */
+  #inner { position: absolute; left: 0; top: 64px; width: var(--tlc-w); height: 16px; background-color: var(--tlc-c); }
+</style>
+</head>
+<body>
+<div id="box"><div id="inner"></div></div>
+</body>
+</html>

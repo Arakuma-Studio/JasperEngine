@@ -1,0 +1,40 @@
+{
+ "fixture": "property/progress-ring.html",
+ "viewport": [
+  160,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "quarter": [
+   {
+    "id": "ring",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   }
+  ],
+  "half": [
+   {
+    "id": "ring",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   }
+  ],
+  "end": [
+   {
+    "id": "ring",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   }
+  ]
+ }
+}

@@ -224,6 +224,24 @@ namespace {
          "@property is emulated by setting the initial value on the root element; inherits: false cannot be honored."},
         {codes::FontFaceDescriptor, I, false, "font-face-descriptor", "@font-face descriptor",
          "An @font-face descriptor was dropped or approximated (unicode-range, font-display, variable weight ranges, ...)."},
+        {codes::AtPropertyUnsupportedSyntax, W, false, "at-property-unsupported-syntax", "@property syntax not supported",
+         "The @property rule's syntax is not one the engine registers (the types length, number, integer, percentage, "
+         "length-percentage, color, angle and time, or *): combinations, lists and other types are not. The custom property "
+         "falls back to an unregistered one with the initial value written on the root (it inherits and changes discretely), "
+         "as without the fork. The same applies when the live documents register more custom properties than the engine "
+         "has property ids for (a few thousand; a document that unloads gives its ids back)."},
+        {codes::AtPropertyConflict, W, false, "at-property-conflict", "@property conflict",
+         "Another document loaded at the same time registered the name first with another syntax, inherits or "
+         "initial-value. A name has one definition in the engine at a time, so the first live document's applies to both; "
+         "this document's own definition applies once that document unloads or registers the same definition. A hot "
+         "reload of one document never conflicts with its own earlier version. Give both rules the same definition (a "
+         "shared stylesheet), or rename one of the properties."},
+        {codes::AtPropertyInvalid, E, true, "at-property-invalid", "@property invalid",
+         "Error: the @property rule is invalid and dropped, as in CSS: the name is not a custom property name, a descriptor "
+         "(syntax, inherits, initial-value) is missing or invalid, the initial value does not match the syntax or is not "
+         "computationally independent (em, rem, %, var()), or the rule is nested in a style rule. Warning: a declaration of a "
+         "registered custom property does not match its syntax; it is invalid at computed-value time, so the property takes "
+         "its initial value (inherited: its parent's value)."},
 
         // ---- IMP
         {codes::NotImported, E, false, "not-imported", "Remote resource not imported",

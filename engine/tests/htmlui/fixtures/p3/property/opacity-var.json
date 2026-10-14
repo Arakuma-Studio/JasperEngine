@@ -1,0 +1,13 @@
+{
+ "comment": "opacity: var(--ov-o) follows a registered <number> animated by keyframes (forwards) and one transitioned by a class change; the child reads its own initial 1 (not inherited), not the var() fallback.",
+ "viewport": [260, 160],
+ "steps": [
+  {"addClass": ["#toggle", "dim"]},
+  {"advance": 0.5},
+  {"capture": "half"},
+  {"advance": 0.5},
+  {"capture": "one"},
+  {"advance": 1.5},
+  {"capture": "end"}
+ ]
+}

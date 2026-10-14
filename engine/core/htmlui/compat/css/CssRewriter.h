@@ -10,6 +10,7 @@
 // implements the whole of §3.9 behind the same interface (state in Impl).
 
 #include "Export.h"
+#include "htmlui/compat/CompatAtPropertyTypes.h"
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/CompatTypes.h"
 
@@ -75,6 +76,8 @@ namespace jasperengine::htmlui::compat {
         std::vector<std::string> animationFillNames;   // keyframes needing AnimationFill
         std::vector<std::string> fontFamilies;         // families named in font-family/font declarations
         std::vector<std::string> declaredFontFamilies; // families an @font-face declares
+        // @property rules the fork registers when the document loads (phase 5, CompatAtProperty)
+        std::vector<RegisteredProperty> registeredProperties;
     };
 
     class JASPERENGINE_API CssRewriter {

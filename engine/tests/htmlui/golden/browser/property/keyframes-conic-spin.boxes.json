@@ -1,0 +1,67 @@
+{
+ "fixture": "property/keyframes-conic-spin.html",
+ "viewport": [
+  300,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "a": [
+   {
+    "id": "dial",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   },
+   {
+    "id": "hand",
+    "tag": "div",
+    "x": 225,
+    "y": 30,
+    "w": 10,
+    "h": 100,
+    "transformed": true
+   }
+  ],
+  "b": [
+   {
+    "id": "dial",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   },
+   {
+    "id": "hand",
+    "tag": "div",
+    "x": 180,
+    "y": 75,
+    "w": 100,
+    "h": 10,
+    "transformed": true
+   }
+  ],
+  "c": [
+   {
+    "id": "dial",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 120,
+    "h": 120
+   },
+   {
+    "id": "hand",
+    "tag": "div",
+    "x": 225,
+    "y": 30,
+    "w": 10,
+    "h": 100,
+    "transformed": true
+   }
+  ]
+ }
+}

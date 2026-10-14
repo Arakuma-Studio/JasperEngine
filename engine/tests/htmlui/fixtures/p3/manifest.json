@@ -12,7 +12,8 @@
   "layout": {"owner": "p3-layout", "spec": "3.11, 3.12", "content": "fixed, sticky, overflow, box and flex parity"},
   "animation": {"owner": "p3-animation", "spec": "3.13", "content": "transitions and animations"},
   "grid": {"owner": "p3-grid", "spec": "3.14", "content": "CSS Grid"},
-  "integration": {"owner": "p3-integration", "spec": "4 (wave 2)", "content": "cross-feature fixtures and sample pages"}
+  "integration": {"owner": "p3-integration", "spec": "4 (wave 2)", "content": "cross-feature fixtures and sample pages"},
+  "property": {"owner": "p5-property", "spec": "phase 5 3.11", "content": "registered custom properties (@property): transitions and keyframes of typed custom properties, inherited and non-inherited lookups, invalid values at computed-value time, @starting-style, allow-discrete, the unregistered fallback"}
  },
  "defaults": {
   "comment": "The strict metric of spec 5.2 and the box tolerance; a sidecar's \"tolerance\" may override them only with a \"comment\" saying why.",

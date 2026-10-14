@@ -15,6 +15,7 @@ struct ElementAnimationStyle;
 struct TransitionSnapshot;
 class AllPropertiesIterator;
 enum class RelativeTarget;
+enum class RegisteredPropertySyntax : uint8_t;
 
 enum class PseudoClassState : uint8_t { Clear = 0, Set = 1, Override = 2 };
 using PseudoClassMap = SmallUnorderedMap<String, PseudoClassState>;
@@ -211,6 +212,14 @@ private:
 		const PropertyDictionary& inline_properties;
 		const AnimationLayers* animation_layers = nullptr;
 	};
+	// The custom property where the last var() cycle closed, while custom properties are registered (fork, phase 5): every
+	// custom property resolved on the way back to it is in the cycle (a registered one is invalid at computed-value time,
+	// an unregistered one the guaranteed-invalid value); it is cleared when the resolution gets there.
+	static String registered_cycle_root;
+	// While set, the property lookups through ancestors are of their declarations only, without animation layers: the
+	// after-change values of transitions (GetDeclaredValue), so that the registered custom properties var() reads are
+	// taken without the animation layers of the element's ancestors too (fork, phase 5).
+	static bool declared_only;
 	struct DirtyPropertiesRef {
 		PropertyIdSet& properties;
 		const UnorderedSet<String>& variables;
@@ -289,6 +298,20 @@ private:
 	static PropertyElementPair GetSpecifiedCustomProperty(const PropertySources& sources, const String& name);
 	static PropertyElementPair GetSpecifiedShorthand(const PropertySources& sources, ShorthandId id);
 
+	// Registered custom properties (fork, phase 5): var(--name) of a registered name substitutes the computed value of the
+	// property on the element of 'sources' (its animated value, else the inherited one for 'inherits: true', else the
+	// initial value; a value invalid at computed-value time is 'unset'), serialized: numbers in their shortest form, lengths
+	// in px, angles in deg, times in s, colors as #rrggbbaa. False for the guaranteed-invalid value.
+	static bool SubstituteRegisteredProperty(const PropertySources& sources, PropertyId id, SmallUnorderedSet<String>& variable_dependencies,
+		SmallUnorderedSet<String>& cycle_chain, String& result);
+	// A registered property's value in computed form for the element: lengths in px, angles in deg, integers rounded.
+	static Property ComputedRegisteredValue(const Property& property, RegisteredPropertySyntax syntax, Element* element);
+	static String SerializeRegisteredValue(const Property& computed, RegisteredPropertySyntax syntax);
+	// The local property of an element, without animation layers while the lookups are of declarations only.
+	static const Property* GetLocalPropertyOf(Element* element, PropertyId id);
+	// The property sources of an element, without animation layers while the lookups are of declarations only.
+	static PropertySources GetLookupSources(Element* element);
+
 	enum class SubstitutionResult { Substituted, NoVariablesFound, Error };
 	static SubstitutionResult SubstituteVariableOnce(const PropertySources& sources, const String& value,
 		SmallUnorderedSet<String>& variable_dependencies, SmallUnorderedSet<String>& cycle_chain, String& result);
@@ -314,11 +337,20 @@ private:
 		float dp_ratio;
 		Vector2f vp_dimensions;
 	};
+	// Registered custom properties (fork, phase 5), the parts of ComputeValues for them: a dirty registered property is a
+	// changed variable of the element (also an em length after a font-size change); after the transitions, the properties
+	// whose var() read a registered property a transition applies now are computed again; the names are not passed on.
+	void NoteDirtyRegisteredProperties();
+	void NoteEmRegisteredProperties();
+	void RecomputeRegisteredDependents(const ComputeContext& context, float font_size, float document_font_size, bool& dirty_font_face_handle);
+	void ForgetRegisteredDirtyVariables();
+
 	// Pre-pass of 'font-size' or 'line-height': the value to compute instead of the declared one (a transition's start
 	// value) if a transition starts or stops, else nullptr.
 	const Property* TransitionPrePass(PropertyId id, const ComputeContext& context);
 	// After the main loop: starts and updates the transitions of the changed properties, and computes the values they
-	// apply now.
+	// apply now; when registered custom properties are among them (TransitionSnapshot::registered_applied), the properties
+	// whose var() read them are computed again (fork, phase 5).
 	void TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
 		bool& dirty_font_face_handle);
 	// Before the definition changes: keeps the before-change values of the changed properties the element has none for.
@@ -377,6 +409,10 @@ private:
 	PropertyIdSet dirty_properties;
 	// The element had a themed box when its values were last computed (fork, P4-G12).
 	bool themed_box = false;
+	// Its font-size, line-height held var() when they were last computed (fork, phase 5): a changed variable then makes
+	// the pre-passes compute them.
+	bool var_font_size = false;
+	bool var_line_height = false;
 	UnorderedSet<String> dirty_variables;
 	UnorderedSet<ShorthandId> dirty_var_shorthands;
 #ifdef RMLUI_MATH_EXPRESSIONS

@@ -796,6 +796,118 @@ async def test_delete_document_file_during_play(ed: Editor):
         await ed.call("play", action="stop")
 
 
+# =============================================================================================
+# Phase 5 (p5-property, spec §4.2.1): editing an @property definition (syntax, initial-value) and
+# hot reloading applies the new definition, in edit mode and during play, with no restart. A
+# document's registrations are replaced on reload and released on unload; the edit-mode and play
+# documents register the same definitions and so never conflict.
+# =============================================================================================
+
+R = {}   # p5-property state: scene id
+
+PROP_DOC = "assets/ui/prop/prop.html"
+PROP_CSS = "assets/ui/prop/prop.css"
+
+PROP_HTML = """<html>
+<head>
+    <title>prop</title>
+    <link type="text/css" href="prop.css"/>
+</head>
+<body><div id="bar"></div></body>
+</html>
+"""
+
+# #bar spans x 40 .. 40 + its width, y 40 .. 140 (canvas pixels); the width and colour come from
+# the registered properties' initial values only.
+PROP_CSS_TEMPLATE = """@property --rp-size {{ syntax: '{size_syntax}'; inherits: false; initial-value: {size}; }}
+@property --rp-tint {{ syntax: '<color>'; inherits: false; initial-value: {tint}; }}
+body {{ display: block; position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; }}
+div {{ display: block; }}
+#bar {{ position: absolute; left: 40px; top: 40px; height: 100px; width: {width}; background-color: var(--rp-tint); }}
+"""
+
+
+def prop_css(size_syntax: str, size: str, tint: str, width: str = "var(--rp-size)") -> str:
+    return PROP_CSS_TEMPLATE.format(size_syntax=size_syntax, size=size, tint=tint, width=width)
+
+
+async def prop_shot(ed: Editor, label: str) -> Shot:
+    shot = await ed.call_raw("screenshot", {"view": "game", "scene": R["scene"], "max_width": 1280})
+    ed.check(not shot.is_error and shot.images, f"{label}: no screenshot: {shot.text[:300]}")
+    (ed.scratch.root / f"html-ui-reload-{label}.png").write_bytes(shot.images[0][0])
+    return Shot(shot.images[0][0], shot.value)
+
+
+async def wait_for_bar(ed: Editor, label: str, width: int, color, seconds: float = 3.0) -> Shot:
+    """Game view screenshots until #bar is `width` px wide in `color`: its last column shows the
+    colour, the column 20 px right of it the background."""
+    inside, outside = (40 + width - 10, 90), (40 + width + 20, 90)
+    deadline = time.monotonic() + seconds
+    attempts = 0
+    while True:
+        shot = await prop_shot(ed, label)
+        attempts += 1
+        if near(shot.px(*inside), color, 12) and not near(shot.px(*outside), color, 40):
+            return shot
+        if time.monotonic() > deadline and attempts >= 3:
+            ed.fail(f"{label}: #bar should be {width} px wide in {color}: pixel {inside} is {shot.px(*inside)}, "
+                    f"pixel {outside} is {shot.px(*outside)} after {seconds} s")
+        await asyncio.sleep(0.1)
+
+
+async def no_property_problems(ed: Editor, label: str):
+    entries = await ed.console_since(R["console"], types=["warning", "error"], limit=1000)
+    problems = [e.get("message", "") for e in entries
+                if "HTMLUI-AT-" in e.get("message", "") or "@property" in e.get("message", "")
+                or "prop.css" in e.get("message", "") or "prop.html" in e.get("message", "")]
+    ed.check(not problems, f"{label}: no @property diagnostics: {problems}")
+
+
+async def test_property_setup(ed: Editor):
+    R["console"] = (await ed.call("read_console", {"limit": 1}))["next_cursor"]
+    await ed.call("write_file", path=PROP_DOC, content=PROP_HTML)
+    await ed.call("write_file", path=PROP_CSS, content=prop_css("<length>", "100px", "#ff0000"))
+    made = await ed.call("create_scene", name="HtmlUiProperty", type="UI")
+    R["scene"] = made["scene"]["id"]
+    await ed.call("set_scene_settings", scene=R["scene"], settings={"background_color": [0.118, 0.118, 0.118, 1.0]})
+    ent = await ed.call("create_entity", scene=R["scene"], type="ui_document", name="Bar")
+    await ed.call("set_properties", scene=R["scene"], entity=ent["entity_id"], values={"uidocument": {"filename": PROP_DOC}})
+    await ed.call("save_scene", scene=R["scene"], path="scenes/HtmlUiProperty")
+    await wait_for_bar(ed, "property-setup", 100, RED)
+
+
+async def test_property_initial_value_edit(ed: Editor):
+    # a new initial-value of both registered names applies after the reload
+    await ed.call("write_file", path=PROP_CSS, content=prop_css("<length>", "400px", "#00ff00"))
+    await wait_for_bar(ed, "property-initial-value", 400, GREEN)
+    await no_property_problems(ed, "initial-value edit")
+
+
+async def test_property_syntax_edit(ed: Editor):
+    # --rp-size becomes a <number>: 30 is not a valid <length> initial value, and calc(var() * 10px)
+    # needs a number; the bar is 300 px wide only if the new definition replaced the old one
+    await ed.call("write_file", path=PROP_CSS, content=prop_css("<number>", "30", "#0000ff", "calc(var(--rp-size) * 10px)"))
+    await wait_for_bar(ed, "property-syntax", 300, BLUE)
+    await no_property_problems(ed, "syntax edit")
+
+
+async def test_property_edit_during_play(ed: Editor):
+    ed.require_tools("play")
+    await ed.call("play", action="start", scene=R["scene"])
+    try:
+        await wait_for_bar(ed, "property-play-start", 300, BLUE)
+        # back to a <length>, a new colour: the play document and the edit-mode document reload both
+        await ed.call("write_file", path=PROP_CSS, content=prop_css("<length>", "200px", "#ffff00"))
+        await wait_for_bar(ed, "property-play-edit", 200, YELLOW)
+    finally:
+        await ed.call("play", action="stop")
+    # the edit-mode document has the same definition; stopping released the play document's registrations
+    await wait_for_bar(ed, "property-after-play", 200, YELLOW)
+    await ed.call("write_file", path=PROP_CSS, content=prop_css("<length>", "500px", "#ff0000"))
+    await wait_for_bar(ed, "property-after-play-edit", 500, RED)
+    await no_property_problems(ed, "edit during play")
+
+
 async def test_p4_no_crash(ed: Editor):
     await ed.check_alive()
     r = await status(ed)

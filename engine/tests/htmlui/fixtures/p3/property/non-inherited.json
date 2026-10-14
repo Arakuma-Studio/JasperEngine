@@ -1,0 +1,7 @@
+{
+ "comment": "Registered properties on #parent: the child's var() of the non-inherited --ni-own and --ni-color gives their initial values (20px, #808080), of the inherited --ni-down the parent's 120px, and of the inherited --ni-em the parent's computed 60px (6em of its 10px), not 6em of the child's 20px; 'inherit' takes the parent's value.",
+ "viewport": [300, 200],
+ "steps": [
+  {"capture": ""}
+ ]
+}

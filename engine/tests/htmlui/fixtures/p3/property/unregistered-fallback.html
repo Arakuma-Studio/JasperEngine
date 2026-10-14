@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: unregistered custom properties change discretely and inherit</title>
+<style>
+  @property --uf-reg { syntax: '<length>'; inherits: true; initial-value: 40px; }
+  html, body { margin: 0; }
+  #parent { position: absolute; left: 20px; top: 20px; width: 260px; height: 120px;
+            --uf-plain: 40px; --uf-reg: 40px; transition: --uf-plain 1s linear, --uf-reg 1s linear; }
+  #parent.wide { --uf-plain: 240px; --uf-reg: 240px; }
+  #plain { height: 40px; width: var(--uf-plain); background-color: #c03030; }
+  #reg { margin-top: 10px; height: 40px; width: var(--uf-reg); background-color: #3060c0; }
+</style>
+</head>
+<body>
+<div id="parent"><div id="plain"></div><div id="reg"></div></div>
+</body>
+</html>

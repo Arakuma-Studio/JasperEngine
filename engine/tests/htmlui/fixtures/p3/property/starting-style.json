@@ -1,0 +1,16 @@
+{
+ "comment": "Shown from display: none, a registered <length> transitions from its @starting-style value (40px to 240px over 1 s: 140px at 0.5 s); a registered '*' property transitions discretely with transition-behavior: allow-discrete (still the old color at 0.4 s, the new one at 0.6 s) and changes at once without it.",
+ "viewport": [300, 170],
+ "steps": [
+  {"addClass": ["#panel", "open"]},
+  {"addClass": ["#flip", "blue"]},
+  {"addClass": ["#plain", "blue"]},
+  {"capture": "shown"},
+  {"advance": 0.4},
+  {"capture": "early"},
+  {"advance": 0.2},
+  {"capture": "late"},
+  {"advance": 0.5},
+  {"capture": "end"}
+ ]
+}
