@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/PropertyIdSet.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "Cascade.h"
 #include "ElementStyle.h"
@@ -49,25 +50,42 @@ private:
 	struct Range {
 		PropertyIt it, end;
 		bool only_important;
+		const PropertyMap* properties;
 	};
 	Range ranges[6];
 	int num_ranges = 0;
 	int current = 0;
-	PropertyIdSet visited_properties;
+	// The visited ids below PropertyIdSet's inline ids: every id RmlUi and the engine define (fork, phase 5: the
+	// registered custom properties' ids above them are looked up in the earlier ranges instead, see IsFirstVisit; a
+	// PropertyIdSet here, with its heap part for those ids, made the iterator bigger and its loop slower).
+	static constexpr size_t NumVisitedIds = 256;
+	uint64_t visited_ids[NumVisitedIds / 64] = {};
 
 	void AddRange(const PropertyMap* properties, bool only_important)
 	{
 		if (properties && !properties->empty())
-			ranges[num_ranges++] = Range{properties->begin(), properties->end(), only_important};
+			ranges[num_ranges++] = Range{properties->begin(), properties->end(), only_important, properties};
 	}
 
 	bool IsFirstVisit(PropertyId id)
 	{
-		// (the first range has no earlier one, and the last no later one that reads the set: fork, phase 5)
-		if (current > 0 && visited_properties.Contains(id))
-			return false;
-		if (current + 1 < num_ranges)
-			visited_properties.Insert(id);
+		const size_t index = size_t(id);
+		if (index < NumVisitedIds)
+		{
+			const uint64_t bit = uint64_t(1) << (index % 64);
+			uint64_t& word = visited_ids[index / 64];
+			if (word & bit)
+				return false;
+			word |= bit;
+			return true;
+		}
+		// A registered custom property: visited if an earlier range yielded it.
+		for (int i = 0; i < current; i++)
+		{
+			auto it = ranges[i].properties->find(id);
+			if (it != ranges[i].properties->end() && (!ranges[i].only_important || it->second.important))
+				return false;
+		}
 		return true;
 	}
 

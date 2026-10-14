@@ -1,4 +1,5 @@
 #include "../../../Source/Core/ElementStyle.h"
+#include "../../../Source/Core/PropertiesIterator.h"
 #include "../Common/TestsInterface.h"
 #include "../Common/TestsShell.h"
 #include <RmlUi/Core/ComputedValues.h>
@@ -553,6 +554,30 @@ TEST_CASE("registered_properties.many_ids")
 	CHECK(copy.Size() == 1);
 	copy.Erase(PropertyId::Width);
 	CHECK(copy.Empty());
+	// the style's iterator yields a high id once, from the first range that has it (an important value only from the
+	// important ranges)
+	{
+		PropertyMap inline_properties, definition_properties, animated_properties;
+		inline_properties[ids[599]] = Property(1.f, Unit::PX);
+		inline_properties[ids[598]] = Property(2.f, Unit::PX);
+		inline_properties[PropertyId::Width] = Property(3.f, Unit::PX);
+		definition_properties[ids[599]] = Property(4.f, Unit::PX);
+		Property important(5.f, Unit::PX);
+		important.important = true;
+		definition_properties[ids[598]] = important;
+		definition_properties[ids[597]] = Property(6.f, Unit::PX);
+		definition_properties[PropertyId::Width] = Property(7.f, Unit::PX);
+		animated_properties[ids[597]] = Property(8.f, Unit::PX);
+		UnorderedMap<PropertyId, Vector<float>> seen;
+		for (PlainPropertiesIterator it(inline_properties, &definition_properties, nullptr, &animated_properties, true); !it.AtEnd(); ++it)
+			seen[(*it).first].push_back((*it).second.Get<float>());
+		CHECK(seen.size() == 4);
+		CHECK(seen[ids[599]] == Vector<float>{1.f});
+		CHECK(seen[ids[598]] == Vector<float>{5.f});
+		CHECK(seen[ids[597]] == Vector<float>{8.f});
+		CHECK(seen[PropertyId::Width] == Vector<float>{3.f});
+	}
+
 	PropertyIdSet moved = std::move(set);
 	CHECK(moved.Size() == 601);
 	CHECK_FALSE(set.Contains(ids[599])); // (the moved-from set keeps no high id)
@@ -560,13 +585,26 @@ TEST_CASE("registered_properties.many_ids")
 	CHECK(set.Empty());
 
 	// a document styled through high ids
-	Fixture f(R"(
-		#parent { --many-598: 33px; --many-599: 44px; width: var(--many-598); }
-		#child { width: var(--many-599); }
+	{
+		Fixture f(R"(
+			#parent { --many-598: 33px; --many-599: 44px; width: var(--many-598); }
+			#child { width: var(--many-599); }
+		)");
+		CHECK(f.Width("parent") == 33.f);
+		CHECK(f.Width("child") == 0.f); // --many-599 is not inherited (odd index): its initial value
+		f.Get("parent")->SetProperty("--many-598", "55px");
+		f.context->Update();
+		CHECK(f.Width("parent") == 55.f);
+		// a high id in several ranges of the style's iterator: inline over the sheet, an important sheet value over inline
+		CHECK(f.Get("parent")->GetProperty("--many-598")->Get<float>() == 55.f);
+		f.Get("child")->SetProperty("--many-599", "7px");
+		f.context->Update();
+		CHECK(f.Width("child") == 7.f);
+	}
+	Fixture g(R"(
+		#parent { --many-596: 12px !important; width: var(--many-596); }
 	)");
-	CHECK(f.Width("parent") == 33.f);
-	CHECK(f.Width("child") == 0.f); // --many-599 is not inherited (odd index): its initial value
-	f.Get("parent")->SetProperty("--many-598", "55px");
-	f.context->Update();
-	CHECK(f.Width("parent") == 55.f);
+	g.Get("parent")->SetProperty("--many-596", "99px");
+	g.context->Update();
+	CHECK(g.Width("parent") == 12.f);
 }
