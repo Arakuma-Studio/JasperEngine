@@ -972,7 +972,8 @@ drives a gradient angle, an opacity, a size and an effect parameter at once.
   never undone while it runs: a second document (or an edited one after a hot reload) that
   registers the name with another definition gets `HTMLUI-AT-0013` and the first definition stays
   until the engine (in the editor: the editor) restarts. Give every `@property` of a name the same
-  definition, or rename the property while you iterate on its definition.
+  definition, or rename the property while you iterate on its definition. About 60 names can be
+  registered in all (the engine's property ids); past that a registration warns and is ignored.
 - **From Lua**, `anime` animates a registered property as typed values, and every `var()` follows:
 
 ```lua
