@@ -40,6 +40,9 @@
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
 #include "htmlui/HtmlUiImportCli.h"
+#include "htmlui/effects/EffectManifest.h"
+#include "htmlui/effects/EffectRegistry.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
 #include "imgui.h"
 #include "command/type/RenameFileCmd.h"
@@ -238,6 +241,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
+        << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
         << "Run a subcommand with --help for its options.\n";
@@ -255,6 +259,7 @@ static void printUsage(const std::string& commandName) {
         << "      --start-scene <id|name> Start scene override.\n"
         << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
+        << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "If no --backend is provided, all supported backends are used.\n"
@@ -289,6 +294,7 @@ static void printShadersUsage(const std::string& commandName) {
         << "      --format <format>       binary, header, or json. Default: binary.\n"
         << "      --backend <list>        opengl, opengles, d3d11, metal-macos, metal-ios, vulkan, all. Can repeat.\n"
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
+        << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "If no --backend is provided, all supported backends are used.\n"
         << "Shader output is written directly to <out>.\n";
@@ -330,11 +336,11 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             if (!parseBackendList(value, options.backends, error)) return false;
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            ShaderKey key;
-            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
+            std::vector<ShaderKey> keys;
+            if (!ShaderPool::expandShaderSpec(value, keys, &error)) {
                 return false;
             }
-            options.shaderKeys.insert(key);
+            options.shaderKeys.insert(keys.begin(), keys.end());
         } else if (arg == "--list-scenes") {
             options.listScenes = true;
         } else {
@@ -382,11 +388,11 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
             if (!parseBackendList(value, options.backends, error)) return false;
         } else if (arg == "--shader") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            ShaderKey key;
-            if (!ShaderPool::parseShaderSpec(value, key, &error)) {
+            std::vector<ShaderKey> keys;
+            if (!ShaderPool::expandShaderSpec(value, keys, &error)) {
                 return false;
             }
-            options.shaderKeys.insert(key);
+            options.shaderKeys.insert(keys.begin(), keys.end());
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -2153,6 +2159,258 @@ int CommandLine::runUiSupportCommand(int argc, char** argv, const char* executab
     }
     std::cout << ProjectChecks::uiSupportJson().dump(1) << std::endl;
     return 0;
+}
+
+// ---- ui-effects: the HTML UI effects (phase-5 spec 3.13): the catalogue as text or JSON
+// (tools/htmlui/gen_effects_docs.py documents the same manifests), --validate compiles every
+// effect in both forms for glcore and checks its manifest against the reflection
+
+namespace {
+
+    // a parameter's range as written in manifests ("-180deg..180deg", "0%..100%")
+    std::string effectRangeText(const htmlui::EffectParamDef& def) {
+        if (def.type == htmlui::EffectParamType::Enum)
+            return "";
+        if (!def.hasRange)
+            return "";
+        auto number = [](double v) {
+            char text[64];
+            std::snprintf(text, sizeof(text), "%.6g", v);
+            return std::string(text);
+        };
+        auto value = [&](float v) {
+            switch (def.type) {
+                case htmlui::EffectParamType::Angle: return number(v * 180.0 / 3.14159265358979323846) + "deg";
+                case htmlui::EffectParamType::Time: return number(v) + "s";
+                case htmlui::EffectParamType::Length: return number(v) + "px";
+                case htmlui::EffectParamType::Percentage: return number(v * 100.0) + "%";
+                default: return number(v);
+            }
+        };
+        return value(def.minValue) + ".." + value(def.maxValue);
+    }
+
+    // one CSS declaration using the effect (its first simple parameter at its default)
+    std::string effectExample(const htmlui::EffectManifest& m) {
+        std::string call = "effect(" + m.name;
+        for (const htmlui::EffectParamDef& def : m.params) {
+            if (def.type == htmlui::EffectParamType::Palette || def.type == htmlui::EffectParamType::Position ||
+                def.type == htmlui::EffectParamType::Color || def.defaultText.empty())
+                continue;
+            call += ", " + def.name + " " + def.defaultText;
+            break;
+        }
+        call += ")";
+        if (m.kind == htmlui::EffectKind::Paint)
+            return "background-image: " + call + ";";
+        return std::string(m.backdrop ? "backdrop-filter: " : "filter: ") + call + ";";
+    }
+
+    nlohmann::json effectJson(const htmlui::EffectManifest& m) {
+        nlohmann::json params = nlohmann::json::array();
+        for (const htmlui::EffectParamDef& def : m.params) {
+            nlohmann::json p = {{"name", def.name}, {"type", htmlui::effectParamTypeName(def.type)}, {"default", def.defaultText},
+                                {"range", effectRangeText(def)}, {"description", def.description}, {"uniform", def.uniform}};
+            if (def.hasRange && def.type != htmlui::EffectParamType::Enum) {
+                p["min"] = def.minValue;
+                p["max"] = def.maxValue;
+            }
+            if (!def.options.empty())
+                p["options"] = def.options;
+            params.push_back(std::move(p));
+        }
+        auto scaled = [](const htmlui::EffectScaledParam& s) {
+            if (s.param.empty())
+                return nlohmann::json(std::to_string(s.addPx) + "px");
+            return nlohmann::json({{"param", s.param}, {"scale", s.scale}, {"addPx", s.addPx}});
+        };
+        nlohmann::json entry = {
+            {"name", m.name}, {"kind", htmlui::effectKindName(m.kind)}, {"category", m.category}, {"summary", m.summary},
+            {"source", m.source}, {"cost", htmlui::effectCostName(m.cost)}, {"backdrop", m.backdrop},
+            {"pointer", htmlui::effectPointerName(m.pointer)}, {"time", m.timeParams}, {"suggestFor", m.suggestFor},
+            {"params", params}, {"builtin", m.builtin}, {"path", m.builtin ? "engine/shaderlib/" + m.sourcePath : m.sourcePath},
+            {"example", effectExample(m)},
+            {"thumbnail", m.builtin ? "docs/mcp/guide/img/effects/" + m.name + ".png" : std::string()}};
+        if (m.hasPrepass) {
+            entry["prepass"] = {{"blur", scaled(m.prepassSigma)}, {"threshold", m.prepassThreshold}};
+        }
+        if (!m.margin.param.empty() || m.margin.addPx != 0.f)
+            entry["margin"] = scaled(m.margin);
+        if (m.boundsGeometry)
+            entry["geometry"] = {{"bounds", scaled(m.boundsExtent)}};
+        return entry;
+    }
+
+    bool readFileText(const fs::path& path, std::string& content) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file)
+            return false;
+        std::ostringstream stream;
+        stream << file.rdbuf();
+        content = stream.str();
+        return true;
+    }
+
+    // the project's .frag files with an effect manifest (project-relative paths), sorted
+    std::vector<std::string> findProjectEffectFiles(const fs::path& project) {
+        std::vector<std::string> files;
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(project, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)) {
+            if (ec)
+                break;
+            const fs::path& path = it->path();
+            const std::string name = path.filename().string();
+            if (it->is_directory(ec) && (name == "build" || name == "out" || (!name.empty() && name[0] == '.'))) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            if (!it->is_regular_file(ec) || path.extension() != ".frag")
+                continue;
+            std::string source;
+            if (readFileText(path, source) && htmlui::EffectManifestParser::hasEffectManifest(source))
+                files.push_back(fs::relative(path, project, ec).generic_string());
+        }
+        std::sort(files.begin(), files.end());
+        return files;
+    }
+
+}
+
+int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    const std::string commandName = getCommandName(executableName);
+    auto usage = [&](std::ostream& out) {
+        out << "Usage:\n"
+            << "  " << commandName << " ui-effects [--json] [--validate] [--project <dir>]\n\n"
+            << "Lists the HTML UI effects: the built-in ones, and with --project the project effects\n"
+            << "(every .frag of the project with an effect manifest).\n\n"
+            << "Options:\n"
+            << "      --json              The catalogue as JSON: every manifest field, an example and the\n"
+            << "                          thumbnail path (tools/htmlui/gen_effects_docs.py documents it).\n"
+            << "      --validate          Compiles every effect in both forms for glcore and checks its\n"
+            << "                          manifest against the shader's reflection; exits 1 on any problem.\n"
+            << "  -p, --project <dir>     Also the effects of this project.\n"
+            << "  -h, --help              Show this help.\n";
+    };
+    bool json = false, validate = false;
+    std::string projectDir;
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            usage(std::cout);
+            return 0;
+        } else if (arg == "--json") {
+            json = true;
+        } else if (arg == "--validate") {
+            validate = true;
+        } else if ((arg == "-p" || arg == "--project") && i + 1 < argc) {
+            projectDir = argv[++i];
+        } else {
+            std::cerr << commandName << " ui-effects: unknown option: " << arg << "\n\n";
+            usage(std::cerr);
+            return 2;
+        }
+    }
+
+    htmlui::EffectRegistry& registry = htmlui::EffectRegistry::get();
+    std::vector<const htmlui::EffectManifest*> effects = registry.builtins();
+    std::vector<std::string> problems;
+    for (const htmlui::EffectDiagnostic& d : registry.builtinDiagnostics())
+        problems.push_back(d.file + ":" + std::to_string(d.line) + ": " + d.message);
+
+    // project effects: parsed (and validated) from their files
+    fs::path project;
+    std::vector<std::unique_ptr<htmlui::EffectManifest>> projectManifests;
+    std::map<std::string, std::string> projectSources;
+    if (!projectDir.empty()) {
+        project = normalizeProjectPath(fs::path(projectDir));
+        if (!fs::is_directory(project)) {
+            std::cerr << commandName << " ui-effects: not a directory: " << projectDir << "\n";
+            return 2;
+        }
+        for (const std::string& file : findProjectEffectFiles(project)) {
+            std::string source;
+            readFileText(project / file, source);
+            auto manifest = std::make_unique<htmlui::EffectManifest>();
+            std::vector<htmlui::EffectDiagnostic> diags;
+            const bool ok = htmlui::EffectManifestParser::parse(source, file, false, *manifest, diags) &&
+                            htmlui::EffectManifestParser::validate(*manifest, source, diags);
+            for (const htmlui::EffectDiagnostic& d : diags) {
+                if (d.severity == htmlui::compat::Severity::Error)
+                    problems.push_back(file + ":" + std::to_string(d.line) + ": " + d.message);
+            }
+            if (!ok)
+                continue;
+            if (registry.find(manifest->name) && registry.find(manifest->name)->builtin) {
+                problems.push_back(file + ": '" + manifest->name + "' is the name of a built-in effect");
+                continue;
+            }
+            projectSources[file] = source;
+            effects.push_back(manifest.get());
+            projectManifests.push_back(std::move(manifest));
+        }
+    }
+
+    if (validate) {
+        if (!ShaderVariantCompiler::isAvailable()) {
+            std::cerr << commandName << " ui-effects: this build has no shader compiler\n";
+            return 1;
+        }
+        for (const htmlui::EffectManifest* m : effects) {
+            CustomShaderSources sources;
+            uint16_t customId = 0;
+            if (m->builtin) {
+                customId = ShaderPool::registerCustomShader(m->customShaderName());
+            } else {
+                customId = ShaderPool::registerCustomShader(m->sourcePath);
+                sources = ShaderVariantCompiler::resolveCustomShaderSources(m->sourcePath,
+                    [&](const std::string& path, std::string& content) { return readFileText(project / path, content); });
+                if (!sources.valid) {
+                    problems.push_back(m->sourcePath + ": " + sources.error);
+                    continue;
+                }
+            }
+            for (int filterForm = m->kind == htmlui::EffectKind::Paint ? 0 : 1; filterForm <= 1; filterForm++) {
+                const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI_EFFECT, (uint32_t)filterForm, customId);
+                ShaderData data;
+                std::string compileError, log;
+                const std::string form = filterForm ? "filter form" : "paint form";
+                if (!ShaderVariantCompiler::compile(key, ShaderBackend::GLCore, m->builtin ? nullptr : &sources, data, &compileError, &log)) {
+                    problems.push_back(m->name + " (" + form + "): " + compileError + (log.empty() ? "" : "\n" + log));
+                    continue;
+                }
+                std::vector<std::string> mismatches;
+                if (!htmlui::EffectManifestParser::checkReflection(*m, data, mismatches)) {
+                    for (const std::string& mismatch : mismatches)
+                        problems.push_back(m->name + " (" + form + "): " + mismatch);
+                }
+            }
+        }
+    }
+
+    if (json) {
+        nlohmann::json list = nlohmann::json::array();
+        for (const htmlui::EffectManifest* m : effects)
+            list.push_back(effectJson(*m));
+        nlohmann::json out = {{"effects", list}};
+        if (validate)
+            out["problems"] = problems;
+        std::cout << out.dump(1) << std::endl;
+    } else {
+        for (const htmlui::EffectManifest* m : effects) {
+            std::cout << m->name << "  " << htmlui::effectKindName(m->kind) << ", " << m->category << ", cost " << htmlui::effectCostName(m->cost)
+                      << (m->backdrop ? ", backdrop" : "") << (m->builtin ? "" : ", project " + m->sourcePath) << "\n    " << m->summary << "\n    "
+                      << effectExample(*m) << "\n";
+        }
+        std::cout << effects.size() << " effects\n";
+        for (const std::string& problem : problems)
+            std::cerr << "error: " << problem << "\n";
+        if (validate && problems.empty())
+            std::cout << "every effect compiles in both forms and matches its manifest\n";
+    }
+    return problems.empty() ? 0 : 1;
 }
 
 int CommandLine::runImportUiCommand(int argc, char** argv, const char* executableName) {
