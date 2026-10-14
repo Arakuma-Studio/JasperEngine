@@ -9,7 +9,7 @@ Every effect also takes the universal parameters: `opacity` (percentage, default
 | Effect | Kind | Category | Cost | Summary |
 |---|---|---|---|---|
 | [`stripes`](#stripes) | paint | pattern | low | Alternating two-colour stripes at any angle, scrolling with time |
-| [`cursor-trail`](#cursor-trail) | paint | interactive | low | A fading paint stroke that follows the pointer |
+| [`cursor-trail`](#cursor-trail) | paint | interactive | medium | A fading paint stroke that follows the pointer |
 | [`spotlight`](#spotlight) | paint | interactive | low | A soft light that follows the pointer over the element |
 | [`frosted-glass`](#frosted-glass) | filter, backdrop | glass | medium | Blurred, tinted glass over what lies behind the element, with a lit edge |
 | [`pixelate`](#pixelate) | filter | stylize | low | Big square or round pixels of the content |
@@ -48,7 +48,7 @@ Kind: paint; cost: low; backdrop: no; animated by: `speed`; source: shaders.com 
 
 A fading paint stroke that follows the pointer.
 
-Kind: paint; cost: low; backdrop: no; pointer: trail; source: shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid).
+Kind: paint; cost: medium; backdrop: no; pointer: trail; source: shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid).
 
 | Param | Type | Default | Range or options | Description |
 |---|---|---|---|---|

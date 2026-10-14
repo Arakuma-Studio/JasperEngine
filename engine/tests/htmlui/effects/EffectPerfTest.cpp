@@ -11,9 +11,16 @@
 //   FixtureRunner::frame, as HtmlUIContext does it each engine frame). In the steady state no
 //   effect instance is created, no variant is compiled and no pipeline is created, and
 //   CPU(A) <= 1.5 x CPU(B) + 1 ms. A2: every element's parameter reads var(--k), changed every
-//   frame: exactly 64 re-instances a frame, nothing compiled, CPU(A2) <= 3 x CPU(B) + 4 ms.
-// - Cost table: every registered effect fills 1024 x 1024 and is rendered and read back 20 times
-//   through the golden harness, against a background-color fill of the same size (the process's
+//   frame: nothing compiled, every element follows, and CPU(A2) <= 3 x CPU(B) + 4 ms. A
+//   re-instances once per new value text (3.6's decorators are shared by the elements whose value
+//   is the same: one per paint effect) and once per filter element: 3 + 16 a frame, not 64.
+//   Document C: A's layers without effects (RmlUi's brightness() and blur() in place of the effect
+//   filters): CPU(A) <= 1.5 x CPU(C) + 1 ms, the effect system's own work. On llvmpipe the 16
+//   filter layers alone cost the main thread far more than B (the driver's render-to-texture
+//   flushes in RmlRenderer's layer path, whoever the filter is), see the phase-5 spec's
+//   "p5-tooling as implemented".
+// - Cost table: every built-in effect fills 1024 x 1024 and is rendered and read back 20 times
+//   through the golden harness (its pointer and trail inputs), against a background-color fill of the same size (the process's
 //   CPU time: the GL driver's threads draw). Written to build/linux/htmlui-effects-cost.json
 //   (htmlui-effects-cost-vulkan.json on Vulkan) and printed; the ratio is at most 6 for a `low`
 //   effect and 24 for a `medium` one (3.14's classes x 1.5); `high` is unbounded.
@@ -27,6 +34,8 @@
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/effects/EffectInstancers.h"
+#include "htmlui/effects/EffectValue.h"
 
 #include "json.hpp"
 
@@ -76,6 +85,27 @@ namespace {
 
     // the 8 x 8 grid: `effects` false = background-color only (document B); `vars` = every
     // effect parameter reads var(--k) (A2)
+    // document C: document A's layers without effects, RmlUi's own filters in place of the
+    // effect filters (the 12 filters brightness(), the 4 backdrops blur()), the paints colours.
+    // What A costs above it is the effect system's own work
+    std::string layersDocument(){
+        std::string css = "html, body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }\n"
+                          "#grid div { position: absolute; width: 140px; height: 90px; background-color: #3366aa; }\n";
+        std::string body;
+        for (int i = 0; i < 64; i++){
+            const int col = i % 8, row = i / 8;
+            const std::string id = "e" + std::to_string(i);
+            std::string rule = "#" + id + " { left: " + std::to_string(10 + col * 158) + "px; top: " + std::to_string(row * 90) + "px;";
+            if (i >= 48 && i < 60)
+                rule += " filter: brightness(1.05);";
+            else if (i >= 60)
+                rule += " background-color: transparent; backdrop-filter: blur(6px);";
+            css += rule + " }\n";
+            body += "<div id=\"" + id + "\"></div>";
+        }
+        return "<!DOCTYPE html><html><head><style>" + css + "</style></head><body><div id=\"grid\">" + body + "</div></body></html>";
+    }
+
     std::string gridDocument(bool effects, bool vars){
         std::string css = "html, body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }\n"
                           "#grid { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; --k: 0.5; }\n"
@@ -105,14 +135,21 @@ namespace {
         return "<!DOCTYPE html><html><head><style>" + css + "</style></head><body><div id=\"grid\">" + body + "</div></body></html>";
     }
 
-    struct Run {
+    struct PerfRun {
         double medianMs = 0.0;
+        double updateMs = 0.0, renderMs = 0.0, endMs = 0.0;   // the frame's parts (medians)
         EffectStats delta;
+    };
+
+    // the parts of the last frame (main-thread CPU ms)
+    struct FrameParts {
+        double update = 0.0, render = 0.0, end = 0.0;
     };
 
     // A 1280 x 720 context and its loaded document; a frame is what HtmlUIContext does each
     // engine frame: the compat runtime, Context::Update, the render submission
     struct Grid {
+        bool gpu = GpuEnvironment::ensure();   // the headless device first (this may be the first test)
         RenderTestContext r{1280, 720, 0, 0, 4};
         Rml::ElementDocument* document = nullptr;
         std::shared_ptr<const hc::CompatDocument> compiled;
@@ -138,9 +175,27 @@ namespace {
             return r.renderUntilDrawn(60);
         }
 
+        FrameParts parts;
+
+        // RenderTestContext::renderFrame without the composite into its screen target, timed in parts
         void frame(){
+            beginTestFrame();
+            if (!r.target.isCreated())
+                r.target.ensure(r.targetSize.x, r.targetSize.y, 4);
+            const double t0 = threadCpuMs();
+            const bool begun = r.renderer.beginFrame(r.target, r.contextSize);
+            Rml::SetGeometryFeathering(false);
+            Rml::SetGeometryPixelSize(1.0f);
             hc::updateRuntime(r.context);
-            r.renderFrame();
+            r.context->Update();
+            const double t1 = threadCpuMs();
+            if (begun)
+                r.context->Render();
+            const double t2 = threadCpuMs();
+            r.renderer.endFrame();
+            SystemRender::commit();
+            const double t3 = threadCpuMs();
+            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2};
         }
 
         ~Grid(){
@@ -149,9 +204,14 @@ namespace {
         }
     };
 
+    void printRun(const char* what, const PerfRun& run){
+        std::printf("[ effects  ]   %s: %.3f ms (update %.3f, render submission %.3f, end of frame %.3f)\n", what, run.medianMs,
+                    run.updateMs, run.renderMs, run.endMs);
+    }
+
     // 30 warm-up frames, then 120 measured ones, the clock 1/60 s further each frame; perFrame
     // runs before each frame (A2's var change)
-    Run measure(Grid& grid, const std::function<void(int)>& perFrame = {}){
+    PerfRun measure(Grid& grid, const std::function<void(int)>& perFrame = {}){
         double clock = HtmlUIClock::now();
         auto frame = [&](int index){
             clock += 1.0 / 60.0;
@@ -163,15 +223,21 @@ namespace {
         for (int i = 0; i < 30; i++)
             frame(i);
         const EffectStats before = EffectRuntime::get().stats();
-        std::vector<double> times;
+        std::vector<double> times, updates, renders, ends;
         for (int i = 0; i < 120; i++){
             const double start = threadCpuMs();
             frame(30 + i);
             times.push_back(threadCpuMs() - start);
+            updates.push_back(grid.parts.update);
+            renders.push_back(grid.parts.render);
+            ends.push_back(grid.parts.end);
         }
         const EffectStats after = EffectRuntime::get().stats();
-        Run run;
+        PerfRun run;
         run.medianMs = median(times);
+        run.updateMs = median(updates);
+        run.renderMs = median(renders);
+        run.endMs = median(ends);
         run.delta.instancesCreated = after.instancesCreated - before.instancesCreated;
         run.delta.compileCalls = after.compileCalls - before.compileCalls;
         run.delta.pipelinesCreated = after.pipelinesCreated - before.pipelinesCreated;
@@ -231,10 +297,9 @@ namespace {
     // 5 averages of 20 (the first capture warms up)
     double costMs(EffectScene& scene, const EffectManifest* m, double boundMs){
         TestImage image;
-        if (m && m->pointer != EffectPointer::None){
-            const Rml::Rectanglef fx = scene.box("fx");
-            EffectRuntime::get().setTestPointer(scene.context(), fx.Position() + Rml::Vector2f(fx.Width() * 0.7f, fx.Height() * 0.4f), false, 0.3f);
-        }
+        // the golden harness's inputs: its pointer, and the 12-point arc of a trail effect
+        if (m && m->pointer != EffectPointer::None)
+            setTestPointer(scene, *m);
         if (!scene.capture(image))
             return -1.0;
         double least = -1.0;
@@ -258,56 +323,81 @@ namespace {
 
 TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     Grid grid;
-    if (!grid.r.isValid())
+    if (!grid.gpu || !grid.r.isValid())
         GTEST_SKIP() << "no GPU";
     ASSERT_TRUE(warmUpReferenceEffects());
     HtmlUIClock::setFixedTime(10.0);
 
+    // the least of up to 5 runs, stopping once within `target`; check() sees each run
+    auto gated = [&](const char* what, double target, const std::function<PerfRun(int)>& run, const std::function<void(const PerfRun&)>& check){
+        double least = -1.0;
+        for (int attempt = 0; attempt < 5; attempt++){
+            const PerfRun r = run(attempt);
+            printRun(what, r);
+            if (check)
+                check(r);
+            least = least < 0.0 ? r.medianMs : std::min(least, r.medianMs);
+            if (target > 0.0 && least <= target)
+                break;
+        }
+        return least;
+    };
+
     ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
-    double b = -1.0;
-    for (int attempt = 0; attempt < 5; attempt++){
-        const Run run = measure(grid);
-        b = b < 0.0 ? run.medianMs : std::min(b, run.medianMs);
-    }
+    const double b = gated("B", 0.0, [&](int){ return measure(grid); }, {});
+    ASSERT_TRUE(grid.load(layersDocument())) << "document C";
+    const double c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
 
     ASSERT_TRUE(grid.load(gridDocument(true, false))) << "document A";
-    double a = -1.0;
-    for (int attempt = 0; attempt < 5; attempt++){
-        const Run run = measure(grid);
-        a = a < 0.0 ? run.medianMs : std::min(a, run.medianMs);
+    const double a = gated("A", 1.5 * b + 1.0, [&](int){ return measure(grid); }, [](const PerfRun& run){
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
         EXPECT_EQ(run.delta.pipelinesCreated, 0u) << "no pipeline is created in the steady state";
         EXPECT_EQ(run.delta.reinstances, 0u) << "a moving clock re-instances nothing";
         EXPECT_EQ(run.delta.paintDraws, 48u * 120u) << "one draw per paint effect per frame";
         EXPECT_EQ(run.delta.filterPasses, 16u * 120u) << "one pass per filter per frame";
-        if (a <= 1.5 * b + 1.0)
-            break;
-    }
+    });
 
     ASSERT_TRUE(grid.load(gridDocument(true, true))) << "document A2";
     Rml::Element* parent = grid.document->GetElementById("grid");
     ASSERT_NE(parent, nullptr);
-    double a2 = -1.0;
-    for (int attempt = 0; attempt < 5; attempt++){
-        const Run run = measure(grid, [&](int index){
-            // a new value every frame (never one an earlier frame of the run had: no cached decorator)
+    std::string last;
+    const double a2 = gated("A2", 3.0 * b + 4.0, [&](int attempt){
+        return measure(grid, [&](int index){
+            // a value no earlier frame had (750 frames at most): no decorator comes from the cache
             char value[32];
-            std::snprintf(value, sizeof(value), "%.4f", 0.05 + 0.85 * (double)((index * 37 + attempt * 11) % 1000) / 1000.0);
+            std::snprintf(value, sizeof(value), "%.4f", 0.05 + 0.85 * (double)(((attempt * 150 + index) * 37) % 1000) / 1000.0);
+            last = value;
             parent->SetProperty("--k", value);
         });
-        a2 = a2 < 0.0 ? run.medianMs : std::min(a2, run.medianMs);
-        EXPECT_EQ(run.delta.reinstances, 64u * 120u) << "every element re-instances its effect once a frame";
+    }, [&](const PerfRun& run){
+        // 3.6: decorators are shared by the elements whose effect value is the same (one per paint
+        // effect here), filters are instanced per element: 3 + 16 a frame
+        EXPECT_EQ(run.delta.reinstances, (3u + 16u) * 120u) << "each new value re-instances once a frame";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "a var() change compiles nothing";
         EXPECT_EQ(run.delta.pipelinesCreated, 0u) << "a var() change creates no pipeline";
-        if (a2 <= 3.0 * b + 4.0)
-            break;
-    }
+        // every element follows the value
+        const std::string expected = EffectValueParser::canonical(EffectParamDef{"k", "k", EffectParamType::Number}, [&]{
+            EffectValue v; v.type = EffectParamType::Number; v.f = (float)std::atof(last.c_str()); return v; }());
+        int following = 0;
+        for (int i = 0; i < 64; i++){
+            for (const EffectUse& use : collectEffectUses(grid.document->GetElementById("e" + std::to_string(i)))){
+                for (const auto& param : use.params){
+                    if ((param.first == "offset" || param.first == "intensity" || param.first == "shrink" || param.first == "gap" ||
+                         param.first == "saturation") && param.second == expected)
+                        following++;
+                }
+            }
+        }
+        EXPECT_EQ(following, 64) << "every element's parameter is the last --k (" << expected << ")";
+    });
 
-    std::printf("[ effects  ] frame CPU (median of 120, least of the runs): B %.3f ms, A %.3f ms (budget %.3f), A2 %.3f ms (budget %.3f)\n",
-                b, a, 1.5 * b + 1.0, a2, 3.0 * b + 4.0);
-    EXPECT_LE(a, 1.5 * b + 1.0) << "document A's frame";
-    EXPECT_LE(a2, 3.0 * b + 4.0) << "document A2's frame";
+    std::printf("[ effects  ] frame CPU (median of 120, least of the runs): B %.3f ms, C (A's layers, CSS filters) %.3f ms, "
+                "A %.3f ms (budget %.3f; over C %.3f), A2 %.3f ms (budget %.3f)\n", b, c, a, 1.5 * b + 1.0, a - c, a2, 3.0 * b + 4.0);
+    EXPECT_LE(a, 1.5 * b + 1.0) << "document A's frame (5.4)";
+    EXPECT_LE(a2, 3.0 * b + 4.0) << "document A2's frame (5.4)";
+    // the effect system's own work: A against the same layers drawn by RmlUi's own filters
+    EXPECT_LE(a, 1.5 * c + 1.0) << "document A's frame against the same layers without effects";
     HtmlUIClock::setFixedTime(0.0);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
@@ -324,7 +414,7 @@ TEST(EffectPerfTest, CostTable){
 
     nlohmann::json effects = nlohmann::json::array();
     std::printf("[ effects  ] cost at 1024 x 1024 (render + readback, process CPU), baseline %.3f ms\n", baseline);
-    for (const EffectManifest* m : EffectRegistry::get().all()){
+    for (const EffectManifest* m : EffectRegistry::get().builtins()){
         ASSERT_TRUE(warmUpEffect(*m)) << m->name;
         ASSERT_TRUE(scene.loadHtml(costDocument(m), &error)) << m->name << ": " << error;
         const double bound = m->cost == EffectCost::Low ? 6.0 : m->cost == EffectCost::Medium ? 24.0 : 0.0;

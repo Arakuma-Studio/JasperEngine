@@ -1480,6 +1480,19 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   builds GLSL 410 and GLSL 300 es, the web's, so 5.6's "web export contains glsl300es" is checked
   there; the Desktop player is built without the runtime shader compiler). `EffectHotReloadTest`
   covers the registry's reload rules.
+- **Measured (5.4, glcore on llvmpipe, this host).** The cost table puts `cursor-trail` (with the
+  golden harness's 12-point trail) at 8.2 x the fill, above `low`'s bound of 6: its `@cost` is now
+  `medium` (3.14: classes are measured; Appendix A said L). The others: `stripes` 1.9, `spotlight`
+  1.2, `pixelate` 2.4 (low), `frosted-glass` 3.3 (medium). The grid's counters pass (no instance,
+  compile or pipeline in the steady state; A2 re-instances 3 + 16 a frame, since 3.6's decorators
+  are shared by equal values, not 64, and every element follows), but 5.4's budgets do not:
+  B 0.48 ms, A 9.96 ms (budget 1.72), A2 12.1 ms (budget 5.43). A document C with A's layers drawn
+  by RmlUi's own filters (`brightness()`, `blur()`) costs 8.2 ms: on llvmpipe the 16 filter layers
+  cost the main thread the driver's render-to-texture flushes in `RmlRenderer`'s layer path
+  (phase 1), whatever the filter (sampled stacks wait in `ObjectRender::draw` under
+  `RmlRenderer::drawPost`); the effect system's own work is A - C = 1.8 ms for 64 effects. The test
+  keeps 5.4's budgets (they fail here; the integrator gates them) and adds CPU(A) <= 1.5 x CPU(C) +
+  1 ms, which passes.
 
 ### 4.4 `p5-fx-paint` (wave 2)
 **Goal.** Port or author the 28 paint effects of Appendix A.2: gradients, noise, patterns,
@@ -1750,7 +1763,7 @@ Notation:
 |---|---|---|---|---|---|---|---|---|
 | `stripes` | paint | pattern | Stripes | color-a col #000000; color-b col #ffffff; angle ang 45deg [-180deg,180deg]; density n 5 [1,30]; balance n 0.5 [0,1]; softness n 0 [0,1]; speed n 0.2 [-1,1] (t); offset n 0 [0,1]; cs linear | – | none | L | |
 | `spotlight` | paint | interactive | original | color col #ffffff; radius len 160px [8px,2000px]; softness n 0.6 [0,1]; intensity n 0.35 [0,1]; idle-position pos "50% 50%"; idle-intensity n 0 [0,1] (eased by presence) | – | position | L | `@suggest-for cursor-light flashlight` |
-| `cursor-trail` | paint | interactive | CursorTrail (adapted: CPU trail buffer replaces the fluid grid) | colors pal "#00aaff #ff00aa"; radius len 18px [2px,128px]; lifetime time 0.5s [0.1s,2s] (source `length`); shrink n 1 [0,1]; softness n 0 [0,1]; cs linear | – | trail | L | |
+| `cursor-trail` | paint | interactive | CursorTrail (adapted: CPU trail buffer replaces the fluid grid) | colors pal "#00aaff #ff00aa"; radius len 18px [2px,128px]; lifetime time 0.5s [0.1s,2s] (source `length`); shrink n 1 [0,1]; softness n 0 [0,1]; cs linear | – | trail | M (measured, p5-tooling; was L) | |
 | `pixelate` | filter | stylize | Pixelate (adapted: cell size in px) | size len 8px [1px,256px]; gap n 0 [0,0.95]; roundness n 0 [0,1] | – | none | L | `@suggest-for pixel mosaic` |
 | `frosted-glass` | filter | glass | original (Glass kit `glassTint`/`glassBorderHighlight`, `gpu/kit/effects/glass.ts:170-199`) | blur len 12px [0px,64px]; tint col #ffffff1f; saturation n 1.2 [0,3]; brightness n 1 [0,2]; noise n 0.04 [0,0.3]; highlight n 0.35 [0,1]; light-angle ang 300deg [0deg,360deg] | yes | none | M | `@prepass blur blur`; `@margin blur*3`; `@suggest-for glass glassmorphism frost blur-glass acrylic` |
 

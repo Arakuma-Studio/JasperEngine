@@ -16,7 +16,7 @@ namespace {
          "// @category   interactive\n"
          "// @summary    A fading paint stroke that follows the pointer\n"
          "// @source     shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)\n"
-         "// @cost       low\n"
+         "// @cost       medium\n"
          "// @pointer    trail\n"
          "// @param      colors palette \"#00aaff #ff00aa\" -- Colours of the stroke from fresh to old\n"
          "// @param      radius length 18px 2px 128px -- Radius of the stroke\n"
