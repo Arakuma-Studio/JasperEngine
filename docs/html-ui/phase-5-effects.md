@@ -1346,8 +1346,9 @@ Chromium with `getComputedStyle` before it was built). Where the code differs fr
   `currentcolor` are accepted as initial values (Chromium does).
 - **Several rules of one name in a document**: the last valid one wins (Chromium); `at-property-
   conflict` is only for a name registered before with another definition (process-global, the first
-  wins). A hot reload that changes a definition gets the conflict: the guide says to rename or
-  restart.
+  wins, until RmlUi shuts down: in the editor, which keeps it while any document is loaded, until
+  the editor restarts). A hot reload that changes a definition gets the conflict: the guide says to
+  rename the property while iterating on its definition.
 - **Conditional group rules**: Chromium registers a rule inside `@media`/`@supports` while the
   condition holds. Compat evaluates `@supports` statically (as for every rule) and `@media` against
   the compile's viewport, resolution and themes, and sets `dependsOnViewport` so a resize compiles
@@ -1368,7 +1369,10 @@ Chromium with `getComputedStyle` before it was built). Where the code differs fr
     transition showed its end value until it flipped);
   - a `var()` in `font-size` or `line-height` whose variable changed makes their pre-pass compute
     them (they were computed only when dirty themselves; unregistered variables too);
-  - `var()` cycles through registered properties make every member invalid at computed-value time.
+  - `var()` cycles through registered properties make every member invalid at computed-value time
+    (an unregistered member is the guaranteed-invalid value), and a `var()` of a custom property that
+    is guaranteed-invalid (in a cycle, or whose own `var()` fails) takes its fallback, as in CSS
+    (before, the property that read it failed with it; unregistered variables too).
 - **Gradients with `var()`** (compat, `css/props/Background.cpp`, additive): with the fork's
   background layers, `conic-gradient(from var(--spin), …)`, a `linear-gradient(var(--a), …)` whose
   variable is a registered `<angle>`, and `var()` stop positions are written for the fork to

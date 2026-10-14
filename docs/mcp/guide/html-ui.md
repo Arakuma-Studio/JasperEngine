@@ -912,6 +912,85 @@ anime.animate(stats, { hp = 0, duration = 2000, modifier = anime.utils.round(0),
   functions, modifiers return numbers, plain tables get colours back as `#rrggbbaa`, no SVG,
   draggable, scroll, layout, text, WAAPI, scope or animatable modules.
 
+### Animating custom properties (@property)
+
+A custom property is untyped text: `transition: --x 1s` and `@keyframes { to { --x: 1 } }` cannot
+interpolate it, so it jumps from one value to the next. Register it with `@property` and it gets a
+type, an initial value and an inheritance rule, exactly as in Chromium: transitions and keyframes
+interpolate it, and every `var(--x)` that reads it follows, frame by frame. This is how one value
+drives a gradient angle, an opacity, a size and an effect parameter at once.
+
+```css
+@property --ring { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+@property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@property --glow { syntax: '<number>'; inherits: false; initial-value: 0; }
+
+.ring {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: conic-gradient(#40c060 var(--ring), #20242c var(--ring));
+  transition: --ring 600ms ease-out;
+}
+.ring.full { --ring: 100%; }
+
+.loader {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: conic-gradient(from var(--spin), #4060e0, #e04080, #4060e0);
+  animation: spin 1.2s linear infinite;
+}
+@keyframes spin { to { --spin: 360deg; } }
+
+.badge { opacity: var(--glow); transition: --glow 300ms linear; }
+.badge.lit { --glow: 1; }
+```
+
+- **Descriptors.** `syntax` (a quoted string), `inherits` (`true`/`false`) and `initial-value` are
+  all required, as in CSS; `initial-value` may be left out only for `syntax: '*'`. The initial
+  value must not use `var()` or font-relative units (`em`, `rem`, `%` of a length): it has no
+  element to resolve them against. An invalid rule is dropped with `HTMLUI-AT-0014`.
+- **Syntaxes registered:** `<length>`, `<number>`, `<integer>`, `<percentage>`,
+  `<length-percentage>`, `<color>`, `<angle>`, `<time>` and `*`. Combinations and lists
+  (`'<length> | auto'`, `'<length>+'`) and other types (`<image>`, `<transform-function>`, ...) warn
+  with `HTMLUI-AT-0012` and fall back to an unregistered property whose initial value is set on the
+  root (it inherits and changes discretely).
+- **`inherits: false`** is honoured: a child that does not set the property reads its initial
+  value, not its parent's. With `inherits: true` children read the parent's *computed* value: a
+  `<length>` of `2em` is the parent's pixels.
+- **Invalid values.** A declaration that does not match the syntax (`--ring: red`), or a `var()`
+  that substitutes such a value, is invalid at computed-value time: the property takes its initial
+  value (its parent's when it inherits). `check --ui` warns about the ones it can see
+  (`HTMLUI-AT-0014`).
+- **What `var()` gets** is the computed value: numbers as numbers, lengths in px, angles in
+  `deg`, times in `s`, integers rounded, colors as `#rrggbbaa`. `<integer>` interpolates and
+  rounds, `*` changes discretely (with `transition-behavior: allow-discrete` at half the time).
+- **Name the property** in `transition`: `transition: all` does not include custom properties
+  (Chromium). `@starting-style` and `transition-behavior` work as for any property.
+- **Anywhere in the document.** A rule after the declarations that use the name applies to them;
+  a rule inside `@media` or `@supports` registers when the condition holds when the document loads
+  (or is laid out again for a new viewport); inside a style rule it is invalid. When two rules
+  name the same property, the last valid one wins.
+- **Process-global, first wins.** Registrations belong to the engine, not to the document, and are
+  never undone while it runs: a second document (or an edited one after a hot reload) that
+  registers the name with another definition gets `HTMLUI-AT-0013` and the first definition stays
+  until the engine (in the editor: the editor) restarts. Give every `@property` of a name the same
+  definition, or rename the property while you iterate on its definition.
+- **From Lua**, `anime` animates a registered property as typed values, and every `var()` follows:
+
+```lua
+---@param doc UIDocument
+local function lightBadge(doc)
+    local badge = doc:querySelector(".badge")
+    if badge then
+        anime.animate(badge, { ["--glow"] = 1, duration = 400, ease = "outQuad" })
+    end
+end
+```
+
+| Code | Severity | When |
+|---|---|---|
+| `HTMLUI-AT-0012` `at-property-unsupported-syntax` | warning | a syntax the engine does not register: the root-rule fallback |
+| `HTMLUI-AT-0013` `at-property-conflict` | warning | the name is already registered with another definition: the first stays |
+| `HTMLUI-AT-0014` `at-property-invalid` | error / warning | an invalid rule (dropped); a declaration that does not match the syntax |
+
 ## Images, SVG, Lottie, fonts, icons
 
 ### Images and SVG
