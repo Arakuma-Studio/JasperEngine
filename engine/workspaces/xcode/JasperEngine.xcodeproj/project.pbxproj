@@ -1840,6 +1840,10 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D5039F57A98C3ABA6C5 /* CompatAtPropertyTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */; };
+		434F4D50BDDAB01C4828D2A6 /* CompatAtProperty.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */; };
+		434F4D50F2AE031457ED6B91 /* CompatAtProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */; };
+		434F4D507944123B6B7E3629 /* CompatAtProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */; };
 		48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */; };
 		48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
 		48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
@@ -4876,6 +4880,9 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatAtPropertyTypes.h; sourceTree = "<group>"; };
+		434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatAtProperty.h; sourceTree = "<group>"; };
+		434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompatAtProperty.cpp; sourceTree = "<group>"; };
 		48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspector.h; sourceTree = "<group>"; };
 		48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIInspector.cpp; sourceTree = "<group>"; };
 		48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspectorInternal.h; sourceTree = "<group>"; };
@@ -8540,6 +8547,9 @@
 				434F4D50ECBC67D4F3E0662E /* Arena.cpp */,
 				434F4D5040E9455FCD450F67 /* Arena.h */,
 				434F4D509829603415289A0C /* DiagnosticsJson.h */,
+				434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */,
+				434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */,
+				434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -10063,6 +10073,8 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D5039F57A98C3ABA6C5 /* CompatAtPropertyTypes.h in Headers */,
+				434F4D50BDDAB01C4828D2A6 /* CompatAtProperty.h in Headers */,
 				48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */,
 				48544D4C98EA102F865794CB /* HtmlUIInspectorInternal.h in Headers */,
 				48544D4CE1234BC040797AA1 /* HtmlUIAssertions.h in Headers */,
@@ -11844,6 +11856,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D507944123B6B7E3629 /* CompatAtProperty.cpp in Sources */,
 				48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */,
 				48544D4C49B8ED581219210D /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50607312AEAD952E55 /* HtmlFieldsetElement.cpp in Sources */,
@@ -12188,6 +12201,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D50F2AE031457ED6B91 /* CompatAtProperty.cpp in Sources */,
 				48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */,
 				48544D4C2474E6B89BDA709B /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50DA09FAE463E22E38 /* HtmlFieldsetElement.cpp in Sources */,
