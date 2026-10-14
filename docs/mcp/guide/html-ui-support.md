@@ -380,6 +380,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 |---|---|---|---|
 | `--*` | native | custom properties: values normalized, typed copies when needed |  |
 | `-html-animation-fill` | native | written by the rewriter for animation-fill-mode (AnimationFill runtime) |  |
+| `-jfx-text-fill` | native | engine-internal (phase 5): the filter-form effect layers compat writes for background-clip: text with effect() layers (gradient text), applied before filter; not for authors. Without the fork feature dropped (Warning) | use background-clip: text with effect() layers |
 | `-moz-appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
 | `-moz-osx-font-smoothing` | ignored | font rendering hint; the font engine decides (HTMLUI-CSS-0003) |  |
 | `-ms-flex` | rewritten | legacy (IE 10) flexbox mapped to flex |  |

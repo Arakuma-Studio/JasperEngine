@@ -26,6 +26,7 @@ namespace {
     const PropertySupport rows[] = {
         {"--*", N, FF::None, N, false, "", false, RW::None, "", "custom properties: values normalized, typed copies when needed", "", "css-variables-1"},
         {"-html-animation-fill", N, FF::None, N, false, "none", false, RW::None, "", "written by the rewriter for animation-fill-mode (AnimationFill runtime)", "", "compat"},
+        {"-jfx-text-fill", U, FF::TextFillFilter, N, false, "none", false, RW::None, "", "engine-internal (phase 5): the filter-form effect layers compat writes for background-clip: text with effect() layers (gradient text), applied before filter; not for authors. Without the fork feature dropped (Warning)", "use background-clip: text with effect() layers", "jasperengine"},
         {"-moz-appearance", R, FF::None, R, false, "none", false, RW::Appearance, "control companions (--html-check, --html-control-bg, ...)", "none / auto write the control companions; exact for the UA-styled controls", "", "gecko"},
         {"-moz-osx-font-smoothing", I, FF::None, I, true, "auto", false, RW::None, "", "font rendering hint; the font engine decides", "", "gecko"},
         {"-ms-flex", R, FF::None, R, false, "0 0 auto", false, RW::Flex, "flex", "legacy (IE 10) flexbox mapped to flex", "", "ms"},
