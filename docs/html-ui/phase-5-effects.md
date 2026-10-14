@@ -1503,7 +1503,9 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   (phase 1), whatever the filter (sampled stacks wait in `ObjectRender::draw` under
   `RmlRenderer::drawPost`); the effect system's own work is A - C = 1.8 ms for 64 effects. The test
   keeps 5.4's budgets (they fail here; the integrator gates them) and adds CPU(A) <= 1.5 x CPU(C) +
-  1 ms, which passes.
+  1 ms, which passes. A later full run (glcore): B 0.34, C 5.83, A 7.20 (budget 1.51), A2 10.68
+  (budget 5.02). Vulkan (lavapipe), where the layer path is cheaper: B 0.38, C 1.58, A 2.05
+  (budget 1.58, fails), A2 4.62 (budget 5.15, passes); `cursor-trail` 6.8 x.
 
 ### 4.4 `p5-fx-paint` (wave 2)
 **Goal.** Port or author the 28 paint effects of Appendix A.2: gradients, noise, patterns,
