@@ -56,10 +56,7 @@ struct ElementStyleData {
 };
 static ControlledLifetimeResource<ElementStyleData> element_style_data;
 
-// The custom property where the last var() cycle closed, while custom properties are registered (fork, phase 5): every
-// custom property resolved on the way back to it is in the cycle (a registered one is invalid at computed-value time, an
-// unregistered one the guaranteed-invalid value); it is cleared when the resolution gets there.
-static String registered_cycle_root;
+String ElementStyle::registered_cycle_root;
 
 static PseudoClassState operator|(PseudoClassState lhs, PseudoClassState rhs)
 {
@@ -195,17 +192,11 @@ ElementStyle::PropertyElementPair ElementStyle::GetSpecifiedProperty(const Prope
 		Element* parent = sources.element->GetParentNode();
 		while (parent)
 		{
-			const Property* parent_property = GetLocalPropertyOf(sources, parent, id);
+			const Property* parent_property = GetLocalPropertyOf(parent, id);
 			if (parent_property)
 			{
 				if (parent_property->unit == Unit::CSS_WIDE_KEYWORD)
-				{
-					PropertySources parent_sources = parent->GetStyle()->GetPropertySources();
-					parent_sources.declared_only = sources.declared_only;
-					if (sources.declared_only)
-						parent_sources.animation_layers = nullptr;
-					return ResolveSpecifiedKeyword(parent_sources, id, *parent_property);
-				}
+					return ResolveSpecifiedKeyword(GetLookupSources(parent), id, *parent_property);
 				return {parent_property, parent};
 			}
 
@@ -240,22 +231,26 @@ ElementStyle::PropertyElementPair ElementStyle::ResolveSpecifiedKeyword(const Pr
 	if (keyword == CssWideKeyword::Inherit)
 	{
 		if (Element* parent = sources.element->GetParentNode())
-		{
-			PropertySources parent_sources = parent->GetStyle()->GetPropertySources();
-			parent_sources.declared_only = sources.declared_only;
-			if (sources.declared_only)
-				parent_sources.animation_layers = nullptr;
-			return GetSpecifiedProperty(parent_sources, id);
-		}
+			return GetSpecifiedProperty(GetLookupSources(parent), id);
 	}
 
 	return {property_definition->GetDefaultValue(), nullptr};
 }
 
-const Property* ElementStyle::GetLocalPropertyOf(const PropertySources& sources, Element* element, PropertyId id)
+bool ElementStyle::declared_only = false;
+
+const Property* ElementStyle::GetLocalPropertyOf(Element* element, PropertyId id)
 {
 	const ElementStyle* style = element->GetStyle();
-	return GetLocalProperty(id, style->inline_properties, style->definition.get(), sources.declared_only ? nullptr : style->animation_layers.get());
+	return GetLocalProperty(id, style->inline_properties, style->definition.get(), declared_only ? nullptr : style->animation_layers.get());
+}
+
+ElementStyle::PropertySources ElementStyle::GetLookupSources(Element* element)
+{
+	PropertySources sources = element->GetStyle()->GetPropertySources();
+	if (declared_only)
+		sources.animation_layers = nullptr;
+	return sources;
 }
 
 ElementStyle::ComputedKeyword ElementStyle::ResolveComputedKeyword(PropertyId id, const Property& keyword_property) const
@@ -586,205 +581,6 @@ const Property* ElementStyle::ResolveVariables(const PropertySources& sources, c
 	return &property_storage;
 }
 
-namespace {
-	// Registered custom properties (fork, phase 5): computed values and their serialization for var().
-
-	// The length context of an element: its font size, its document's, its context's dp ratio and viewport.
-	struct RegisteredLengthContext {
-		float font_size = 16.f;
-		float document_font_size = 16.f;
-		float dp_ratio = 1.f;
-		Vector2f vp_dimensions = Vector2f(1.f);
-	};
-	RegisteredLengthContext LengthContextOf(Element* element)
-	{
-		RegisteredLengthContext context;
-		context.font_size = DefaultComputedValues().font_size();
-		context.document_font_size = context.font_size;
-		if (!element)
-			return context;
-		context.font_size = element->GetComputedValues().font_size();
-		if (ElementDocument* document = element->GetOwnerDocument())
-			context.document_font_size = document->GetComputedValues().font_size();
-		if (Context* element_context = element->GetContext())
-		{
-			context.dp_ratio = element_context->GetDensityIndependentPixelRatio();
-			context.vp_dimensions = Vector2f(element_context->GetDimensions());
-		}
-		return context;
-	}
-
-	// The shortest decimal text that reads back as the same float (no exponent but for very large or small numbers).
-	String NumberText(float number)
-	{
-		if (number == 0.f)
-			return "0";
-		char buffer[64];
-		if (std::fabs(number) < 1e9f)
-		{
-			for (int decimals = 0; decimals <= 9; decimals++)
-			{
-				snprintf(buffer, sizeof(buffer), "%.*f", decimals, double(number));
-				if (strtof(buffer, nullptr) == number)
-					return String(buffer);
-			}
-		}
-		snprintf(buffer, sizeof(buffer), "%.9g", double(number));
-		return String(buffer);
-	}
-} // namespace
-
-
-Property ElementStyle::ComputedRegisteredValue(const Property& property, RegisteredPropertySyntax syntax, Element* element)
-{
-	Property result = property;
-	switch (syntax)
-	{
-	case RegisteredPropertySyntax::Integer:
-	{
-		float number = 0.f;
-		if (property.unit == Unit::NUMBER)
-			number = property.Get<float>();
-		else
-		{
-			const RegisteredLengthContext context = LengthContextOf(element);
-			if (!ComputeDefiniteNumber(&property, context.font_size, context.document_font_size, context.dp_ratio, context.vp_dimensions, number))
-				break;
-		}
-		// The nearest integer, halves towards positive infinity (CSS Values 4 §10.12, as interpolation rounds).
-		result = Property(std::floor(number + 0.5f), Unit::NUMBER);
-		break;
-	}
-	case RegisteredPropertySyntax::Number:
-		if (property.unit != Unit::NUMBER)
-		{
-			const RegisteredLengthContext context = LengthContextOf(element);
-			float number = 0.f;
-			if (ComputeDefiniteNumber(&property, context.font_size, context.document_font_size, context.dp_ratio, context.vp_dimensions, number))
-				result = Property(number, Unit::NUMBER);
-		}
-		break;
-	case RegisteredPropertySyntax::Length:
-	case RegisteredPropertySyntax::LengthPercentage:
-		if (property.unit != Unit::PX && property.unit != Unit::PERCENT)
-		{
-			// Relative lengths (and expressions of lengths) in px, against the element the value is computed for.
-			const RegisteredLengthContext context = LengthContextOf(element);
-			float length = 0.f;
-			if (ComputeDefiniteLength(&property, context.font_size, context.document_font_size, context.dp_ratio, context.vp_dimensions, length))
-				result = Property(length, Unit::PX);
-		}
-		break;
-	case RegisteredPropertySyntax::Angle:
-		if (Any(property.unit & Unit::ANGLE) && property.unit != Unit::DEG)
-			result = Property(ComputeAngle(property.GetNumericValue()) * (180.f / Math::RMLUI_PI), Unit::DEG);
-		break;
-	case RegisteredPropertySyntax::Universal:
-	case RegisteredPropertySyntax::Percentage:
-	case RegisteredPropertySyntax::Color:
-	case RegisteredPropertySyntax::Time: break;
-	}
-	result.definition = property.definition;
-	return result;
-}
-
-String ElementStyle::SerializeRegisteredValue(const Property& computed, RegisteredPropertySyntax syntax)
-{
-	switch (computed.unit)
-	{
-	case Unit::STRING: return computed.Get<String>();
-	case Unit::COLOUR:
-	{
-		const Colourb colour = computed.Get<Colourb>();
-		char buffer[16];
-		snprintf(buffer, sizeof(buffer), "#%02x%02x%02x%02x", colour.red, colour.green, colour.blue, colour.alpha);
-		return String(buffer);
-	}
-	case Unit::NUMBER: return NumberText(computed.Get<float>()) + (syntax == RegisteredPropertySyntax::Time ? "s" : "");
-	case Unit::PERCENT: return NumberText(computed.Get<float>()) + "%";
-	case Unit::PX: return NumberText(computed.Get<float>()) + "px";
-	case Unit::DEG: return NumberText(computed.Get<float>()) + "deg";
-	default: break;
-	}
-	// 'currentcolor' (and color-mix() of it), expressions with percentages: as written.
-	return computed.ToString();
-}
-
-bool ElementStyle::SubstituteRegisteredProperty(const PropertySources& sources, PropertyId id, SmallUnorderedSet<String>& variable_dependencies,
-	SmallUnorderedSet<String>& cycle_chain, String& result)
-{
-	const RegisteredCustomProperty* registration = StyleSheetSpecification::GetRegisteredCustomProperty(id);
-	const PropertyDefinition* definition = StyleSheetSpecification::GetProperty(id);
-	if (!registration || !definition)
-		return false;
-
-	Property storage;
-	PropertyElementPair pair = GetSpecifiedProperty(sources, id);
-	// (Each turn moves up the tree or to the initial value.)
-	while (pair.property)
-	{
-		if (!pair.element)
-		{
-			// The initial value.
-			if (!registration->has_initial_value)
-				return false;
-			result = SerializeRegisteredValue(ComputedRegisteredValue(*pair.property, registration->syntax, sources.element), registration->syntax);
-			return true;
-		}
-
-		const Property* value = pair.property;
-		if (value->unit == Unit::VAR_EXPRESSION)
-		{
-			value = nullptr;
-			const String& text = pair.property->Get<String>();
-			if (text.find("var(") != String::npos)
-			{
-				// The element's own declarations as given (a starting style, a before-change style), an ancestor's as they are.
-				const bool same_element = (pair.element == sources.element);
-				PropertySources element_sources = (same_element ? sources : pair.element->GetStyle()->GetPropertySources());
-				if (!same_element && sources.declared_only)
-				{
-					element_sources.declared_only = true;
-					element_sources.animation_layers = nullptr;
-				}
-				// (on another element the chain starts again, with the property itself as its first link)
-				SmallUnorderedSet<String> new_cycle_chain;
-				if (!same_element)
-					new_cycle_chain.insert(StyleSheetSpecification::GetPropertyName(id));
-				String substituted;
-				if (SubstituteVariables(element_sources, text, variable_dependencies, same_element ? cycle_chain : new_cycle_chain, substituted) &&
-					definition->ParseValue(storage, substituted))
-					value = &storage;
-				// A property in a var() cycle is invalid at computed-value time, also when its var() got a value.
-				if (!registered_cycle_root.empty())
-				{
-					value = nullptr;
-					if (registered_cycle_root == StyleSheetSpecification::GetPropertyName(id))
-						registered_cycle_root.clear();
-				}
-			}
-		}
-		if (value)
-		{
-			result = SerializeRegisteredValue(ComputedRegisteredValue(*value, registration->syntax, pair.element), registration->syntax);
-			return true;
-		}
-
-		// Invalid at computed-value time: the property is 'unset'.
-		Element* parent = (registration->inherits ? pair.element->GetParentNode() : nullptr);
-		if (parent)
-		{
-			PropertySources parent_sources = parent->GetStyle()->GetPropertySources();
-			parent_sources.declared_only = sources.declared_only;
-			if (sources.declared_only)
-				parent_sources.animation_layers = nullptr;
-			pair = GetSpecifiedProperty(parent_sources, id);
-		}
-		else
-			pair = {definition->GetDefaultValue(), nullptr};
-	}
-	return false;
-}
 
 const Property* ElementStyle::ResolveVariablesWithShorthandExpansion(const PropertySources& sources, PropertyId id, const Property* property,
 	std::optional<PropertyDictionary>& substituted_shorthands, SmallUnorderedSet<String>& variable_dependencies, Property& property_storage)
@@ -1437,6 +1233,7 @@ void ElementStyle::DirtyProperty(PropertyId id)
 	dirty_properties.Insert(id);
 }
 
+
 PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const Style::ComputedValues* parent_values,
 	const Style::ComputedValues* document_values, bool values_are_default_initialized, float dp_ratio, Vector2f vp_dimensions)
 {
@@ -1462,22 +1259,20 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// it, here and in the children that inherit it (they get its id: their registered names are added by their own call).
 	// The names are local to this computation, not passed on to the children as changed variables.
 	const bool any_registered = StyleSheetSpecification::AnyRegisteredCustomProperties();
-	bool registered_names_added = false;
 	if (any_registered)
-	{
-		const PropertyIdSet registered_dirty = dirty_properties & StyleSheetSpecification::GetRegisteredCustomProperties();
-		for (const PropertyId id : registered_dirty)
-		{
-			dirty_variables.insert(StyleSheetSpecification::GetPropertyName(id));
-			registered_names_added = true;
-		}
-	}
+		NoteDirtyRegisteredProperties();
 
 	// We're a bit conservative here and recompute shorthand substitutions also if any variables have been dirtied at
 	// all. @performance We could be more strict and only recompute shorthands if any variables they *use* have been dirtied.
 	if (!dirty_variables.empty() || !dirty_var_shorthands.empty())
 	{
 		ExpandVarShorthands(expanded_shorthands, GetPropertySources(), GetDirtyPropertiesRef());
+		// The pre-passes below compute font-size and line-height only when dirty: a var() of theirs whose variable changed
+		// makes them so (fork, phase 5; the main loop finds the other dependent properties).
+		if (var_font_size)
+			dirty_properties.Insert(PropertyId::FontSize);
+		if (var_line_height)
+			dirty_properties.Insert(PropertyId::LineHeight);
 	}
 
 	// The transition and animation lists follow their longhands (p3-animation); transitions below use the new list.
@@ -1530,22 +1325,12 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	if (explicit_inherit)
 		explicit_inherit->Clear();
 
-	// The pre-passes below compute font-size and line-height only when dirty: a var() of theirs whose variable changed makes
-	// them so (fork, phase 5; the main loop finds the other dependent properties).
-	if (var_font_metrics && !dirty_variables.empty())
-	{
-		for (const PropertyId id : {PropertyId::FontSize, PropertyId::LineHeight})
-		{
-			const Property* local = GetLocalProperty(id);
-			if (local && local->unit == Unit::VAR_EXPRESSION)
-				dirty_properties.Insert(id);
-		}
-	}
-
 	// Always do font-size first if dirty, because of em-relative values
 	if (dirty_properties.Contains(PropertyId::FontSize))
 	{
-		if (const Property* property = GetLocalPropertyForCompute(PropertyId::FontSize))
+		const Property* property = GetLocalPropertyForCompute(PropertyId::FontSize);
+		var_font_size = (property && property->unit == Unit::VAR_EXPRESSION);
+		if (property)
 		{
 			variable_dependencies.clear();
 			property = ResolveVariables(PropertyId::FontSize, property, variable_dependencies, property_storage);
@@ -1574,7 +1359,9 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// Since vertical-align depends on line-height we compute this before iteration
 	if (dirty_properties.Contains(PropertyId::LineHeight))
 	{
-		if (const Property* property = GetLocalPropertyForCompute(PropertyId::LineHeight))
+		const Property* property = GetLocalPropertyForCompute(PropertyId::LineHeight);
+		var_line_height = (property && property->unit == Unit::VAR_EXPRESSION);
+		if (property)
 		{
 			variable_dependencies.clear();
 			property = ResolveVariables(PropertyId::LineHeight, property, variable_dependencies, property_storage);
@@ -1606,22 +1393,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 
 	// A registered length in em follows the font size (fork, phase 5): it changes as a variable too.
 	if (dirty_em_properties && any_registered)
-	{
-		for (const PropertyId id : StyleSheetSpecification::GetRegisteredCustomProperties())
-		{
-			const Property* local = GetLocalProperty(id);
-#ifdef RMLUI_MATH_EXPRESSIONS
-			const bool em = local && Any(GetMutableUnitDependencies(*local) & Unit::EM);
-#else
-			const bool em = local && local->unit == Unit::EM;
-#endif
-			if (!em)
-				continue;
-			dirty_properties.Insert(id);
-			dirty_variables.insert(StyleSheetSpecification::GetPropertyName(id));
-			registered_names_added = true;
-		}
-	}
+		NoteEmRegisteredProperties();
 
 	// Values (p3-values): 'currentcolor' reads the color, computed at its first use.
 	bool color_computed = false;
@@ -1634,7 +1406,6 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	const Units font_face_candidate_units = FontFaceCandidateUnits();
 	bool any_font_face_candidates = false;
 
-	var_font_metrics = false;
 	for (auto it = Iterate(); !it.AtEnd(); ++it)
 	{
 		variable_dependencies.clear();
@@ -1644,8 +1415,6 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		// The alignment properties looked up from the declarations (ComputedValues::justify_items(), ...) are declared.
 		switch (id)
 		{
-		case PropertyId::FontSize:
-		case PropertyId::LineHeight: var_font_metrics |= (id_property_pair.second.unit == Unit::VAR_EXPRESSION); break;
 		case PropertyId::JustifyItems: values.has_justify_items(true); break;
 		case PropertyId::JustifySelf: values.has_justify_self(true); break;
 		case PropertyId::AlignContent: values.has_align_content(true); break;
@@ -1715,42 +1484,7 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// 'overflow' computes from both axes (p3-layout).
 	ApplyOverflowFixUp(values);
 	// Transitions start on any change of a computed value (p3-animation).
-	// A transition of a registered custom property that starts, reverses or ends now applies another value than the one
-	// the main loop read through var() (fork, phase 5): the properties that read it are computed again.
-	if (TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle))
-	{
-		SmallUnorderedSet<String> applied_names;
-		for (const PropertyId id : transition_snapshot->registered_applied)
-		{
-			const String& name = StyleSheetSpecification::GetPropertyName(id);
-			applied_names.insert(name);
-			dirty_variables.insert(name);
-			registered_names_added = true;
-		}
-		if (!expanded_shorthands.GetProperties().empty() || !inline_properties.GetVarShorthands().empty() ||
-			(definition && !definition->GetProperties().GetVarShorthands().empty()))
-			ExpandVarShorthands(expanded_shorthands, GetPropertySources(), GetDirtyPropertiesRef());
-		for (auto it = Iterate(); !it.AtEnd(); ++it)
-		{
-			const auto id_property_pair = *it;
-			const PropertyId id = id_property_pair.first;
-			if (id_property_pair.second.unit != Unit::VAR_EXPRESSION && id_property_pair.second.unit != Unit::SHORTHAND_PLACEHOLDER)
-				continue;
-			variable_dependencies.clear();
-			const Property* property = ResolveVariables(id, &id_property_pair.second, variable_dependencies, property_storage);
-			if (!property || property->unit == Unit::CSS_WIDE_KEYWORD)
-				continue;
-			const bool reads_applied = std::any_of(variable_dependencies.begin(), variable_dependencies.end(),
-				[&](const String& name) { return applied_names.count(name) != 0; });
-			if (!reads_applied)
-				continue;
-			dirty_properties.Insert(id);
-			if (property->unit == Unit::KEYWORD || property->unit == Unit::STYLE_VALUE || property->unit == Unit::BOXSHADOWLIST ||
-				property->unit == Unit::DECORATOR)
-				property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
-			ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
-		}
-	}
+	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle);
 
 	// 'currentcolor' border colors follow the color, also when only the color changed.
 	static_assert(int(PropertyId::BorderLeftColor) - int(PropertyId::BorderTopColor) == 3, "The border colors must be consecutive ids.");
@@ -1856,16 +1590,8 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 		dirty_inherited_properties.Insert(PropertyId::TextOverflow);
 
 	// (the registered names added above are this element's: its children get the ids of the inherited ones)
-	if (registered_names_added)
-	{
-		for (auto it = dirty_variables.begin(); it != dirty_variables.end();)
-		{
-			if (StyleSheetSpecification::IsRegisteredCustomProperty(StyleSheetSpecification::GetPropertyId(*it)))
-				it = dirty_variables.erase(it);
-			else
-				++it;
-		}
-	}
+	if (any_registered && !dirty_variables.empty())
+		ForgetRegisteredDirtyVariables();
 
 	// Propagate dirty inherited properties to children. Var shorthands are local to the element and never inherited.
 	// Children that declare a non-inherited property 'inherit' follow it too.

@@ -93,8 +93,11 @@ const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage)
 			// The registered custom properties its var() read are taken without animation layers too (fork, phase 5).
 			PropertySources sources = style->GetPropertySources();
 			sources.animation_layers = nullptr;
-			sources.declared_only = true;
-			if (const Property* resolved = ResolveVariables(sources, style->expanded_shorthands, id, property, variable_dependencies, resolved_storage))
+			const bool was_declared_only = declared_only;
+			declared_only = true;
+			const Property* resolved = ResolveVariables(sources, style->expanded_shorthands, id, property, variable_dependencies, resolved_storage);
+			declared_only = was_declared_only;
+			if (resolved)
 			{
 				storage = *resolved;
 				return &storage;
@@ -269,7 +272,7 @@ const Property* ElementStyle::TransitionPrePass(PropertyId id, const ComputeCont
 	return &transition_snapshot->applied;
 }
 
-bool ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
+void ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
 	bool& dirty_font_face_handle)
 {
 	const TransitionList* list = GetTransitionList();
@@ -277,7 +280,7 @@ bool ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	{
 		// Without transitions there is nothing to keep (running ones are cancelled by Element::HandleTransitionProperty).
 		transition_snapshot.reset();
-		return false;
+		return;
 	}
 
 	if (!transition_snapshot)
@@ -377,7 +380,11 @@ bool ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	snapshot.starting_definition.reset();
 	snapshot.starting_looked_up = false;
 	snapshot.restart = false;
-	return registered_applied;
+
+	// A transition of a registered custom property that starts, reverses or ends now applies another value than the one
+	// the main loop of ComputeValues read through var() (fork, phase 5): the properties that read it are computed again.
+	if (registered_applied)
+		RecomputeRegisteredDependents(context, font_size, document_font_size, dirty_font_face_handle);
 }
 
 bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied)
