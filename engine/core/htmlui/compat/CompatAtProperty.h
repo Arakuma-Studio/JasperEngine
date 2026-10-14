@@ -59,11 +59,33 @@ namespace jasperengine::htmlui::compat {
         // (it is checked when substituted).
         static bool matches(AtPropertySyntax syntax, const ValueList& value, bool initial = false);
 
-        // Registers a compile's properties with the fork (needs RmlUi initialised; nothing
-        // otherwise): a name registered before with another definition, a registration without
-        // a free property id and an initial value the fork does not parse come back as
-        // diagnostics located in `files`.
-        static std::vector<Diagnostic> registerAll(const std::vector<RegisteredProperty>& properties, const SourceFiles& files);
+        // ---- registration with the fork, per owner (a loaded document, or a check), at load time
+        //
+        // Each owner registers its document's rules; a name stays registered while a live owner
+        // holds it, and is unregistered (its id freed) when the last one releases it. registerFor
+        // replaces an owner's registrations (a hot reload: the names it no longer registers, or
+        // registers with another definition, are released first, so a changed definition applies).
+        // Two live owners with different definitions of one name: the definition registered first
+        // stays (at-property-conflict for the other); when its last holder releases it, the
+        // waiting owner registered first gets its definition and is listed by takePendingOwners
+        // (DocumentLoader restyles it). Needs RmlUi initialised (nothing happens otherwise).
+
+        // a new owner handle, increasing (the order owners are served in)
+        static uint64_t newOwner();
+        // the owner's registrations are now these; diagnostics (conflicts when reportConflicts,
+        // capacity, an initial value the fork does not parse) located in `files`
+        static std::vector<Diagnostic> registerFor(uint64_t owner, const std::string& ownerName,
+                                                   const std::vector<RegisteredProperty>& properties, const SourceFiles& files,
+                                                   bool reportConflicts = true);
+        // the owner is gone (its document unloaded): every name it held and no other owner holds
+        // is unregistered
+        static void release(uint64_t owner);
+        // owners that waited for a name and hold it now (their documents are restyled)
+        static std::vector<uint64_t> takePendingOwners();
+        // the names an owner holds (tests)
+        static std::vector<std::string> heldNames(uint64_t owner);
+        // RmlUi shut down: every registration is gone
+        static void reset();
     };
 
 }

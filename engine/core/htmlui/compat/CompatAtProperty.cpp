@@ -18,6 +18,8 @@
 #include <RmlUi/Core/StyleSheetSpecification.h>
 
 #include <algorithm>
+#include <map>
+#include <set>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -522,47 +524,206 @@ const RegisteredProperty* CompatAtProperty::find(const Session& session, std::st
     return nullptr;
 }
 
-std::vector<Diagnostic> CompatAtProperty::registerAll(const std::vector<RegisteredProperty>& properties, const SourceFiles& files){
+namespace {
+
+    // The process's registrations (main thread; RmlUi's lifetime).
+    struct ActiveName {
+        Rml::PropertyId id = Rml::PropertyId::Invalid;
+        RegisteredProperty definition;          // as the first holder registered it
+        std::vector<uint64_t> holders;          // owners whose definition is this one
+    };
+    struct Registry {
+        std::map<std::string, ActiveName> active;
+        std::map<uint64_t, std::vector<RegisteredProperty>> wanted;   // per owner: every rule it registers
+        std::map<uint64_t, std::string> ownerNames;
+        std::set<uint64_t> pending;
+        uint64_t nextOwner = 1;
+    };
+
+    Registry& registry(){
+        static Registry r;
+        return r;
+    }
+
+    bool sameDefinition(const RegisteredProperty& a, const RegisteredProperty& b){
+        return a.type == b.type && a.inherits == b.inherits && a.hasInitialValue == b.hasInitialValue &&
+               (!a.hasInitialValue || a.initialValue == b.initialValue);
+    }
+
+    void removeHolder(ActiveName& name, uint64_t owner){
+        name.holders.erase(std::remove(name.holders.begin(), name.holders.end(), owner), name.holders.end());
+    }
+
+    // The fork registration of a definition; Invalid when the fork has no id left or does not read its initial value.
+    Rml::PropertyId registerWithFork(const RegisteredProperty& property){
+        return Rml::StyleSheetSpecification::RegisterCustomProperty(property.name, toRml(property.type), property.inherits,
+                                                                    property.hasInitialValue ? property.initialValue : std::string());
+    }
+
+    // A name no owner holds: unregistered, and given to the owner that waits for it longest (the first registered),
+    // with every waiting owner of the same definition.
+    void freeName(Registry& r, const std::string& name){
+        auto it = r.active.find(name);
+        if (it == r.active.end())
+            return;
+        Rml::StyleSheetSpecification::UnregisterCustomProperty(it->second.id);
+        r.active.erase(it);
+        const RegisteredProperty* chosen = nullptr;
+        for (const auto& [owner, properties] : r.wanted){
+            for (const RegisteredProperty& property : properties){
+                if (property.name == name){
+                    chosen = &property;
+                    break;
+                }
+            }
+            if (chosen)
+                break;
+        }
+        if (!chosen)
+            return;
+        const Rml::PropertyId id = registerWithFork(*chosen);
+        if (id == Rml::PropertyId::Invalid)
+            return;
+        ActiveName entry;
+        entry.id = id;
+        entry.definition = *chosen;
+        for (const auto& [owner, properties] : r.wanted){
+            for (const RegisteredProperty& property : properties){
+                if (property.name == name && sameDefinition(property, *chosen)){
+                    entry.holders.push_back(owner);
+                    r.pending.insert(owner);
+                }
+            }
+        }
+        r.active[name] = std::move(entry);
+    }
+
+    void releaseNames(Registry& r, uint64_t owner, const std::vector<RegisteredProperty>* keep){
+        std::vector<std::string> freed;
+        for (auto& [name, entry] : r.active){
+            if (std::find(entry.holders.begin(), entry.holders.end(), owner) == entry.holders.end())
+                continue;
+            bool kept = false;
+            if (keep){
+                for (const RegisteredProperty& property : *keep)
+                    kept = kept || (property.name == name && sameDefinition(property, entry.definition));
+            }
+            if (kept)
+                continue;
+            removeHolder(entry, owner);
+            if (entry.holders.empty())
+                freed.push_back(name);
+        }
+        for (const std::string& name : freed)
+            freeName(r, name);
+    }
+
+    std::string ownerLabel(const Registry& r, uint64_t owner){
+        const auto it = r.ownerNames.find(owner);
+        return it != r.ownerNames.end() && !it->second.empty() ? it->second : std::string("another document");
+    }
+
+}
+
+uint64_t CompatAtProperty::newOwner(){
+    return registry().nextOwner++;
+}
+
+std::vector<Diagnostic> CompatAtProperty::registerFor(uint64_t owner, const std::string& ownerName, const std::vector<RegisteredProperty>& properties,
+                                                      const SourceFiles& files, bool reportConflicts){
     DiagnosticSink sink(files);
     // the system interface is set before Rml::Initialise and cleared by Rml::Shutdown
-    if (properties.empty() || Rml::GetSystemInterface() == nullptr)
+    if (Rml::GetSystemInterface() == nullptr)
         return sink.take();
+    Registry& r = registry();
+    // the names the owner no longer registers, or registers with another definition, first (a hot reload; the owner
+    // waits for nothing meanwhile)
+    r.wanted.erase(owner);
+    releaseNames(r, owner, &properties);
+    r.ownerNames[owner] = ownerName;
+    if (properties.empty()){
+        r.wanted.erase(owner);
+        return sink.take();
+    }
+    r.wanted[owner] = properties;
     for (const RegisteredProperty& property : properties){
         const std::string wanted = describe(property.type, property.inherits, property.initialValue, property.hasInitialValue);
-        const Rml::PropertyId existing = Rml::StyleSheetSpecification::GetPropertyId(property.name);
-        if (existing != Rml::PropertyId::Invalid){
-            const Rml::RegisteredCustomProperty* registration = Rml::StyleSheetSpecification::GetRegisteredCustomProperty(existing);
-            if (!registration)
-                continue;   // (not a custom property name: never the case for --names)
-            const bool same = registration->syntax == toRml(property.type) && registration->inherits == property.inherits &&
-                              registration->has_initial_value == property.hasInitialValue &&
-                              (!property.hasInitialValue || registration->initial_value == property.initialValue);
-            if (!same){
-                const std::string inEffect = describe((AtPropertySyntax)(uint8_t)registration->syntax, registration->inherits,
-                                                      registration->initial_value, registration->has_initial_value);
+        auto it = r.active.find(property.name);
+        if (it != r.active.end()){
+            ActiveName& entry = it->second;
+            if (sameDefinition(entry.definition, property)){
+                if (std::find(entry.holders.begin(), entry.holders.end(), owner) == entry.holders.end())
+                    entry.holders.push_back(owner);
+            }else if (reportConflicts){
+                const RegisteredProperty& held = entry.definition;
+                const std::string inEffect = describe(held.type, held.inherits, held.initialValue, held.hasInitialValue);
+                const uint64_t first = entry.holders.empty() ? 0 : entry.holders.front();
                 sink.report(codes::AtPropertyConflict, property.ref,
-                            "@property " + property.name + " (" + wanted + ") conflicts with the registration in effect (" + inEffect +
-                            "), which stays: registrations are process-global and the first one wins until the engine restarts",
-                            "rename the property, or give every @property " + property.name + " the same definition", std::string(),
-                            property.name);
+                            "@property " + property.name + " (" + wanted + ") conflicts with the definition " + ownerLabel(r, first) +
+                            " registered (" + inEffect + "), which applies while that document is loaded: a registered name has one "
+                            "definition in the engine at a time, the one registered first; this document's applies when the other "
+                            "one unloads or registers the same",
+                            "give every @property " + property.name + " the same definition, or rename the property in one document",
+                            std::string(), property.name);
             }
             continue;
         }
+        // (a name other code registered, never the case for --names)
+        if (Rml::StyleSheetSpecification::GetPropertyId(property.name) != Rml::PropertyId::Invalid)
+            continue;
         if (Rml::StyleSheetSpecification::GetNumFreePropertyIds() <= 0){
             sink.reportAs(Severity::Warning, codes::AtPropertyUnsupportedSyntax, property.ref,
                           "@property " + property.name + " is not registered: the engine has no property id left for registered "
                           "custom properties; it stays an unregistered custom property",
-                          "register fewer custom properties (they are process-global)", std::string(), property.name);
+                          "register fewer custom properties", std::string(), property.name);
             continue;
         }
-        const Rml::PropertyId id = Rml::StyleSheetSpecification::RegisterCustomProperty(property.name, toRml(property.type), property.inherits,
-                                                                                         property.hasInitialValue ? property.initialValue : std::string());
+        const Rml::PropertyId id = registerWithFork(property);
         if (id == Rml::PropertyId::Invalid){
             sink.reportAs(Severity::Error, codes::AtPropertyInvalid, property.ref,
                           "@property " + property.name + ": the engine does not read initial-value '" + property.initialValue + "' as a " +
                           property.syntax + "; the property is not registered",
                           "write the initial value in px, deg, s or as a color the engine reads (#rrggbb)", std::string(), property.name);
+            continue;
         }
+        ActiveName entry;
+        entry.id = id;
+        entry.definition = property;
+        entry.holders.push_back(owner);
+        r.active[property.name] = std::move(entry);
     }
     return sink.take();
+}
+
+void CompatAtProperty::release(uint64_t owner){
+    if (Rml::GetSystemInterface() == nullptr)
+        return;
+    Registry& r = registry();
+    r.wanted.erase(owner);
+    r.ownerNames.erase(owner);
+    r.pending.erase(owner);
+    releaseNames(r, owner, nullptr);
+}
+
+std::vector<uint64_t> CompatAtProperty::takePendingOwners(){
+    Registry& r = registry();
+    std::vector<uint64_t> owners(r.pending.begin(), r.pending.end());
+    r.pending.clear();
+    return owners;
+}
+
+std::vector<std::string> CompatAtProperty::heldNames(uint64_t owner){
+    std::vector<std::string> names;
+    for (const auto& [name, entry] : registry().active){
+        if (std::find(entry.holders.begin(), entry.holders.end(), owner) != entry.holders.end())
+            names.push_back(name);
+    }
+    return names;
+}
+
+void CompatAtProperty::reset(){
+    Registry& r = registry();
+    const uint64_t next = r.nextOwner;
+    r = Registry();
+    r.nextOwner = next;
 }

@@ -7,6 +7,7 @@
 // again for each initialisation.
 
 #include "htmlui/compat/runtime/RuntimeRegistry.h"
+#include "htmlui/compat/CompatAtProperty.h"
 #include "htmlui/compat/DocumentLoader.h"
 
 #include "htmlui/compat/ForkFeatures.h"
@@ -27,6 +28,7 @@
 #include "htmlui/compat/runtime/HtmlShapeDecorator.h"
 #include "htmlui/compat/runtime/SvgElementHook.h"
 
+#include "htmlui/compat/CompatAtProperty.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/runtime/DecoratorCommon.h"
 
@@ -146,6 +148,7 @@ void jasperengine::htmlui::compat::releaseRuntime(){
     SvgElementHook::uninstall();
     Rml::SetImageSourceHandler(nullptr);
     CompatProperties::reset();
+    CompatAtProperty::reset();   // (registrations end with RmlUi; phase 5)
     r.layer.reset();
     r.shape.reset();
     r.borderImage.reset();
@@ -154,6 +157,9 @@ void jasperengine::htmlui::compat::releaseRuntime(){
 }
 
 void jasperengine::htmlui::compat::updateRuntime(Rml::Context* context){
+    // registered custom properties (phase 5): documents that now hold a name they waited for are restyled
+    DocumentLoader::updateRegisteredProperties();
+
     // a script changed the class or attribute names of <html>: the selectors that may match the
     // root follow (DocumentLoader::restyleForRoot)
     if (context){

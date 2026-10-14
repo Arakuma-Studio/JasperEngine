@@ -35,6 +35,7 @@
 #include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/compat/runtime/RuntimeRegistry.h"
 #include "object/ui/UIElementInternal.h"
 
 #include <RmlUi/Core.h>
@@ -108,7 +109,9 @@ namespace {
         std::string contextName;
         std::vector<std::string> errors;   // RmlUi's errors while the page lives
 
-        Page(const std::string& name, const std::string& css, const std::string& body): ok(HtmlUI::acquire()),
+        std::string cssPath;   // linked: the sheet is a file of its own (a stylesheet-only hot reload keeps the RML)
+
+        Page(const std::string& name, const std::string& css, const std::string& body, bool linked = false): ok(HtmlUI::acquire()),
             path("@htmlui/test/property/" + name + ".html"), contextName("property-" + name){
             if (!ok)
                 return;
@@ -118,7 +121,14 @@ namespace {
                     errors.push_back(message);
             });
             context = Rml::CreateContext(contextName, Rml::Vector2i(400, 300), &recording);
-            VirtualFiles::add(path, page(css, body));
+            if (linked){
+                cssPath = "@htmlui/test/property/" + name + ".css";
+                VirtualFiles::add(cssPath, css);
+                VirtualFiles::add(path, "<!DOCTYPE html><html><head><link rel='stylesheet' href='" + name + ".css'></head><body>" + body +
+                                        "</body></html>");
+            }else{
+                VirtualFiles::add(path, page(css, body));
+            }
             CompatOptions options;
             options.viewport = CompatSize{400, 300};
             options.fork = ForkFeatures::present();
@@ -138,6 +148,8 @@ namespace {
             Rml::ReleaseTextures(&recording);
             Rml::ReleaseRenderManagers();
             VirtualFiles::remove(path);
+            if (!cssPath.empty())
+                VirtualFiles::remove(cssPath);
             DocumentLoader::clearCache();
             HtmlUIClock::reset();
             if (ok){
@@ -396,13 +408,13 @@ TEST(RegisteredPropertyTest, ForkFeatureProbe){
     HtmlUI::release();
 }
 
-// Registered properties take RmlUi's free property ids (256 in all; the engine's own properties use the rest): what is
+// Registered properties take RmlUi's free property ids (4096 in all; the engine's own properties use about 250): what is
 // left with every engine property registered, and a registration past the last id stays unregistered with a warning.
 TEST(RegisteredPropertyTest, PropertyIdCapacity){
     ASSERT_TRUE(HtmlUI::acquire());
     const int free = Rml::StyleSheetSpecification::GetNumFreePropertyIds();
     std::cout << "[ PROPERTY ] " << free << " property ids free for registered custom properties\n";
-    EXPECT_GE(free, 32);
+    EXPECT_GE(free, 3800);   // PropertyId::MaxNumIds is 4096
     RecordProperty("free_property_ids", free);
 
     // (only when this test's RmlUi ends with it: the ids it takes come back at Rml::Shutdown)
@@ -421,13 +433,18 @@ TEST(RegisteredPropertyTest, PropertyIdCapacity){
             property.ref = SourceRef{file, 0, 10};
             properties.push_back(property);
         }
-        const std::vector<Diagnostic> diagnostics = CompatAtProperty::registerAll(properties, files);
+        const uint64_t owner = CompatAtProperty::newOwner();
+        const std::vector<Diagnostic> diagnostics = CompatAtProperty::registerFor(owner, "ui/capacity.css", properties, files);
         EXPECT_EQ(Rml::StyleSheetSpecification::GetNumFreePropertyIds(), 0);
         ASSERT_EQ(diagnostics.size(), 1u);
         EXPECT_EQ(diagnostics[0].code, codeNamed("at-property-unsupported-syntax"));
         EXPECT_NE(diagnostics[0].message.find("--rp-cap-" + std::to_string(free)), std::string::npos) << diagnostics[0].message;
         EXPECT_NE(diagnostics[0].message.find("no property id left"), std::string::npos) << diagnostics[0].message;
         EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rp-cap-" + std::to_string(free)), Rml::PropertyId::Invalid);
+        // released: every id is free again
+        CompatAtProperty::release(owner);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetNumFreePropertyIds(), free);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rp-cap-0"), Rml::PropertyId::Invalid);
     }
     HtmlUI::release();
 }
@@ -554,14 +571,14 @@ TEST(RegisteredPropertyTest, AnimeDrivesARegisteredProperty){
     EXPECT_TRUE(p.errors.empty()) << p.errors.front();
 }
 
-TEST(RegisteredPropertyTest, ConflictFirstRegistrationWins){
-    ASSERT_TRUE(HtmlUI::acquire());   // one RmlUi for both documents: registrations are process-global
+TEST(RegisteredPropertyTest, ConflictBetweenLiveDocuments){
+    ASSERT_TRUE(HtmlUI::acquire());   // one RmlUi for both documents: one definition per name in the engine
     {
-        Page first("conflict-a", "@property --rpc-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n"
-                                 "#a { height: 10px; width: var(--rpc-x); }\n", "<div id='a'></div>");
-        ASSERT_NE(first.document, nullptr);
-        EXPECT_EQ(first.width("a"), 5.0f);
-        EXPECT_TRUE(withCode(first.diagnostics(), "at-property-conflict").empty());
+        auto first = std::make_unique<Page>("conflict-a", "@property --rpc-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n"
+                                                           "#a { height: 10px; width: var(--rpc-x); }\n", "<div id='a'></div>");
+        ASSERT_NE(first->document, nullptr);
+        EXPECT_EQ(first->width("a"), 5.0f);
+        EXPECT_TRUE(withCode(first->diagnostics(), "at-property-conflict").empty());
 
         Page second("conflict-b", "@property --rpc-x { syntax: '<color>'; inherits: true; initial-value: red; }\n"
                                   "#a { height: 10px; width: var(--rpc-x); }\n", "<div id='a'></div>");
@@ -570,15 +587,102 @@ TEST(RegisteredPropertyTest, ConflictFirstRegistrationWins){
         ASSERT_EQ(conflict.size(), 1u);
         EXPECT_EQ(conflict[0].severity, Severity::Warning);
         EXPECT_EQ(conflict[0].line, 1u);
-        EXPECT_NE(conflict[0].message.find("syntax '<length>', inherits false, initial-value 5px"), std::string::npos) << conflict[0].message;
-        // the first registration stays in effect for every document
+        EXPECT_NE(conflict[0].message.find("@htmlui/test/property/conflict-a.html registered (syntax '<length>', inherits false, initial-value 5px)"),
+                  std::string::npos) << conflict[0].message;
+        // the definition registered first applies to both documents while they are loaded
         EXPECT_EQ(second.width("a"), 5.0f);
 
-        // the same definition again (a reload) is no conflict
-        Page third("conflict-c", "@property --rpc-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n", "<div id='a'></div>");
-        EXPECT_TRUE(withCode(third.diagnostics(), "at-property-conflict").empty());
+        // the same definition again is no conflict
+        {
+            Page third("conflict-c", "@property --rpc-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n", "<div id='a'></div>");
+            EXPECT_TRUE(withCode(third.diagnostics(), "at-property-conflict").empty());
+        }
+        const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId("--rpc-x");
+        ASSERT_NE(id, Rml::PropertyId::Invalid);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetRegisteredCustomProperty(id)->syntax, Rml::RegisteredPropertySyntax::Length);
+
+        // the first document unloads: the waiting one gets its definition and is restyled (before the next update)
+        first.reset();
+        jasperengine::htmlui::compat::updateRuntime(second.context);
+        second.context->Update();
+        const Rml::PropertyId now = Rml::StyleSheetSpecification::GetPropertyId("--rpc-x");
+        ASSERT_NE(now, Rml::PropertyId::Invalid);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetRegisteredCustomProperty(now)->syntax, Rml::RegisteredPropertySyntax::Color);
+        EXPECT_TRUE(withCode(second.diagnostics(), "at-property-conflict").empty());
+        // (a <color> in width: invalid at computed-value time, the width is auto)
+        EXPECT_NE(second.width("a"), 5.0f);
     }
     HtmlUI::release();
+}
+
+TEST(RegisteredPropertyTest, UnloadReleasesAndIdsAreReused){
+    ASSERT_TRUE(HtmlUI::acquire());
+    {
+        const int free = Rml::StyleSheetSpecification::GetNumFreePropertyIds();
+        auto a = std::make_unique<Page>("release-a", "@property --rplf-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n"
+                                                      "#a { height: 10px; width: var(--rplf-x); }\n", "<div id='a'></div>");
+        auto b = std::make_unique<Page>("release-b", "@property --rplf-x { syntax: '<length>'; inherits: false; initial-value: 5px; }\n",
+                                        "<div id='a'></div>");
+        const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId("--rplf-x");
+        ASSERT_NE(id, Rml::PropertyId::Invalid);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetNumFreePropertyIds(), free - 1);
+
+        // counted per registering document: one unloads, the name stays
+        a.reset();
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rplf-x"), id);
+        // the last one unloads: the name is freed (a plain custom property again), its id free
+        b.reset();
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rplf-x"), Rml::PropertyId::Invalid);
+        EXPECT_FALSE(Rml::StyleSheetSpecification::IsRegisteredCustomProperty(id));
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetNumFreePropertyIds(), free);
+
+        // registered again, with another definition: the name gets its id back and the new definition
+        Page c("release-c", "@property --rplf-x { syntax: '<color>'; inherits: true; initial-value: #00ff00; }\n"
+                            "#a { height: 10px; width: 10px; background-color: var(--rplf-x); }\n", "<div id='a'></div>");
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rplf-x"), id);
+        EXPECT_EQ(Rml::StyleSheetSpecification::GetRegisteredCustomProperty(id)->syntax, Rml::RegisteredPropertySyntax::Color);
+        EXPECT_EQ(c.byId("a")->GetComputedValues().background_color(), Rml::Colourb(0, 255, 0, 255));
+        EXPECT_TRUE(withCode(c.diagnostics(), "at-property-conflict").empty());
+    }
+    HtmlUI::release();
+}
+
+TEST(RegisteredPropertyTest, HotReloadAppliesAChangedDefinition){
+    Page p("hot", "@property --rph2-w { syntax: '<length>'; inherits: false; initial-value: 10px; }\n"
+                  "#a { height: 10px; width: var(--rph2-w); opacity: var(--rph2-o, 1); }\n", "<div id='a'></div>", true);
+    ASSERT_NE(p.document, nullptr);
+    EXPECT_EQ(p.width("a"), 10.0f);
+    const Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId("--rph2-w");
+
+    // the stylesheet-only hot reload of an edited @property (UIDocumentSystem: compile, then restyle)
+    auto reload = [&](const std::string& css){
+        VirtualFiles::add(p.cssPath, css);
+        DocumentLoader::invalidate(p.cssPath);
+        CompatOptions options = p.compiled->options;
+        std::shared_ptr<const CompatDocument> fresh = DocumentLoader::compile(p.path, options);
+        ASSERT_TRUE(DocumentLoader::sameRml(*fresh, *p.compiled));
+        DocumentLoader::restyle(p.document, fresh, options);
+        p.compiled = fresh;
+        p.context->Update();
+    };
+    reload("@property --rph2-w { syntax: '<length>'; inherits: false; initial-value: 30px; }\n"
+           "@property --rph2-o { syntax: '<number>'; inherits: false; initial-value: 0.5; }\n"
+           "#a { height: 10px; width: var(--rph2-w); opacity: var(--rph2-o, 1); }\n");
+    EXPECT_EQ(p.width("a"), 30.0f);
+    EXPECT_NEAR(p.byId("a")->GetComputedValues().opacity(), 0.5f, 0.001f);
+    EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rph2-w"), id);
+    EXPECT_EQ(Rml::StyleSheetSpecification::GetRegisteredCustomProperty(id)->initial_value, "30px");
+
+    // another syntax: the property is a <number> now, the second property is gone
+    reload("@property --rph2-w { syntax: '<number>'; inherits: false; initial-value: 4; }\n"
+           "#a { height: 10px; width: calc(var(--rph2-w) * 10px); opacity: var(--rph2-o, 1); }\n");
+    EXPECT_EQ(p.width("a"), 40.0f);
+    EXPECT_EQ(Rml::StyleSheetSpecification::GetRegisteredCustomProperty(Rml::StyleSheetSpecification::GetPropertyId("--rph2-w"))->syntax,
+              Rml::RegisteredPropertySyntax::Number);
+    EXPECT_EQ(Rml::StyleSheetSpecification::GetPropertyId("--rph2-o"), Rml::PropertyId::Invalid);
+    EXPECT_NEAR(p.byId("a")->GetComputedValues().opacity(), 1.0f, 0.001f);
+    EXPECT_TRUE(withCode(p.diagnostics(), "at-property-conflict").empty());
+    EXPECT_TRUE(p.errors.empty()) << p.errors.front();
 }
 
 TEST(RegisteredPropertyTest, StartingStyleAndTransitionBehavior){
