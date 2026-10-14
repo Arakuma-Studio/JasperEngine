@@ -997,18 +997,29 @@ void DocumentLoader::restyle(Rml::ElementDocument* document, const std::shared_p
 void DocumentLoader::updateRegisteredProperties(){
     // documents that waited for a name another document held with another definition, and hold it now (phase 5)
     const std::vector<uint64_t> owners = CompatAtProperty::takePendingOwners();
-    if (owners.empty())
+    const std::vector<uint64_t> conflicted = CompatAtProperty::takeConflictedOwners();
+    if (owners.empty() && conflicted.empty())
         return;
-    std::vector<std::pair<Rml::ElementDocument*, std::shared_ptr<Binding>>> waiting;
+    std::vector<std::pair<Rml::ElementDocument*, std::shared_ptr<Binding>>> waiting, reported;
     for (auto& [document, binding] : bindings()){
         if (std::find(owners.begin(), owners.end(), binding->propertyOwner) != owners.end())
             waiting.emplace_back(const_cast<Rml::ElementDocument*>(document), binding);
+        else if (std::find(conflicted.begin(), conflicted.end(), binding->propertyOwner) != conflicted.end())
+            reported.emplace_back(const_cast<Rml::ElementDocument*>(document), binding);
     }
     for (auto& [document, binding] : waiting){
-        const std::vector<Diagnostic> registration = registerProperties(document, *binding->compiled);
-        setRegistrationDiagnostics(*binding, registration);
+        registerProperties(document, *binding->compiled);
         restyleSheets(document, *binding->compiled);
+        reported.emplace_back(document, binding);
     }
+    // the conflicts that remain once the frame's reloads are done (none for a document that holds its names now)
+    for (auto& [document, binding] : reported){
+        const std::vector<Diagnostic> conflicts = CompatAtProperty::conflictsOf(binding->propertyOwner, binding->compiled->files);
+        setRegistrationDiagnostics(*binding, conflicts);
+        if (!conflicts.empty())
+            logDiagnostics(binding->compiled->sourcePath, conflicts, binding->compiled->options.verboseDiagnostics);
+    }
+    // (a restyle above may have registered for owners still waiting: they are listed for the next update)
 }
 
 std::shared_ptr<const CompatDocument> DocumentLoader::restyleForViewport(Rml::ElementDocument* document,

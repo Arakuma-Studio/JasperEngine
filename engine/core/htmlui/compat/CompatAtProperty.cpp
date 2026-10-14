@@ -537,6 +537,7 @@ namespace {
         std::map<uint64_t, std::vector<RegisteredProperty>> wanted;   // per owner: every rule it registers
         std::map<uint64_t, std::string> ownerNames;
         std::set<uint64_t> pending;
+        std::set<uint64_t> conflicted;   // owners that registered a name held with another definition (reported later)
         uint64_t nextOwner = 1;
     };
 
@@ -647,7 +648,6 @@ std::vector<Diagnostic> CompatAtProperty::registerFor(uint64_t owner, const std:
     }
     r.wanted[owner] = properties;
     for (const RegisteredProperty& property : properties){
-        const std::string wanted = describe(property.type, property.inherits, property.initialValue, property.hasInitialValue);
         auto it = r.active.find(property.name);
         if (it != r.active.end()){
             ActiveName& entry = it->second;
@@ -655,16 +655,9 @@ std::vector<Diagnostic> CompatAtProperty::registerFor(uint64_t owner, const std:
                 if (std::find(entry.holders.begin(), entry.holders.end(), owner) == entry.holders.end())
                     entry.holders.push_back(owner);
             }else if (reportConflicts){
-                const RegisteredProperty& held = entry.definition;
-                const std::string inEffect = describe(held.type, held.inherits, held.initialValue, held.hasInitialValue);
-                const uint64_t first = entry.holders.empty() ? 0 : entry.holders.front();
-                sink.report(codes::AtPropertyConflict, property.ref,
-                            "@property " + property.name + " (" + wanted + ") conflicts with the definition " + ownerLabel(r, first) +
-                            " registered (" + inEffect + "), which applies while that document is loaded: a registered name has one "
-                            "definition in the engine at a time, the one registered first; this document's applies when the other "
-                            "one unloads or registers the same",
-                            "give every @property " + property.name + " the same definition, or rename the property in one document",
-                            std::string(), property.name);
+                // reported once the frame's reloads are done (conflictsOf): another document reloading the same
+                // sheet in the same frame (the edit and play views) may release the old definition meanwhile
+                r.conflicted.insert(owner);
             }
             continue;
         }
@@ -702,7 +695,40 @@ void CompatAtProperty::release(uint64_t owner){
     r.wanted.erase(owner);
     r.ownerNames.erase(owner);
     r.pending.erase(owner);
+    r.conflicted.erase(owner);
     releaseNames(r, owner, nullptr);
+}
+
+std::vector<uint64_t> CompatAtProperty::takeConflictedOwners(){
+    Registry& r = registry();
+    std::vector<uint64_t> owners(r.conflicted.begin(), r.conflicted.end());
+    r.conflicted.clear();
+    return owners;
+}
+
+std::vector<Diagnostic> CompatAtProperty::conflictsOf(uint64_t owner, const SourceFiles& files){
+    DiagnosticSink sink(files);
+    Registry& r = registry();
+    const auto wanted = r.wanted.find(owner);
+    if (wanted == r.wanted.end())
+        return sink.take();
+    for (const RegisteredProperty& property : wanted->second){
+        const auto it = r.active.find(property.name);
+        if (it == r.active.end() || sameDefinition(it->second.definition, property))
+            continue;
+        const RegisteredProperty& held = it->second.definition;
+        const std::string mine = describe(property.type, property.inherits, property.initialValue, property.hasInitialValue);
+        const std::string inEffect = describe(held.type, held.inherits, held.initialValue, held.hasInitialValue);
+        const uint64_t first = it->second.holders.empty() ? 0 : it->second.holders.front();
+        sink.report(codes::AtPropertyConflict, property.ref,
+                    "@property " + property.name + " (" + mine + ") conflicts with the definition " + ownerLabel(r, first) +
+                    " registered (" + inEffect + "), which applies while that document is loaded: a registered name has one "
+                    "definition in the engine at a time, the one registered first; this document's applies when the other "
+                    "one unloads or registers the same",
+                    "give every @property " + property.name + " the same definition, or rename the property in one document",
+                    std::string(), property.name);
+    }
+    return sink.take();
 }
 
 std::vector<uint64_t> CompatAtProperty::takePendingOwners(){

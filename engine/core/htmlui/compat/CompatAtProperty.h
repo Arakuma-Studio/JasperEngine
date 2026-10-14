@@ -72,8 +72,9 @@ namespace jasperengine::htmlui::compat {
 
         // a new owner handle, increasing (the order owners are served in)
         static uint64_t newOwner();
-        // the owner's registrations are now these; diagnostics (conflicts when reportConflicts,
-        // capacity, an initial value the fork does not parse) located in `files`
+        // the owner's registrations are now these; diagnostics (capacity, an initial value the fork
+        // does not parse) located in `files`; with reportConflicts its conflicts are noted for
+        // takeConflictedOwners
         static std::vector<Diagnostic> registerFor(uint64_t owner, const std::string& ownerName,
                                                    const std::vector<RegisteredProperty>& properties, const SourceFiles& files,
                                                    bool reportConflicts = true);
@@ -82,6 +83,11 @@ namespace jasperengine::htmlui::compat {
         static void release(uint64_t owner);
         // owners that waited for a name and hold it now (their documents are restyled)
         static std::vector<uint64_t> takePendingOwners();
+        // owners that registered a name another owner holds with another definition, since the
+        // last call (registerFor reports no conflict itself: a document reloading in the same frame
+        // may release the other definition), and an owner's conflicts now (at-property-conflict)
+        static std::vector<uint64_t> takeConflictedOwners();
+        static std::vector<Diagnostic> conflictsOf(uint64_t owner, const SourceFiles& files);
         // the names an owner holds (tests)
         static std::vector<std::string> heldNames(uint64_t owner);
         // RmlUi shut down: every registration is gone

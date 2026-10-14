@@ -583,6 +583,9 @@ TEST(RegisteredPropertyTest, ConflictBetweenLiveDocuments){
         Page second("conflict-b", "@property --rpc-x { syntax: '<color>'; inherits: true; initial-value: red; }\n"
                                   "#a { height: 10px; width: var(--rpc-x); }\n", "<div id='a'></div>");
         ASSERT_NE(second.document, nullptr);
+        // (reported at the next update, once the frame's reloads are done)
+        EXPECT_TRUE(withCode(second.diagnostics(), "at-property-conflict").empty());
+        jasperengine::htmlui::compat::updateRuntime(second.context);
         const std::vector<Diagnostic> conflict = withCode(second.diagnostics(), "at-property-conflict");
         ASSERT_EQ(conflict.size(), 1u);
         EXPECT_EQ(conflict[0].severity, Severity::Warning);
