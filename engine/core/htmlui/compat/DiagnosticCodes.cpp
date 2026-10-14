@@ -225,8 +225,8 @@ namespace {
         {codes::FontFaceDescriptor, I, false, "font-face-descriptor", "@font-face descriptor",
          "An @font-face descriptor was dropped or approximated (unicode-range, font-display, variable weight ranges, ...)."},
         {codes::AtPropertyUnsupportedSyntax, W, false, "at-property-unsupported-syntax", "@property syntax not supported",
-         "The @property rule's syntax is not one the engine registers (<length>, <number>, <integer>, <percentage>, "
-         "<length-percentage>, <color>, <angle>, <time> or *): combinations, lists and other types are not. The custom property "
+         "The @property rule's syntax is not one the engine registers (the types length, number, integer, percentage, "
+         "length-percentage, color, angle and time, or *): combinations, lists and other types are not. The custom property "
          "falls back to an unregistered one with the initial value written on the root (it inherits and changes discretely), "
          "as without the fork. The same applies when the document registers more custom properties than the engine has "
          "property ids for."},

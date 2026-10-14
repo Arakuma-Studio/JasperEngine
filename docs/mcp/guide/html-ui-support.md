@@ -2058,7 +2058,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `@media` | rewritten | normalized (3.9.4); nested blocks combined |  |
 | `@namespace` | ignored | namespaces are not used; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@page` | ignored | printing only; dropped (Info) (HTMLUI-AT-0001) |  |
-| `@property` | approximated | initial value written on the root; inherits: false lost (Info) (HTMLUI-AT-0010) |  |
+| `@property` | native | registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; registrations are process-global (the first one of a name wins). Other syntaxes, and without the fork: the initial value written on the root, inherits: false lost (Info) |  |
 | `@scope` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | use descendant selectors under a class |
 | `@spritesheet` | native | RmlUi extension |  |
 | `@starting-style` | native | contents dropped until the fork has AnimationLonghands (Warning) | set the start values with a class and remove it from Lua after load, or use @keyframes |
@@ -2150,6 +2150,9 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-AT-0009` | warning | **Invalid keyframes** (`keyframes-invalid`): A keyframe selector or the content of a keyframe block is invalid; it was dropped. |
 | `HTMLUI-AT-0010` | info | **@property approximated** (`property-approximated`): @property is emulated by setting the initial value on the root element; inherits: false cannot be honored. |
 | `HTMLUI-AT-0011` | info | **@font-face descriptor** (`font-face-descriptor`): An @font-face descriptor was dropped or approximated (unicode-range, font-display, variable weight ranges, ...). |
+| `HTMLUI-AT-0012` | warning | **@property syntax not supported** (`at-property-unsupported-syntax`): The @property rule's syntax is not one the engine registers (the types length, number, integer, percentage, length-percentage, color, angle and time, or *): combinations, lists and other types are not. The custom property falls back to an unregistered one with the initial value written on the root (it inherits and changes discretely), as without the fork. The same applies when the document registers more custom properties than the engine has property ids for. |
+| `HTMLUI-AT-0013` | warning | **@property conflict** (`at-property-conflict`): Registered custom properties are process-global: the first registration of a name wins for every document, until the engine restarts. Another document (or an earlier version of this one, before a hot reload) registered the name with another syntax, inherits or initial-value; that one stays. Rename the property, or give both rules the same definition. |
+| `HTMLUI-AT-0014` | by case (error) | **@property invalid** (`at-property-invalid`): Error: the @property rule is invalid and dropped, as in CSS: the name is not a custom property name, a descriptor (syntax, inherits, initial-value) is missing or invalid, the initial value does not match the syntax or is not computationally independent (em, rem, %, var()), or the rule is nested in a style rule. Warning: a declaration of a registered custom property does not match its syntax; it is invalid at computed-value time, so the property takes its initial value (inherited: its parent's value). |
 
 ### CSS
 
