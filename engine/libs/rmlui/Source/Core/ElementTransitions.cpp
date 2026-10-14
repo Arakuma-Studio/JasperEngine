@@ -270,7 +270,7 @@ const Property* ElementStyle::TransitionPrePass(PropertyId id, const ComputeCont
 }
 
 void ElementStyle::TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
-	bool& dirty_font_face_handle)
+	bool& dirty_font_face_handle, PropertyIdSet& registered_applied)
 {
 	const TransitionList* list = GetTransitionList();
 	if (!list)
@@ -339,6 +339,8 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 
 	auto Apply = [&](PropertyId id, const Property& applied) {
 		ComputeValue(context.values, context.dp_ratio, context.vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, &applied);
+		if (StyleSheetSpecification::IsRegisteredCustomProperty(id))
+			registered_applied.Insert(id);
 	};
 
 	// 'display' first: whether the element is displayed now depends on its transition (allow-discrete keeps it shown).

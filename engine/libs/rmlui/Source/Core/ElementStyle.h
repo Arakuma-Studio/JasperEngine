@@ -334,9 +334,10 @@ private:
 	// value) if a transition starts or stops, else nullptr.
 	const Property* TransitionPrePass(PropertyId id, const ComputeContext& context);
 	// After the main loop: starts and updates the transitions of the changed properties, and computes the values they
-	// apply now.
+	// apply now (the registered custom properties among them are added to 'registered_applied': the properties whose
+	// var() read them are computed again, fork phase 5).
 	void TransitionChangedProperties(const ComputeContext& context, const PropertyIdSet& dirty, float font_size, float document_font_size,
-		bool& dirty_font_face_handle);
+		bool& dirty_font_face_handle, PropertyIdSet& registered_applied);
 	// Before the definition changes: keeps the before-change values of the changed properties the element has none for.
 	void CaptureBeforeChangeValues(const PropertyIdSet& changed_properties, const ElementDefinition* new_definition);
 	// One property: compares its declared value with the before-change value and starts, reverses or cancels its

@@ -1700,7 +1700,45 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	// 'overflow' computes from both axes (p3-layout).
 	ApplyOverflowFixUp(values);
 	// Transitions start on any change of a computed value (p3-animation).
-	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle);
+	PropertyIdSet registered_applied;
+	TransitionChangedProperties(transition_context, dirty_properties, font_size, document_font_size, dirty_font_face_handle, registered_applied);
+
+	// A transition of a registered custom property that starts, reverses or ends now applies another value than the one
+	// the main loop read through var() (fork, phase 5): the properties that read it are computed again.
+	if (!registered_applied.Empty())
+	{
+		SmallUnorderedSet<String> applied_names;
+		for (const PropertyId id : registered_applied)
+		{
+			const String& name = StyleSheetSpecification::GetPropertyName(id);
+			applied_names.insert(name);
+			if (dirty_variables.insert(name).second)
+				registered_dirty_names.push_back(name);
+		}
+		if (!expanded_shorthands.GetProperties().empty() || !inline_properties.GetVarShorthands().empty() ||
+			(definition && !definition->GetProperties().GetVarShorthands().empty()))
+			ExpandVarShorthands(expanded_shorthands, GetPropertySources(), GetDirtyPropertiesRef());
+		for (auto it = Iterate(); !it.AtEnd(); ++it)
+		{
+			const auto id_property_pair = *it;
+			const PropertyId id = id_property_pair.first;
+			if (id_property_pair.second.unit != Unit::VAR_EXPRESSION && id_property_pair.second.unit != Unit::SHORTHAND_PLACEHOLDER)
+				continue;
+			variable_dependencies.clear();
+			const Property* property = ResolveVariables(id, &id_property_pair.second, variable_dependencies, property_storage);
+			if (!property || property->unit == Unit::CSS_WIDE_KEYWORD)
+				continue;
+			const bool reads_applied = std::any_of(variable_dependencies.begin(), variable_dependencies.end(),
+				[&](const String& name) { return applied_names.count(name) != 0; });
+			if (!reads_applied)
+				continue;
+			dirty_properties.Insert(id);
+			if (property->unit == Unit::KEYWORD || property->unit == Unit::STYLE_VALUE || property->unit == Unit::BOXSHADOWLIST ||
+				property->unit == Unit::DECORATOR)
+				property = ResolveValueKeywords(id, property, values, parent_values, color_computed, current_color_storage);
+			ComputeValue(values, dp_ratio, vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, property);
+		}
+	}
 
 	// 'currentcolor' border colors follow the color, also when only the color changed.
 	static_assert(int(PropertyId::BorderLeftColor) - int(PropertyId::BorderTopColor) == 3, "The border colors must be consecutive ids.");

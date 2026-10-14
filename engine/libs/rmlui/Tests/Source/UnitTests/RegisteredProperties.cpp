@@ -438,3 +438,26 @@ TEST_CASE("registered_properties.unregistered")
 	CHECK(f.Width("parent") == 100.f);
 	CHECK(f.Width("child") == 100.f);
 }
+
+TEST_CASE("registered_properties.universal_discrete")
+{
+	TestsShell::GetContext();
+	Register("--pick", RegisteredPropertySyntax::Universal, false, "#e04040ff");
+	Fixture f(R"(
+		#parent { background-color: var(--pick); transition: --pick 1s linear allow-discrete; }
+		#parent.blue { --pick: #4060e0ff; }
+		#other { background-color: var(--pick); transition: --pick 1s linear; }
+		#other.blue { --pick: #4060e0ff; }
+	)");
+	f.Get("parent")->SetClass("blue", true);
+	f.Get("other")->SetClass("blue", true);
+	f.context->Update();
+	f.AdvanceTo(0.4);
+	// Chromium: a '*' property transitions discretely with allow-discrete (the old value until half way), at once without
+	CHECK(f.Value("parent", "--pick") == "#e04040ff");
+	CHECK(f.Get("parent")->GetComputedValues().background_color() == Colourb(0xe0, 0x40, 0x40, 0xff));
+	CHECK(f.Get("other")->GetComputedValues().background_color() == Colourb(0x40, 0x60, 0xe0, 0xff));
+	f.AdvanceTo(0.6);
+	CHECK(f.Value("parent", "--pick") == "#4060e0ff");
+	CHECK(f.Get("parent")->GetComputedValues().background_color() == Colourb(0x40, 0x60, 0xe0, 0xff));
+}
