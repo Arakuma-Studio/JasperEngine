@@ -46,6 +46,8 @@ namespace {
         Selector,      // a selector (CssRewriter::rewriteSelector)
         Rule,          // the declaration in a stylesheet rule ".sample { ... }" (an inline <style>)
         BeforeRule,    // the same in ".sample::before { ... }" (generated content: 'content' applies there)
+        Sheet,         // a whole stylesheet (at-rules: @property); present: no diagnostic, RmlUi parses the output and
+                       // phase 2's piece (absentOutput) is gone from it
     };
 
     struct FeatureSample {
@@ -245,6 +247,10 @@ namespace {
         {ForkFeature::BoxParity, SampleKind::Declaration, "justify-content: start", "justify-content:flex-start", ""},
         {ForkFeature::BoxParity, SampleKind::Declaration, "flex-basis: content", "", "HTMLUI-CSS-0004"},
         {ForkFeature::BoxParity, SampleKind::Declaration, "flex-wrap: balance", "", "HTMLUI-CSS-0004"},
+        // p5-property: registered custom properties (phase 2: the initial value on the root, inherits: false lost)
+        {ForkFeature::RegisteredProperties, SampleKind::Sheet,
+         "@property --sample-len { syntax: '<length>'; inherits: false; initial-value: 4px; } .sample { width: var(--sample-len); }",
+         "--sample-len:4px", "HTMLUI-AT-0010"},
     };
 
     // lower case, no white space, no trailing ';'
@@ -276,7 +282,9 @@ namespace {
         }else if (sample.kind == SampleKind::Declaration){
             result.output = CssRewriter::rewriteDeclarations(sample.css, &sink, options);
         }else{
-            const std::string sheet = std::string(sample.kind == SampleKind::BeforeRule ? ".sample::before { " : ".sample { ") + sample.css + " }";
+            const std::string sheet = sample.kind == SampleKind::Sheet
+                                          ? std::string(sample.css)
+                                          : std::string(sample.kind == SampleKind::BeforeRule ? ".sample::before { " : ".sample { ") + sample.css + " }";
             const uint32_t file = files.add("ui/sample.html", sheet);
             CssRewriter rewriter(options, files, sink);
             StylesheetInput input;
@@ -284,7 +292,9 @@ namespace {
             input.file = file;
             input.text = files.text(file);
             const RewriteResult rewritten = rewriter.rewrite(Span<const StylesheetInput>(&input, 1));
-            if (!rewritten.sheets.empty()){
+            if (!rewritten.sheets.empty() && sample.kind == SampleKind::Sheet){
+                result.output = rewritten.sheets[0].rcss;
+            }else if (!rewritten.sheets.empty()){
                 const std::string& rcss = rewritten.sheets[0].rcss;
                 const size_t open = rcss.find('{'), close = rcss.rfind('}');
                 if (open != std::string::npos && close != std::string::npos && close > open)
@@ -347,6 +357,12 @@ namespace {
         const Rewrite result = rewrite(sample, fork);
         if (!result.diagnostics.empty())
             return "a diagnostic: " + toText(result.diagnostics[0]);
+        if (sample.kind == SampleKind::Sheet){
+            if (!Rml::Factory::InstanceStyleSheetString(result.output))
+                return "RmlUi does not parse compat's sheet: " + describe(result);
+            return normalized(result.output).find(normalized(sample.absentOutput)) == std::string::npos ? std::string()
+                                                                                                         : "phase 2's output: " + describe(result);
+        }
         if (sample.kind == SampleKind::Selector){
             Rml::SharedPtr<Rml::StyleSheetContainer> container = Rml::Factory::InstanceStyleSheetString(std::string(sample.css) + " { color: red; }");
             if (!container)
