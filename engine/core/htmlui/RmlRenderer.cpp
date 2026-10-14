@@ -1009,6 +1009,7 @@ void RmlRenderer::endPass(bool resolve){
 }
 
 bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad){
+    flushDeferredComposite();
     endPass();
     if (!framebuffer.isCreated())
         return false;
@@ -1079,7 +1080,33 @@ void RmlRenderer::ensureResolved(Framebuffer& layer){
         endPass(true);
 }
 
+namespace {
+    std::atomic<bool> compositeFusion{true};
+}
+
+void RmlRenderer::setCompositeFusionForTesting(bool enabled){
+    compositeFusion = enabled;
+}
+
+void RmlRenderer::flushDeferredComposite(){
+    if (deferred.layer < 0 || fusingDeferred)
+        return;
+    const DeferredComposite d = deferred;
+    deferred = DeferredComposite();
+    Framebuffer* layer = target ? target->getLayer(d.layer) : nullptr;
+    Framebuffer* post = target ? target->postprocess[d.post].get() : nullptr;
+    if (!layer || !post || d.layer >= layersSize)
+        return;
+    // what CompositeLayers would have drawn
+    PostDraw draw;
+    draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    draw.source = &post->getRender().getColorTexture();
+    draw.scissor = d.scissor;
+    drawPost(*layer, LoadAction::LOAD, draw, d.state);
+}
+
 bool RmlRenderer::bindLayer(int index){
+    flushDeferredComposite();
     if (!target || index < 0 || index >= layersSize)
         return false;
     Framebuffer* layer = target->ensureLayer(index);
@@ -1102,6 +1129,19 @@ bool RmlRenderer::bindLayer(int index){
 
 bool RmlRenderer::bindTopLayer(){
     return bindLayer(layersSize - 1);
+}
+
+bool RmlRenderer::bindDrawLayer(bool stencilOnly){
+    // a clip mask drawn while the top layer is a deferred composite (a backdrop with a rounded
+    // border box): every layer shares layer 0's depth-stencil, so the layer under it takes the
+    // stencil draw, the one the composite goes to next
+    if (stencilOnly && deferred.layer >= 1 && deferred.layer == layersSize - 1){
+        fusingDeferred = true;
+        const bool bound = bindLayer(deferred.layer - 1);
+        fusingDeferred = false;
+        return bound;
+    }
+    return bindTopLayer();
 }
 
 void RmlRenderer::ensureLayerCleared(int index){
@@ -1129,6 +1169,7 @@ RmlRenderer::TargetKind RmlRenderer::kindOf(const Framebuffer& framebuffer, int&
 }
 
 bool RmlRenderer::bindTarget(Framebuffer& framebuffer, LoadAction load){
+    flushDeferredComposite();
     int index = -1;
     const TargetKind kind = kindOf(framebuffer, index);
     if (kind == TargetKind::LAYER)
@@ -1201,7 +1242,7 @@ bool RmlRenderer::drawPost(Framebuffer& dst, LoadAction load, const PostDraw& dr
 }
 
 void RmlRenderer::stencilClear(uint8_t value){
-    if (!bindTopLayer())
+    if (!bindDrawLayer(true))
         return;
     const Rml::Rectanglei scissor = currentScissorTarget();
     if (isEmpty(scissor))
@@ -1227,7 +1268,7 @@ void RmlRenderer::stencilClear(uint8_t value){
 }
 
 bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state){
-    if (!bindTopLayer())
+    if (!bindDrawLayer(state.writeMask == ColorWriteMask::NONE))
         return false;
     // clipped away: sokol widens an empty scissor to 1x1 on Metal/Vulkan/WebGPU
     const Rml::Rectanglei scissor = currentScissorTarget();
@@ -1344,8 +1385,11 @@ void RmlRenderer::PopLayer(){
         Log::error("[HTML UI] PopLayer without a pushed layer");
         return;
     }
-    // the next draw switches back to the new top layer
+    // the next draw switches back to the new top layer; a deferred composite into the popped
+    // layer is dropped with it (its content is never read again)
     layersSize--;
+    if (deferred.layer >= layersSize)
+        deferred = DeferredComposite();
 }
 
 void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandle destinationHandle, Rml::BlendMode blendMode,
@@ -1359,6 +1403,28 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
         Log::error("[HTML UI] CompositeLayers from layer %d to %d of %d", source, destination, layersSize);
         return;
     }
+
+    // the second composite of a backdrop: the filter output straight into the destination,
+    // within both composites' scissors (the layer is transparent beyond the first's)
+    if (deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend){
+        Framebuffer* post = postTarget(deferred.post);
+        Framebuffer* destinationLayer = target->ensureLayer(destination);
+        const Rml::Rectanglei scissor = intersect(deferred.scissor, currentScissorTarget());
+        if (post && destinationLayer){
+            if (!isEmpty(scissor)){
+                PostDraw draw;
+                draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+                draw.source = &post->getRender().getColorTexture();
+                draw.scissor = scissor;
+                fusingDeferred = true;
+                drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
+                fusingDeferred = false;
+            }
+            stats.compositesFused++;
+            return;
+        }
+    }
+    flushDeferredComposite();
 
     // a layer nothing was drawn into is transparent: blending or adding it changes nothing
     if (blendMode != Rml::BlendMode::Replace && source < (int)layerClearPending.size() && layerClearPending[source])
@@ -1394,6 +1460,15 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
     Framebuffer* destinationLayer = target->ensureLayer(destination);
     if (!destinationLayer)
         return;
+    // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
+    if (compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
+        destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(currentScissorTarget())){
+        deferred.layer = destination;
+        deferred.post = context.primaryIndex;
+        deferred.scissor = currentScissorTarget();
+        deferred.state = getGeometryState(BlendMode::PREMULTIPLIED);
+        return;
+    }
     PostDraw draw;
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &context.primary().getRender().getColorTexture();
@@ -2117,6 +2192,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     targetSize = Rml::Vector2i(renderTarget.getWidth(), renderTarget.getHeight());
     // the tracked regions hold for these framebuffers only
     activeRegions = nullptr;
+    deferred = DeferredComposite();
     if (regionsGeneration != target->getGeneration()){
         regions.clear();
         regionsGeneration = target->getGeneration();

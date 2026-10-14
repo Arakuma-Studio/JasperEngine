@@ -212,6 +212,10 @@ namespace jasperengine {
         static void sigmaToParameters(float desiredSigma, int& passLevel, float& sigma);
         static void blurWeights(float sigma, float weights[4]);
 
+        // tests: false draws every backdrop through its temporary layer, as RmlUi's GL3 renderer
+        // (DeferredComposite); the images are the same
+        static void setCompositeFusionForTesting(bool enabled);
+
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
         const Rml::Matrix4f& getCurrentTransform() const;
@@ -300,12 +304,30 @@ namespace jasperengine {
         // or resolves it in a pass of its own
         void ensureResolved(Framebuffer& layer);
 
+        // A backdrop's filter output not drawn into its temporary layer yet. RmlUi composites the
+        // filtered backdrop into a pushed layer and that layer at once into the destination
+        // (ElementEffects): the second composite draws the post target straight into the
+        // destination (the layer would hold exactly it within the first scissor, transparent
+        // elsewhere), saving the layer's pass and resolve. Anything else that binds a target or
+        // reads the layer first draws it in (flushDeferredComposite); popping the layer drops it.
+        struct DeferredComposite {
+            int layer = -1;                  // the pushed layer; -1: none
+            int post = -1;                   // the post target holding the filter output
+            Rml::Rectanglei scissor;         // the first composite's
+            PipelineState state;             // the first composite's (no clip mask)
+        };
+        DeferredComposite deferred;
+        bool fusingDeferred = false;
+        void flushDeferredComposite();
+
         // targets and passes
         // resolve: an MSAA layer's pass ends with its resolve (stale region); else, on GL, the
         // resolve is left for when the layer is read (other backends resolve at every pass end)
         void endPass(bool resolve = false);
         bool beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad);
         bool bindLayer(int index);
+        // the top layer, or for a stencil-only draw over a deferred composite the layer under it
+        bool bindDrawLayer(bool stencilOnly);
         // any target: a layer binds as a layer; another target keeps the open pass for LOAD
         bool bindTarget(Framebuffer& framebuffer, LoadAction load);
         TargetKind kindOf(const Framebuffer& framebuffer, int& index) const;

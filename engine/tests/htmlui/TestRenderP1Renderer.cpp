@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -493,6 +494,9 @@ TEST(RenderP1Test, PassCounts){
         // the inner opacity layer (its pass, the opacity pass, back into the blur layer) inside it
         {"opacity in blur", "#f { filter: blur(4px); } #inner { filter: opacity(0.5); }",
          "<div id=\"bg\" class=\"abs\"/><div id=\"f\" class=\"abs\"><div id=\"inner\"/></div>", 10, 2, 2},
+        // a backdrop blur(4px): its four blur passes, then the output straight into layer 0 again
+        // (the pushed layer is skipped, DeferredComposite)
+        {"backdrop", "#f { backdrop-filter: blur(4px); background-color: transparent; }", "<div id=\"bg\" class=\"abs\"/><div id=\"f\" class=\"abs\"/>", 6, 1, 1},
     };
 
     for (const Case& c : cases){
@@ -507,6 +511,67 @@ TEST(RenderP1Test, PassCounts){
         EXPECT_EQ(stats.layersPushed, c.layers);
         EXPECT_EQ(stats.filtersApplied, c.filters);
         EXPECT_EQ(stats.pipelineCacheMisses, 0u) << "a steady frame creates no pipeline";
+    }
+}
+
+// p5-tooling: a backdrop's second composite draws the filter output straight into the destination
+// (RmlRenderer's DeferredComposite), skipping the temporary layer's pass and resolve; the image is
+// the one the temporary layer gives, byte for byte (with fusion off, as RmlUi's GL3 renderer draws).
+TEST(RenderP1Test, BackdropCompositeFusedExactly){
+    JASPER_REQUIRE_GPU();
+    const char* head = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"p1.css\"/><style>"
+                       ".c { position: absolute; width: 60px; height: 60px; }"
+                       "#a { left: 10px; top: 10px; background-color: #e04020; } #b { left: 70px; top: 30px; background-color: #20a0e0; }"
+                       "#c { left: 30px; top: 80px; background-color: #40e060; } #d { left: 120px; top: 90px; background-color: #f0e040; }"
+                       "#g { position: absolute; left: 35px; top: 25px; width: 120px; height: 100px; border: 2px #ffffff80;"
+                       " background-color: #ffffff20; backdrop-filter: blur(5px); }";
+    const char* cells = "<div id=\"a\" class=\"c\"/><div id=\"b\" class=\"c\"/><div id=\"c\" class=\"c\"/><div id=\"d\" class=\"c\"/>";
+    struct Case { const char* name; const char* style; const char* body; uint32_t fused; };
+    const std::string glass = "<div id=\"g\">text</div>";
+    const Case cases[] = {
+        {"blur", "", "", 1},
+        // its own rounded border box: the clip mask is drawn between the composites (into the
+        // layer under the skipped one: they share the stencil)
+        {"rounded", "#g { border-radius: 14px; }", "", 1},
+        {"color and opacity", "#g { backdrop-filter: grayscale(0.8) brightness(1.2); opacity: 0.7; }", "", 1},
+        {"with a filter", "#g { filter: drop-shadow(#000 3px 3px 2px); }", "", 1},
+        {"two overlapping", "#g2 { position: absolute; left: 90px; top: 60px; width: 80px; height: 80px; backdrop-filter: blur(3px) sepia(1); }",
+         "<div id=\"g2\"/>", 2},
+        // under a rounded clipping ancestor (its clip mask is drawn between the composites too)
+        {"rounded ancestor", "#clip { position: absolute; left: 20px; top: 20px; width: 150px; height: 120px; overflow: hidden; border-radius: 30px; }",
+         "", 1},
+    };
+    for (const Case& c : cases){
+        SCOPED_TRACE(c.name);
+        const bool clipped = std::string(c.name) == "rounded ancestor";
+        const std::string body = std::string(cells) + (clipped ? "<div id=\"clip\">" + glass + "</div>" : glass) + c.body;
+        const std::string rml = std::string(head) + c.style + "</style></head><body>" + body + "</body></html>";
+        RenderTestContext test(256, 192, 0, 0, 4);
+        ASSERT_TRUE(test.isValid());
+        ASSERT_NE(test.loadFromMemory(rml, "p1/backdrop-fused.html"), nullptr);
+        RmlRenderer::setCompositeFusionForTesting(true);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        const HtmlUIRenderStats fusedStats = test.renderer.getStats();
+        std::vector<uint8_t> fused;
+        ASSERT_TRUE(test.readLayer(fused));
+        RmlRenderer::setCompositeFusionForTesting(false);
+        const bool rendered = test.renderFrame();
+        RmlRenderer::setCompositeFusionForTesting(true);
+        ASSERT_TRUE(rendered);
+        const HtmlUIRenderStats layeredStats = test.renderer.getStats();
+        std::vector<uint8_t> layered;
+        ASSERT_TRUE(test.readLayer(layered));
+        EXPECT_EQ(fusedStats.compositesFused, c.fused);
+        EXPECT_EQ(layeredStats.compositesFused, 0u);
+        // each fused composite saves the temporary layer's pass
+        EXPECT_EQ(fusedStats.passes + c.fused, layeredStats.passes);
+        ASSERT_EQ(fused.size(), layered.size());
+        size_t differing = 0;
+        for (size_t i = 0; i < fused.size(); i++)
+            differing += fused[i] != layered[i] ? 1 : 0;
+        EXPECT_EQ(differing, 0u) << "the fused composite gives the temporary layer's image";
+        // the blur reached the layer
+        EXPECT_NE(std::count(fused.begin(), fused.end(), (uint8_t)0), (std::ptrdiff_t)fused.size());
     }
 }
 
