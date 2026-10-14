@@ -13,9 +13,12 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
+#include "htmlui/effects/EffectCompat.h"
 
 #include <algorithm>
 #include <cstring>
+#include <map>
+#include <mutex>
 
 using namespace jasperengine::htmlui::compat;
 
@@ -604,3 +607,72 @@ bool jasperengine::htmlui::compat::reachesRewrite(Session& session, const Declar
     const Support support = effectiveSupport(*row, session.options.fork);
     return support != Support::Unsupported && support != Support::Ignored;
 }
+
+// ---- function handlers (phase 5)
+
+namespace {
+
+    struct FunctionHandlers {
+        std::mutex mutex;
+        std::map<std::string, ImageFunctionHandler, std::less<>> images;
+        std::map<std::string, FilterFunctionHandler, std::less<>> filters;
+        std::map<std::string, AtRuleHandler, std::less<>> atRules;
+    };
+
+    FunctionHandlers& functionHandlers(){
+        static FunctionHandlers* handlers = new FunctionHandlers();
+        return *handlers;
+    }
+
+    // the handlers the engine's own later phases register (the effects library), once
+    void ensureFunctionHandlers(){
+        static std::once_flag once;
+        std::call_once(once, [](){ jasperengine::htmlui::registerEffectCompatHandlers(); });
+    }
+
+}
+
+void jasperengine::htmlui::compat::registerImageFunctionHandler(std::string_view functionName, ImageFunctionHandler handler){
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    handlers.images[lowerAscii(functionName)] = std::move(handler);
+}
+
+void jasperengine::htmlui::compat::registerFilterFunctionHandler(std::string_view functionName, FilterFunctionHandler handler){
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    handlers.filters[lowerAscii(functionName)] = std::move(handler);
+}
+
+void jasperengine::htmlui::compat::registerAtRuleHandler(std::string_view atKeyword, AtRuleHandler handler){
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    handlers.atRules[lowerAscii(atKeyword)] = std::move(handler);
+}
+
+// (the maps only grow, and entries are never replaced once a compile can run: a found
+// handler stays valid without the lock)
+const ImageFunctionHandler* jasperengine::htmlui::compat::findImageFunctionHandler(std::string_view functionName){
+    ensureFunctionHandlers();
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    auto it = handlers.images.find(lowerAscii(functionName));
+    return it != handlers.images.end() ? &it->second : nullptr;
+}
+
+const FilterFunctionHandler* jasperengine::htmlui::compat::findFilterFunctionHandler(std::string_view functionName){
+    ensureFunctionHandlers();
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    auto it = handlers.filters.find(lowerAscii(functionName));
+    return it != handlers.filters.end() ? &it->second : nullptr;
+}
+
+const AtRuleHandler* jasperengine::htmlui::compat::findAtRuleHandler(std::string_view atKeyword){
+    ensureFunctionHandlers();
+    FunctionHandlers& handlers = functionHandlers();
+    std::lock_guard<std::mutex> lock(handlers.mutex);
+    auto it = handlers.atRules.find(lowerAscii(atKeyword));
+    return it != handlers.atRules.end() ? &it->second : nullptr;
+}
+

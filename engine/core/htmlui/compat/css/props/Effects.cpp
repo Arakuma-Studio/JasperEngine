@@ -24,9 +24,18 @@ namespace {
         context.dropped = true;
     }
 
+    // where the functions of a filter list are written (phase 5's handled functions report there)
+    struct FilterScope {
+        DeclContext* context = nullptr;
+        uint32_t file = 0;
+        SourceRef ref;
+        std::string property = "filter";
+        bool report = true;
+    };
+
     // a filter list for RmlUi; dropped: url() filters removed. nullopt when malformed
     std::optional<std::string> filters(Session& session, const ValueList& value, const std::string& currentColor,
-                                       bool& droppedUrl){
+                                       bool& droppedUrl, const FilterScope& scope = FilterScope()){
         std::vector<std::string> out;
         droppedUrl = false;
         for (const ComponentValue& v : words(value)){
@@ -37,6 +46,21 @@ namespace {
             if (v.kind != ComponentValue::Kind::Function)
                 return std::nullopt;
             const std::string name = lowerAscii(v.name());
+            // phase 5: a function a later phase handles (effect()); a dropped one is reported by it
+            if (const FilterFunctionHandler* handler = findFilterFunctionHandler(name)){
+                FilterContext context;
+                context.session = &session;
+                context.declaration = scope.context;
+                context.function = &v;
+                context.file = scope.file;
+                context.ref = v.length > 0 && scope.file != 0 ? SourceRef{scope.file, v.offset, v.length} : scope.ref;
+                context.property = scope.property;
+                DiagnosticSink quiet(session.files);
+                std::optional<std::string> item = (*handler)(context, scope.report ? *session.sink : quiet);
+                if (item)
+                    out.push_back(*item);
+                continue;
+            }
             ValueList args = words(v.children);
             if (name == "drop-shadow"){
                 std::vector<std::string> lengths;
@@ -103,15 +127,20 @@ namespace {
         if (w.size() == 1 && isIdent(w[0], "none"))
             return "filters";
         bool droppedUrl = false;
-        return filters(session, value, "#000000ff", droppedUrl) ? "filters" : std::string();
+        FilterScope scope;
+        scope.report = false;
+        return filters(session, value, "#000000ff", droppedUrl, scope) ? "filters" : std::string();
     }
 
-    std::optional<std::string> transformFilters(Session& session, const ValueList& value, const std::string&, SourceRef){
+    std::optional<std::string> transformFilters(Session& session, const ValueList& value, const std::string&, SourceRef ref){
         ValueList w = words(value);
         if (w.size() == 1 && isIdent(w[0], "none"))
             return std::string("none");
         bool droppedUrl = false;
-        return filters(session, value, serialize(ValueNormalizer::currentColorCompanion()), droppedUrl);
+        FilterScope scope;
+        scope.file = ref.file;
+        scope.ref = ref;
+        return filters(session, value, serialize(ValueNormalizer::currentColorCompanion()), droppedUrl, scope);
     }
 
 }
@@ -135,7 +164,12 @@ void jasperengine::htmlui::compat::rewriteFilter(DeclContext& context){
     const std::string ruleColor = context.rule ? ruleStaticColor(context.session, *context.rule) : std::string();
     const std::string currentColor = ruleColor.empty() ? serialize(ValueNormalizer::currentColorCompanion()) : ruleColor;
     bool droppedUrl = false;
-    std::optional<std::string> list = filters(context.session, context.value, currentColor, droppedUrl);
+    FilterScope scope;
+    scope.context = &context;
+    scope.file = context.declaration.ref.file;
+    scope.ref = context.declaration.ref;
+    scope.property = name;
+    std::optional<std::string> list = filters(context.session, context.value, currentColor, droppedUrl, scope);
     if (!list){
         unsupportedValue(context, "use blur(), brightness(), contrast(), drop-shadow(), grayscale(), hue-rotate(), invert(), opacity(), saturate(), sepia()");
         return;

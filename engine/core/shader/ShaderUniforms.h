@@ -50,6 +50,9 @@ namespace jasperengine{
         void writeResolution(float width, float height);
 
         static void writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value);
+        // an array member (std140: 16-byte stride), at most its declared count of elements;
+        // each element takes the components its type has (UI effect palettes, phase 5)
+        static void writeUniformArray(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4* values, size_t count);
     };
 
 }

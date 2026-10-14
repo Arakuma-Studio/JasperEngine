@@ -257,6 +257,54 @@ namespace {
         {codes::SvgInternalCss, I, false, "svg-internal-css", "CSS inside SVG",
          "CSS rules that target elements inside an SVG are not applied; style the shapes with SVG attributes, or set fill and "
          "stroke on the <svg> element."},
+
+        // ---- FX (phase 5: the UI effects, effect() and @effect)
+        {codes::EffectUnknown, E, false, "effect-unknown", "Unknown effect",
+         "effect() names no built-in effect and no effect declared with @effect; the layer or filter is dropped. The suggestion "
+         "lists the nearest names and the effects made for what the name describes. Every effect is listed in "
+         "jasper://docs/html-ui-effects."},
+        {codes::EffectWrongContext, E, false, "effect-wrong-context", "Effect in the wrong property",
+         "A paint effect goes in background, background-image, mask-image, filter or backdrop-filter; a filter effect only in "
+         "filter or backdrop-filter; effect() in any other property is dropped. The suggestion says where the effect is allowed "
+         "and names its paint or filter counterpart when there is one."},
+        {codes::EffectPositionalArg, E, false, "effect-positional-arg", "Effect argument without a name",
+         "Every argument of effect() is named: effect(aurora, speed 2), not effect(aurora, 2). The argument is dropped; the "
+         "suggestion lists the effect's parameters."},
+        {codes::EffectUnknownParam, W, false, "effect-unknown-param", "Unknown effect parameter",
+         "The effect has no parameter of that name; the argument is ignored. The suggestion names the nearest parameter."},
+        {codes::EffectBadValue, W, false, "effect-bad-value", "Bad effect parameter value",
+         "The value does not parse as the parameter's type (number, length, angle, time, colour, position, keyword, palette); "
+         "the default is used. The suggestion gives the expected type and range."},
+        {codes::EffectOutOfRange, W, false, "effect-out-of-range", "Effect parameter out of range",
+         "The value is outside the parameter's range and was clamped to it."},
+        {codes::EffectDuplicateParam, W, false, "effect-duplicate-param", "Duplicate effect parameter",
+         "The parameter is given more than once; the last value wins."},
+        {codes::EffectBlendOnFilter, W, false, "effect-blend-on-filter", "blend on a filter effect",
+         "The blend parameter applies to paint effects; a filter effect ignores it. Remove it."},
+        {codes::EffectIgnoredBackgroundProp, W, false, "effect-ignored-background-prop", "Background property ignored for an effect layer",
+         "background-size, background-position and background-repeat do not apply to an effect layer: an effect always covers "
+         "its paint area. Use the effect's own parameters (scale, center, ...)."},
+        {codes::EffectUnsupportedBlend, W, false, "effect-unsupported-blend", "Blend mode not supported for an effect layer",
+         "An effect layer takes background-blend-mode normal, multiply, screen and plus-lighter (also lighter); other modes are "
+         "drawn as normal."},
+        {codes::EffectTextFill, I, false, "effect-text-fill", "Text colour set for an effect fill",
+         "background-clip: text with an effect layer fills the content with the effect: the transparent text colour was set to "
+         "white so the text has an alpha to fill. Unlike a browser, all of the element's content is filled, not only its glyphs."},
+        {codes::EffectDeclareConflict, E, false, "effect-declare-conflict", "Effect declaration conflict",
+         "@effect declares a name that is a built-in effect, or that another @effect declared with another src; the first "
+         "declaration wins (effect names are global to the game). Rename the effect."},
+        {codes::EffectFileMissing, E, false, "effect-file-missing", "Effect file not found",
+         "The src of @effect names no file; src resolves against the stylesheet like url(). The message has the path checked."},
+        {codes::EffectManifest, E, false, "effect-manifest", "Invalid effect manifest",
+         "The project effect's .frag has an invalid manifest (the // @ lines after #version 450), reported at its line: a "
+         "missing @effect or @kind, an unknown directive or type, a default outside its range, a main include that does not "
+         "match the kind, or an @effect name other than the one CSS declares."},
+        {codes::EffectShaderCompile, E, false, "effect-shader-compile", "Effect shader does not compile",
+         "The editor could not compile the project effect's fragment shader; the compiler messages are mapped to lines of the "
+         ".frag. The effect draws nothing until it compiles."},
+        {codes::EffectCost, I, false, "effect-cost", "Many expensive effects",
+         "The document uses more than four high-cost effects; each costs a lot per pixel. Keep high-cost effects to a couple of "
+         "elements or a quarter of the screen (the guide's performance section)."},
     };
 
     char toLower(char c){
@@ -330,6 +378,7 @@ const char* jasperengine::htmlui::compat::diagAreaName(DiagArea area){
         case DiagArea::AT: return "AT";
         case DiagArea::IMP: return "IMP";
         case DiagArea::SVG: return "SVG";
+        case DiagArea::FX: return "FX";
     }
     return "GEN";
 }

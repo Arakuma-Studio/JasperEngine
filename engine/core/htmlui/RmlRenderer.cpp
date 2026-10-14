@@ -21,6 +21,8 @@
 #include "texture/Framebuffer.h"
 #include "texture/TextureData.h"
 #include "compat/VirtualFiles.h"
+#include "effects/EffectRenderer.h"
+#include "effects/EffectRuntime.h"
 
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Dictionary.h>
@@ -374,6 +376,7 @@ void RmlFilterContext::drawFullscreen(Framebuffer& dst, ObjectRender& program, c
 RmlRenderer::RmlRenderer(){
     projection = Rml::Matrix4f::Identity();
     transform = projection;
+    effects = std::make_unique<htmlui::EffectRenderer>(*this);
 }
 
 RmlRenderer::~RmlRenderer(){
@@ -1286,13 +1289,14 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
         for (Rml::CompiledFilterHandle handle : filters){
             if (!handle)
                 continue;
-            // bit 0 set: a phase-5 effect filter (none in phase 1)
-            if (handle & 1){
-                Rml::Log::Message(Rml::Log::LT_WARNING, "Filter handle %p is not a built-in filter; it is skipped.", (void*)handle);
-                continue;
-            }
             if (!targets)
                 continue;
+            // bit 0 set: a phase-5 effect filter
+            if (htmlui::EffectRenderer::isEffectHandle(handle)){
+                if (effects->applyFilter(handle, context))
+                    stats.filtersApplied++;
+                continue;
+            }
             applyFilter(context, *reinterpret_cast<const RmlCompiledFilter*>(handle));
             stats.filtersApplied++;
         }
@@ -1640,6 +1644,10 @@ Rml::CompiledFilterHandle RmlRenderer::SaveLayerAsMaskImage(){
 }
 
 Rml::CompiledFilterHandle RmlRenderer::CompileFilter(const Rml::String& name, const Rml::Dictionary& parameters){
+    // phase 5: an effect's filter form (the handle is the instance, bit 0 set)
+    if (name == "jfx")
+        return effects->compileFilter(parameters);
+
     RmlCompiledFilter filter;
 
     if (name == "opacity"){
@@ -1724,6 +1732,10 @@ Rml::CompiledFilterHandle RmlRenderer::CompileFilter(const Rml::String& name, co
 void RmlRenderer::ReleaseFilter(Rml::CompiledFilterHandle filter){
     if (!filter)
         return;
+    if (htmlui::EffectRenderer::isEffectHandle(filter)){
+        effects->releaseFilter(filter);
+        return;
+    }
     delete reinterpret_cast<RmlCompiledFilter*>(filter);
 }
 
@@ -1732,6 +1744,10 @@ void RmlRenderer::ReleaseFilter(Rml::CompiledFilterHandle filter){
 //-------------------------------------------------------------------------------------------
 
 Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String& name, const Rml::Dictionary& parameters){
+    // phase 5: an effect's paint form (the handle is the instance, bit 0 set)
+    if (name == "jfx")
+        return effects->compileShader(parameters);
+
     auto applyColorStopList = [&name](RmlCompiledShader& shader, const Rml::Dictionary& shaderParameters){
         auto it = shaderParameters.find("color_stop_list");
         if (it == shaderParameters.end() || it->second.GetType() != Rml::Variant::COLORSTOPLIST)
@@ -1790,6 +1806,10 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::Comp
                                Rml::TextureHandle /*texture*/){
     if (frameState != FrameState::ACTIVE || !shaderHandle || !geometryHandle)
         return;
+    if (htmlui::EffectRenderer::isEffectHandle(shaderHandle)){
+        effects->renderShader(shaderHandle, geometryHandle, translation);
+        return;
+    }
     const RmlCompiledShader& shader = *reinterpret_cast<const RmlCompiledShader*>(shaderHandle);
 
     if (!bindTopLayer())
@@ -1830,6 +1850,10 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::Comp
 void RmlRenderer::ReleaseShader(Rml::CompiledShaderHandle shader){
     if (!shader)
         return;
+    if (htmlui::EffectRenderer::isEffectHandle(shader)){
+        effects->releaseShader(shader);
+        return;
+    }
     delete reinterpret_cast<RmlCompiledShader*>(shader);
 }
 
@@ -1984,6 +2008,8 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
     frameNumber = SystemRender::getFrameCount();
+    // the effects' per-frame state (phase 5; once per sokol frame)
+    htmlui::EffectRuntime::get().beginFrame();
 
     // per-frame statistics; the geometry counts are current
     const uint32_t geometryLive = stats.geometryLive;
@@ -2137,6 +2163,9 @@ void RmlRenderer::releaseGpuResources(){
 }
 
 void RmlRenderer::destroyPipelineObjects(){
+    // the effects' programs use the composite buffers as their layout template
+    if (effects)
+        effects->releaseGpuResources();
     geometryObject.destroy();
     gradientObject.destroy();
     compositeObject.destroy();

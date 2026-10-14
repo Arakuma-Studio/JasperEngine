@@ -730,6 +730,17 @@ namespace {
                     addRule(session, scope, *root, {declaration}, rule.ref, rule.preludeRef);
                 continue;
             }
+            // an at-rule a later phase handles (phase 5: @effect); flattening runs before any
+            // declaration is written, so it applies to the whole document wherever it is
+            if (const AtRuleHandler* handler = findAtRuleHandler(name)){
+                if (scope.parents){
+                    session.sink->reportAs(Severity::Warning, codes::UnsupportedAtRule, rule.ref, "@" + name + " inside a style rule is dropped",
+                                           "move it to the top level");
+                    continue;
+                }
+                (*handler)(rule, session, *session.sink);
+                continue;
+            }
             AtRules::reportDropped(session, rule);
         }
     }
@@ -1504,6 +1515,12 @@ namespace {
         const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
         const PropertySupport* row = facts.row;
         const Support support = effectiveSupport(*row, session.options.fork);
+        // phase 5: effect() outside the properties that take it (HTMLUI-FX-0002)
+        if (rejectsHandledFunction(session, d, name))
+            return done;
+        // phase 5: background-blend-mode is the blend of the rule's effect layers (EffectCompat)
+        if (name == "background-blend-mode" && rule && ruleHasEffectLayer(session, *rule))
+            return done;
         if (support == Support::Unsupported){
             Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
             std::string suggestion = row->suggestion;

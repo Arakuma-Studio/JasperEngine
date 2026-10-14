@@ -4,6 +4,7 @@
 #include "ForkFeatures.h"
 
 #include "RmlLogTranslator.h"
+#include "htmlui/effects/EffectRuntime.h"
 
 #include <RmlUi/Core.h>
 
@@ -48,6 +49,7 @@ namespace {
         true,    // BackgroundLayers (phase 3, p3-paint: background-* and mask-* layers, the canvas background; docs/html-ui/FORK.md)
         true,    // RelativeFontWeight (phase 3, p3-values: bolder/lighter computed against the parent's weight, FORK.md P3-V4)
         true,    // ColorFunctions (phase 3, p3-values: CSS Color 4 functions parsed at runtime, a var() inside them too, FORK.md P3-V2)
+        true,    // TextFillFilter (phase 5, p5-infra: -jfx-text-fill applies before filter, FORK.md P5-1)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -60,6 +62,7 @@ namespace {
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
         "Outline", "ObjectFit", "BackgroundLayers",
         "RelativeFontWeight", "ColorFunctions",
+        "TextFillFilter",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -191,6 +194,35 @@ div { display: block; }
             document->Close();
         }
 
+        Rml::RemoveContext(name);
+        return result;
+    }
+
+    // TextFillFilter: -jfx-text-fill holds a filter list, and an element that has only it compiles
+    // one filter when drawn (the fork's ElementEffects applies it as a filter). Needs the effects'
+    // instancers (EffectRegistry::initialise, in HtmlUI::acquire)
+    std::optional<bool> probeTextFill(){
+        if (!Rml::StyleSheetSpecification::GetProperty("-jfx-text-fill"))
+            return false;
+        if (!Rml::Factory::GetFilterInstancer("jfx-pixelate"))
+            return std::nullopt;
+        const Rml::String name = "htmlui-compat-textfill-probe";
+        Rml::Context* context = Rml::CreateContext(name, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return std::nullopt;
+        std::optional<bool> result;
+        Rml::ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head><style>
+body { display: block; width: 64px; height: 64px; }
+#t { display: block; width: 10px; height: 10px; -jfx-text-fill: jfx-pixelate(v(8px)); }
+</style></head><body><div id="t"/></body></rml>)", "[htmlui-compat-textfill-probe]");
+        if (document){
+            document->Show();
+            context->Update();
+            const uint64_t before = jasperengine::htmlui::EffectRuntime::get().getFilterCompileCount();
+            context->Render();
+            result = jasperengine::htmlui::EffectRuntime::get().getFilterCompileCount() - before == 1;
+            document->Close();
+        }
         Rml::RemoveContext(name);
         return result;
     }
@@ -337,6 +369,8 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                 return std::nullopt;
             return result.listMarkers;
         }
+        case ForkFeature::TextFillFilter:
+            return probeTextFill();
         case ForkFeature::SelectorsLevel4:
             return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:

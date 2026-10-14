@@ -842,6 +842,15 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/UILottieElement.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
+    core/htmlui/effects/BuiltinEffectManifests.gen.cpp
+    core/htmlui/effects/EffectCompat.cpp
+    core/htmlui/effects/EffectInstancers.cpp
+    core/htmlui/effects/EffectManifest.cpp
+    core/htmlui/effects/EffectRegistry.cpp
+    core/htmlui/effects/EffectRenderer.cpp
+    core/htmlui/effects/EffectRuntime.cpp
+    core/htmlui/effects/EffectSyntax.cpp
+    core/htmlui/effects/EffectValue.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp

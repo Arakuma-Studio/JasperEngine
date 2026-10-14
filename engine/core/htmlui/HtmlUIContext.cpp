@@ -7,6 +7,7 @@
 #include "RmlRenderer.h"
 #include "RmlTextInputHandler.h"
 #include "compat/runtime/RuntimeRegistry.h"
+#include "effects/EffectRuntime.h"
 #include "compat/CompatOptions.h"
 #include "compat/DocumentLoader.h"
 #include "object/ui/HtmlUIEventListener.h"
@@ -319,6 +320,8 @@ bool HtmlUIContext::processMouseMove(Rml::Vector2f position, int modifiers){
 
     // the pixel the point is in
     context->ProcessMouseMove((int)std::floor(position.x), (int)std::floor(position.y), modifiers);
+    // the effects' pointer (phase 5): the exact position
+    htmlui::EffectRuntime::get().onPointerMove(context, position);
 
     return isPointerOverContent();
 }
@@ -328,6 +331,8 @@ bool HtmlUIContext::processMouseButtonDown(int button, int modifiers){
         return false;
 
     context->ProcessMouseButtonDown(button, modifiers);
+    if (button == 0)
+        htmlui::EffectRuntime::get().onPointerButton(context, true);
 
     // RmlUi makes the hovered element active on a primary press
     if (button == 0){
@@ -353,6 +358,7 @@ bool HtmlUIContext::processMouseButtonUp(int button, int modifiers){
 
     if (button == 0){
         activeElement.reset();
+        htmlui::EffectRuntime::get().onPointerButton(context, false);
     }
 
     return overContent;
@@ -363,6 +369,7 @@ bool HtmlUIContext::processMouseLeave(){
         return false;
 
     context->ProcessMouseLeave();
+    htmlui::EffectRuntime::get().onPointerLeave(context);
 
     return isPointerOverContent();
 }
