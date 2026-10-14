@@ -4,13 +4,38 @@ These UI effects of engine/shaderlib/effects are ports of shaders.com effects
 (https://shaders.com/, https://github.com/shader-effects-inc/shaders, packages/core/src/shaders/<Name>)
 to GLSL, under the MIT license below:
 
-  cursor-trail  shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
-  pixelate      shaders.com Pixelate (adapted: cell size in px)
-  stripes       shaders.com Stripes
+  aurora                shaders.com Aurora
+  color-wheel           shaders.com ColorWheel
+  conic-spin            shaders.com ConicGradient (adapted: speed in turns/s)
+  curl-noise            shaders.com CurlNoise
+  cursor-trail          shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
+  diamond-gradient      shaders.com DiamondGradient
+  dot-grid              shaders.com DotGrid
+  falling-lines         shaders.com FallingLines
+  flowing-gradient      shaders.com FlowingGradient
+  fractal-noise         shaders.com FractalNoise
+  gradient-pan          shaders.com LinearGradient (adapted: speed scrolls the stops)
+  grid                  shaders.com Grid
+  hex-grid              shaders.com HexGrid
+  marble                shaders.com Marble
+  mesh-gradient         shaders.com MeshGradient
+  multi-point-gradient  shaders.com MultiPointGradient
+  perlin-noise          shaders.com PerlinNoise
+  pixelate              shaders.com Pixelate (adapted: cell size in px)
+  plasma                shaders.com Plasma
+  radial-pulse          shaders.com RadialGradient (adapted: speed moves rings outward)
+  ripple-rings          shaders.com Ripples
+  simplex-noise         shaders.com SimplexNoise
+  sine-wave             shaders.com SineWave
+  strands               shaders.com Strands
+  stripes               shaders.com Stripes
+  swirl                 shaders.com Swirl (adapted: source `blend` renamed `balance`)
+  voronoi               shaders.com Voronoi
 
 These effects are original but follow parts of the shaders.com kit:
 
   frosted-glass  original (Glass kit glassTint/glassBorderHighlight, gpu/kit/effects/glass.ts:170-199)
+  grain          original (FilmGrain look, gpu/kit/colorOps.ts:267)
 
 The include library engine/shaderlib/effects/lib (jfx_color, jfx_hash, jfx_noise, jfx_sdf,
 jfx_blend, jfx_tone and the other jfx_*.glsl files) ports functions of the shaders.com kit
