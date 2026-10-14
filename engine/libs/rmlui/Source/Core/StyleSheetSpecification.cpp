@@ -155,6 +155,11 @@ PropertyDefinition& StyleSheetSpecification::RegisterProperty(const String& prop
 	return instance->RegisterProperty(PropertyId::Invalid, property_name, default_value, inherited, forces_layout);
 }
 
+PropertyId StyleSheetSpecification::GetTextFillPropertyId()
+{
+	return instance ? instance->text_fill_id : PropertyId::Invalid;
+}
+
 const PropertyDefinition* StyleSheetSpecification::GetProperty(const String& property_name)
 {
 	return instance->properties.GetProperty(property_name);
@@ -494,6 +499,8 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	RegisterProperty(PropertyId::Filter, "filter", "", false, false).AddParser("filter", "filter");
 	RegisterProperty(PropertyId::BackdropFilter, "backdrop-filter", "", false, false).AddParser("filter");
+	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers)
+	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
 
 	RegisterProperty(PropertyId::BoxShadow, "box-shadow", "none", false, false).AddParser("box_shadow");
 

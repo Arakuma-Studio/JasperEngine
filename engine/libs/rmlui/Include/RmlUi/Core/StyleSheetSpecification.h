@@ -82,6 +82,10 @@ public:
 
 	static const PropertySpecification& GetPropertySpecification();
 
+	/// Fork (phase 5, P5-1): the id of '-jfx-text-fill', a filter list the element applies before its 'filter' list (the
+	/// engine's gradient text: effect layers clipped to the text, in their filter form). Invalid before Initialise.
+	static PropertyId GetTextFillPropertyId();
+
 private:
 	StyleSheetSpecification();
 	~StyleSheetSpecification();
@@ -103,6 +107,8 @@ private:
 	PropertySpecification properties;
 
 	UniquePtr<DefaultStyleSheetParsers> default_parsers;
+
+	PropertyId text_fill_id = PropertyId::Invalid;
 };
 
 } // namespace Rml
