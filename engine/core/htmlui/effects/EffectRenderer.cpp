@@ -355,7 +355,8 @@ bool EffectRenderer::brightPass(EffectInstance& instance, RmlFilterContext& cont
     if (!program)
         return false;
     program->object.addTexture(program->sourceSlot, ShaderStageType::FRAGMENT, &context.tertiary().getRender().getColorTexture());
-    BrightBlock block{threshold, 0.1f, {0.f, 0.f}};
+    // the soft knee of the kit's bloomExtractSoftKnee: half the threshold
+    BrightBlock block{threshold, threshold * 0.5f + 1e-4f, {0.f, 0.f}};
     context.drawFullscreen(context.secondary(), program->object, context.postState(BlendMode::NONE), [&](ObjectRender& object){
         if (program->params.slot >= 0)
             object.applyUniformBlock(program->params.slot, (unsigned int)std::min<size_t>(sizeof(BrightBlock), program->params.data.size()), &block);
