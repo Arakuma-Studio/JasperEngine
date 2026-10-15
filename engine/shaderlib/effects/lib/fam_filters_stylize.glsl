@@ -166,6 +166,8 @@ float fam_vhs_ac_beat(vec2 uv, float t, float wobble){
 }
 
 // ---- glitch (motionBlur.ts)
+// The hash seeds are `precise`: a multiply-add contracted on one backend and not on another
+// gives other bits, so another hash (the glcore and Vulkan goldens must agree).
 
 // burstPulse: bursts of glitch followed by calm
 float fam_glitch_burst_pulse(float slowFrame, float fastFrame, float intensity){
@@ -182,7 +184,7 @@ float fam_glitch_burst_pulse(float slowFrame, float fastFrame, float intensity){
 // bandJitter: vec3(displace, active, seed) of one horizontal band
 vec3 fam_glitch_band(float bandY, float frameIndex, float seedScale, float frameScale, float gateFactor, float hashOffset, float amplitude,
                      float strength){
-    float seed = bandY * seedScale + frameIndex * frameScale;
+    precise float seed = bandY * seedScale + frameIndex * frameScale;
     float bandHash = jfx_hash11(seed);
     float isActive = step(1.0 - strength * gateFactor, bandHash);
     float displace = (jfx_hash11(seed + hashOffset) - 0.5) * amplitude * isActive;
@@ -216,7 +218,7 @@ FamGlitchGeom fam_glitch_geom(vec2 uv, float t, float intensity, float blockDens
 
     // blockShift: coarse displacement on 4 columns
     float colX = floor(uv.x * 4.0);
-    float blockSeed = colX * 0.41 + bandY1 * 0.67 + slowFrame * 2.31;
+    precise float blockSeed = colX * 0.41 + bandY1 * 0.67 + slowFrame * 2.31;
     float blockActive = step(1.0 - strength * 0.35, jfx_hash11(blockSeed));
     float blockDisplace = (jfx_hash11(blockSeed + 77.0) - 0.5) * 0.18 * blockActive;
 
@@ -225,7 +227,7 @@ FamGlitchGeom fam_glitch_geom(vec2 uv, float t, float intensity, float blockDens
     vec2 displacedUV = vec2(clamp(uv.x + totalDisplaceX * strength, 0.0, 1.0), clamp(uv.y + vertJitter * strength, 0.0, 1.0));
 
     // mirrorFlips
-    float mirrorSeed = colX * 0.83 + bandY1 * 1.17 + slowFrame * 4.57;
+    precise float mirrorSeed = colX * 0.83 + bandY1 * 1.17 + slowFrame * 4.57;
     float hMirrorActive = step(1.0 - mirrorChance * strength, jfx_hash11(mirrorSeed)) * band1.y;
     float vMirrorActive = step(1.0 - mirrorChance * strength * 0.4, jfx_hash11(mirrorSeed + 500.0)) * band1.y;
 
@@ -244,16 +246,18 @@ FamGlitchGeom fam_glitch_geom(vec2 uv, float t, float intensity, float blockDens
 // fillBarsShade: SMPTE bars or a solid neon hue in the active blocks, on premultiplied colour
 vec4 fam_glitch_fill_bars(vec4 color, vec2 uv, FamGlitchGeom g, float colorBarMix){
     float colX = floor(uv.x * 4.0);
-    float blockSeed = colX * 0.41 + g.bandY1 * 0.67 + g.slowFrame * 2.31;
+    precise float blockSeed = colX * 0.41 + g.bandY1 * 0.67 + g.slowFrame * 2.31;
     float fillStyleHash = jfx_hash11(blockSeed + 555.0);
-    float barOffset = jfx_hash11(g.bandY1 + g.slowFrame * 3.33 + 333.0);
+    precise float barSeed = g.bandY1 + g.slowFrame * 3.33 + 333.0;
+    float barOffset = jfx_hash11(barSeed);
     float barX = fract(uv.x * 3.0 + barOffset * 7.0);
     float barIndex = floor(barX * 7.0);
     float barR = (1.0 - step(2.0, barIndex)) + step(4.0, barIndex) * (1.0 - step(6.0, barIndex));
     float barG = 1.0 - step(4.0, barIndex);
     float barB = 1.0 - step(0.5, fract(barIndex * 0.5));
     vec3 smpteColor = vec3(barR, barG, barB);
-    float solidHue = fract(jfx_hash11(g.bandY1 + 13.0) * 0.8 + g.slowFrame * 0.07);
+    precise float solidSeed = g.bandY1 + 13.0;
+    float solidHue = fract(jfx_hash11(solidSeed) * 0.8 + g.slowFrame * 0.07);
     float sh6 = solidHue * 6.0;
     vec3 solidColor = vec3(clamp(abs(sh6 - 3.0) - 1.0, 0.0, 1.0), clamp(2.0 - abs(sh6 - 2.0), 0.0, 1.0), clamp(2.0 - abs(sh6 - 4.0), 0.0, 1.0)) * 1.3;
     vec3 fillColor = mix(solidColor, smpteColor, vec3(step(0.5, fillStyleHash)));
