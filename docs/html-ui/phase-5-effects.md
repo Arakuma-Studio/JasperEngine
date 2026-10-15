@@ -1607,6 +1607,67 @@ transition invariants I4 for all 8 transitions.
 
 **Tests.** As in 4.4.
 
+#### p5-fx-light as implemented
+
+The 24 effects of A.3 with their manifests as listed. What the other effect packages can reuse or
+should know:
+
+- **Family includes** (`lib/fam_light_*.glsl`): `fam_light_common` (the radial frames and the
+  seam-free angular field, the ray lobes, the feather mask, coverageMix/coverageOver, the godrays
+  ray stack, the light-leak beam frame, drift, bloom, streaks, heat ramp, chromatic taps and screen
+  glow, and `fam_light_smoothstep` for edges that can meet), `fam_light_reveal` (the kit's reveal
+  tail and coverages: directional, radial to the farthest corner, angular, the cell grid with its
+  diamond and shuffled orders, tiled and banded orders, the fbm coverage; `fam_reveal_here`
+  applies the mask to the exact texel of the fragment, so `progress 0%` is the content).
+- **Transitions and I4.** The kit's `invert` flips the coverage; A.3 wants it to swap the ends.
+  The ports flip the coverage *and* count the progress from the other end, which is exactly the
+  complement of the plain mask (the content comes back in the order the plain transition takes it
+  away). `noise-dissolve`'s burn edge (original) colours the content within `edge-width` of the
+  front, the front's travel widened by `edge-width` times the edge colour's alpha so the edge is
+  gone at both ends (a transparent edge colour gives the source's timing exactly). The golden
+  driver captures transitions at `progress 40%` (5.2) and checks, besides 5.3's I4 pairs, that
+  `progress 100%` renders as the page without the element.
+- **Shapes are the element box.** The shape effects (`light-edge`, `neon-border`, `holographic`,
+  `thin-film`) take `jfx_box_sdf` in CSS px. Where the source sizes things in shape units (canvas
+  heights; its default shape is 0.7 across), the element's shorter side is 0.7 units
+  (`holographic`'s patches, `thin-film`'s rim, `light-edge`'s smoke), except where A.3 gives px
+  (`neon-border`'s other lengths follow its tube in the ratio of the source's defaults). The
+  bounds-geometry effects fade out over the last pixels of their `extent`, so the quad's edge
+  never cuts the light. `hologram` and `emboss` take the content's alpha as the shape: hologram's
+  optical thickness from rings of alpha taps at 1/3/8/20 % of the height (the first ring the edge
+  cuts gives the distance; no depth lines), emboss's height is depth x alpha over the bevel, its
+  cast shadow through soft heights (the mean alpha across the trace point) at |depth| x 10 bevels,
+  without the source's parallax zoom (the shape being the content, the zoom would move the colour
+  off its alpha).
+- **The bright prepass** (`_bright.frag`, p5-infra's) now is the kit's `bloomExtractSoftKnee`:
+  Rec. 709 luminance of the premultiplied linear source, the knee half the threshold
+  (`EffectRenderer` passes it), and the alpha masked with the colour; before, the alpha was kept,
+  so dim content glowed as a dark halo. `glow` is its only user.
+- **Pointer and clocks.** `holographic` tilts its normal toward the smoothed pointer (eased by
+  presence, `tilt-follows-pointer`); `cursor-ripples` reads the runtime's ripple events (a ring
+  wave packet of one wavelength travelling at `wave-speed`, fading as exp(-decay x age), its
+  radial slope the displacement: a quarter wavelength at strength 1 and intensity 10).
+  `neon-border` integrates its flicker and flow rates (`@time flicker-speed, flow-speed`; the
+  source multiplies the raw clock), `hologram` its scanline rate (the source scales the speed
+  clock by it; equal at the defaults).
+- **Original effects.** `sheen`: one sweep per `period`, centred in it (equal rests before and
+  after), the band leaning `angle` from vertical and crossing the element in `duration` after
+  `delay`; `shimmer`: a raised-cosine highlight crossing a base colour every `duration`; `glints`:
+  Sparkle's scattered star glints as a paint (one per cell of 10 000 / density px², the star sized
+  by `size`, a hue of its own mixed in by `colorize`); `outline`: the content's alpha dilated
+  and/or eroded over 16 directions on two radii, the outer stroke under the content, the inner one
+  over its colour.
+- **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 60-85): every
+  `low` effect of the package measured at most x3.8 (`emboss`; bound 6) and every `medium` one at
+  most x11.6 (`outline`, 33 taps; `sparkle` x11.0; bound 24) on glcore. A filter pass alone costs
+  about x2.2 here (`linear-wipe` x2.3).
+- **Covers.** Most covers are presets (a centred godrays, a wide light-edge band, a 128 px neon
+  glow, a strong light leak); the ports were checked at the defaults and at props approximating
+  the cover, rendered at 512 x 512 with the shape a centred disc 0.7 of the canvas wide.
+- **Guide.** The examples of 3.2 and of 1 that use these effects are back in the guide's Effects
+  section: gradient text with `holographic`, the `noise-dissolve` exit with a burning edge, and the
+  `sheen` lit on hover.
+
 ### 4.6 `p5-fx-filters` (wave 2)
 **Goal.** The 26 effects of Appendix A.4: blur, stylize, color, glass and distortion filters.
 
