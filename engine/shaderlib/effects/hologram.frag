@@ -26,7 +26,7 @@
 // fringe and the hot core). Adapted: the shape is the content's alpha. The source's optical
 // thickness (the distance inside the shape, in heights) is estimated from rings of 8 alpha taps
 // at 1, 3, 8 and 20 % of the element's height: the first ring the edge cuts gives the distance
-// from the share of it that is inside. The fringe follows the alpha's horizontal slope. The depth scan-lines (the source's depthLines, contour rings on a
+// from the share of it that is inside (softly, so the estimate stays continuous). The fringe follows the alpha's horizontal slope. The depth scan-lines (the source's depthLines, contour rings on a
 // flat shape) are not part of this effect. The scanline clock is integrated on its own rate
 // (the source scales the speed clock by it; equal at the defaults).
 
@@ -58,13 +58,16 @@ vec4 jfx_filter(JfxContext c){
 
     // the content's coverage here, and its optical thickness: the distance to its edge from
     // rings of 8 alpha taps at 1, 3, 8 and 20 % of the height (turned by a per-pixel hash so
-    // the estimate's steps read as grain): the first ring the edge cuts gives the distance from
-    // the share of it inside (a straight edge at distance d covers 1 - acos(d / r) / pi of it)
+    // the estimate's steps read as grain). The first ring the edge cuts gives the distance from
+    // the share of it inside (a straight edge at distance d covers 1 - acos(d / r) / pi of it);
+    // "cut" is soft (a ring 95 to 100 % inside is partly both), so the estimate is continuous
     float a0 = jfx_src(at).a;
     const float RINGS[4] = float[4](0.01, 0.03, 0.08, 0.2);
     float turn = jfx_hash12(floor(c.px * c.dpr) + 0.5) * JFX_TAU / 8.0;
     float depthPx = 0.0;
-    float gradX = 0.0;    // the outward slope's x from the first ring (alpha falls outward)
+    float alive = 1.0;      // the share of the estimate still inside every ring so far
+    float lastR = 0.0;
+    float gradX = 0.0;      // the outward slope's x from the first ring (alpha falls outward)
     for (int k = 0; k < 4; k++){
         float r = RINGS[k] * c.size.y;
         float mean = 0.0;
@@ -76,13 +79,13 @@ vec4 jfx_filter(JfxContext c){
                 gradX -= a * cos(ang) * 0.25;
         }
         mean = min(mean / 8.0, a0);
-        if (mean > 0.999){
-            depthPx = r;
-            continue;
-        }
-        depthPx = max(depthPx, r * cos(JFX_PI * (1.0 - clamp(mean, 0.5, 1.0))));
-        break;
+        float inside = smoothstep(0.95, 1.0, mean);
+        float estimate = max(r * cos(JFX_PI * (1.0 - clamp(mean, 0.5, 1.0))), lastR);
+        depthPx += alive * (1.0 - inside) * estimate;
+        alive *= inside;
+        lastR = r;
     }
+    depthPx += alive * lastR;
     float thickness = depthPx / max(c.size.y, 1.0);
     float rim = exp(thickness * -5.5) * params.edgeGlow;
     // the translucent volume (Beer-Lambert)
@@ -96,7 +99,7 @@ vec4 jfx_filter(JfxContext c){
     float shimmer = sin(t * 40.0) * 0.04 + sin(t * 23.3) * 0.03;
     float drop = smoothstep(0.6, 0.95, jfx_mx_noise2(vec2(t * 6.0, 11.0)) * 0.5 + 0.5);
     float flick = (1.0 + shimmer) * (1.0 - params.flicker * drop * 0.7);
-    vec2 devicePx = c.px * c.dpr;
+    vec2 devicePx = floor(c.px * c.dpr) + 0.5;    // the pixel's centre: the same bits on every backend
     float gn = jfx_hash12(vec2(devicePx.x + t * 57.3, devicePx.y));
     float grainMul = 1.0 + (gn - 0.5) * params.grain * 0.6;
 
