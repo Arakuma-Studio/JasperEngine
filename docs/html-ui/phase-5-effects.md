@@ -1583,7 +1583,15 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   a write during the load leaves a stamp that differs next time. `TestDocumentReload.
   FileChangedDuringAReloadIsReloadedNext` writes the file inside that window through
   `UIDocumentSystem::setLoadedHookForTesting` (style-sheet-only and full reloads); the MCP rename
-  test no longer waits for the edit view. `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
+  test no longer waits for the edit view. Undoing the rename at once showed two more gaps, fixed:
+  the edit-mode document restyled with the original CSS kept the decorators of the effect
+  declared from the renamed file (an effect value whose text does not change is not instanced
+  again), so `reloadChangedFiles` now loads a document in full when the project effects changed
+  during its stylesheet-only reload (`EffectRegistry::projectGeneration()`); and the variants of
+  the restored file had failed while it was gone (an instance asked for them) and `ShaderPool`
+  remembers failures, so a new declaration removes them (`EffectHotReload.
+  RedeclarationRetriesVariantsThatFailed`, `UIDocumentReloadTest.
+  ProjectEffectChangeDuringARestyleReloadsInFull`). `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
   `McpAutoSync` reloads the documents of a changed effect `.frag`, `.glsl` (or a removed `.frag`)
   instead of deferring it as a shader. `test_include_edit_reloads` (MCP) and
   `EffectHotReloadTest.IncludesAreDependencies` cover the includes.
