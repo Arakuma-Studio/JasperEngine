@@ -112,6 +112,7 @@ struct SessionRecord {
     bool reachedPlaying = false;
     bool stopRequested = false;     // stopped through the play tool
     uint64_t framesPlaying = 0;     // game frames (Engine::getGameFrames since the session began)
+    bool ranFirstFrame = false;     // a game frame updated the running scene (afterGameFrame)
     uint64_t engineFramesBase = 0;
     double engineTimeBase = 0.0;
     double gameTime = 0.0;          // scaled seconds the game advanced
@@ -158,6 +159,7 @@ struct TimeControl {
 };
 
 struct PlayToolsState {
+    McpContext* frameHookCtx = nullptr;  // afterGameFrame's context
     TimeControl time;
     SessionRecord current;
     SessionRecord last;
@@ -262,8 +264,30 @@ void applyHold(McpContext& ctx) {
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
     SceneProject* sp = playId != NULL_PROJECT_SCENE ? project->getScene(playId) : nullptr;
     const bool running = sp && isRunningState(sp->playState) && s.current.active;
-    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.framesPlaying >= 1;
+    const bool hold = running && s.time.autoPause && s.time.advancers == 0 && s.current.ranFirstFrame;
     if (Engine::isSimulationHeld() != hold) Engine::setSimulationHeld(hold);
+}
+
+// Engine::onPostUpdate, after every game frame's update: the first frame that updates the running
+// scene is the last before an auto_pause hold. Holding here, not when a tool next looks (one or
+// more editor frames later), makes the frames a game runs before its first hold the same on every
+// machine: one.
+void afterGameFrame() {
+    PlayToolsState& s = state();
+    McpContext* ctx = s.frameHookCtx;
+    if (!ctx || !s.current.active) return;
+    Project* project = ctx->project();
+    if (!project || project->getPlaySessionSceneId() != s.current.sceneId) return;
+    SceneProject* sp = project->getScene(s.current.sceneId);
+    if (!sp || !isRunningState(sp->playState)) return;
+    s.current.ranFirstFrame = true;
+    applyHold(*ctx);
+}
+
+// (again on every look: Engine::clearAllSubscriptions at play stop drops it; add replaces)
+void subscribeFrameHook(McpContext& ctx) {
+    state().frameHookCtx = &ctx;
+    Engine::onPostUpdate.add("jasperengine::mcp::PlayTools_afterGameFrame", std::function<void()>(afterGameFrame));
 }
 
 // A call lets the game run (auto_pause) from now until its Advance is released
@@ -311,6 +335,7 @@ void observeSession(McpContext& ctx) {
     PlayToolsState& s = state();
     Project* project = ctx.project();
     const uint32_t playId = project ? project->getPlaySessionSceneId() : NULL_PROJECT_SCENE;
+    if (playId != NULL_PROJECT_SCENE) subscribeFrameHook(ctx);
 
     if (playId != NULL_PROJECT_SCENE && (!s.current.active || s.current.sceneId != playId)) {
         if (s.current.active) {
