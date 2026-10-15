@@ -1674,9 +1674,10 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   - Goldens: every golden image the glcore suite writes is pixel-identical before and after
     (`JASPER_HTMLUI_UPDATE_GOLDEN=1` runs of html-ui's renderer and of this one; the 19 committed
     PNGs that this host renders a few levels off, within their tolerance, are the same in both).
-- **Result.** *Vulkan (lavapipe)* passes: B 0.37-0.42 ms, C 0.92-1.05, A 1.45-1.55 (budget
-  1.56-1.66), A2 4.28-4.38 after P5-5 (budget 5.27; 7.1-7.5 before it, on the same loaded host:
-  load 50-110 during these runs; the test takes the least of 5 runs). Main-thread instructions a
+- **Result.** *Vulkan (lavapipe)* passes: `EffectPerfTest.GridSteadyStateAndBudgets` on a calm
+  host (load 8-12), final tree: B 0.368 ms, C 0.851, A 1.507 (budget 1.552), A2 3.634 (budget
+  5.105). On a loaded host (load 50-160) A is at its budget (1.45-1.75 against 1.56-1.72) and A2
+  4.3-5.2 after P5-5 (7.1-7.5 before it); the test takes the least of 5 runs. Main-thread instructions a
   frame: B 0.65 M, A 3.6 M -> 2.4 M (the GL-only resolve change does not apply; pipelines, seed and
   the composites do), A2 8.5 M. *glcore (llvmpipe)* cannot meet 5.4's A budget on this driver:
   llvmpipe bins and copies state on the calling thread for every render pass (a scene: the
