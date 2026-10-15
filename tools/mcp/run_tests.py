@@ -12,7 +12,9 @@ Tests of a file run in source order and share one editor, started on a fresh scr
 fixture project (module variable EDITOR = dict(...) passes Editor arguments, e.g.
 EDITOR = {"create": True}). If a test leaves the editor unresponsive, the next test gets a new one.
 Call harness.skip("why") or ed.require_tools(...) to skip. Module variable TIMEOUT sets the
-per-test timeout in seconds (default 600).
+per-test hang guard in seconds (default 600): a test fails when no tool call has been in flight
+for that long (a slow but working editor, such as one waiting for game frames on a loaded machine,
+never trips it; each call has its own timeout, harness.Editor.call_raw).
 
 Each file runs in its own Python process. Exit code: 0 when nothing failed.
 """
@@ -22,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import concurrent.futures
+import contextlib
 import importlib.util
 import inspect
 import json
@@ -59,6 +62,24 @@ def _collect(path: Path, filt: list[str]):
     return mod, [(n, f) for _, n, f in tests]
 
 
+async def _run_guarded(coro, ed, timeout: float) -> None:
+    """Runs a test, failing it (asyncio.TimeoutError) when it made no tool call for `timeout`
+    seconds: the time spent inside tool calls does not count (they have their own timeouts)."""
+    task = asyncio.ensure_future(coro)
+    started = time.monotonic()
+    while True:
+        done, _ = await asyncio.wait({task}, timeout=min(5.0, timeout))
+        if done:
+            task.result()
+            return
+        idle = min(ed.idle_seconds(), time.monotonic() - started)
+        if idle >= timeout:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+            raise asyncio.TimeoutError()
+
+
 async def _run_file(path: Path, filt: list[str], results_path: Path) -> None:
     import harness
 
@@ -92,13 +113,14 @@ async def _run_file(path: Path, filt: list[str], results_path: Path) -> None:
                 if ed_error:
                     raise harness.HarnessError(ed_error)
                 e = await get_editor()
-                await asyncio.wait_for(fn(e), timeout)
+                await _run_guarded(fn(e), e, timeout)
             else:
                 await asyncio.wait_for(fn(), timeout)
         except harness.Skip as s:
             status, detail = "skip", str(s)
         except asyncio.TimeoutError:
-            status, detail = "fail", f"timed out after {timeout:.0f}s"
+            status, detail = "fail", f"timed out: no tool call in flight for {timeout:.0f}s" if wants_ed else \
+                f"timed out after {timeout:.0f}s"
         except Exception as ex:  # noqa: BLE001
             status = "fail"
             tb = traceback.format_exception(type(ex), ex, ex.__traceback__)

@@ -73,6 +73,27 @@ double secondsSince(Clock::time_point start) {
     return std::chrono::duration<double>(Clock::now() - start).count();
 }
 
+// A call that waits for game frames is guarded against a game that stopped advancing, not by a
+// wall-clock budget: under load (software rendering, a busy host) a frame takes any time, and a
+// wait for N frames must still run N frames, so that a fixed_fps game reaches the same state
+// however fast the machine is. Stalled: no game frame for kStallSeconds.
+constexpr double kStallSeconds = 60.0;
+
+struct FrameProgress {
+    uint64_t frames = Engine::getGameFrames();
+    Clock::time_point at = Clock::now();
+
+    bool stalled() {
+        const uint64_t now = Engine::getGameFrames();
+        if (now != frames) {
+            frames = now;
+            at = Clock::now();
+            return false;
+        }
+        return secondsSince(at) >= kStallSeconds;
+    }
+};
+
 double round3(double value) {
     return std::round(value * 1000.0) / 1000.0;
 }
@@ -1724,15 +1745,20 @@ void playTool(const CallPtr& call) {
         auto advance = std::make_shared<Advance>();
         const uint64_t base = Engine::getGameFrames();
         advance->acquire(ctx);
-        call->waitUntil([call, playId, base, frames, done]() {
+        auto progress = std::make_shared<FrameProgress>();
+        auto stalled = std::make_shared<bool>(false);
+        call->waitUntil([call, playId, base, frames, done, progress, stalled]() {
             McpContext& cx = call->ctx();
             observeSession(cx);
             *done = static_cast<int>(Engine::getGameFrames() - base);
-            return cx.project()->getPlaySessionSceneId() != playId || *done >= frames;
-        }, 60000 + frames * 1000, [advance, finish, playId, call](bool timedOut) {
+            if (cx.project()->getPlaySessionSceneId() != playId || *done >= frames) return true;
+            *stalled = progress->stalled();
+            return *stalled;
+        }, 0, [advance, finish, playId, call, stalled](bool timedOut) {
             advance->release();
             if (call->ctx().project()->getPlaySessionSceneId() != playId) finish(", then play ended");
-            else finish(timedOut ? " (timed out: the game is not rendering?); held" : "; held (auto_pause)");
+            else finish(*stalled || timedOut ? " (stopped: the game did not advance for " + std::to_string((int)kStallSeconds) +
+                                               " s; is it rendering?); held" : "; held (auto_pause)");
         });
         return;
     }
@@ -1761,8 +1787,13 @@ void playTool(const CallPtr& call) {
             McpContext& cx = call->ctx();
             observeSession(cx);
             return !cx.project()->isStepPending(playId) || cx.project()->getPlaySessionSceneId() != playId;
-        }, 10000, [remaining, done, stepOnce](bool timedOut) {
-            (void)timedOut;
+        }, static_cast<int>(kStallSeconds * 1000.0), [remaining, done, stepOnce, advance, finish](bool timedOut) {
+            if (timedOut) {
+                // the step did not happen: not counted, and no more steps
+                advance->release();
+                finish(" (stopped: a step did not run in " + std::to_string((int)kStallSeconds) + " s; is the game rendering?)");
+                return;
+            }
             (*remaining)--;
             (*done)++;
             (*stepOnce)();
@@ -2198,7 +2229,8 @@ struct InputRun {
     int frames = 0;
     Clock::time_point start;
     std::string error;
-    int pendingFrames = 0;          // frames to let pass before the next step
+    int pendingFrames = 0;          // game frames to let pass before the next step
+    uint64_t gameFrame = 0;         // Engine::getGameFrames() when the run last advanced
     bool msPending = false;
     Clock::time_point msDeadline;
     bool finished = false;
@@ -2777,10 +2809,15 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
 // True when every step ran or one failed (error).
 bool advanceInput(InputRun& run, bool newFrame) {
     if (run.finished) return true;
+    // the game frames that ran since the run last advanced (a call is polled once per editor
+    // frame, which need not run exactly one game frame)
+    const uint64_t gameFrame = Engine::getGameFrames();
+    const int elapsed = newFrame ? static_cast<int>(gameFrame - run.gameFrame) : 0;
+    run.gameFrame = gameFrame;
     if (run.pendingFrames > 0 || run.msPending) {
-        if (!newFrame) return false;
-        run.frames++;
-        if (run.pendingFrames > 0) run.pendingFrames--;
+        if (elapsed <= 0) return false;
+        run.frames += elapsed;
+        run.pendingFrames = std::max(run.pendingFrames - elapsed, 0);
         if (run.pendingFrames > 0 || (run.msPending && Clock::now() < run.msDeadline)) return false;
         run.msPending = false;
     }
@@ -2792,6 +2829,13 @@ bool advanceInput(InputRun& run, bool newFrame) {
             run.error = error;
             run.finished = true;
             return true;
+        }
+        if (step.msAfter > 0 && state().time.fixedFps > 0) {
+            // fixed_fps: milliseconds of game frames (each exactly 1/fixed_fps s), not of the wall
+            // clock, so the input lasts the same frames however fast the machine runs
+            const int msFrames = static_cast<int>(std::ceil(step.msAfter * state().time.fixedFps / 1000.0 - 1e-9));
+            run.pendingFrames = std::max({step.framesAfter, msFrames, 1});
+            return false;
         }
         if (step.msAfter > 0) {
             run.pendingFrames = std::max(step.framesAfter, 1);
@@ -2958,23 +3002,32 @@ void sendInputTool(const CallPtr& call) {
         finishInputRun(run);
         return;
     }
-    int budgetMs = 60000 + after * 1000;
-    for (const InputStep& step : run->steps) budgetMs += step.msAfter + step.framesAfter * 1000;
-    call->waitUntil([call, run, afterLeft]() {
+    // no wall-clock deadline: the steps take the frames (and real-time ms) they ask for, however
+    // slowly the game runs; a game that stops advancing ends the run (FrameProgress)
+    auto progress = std::make_shared<FrameProgress>();
+    call->waitUntil([call, run, afterLeft, progress]() {
         McpContext& c = call->ctx();
         observeSession(c);
         if (!inputPlayable(c, *run)) return true;
+        if (progress->stalled()) {
+            run->error = "the game did not advance for " + std::to_string((int)kStallSeconds) + " s (is it rendering?)";
+            return true;
+        }
         if (!run->finished) {
             if (!advanceInput(*run, true) || !run->error.empty()) return !run->error.empty();
             return *afterLeft == 0;
         }
-        // frames_after
-        if (*afterLeft > 0) {
-            (*afterLeft)--;
-            run->frames++;
+        // frames_after: game frames after the last step
+        const uint64_t gameFrame = Engine::getGameFrames();
+        const int elapsed = static_cast<int>(gameFrame - run->gameFrame);
+        run->gameFrame = gameFrame;
+        if (*afterLeft > 0 && elapsed > 0) {
+            const int counted = std::min(*afterLeft, elapsed);
+            *afterLeft -= counted;
+            run->frames += counted;
         }
         return *afterLeft == 0;
-    }, std::min(budgetMs, 3600000), [run](bool timedOut) {
+    }, 0, [run](bool timedOut) {
         if (timedOut && run->error.empty()) run->error = "timed out (is the game rendering?)";
         finishInputRun(run);
     });
@@ -3002,15 +3055,13 @@ void waitTool(const CallPtr& call) {
                    "events run during the wait.");
         return;
     }
-    const double scale = std::max(0.05, static_cast<double>(Engine::getTimeScale()));
-    // until alone: 30 s; with a cap (game_seconds / frames / seconds) the wall clock follows the cap,
-    // however slowly the game runs
-    const bool capped = gameSeconds > 0.0 || frames > 0 || seconds > 0.0;
-    double timeout = args.value("timeout_seconds", until.empty() || capped ? 0.0 : 30.0);
-    if (timeout <= 0.0) {
-        timeout = std::max({seconds + 30.0, frames / 10.0 + 30.0, gameSeconds / scale * 10.0 + 30.0});
-    }
-    timeout = std::clamp(timeout, 0.5, 3600.0);
+    // until alone: 30 s of wall clock. A frames / game_seconds cap of a playing game has no
+    // wall-clock deadline: the wait runs them however slowly the game runs (under load a fixed_fps
+    // game must still reach the same frame), and ends early only when the game stops advancing
+    // (FrameProgress). An explicit timeout_seconds is a wall-clock cap.
+    const bool frameCapped = gameSeconds > 0.0 || frames > 0;
+    const bool capped = frameCapped || seconds > 0.0;
+    const bool explicitTimeout = args.contains("timeout_seconds") && args["timeout_seconds"].is_number();
     const int pollEvery = std::clamp(args.value("poll_frames", 1), 1, 600);
 
     const uint32_t playId = project->getPlaySessionSceneId();
@@ -3050,6 +3101,10 @@ void waitTool(const CallPtr& call) {
     }
 
     const bool pausedSteps = sp && sp->playState == ScenePlayState::PAUSED && frames > 0;
+    const bool stallGuard = playing && frameCapped && !explicitTimeout;
+    double timeout = args.value("timeout_seconds", until.empty() || capped ? 0.0 : 30.0);
+    if (timeout <= 0.0) timeout = std::max({seconds + 30.0, frames / 10.0 + 30.0, gameSeconds * 10.0 + 30.0});
+    timeout = std::clamp(timeout, 0.5, 3600.0);
     if (playing) ensureMonitor(ctx);
 
     struct WaitState {
@@ -3066,6 +3121,10 @@ void waitTool(const CallPtr& call) {
         std::string conditionError;
         bool stepping = false;
         bool inputCut = false;
+        bool stallGuard = false;
+        FrameProgress progress;
+        double progressGameTime = 0.0;      // a game_seconds cap: the game time must advance too
+        Clock::time_point progressGameAt;
         Advance advance;
     };
     auto ws = std::make_shared<WaitState>();
@@ -3075,6 +3134,9 @@ void waitTool(const CallPtr& call) {
     ws->engineFrames = Engine::getGameFrames();
     ws->engineTime = Engine::getGameTime();
     ws->stepping = pausedSteps;
+    ws->stallGuard = stallGuard;
+    ws->progressGameTime = Engine::getGameTime();
+    ws->progressGameAt = ws->start;
     if (playing) ws->advance.acquire(ctx);
     if (pausedSteps) project->step(playId);
     if (input) advanceInput(*input, false);
@@ -3087,6 +3149,22 @@ void waitTool(const CallPtr& call) {
         if (playing && (p->getPlaySessionSceneId() != playId || state().current.serial != ws->serial)) {
             ws->reason = "play_ended";
             return true;
+        }
+        if (ws->stallGuard) {
+            bool stalled = ws->progress.stalled();
+            // a game_seconds cap alone also needs the game time to run (time scale 0 stops it)
+            if (gameSeconds > 0.0 && frames <= 0) {
+                if (Engine::getGameTime() != ws->progressGameTime) {
+                    ws->progressGameTime = Engine::getGameTime();
+                    ws->progressGameAt = Clock::now();
+                } else if (secondsSince(ws->progressGameAt) >= kStallSeconds) {
+                    stalled = true;
+                }
+            }
+            if (stalled) {
+                ws->reason = "stalled";
+                return true;
+            }
         }
         if (ws->stepping) {
             // a paused game advances one frame per step
@@ -3150,7 +3228,7 @@ void waitTool(const CallPtr& call) {
             return true;
         }
         return false;
-    }, static_cast<int>(timeout * 1000.0), [call, ws, until, input](bool timedOut) {
+    }, stallGuard ? 0 : static_cast<int>(timeout * 1000.0), [call, ws, until, input, frames, gameSeconds](bool timedOut) {
         // hold again first: nothing may run between the condition and the reply
         ws->advance.release();
         if (input) ws->inputCut = cutInputShort(*input);
@@ -3200,10 +3278,17 @@ void waitTool(const CallPtr& call) {
         } else if (ws->reason == "input_error") {
             text = "Input stopped at step " + std::to_string(input ? input->next : 0) + ": " + (input ? input->error : std::string());
             isError = true;
+        } else if (ws->reason == "stalled") {
+            text = "The game stopped advancing: no frame" + std::string(gameSeconds > 0.0 && frames <= 0 ? " or game time" : "") +
+                   " for " + std::to_string((int)kStallSeconds) + " s (" + elapsed + "; is it rendering, or the time scale 0?).";
+            isError = true;
         } else if (ws->reason == "timeout") {
             text = until.empty() ? "Timed out (" + elapsed + ")." : "Timed out (" + elapsed + "); the condition is still " +
                    ws->conditionValue.dump() + ".";
-            isError = !until.empty();
+            // a frames / game_seconds wait cut short by the wall clock did not do what it was asked
+            if (until.empty() && (frames > 0 || gameSeconds > 0.0))
+                text += " The frames / game_seconds asked for did not run.";
+            isError = !until.empty() || frames > 0 || gameSeconds > 0.0;
         } else if (!until.empty() && (ws->reason == "frames" || ws->reason == "seconds" || ws->reason == "game_seconds")) {
             text = "Reached the " + ws->reason + " cap (" + elapsed + "); the condition is still " + ws->conditionValue.dump() + ".";
             isError = true;
@@ -3295,8 +3380,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"until", string("Lua condition (eval_lua helpers).")},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
-            {"timeout_seconds", number("Wall clock. Default: 30 (until without a cap), else scaled to the run "
-                                       "time + 30.", 0.5, 3600)},
+            {"timeout_seconds", number("Wall clock. Default: 30 (until alone); frames/game_seconds run in full "
+                                       "(error if no frame for 60 s).", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
             {"console_limit", withDefault(integer("", 0, 1000), 50)},
             {"only_problems", withDefault(boolean(""), false)},
