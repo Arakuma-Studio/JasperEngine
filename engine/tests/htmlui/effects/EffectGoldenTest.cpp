@@ -27,7 +27,7 @@ namespace {
     // paint effects that also get a gradient-text golden (<name>.text): the filter form through
     // -jfx-text-fill (the wave-2 packages add theirs: aurora, conic-spin, gradient-pan, plasma,
     // holographic, sheen)
-    const std::set<std::string> kTextEffects = {"aurora", "conic-spin", "gradient-pan", "plasma", "stripes"};
+    const std::set<std::string> kTextEffects = {"aurora", "conic-spin", "gradient-pan", "plasma", "stripes", "holographic", "sheen"};
 
     bool updatingGoldens(){
         const char* value = std::getenv("JASPER_HTMLUI_UPDATE_GOLDEN");
@@ -78,7 +78,9 @@ TEST_P(EffectGoldenTest, GoldensAndInvariants){
         GTEST_SKIP() << "no GPU";
     ASSERT_TRUE(warmUpEffect(*m)) << m->name << ": its variants do not compile";
     const std::string fixture = fixtureOf(*m);
-    const std::string declaration = declarationOf(*m);
+    // transitions are captured part-way (5.2: progress 40%)
+    const bool transition = m->category == "transition";
+    const std::string declaration = transition ? declarationOf(*m, "progress 40%") : declarationOf(*m);
     std::string error;
 
     // t1, twice (I2: two renders of the same frame are identical), then t2
@@ -113,8 +115,8 @@ TEST_P(EffectGoldenTest, GoldensAndInvariants){
     EXPECT_LE(maxDifference(transparent, without), 1) << m->name << ": opacity 0 differs from no effect (I1)";
 
     // I4 (transitions): progress 0% is no effect, 100% removes the area, invert swaps them
-    if (m->category == "transition"){
-        TestImage start, end, invertedStart, invertedEnd;
+    if (transition){
+        TestImage start, end, invertedStart, invertedEnd, hidden;
         ASSERT_TRUE(render(scene, *m, fixture, declarationOf(*m, "progress 0%"), kT1, start, &error)) << error;
         ASSERT_TRUE(render(scene, *m, fixture, declarationOf(*m, "progress 100%"), kT1, end, &error)) << error;
         ASSERT_TRUE(render(scene, *m, fixture, declarationOf(*m, "progress 0%, invert on"), kT1, invertedStart, &error)) << error;
@@ -122,6 +124,9 @@ TEST_P(EffectGoldenTest, GoldensAndInvariants){
         EXPECT_LE(maxDifference(start, without), 1) << m->name << ": progress 0% is not the content (I4)";
         EXPECT_LE(maxDifference(invertedEnd, without), 1) << m->name << ": inverted progress 100% is not the content (I4)";
         EXPECT_LE(maxDifference(end, invertedStart), 1) << m->name << ": invert does not swap the ends (I4)";
+        // progress 100% leaves the area's alpha at most 1/255: the render is the one without the element
+        ASSERT_TRUE(render(scene, *m, fixture, "opacity: 0", kT1, hidden, &error)) << error;
+        EXPECT_LE(maxDifference(end, hidden), 1) << m->name << ": progress 100% does not remove the area (I4)";
     }
 
     // the gradient-text golden of the listed paint effects
