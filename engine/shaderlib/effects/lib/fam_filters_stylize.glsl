@@ -184,9 +184,9 @@ vec3 fam_glitch_band(float bandY, float frameIndex, float seedScale, float frame
                      float strength){
     float seed = bandY * seedScale + frameIndex * frameScale;
     float bandHash = jfx_hash11(seed);
-    float active = step(1.0 - strength * gateFactor, bandHash);
-    float displace = (jfx_hash11(seed + hashOffset) - 0.5) * amplitude * active;
-    return vec3(displace, active, seed);
+    float isActive = step(1.0 - strength * gateFactor, bandHash);
+    float displace = (jfx_hash11(seed + hashOffset) - 0.5) * amplitude * isActive;
+    return vec3(displace, isActive, seed);
 }
 
 // GlitchGeom
