@@ -1591,7 +1591,14 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   the restored file had failed while it was gone (an instance asked for them) and `ShaderPool`
   remembers failures, so a new declaration removes them (`EffectHotReload.
   RedeclarationRetriesVariantsThatFailed`, `UIDocumentReloadTest.
-  ProjectEffectChangeDuringARestyleReloadsInFull`). `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
+  ProjectEffectChangeDuringARestyleReloadsInFull`). Each change reloads once, whichever path
+  sees it first (the agent-sim test once counted an extra reload): the editor's poller ran between
+  files an agent writes back to back, or inside an MCP call between its writes (import_files'
+  manifest, files and rewrite). The poller now waits until a document's changed files are older
+  than 0.3 s (`reloadChangedFiles(files, settleSeconds)`; the MCP pick-up and a code-editor save
+  reload at once) and holds while an MCP call that may write files runs
+  (`UIDocumentReloadTest.SettleWindowReloadsABatchOfWritesOnce`; `test_html_ui_agent_sim.py::
+  test_fix_and_reload` stamps its three-file edit as one and counts the reloads exactly). `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
   `McpAutoSync` reloads the documents of a changed effect `.frag`, `.glsl` (or a removed `.frag`)
   instead of deferring it as a shader. `test_include_edit_reloads` (MCP) and
   `EffectHotReloadTest.IncludesAreDependencies` cover the includes.
