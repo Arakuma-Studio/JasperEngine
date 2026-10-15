@@ -493,12 +493,14 @@ async def test_guide_snippets_play(ed: Editor):
             return table.concat(out, '\\n'), object('{name}', 'UIDocument').loaded""", allow_edit_mode=True)
         ed.check_eq(diags, ["", True], f"{name}: loads clean in edit mode")
 
-    started = await ed.call("play", action="start", scene=S["scene"], fixed_fps=60)
+    # fixed_fps + auto_pause: the game runs only inside wait / send_input, each frame exactly 1/60 s,
+    # so every check sees the same frame however fast the machine is (the wall clock decides nothing)
+    started = await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)
     ed.check(started, "play started")
     try:
         await play_checks(ed)
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
 
 async def play_checks(ed: Editor):
