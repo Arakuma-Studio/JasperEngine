@@ -1658,9 +1658,11 @@ should know:
   and/or eroded over 16 directions on two radii, the outer stroke under the content, the inner one
   over its colour.
 - **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 60-85): every
-  `low` effect of the package measured at most x3.8 (`emboss`; bound 6) and every `medium` one at
-  most x11.6 (`outline`, 33 taps; `sparkle` x11.0; bound 24) on glcore. A filter pass alone costs
-  about x2.2 here (`linear-wipe` x2.3).
+  `low` effect of the package measured at most x3.7 on glcore (`emboss`) and x2.8 on Vulkan, every
+  `medium` one at most x11.5 on glcore (`sparkle`; `outline` x10.2, both about 33 taps) and x6.5 on
+  Vulkan (bounds 6 and 24). A filter pass alone costs about x2.1 here (`linear-wipe`); `godrays`,
+  `neon-border`, `glints`, `holographic`, `thin-film` measure in the low range though A.3 declares
+  them medium.
 - **Covers.** Most covers are presets (a centred godrays, a wide light-edge band, a 128 px neon
   glow, a strong light leak); the ports were checked at the defaults and at props approximating
   the cover, rendered at 512 x 512 with the shape a centred disc 0.7 of the canvas wide.
