@@ -1681,6 +1681,78 @@ wrap goldens).
 
 **Tests.** As in 4.4.
 
+#### p5-fx-filters as implemented
+
+The 26 effects of A.4 with their manifests as listed. What the other packages can reuse or should
+know:
+
+- **Family includes** (`lib/fam_filters_*.glsl`): `fam_filters_common` (the 32 motion-blur weights,
+  `gaussianTapWeights(32, 0.8)`, and the linear, orbit and zoom tap trajectories;
+  `chromaticOffsetUV`; `radialFalloffMask`; a smoothstep for edges that can meet),
+  `fam_filters_sample` (how filters read the content: `fam_src_premul` taps clamped half a device
+  pixel inside the area, as the kit's clamp sampler at the canvas border, for gathers that sum
+  premultiplied; the kit's 9-tap Catmull-Rom `fam_src_cr`, laid on the layer's texels with its
+  taps kept in the area and the valid source; `fam_src_remapped`, the kit's `sampleRemappedExpr`:
+  Catmull-Rom for the stretch, transparent and wrap modes, bilinear for mirror; `fam_src_edge_clip`,
+  whose transparent mode clears the whole tap; the mapping of an `edges` enum whose options start
+  with `mirror`), `fam_filters_stylize` (the dither's periodic Bayer and clustered-dot fields,
+  blue and white noise, the halftone plates and CMYK split, the VHS tape geometry and YIQ
+  recombine, the glitch geometry and colour bars), `fam_filters_glass` (the glass optics on a flat
+  plate, the fluted-glass geometry and Blinn streak, the glass-tiles map).
+- **Clocks.** `vhs`, `glitch` and `gradient-map` read their integrated `speed` clock where the
+  source multiplies the global clock by `speed`; `flow-field` integrates both `speed` and
+  `evolution-speed` (the seed added to each, as the kit does); `film-grain`'s CPU drift (10 per
+  second while `animated`) is 10 x the clock.
+- **Adaptations beyond A.4's notes.** `tilt-shift` and `progressive-blur`: the kit's compute blur
+  has a radius per pixel (`intensity` x 0.36 x the amount); here the prepass blurs at its full
+  sigma (`intensity` x 0.2) and the amount mixes it with the sharp content, premultiplied
+  (`progressive-blur` keeps the sharp alpha, as the kit). `liquid-glass` is 3.15's example 4: the
+  element's rounded box as a flat 2D plate (the kit's default shape is a volumetric sphere), the
+  refraction `(1 - depth)^2` over `thickness` px, the lens offset `-normal x refraction x 0.15 x
+  the shorter side`, the zoom about the box's centre, the frost from the prepass (the aberration's
+  red and blue taps read the blurred copy too); the kit's widths in shape units take the shorter
+  side as 0.7 units, as the light package's shapes. `twirl`'s `radius` (A.4 adds it; the source has
+  none) caps the distance the angle grows with, so at the default 1 an area up to 1.7 times wider
+  than high twists exactly as the source. `motion-blur`'s streak is in CSS px. `crt` is an opaque
+  screen (the source's `opaque()`): where the content is transparent it is black.
+  `chromatic-aberration`, `glitch` and `fluted-glass` take the alpha of the centred (green) tap, so a
+  fringe beyond a transparent edge does not show, as in the kit.
+- **Original effects.** `scanlines`: CRTScreen's `1 - intensity x (sin(2 pi y / period) x 0.5 +
+  0.5)` with the period `spacing` CSS px; `thickness` moves the wave's half-height point (0.5 is
+  the sine), `speed` scrolls on the integrated clock, `flicker` dims the content by a hashed
+  amount 24 times a second. `water-ripple`: Ripples' rings travelling outward a wavelength per
+  second times `speed`, their radial slope pushing the content `amplitude` px, fading as
+  exp(-`decay` x distance / 100 px), CursorRipples' chromatic split along the push. `heat-haze`:
+  two MaterialX noise layers (cells of 40 / `scale` px and 2.3 times finer) rising at 40 px per
+  second times the `speed` clock, pushing the content across the rise by up to `strength` px (a
+  third as much along it). `bulge`'s `follow-pointer` eases the centre to the smoothed pointer by
+  its presence.
+- **Goldens.** The backdrop effects' `.t1`/`.t2` are their backdrop goldens (the `backdrop`
+  fixture). `EffectFilterTest` adds `wave-distortion.{stretch,transparent,mirror,wrap}` (a strong
+  slanted wave over an opaque background: the test card's edges are transparent, where stretch
+  and transparent read the same) and `glitch.burst`: the glitch's default schedule is calm at both
+  golden times (no burst frame at 1.5 s or 4 s), so its `.t1` is the content and it has no `.t2`;
+  at 2.3 s both burst gates fire.
+- **The filter region (fork P5-5).** A filter's layer covers the ink overflow of its subtree, and
+  the empty box of a collapsed whitespace text element sat at the context's origin: an element with
+  whitespace between its children (the `filter` fixture) was filtered from the context's top-left
+  corner. The fork now skips children without area. Effects whose output is not transparent where
+  the content is (a stretch-edged distortion, `crt`) painted the page above and left of the
+  element; `light-leak`'s glow and `sparkle`'s rays did too, and their goldens were regenerated
+  (they now end at the element's box, as `sparkle` and `light-leak` have no `@margin`).
+- **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 50-70): COST_TABLE
+- **Covers.** Most covers are presets over a photo or a checkerboard; the ports were checked at
+  the defaults (the goldens) and at props approximating the cover, rendered at 512 x 512 over a
+  grey checkerboard, the test card or a white disc. `crt`'s default 200 scanlines over the
+  golden's 200 px fall on single pixels (the cover's are 2.5 px apart: 100 lines at 512 px);
+  `liquid-glass`'s cover is the volumetric sphere, whose magnified rim needs a thick plate here
+  (`thickness 120px`); `fluted-glass`'s cover is a soft (`softness 1`) rounded preset with three
+  flutes per height; `vhs`, `wave-distortion`, `twirl` and `glitch` covers use stronger presets.
+- **Guide.** The spec's `.title` with `chromatic-aberration` and `drop-shadow()` and its `.panel`
+  of `frosted-glass` are in the guide's quick reference, its `.menu`, `.ring` and `.logo` verbatim
+  (the `.logo` with `color: #fff` under gradient text, where the clip is dropped), and the backdrop
+  section shows `liquid-glass`.
+
 ## 5 Test plan
 
 Commands:
