@@ -91,14 +91,14 @@ TEST(EffectGuideTest, EveryExampleRenders){
     const std::string section = effectsSection();
     const std::vector<std::string> css = blocks(section, "css");
     ASSERT_GE(css.size(), 5u) << "the guide's effect examples";
-    for (const char* name : {"stripes", "spotlight", "pixelate", "frosted-glass"}){
-        const EffectManifest* m = EffectRegistry::get().find(name);
-        ASSERT_NE(m, nullptr) << name;
-        ASSERT_TRUE(warmUpEffect(*m)) << name;
-    }
     EffectScene scene(640, 480, 1);
     if (!scene.valid())
         GTEST_SKIP() << "no GPU";
+    // the built-in effects the examples use, compiled
+    for (const EffectManifest* m : EffectRegistry::get().builtins()){
+        if (section.find("effect(" + m->name + ",") != std::string::npos || section.find("effect(" + m->name + ")") != std::string::npos)
+            ASSERT_TRUE(warmUpEffect(*m)) << m->name;
+    }
     for (size_t index = 0; index < css.size(); index++){
         std::string sheet = css[index];
         // fx/my-glow.frag of the guide is the fixture's

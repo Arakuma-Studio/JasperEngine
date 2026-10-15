@@ -1661,6 +1661,60 @@ files.
 **Tests.** 5.2/5.3 (auto-enumerated), 5.6 for its effects, the 5.4 cost table for its effects,
 and the `--validate` CLI.
 
+#### p5-fx-paint as implemented
+
+The 28 effects of A.2 with their manifests as listed. What the other effect packages can reuse or
+should know:
+
+- **Positions are authored.** The kit stores a `transformPosition` prop y-flipped, `(x, 1 - y)`,
+  and its bodies flip it back (`unflipPosition`, `1 - center.y`, `aspectCenteredDelta`). The
+  engine passes positions as authored (0-1, y down), so a port reads them as they come and drops
+  the kit's flip (3.15's aurora sketch writes `1.0 - params.center.y`: that hangs the curtains from
+  the bottom).
+- **Family includes** (`lib/fam_paint_*.glsl`): `fam_paint_common` (hashPhase, the centred deltas
+  and rotation about the centre, footprint1, mixes in a working colour space without the
+  back-conversion as the kit chains them, the edge and repeat parts of the gradients, rampWrap,
+  the toneRemap variants, rgbDither), `fam_paint_noise` (perlin13, curl22z, domainWarp2 and
+  chainedWarpStep over MaterialX noise, spiralScatter/scatterField, cellHash2 and the drifting
+  nearest-2 fold, the golden-angle fbmGated over mxNoiseFloat2), `fam_paint_pattern` (cellHash,
+  variationFactor, the row speeds, quilezLineFilterAxis, discCoverage, and `fam_smoothstep`:
+  WGSL's smoothstep with equal edges is a step, GLSL's is undefined, and the kit passes equal
+  edges at softness 0).
+- **Adaptations beyond A.2's notes.** `gradient-pan` keeps the source's default start `0% 50%`
+  and end `100% 50%` (A.2 has no `start`/`end`) and has no `transparent` edge mode; its speed
+  subtracts the integrated clock from the gradient parameter. `radial-pulse` has no skew (A.2 has
+  no `skew-angle`); once its clock has moved, the rings wrap (as for `repeat` above 1) instead of
+  holding the end colours. `conic-spin` adds the clock in turns to the rotation. `dot-grid`
+  multiplies the colour's alpha by the coverage (the source replaces it), so a translucent colour
+  stays translucent. `mesh-gradient` computes its 8 anchors per fragment (the kit computes them
+  once per frame on the CPU, the same math). `simplex-noise` takes `perlin-noise`'s manifest as A.2
+  says (its `contrast` is `-1..5`; the source's slider is `-2..5`).
+- **Original effects.** `grain` is a paint layer: the kit's filmGrain hash per device pixel
+  (`scale` device pixels per grain), drifting at 10 x the clock when `animated`; a positive grain
+  draws the colour at `amount x grain` alpha, a negative one black, so it lightens and darkens
+  what is below. `fire`: an fbm field (fbmPerlin) scrolling along the rise direction, displaced by
+  a two-component fbm warp, shaped by the distance from the base edge into a heat value that reads
+  the palette (transparent where cold). `smoke`: Fog's output (two colours mixed by a variation
+  field, alpha the density) over stateless domain-warped fbm drifting along the direction.
+  `starfield`: up to 4 parallax layers of one star per lattice cell (hashed presence, brightness,
+  size and twinkle phase), farther layers smaller, dimmer and slower; `warp` stretches each star
+  along the line through the centre. `direction` angles follow 3.1's CSS convention (0deg up,
+  clockwise).
+- **Cost** (p5-tooling's cost-table method: 1024 x 1024, render and readback 20 times, process CPU,
+  against a `background-color` fill; llvmpipe, a loaded host): every `low` effect measured at most
+  x4.0 (bound 6) and every `medium` one at most x6.3 (bound 24) on glcore and Vulkan. llvmpipe evaluates every colour
+  space of `jfx_mix_colors`/`jfx_palette` (their `if` chains are not skipped), which makes the
+  palette effects cost x3-4: `multi-point-gradient` mixes the linear space on a top-level branch
+  of its own, and `strands` converts its stops to the working space once per fragment and looks up
+  only the strands that cover the pixel (x17 before).
+- **Covers.** Most `cover.jpg` are presets with non-default props (colours, stops, scales, tone
+  mapping); a port is checked at its defaults and at props approximating the cover. `aurora`'s
+  cover is brighter and whiter than any prop set gives with linear tone mapping (the preset's tone
+  mapping or extra layers); its structure, orientation and colour order match.
+- **Guide.** The examples of 3.2 that use these effects are back in the guide's Effects section
+  (the `aurora` hero, the `grain` card, `conic-spin` driven by `@property --spin`, gradient text with
+  `gradient-pan` and `aurora`); `EffectGuideTest` compiles every built-in effect the section names.
+
 ### 4.5 `p5-fx-light` (wave 2)
 **Goal.** The 24 effects of Appendix A.3: light, shine, holographic, edge, light filters,
 cursor ripples and transitions.
