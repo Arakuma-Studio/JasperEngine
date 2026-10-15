@@ -16,9 +16,10 @@
 //   is the same: one per paint effect) and once per filter element: 3 + 16 a frame, not 64.
 //   Document C: A's layers without effects (RmlUi's brightness() and blur() in place of the effect
 //   filters): CPU(A) <= 1.5 x CPU(C) + 1 ms, the effect system's own work. On llvmpipe the 16
-//   filter layers alone cost the main thread far more than B (the driver's render-to-texture
-//   flushes in RmlRenderer's layer path, whoever the filter is), see the phase-5 spec's
-//   "p5-tooling as implemented".
+//   filter layers alone cost the main thread far more than B: every render pass is a scene the
+//   driver bins and copies its state into on the calling thread (about 125k instructions at
+//   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite);
+//   see the phase-5 spec's "p5-tooling as implemented" for the measurements.
 // - Cost table: every built-in effect fills 1024 x 1024 and is rendered and read back 20 times
 //   through the golden harness (its pointer and trail inputs), against a background-color fill of the same size (the process's
 //   CPU time: the GL driver's threads draw). Written to build/linux/htmlui-effects-cost.json
