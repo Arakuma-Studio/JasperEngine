@@ -1631,16 +1631,58 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   `medium` (3.14: classes are measured; Appendix A said L). The others: `stripes` 1.9, `spotlight`
   1.2, `pixelate` 2.4 (low), `frosted-glass` 3.3 (medium). The grid's counters pass (no instance,
   compile or pipeline in the steady state; A2 re-instances 3 + 16 a frame, since 3.6's decorators
-  are shared by equal values, not 64, and every element follows), but 5.4's budgets do not:
-  B 0.48 ms, A 9.96 ms (budget 1.72), A2 12.1 ms (budget 5.43). A document C with A's layers drawn
-  by RmlUi's own filters (`brightness()`, `blur()`) costs 8.2 ms: on llvmpipe the 16 filter layers
-  cost the main thread the driver's render-to-texture flushes in `RmlRenderer`'s layer path
-  (phase 1), whatever the filter (sampled stacks wait in `ObjectRender::draw` under
-  `RmlRenderer::drawPost`); the effect system's own work is A - C = 1.8 ms for 64 effects. The test
-  keeps 5.4's budgets (they fail here; the integrator gates them) and adds CPU(A) <= 1.5 x CPU(C) +
-  1 ms, which passes. A later full run (glcore): B 0.34, C 5.83, A 7.20 (budget 1.51), A2 10.68
-  (budget 5.02). Vulkan (lavapipe), where the layer path is cheaper: B 0.38, C 1.58, A 2.05
-  (budget 1.58, fails), A2 4.62 (budget 5.15, passes); `cursor-trail` 6.8 x.
+  are shared by equal values, not 64, and every element follows). The first measurements (before
+  the work below): glcore B 0.34 ms, C 5.83, A 7.20 (budget 1.51), A2 10.68 (budget 5.02); Vulkan
+  (lavapipe) B 0.38, C 1.58, A 2.05 (budget 1.58), A2 4.62 (budget 5.15). A document C has A's
+  layers drawn by RmlUi's own filters (`brightness()`, `blur()`); the test also checks CPU(A) <=
+  1.5 x CPU(C) + 1 ms, the effect system's own work.
+- **The layer path (after review: "fix the real cost").** Profiled with callgrind (main thread,
+  instructions per frame of the grid; `--separate-threads`, collection toggled on the frame),
+  timed with the test's clock. What a frame cost and why:
+  - *GL resolves.* sokol's GL backend resolved every MSAA layer at every pass end (a
+    `glBlitFramebuffer`, a scene of its own on llvmpipe). `RmlRenderer` now resolves a layer only
+    when it is read (`CompositeLayers`, `SaveLayerAs*`, `endFrame`: `ensureResolved`) and only over
+    what was written since its last resolve (`TargetRegions`: the rect outside which the layer is
+    transparent and the rect outside which its resolve image is current, the scissor of the blit; a
+    pixel of margin for Mesa's MSAA scissor edge, `MsaaScissor.HtmlUIClipEdge`). Vulkan resolves
+    the whole render area at every pass end (the regions stay empty there).
+  - *Backdrops.* RmlUi draws a backdrop filter into a pushed layer and composites that layer into
+    the destination at once; the second composite now draws the filter output straight into the
+    destination (`DeferredComposite`; the pushed layer's pass and resolve are skipped; a clip mask
+    drawn between the two composites goes to the layer under it, they share the stencil; anything
+    else that touches the layer draws it in first). Byte-identical:
+    `RenderP1Test.BackdropCompositeFusedExactly` renders six backdrop pages both ways.
+  - *Draws.* sokol objects memoize their last dynamic pipeline (`SokolPipelineCache::get(base,
+    baseHash, state)`, `generation()`): no layout hash per draw. The effect seed is computed once per
+    instance.
+  - *A2's styles (fork P5-5).* Every A2 frame resolved each paint's `background-image` (a `var()`)
+    three times per element (style, colour clip, geometry) and parsed each: 59 % of A2's main thread
+    on Vulkan was the image-layer parser. Lists are now parsed once per text (FORK.md P5-5): A2 on
+    Vulkan 18.7 M -> 8.5 M instructions a frame. (A2's instructions are the same with and without
+    p5-property's merge: 93.60 M and 93.56 M for 5 frames.)
+  - No `glFinish`, `glFlush`, `glReadPixels` or `glGetTexImage` in a measured frame (callgrind);
+    `glFinish` is called by the test harness's readback (`harness/Readback.cpp`) and the editor's
+    `GraphicUtils` only.
+  - Goldens: every golden image the glcore suite writes is pixel-identical before and after
+    (`JASPER_HTMLUI_UPDATE_GOLDEN=1` runs of html-ui's renderer and of this one; the 19 committed
+    PNGs that this host renders a few levels off, within their tolerance, are the same in both).
+- **Result.** *Vulkan (lavapipe)* passes: B 0.37-0.42 ms, C 0.92-1.05, A 1.45-1.55 (budget
+  1.56-1.66), A2 4.28-4.38 after P5-5 (budget 5.27; 7.1-7.5 before it, on the same loaded host:
+  load 50-110 during these runs; the test takes the least of 5 runs). Main-thread instructions a
+  frame: B 0.65 M, A 3.6 M -> 2.4 M (the GL-only resolve change does not apply; pipelines, seed and
+  the composites do), A2 8.5 M. *glcore (llvmpipe)* cannot meet 5.4's A budget on this driver:
+  llvmpipe bins and copies state on the calling thread for every render pass (a scene: the
+  `begin_binning` of every 64 x 64 tile of the 1280 x 720 target and the `try_update_scene_state`
+  copy of the fragment state, about 125 k instructions) and again for every draw that changes
+  textures or constants. B is one pass (1.44 M instructions a frame); A's 12 filters need four
+  passes each (the layer, its resolve, the filter, the composite back) and its 4 frosted-glass
+  backdrops nine (layer 0's resolve, the prepass copy, the blur's downscale, vertical, horizontal
+  and upscale, the effect, the composite), every one required by RmlUi's layer protocol and a
+  byte-identical image: A is 17.9 M instructions a frame, 82 % of it in those two driver functions,
+  against about 6.4 M for 1.5 x B + 1 ms at B's rate; without any of the engine's own work it would
+  still be 14.7 M. C (CSS filters, no effects) is the same: 12.3 M, 88 % in the driver. A on
+  llvmpipe stays about 1.5 x C (the effect system's own budget, met). The budgets are unchanged;
+  the integrator gates them (BRIEF.md).
 
 ### 4.4 `p5-fx-paint` (wave 2)
 **Goal.** Port or author the 28 paint effects of Appendix A.2: gradients, noise, patterns,

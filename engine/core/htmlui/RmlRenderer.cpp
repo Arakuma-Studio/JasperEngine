@@ -985,21 +985,17 @@ PipelineState RmlRenderer::postTargetState(BlendMode blend) const{
 void RmlRenderer::endPass(bool resolve){
     if (activeKind == TargetKind::NONE)
         return;
-    if (activeFramebuffer && activeFramebuffer->getRender().getSampleCount() > 1){
+    // sokol's GL backend resolves MSAA with glBlitFramebuffer at the end of the pass, and the blit
+    // honours the scissor box: what may differ is resolved (the result of a full resolve), or
+    // nothing when the layer is not read yet (a later pass resolves it). The other backends
+    // resolve the whole render area at every pass end (nothing is tracked there).
+    if (activeFramebuffer && Engine::isOpenGL() && activeFramebuffer->getRender().getSampleCount() > 1){
         TargetRegions& r = regionsOf(*activeFramebuffer);
-        if (Engine::isOpenGL()){
-            // sokol's GL backend resolves MSAA with glBlitFramebuffer at the end of the pass, and
-            // the blit honours the scissor box: what may differ is resolved (the result of a full
-            // resolve), or nothing when the layer is not read yet (a later pass resolves it)
-            const Rml::Rectanglei full = fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight());
-            const Rml::Rectanglei region = resolve ? intersect(r.stale, full) : Rml::Rectanglei::MakeInvalid();
-            applyPassScissor(isEmpty(region) ? Rml::Rectanglei::FromSize(Rml::Vector2i(0, 0)) : region);
-            if (resolve)
-                r.stale = Rml::Rectanglei::MakeInvalid();
-        }else{
-            // the other backends resolve the whole render area at every pass end
+        const Rml::Rectanglei full = fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight());
+        const Rml::Rectanglei region = resolve ? intersect(r.stale, full) : Rml::Rectanglei::MakeInvalid();
+        applyPassScissor(isEmpty(region) ? Rml::Rectanglei::FromSize(Rml::Vector2i(0, 0)) : region);
+        if (resolve)
             r.stale = Rml::Rectanglei::MakeInvalid();
-        }
     }
     pass.endRenderPass();
     activeRegions = nullptr;
@@ -1020,8 +1016,10 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     activeKind = kind;
     activeIndex = index;
     activeFramebuffer = &framebuffer;
-    // an MSAA layer: what its resolve image may lack is tracked
-    activeRegions = (kind == TargetKind::LAYER && framebuffer.getRender().getSampleCount() > 1) ? &regionsOf(framebuffer) : nullptr;
+    // an MSAA layer on GL: what its resolve image may lack is tracked (the other backends resolve
+    // the whole render area at every pass end)
+    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && framebuffer.getRender().getSampleCount() > 1) ? &regionsOf(framebuffer)
+                                                                                                                    : nullptr;
     stats.passes++;
 
     // the viewport and the scissor, nothing else: pipelines are applied per draw
@@ -1109,6 +1107,9 @@ bool RmlRenderer::bindLayer(int index){
     flushDeferredComposite();
     if (!target || index < 0 || index >= layersSize)
         return false;
+    // drawing on into the open pass (every draw comes here): the layer exists
+    if (activeKind == TargetKind::LAYER && activeIndex == index && activeFramebuffer && activeFramebuffer == target->getLayer(index))
+        return true;
     Framebuffer* layer = target->ensureLayer(index);
     if (!layer)
         return false;
