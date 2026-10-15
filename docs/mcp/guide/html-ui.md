@@ -1549,10 +1549,13 @@ The examples below are rendered by the engine's tests:
 /* layered: film grain over a gradient over a colour, rounded */
 .card { background: effect(grain, amount 0.08), #101218 linear-gradient(#223, #112); border-radius: 12px; }
 /* gradient text */
-.logo { color: transparent; font-size: 48px; font-weight: bold; background-image: effect(stripes, color-a #ff4fd8, color-b #4fc3ff, speed 0.6); background-clip: text; }
-/* an exit driven by keyframes: the content dissolves into big pixels */
-@keyframes vanish { from { filter: effect(pixelate, size 1px) } to { filter: effect(pixelate, size 48px, opacity 100%) } }
+.logo { color: transparent; font-size: 48px; font-weight: bold; background-image: effect(holographic, speed 0.6); background-clip: text; }
+/* a dissolve-out transition driven by keyframes, burning at the edge */
+@keyframes vanish { from { filter: effect(noise-dissolve, progress 0%) } to { filter: effect(noise-dissolve, progress 100%, edge-color #ff8a00) } }
 .closing { animation: vanish 0.6s ease-in forwards; }
+/* a sheen that lights up on hover */
+.button { background-image: effect(sheen, intensity 0); transition: background-image 300ms; }
+.button:hover { background-image: effect(sheen, intensity 0.8); }
 /* a pointer light over a frosted panel */
 .menu { backdrop-filter: effect(frosted-glass, blur 12px); background-image: effect(spotlight, radius 180px, intensity 0.25); border-radius: 16px; }
 ```
