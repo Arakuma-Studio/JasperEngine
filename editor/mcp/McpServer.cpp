@@ -713,6 +713,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 return;
             }
             autoSync->start = std::chrono::system_clock::now();
+            if (autoSync->settle) McpAutoSync::get().callStarted();
             execute(call, *def);
         });
     });

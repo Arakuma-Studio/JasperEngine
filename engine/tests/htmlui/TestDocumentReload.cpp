@@ -307,6 +307,49 @@ TEST_F(UIDocumentReloadTest, ProjectEffectChangeDuringARestyleReloadsInFull){
     EXPECT_EQ(errors(), 0u);
 }
 
+// p5-tooling: the editor's poller asks with a settle window: a document whose changed files are
+// still being written (modified less than the window ago) is left for a later call with its
+// stamps untouched, so files written back to back reload once whichever caller sees them first.
+TEST_F(UIDocumentReloadTest, SettleWindowReloadsABatchOfWritesOnce){
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    const uint32_t loads = documentSystem(scene).getLoadCount(document.getEntity());
+    auto touch = [&](const std::string& name, const std::string& content, int secondsAgo){
+        {
+            std::ofstream out(dir / name, std::ios::binary | std::ios::trunc);
+            out << content;
+        }
+        std::error_code error;
+        fs::last_write_time(dir / name, fs::file_time_type::clock::now() - std::chrono::seconds(secondsAgo), error);
+    };
+    std::string css = reloadCss;
+    css.replace(css.find("#ff0000"), 7, "#00ff00");
+
+    // the stylesheet just written, the document not yet: the poll waits
+    touch("reload.css", css, 0);
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()), 60.0).empty()) << "still settling";
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), loads);
+    // the document written too, both settled now (a minute and more ago): one reload for both
+    touch("reload.css", css, 120);
+    touch("reload.rml", reloadHtml("    <p id=\"added\">added</p>\n"), 120);
+    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()), 60.0);
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), loads + 1) << "one reload for the two files";
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml->GetElementById("added"), nullptr);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#00ff00");
+    // and nothing left for any caller
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).empty());
+    // without a window (MCP's pick-up, a save from the code editor) a fresh file reloads at once
+    css.replace(css.find("#00ff00"), 7, "#0000ff");
+    touch("reload.css", css, 0);
+    EXPECT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    EXPECT_EQ(errors(), 0u);
+}
+
 TEST_F(UIDocumentReloadTest, DocumentChangeKeepsScrollFocusAndValues){
     SceneFixture fixture;
     Scene& scene = fixture.getScene();

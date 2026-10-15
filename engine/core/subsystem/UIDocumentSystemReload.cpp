@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -607,7 +608,7 @@ uint32_t UIDocumentSystem::getLoadCount(Entity entity) const{
     return (it != reloadState->documents.end()) ? it->second.loadCount : 0;
 }
 
-std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(const std::vector<std::string>& files){
+std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds){
     std::vector<Reloaded> reloaded;
     if (files.empty() || !reloadState || !context)
         return reloaded;
@@ -655,6 +656,10 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         Action action;
         action.entity = entity;
         bool changed = false;
+        // the document's changed files, decided before any stamp moves: a file still being
+        // written (settleSeconds) leaves the whole document for a later call
+        std::vector<std::pair<std::string, HtmlUIReloadState::Stamp>> changes;
+        bool settling = false;
         for (const std::string& path : getDocumentFiles(entity)){
             if (asked.find(path) == asked.end())
                 continue;
@@ -668,7 +673,19 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             }
             if (stampIt->second == now)
                 continue;
-            stampIt->second = now;
+            if (settleSeconds > 0.0 && now.exists){
+                const long long fileNow = (long long)std::filesystem::file_time_type::clock::now().time_since_epoch().count();
+                const long long window = (long long)std::chrono::duration_cast<std::filesystem::file_time_type::duration>(
+                                                        std::chrono::duration<double>(settleSeconds)).count();
+                if (fileNow - now.time < window)
+                    settling = true;
+            }
+            changes.emplace_back(path, now);
+        }
+        if (settling)
+            continue;
+        for (const auto& [path, now] : changes){
+            record.stamps[path] = now;
             changed = true;
             changedEffects.insert(path);
 

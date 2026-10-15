@@ -742,6 +742,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
 
 void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start,
                             std::chrono::system_clock::time_point end) {
+    if (writingCalls > 0) writingCalls--;
     bool rebased = false;
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
 

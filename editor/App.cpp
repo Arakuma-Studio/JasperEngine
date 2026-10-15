@@ -17,6 +17,7 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpAutoSync.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -2470,7 +2471,8 @@ void editor::App::processProjectChange() {
 // Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
 // reload, and the document animations due now wake the loop up
 void editor::App::pollHtmlUI(){
-    bool wake = !project.getHtmlUIWatcher().update(&project).empty();
+    // (held while an MCP call that may write files runs: its sync reloads them once)
+    bool wake = !project.getHtmlUIWatcher().update(&project, mcp::McpAutoSync::get().writingCallInFlight()).empty();
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
 
     const auto now = std::chrono::steady_clock::now();
