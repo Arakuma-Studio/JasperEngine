@@ -1740,7 +1740,15 @@ know:
   the content is (a stretch-edged distortion, `crt`) painted the page above and left of the
   element; `light-leak`'s glow and `sparkle`'s rays did too, and their goldens were regenerated
   (they now end at the element's box, as `sparkle` and `light-leak` have no `@margin`).
-- **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 50-70): COST_TABLE
+- **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 50-70): every `low`
+  effect of the package measured at most x2.9 on glcore and x3.8 on Vulkan (`glass-tiles`, a
+  Catmull-Rom tap; the distortions x2.5-3.5), every `medium` one at most x9.4 on glcore
+  (`angular-blur`; `motion-blur` x7.2, `zoom-blur` x6.7: 32 taps each) and x8.6 on Vulkan
+  (`zoom-blur`), bounds 6 and 24. A filter pass alone costs about x2 here, so `crt`, `vhs`,
+  `glitch`, `halftone`, `fluted-glass`, `flow-field`, `tilt-shift` and `progressive-blur` (x2.3-4.0)
+  measure in the low range though A.4 declares them medium, and `liquid-glass` (high) measures
+  x2.9 on glcore and x3.1 on Vulkan at its defaults (no frost: its prepass is a copy; the blur
+  adds the prepass's passes, as for `frosted-glass`, x2.8-3.7).
 - **Covers.** Most covers are presets over a photo or a checkerboard; the ports were checked at
   the defaults (the goldens) and at props approximating the cover, rendered at 512 x 512 over a
   grey checkerboard, the test card or a white disc. `crt`'s default 200 scanlines over the
