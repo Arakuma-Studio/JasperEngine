@@ -618,6 +618,7 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
     }
     // phase 5 (p5-tooling): a declared project effect whose .frag is gone is forgotten first, so
     // the documents compiled next declare theirs again
+    const uint64_t effectsBefore = htmlui::EffectRegistry::get().projectGeneration();
     htmlui::EffectRegistry::get().forgetMissingProjectEffects();
     // p2-html (hook H2): compiles that read a changed file are stale (the manifest reloads too)
     for (const std::string& path : asked){
@@ -712,6 +713,15 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             reloadStyleSheets(action.entity);
             // p2-html: an .html document whose RML changed was reloaded in full
             if (getDocument(action.entity) != before){
+                reloaded.push_back({action.entity, false});
+                continue;
+            }
+            // phase 5 (p5-tooling): a project effect changed (declared from another file, read
+            // again, forgotten): the elements whose effect value reads the same keep the
+            // decorators of the old one, so the document loads again in full
+            if (htmlui::EffectRegistry::get().projectGeneration() != effectsBefore){
+                Log::verbose("[HTML UI] reloading document of entity %u (a project effect changed)", (unsigned int)action.entity);
+                reloadDocument(action.entity, true);
                 reloaded.push_back({action.entity, false});
                 continue;
             }

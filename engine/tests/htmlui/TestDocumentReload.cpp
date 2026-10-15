@@ -13,6 +13,8 @@
 #include "HtmlUIDependencies.h"
 #include "RmlFontEngine.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
@@ -241,6 +243,67 @@ TEST_F(UIDocumentReloadTest, FileChangedDuringAReloadIsReloadedNext){
         << "the stylesheet written during the full reload is seen as changed";
     rml = documentSystem(scene).getDocument(document.getEntity());
     EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#ffff00");
+    EXPECT_EQ(errors(), 0u);
+}
+
+// p5-tooling: elements keep the decorators and filters of an effect value whose text does not
+// change, so a stylesheet-only reload across a change of the project effects (an effect declared
+// from another file, read again, forgotten: MCP test_rename_frag_during_play) loads the document
+// again in full; a stylesheet-only reload without one stays one.
+TEST_F(UIDocumentReloadTest, ProjectEffectChangeDuringARestyleReloadsInFull){
+    struct Reset {
+        ~Reset(){
+            UIDocumentSystem::setLoadedHookForTesting(nullptr);
+            htmlui::EffectRegistry::get().clearProjectEffects();
+            htmlui::compat::VirtualFiles::remove("@htmlui/test/reload/fx/restyle-glow.frag");
+        }
+    } reset;
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    auto colored = [](const char* color){
+        std::string css = reloadCss;
+        css.replace(css.find("#ff0000"), 7, color);
+        return css;
+    };
+
+    // a stylesheet-only reload: still one
+    write("reload.css", colored("#00ff00"));
+    std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_TRUE(reloaded[0].stylesheetOnly);
+    EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), rml);
+
+    // a project effect declared while it runs (as a compiled stylesheet's @effect does)
+    const std::string frag = "#version 450\n"
+                             "// @effect     restyle-glow\n"
+                             "// @kind       paint\n"
+                             "// @category   light\n"
+                             "// @summary    A project effect of the reload tests\n"
+                             "// @source     original\n"
+                             "// @cost       low\n"
+                             "#include \"effects/lib/jfx_common.glsl\"\n"
+                             "vec4 jfx_paint(JfxContext c){ return vec4(1.0); }\n"
+                             "#include \"effects/lib/main_paint.glsl\"\n";
+    htmlui::compat::VirtualFiles::add("@htmlui/test/reload/fx/restyle-glow.frag", frag);
+    int calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0){
+            std::vector<htmlui::EffectDiagnostic> diags;
+            EXPECT_TRUE(htmlui::EffectRegistry::get().declareProjectEffect("restyle-glow", "@htmlui/test/reload/fx/restyle-glow.frag",
+                                                                           "reload.css", 1, diags));
+        }
+    });
+    write("reload.css", colored("#0000ff"));
+    reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_FALSE(reloaded[0].stylesheetOnly) << "loaded again in full";
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml, nullptr);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#0000ff");
     EXPECT_EQ(errors(), 0u);
 }
 

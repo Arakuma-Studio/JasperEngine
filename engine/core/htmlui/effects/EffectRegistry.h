@@ -84,6 +84,11 @@ namespace jasperengine::htmlui {
         std::vector<std::string> includeFilesOf(const std::string& effectName) const;
         // the declared project effects are forgotten (another project, tests)
         void clearProjectEffects();
+        // Counts the changes of the declared project effects (declared from another file, read
+        // again, forgotten; not a declaration repeated): elements keep the decorators and filters
+        // of an effect value whose text does not change, so a document restyled across such a
+        // change is loaded again in full (UIDocumentSystem::reloadChangedFiles; p5-tooling)
+        uint64_t projectGeneration() const;
 
         // the variant of an effect's form: ShaderType::UI_EFFECT, bit 0 'Flt', the effect in
         // the custom-shader id (re-registered when ShaderPool's custom ids were reset)
@@ -139,6 +144,7 @@ namespace jasperengine::htmlui {
         // the custom shader id of each effect (key: custom name), valid for one generation
         mutable std::map<std::string, uint16_t> customIds;
         mutable uint32_t customIdGeneration = 0;
+        uint64_t projectChanges = 0;
         bool initialised = false;
     };
 

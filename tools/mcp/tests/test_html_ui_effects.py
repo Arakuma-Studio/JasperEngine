@@ -27,7 +27,7 @@ import asyncio
 import math
 import time
 
-from harness import Editor
+from harness import Editor, TestFailure
 from htmlui_pixels import Shot
 
 S: dict = {}
@@ -402,7 +402,12 @@ async def test_rename_frag_during_play(ed: Editor):
     # with it, and the document, whose CSS is back to the text of a cached compile, declares its own.
     (ed.project / "assets/ui/fx/tint-wave2.frag").rename(ed.project / "assets/ui/fx/tint-wave.frag")
     write(ed, "assets/ui/effects.css", CSS)
-    await wait_tint(ed, "edit-restored", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+    try:
+        await wait_tint(ed, "edit-restored", lambda mean, sd: sd >= REGIONS["tint"]["sd"])
+    except TestFailure as failure:
+        r = await ed.call("inspect_ui", scene=S["scene"], entity=S["entity"], selector=".tint", depth=0)
+        effects = await ed.call("list_ui_effects", name="tint-wave")
+        raise TestFailure(f"{failure}\nthe document: {str(r)[:3000]}\nthe effect: {str(effects)[:1500]}") from None
 
 
 async def test_no_errors_left(ed: Editor):

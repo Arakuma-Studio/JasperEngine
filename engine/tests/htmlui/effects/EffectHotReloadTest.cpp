@@ -14,7 +14,10 @@
 #include "htmlui/effects/EffectRegistry.h"
 
 #include "Log.h"
+#include "TestRenderCommon.h"
+#include "harness/GpuEnvironment.h"
 #include "harness/TestSystem.h"
+#include "pool/ShaderPool.h"
 
 #include <gtest/gtest.h>
 
@@ -176,4 +179,31 @@ TEST_F(EffectHotReload, IncludesAreDependencies){
     EXPECT_FALSE(EffectRegistry::get().onProjectFileChanged("@htmlui/test/effects/fx/unrelated.glsl"));
     hc::VirtualFiles::remove(fragPath);
     hc::VirtualFiles::remove(include);
+}
+
+// A variant asked for while the file was gone fails, and the pool remembers the failure until it is
+// removed: the file back (a rename undone during play, MCP test_rename_frag_during_play), the new
+// declaration builds it again instead of drawing nothing
+TEST_F(EffectHotReload, RedeclarationRetriesVariantsThatFailed){
+    JASPER_REQUIRE_GPU();
+    std::vector<EffectDiagnostic> diags;
+    ASSERT_TRUE(declare(diags));
+    const uint16_t customId = ShaderPool::registerCustomShader(kPath);
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI_EFFECT, 0, customId);
+    hc::VirtualFiles::remove(kPath);
+    ASSERT_EQ(EffectRegistry::get().forgetMissingProjectEffects(), 1u);
+    ShaderPool::remove(ShaderType::UI_EFFECT, 0, customId);
+    for (int i = 0; i < 400 && ShaderPool::getShaderState(key) != ResourceLoadState::Failed; i++){
+        ShaderPool::warmUp(key);
+        beginTestFrame();
+    }
+    ASSERT_EQ(ShaderPool::getShaderState(key), ResourceLoadState::Failed) << "a variant of a missing file fails";
+    ASSERT_TRUE(ShaderPool::isShaderBuildFailed(ShaderType::UI_EFFECT, 0, customId));
+
+    hc::VirtualFiles::add(kPath, frag("0.5"));
+    diags.clear();
+    ASSERT_TRUE(declare(diags));
+    EXPECT_FALSE(ShaderPool::isShaderBuildFailed(ShaderType::UI_EFFECT, 0, customId)) << "declared again: built again";
+    EXPECT_NE(ShaderPool::getShaderState(key), ResourceLoadState::Failed);
+    TestSystem::get().clearLogs();
 }

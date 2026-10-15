@@ -269,13 +269,21 @@ bool EffectRegistry::declareProjectEffect(const std::string& name, const std::st
         projects.erase(existing);
     }
     ProjectEffect& effect = projects[name];
+    projectChanges++;
     effect.manifest = std::move(manifest);
     effect.fragPath = fragPath;
     effect.declaredIn = declaredIn;
     effect.line = line;
     effect.source = source;
     effect.includes = includeFilesOf(fragPath, read);
-    ShaderPool::registerCustomShader(fragPath);
+    const uint16_t customId = ShaderPool::registerCustomShader(fragPath);
+    // p5-tooling: a variant of this file that failed while an earlier declaration's file was gone
+    // or broken (an instance drawn meanwhile asked for it) is built again: the pool remembers
+    // failures until they are removed
+    for (uint32_t form : {0u, 1u}){
+        if (ShaderPool::isShaderBuildFailed(ShaderType::UI_EFFECT, form, customId))
+            ShaderPool::remove(ShaderType::UI_EFFECT, form, customId);
+    }
     if (initialised)
         registerRml(*effect.manifest);
     return true;
@@ -316,6 +324,7 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
                 hc::DocumentLoader::clearCache();
             }
             recompile.push_back(assetPath);
+            projectChanges++;
         }else{
             // an include of project effects (p5-tooling)
             for (auto& entry : projects){
@@ -327,6 +336,7 @@ bool EffectRegistry::onProjectFileChanged(const std::string& assetPath){
             }
             if (recompile.empty())
                 return false;
+            projectChanges++;
         }
         // the variants compile again from the new sources
         for (const std::string& fragPath : recompile){
@@ -372,11 +382,17 @@ size_t EffectRegistry::forgetMissingProjectEffects(){
             gone.push_back(it->second.fragPath);
             graveyard.push_back(std::move(it->second.manifest));
             it = projects.erase(it);
+            projectChanges++;
         }
     }
     if (!gone.empty())
         hc::DocumentLoader::clearCache();
     return gone.size();
+}
+
+uint64_t EffectRegistry::projectGeneration() const{
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return projectChanges;
 }
 
 void EffectRegistry::setProjectEffectListener(ProjectEffectListener listener){
@@ -388,6 +404,8 @@ void EffectRegistry::clearProjectEffects(){
     std::lock_guard<std::recursive_mutex> lock(mutex);
     for (auto& entry : projects)
         graveyard.push_back(std::move(entry.second.manifest));
+    if (!projects.empty())
+        projectChanges++;
     projects.clear();
 }
 
