@@ -22,6 +22,7 @@
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_sample.glsl"
+#include "effects/lib/jfx_hash.glsl"
 
 uniform u_fs_effectParams {
     float size;

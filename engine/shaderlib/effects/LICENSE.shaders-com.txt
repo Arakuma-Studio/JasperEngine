@@ -5,31 +5,51 @@ These UI effects of engine/shaderlib/effects are ports of shaders.com effects
 to GLSL, under the MIT license below:
 
   aurora                shaders.com Aurora
+  block-dissolve        shaders.com BlockDissolve
   color-wheel           shaders.com ColorWheel
   conic-spin            shaders.com ConicGradient (adapted: speed in turns/s)
   curl-noise            shaders.com CurlNoise
+  cursor-ripples        shaders.com CursorRipples (adapted: analytic ripple events replace the wave grid, CursorRipples/index.ts:12-26)
   cursor-trail          shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
   diamond-gradient      shaders.com DiamondGradient
+  diamond-wipe          shaders.com DiamondWipe
   dot-grid              shaders.com DotGrid
+  emboss                shaders.com Emboss (adapted: relief from the content alpha)
   falling-lines         shaders.com FallingLines
   flowing-gradient      shaders.com FlowingGradient
   fractal-noise         shaders.com FractalNoise
+  glow                  shaders.com Glow
+  godrays               shaders.com Godrays
   gradient-pan          shaders.com LinearGradient (adapted: speed scrolls the stops)
   grid                  shaders.com Grid
   hex-grid              shaders.com HexGrid
+  hologram              shaders.com Hologram (adapted: applied to the element's content instead of a shape)
+  holographic           shaders.com Holographic (adapted: shape = element box; tilt follows the pointer)
+  iris-wipe             shaders.com IrisWipe
+  light-edge            shaders.com LightEdge (adapted: shape = element rounded box, sizes in px)
+  light-leak            shaders.com LightLeak
+  linear-wipe           shaders.com LinearWipe
   marble                shaders.com Marble
   mesh-gradient         shaders.com MeshGradient
   multi-point-gradient  shaders.com MultiPointGradient
+  neon-border           shaders.com Neon (adapted: tube along the border, sizes in px)
+  noise-dissolve        shaders.com NoiseDissolve (+ original burn edge)
   perlin-noise          shaders.com PerlinNoise
   pixelate              shaders.com Pixelate (adapted: cell size in px)
   plasma                shaders.com Plasma
   radial-pulse          shaders.com RadialGradient (adapted: speed moves rings outward)
+  radial-wipe           shaders.com RadialWipe
   ripple-rings          shaders.com Ripples
+  ripple-wipe           shaders.com RippleWipe
   simplex-noise         shaders.com SimplexNoise
   sine-wave             shaders.com SineWave
+  sparkle               shaders.com Sparkle
   strands               shaders.com Strands
   stripes               shaders.com Stripes
+  sunburst              shaders.com SunBurst
   swirl                 shaders.com Swirl (adapted: source `blend` renamed `balance`)
+  thin-film             shaders.com ThinFilm (adapted: rim along the element edges)
+  venetian-blinds       shaders.com VenetianBlinds
   voronoi               shaders.com Voronoi
 
 These effects are original but follow parts of the shaders.com kit:

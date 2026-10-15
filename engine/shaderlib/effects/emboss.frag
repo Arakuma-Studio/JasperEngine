@@ -15,8 +15,10 @@
 // Ported from shaders.com Emboss (MIT, Copyright (c) 2026 Shader Effects Inc.); see effects/LICENSE.shaders-com.txt
 // (kit/effects/emboss.ts on the 2D path: embossHeight, embossEdgeLighting, the two-tap cast
 // shadow, embossComposite). Adapted: the relief's shape is the content's alpha (the height is
-// depth x alpha), the source's 0.003-unit edge stencil is the bevel width and its shadow reach
-// (|depth| x 0.06 units, 20 edge stencils) is |depth| x 20 bevels. The source's parallax zoom
+// depth x alpha), the source's 0.003-unit edge stencil is the bevel width, and its shadow reach
+// and transition (|depth| x 0.06 units, 15 px at |depth| 0.5 on its 512 px cover) are
+// |depth| x 10 bevels, the soft height at a trace point the mean alpha across it along the
+// light. The source's parallax zoom
 // of the content inside the shape is left out: here the shape is the content itself, so the zoom
 // would shift the colour off its own alpha.
 
@@ -55,12 +57,21 @@ vec4 jfx_filter(JfxContext c){
     float highlight = max(edgeLighting, 0.0);
     float edgeShadow = max(-edgeLighting, 0.0);
 
-    // the cast shadow: the heights half-way and all the way toward the light against this one
+    // the cast shadow: the heights half-way and all the way toward the light against this one,
+    // each through the source's wide shadow transition (its sdf smoothstep over +-spread),
+    // here the mean alpha of 6 taps across +-0.75 spread along the light
     float absDepth = max(abs(params.depth), 0.0001);
-    float spread = absDepth * 20.0 * bevel;
+    float spread = absDepth * 10.0 * bevel;
     float hC = params.depth * child.a;
-    float h1 = params.depth * jfx_src(c.px + L * spread * 0.5).a;
-    float h2 = params.depth * jfx_src(c.px + L * spread).a;
+    float h1 = 0.0;
+    float h2 = 0.0;
+    for (int k = 0; k < 6; k++){
+        float o = (float(k) - 2.5) * 0.3;
+        h1 += jfx_src(c.px + L * spread * (0.5 + o)).a;
+        h2 += jfx_src(c.px + L * spread * (1.0 + o)).a;
+    }
+    h1 *= params.depth / 6.0;
+    h2 *= params.depth / 6.0;
     float castShadow = smoothstep(0.0, 0.5, (h1 - hC) / absDepth) * 0.55 + smoothstep(0.0, 0.5, (h2 - hC) / absDepth) * 0.45;
 
     float totalShadow = clamp(edgeShadow + castShadow, 0.0, 1.0) * params.shadowIntensity;

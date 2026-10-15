@@ -24,9 +24,9 @@
 // (the flat-shape path: the beam wobble on the sampling position, the edge rim and the
 // Beer-Lambert fill, the CRT scanlines, the refresh sweep, the flicker, the grain, the chromatic
 // fringe and the hot core). Adapted: the shape is the content's alpha. The source's optical
-// thickness (the distance inside the shape) is estimated from 8 alpha taps 3 CSS px around the
-// pixel: their mean is the fill's thickness, its shortfall the rim; the fringe follows the
-// alpha's horizontal slope. The depth scan-lines (the source's depthLines, contour rings on a
+// thickness (the distance inside the shape, in heights) is estimated from rings of 8 alpha taps
+// at 1, 3, 8 and 20 % of the element's height: the first ring the edge cuts gives the distance
+// from the share of it that is inside. The fringe follows the alpha's horizontal slope. The depth scan-lines (the source's depthLines, contour rings on a
 // flat shape) are not part of this effect. The scanline clock is integrated on its own rate
 // (the source scales the speed clock by it; equal at the defaults).
 
@@ -56,24 +56,37 @@ vec4 jfx_filter(JfxContext c){
     float wob = sin(c.uv.y * 38.0 + t * 2.3) * 0.5 + sin(c.uv.y * 11.5 - t * 1.7) * 0.5;
     vec2 at = c.px + vec2(wob * params.distortion * 0.012 * c.size.x, 0.0);
 
-    // the content's coverage here and its neighbourhood (the shape and its thickness)
+    // the content's coverage here, and its optical thickness: the distance to its edge from
+    // rings of 8 alpha taps at 1, 3, 8 and 20 % of the height (turned by a per-pixel hash so
+    // the estimate's steps read as grain): the first ring the edge cuts gives the distance from
+    // the share of it inside (a straight edge at distance d covers 1 - acos(d / r) / pi of it)
     float a0 = jfx_src(at).a;
-    const float R = 3.0;
-    float ring = 0.0;
-    float aR = 0.0;
-    float aL = 0.0;
-    for (int i = 0; i < 8; i++){
-        float ang = JFX_TAU * float(i) / 8.0;
-        float a = jfx_src(at + vec2(cos(ang), sin(ang)) * R).a;
-        ring += a;
-        if (i == 0)
-            aR = a;
-        if (i == 4)
-            aL = a;
+    const float RINGS[4] = float[4](0.01, 0.03, 0.08, 0.2);
+    float turn = jfx_hash12(floor(c.px * c.dpr) + 0.5) * JFX_TAU / 8.0;
+    float depthPx = 0.0;
+    float gradX = 0.0;    // the outward slope's x from the first ring (alpha falls outward)
+    for (int k = 0; k < 4; k++){
+        float r = RINGS[k] * c.size.y;
+        float mean = 0.0;
+        for (int i = 0; i < 8; i++){
+            float ang = JFX_TAU * float(i) / 8.0 + turn;
+            float a = jfx_src(at + vec2(cos(ang), sin(ang)) * r).a;
+            mean += a;
+            if (k == 0)
+                gradX -= a * cos(ang) * 0.25;
+        }
+        mean = min(mean / 8.0, a0);
+        if (mean > 0.999){
+            depthPx = r;
+            continue;
+        }
+        depthPx = max(depthPx, r * cos(JFX_PI * (1.0 - clamp(mean, 0.5, 1.0))));
+        break;
     }
-    ring /= 8.0;
-    float rim = clamp(2.0 * (1.0 - ring), 0.0, 1.0) * params.edgeGlow;
-    float bodyFill = clamp(ring, 0.0, 1.0) * params.fill;
+    float thickness = depthPx / max(c.size.y, 1.0);
+    float rim = exp(thickness * -5.5) * params.edgeGlow;
+    // the translucent volume (Beer-Lambert)
+    float bodyFill = (1.0 - exp(thickness * -5.0)) * params.fill;
 
     // the projector layers (screen space)
     float scanPhase = c.uv.y * params.scanlineScale - c.anim.y * 3.0;
@@ -90,7 +103,6 @@ vec4 jfx_filter(JfxContext c){
     // compose: emission, the chromatic fringe along the edge, the hot core
     float glow = bodyFill + rim;
     float core = (glow * scanMask * flick * grainMul + sweepGlow * scanMask) * params.brightness;
-    float gradX = aL - aR;    // about the unit outward slope across an edge (alpha falls outward)
     float ca = params.distortion * 0.12 + 0.04;
     float fringe = rim * gradX * ca * 0.1;
     vec3 rgb = params.color.rgb * vec3(core + fringe, core, core - fringe);
