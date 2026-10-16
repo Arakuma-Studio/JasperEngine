@@ -236,7 +236,7 @@ namespace {
             SystemRender::commit();
             const double t3 = threadCpuMs();
             const double wall = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - w0).count();
-            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs(), RenderBackendTime::scopeCount(), wall};
+            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs(), wall, RenderBackendTime::scopeCount()};
         }
 
         ~Grid(){
