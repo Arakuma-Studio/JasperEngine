@@ -20,7 +20,7 @@
 //   driver bins and copies its state into on the calling thread (about 125k instructions at
 //   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite);
 //   see the phase-5 spec's "p5-tooling as implemented" for the measurements.
-// - Cost table: every built-in effect fills 1024 x 1024 and is rendered and read back 20 times
+// - Cost table: every built-in effect (the 83 of the catalogue, one row each) fills 1024 x 1024 and is rendered and read back 20 times
 //   through the golden harness (its pointer and trail inputs), against a background-color fill of the same size (the process's
 //   CPU time: the GL driver's threads draw). Written to build/linux/htmlui-effects-cost.json
 //   (htmlui-effects-cost-vulkan.json on Vulkan) and printed; the ratio is at most 6 for a `low`
@@ -298,7 +298,8 @@ namespace {
     }
 
     // the CPU time of the process for one render + readback of the document, the least of up to
-    // 5 averages of 20 (the first capture warms up)
+    // 5 averages of 20 (the first capture warms up); boundMs < 0: always all 5 (the baseline: a
+    // loaded host only ever adds time, and one high sample of the fill lowered every ratio)
     double costMs(EffectScene& scene, const EffectManifest* m, double boundMs){
         TestImage image;
         // the golden harness's inputs: its pointer, and the 12-point arc of a trail effect
@@ -315,7 +316,7 @@ namespace {
             }
             const double ms = (processCpuMs() - start) / 20.0;
             least = least < 0.0 ? ms : std::min(least, ms);
-            if (boundMs <= 0.0 || least <= boundMs)
+            if (boundMs == 0.0 || (boundMs > 0.0 && least <= boundMs))
                 break;
         }
         return least;
@@ -413,17 +414,31 @@ TEST(EffectPerfTest, CostTable){
     FixedEffectClock clock(1.5);
     std::string error;
     ASSERT_TRUE(scene.loadHtml(costDocument(nullptr), &error)) << error;
-    const double baseline = costMs(scene, nullptr, 0.0);
+    const double baseline = costMs(scene, nullptr, -1.0);
     ASSERT_GT(baseline, 0.0) << "the baseline renders";
 
     nlohmann::json effects = nlohmann::json::array();
     std::printf("[ effects  ] cost at 1024 x 1024 (render + readback, process CPU), baseline %.3f ms\n", baseline);
-    for (const EffectManifest* m : EffectRegistry::get().builtins()){
-        ASSERT_TRUE(warmUpEffect(*m)) << m->name;
-        ASSERT_TRUE(scene.loadHtml(costDocument(m), &error)) << m->name << ": " << error;
+    // every effect of the catalogue, one row each: an effect that does not render is a failure of
+    // its own row, the others are still measured
+    const std::vector<const EffectManifest*> catalogue = EffectRegistry::get().builtins();
+    std::vector<std::string> measured;
+    for (const EffectManifest* m : catalogue){
+        if (!warmUpEffect(*m)){
+            ADD_FAILURE() << m->name << ": its variants do not compile";
+            continue;
+        }
+        if (!scene.loadHtml(costDocument(m), &error)){
+            ADD_FAILURE() << m->name << ": " << error;
+            continue;
+        }
         const double bound = m->cost == EffectCost::Low ? 6.0 : m->cost == EffectCost::Medium ? 24.0 : 0.0;
         const double ms = costMs(scene, m, bound * baseline);
-        ASSERT_GT(ms, 0.0) << m->name << " renders";
+        if (ms <= 0.0){
+            ADD_FAILURE() << m->name << " does not render";
+            continue;
+        }
+        measured.push_back(m->name);
         const double ratio = ms / baseline;
         std::printf("[ effects  ]   %-24s %-6s %-6s %8.3f ms  x%.2f%s\n", m->name.c_str(), effectKindName(m->kind), effectCostName(m->cost), ms, ratio,
                     bound > 0.0 ? (" (bound " + std::to_string((int)bound) + ")").c_str() : "");
@@ -432,6 +447,9 @@ TEST(EffectPerfTest, CostTable){
         if (bound > 0.0)
             EXPECT_LE(ratio, bound) << m->name << " (" << effectCostName(m->cost) << ") costs " << ratio << " x the fill";
     }
+    std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured\n", measured.size(), catalogue.size());
+    EXPECT_EQ(measured.size(), catalogue.size()) << "every effect of the catalogue is in the table";
+    EXPECT_GE(catalogue.size(), 83u) << "the phase-5 catalogue (Appendix A) has 83 effects";
     nlohmann::json table = {{"size", 1024}, {"runs", 20}, {"baseline_ms", baseline}, {"effects", effects},
 #if defined(SOKOL_VULKAN)
                             {"backend", "vulkan"}
