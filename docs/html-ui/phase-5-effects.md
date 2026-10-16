@@ -2080,6 +2080,25 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   harness (render + readback). Baseline is a `background-color` fill. The test writes
   `build/linux/htmlui-effects-cost.json` and asserts ratio ≤ 6 for `low` and ≤ 24 for
   `medium` (class bound × 1.5); `high` is unbounded.
+- **Deviation (p5-tooling, after review).** *What is gated on glcore.* The budgets keep their
+  numbers. On Vulkan (lavapipe) the frame's CPU time is gated as written. On glcore (llvmpipe)
+  the test gates the engine's own main-thread work: the frame's CPU time less the time the
+  graphics backend took on the thread (`RenderBackendTime`: the sokol calls and the GL driver
+  under them: passes, viewport and scissor, pipelines, uniforms, bindings, draws, buffer and
+  texture updates, the frame commit), A ≤ 1.5 × B + 1 ms and A2 ≤ 3 × B + 4 ms with B measured
+  the same way. The full frame is printed, not gated. Why: llvmpipe sets up every render pass on
+  the calling thread (it bins every 64 × 64 tile of the 1280 × 720 target and copies the fragment
+  state, about 125 k instructions a pass) and again on draws that change state. A has 12 filters
+  of four passes each and 4 frosted-glass backdrops of nine, all required by RmlUi's layer
+  protocol and a byte-identical image: 17.9 M instructions a frame, 82 % of them in those two
+  driver functions, against about 6.4 M for 1.5 × B + 1 ms at B's rate (callgrind; "p5-tooling as
+  implemented"). A GPU driver does not have that cost. The secondary check A ≤ 1.5 × C + 1 ms is
+  dropped: A ≤ 1.5 × B + 1 ms is the same check against a cheaper reference (C has A's layers, B
+  none), so it implies it whenever C costs at least B; C is reported. *Cost table.* Each effect is
+  measured against the fill in interleaved rounds (8 captures of the fill, then 8 of the effect;
+  the least of 3 to 6 rounds for both), so the ratio does not follow the host's load: the fill
+  alone measured 95 ms idle and 650 ms at load 130, the ratios stay put. A2's re-instancing is
+  3 + 16 a frame (3.6's shared decorators), not 64.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
