@@ -1173,7 +1173,7 @@ report.
 enum after the values phase 3 appended (`phase-3-fork-patches.md` Appendix A). `@property` is
 phase 5's: phase 3 does not implement it (DESIGN).
 
-### 3.18 Deviations from DESIGN.md (recorded here, to be folded into DESIGN.md at merge)
+### 3.18 Deviations from DESIGN.md (folded into DESIGN.md "Recorded deviations" 8-10 and 20-22 at phase acceptance)
 1. Effects use RmlUi **filters** (custom `FilterInstancer`s, filter form) as well as shader
    decorators. Filter/backdrop processing and gradient text are impossible with decorators
    alone.
