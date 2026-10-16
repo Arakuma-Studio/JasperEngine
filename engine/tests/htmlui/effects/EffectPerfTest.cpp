@@ -151,11 +151,12 @@ namespace {
             for (int attempt = 0; attempt < 5; attempt++){
                 RenderBackendTime::reset();
                 const int n = 20000;
-                const double start = threadCpuMs();
+                const auto start = std::chrono::steady_clock::now();
                 for (int i = 0; i < n; i++){
                     RenderBackendTime::Scope scope;
                 }
-                const double outside = (threadCpuMs() - start - RenderBackendTime::totalMs()) / n;
+                const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                const double outside = (elapsed - RenderBackendTime::totalMs()) / n;
                 least = least < 0.0 ? outside : std::min(least, outside);
             }
             RenderBackendTime::reset();
@@ -178,7 +179,8 @@ namespace {
     // the parts of the last frame (main-thread CPU ms)
     struct FrameParts {
         double update = 0.0, render = 0.0, end = 0.0;
-        double backend = 0.0;   // RenderBackendTime of the frame
+        double backend = 0.0;   // RenderBackendTime of the frame (steady clock)
+        double wall = 0.0;      // the frame on the steady clock
         uint64_t scopes = 0;    // its scopes (their clock reads, outside the backend's time)
     };
 
@@ -219,6 +221,7 @@ namespace {
             if (!r.target.isCreated())
                 r.target.ensure(r.targetSize.x, r.targetSize.y, 4);
             RenderBackendTime::reset();
+            const auto w0 = std::chrono::steady_clock::now();
             const double t0 = threadCpuMs();
             const bool begun = r.renderer.beginFrame(r.target, r.contextSize);
             Rml::SetGeometryFeathering(false);
@@ -232,7 +235,8 @@ namespace {
             r.renderer.endFrame();
             SystemRender::commit();
             const double t3 = threadCpuMs();
-            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs(), RenderBackendTime::scopeCount()};
+            const double wall = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - w0).count();
+            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs(), RenderBackendTime::scopeCount(), wall};
         }
 
         ~Grid(){
@@ -269,8 +273,9 @@ namespace {
             frame(warm + i);
             times.push_back(threadCpuMs() - start);
             updates.push_back(grid.parts.update);
-            // the engine's own work: the frame less the backend and the measurement's clock reads
-            engines.push_back(times.back() - grid.parts.backend - (double)grid.parts.scopes * scopeOverheadMs());
+            // the engine's own work: the frame less the backend and the measurement's clock reads,
+            // both on the steady clock (a wait for the driver is the driver's)
+            engines.push_back(grid.parts.wall - grid.parts.backend - (double)grid.parts.scopes * scopeOverheadMs());
             backends.push_back(grid.parts.backend);
             renders.push_back(grid.parts.render);
             ends.push_back(grid.parts.end);

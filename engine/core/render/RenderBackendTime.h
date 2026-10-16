@@ -4,19 +4,18 @@
 #ifndef RENDERBACKENDTIME_H
 #define RENDERBACKENDTIME_H
 
+#include <chrono>
 #include <cstdint>
-
-#if defined(__linux__) || defined(__APPLE__)
-#include <time.h>
-#endif
 
 namespace jasperengine {
 
-    // The CPU time the calling thread spends in the graphics backend (sokol and the driver under it:
+    // The time the calling thread spends in the graphics backend (sokol and the driver under it:
     // passes, pipelines, bindings, uniforms, draws, buffer updates, the frame commit), measured only
     // while enabled (tests; off, a scope costs one branch). Phase 5 (p5-tooling): EffectPerfTest
-    // gates the engine's own main-thread work on glcore, the frame's CPU time less this, since on
+    // gates the engine's own main-thread work on glcore, the frame's time less this, since on
     // llvmpipe the driver's per-pass scene setup is most of a frame with layers (phase-5 spec 5.4).
+    // Measured on the steady clock (a few ns a read: the thread's CPU clock is a system call, which
+    // cost more than many of the calls it timed), so waits for the driver count as the driver's.
     // Nested scopes count once (the outermost).
     class RenderBackendTime {
     public:
@@ -62,13 +61,7 @@ namespace jasperengine {
             return s;
         }
         static int64_t now(){
-#if defined(__linux__) || defined(__APPLE__)
-            timespec ts;
-            clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
-            return (int64_t)ts.tv_sec * 1000000000LL + (int64_t)ts.tv_nsec;
-#else
-            return 0;
-#endif
+            return (int64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
         }
     };
 
