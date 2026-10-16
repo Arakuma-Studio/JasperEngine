@@ -2082,11 +2082,20 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   `medium` (class bound × 1.5); `high` is unbounded.
 - **Deviation (p5-tooling, after review).** *What is gated on glcore.* The budgets keep their
   numbers. On Vulkan (lavapipe) the frame's CPU time is gated as written. On glcore (llvmpipe)
-  the test gates the engine's own main-thread work: the frame's CPU time less the time the
-  graphics backend took on the thread (`RenderBackendTime`: the sokol calls and the GL driver
-  under them: passes, viewport and scissor, pipelines, uniforms, bindings, draws, buffer and
-  texture updates, the frame commit), A ≤ 1.5 × B + 1 ms and A2 ≤ 3 × B + 4 ms with B measured
-  the same way. The full frame is printed, not gated. Why: llvmpipe sets up every render pass on
+  the test gates the engine's own main-thread work: the frame less the time the graphics backend
+  took on the thread (`RenderBackendTime`: the sokol calls and the GL driver under them: passes,
+  viewport and scissor, pipelines, uniforms, bindings, draws, buffer and texture updates, the
+  frame commit), both on the steady clock (a wait for the driver is the driver's; the thread's
+  CPU clock is a system call, which cost more than many of the calls it timed and inflated the
+  frame itself), less the measurement's own clock reads (calibrated, about 35 ns a scope);
+  A ≤ 1.5 × B + 1 ms and A2 ≤ 3 × B + 4 ms with B measured the same way. The full frame is
+  printed, not gated. Measured on the idle remote test host (BRIEF.md, 173.249.49.126, load
+  under 10), final tree: glcore engine's own work B 0.17-0.19 ms, C 0.63-0.74, A 1.05-1.28
+  (budget 1.26-1.29: passes in 5 runs of 5, by 1 to 18 %), A2 2.54-2.90 (budget 4.52-4.57);
+  glcore full frame (reported) B 0.76-0.77, C 12.0-12.5, A 15.2-15.8, A2 16.9-17.8. Vulkan full
+  frame (gated) B 0.44-0.48, C 1.02-1.04, A 1.51-1.56 (budget 1.66-1.72), A2 3.91-4.02 (budget
+  5.32-5.44); its engine's own work A 0.44-0.46. The same engine code costs about 0.8 ms more on
+  glcore than on Vulkan: llvmpipe's per-pass work evicts the engine's caches between the calls. Why: llvmpipe sets up every render pass on
   the calling thread (it bins every 64 × 64 tile of the 1280 × 720 target and copies the fragment
   state, about 125 k instructions a pass) and again on draws that change state. A has 12 filters
   of four passes each and 4 frosted-glass backdrops of nine, all required by RmlUi's layer
@@ -2097,7 +2106,14 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   none), so it implies it whenever C costs at least B; C is reported. *Cost table.* Each effect is
   measured against the fill in interleaved rounds (8 captures of the fill, then 8 of the effect;
   the least of 3 to 6 rounds for both), so the ratio does not follow the host's load: the fill
-  alone measured 95 ms idle and 650 ms at load 130, the ratios stay put. A2's re-instancing is
+  alone measured 95 ms idle and 650 ms at load 130, the ratios stay put. Remote host, final
+  tree: every effect within its class, the highest `low` 3.00 (glcore, `water-ripple`) and 2.74
+  (Vulkan), the highest `medium` 9.12 (glcore, `sparkle`) and 5.87 (Vulkan); `cursor-trail` 5.6
+  and 5.2 (medium, kept); `multi-point-gradient` 2.1 and 1.9 after its mix became one closed
+  form (the kit's running mix of five colours, each step leaving and re-entering the colour
+  space, is sum(c a w) / sum(a w) with alpha sum(a w) / sum(w): one pass, each colour converted
+  once; weights as exp2 of the negated logarithm, no reciprocal; its golden unchanged within the
+  tolerance). It measured 7.1 x before, on an idle local host with the fill taken alone. A2's re-instancing is
   3 + 16 a frame (3.6's shared decorators), not 64.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)

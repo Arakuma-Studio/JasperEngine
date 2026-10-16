@@ -17,7 +17,8 @@
 //   effects (RmlUi's brightness() and blur() in place of the effect filters), reported.
 //   What is gated (5.4's deviation, phase-5 spec): on Vulkan the frame's CPU time; on glcore the
 //   engine's own work, the frame less the time the graphics backend took on the thread
-//   (RenderBackendTime: sokol and the GL driver). On llvmpipe every render pass is a scene the
+//   (RenderBackendTime: sokol and the GL driver; both on the steady clock, less the measurement's
+//   own clock reads, calibrated). On llvmpipe every render pass is a scene the
 //   driver bins and copies its state into on the calling thread (about 125k instructions at
 //   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite):
 //   most of A's frame, a cost a GPU driver does not have. Both measures are printed.
