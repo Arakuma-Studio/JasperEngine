@@ -209,7 +209,10 @@ static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int
 				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
 			if (outline > 0.f)
 				child_region = child_region.Extend(Vector2f(outline));
-			region = region.Join(child_region);
+			// An element without area paints nothing: a collapsed whitespace text element has no layout position (its box
+			// sits at the origin), and joining it would stretch the region to the top-left of the context.
+			if (child_region.Width() > 0.f && child_region.Height() > 0.f)
+				region = region.Join(child_region);
 		}
 		if (depth < 256)
 			ExtendBySubtreeInkOverflow(child, region, depth + 1);

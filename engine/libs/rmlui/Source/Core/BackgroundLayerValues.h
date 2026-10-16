@@ -112,7 +112,7 @@ public:
 // The parsers ("image_layers", "layer_position_x", "layer_position_y", "layer_size", "layer_repeat", "layer_box",
 // "layer_attachment") and the Custom shorthands background, background-position, mask, mask-position.
 void RegisterBackgroundLayerParsers();
-// The image-layer parser's lists by text (fork, P5-5): cleared when decorator instancers are registered, the style sheet
+// The image-layer parser's lists by text (fork, P5-6): cleared when decorator instancers are registered, the style sheet
 // cache is cleared, or the factory shuts down; the hits count lookups that parsed nothing (tests).
 void ClearImageLayerParseCache();
 uint64_t GetImageLayerParseCacheHits();

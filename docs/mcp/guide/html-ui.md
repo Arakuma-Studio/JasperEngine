@@ -1546,6 +1546,10 @@ The examples below are rendered by the engine's tests:
 ```css
 /* an aurora over a dark background */
 .hero { background: #0b0d14; background-image: effect(aurora, speed 2, color-b #44ccff); }
+/* frosted glass over what is behind a rounded panel */
+.panel { backdrop-filter: effect(frosted-glass, blur 14px, tint #ffffff22); border-radius: 16px; }
+/* a colour-split title with a standard drop shadow after it */
+.title { filter: effect(chromatic-aberration, strength 0.3) drop-shadow(0 2px 4px #0008); }
 /* layered: film grain over a gradient over a colour, rounded */
 .card { background: effect(grain, amount 0.08), #101218 linear-gradient(#223, #112); border-radius: 12px; }
 /* gradient text */
@@ -1557,7 +1561,7 @@ The examples below are rendered by the engine's tests:
 .button { background-image: effect(sheen, intensity 0); transition: background-image 300ms; }
 .button:hover { background-image: effect(sheen, intensity 0.8); }
 /* a pointer light over a frosted panel */
-.menu { backdrop-filter: effect(frosted-glass, blur 12px); background-image: effect(spotlight, radius 180px, intensity 0.25); border-radius: 16px; }
+.menu { backdrop-filter: effect(frosted-glass, blur 12px); background-image: effect(spotlight, radius 180px, intensity 0.25); }
 ```
 
 ### Where `effect()` goes, layers and paint areas
@@ -1622,7 +1626,7 @@ Every effect also takes four **universal parameters**:
 ```css
 @property --spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
 @keyframes turn { to { --spin: 360deg; } }
-.ring { background-image: effect(conic-spin, rotation var(--spin), speed 0); animation: turn 4s linear infinite; border-radius: 50%; }
+.ring { background-image: effect(conic-spin, rotation var(--spin), speed 0); animation: turn 4s linear infinite; }
 ```
 
 - **`anime`** animates a custom property the effect reads, for effects driven from Lua:
@@ -1654,7 +1658,13 @@ the painted text.
 
 - The trigger is CSS's: `background-clip: text` (or `-webkit-background-clip`) together with
   `color: transparent` or `-webkit-text-fill-color: transparent`. With an opaque text colour the
-  clip is dropped, as in a browser, where opaque text hides the background.
+  clip is dropped (an info), as in a browser, where opaque text hides the background: this logo
+  is white text over a holographic box, not holographic text.
+
+```css
+.logo { color: #fff; background-image: effect(holographic, speed 0.6); background-clip: text; }
+```
+
 - The engine draws the text white and paints the effect over it (an info diagnostic says so).
 - Unlike a browser it paints the whole content of the element, not only its glyphs: keep such
   an element to its text (no images or coloured boxes inside).
@@ -1663,7 +1673,16 @@ the painted text.
 
 `backdrop-filter: effect(frosted-glass, blur 12px)` blurs, tints and lights what lies behind a
 panel; its `border-radius` shapes the glass. Put the panel over something with detail (an image,
-the game view, other UI): over a flat colour glass shows nothing. A paint effect in
+the game view, other UI): over a flat colour glass shows nothing. `liquid-glass` is a lens instead:
+the panel's rounded edge bends what is behind it over `thickness`, splits its colours and lights
+its rim; with `blur` it is frosted too. `fluted-glass` and `glass-tiles` refract it through
+reeds and tiles, and `tilt-shift` and `progressive-blur` blur it in a band or a ramp.
+
+```css
+.dock { backdrop-filter: effect(liquid-glass, thickness 28px, refraction 1.2, highlight 0.4); border-radius: 24px; }
+.sheet { backdrop-filter: effect(liquid-glass, blur 10px, tint-color #8ecbff, tint-intensity 0.15); border-radius: 18px; }
+```
+ A paint effect in
 `backdrop-filter` recolours what is behind (`backdrop-filter: effect(stripes, opacity 30%)`).
 Backdrop effects copy the layer below once more than a `filter` does; blurring ones (prepass
 effects such as `frosted-glass`) are the costliest per pixel: use them on panels, not full
@@ -1782,7 +1801,9 @@ vec4 jfx_paint(JfxContext c){
   blurring effect adds a few passes. Shaders and pipelines are shared: nothing compiles per
   element, per frame or per parameter change.
 - `backdrop-filter` effects pay one extra copy of what is below; blurring effects are the
-  costliest per pixel.
+  costliest per pixel: the prepass ones (`frosted-glass`, `liquid-glass` with `blur`,
+  `tilt-shift`, `progressive-blur`, `glow`) and the 32-tap streaks (`motion-blur`,
+  `zoom-blur`, `angular-blur`). Keep them on panels, not full screen.
 - Prefer time-driven parameters (`speed`) to animating a parameter every frame on many elements.
 
 ### Effect diagnostics

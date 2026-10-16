@@ -9,6 +9,18 @@
 namespace {
 
     const jasperengine::htmlui::BuiltinEffectSource kSources[] = {
+        {"effects/angular-blur.frag",
+         "#version 450\n"
+         "// @effect     angular-blur\n"
+         "// @kind       filter\n"
+         "// @category   blur\n"
+         "// @summary    Rotational blur sweeping the content around a centre point\n"
+         "// @source     shaders.com AngularBlur\n"
+         "// @cost       medium\n"
+         "// @suggest-for spin-blur rotational-blur\n"
+         "// @param      intensity number 20 0 100 -- Strength of the sweep (100 sweeps about 29 degrees)\n"
+         "// @param      center position \"50% 50%\" -- Point the content turns around\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/aurora.frag",
          "#version 450\n"
          "// @effect     aurora\n"
@@ -46,6 +58,38 @@ namespace {
          "// @param      softness number 0.15 0 1 -- How softly each block fades (0 gives hard on/off blocks)\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/bulge.frag",
+         "#version 450\n"
+         "// @effect     bulge\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Magnifies (or pinches) the content in a disc, optionally following the pointer\n"
+         "// @source     shaders.com Bulge (+ original `follow-pointer`)\n"
+         "// @cost       low\n"
+         "// @pointer    position\n"
+         "// @suggest-for magnify fisheye pinch\n"
+         "// @param      center position \"50% 50%\" -- Centre of the bulge\n"
+         "// @param      strength number 1 -1 1 -- Magnification (negative pinches)\n"
+         "// @param      radius number 1 0 5 -- Size of the bulge (the disc is half this, in area heights)\n"
+         "// @param      falloff number 0.5 0 1 -- Softness of the bulge's rim\n"
+         "// @param      follow-pointer boolean false -- The bulge moves to the pointer while it is over the element\n"
+         "// @param      edges enum stretch stretch|transparent|mirror|wrap -- What shows where the bulge reads beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/chromatic-aberration.frag",
+         "#version 450\n"
+         "// @effect     chromatic-aberration\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Red, green and blue copies of the content pushed apart along an angle\n"
+         "// @source     shaders.com ChromaticAberration\n"
+         "// @cost       low\n"
+         "// @suggest-for rgb-split rgb-shift chroma\n"
+         "// @param      strength number 0.2 0 1 -- Overall shift (1 moves a channel a tenth of the area)\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Direction the channels are pushed (0deg along x)\n"
+         "// @param      red-offset number -1 -2 2 -- Red channel's share of the shift\n"
+         "// @param      green-offset number 0 -2 2 -- Green channel's share of the shift (it also carries the alpha)\n"
+         "// @param      blue-offset number 1 -2 2 -- Blue channel's share of the shift\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/color-wheel.frag",
          "#version 450\n"
          "// @effect     color-wheel\n"
@@ -82,6 +126,24 @@ namespace {
          "// @param      speed number 0.1 -5 5 -- Spin speed in turns per second\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the gradient\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/crt.frag",
+         "#version 450\n"
+         "// @effect     crt\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Retro CRT monitor: colour fringes, scanlines, phosphor stripes and a vignette\n"
+         "// @source     shaders.com CRTScreen\n"
+         "// @cost       medium\n"
+         "// @suggest-for crt-screen retro monitor\n"
+         "// @param      pixel-size number 128 8 128 -- Density of the phosphor stripes (about half this many across)\n"
+         "// @param      color-shift number 1 0 10 -- Colour fringing (1 shifts red and blue 0.2 % of the width)\n"
+         "// @param      scanline-intensity number 0.3 0 1 -- Darkness of the scanlines\n"
+         "// @param      scanline-frequency number 200 100 800 -- Number of scanlines down the area\n"
+         "// @param      brightness number 1 0.5 2 -- Screen brightness\n"
+         "// @param      contrast number 1 0.5 2 -- Screen contrast around mid grey\n"
+         "// @param      vignette-intensity number 1 0 1 -- Darkening of the corners (0 off)\n"
+         "// @param      vignette-radius number 0.5 0 1 -- How far the vignette reaches inward\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/curl-noise.frag",
          "#version 450\n"
          "// @effect     curl-noise\n"
@@ -162,6 +224,23 @@ namespace {
          "// @param      feather number 0.1 0 1 -- Softness of the diamonds' edges\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/dither.frag",
+         "#version 450\n"
+         "// @effect     dither\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Ordered or noise dithering of the content into two inks on a pixel grid\n"
+         "// @source     shaders.com Dither (adapted: Floyd–Steinberg omitted, it needs sequential error diffusion)\n"
+         "// @cost       low\n"
+         "// @suggest-for bayer 1-bit\n"
+         "// @param      pattern enum bayer4 bayer4|bayer2|bayer8|clustered-dot|blue-noise|white-noise -- Dither pattern\n"
+         "// @param      pixel-size length 4px 1px 20px -- Size of a dither cell\n"
+         "// @param      threshold number 0.5 0 1 -- Brightness cut point (0.5 neutral)\n"
+         "// @param      spread number 1 0 1 -- How much of the brightness range dithers (lower leaves more solid areas)\n"
+         "// @param      color-mode enum custom custom|source -- Two inks of your own, or darkened and brightened content\n"
+         "// @param      color-a color transparent -- Dark ink (custom mode)\n"
+         "// @param      color-b color #ffffff -- Light ink (custom mode)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/dot-grid.frag",
          "#version 450\n"
          "// @effect     dot-grid\n"
@@ -180,6 +259,19 @@ namespace {
          "// @param      speed-variance number 0.3 0 1 -- How much the rows' drift speeds differ\n"
          "// @param      twinkle number 0 0 1 -- Pulses each dot on its own phase (runs on the clock, also at speed 0)\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/duotone.frag",
+         "#version 450\n"
+         "// @effect     duotone\n"
+         "// @kind       filter\n"
+         "// @category   color\n"
+         "// @summary    Recolours the content with two colours by its brightness\n"
+         "// @source     shaders.com Duotone\n"
+         "// @cost       low\n"
+         "// @param      color-a color #ff0000 -- Colour of the dark areas\n"
+         "// @param      color-b color #023af4 -- Colour of the bright areas\n"
+         "// @param      amount number 0.5 0 1 -- Brightness where the two colours meet (source `blend`)\n"
+         "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space the two colours mix in\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/emboss.frag",
          "#version 450\n"
          "// @effect     emboss\n"
@@ -217,6 +309,19 @@ namespace {
          "// @param      stroke-width number 0.15 0.02 1 -- Streak width as a share of a column\n"
          "// @param      rounding number 1 0 1 -- Roundness of the leading cap\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/film-grain.frag",
+         "#version 450\n"
+         "// @effect     film-grain\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Photographic grain over the content, heavier in the shadows\n"
+         "// @source     shaders.com FilmGrain\n"
+         "// @cost       low\n"
+         "// @suggest-for grain noise\n"
+         "// @param      strength number 0.5 0 1 -- Amount of grain\n"
+         "// @param      bias number 2 0 10 -- How much the grain gathers in the dark areas (0 even)\n"
+         "// @param      animated boolean false -- New grain every frame\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/fire.frag",
          "#version 450\n"
          "// @effect     fire\n"
@@ -236,6 +341,23 @@ namespace {
          "// @param      seed number 0 0 100 -- Random seed for variation\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the palette\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/flow-field.frag",
+         "#version 450\n"
+         "// @effect     flow-field\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Liquifies the content along a drifting, evolving noise flow\n"
+         "// @source     shaders.com FlowField\n"
+         "// @cost       medium\n"
+         "// @time       speed, evolution-speed\n"
+         "// @suggest-for liquify warp\n"
+         "// @param      strength number 0.15 0 0.5 -- How far the flow pushes (share of the height)\n"
+         "// @param      detail number 2 0.5 5 -- Scale of the flow pattern\n"
+         "// @param      speed number 0 0 20 -- Drift of the flow pattern\n"
+         "// @param      evolution-speed number 0 0 20 -- How fast the pattern reshapes\n"
+         "// @param      seed number 0 0 100 -- Another pattern for each value\n"
+         "// @param      edges enum mirror mirror|stretch|transparent|wrap -- What shows where the flow reads beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/flowing-gradient.frag",
          "#version 450\n"
          "// @effect     flowing-gradient\n"
@@ -255,6 +377,32 @@ namespace {
          "// @param      distortion number 0.5 0 2 -- Strength of the folds and warps\n"
          "// @param      seed number 0 0 100 -- Random seed for variation\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/fluted-glass.frag",
+         "#version 450\n"
+         "// @effect     fluted-glass\n"
+         "// @kind       filter\n"
+         "// @category   glass\n"
+         "// @summary    Reeded glass: what is behind refracted through rows of cylindrical flutes\n"
+         "// @source     shaders.com FlutedGlass\n"
+         "// @cost       medium\n"
+         "// @backdrop   yes\n"
+         "// @time       speed\n"
+         "// @suggest-for reeded-glass ribbed-glass\n"
+         "// @param      shape enum bars bars|rounded|waves -- Cross-section of a flute\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Direction of the flutes (0deg vertical bars)\n"
+         "// @param      frequency number 10 1 20 -- Flutes per distance of the area height\n"
+         "// @param      softness number 0.5 0 1 -- From flat middles and sharp seams (0) to a gentle curve (1)\n"
+         "// @param      wave-amplitude number 0.06 0 0.5 -- How far a flute sways (waves)\n"
+         "// @param      wave-frequency number 1.5 0.1 10 -- Sways along a flute (waves)\n"
+         "// @param      speed number 0 -1 1 -- Drift of the flutes and their waves\n"
+         "// @param      refraction number 1.5 0 4 -- How hard a flute bends what is behind\n"
+         "// @param      aberration number 0.2 0 1 -- Colour split at the seams\n"
+         "// @param      light-angle angle 30deg -90deg 90deg -- Light direction (0deg head-on, 90deg grazing)\n"
+         "// @param      highlight number 0.2 0 2 -- Strength of the specular streak on each flute\n"
+         "// @param      highlight-softness number 0.3 0 1 -- Spread of the streak\n"
+         "// @param      highlight-color color #ffffff -- Colour of the streak\n"
+         "// @param      edges enum mirror mirror|stretch|transparent|wrap -- What shows where a flute reads beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/fractal-noise.frag",
          "#version 450\n"
          "// @effect     fractal-noise\n"
@@ -295,6 +443,20 @@ namespace {
          "// @param      highlight number 0.35 0 1 -- Strength of the lit edge\n"
          "// @param      light-angle angle 300deg 0deg 360deg -- Direction the edge is lit from\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/glass-tiles.frag",
+         "#version 450\n"
+         "// @effect     glass-tiles\n"
+         "// @kind       filter\n"
+         "// @category   glass\n"
+         "// @summary    A grid of glass tiles, each refracting its own slice of what is behind\n"
+         "// @source     shaders.com GlassTiles\n"
+         "// @cost       low\n"
+         "// @backdrop   yes\n"
+         "// @param      intensity number 2 0 10 -- Strength of each tile's refraction\n"
+         "// @param      tile-count number 20 5 50 -- Tiles along the longer side\n"
+         "// @param      rotation angle 0deg 0deg 360deg -- Rotation of the tile grid\n"
+         "// @param      roundness number 0 0 1 -- Fades the refraction toward the tile corners, making round lenses\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/glints.frag",
          "#version 450\n"
          "// @effect     glints\n"
@@ -313,6 +475,24 @@ namespace {
          "// @param      colorize number 0.3 0 1 -- How much each glint takes a hue of its own (0 all the colour)\n"
          "// @param      seed number 0 0 100 -- Re-rolls where the glints sit and when they blink\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/glitch.frag",
+         "#version 450\n"
+         "// @effect     glitch\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Digital corruption bursts: displaced bands, mirrored blocks, RGB split and colour bars\n"
+         "// @source     shaders.com Glitch\n"
+         "// @cost       medium\n"
+         "// @time       speed\n"
+         "// @suggest-for datamosh corrupt\n"
+         "// @param      intensity number 0.5 0 1 -- Glitch strength and how often bursts happen\n"
+         "// @param      speed number 1 0.1 5 -- How fast the glitch pattern changes\n"
+         "// @param      rgb-shift number 5 0 20 -- Red and blue split in the active bands\n"
+         "// @param      block-density number 10 2 50 -- Number of horizontal glitch bands\n"
+         "// @param      color-bar-intensity number 0.2 0 1 -- Neon colour bars in the glitched blocks\n"
+         "// @param      mirror-amount number 0.3 0 1 -- Chance of a glitched block showing flipped content\n"
+         "// @param      scanline-intensity number 0.2 0 1 -- Scanlines in the distorted regions\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/glow.frag",
          "#version 450\n"
          "// @effect     glow\n"
@@ -346,6 +526,27 @@ namespace {
          "// @param      ray-color color #4283fb -- Colour of the rays\n"
          "// @param      base-color color transparent -- Colour under the rays (source: backgroundColor)\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/gradient-map.frag",
+         "#version 450\n"
+         "// @effect     gradient-map\n"
+         "// @kind       filter\n"
+         "// @category   color\n"
+         "// @summary    Recolours the content by its brightness through a gradient, optionally scrolling\n"
+         "// @source     shaders.com GradientMap\n"
+         "// @cost       low\n"
+         "// @time       speed\n"
+         "// @suggest-for color-grade lut\n"
+         "// @param      preset enum rainbow rainbow|sunset|ocean|fire|neon|pastel|custom -- Built-in gradient, or custom colours (source `palette`)\n"
+         "// @param      color-low color #1a0b2e -- Shadows colour (custom)\n"
+         "// @param      color-mid color #e94560 -- Midtones colour (custom)\n"
+         "// @param      color-high color #f9ed69 -- Highlights colour (custom)\n"
+         "// @param      speed number 0.15 -2 2 -- Scroll speed of the gradient (cycles per second; 0 still)\n"
+         "// @param      contrast number 1 0 3 -- Steepness of the mapping\n"
+         "// @param      black-point number 0 0 1 -- Brightness mapped to the gradient's start\n"
+         "// @param      white-point number 1 0 1 -- Brightness mapped to the gradient's end\n"
+         "// @param      strength number 1 0 1 -- Mix of the mapped colour over the original\n"
+         "// @param      color-space enum oklch linear|oklch|oklab|hsl|hsv|lch -- Colour space the custom colours mix in\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/gradient-pan.frag",
          "#version 450\n"
          "// @effect     gradient-pan\n"
@@ -394,6 +595,45 @@ namespace {
          "// @param      variation number 0 0 1 -- How much the cells' brightness varies\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the line/cell mix\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/halftone.frag",
+         "#version 450\n"
+         "// @effect     halftone\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Printed halftone dots: one screen by brightness, or four CMYK ink plates\n"
+         "// @source     shaders.com Halftone\n"
+         "// @cost       medium\n"
+         "// @suggest-for comic print\n"
+         "// @param      style enum classic classic|cmyk -- One dot screen by brightness, or CMYK plates over paper\n"
+         "// @param      frequency number 100 10 300 -- Dots per area height\n"
+         "// @param      angle angle 45deg 0deg 360deg -- Screen angle of the classic style\n"
+         "// @param      cyan-angle angle 15deg 0deg 360deg -- Screen angle of the cyan plate\n"
+         "// @param      magenta-angle angle 75deg 0deg 360deg -- Screen angle of the magenta plate\n"
+         "// @param      yellow-angle angle 0deg 0deg 360deg -- Screen angle of the yellow plate\n"
+         "// @param      black-angle angle 45deg 0deg 360deg -- Screen angle of the black plate\n"
+         "// @param      misprint number 0 0 0.01 -- Mis-registration between the plates (colour fringing)\n"
+         "// @param      misprint-angle angle 0deg 0deg 360deg -- Direction the plates drift apart\n"
+         "// @param      paper-color color #ffffff -- Paper where no ink lands\n"
+         "// @param      cyan-color color #00ffff -- Cyan ink\n"
+         "// @param      magenta-color color #ff00ff -- Magenta ink\n"
+         "// @param      yellow-color color #ffff00 -- Yellow ink\n"
+         "// @param      black-color color #000000 -- Black (key) ink\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/heat-haze.frag",
+         "#version 450\n"
+         "// @effect     heat-haze\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Shimmering heat haze: the content wavers in noise rising through it\n"
+         "// @source     original (FlowField-derived)\n"
+         "// @cost       low\n"
+         "// @time       speed\n"
+         "// @suggest-for heat shimmer-distort mirage\n"
+         "// @param      strength length 3px 0px 32px -- How far the content wavers\n"
+         "// @param      scale number 1 0.25 4 -- Scale of the shimmer (larger is finer)\n"
+         "// @param      speed number 1 0 5 -- Speed the shimmer rises\n"
+         "// @param      direction angle 0deg -180deg 180deg -- Direction the heat rises (0deg up, clockwise)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/hex-grid.frag",
          "#version 450\n"
          "// @effect     hex-grid\n"
@@ -530,6 +770,35 @@ namespace {
          "// @param      feather number 0.1 0 1 -- Softness of the edge\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/liquid-glass.frag",
+         "#version 450\n"
+         "// @effect     liquid-glass\n"
+         "// @kind       filter\n"
+         "// @category   glass\n"
+         "// @summary    A glass lens on the element's rounded box: refracts, splits and lights what is behind\n"
+         "// @source     shaders.com Glass (adapted: shape = element rounded box, thickness in px)\n"
+         "// @cost       high\n"
+         "// @backdrop   yes\n"
+         "// @prepass    blur blur\n"
+         "// @margin     thickness*0.5+8px\n"
+         "// @suggest-for refraction lens apple-glass\n"
+         "// @param      refraction number 1 0 2 -- How hard the edges bend what is behind\n"
+         "// @param      thickness length 24px 1px 200px -- Depth of the bent rim from the edge inward\n"
+         "// @param      blur length 0px 0px 20px -- Frost: blur of what is behind (the gaussian's sigma)\n"
+         "// @param      aberration number 0.5 0 1 -- Colour split along the refraction\n"
+         "// @param      inner-zoom number 1 0.5 3 -- Magnification of what is seen through the glass\n"
+         "// @param      light-angle angle 300deg 0deg 360deg -- Direction the light comes from\n"
+         "// @param      highlight number 0.05 0 2 -- Lit rim and specular glint on the light-facing edge\n"
+         "// @param      highlight-color color #ffffff -- Colour of the lit rim and glint\n"
+         "// @param      highlight-softness number 0.5 0 1 -- Spread of the specular glint\n"
+         "// @param      fresnel number 0.1 0 1 -- Soft glow around the inside of the edge\n"
+         "// @param      fresnel-softness number 0.1 0 1 -- Width of the edge glow\n"
+         "// @param      fresnel-color color #ffffff -- Colour of the edge glow\n"
+         "// @param      edge-softness number 0.1 0 1 -- Softness of the glass's edge\n"
+         "// @param      tint-color color #ffffff -- Tint of the glass\n"
+         "// @param      tint-intensity number 0 0 1 -- Strength of the tint\n"
+         "// @param      tint-preserve-luminosity boolean true -- Keep the brightness of what is behind when tinting\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/marble.frag",
          "#version 450\n"
          "// @effect     marble\n"
@@ -569,6 +838,18 @@ namespace {
          "// @param      speed number 1 0 10 -- Animation speed\n"
          "// @param      seed number 0 0 100 -- Random seed for the point layout and palette assignment\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/motion-blur.frag",
+         "#version 450\n"
+         "// @effect     motion-blur\n"
+         "// @kind       filter\n"
+         "// @category   blur\n"
+         "// @summary    Directional streak blur of the content along an angle\n"
+         "// @source     shaders.com LinearBlur\n"
+         "// @cost       medium\n"
+         "// @suggest-for linear-blur directional-blur\n"
+         "// @param      intensity number 30 0 100 -- Strength of the streak (about twice this many px long)\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Direction of the streak (0deg along x, clockwise)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/multi-point-gradient.frag",
          "#version 450\n"
          "// @effect     multi-point-gradient\n"
@@ -701,6 +982,32 @@ namespace {
          "// @param      color-b color #000000 -- Colour of the background\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the mix\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/posterize.frag",
+         "#version 450\n"
+         "// @effect     posterize\n"
+         "// @kind       filter\n"
+         "// @category   color\n"
+         "// @summary    Reduces each colour channel of the content to a few flat levels\n"
+         "// @source     shaders.com Posterize\n"
+         "// @cost       low\n"
+         "// @param      levels number 5 2 20 -- Levels per channel (source `intensity`; lower is flatter)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/progressive-blur.frag",
+         "#version 450\n"
+         "// @effect     progressive-blur\n"
+         "// @kind       filter\n"
+         "// @category   blur\n"
+         "// @summary    Blur growing from a point along a direction, like a fade-to-blur edge\n"
+         "// @source     shaders.com ProgressiveBlur\n"
+         "// @cost       medium\n"
+         "// @backdrop   yes\n"
+         "// @prepass    blur intensity*0.2\n"
+         "// @suggest-for gradient-blur fade-blur\n"
+         "// @param      intensity number 50 0 100 -- Strongest blur (the blur's sigma is a fifth of this in px)\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Direction the blur grows toward (0deg along x)\n"
+         "// @param      center position \"0% 50%\" -- Point where the blur begins\n"
+         "// @param      falloff number 1 0 1 -- Distance over which the blur ramps to full strength\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/radial-pulse.frag",
          "#version 450\n"
          "// @effect     radial-pulse\n"
@@ -767,6 +1074,21 @@ namespace {
          "// @param      rings integer 8 2 40 -- Number of rings\n"
          "// @param      feather number 0.2 0 1 -- How much the rings' timing overlaps (0 gives discrete ring pops)\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/scanlines.frag",
+         "#version 450\n"
+         "// @effect     scanlines\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Horizontal scanlines over the content, optionally scrolling and flickering\n"
+         "// @source     original (CRTScreen's scanline term)\n"
+         "// @cost       low\n"
+         "// @time       speed\n"
+         "// @param      intensity number 0.3 0 1 -- How dark the lines get\n"
+         "// @param      spacing length 3px 1px 16px -- Distance between two lines\n"
+         "// @param      thickness number 0.5 0.1 1 -- Share of a period the dark line takes (0.5 is a sine wave)\n"
+         "// @param      speed number 0 -100 100 -- Scroll speed of the lines, CSS px per second (down when positive)\n"
+         "// @param      flicker number 0 0 1 -- Brightness flicker of the whole screen\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/sheen.frag",
          "#version 450\n"
@@ -1017,6 +1339,36 @@ namespace {
          "// @param      color-space enum oklch linear|oklch|oklab|hsl|hsv|lch -- Colour space of the custom cycle\n"
          "// @param      speed number 0.1 -1 1 -- Turns per second of the colours around the rim\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/tilt-shift.frag",
+         "#version 450\n"
+         "// @effect     tilt-shift\n"
+         "// @kind       filter\n"
+         "// @category   blur\n"
+         "// @summary    Tilt-shift lens: a sharp band through a point, the rest blurred like a miniature\n"
+         "// @source     shaders.com TiltShift\n"
+         "// @cost       medium\n"
+         "// @backdrop   yes\n"
+         "// @prepass    blur intensity*0.2\n"
+         "// @param      intensity number 50 0 100 -- Blur at the far edges (the blur's sigma is a fifth of this in px)\n"
+         "// @param      width number 0.3 0 1 -- Width of the sharp band (share of the height)\n"
+         "// @param      falloff number 0.3 0 1 -- Distance over which the blur ramps to full strength\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Rotation of the sharp band (0deg horizontal)\n"
+         "// @param      center position \"50% 50%\" -- Point the sharp band runs through\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/twirl.frag",
+         "#version 450\n"
+         "// @effect     twirl\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Twists the content around a centre, more the farther out\n"
+         "// @source     shaders.com Twirl\n"
+         "// @cost       low\n"
+         "// @suggest-for swirl-distort vortex\n"
+         "// @param      intensity number 1 -5 5 -- Twist (radians per area height of distance; negative turns the other way)\n"
+         "// @param      center position \"50% 50%\" -- Centre of the twist\n"
+         "// @param      radius number 1 0 2 -- Distance (share of the height) beyond which the twist stops growing\n"
+         "// @param      edges enum stretch stretch|transparent|mirror|wrap -- What shows where the twist reads beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/venetian-blinds.frag",
          "#version 450\n"
          "// @effect     venetian-blinds\n"
@@ -1031,6 +1383,35 @@ namespace {
          "// @param      strip-count integer 5 2 60 -- Number of strips across the area\n"
          "// @param      feather number 0.15 0 1 -- Softness of each strip's closing edge\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/vhs.frag",
+         "#version 450\n"
+         "// @effect     vhs\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Worn VHS tape: wobbling lines, head-switch noise and smeared colour\n"
+         "// @source     shaders.com VHS\n"
+         "// @cost       medium\n"
+         "// @time       speed\n"
+         "// @suggest-for tape analog\n"
+         "// @param      wobble number 1 0 5 -- Tape damage: waves, creases and head-switching noise\n"
+         "// @param      scanline-noise number 0.6 0 1 -- Fine jitter of each scanline\n"
+         "// @param      smear number 0.2 -2 2 -- How far the colour trails (right when positive)\n"
+         "// @param      speed number 1 0.1 3 -- Speed of the tape damage\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/vignette.frag",
+         "#version 450\n"
+         "// @effect     vignette\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Darkens (or tints) the content toward its edges around a clear centre\n"
+         "// @source     shaders.com Vignette\n"
+         "// @cost       low\n"
+         "// @param      color color #000000 -- Colour at the edges\n"
+         "// @param      center position \"50% 50%\" -- Centre of the clear area\n"
+         "// @param      radius number 0.5 0 1.5 -- Radius of the clear area (share of the height)\n"
+         "// @param      falloff number 0.5 0.01 1.5 -- Width of the fade from clear to full vignette\n"
+         "// @param      intensity number 1 0 1 -- Strength of the vignette\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
         {"effects/voronoi.frag",
          "#version 450\n"
@@ -1052,6 +1433,53 @@ namespace {
          "// @param      edge-softness number 0.05 0 0.4 -- Width and softness of the border lines (0 none)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the fill\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/water-ripple.frag",
+         "#version 450\n"
+         "// @effect     water-ripple\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Concentric water ripples spreading from a point through the content\n"
+         "// @source     original (Ripples' ring math as a displacement; CursorRipples' chromatic split)\n"
+         "// @cost       low\n"
+         "// @time       speed\n"
+         "// @suggest-for ripple water\n"
+         "// @param      center position \"50% 50%\" -- Point the ripples spread from\n"
+         "// @param      amplitude length 6px 0px 64px -- Largest push of a ripple\n"
+         "// @param      wavelength length 40px 4px 400px -- Distance between two crests\n"
+         "// @param      speed number 1 -5 5 -- Wavelengths per second the ripples travel outward (inward when negative)\n"
+         "// @param      decay number 0.5 0 5 -- How fast the ripples fade with distance (per 100 CSS px)\n"
+         "// @param      chromatic-split number 0 0 3 -- Colour separation along the ripples\n"
+         "// @param      edges enum stretch stretch|transparent|mirror|wrap -- What shows where the ripples read beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/wave-distortion.frag",
+         "#version 450\n"
+         "// @effect     wave-distortion\n"
+         "// @kind       filter\n"
+         "// @category   distort\n"
+         "// @summary    Pushes the content sideways in travelling waves of a chosen shape\n"
+         "// @source     shaders.com WaveDistortion\n"
+         "// @cost       low\n"
+         "// @time       speed\n"
+         "// @suggest-for wave wobble\n"
+         "// @param      strength number 0.3 0 1 -- How far the waves push (0.3 moves 15 % of the height)\n"
+         "// @param      frequency number 1 0.1 10 -- Waves across the area\n"
+         "// @param      speed number 1 0 5 -- Speed the waves travel\n"
+         "// @param      angle angle 0deg 0deg 360deg -- Direction of the push (0deg along x; the waves run across it)\n"
+         "// @param      wave-type enum sine sine|triangle|square|sawtooth|bounce -- Shape of the wave\n"
+         "// @param      edges enum stretch stretch|transparent|mirror|wrap -- What shows where the waves read beyond the element\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/zoom-blur.frag",
+         "#version 450\n"
+         "// @effect     zoom-blur\n"
+         "// @kind       filter\n"
+         "// @category   blur\n"
+         "// @summary    Radial zoom blur streaking the content out of a centre point\n"
+         "// @source     shaders.com ZoomBlur\n"
+         "// @cost       medium\n"
+         "// @suggest-for radial-blur\n"
+         "// @param      intensity number 30 0 100 -- Strength of the zoom (100 pulls in from twice the distance to the centre)\n"
+         "// @param      center position \"50% 50%\" -- Point the zoom streaks out of\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"},
     };
 
 }

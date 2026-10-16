@@ -20,7 +20,8 @@ using namespace Rml;
 // - P5-1: -jfx-text-fill, a filter list applied before the element's filter list (gradient text with effects).
 // - P5-2: Decorator::PaintsOwnClip, a background layer drawn without a clip mask.
 // - P5-3: DecoratorInstancer::InterpolatesAsImageLayer, background-image lists interpolating decorator layers.
-// - P5-5: image-layer lists parsed once per text (a var() resolved the same way again shares the list).
+// - P5-5: the region of a filter covers its subtree's ink overflow, not the empty boxes of collapsed whitespace.
+// - P5-6: image-layer lists parsed once per text (a var() resolved the same way again shares the list).
 
 namespace {
 
@@ -30,6 +31,12 @@ struct CompiledFill {
 };
 Vector<CompiledFill> compiled_fills;
 
+struct FilterRegion {
+	String id;
+	Rectanglef region;
+};
+Vector<FilterRegion> filter_regions;
+
 class FillFilter : public Filter {
 public:
 	explicit FillFilter(float value) : value(value) {}
@@ -38,6 +45,7 @@ public:
 		compiled_fills.push_back({element->GetId(), value});
 		return element->GetRenderManager()->CompileFilter("FillFilter", {});
 	}
+	void ExtendInkOverflow(Element* element, Rectanglef& overflow) const override { filter_regions.push_back({element->GetId(), overflow}); }
 	float value;
 };
 
@@ -258,6 +266,49 @@ TEST_CASE("EffectHooks.image_layer_interpolation")
 	document->Close();
 	context->Update();
 	system->SetManualTime(0.0);
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("EffectHooks.filter_region_of_the_subtree")
+{
+	filter_regions.clear();
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	FillFilterInstancer instancer;
+	Factory::RegisterFilterInstancer("fill-test", &instancer);
+
+	// whitespace between the children, a child outside the box, text
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; font-family: LatoLatin; }
+		#f { position: absolute; left: 100px; top: 80px; width: 100px; height: 50px; filter: fill-test(1px); }
+		.c { position: absolute; left: 10px; top: 10px; width: 20px; height: 20px; }
+		#out { position: absolute; left: 90px; top: 40px; width: 30px; height: 30px; }
+	</style>
+</head>
+<body><div id="f">
+	<div class="c"></div>
+	<div id="out"></div>
+	text
+</div></body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	TestsShell::RenderLoop();
+
+	REQUIRE(!filter_regions.empty());
+	const Rectanglef region = filter_regions.back().region;
+	CHECK(filter_regions.back().id == "f");
+	// the box and the child beyond it (to 220 x 150), nothing toward the context's origin
+	CHECK(region.Left() == doctest::Approx(100.f));
+	CHECK(region.Top() == doctest::Approx(80.f));
+	CHECK(region.Right() == doctest::Approx(220.f));
+	CHECK(region.Bottom() == doctest::Approx(150.f));
+
+	document->Close();
 	TestsShell::ShutdownShell();
 }
 

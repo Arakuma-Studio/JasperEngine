@@ -1670,9 +1670,9 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   - *Draws.* sokol objects memoize their last dynamic pipeline (`SokolPipelineCache::get(base,
     baseHash, state)`, `generation()`): no layout hash per draw. The effect seed is computed once per
     instance.
-  - *A2's styles (fork P5-5).* Every A2 frame resolved each paint's `background-image` (a `var()`)
+  - *A2's styles (fork P5-6).* Every A2 frame resolved each paint's `background-image` (a `var()`)
     three times per element (style, colour clip, geometry) and parsed each: 59 % of A2's main thread
-    on Vulkan was the image-layer parser. Lists are now parsed once per text (FORK.md P5-5): A2 on
+    on Vulkan was the image-layer parser. Lists are now parsed once per text (FORK.md P5-6): A2 on
     Vulkan 18.7 M -> 8.5 M instructions a frame. (A2's instructions are the same with and without
     p5-property's merge: 93.60 M and 93.56 M for 5 frames.)
   - No `glFinish`, `glFlush`, `glReadPixels` or `glGetTexImage` in a measured frame (callgrind);
@@ -1684,7 +1684,7 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
 - **Result.** *Vulkan (lavapipe)* passes: `EffectPerfTest.GridSteadyStateAndBudgets` on a calm
   host (load 8-12), final tree: B 0.368 ms, C 0.851, A 1.507 (budget 1.552), A2 3.634 (budget
   5.105). On a loaded host (load 50-160) A is at its budget (1.45-1.75 against 1.56-1.72) and A2
-  4.3-5.2 after P5-5 (7.1-7.5 before it); the test takes the least of 5 runs. Main-thread instructions a
+  4.3-5.2 after P5-6 (7.1-7.5 before it); the test takes the least of 5 runs. Main-thread instructions a
   frame: B 0.65 M, A 3.6 M -> 2.4 M (the GL-only resolve change does not apply; pipelines, seed and
   the composites do), A2 8.5 M. *glcore (llvmpipe)* cannot meet 5.4's A budget on this driver:
   llvmpipe bins and copies state on the calling thread for every render pass (a scene: the
@@ -1857,6 +1857,86 @@ verified on one distortion per mode (`wave-distortion` with stretch, transparent
 wrap goldens).
 
 **Tests.** As in 4.4.
+
+#### p5-fx-filters as implemented
+
+The 26 effects of A.4 with their manifests as listed. What the other packages can reuse or should
+know:
+
+- **Family includes** (`lib/fam_filters_*.glsl`): `fam_filters_common` (the 32 motion-blur weights,
+  `gaussianTapWeights(32, 0.8)`, and the linear, orbit and zoom tap trajectories;
+  `chromaticOffsetUV`; `radialFalloffMask`; a smoothstep for edges that can meet),
+  `fam_filters_sample` (how filters read the content: `fam_src_premul` taps clamped half a device
+  pixel inside the area, as the kit's clamp sampler at the canvas border, for gathers that sum
+  premultiplied; the kit's 9-tap Catmull-Rom `fam_src_cr`, laid on the layer's texels with its
+  taps kept in the area and the valid source; `fam_src_remapped`, the kit's `sampleRemappedExpr`:
+  Catmull-Rom for the stretch, transparent and wrap modes, bilinear for mirror; `fam_src_edge_clip`,
+  whose transparent mode clears the whole tap; the mapping of an `edges` enum whose options start
+  with `mirror`), `fam_filters_stylize` (the dither's periodic Bayer and clustered-dot fields,
+  blue and white noise, the halftone plates and CMYK split, the VHS tape geometry and YIQ
+  recombine, the glitch geometry and colour bars), `fam_filters_glass` (the glass optics on a flat
+  plate, the fluted-glass geometry and Blinn streak, the glass-tiles map).
+- **Clocks.** `vhs`, `glitch` and `gradient-map` read their integrated `speed` clock where the
+  source multiplies the global clock by `speed`; `flow-field` integrates both `speed` and
+  `evolution-speed` (the seed added to each, as the kit does); `film-grain`'s CPU drift (10 per
+  second while `animated`) is 10 x the clock.
+- **Adaptations beyond A.4's notes.** `tilt-shift` and `progressive-blur`: the kit's compute blur
+  has a radius per pixel (`intensity` x 0.36 x the amount); here the prepass blurs at its full
+  sigma (`intensity` x 0.2) and the amount mixes it with the sharp content, premultiplied
+  (`progressive-blur` keeps the sharp alpha, as the kit). `liquid-glass` is 3.15's example 4: the
+  element's rounded box as a flat 2D plate (the kit's default shape is a volumetric sphere), the
+  refraction `(1 - depth)^2` over `thickness` px, the lens offset `-normal x refraction x 0.15 x
+  the shorter side`, the zoom about the box's centre, the frost from the prepass (the aberration's
+  red and blue taps read the blurred copy too); the kit's widths in shape units take the shorter
+  side as 0.7 units, as the light package's shapes. `twirl`'s `radius` (A.4 adds it; the source has
+  none) caps the distance the angle grows with, so at the default 1 an area up to 1.7 times wider
+  than high twists exactly as the source. `motion-blur`'s streak is in CSS px. `crt` is an opaque
+  screen (the source's `opaque()`): where the content is transparent it is black.
+  `chromatic-aberration`, `glitch` and `fluted-glass` take the alpha of the centred (green) tap, so a
+  fringe beyond a transparent edge does not show, as in the kit.
+- **Original effects.** `scanlines`: CRTScreen's `1 - intensity x (sin(2 pi y / period) x 0.5 +
+  0.5)` with the period `spacing` CSS px; `thickness` moves the wave's half-height point (0.5 is
+  the sine), `speed` scrolls on the integrated clock, `flicker` dims the content by a hashed
+  amount 24 times a second. `water-ripple`: Ripples' rings travelling outward a wavelength per
+  second times `speed`, their radial slope pushing the content `amplitude` px, fading as
+  exp(-`decay` x distance / 100 px), CursorRipples' chromatic split along the push. `heat-haze`:
+  two MaterialX noise layers (cells of 40 / `scale` px and 2.3 times finer) rising at 40 px per
+  second times the `speed` clock, pushing the content across the rise by up to `strength` px (a
+  third as much along it). `bulge`'s `follow-pointer` eases the centre to the smoothed pointer by
+  its presence.
+- **Goldens.** The backdrop effects' `.t1`/`.t2` are their backdrop goldens (the `backdrop`
+  fixture). `EffectFilterTest` adds `wave-distortion.{stretch,transparent,mirror,wrap}` (a strong
+  slanted wave over an opaque background: the test card's edges are transparent, where stretch
+  and transparent read the same) and `glitch.burst`: the glitch's default schedule is calm at both
+  golden times (no burst frame at 1.5 s or 4 s), so its `.t1` is the content and it has no `.t2`;
+  at 2.3 s both burst gates fire.
+- **The filter region (fork P5-5).** A filter's layer covers the ink overflow of its subtree, and
+  the empty box of a collapsed whitespace text element sat at the context's origin: an element with
+  whitespace between its children (the `filter` fixture) was filtered from the context's top-left
+  corner. The fork now skips children without area. Effects whose output is not transparent where
+  the content is (a stretch-edged distortion, `crt`) painted the page above and left of the
+  element; `light-leak`'s glow and `sparkle`'s rays did too, and their goldens were regenerated
+  (they now end at the element's box, as `sparkle` and `light-leak` have no `@margin`).
+- **Cost** (p5-tooling's cost-table method, a local copy; llvmpipe, host load 50-70): every `low`
+  effect of the package measured at most x2.9 on glcore and x3.8 on Vulkan (`glass-tiles`, a
+  Catmull-Rom tap; the distortions x2.5-3.5), every `medium` one at most x9.4 on glcore
+  (`angular-blur`; `motion-blur` x7.2, `zoom-blur` x6.7: 32 taps each) and x8.6 on Vulkan
+  (`zoom-blur`), bounds 6 and 24. A filter pass alone costs about x2 here, so `crt`, `vhs`,
+  `glitch`, `halftone`, `fluted-glass`, `flow-field`, `tilt-shift` and `progressive-blur` (x2.3-4.0)
+  measure in the low range though A.4 declares them medium, and `liquid-glass` (high) measures
+  x2.9 on glcore and x3.1 on Vulkan at its defaults (no frost: its prepass is a copy; the blur
+  adds the prepass's passes, as for `frosted-glass`, x2.8-3.7).
+- **Covers.** Most covers are presets over a photo or a checkerboard; the ports were checked at
+  the defaults (the goldens) and at props approximating the cover, rendered at 512 x 512 over a
+  grey checkerboard, the test card or a white disc. `crt`'s default 200 scanlines over the
+  golden's 200 px fall on single pixels (the cover's are 2.5 px apart: 100 lines at 512 px);
+  `liquid-glass`'s cover is the volumetric sphere, whose magnified rim needs a thick plate here
+  (`thickness 120px`); `fluted-glass`'s cover is a soft (`softness 1`) rounded preset with three
+  flutes per height; `vhs`, `wave-distortion`, `twirl` and `glitch` covers use stronger presets.
+- **Guide.** The spec's `.title` with `chromatic-aberration` and `drop-shadow()` and its `.panel`
+  of `frosted-glass` are in the guide's quick reference, its `.menu`, `.ring` and `.logo` verbatim
+  (the `.logo` with `color: #fff` under gradient text, where the clip is dropped), and the backdrop
+  section shows `liquid-glass`.
 
 ## 5 Test plan
 

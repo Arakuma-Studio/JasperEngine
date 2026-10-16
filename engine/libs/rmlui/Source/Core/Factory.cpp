@@ -459,7 +459,7 @@ void Factory::RegisterDecoratorInstancer(const String& name, DecoratorInstancer*
 {
 	RMLUI_ASSERT(instancer);
 	factory_data->decorator_instancers[StringUtilities::ToLower(name)] = instancer;
-	// (parsed image layers hold their decorators' instancers: fork, P5-5)
+	// (parsed image layers hold their decorators' instancers: fork, P5-6)
 	ClearImageLayerParseCache();
 }
 

@@ -365,7 +365,7 @@ namespace {
 
 	// ---- Parsers ----
 
-	// The image lists parsed last, by text (fork, P5-5): a value with var() is parsed again each time it is resolved (style
+	// The image lists parsed last, by text (fork, P5-6): a value with var() is parsed again each time it is resolved (style
 	// computation, then the background's geometry and colour clip), and the elements whose var() resolve to the same text
 	// parse it each; a list is immutable, so they share the first one. Dropped when decorator instancers change.
 	struct ImageLayerParseCache {
