@@ -24,14 +24,19 @@ namespace jasperengine {
         static bool isEnabled(){ return state().enabled; }
         // the calling thread's total since the last reset, ms
         static double totalMs(){ return (double)state().totalNs / 1.0e6; }
-        static void reset(){ state().totalNs = 0; }
+        static void reset(){ state().totalNs = 0; state().scopes = 0; }
+        // the outermost scopes since the reset (each one's own clock reads cost the thread
+        // time outside the total too: a caller subtracts scopes x that cost, see EffectPerfTest)
+        static uint64_t scopeCount(){ return state().scopes; }
 
         class Scope {
         public:
             Scope(){
                 State& s = state();
-                if (s.enabled && s.depth++ == 0)
+                if (s.enabled && s.depth++ == 0){
+                    s.scopes++;
                     start = now();
+                }
             }
             ~Scope(){
                 State& s = state();
@@ -50,6 +55,7 @@ namespace jasperengine {
             bool enabled = false;
             int depth = 0;
             int64_t totalNs = 0;
+            uint64_t scopes = 0;
         };
         static State& state(){
             static thread_local State s;

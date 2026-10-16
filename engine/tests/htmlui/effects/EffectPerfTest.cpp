@@ -140,6 +140,32 @@ namespace {
         return "<!DOCTYPE html><html><head><style>" + css + "</style></head><body><div id=\"grid\">" + body + "</div></body></html>";
     }
 
+    // The thread time one backend scope's clock reads take outside the backend's total (the
+    // clock read before its start, after its end): calibrated once, with empty scopes
+    double scopeOverheadMs(){
+        static double overhead = -1.0;
+        if (overhead < 0.0){
+            const bool was = RenderBackendTime::isEnabled();
+            RenderBackendTime::setEnabled(true);
+            double least = -1.0;
+            for (int attempt = 0; attempt < 5; attempt++){
+                RenderBackendTime::reset();
+                const int n = 20000;
+                const double start = threadCpuMs();
+                for (int i = 0; i < n; i++){
+                    RenderBackendTime::Scope scope;
+                }
+                const double outside = (threadCpuMs() - start - RenderBackendTime::totalMs()) / n;
+                least = least < 0.0 ? outside : std::min(least, outside);
+            }
+            RenderBackendTime::reset();
+            RenderBackendTime::setEnabled(was);
+            overhead = std::max(least, 0.0);
+            std::printf("[ effects  ] a backend scope's clock reads: %.3f us outside its total\n", overhead * 1000.0);
+        }
+        return overhead;
+    }
+
     struct PerfRun {
         double medianMs = 0.0;
         double updateMs = 0.0, renderMs = 0.0, endMs = 0.0;   // the frame's parts (medians)
@@ -153,6 +179,7 @@ namespace {
     struct FrameParts {
         double update = 0.0, render = 0.0, end = 0.0;
         double backend = 0.0;   // RenderBackendTime of the frame
+        uint64_t scopes = 0;    // its scopes (their clock reads, outside the backend's time)
     };
 
     // A 1280 x 720 context and its loaded document; a frame is what HtmlUIContext does each
@@ -205,7 +232,7 @@ namespace {
             r.renderer.endFrame();
             SystemRender::commit();
             const double t3 = threadCpuMs();
-            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs()};
+            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs(), RenderBackendTime::scopeCount()};
         }
 
         ~Grid(){
@@ -242,7 +269,8 @@ namespace {
             frame(warm + i);
             times.push_back(threadCpuMs() - start);
             updates.push_back(grid.parts.update);
-            engines.push_back(times.back() - grid.parts.backend);
+            // the engine's own work: the frame less the backend and the measurement's clock reads
+            engines.push_back(times.back() - grid.parts.backend - (double)grid.parts.scopes * scopeOverheadMs());
             backends.push_back(grid.parts.backend);
             renders.push_back(grid.parts.render);
             ends.push_back(grid.parts.end);
