@@ -1651,6 +1651,16 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
   (lavapipe) B 0.38, C 1.58, A 2.05 (budget 1.58), A2 4.62 (budget 5.15). A document C has A's
   layers drawn by RmlUi's own filters (`brightness()`, `blur()`); the test also checks CPU(A) <=
   1.5 x CPU(C) + 1 ms, the effect system's own work.
+- **The cost table over the catalogue (after wave 2).** `EffectPerfTest.CostTable` measures the 83
+  effects one row each (an effect that does not compile or render fails its row, the others are
+  still measured; the count is checked) and takes the fill as the least of 5 averages (one high
+  sample of the fill lowered every ratio). Merged tree: every effect within its class on Vulkan
+  (fill 207 ms; `cursor-trail` 9.0, `multi-point-gradient` 3.5) and on glcore with the fill at
+  134-155 ms (`cursor-trail` 8.2-8.7, the highest `low` ones `multi-point-gradient` 4.7-4.9,
+  `water-ripple` 3.0-4.3). One glcore run on an idle host (load 3) measured the fill at 95 ms and
+  `multi-point-gradient` (low) at 7.1 x, over `low`'s 6: on llvmpipe the fill's process time falls
+  more than the effects' when the host is idle, so a calm gate may see it there (reported, its
+  class unchanged).
 - **The layer path (after review: "fix the real cost").** Profiled with callgrind (main thread,
   instructions per frame of the grid; `--separate-threads`, collection toggled on the frame),
   timed with the test's clock. What a frame cost and why:
