@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/RenderBackendTime.h"
 #include "SokolTexture.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
@@ -405,6 +406,7 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
 }
 
 void SokolTexture::updateTexture(const void* data, size_t size){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
         return;
     // sokol reads width * height * bpp bytes whatever the size says

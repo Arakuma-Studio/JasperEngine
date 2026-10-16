@@ -82,6 +82,7 @@ namespace jasperengine::editor {
         bool m_addShaderOpen = false;
         int m_addShaderTypeIndex = 0;
         bool m_addShaderProps[32] = {};
+        int m_addShaderEffectIndex = 0;   // UI Effect: the effect (EffectRegistry::all() order)
 
         // Graphic backend selection (Source Code mode only)
         struct BackendEntry {

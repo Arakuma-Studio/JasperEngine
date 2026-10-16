@@ -19,6 +19,7 @@ namespace jasperengine {
         uint32_t textureBinds = 0;
         uint32_t layersPushed = 0;
         uint32_t filtersApplied = 0;
+        uint32_t compositesFused = 0;       // backdrop composites drawn without their temporary layer (p5-tooling)
         uint32_t geometryLive = 0;
         uint32_t geometryBytes = 0;
     };

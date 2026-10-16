@@ -17,6 +17,7 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpAutoSync.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -34,6 +35,7 @@
 #include "util/DefaultFontArabic.h"
 
 #include "shader/ShaderBuilder.h"
+#include "htmlui/effects/EffectRegistry.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -2245,6 +2247,12 @@ void editor::App::engineInit(int argc, char** argv) {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
     });
+    // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from
+    // the builder's cache too, so they compile from the new source (and what draws with a forked
+    // shader the registry's reset reached re-binds, as after any shader edit)
+    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener([this](const std::string&) {
+        project.invalidateCustomShaders();
+    });
 
     Engine::setAsyncLoading(true);
 
@@ -2463,7 +2471,8 @@ void editor::App::processProjectChange() {
 // Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
 // reload, and the document animations due now wake the loop up
 void editor::App::pollHtmlUI(){
-    bool wake = !project.getHtmlUIWatcher().update(&project).empty();
+    // (held while an MCP call that may write files runs: its sync reloads them once)
+    bool wake = !project.getHtmlUIWatcher().update(&project, mcp::McpAutoSync::get().writingCallInFlight()).empty();
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
 
     const auto now = std::chrono::steady_clock::now();
@@ -3225,6 +3234,7 @@ void editor::App::engineViewDestroyed(){
 }
 
 void editor::App::engineShutdown(){
+    ::jasperengine::htmlui::EffectRegistry::get().setProjectEffectListener(nullptr);
     Engine::systemShutdown();
 }
 

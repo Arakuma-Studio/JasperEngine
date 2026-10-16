@@ -41,6 +41,17 @@ struct InspectFlags {
     bool zeroSize = false;     // border box width or height < 1
 };
 
+// A UI effect the element uses (phase 5, UIElement::getEffects): the property
+// ("background-image", "mask-image", "filter", "backdrop-filter"), the 1-based index of the layer
+// or function in it, the form ("paint"/"filter") and every parameter's canonical CSS text
+struct InspectEffect {
+    std::string property;
+    int index = 0;
+    std::string name;
+    std::string form;
+    std::vector<std::pair<std::string, std::string>> params;
+};
+
 struct InspectElement {
     int index = -1;            // position in the returned list
     int parent = -1;           // index of the parent in the list, -1 when not listed
@@ -55,6 +66,7 @@ struct InspectElement {
     float opacity = 1;         // effective
     int childCount = 0;        // element children (SVG internals are not elements here: <svg> is a leaf)
     InspectFlags flags;
+    std::vector<InspectEffect> effects;   // p5-tooling: the effects it draws with, in property order
 };
 
 struct InspectBoxModel {

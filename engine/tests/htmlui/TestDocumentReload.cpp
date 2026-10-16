@@ -13,6 +13,8 @@
 #include "HtmlUIDependencies.h"
 #include "RmlFontEngine.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Elements/ElementFormControlInput.h>
@@ -187,6 +189,164 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     EXPECT_TRUE(documentSystem(scene).reloadChangedFiles({path("reload.css")}).empty());
     EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), 2u);
 
+    EXPECT_EQ(errors(), 0u);
+}
+
+// p5-tooling: a file written while a (re)load is reading the document's files (the editor
+// writing right after play stopped, an agent's next edit) is not taken as seen: the next
+// reloadChangedFiles reloads it. The hook runs after the files were read and before the load
+// records what they were, the window the stamps used to be taken in.
+TEST_F(UIDocumentReloadTest, FileChangedDuringAReloadIsReloadedNext){
+    struct HookReset {
+        ~HookReset(){ UIDocumentSystem::setLoadedHookForTesting(nullptr); }
+    } hookReset;
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_EQ(backgroundOf(rml->GetElementById("box")), "#ff0000");
+
+    auto colored = [](const char* color){
+        std::string css = reloadCss;
+        css.replace(css.find("#ff0000"), 7, color);
+        return css;
+    };
+    // a stylesheet-only reload, the stylesheet written again while it runs
+    int calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0)
+            write("reload.css", colored("#0000ff"));
+    });
+    write("reload.css", colored("#00ff00"));
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#00ff00") << "the reload read the file before the second write";
+    const std::vector<UIDocumentSystem::Reloaded> again = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(again.size(), 1u) << "the file written during the reload is seen as changed";
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#0000ff");
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).empty()) << "then current";
+
+    // a full reload (the document changed), the stylesheet written while it runs
+    calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0)
+            write("reload.css", colored("#ffff00"));
+    });
+    write("reload.rml", reloadHtml("    <p id=\"added\">added</p>\n"));
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml->GetElementById("added"), nullptr);
+    UIDocumentSystem::setLoadedHookForTesting(nullptr);
+    ASSERT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u)
+        << "the stylesheet written during the full reload is seen as changed";
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#ffff00");
+    EXPECT_EQ(errors(), 0u);
+}
+
+// p5-tooling: elements keep the decorators and filters of an effect value whose text does not
+// change, so a stylesheet-only reload across a change of the project effects (an effect declared
+// from another file, read again, forgotten: MCP test_rename_frag_during_play) loads the document
+// again in full; a stylesheet-only reload without one stays one.
+TEST_F(UIDocumentReloadTest, ProjectEffectChangeDuringARestyleReloadsInFull){
+    struct Reset {
+        ~Reset(){
+            UIDocumentSystem::setLoadedHookForTesting(nullptr);
+            htmlui::EffectRegistry::get().clearProjectEffects();
+            htmlui::compat::VirtualFiles::remove("@htmlui/test/reload/fx/restyle-glow.frag");
+        }
+    } reset;
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    auto colored = [](const char* color){
+        std::string css = reloadCss;
+        css.replace(css.find("#ff0000"), 7, color);
+        return css;
+    };
+
+    // a stylesheet-only reload: still one
+    write("reload.css", colored("#00ff00"));
+    std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_TRUE(reloaded[0].stylesheetOnly);
+    EXPECT_EQ(documentSystem(scene).getDocument(document.getEntity()), rml);
+
+    // a project effect declared while it runs (as a compiled stylesheet's @effect does)
+    const std::string frag = "#version 450\n"
+                             "// @effect     restyle-glow\n"
+                             "// @kind       paint\n"
+                             "// @category   light\n"
+                             "// @summary    A project effect of the reload tests\n"
+                             "// @source     original\n"
+                             "// @cost       low\n"
+                             "#include \"effects/lib/jfx_common.glsl\"\n"
+                             "vec4 jfx_paint(JfxContext c){ return vec4(1.0); }\n"
+                             "#include \"effects/lib/main_paint.glsl\"\n";
+    htmlui::compat::VirtualFiles::add("@htmlui/test/reload/fx/restyle-glow.frag", frag);
+    int calls = 0;
+    UIDocumentSystem::setLoadedHookForTesting([&](Entity){
+        if (calls++ == 0){
+            std::vector<htmlui::EffectDiagnostic> diags;
+            EXPECT_TRUE(htmlui::EffectRegistry::get().declareProjectEffect("restyle-glow", "@htmlui/test/reload/fx/restyle-glow.frag",
+                                                                           "reload.css", 1, diags));
+        }
+    });
+    write("reload.css", colored("#0000ff"));
+    reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()));
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_FALSE(reloaded[0].stylesheetOnly) << "loaded again in full";
+    rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml, nullptr);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#0000ff");
+    EXPECT_EQ(errors(), 0u);
+}
+
+// p5-tooling: the editor's poller asks with a settle window: a document whose changed files are
+// still being written (modified less than the window ago) is left for a later call with its
+// stamps untouched, so files written back to back reload once whichever caller sees them first.
+TEST_F(UIDocumentReloadTest, SettleWindowReloadsABatchOfWritesOnce){
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    const uint32_t loads = documentSystem(scene).getLoadCount(document.getEntity());
+    auto touch = [&](const std::string& name, const std::string& content, int secondsAgo){
+        {
+            std::ofstream out(dir / name, std::ios::binary | std::ios::trunc);
+            out << content;
+        }
+        std::error_code error;
+        fs::last_write_time(dir / name, fs::file_time_type::clock::now() - std::chrono::seconds(secondsAgo), error);
+    };
+    std::string css = reloadCss;
+    css.replace(css.find("#ff0000"), 7, "#00ff00");
+
+    // the stylesheet just written, the document not yet: the poll waits
+    touch("reload.css", css, 0);
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()), 60.0).empty()) << "still settling";
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), loads);
+    // the document written too, both settled now (a minute and more ago): one reload for both
+    touch("reload.css", css, 120);
+    touch("reload.rml", reloadHtml("    <p id=\"added\">added</p>\n"), 120);
+    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity()), 60.0);
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), loads + 1) << "one reload for the two files";
+    Rml::ElementDocument* rml = documentSystem(scene).getDocument(document.getEntity());
+    ASSERT_NE(rml->GetElementById("added"), nullptr);
+    EXPECT_EQ(backgroundOf(rml->GetElementById("box")), "#00ff00");
+    // and nothing left for any caller
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).empty());
+    // without a window (MCP's pick-up, a save from the code editor) a fresh file reloads at once
+    css.replace(css.find("#00ff00"), 7, "#0000ff");
+    touch("reload.css", css, 0);
+    EXPECT_EQ(documentSystem(scene).reloadChangedFiles(allFiles(scene, document.getEntity())).size(), 1u);
     EXPECT_EQ(errors(), 0u);
 }
 

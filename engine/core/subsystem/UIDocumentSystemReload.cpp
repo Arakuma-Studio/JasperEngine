@@ -16,6 +16,7 @@
 #include "htmlui/RmlFontEngine.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
+#include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
@@ -27,7 +28,10 @@
 #include <RmlUi/Core/Property.h>
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <map>
 #include <set>
@@ -71,7 +75,11 @@ namespace jasperengine{
         // messages logged outside a load: to the documents whose files they name
         static void onUnscopedMessage(HtmlUIFileLog::Level level, const std::string& text);
 
-        void recordStamps(Document& document);
+        // the stamps of the document's files; `before` holds what the files the load expected were
+        // before it read them: a file that changed while it was reading keeps its old stamp, so
+        // the next reloadChangedFiles reloads it (a new file the load found gets its stamp now)
+        void recordStamps(Document& document, const std::map<std::string, Stamp>& before = {});
+        static std::map<std::string, Stamp> stampsOf(const std::vector<std::string>& files);
     };
 
 }
@@ -303,11 +311,30 @@ void HtmlUIReloadState::onUnscopedMessage(HtmlUIFileLog::Level level, const std:
     }
 }
 
-void HtmlUIReloadState::recordStamps(Document& document){
+void HtmlUIReloadState::recordStamps(Document& document, const std::map<std::string, Stamp>& before){
     document.stamps.clear();
     for (const std::string& path : document.files){
-        document.stamps[path] = stampOf(path);
+        auto known = before.find(path);
+        document.stamps[path] = (known != before.end()) ? known->second : stampOf(path);
     }
+}
+
+std::map<std::string, HtmlUIReloadState::Stamp> HtmlUIReloadState::stampsOf(const std::vector<std::string>& files){
+    std::map<std::string, Stamp> stamps;
+    for (const std::string& path : files)
+        stamps[path] = stampOf(path);
+    return stamps;
+}
+
+namespace {
+    std::function<void(Entity)>& loadedHook(){
+        static std::function<void(Entity)> hook;
+        return hook;
+    }
+}
+
+void UIDocumentSystem::setLoadedHookForTesting(std::function<void(Entity)> hook){
+    loadedHook() = std::move(hook);
 }
 
 // ---- UIDocumentSystem, p1-editor ----
@@ -327,6 +354,16 @@ Rml::ElementDocument* UIDocumentSystem::getDocument(Entity entity) const{
 Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const std::string& filename){
     HtmlUIReloadState& state = getReloadState();
     HtmlUIReloadState::Document& record = state.documents[entity];
+    // what the files the load is about to read are now (the last load's, the scanner's)
+    std::vector<std::string> expected;
+    if (record.filename == normalizeHtmlUIPath(filename))
+        expected = record.files;
+    appendUnique(expected, normalizeHtmlUIPath(filename));
+    for (const HtmlUIReference& reference : collectHtmlUIReferences(normalizeHtmlUIPath(filename))){
+        if (!reference.remote && !reference.outsideAssets)
+            appendUnique(expected, reference.path);
+    }
+    const std::map<std::string, HtmlUIReloadState::Stamp> before = HtmlUIReloadState::stampsOf(expected);
     record.filename = normalizeHtmlUIPath(filename);
     record.messages.clear();
 
@@ -362,7 +399,9 @@ Rml::ElementDocument* UIDocumentSystem::loadEntityDocument(Entity entity, const 
     for (const std::string& path : compatDependencies(document)){
         appendUnique(record.files, path);
     }
-    state.recordStamps(record);
+    if (loadedHook())
+        loadedHook()(entity);
+    state.recordStamps(record, before);
     record.loadCount++;
 
     return document;
@@ -497,6 +536,8 @@ void UIDocumentSystem::reloadStyleSheets(Entity entity){
 
     HtmlUIReloadState& state = getReloadState();
     HtmlUIReloadState::Document& record = state.documents[entity];
+    // what the files the restyle is about to read are now
+    const std::map<std::string, HtmlUIReloadState::Stamp> before = HtmlUIReloadState::stampsOf(record.files);
 
     std::vector<std::string> opened;
     const bool compat = (bool)getCompiledDocument(entity);
@@ -530,7 +571,9 @@ void UIDocumentSystem::reloadStyleSheets(Entity entity){
     for (const std::string& path : opened){
         appendUnique(record.files, path);
     }
-    state.recordStamps(record);
+    if (loadedHook())
+        loadedHook()(entity);
+    state.recordStamps(record, before);
     record.loadCount++;
 
     documentContext(entity)->update();
@@ -565,7 +608,7 @@ uint32_t UIDocumentSystem::getLoadCount(Entity entity) const{
     return (it != reloadState->documents.end()) ? it->second.loadCount : 0;
 }
 
-std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(const std::vector<std::string>& files){
+std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds){
     std::vector<Reloaded> reloaded;
     if (files.empty() || !reloadState || !context)
         return reloaded;
@@ -574,6 +617,10 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
     for (const std::string& file : files){
         asked.insert(normalizeHtmlUIPath(file));
     }
+    // phase 5 (p5-tooling): a declared project effect whose .frag is gone is forgotten first, so
+    // the documents compiled next declare theirs again
+    const uint64_t effectsBefore = htmlui::EffectRegistry::get().projectGeneration();
+    htmlui::EffectRegistry::get().forgetMissingProjectEffects();
     // p2-html (hook H2): compiles that read a changed file are stale (the manifest reloads too)
     for (const std::string& path : asked){
         htmlui::compat::DocumentLoader::invalidate(path);
@@ -589,6 +636,8 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         std::vector<std::string> fonts;
     };
     std::vector<Action> actions;
+    // the changed files, for the project effects (phase 5: an @effect .frag or one of its includes)
+    std::set<std::string> changedEffects;
 
     auto components = scene->getComponentArray<UIDocumentComponent>();
     for (size_t i = 0; i < components->size(); i++){
@@ -607,6 +656,10 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         Action action;
         action.entity = entity;
         bool changed = false;
+        // the document's changed files, decided before any stamp moves: a file still being
+        // written (settleSeconds) leaves the whole document for a later call
+        std::vector<std::pair<std::string, HtmlUIReloadState::Stamp>> changes;
+        bool settling = false;
         for (const std::string& path : getDocumentFiles(entity)){
             if (asked.find(path) == asked.end())
                 continue;
@@ -620,8 +673,21 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             }
             if (stampIt->second == now)
                 continue;
-            stampIt->second = now;
+            if (settleSeconds > 0.0 && now.exists){
+                const long long fileNow = (long long)std::filesystem::file_time_type::clock::now().time_since_epoch().count();
+                const long long window = (long long)std::chrono::duration_cast<std::filesystem::file_time_type::duration>(
+                                                        std::chrono::duration<double>(settleSeconds)).count();
+                if (fileNow - now.time < window)
+                    settling = true;
+            }
+            changes.emplace_back(path, now);
+        }
+        if (settling)
+            continue;
+        for (const auto& [path, now] : changes){
+            record.stamps[path] = now;
             changed = true;
+            changedEffects.insert(path);
 
             ChangeKind kind = changeKindOf(path, record.filename);
             // p2-html: an import may only change CSS; compatRestyle falls back to a full reload
@@ -637,6 +703,12 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
         if (changed)
             actions.push_back(action);
     }
+
+    // phase 5 (p5-tooling): a project effect's manifest is read again and its variants dropped
+    // before the documents that declared it reload (a .frag or include a document reads changes it
+    // in full); the registry ignores the other files
+    for (const std::string& path : changedEffects)
+        htmlui::EffectRegistry::get().onProjectFileChanged(path);
 
     std::set<std::string> fontsReloaded;
     std::set<std::string> imagesReleased;
@@ -658,6 +730,15 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             reloadStyleSheets(action.entity);
             // p2-html: an .html document whose RML changed was reloaded in full
             if (getDocument(action.entity) != before){
+                reloaded.push_back({action.entity, false});
+                continue;
+            }
+            // phase 5 (p5-tooling): a project effect changed (declared from another file, read
+            // again, forgotten): the elements whose effect value reads the same keep the
+            // decorators of the old one, so the document loads again in full
+            if (htmlui::EffectRegistry::get().projectGeneration() != effectsBefore){
+                Log::verbose("[HTML UI] reloading document of entity %u (a project effect changed)", (unsigned int)action.entity);
+                reloadDocument(action.entity, true);
                 reloaded.push_back({action.entity, false});
                 continue;
             }

@@ -30,6 +30,7 @@
 #include <RmlUi/Core/Math.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 
@@ -141,6 +142,20 @@ namespace {
         return !rect.Valid() || rect.Width() <= 0 || rect.Height() <= 0;
     }
 
+    // a ∪ b as the bounding rect (empty rects ignored)
+    Rml::Rectanglei unite(Rml::Rectanglei a, Rml::Rectanglei b){
+        if (isEmpty(a))
+            return isEmpty(b) ? Rml::Rectanglei::MakeInvalid() : b;
+        return isEmpty(b) ? a : a.Join(b);
+    }
+
+    Rml::Rectanglei intersect(Rml::Rectanglei a, Rml::Rectanglei b){
+        if (isEmpty(a) || isEmpty(b))
+            return Rml::Rectanglei::MakeInvalid();
+        const Rml::Rectanglei r = a.Intersect(b);
+        return isEmpty(r) ? Rml::Rectanglei::MakeInvalid() : r;
+    }
+
     Rml::Colourf toColourf(Rml::ColourbPremultiplied colour){
         Rml::Colourf result;
         for (int i = 0; i < 4; i++)
@@ -233,6 +248,14 @@ uint64_t RmlRenderTarget::getCreateCount() const{
     return createCount;
 }
 
+namespace {
+    std::atomic<uint64_t> targetGenerations{0};
+}
+
+uint64_t RmlRenderTarget::getGeneration() const{
+    return generation;
+}
+
 Framebuffer* RmlRenderTarget::ensureLayer(int index){
     if (index < 0)
         return nullptr;
@@ -255,6 +278,7 @@ Framebuffer* RmlRenderTarget::ensureLayer(int index){
 
     std::unique_ptr<Framebuffer> layer = std::make_unique<Framebuffer>();
     createCount++;
+    generation = ++targetGenerations;
     if (!layer->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d layer %d (%d samples)", width, height, index, sampleCount);
         return nullptr;
@@ -279,6 +303,7 @@ Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
 
     std::unique_ptr<Framebuffer> target = std::make_unique<Framebuffer>();
     createCount++;
+    generation = ++targetGenerations;
     if (!target->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d post-process target %d", width, height, index);
         return nullptr;
@@ -957,24 +982,33 @@ PipelineState RmlRenderer::postTargetState(BlendMode blend) const{
 // RmlRenderer: passes
 //-------------------------------------------------------------------------------------------
 
-void RmlRenderer::endPass(){
+void RmlRenderer::endPass(bool resolve){
     if (activeKind == TargetKind::NONE)
         return;
-    // sokol's GL backend resolves MSAA with glBlitFramebuffer at the end of the pass, and the
-    // blit honours the scissor box: the whole target is resolved only with a full scissor
-    if (activeFramebuffer && activeFramebuffer->getRender().getSampleCount() > 1)
-        applyPassScissor(fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight()));
+    // sokol's GL backend resolves MSAA with glBlitFramebuffer at the end of the pass, and the blit
+    // honours the scissor box: what may differ is resolved (the result of a full resolve), or
+    // nothing when the layer is not read yet (a later pass resolves it). The other backends
+    // resolve the whole render area at every pass end (nothing is tracked there).
+    if (activeFramebuffer && Engine::isOpenGL() && activeFramebuffer->getRender().getSampleCount() > 1){
+        TargetRegions& r = regionsOf(*activeFramebuffer);
+        const Rml::Rectanglei full = fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight());
+        const Rml::Rectanglei region = resolve ? intersect(r.stale, full) : Rml::Rectanglei::MakeInvalid();
+        applyPassScissor(isEmpty(region) ? Rml::Rectanglei::FromSize(Rml::Vector2i(0, 0)) : region);
+        if (resolve)
+            r.stale = Rml::Rectanglei::MakeInvalid();
+    }
     pass.endRenderPass();
+    activeRegions = nullptr;
     activeKind = TargetKind::NONE;
     activeIndex = -1;
     activeFramebuffer = nullptr;
 }
 
 bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad){
+    flushDeferredComposite();
     endPass();
     if (!framebuffer.isCreated())
         return false;
-
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     // ignored by a pass without a depth-stencil attachment
     pass.setDepthStencilActions(depthStencilLoad, StoreAction::STORE, 1.0f, 0);
@@ -982,6 +1016,10 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     activeKind = kind;
     activeIndex = index;
     activeFramebuffer = &framebuffer;
+    // an MSAA layer on GL: what its resolve image may lack is tracked (the other backends resolve
+    // the whole render area at every pass end)
+    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && framebuffer.getRender().getSampleCount() > 1) ? &regionsOf(framebuffer)
+                                                                                                                    : nullptr;
     stats.passes++;
 
     // the viewport and the scissor, nothing else: pipelines are applied per draw
@@ -990,12 +1028,88 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     appliedScissor = Rml::Rectanglei::MakeInvalid();
     applyPassViewport(full);
     applyPassScissor(full);
+
+    // a clear changes the samples where they held something: the resolve image differs there
+    if (activeRegions && colorLoad == LoadAction::CLEAR){
+        activeRegions->stale = unite(activeRegions->stale, activeRegions->content);
+        activeRegions->content = Rml::Rectanglei::MakeInvalid();
+    }
     return true;
 }
 
+RmlRenderer::TargetRegions& RmlRenderer::regionsOf(const Framebuffer& framebuffer){
+    auto it = regions.find(&framebuffer);
+    if (it != regions.end())
+        return it->second;
+    // not seen since it was made: anything may be in it
+    TargetRegions unknown;
+    unknown.content = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
+    unknown.stale = unknown.content;
+    return regions.emplace(&framebuffer, unknown).first->second;
+}
+
+void RmlRenderer::noteColorWrite(){
+    if (!activeRegions)
+        return;
+    Rml::Rectanglei written = intersect(appliedViewport, appliedScissor);
+    if (isEmpty(written))
+        return;
+    // A pixel of margin: Mesa's MSAA rasterizer covers samples of the row above and the column left
+    // of a scissor (MsaaScissor.HtmlUIClipEdge); a resolve limited to the scissor would drop them and
+    // differ from a full one. The resolve is clamped to the target (endPass).
+    written = written.Extend(1);
+    activeRegions->content = unite(activeRegions->content, written);
+    activeRegions->stale = unite(activeRegions->stale, written);
+}
+
+void RmlRenderer::ensureResolved(Framebuffer& layer){
+    if (layer.getRender().getSampleCount() <= 1)
+        return;
+    if (activeFramebuffer == &layer){
+        endPass(true);
+        return;
+    }
+    if (!Engine::isOpenGL() || isEmpty(regionsOf(layer).stale))
+        return;
+    // a pass that only resolves
+    int index = -1;
+    const TargetKind kind = kindOf(layer, index);
+    if (beginPass(layer, kind, index, LoadAction::LOAD, LoadAction::LOAD))
+        endPass(true);
+}
+
+namespace {
+    std::atomic<bool> compositeFusion{true};
+}
+
+void RmlRenderer::setCompositeFusionForTesting(bool enabled){
+    compositeFusion = enabled;
+}
+
+void RmlRenderer::flushDeferredComposite(){
+    if (deferred.layer < 0 || fusingDeferred)
+        return;
+    const DeferredComposite d = deferred;
+    deferred = DeferredComposite();
+    Framebuffer* layer = target ? target->getLayer(d.layer) : nullptr;
+    Framebuffer* post = target ? target->postprocess[d.post].get() : nullptr;
+    if (!layer || !post || d.layer >= layersSize)
+        return;
+    // what CompositeLayers would have drawn
+    PostDraw draw;
+    draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    draw.source = &post->getRender().getColorTexture();
+    draw.scissor = d.scissor;
+    drawPost(*layer, LoadAction::LOAD, draw, d.state);
+}
+
 bool RmlRenderer::bindLayer(int index){
+    flushDeferredComposite();
     if (!target || index < 0 || index >= layersSize)
         return false;
+    // drawing on into the open pass (every draw comes here): the layer exists
+    if (activeKind == TargetKind::LAYER && activeIndex == index && activeFramebuffer && activeFramebuffer == target->getLayer(index))
+        return true;
     Framebuffer* layer = target->ensureLayer(index);
     if (!layer)
         return false;
@@ -1016,6 +1130,19 @@ bool RmlRenderer::bindLayer(int index){
 
 bool RmlRenderer::bindTopLayer(){
     return bindLayer(layersSize - 1);
+}
+
+bool RmlRenderer::bindDrawLayer(bool stencilOnly){
+    // a clip mask drawn while the top layer is a deferred composite (a backdrop with a rounded
+    // border box): every layer shares layer 0's depth-stencil, so the layer under it takes the
+    // stencil draw, the one the composite goes to next
+    if (stencilOnly && deferred.layer >= 1 && deferred.layer == layersSize - 1){
+        fusingDeferred = true;
+        const bool bound = bindLayer(deferred.layer - 1);
+        fusingDeferred = false;
+        return bound;
+    }
+    return bindTopLayer();
 }
 
 void RmlRenderer::ensureLayerCleared(int index){
@@ -1043,6 +1170,7 @@ RmlRenderer::TargetKind RmlRenderer::kindOf(const Framebuffer& framebuffer, int&
 }
 
 bool RmlRenderer::bindTarget(Framebuffer& framebuffer, LoadAction load){
+    flushDeferredComposite();
     int index = -1;
     const TargetKind kind = kindOf(framebuffer, index);
     if (kind == TargetKind::LAYER)
@@ -1078,6 +1206,8 @@ void RmlRenderer::drawFullscreenProgram(ObjectRender& program, const PipelineSta
         applyUniforms(program);
     program.draw(0, 3, 1);
     stats.drawCalls++;
+    if (state.writeMask != ColorWriteMask::NONE)
+        noteColorWrite();
 }
 
 bool RmlRenderer::drawPost(Framebuffer& dst, LoadAction load, const PostDraw& draw, const PipelineState& state){
@@ -1113,7 +1243,7 @@ bool RmlRenderer::drawPost(Framebuffer& dst, LoadAction load, const PostDraw& dr
 }
 
 void RmlRenderer::stencilClear(uint8_t value){
-    if (!bindTopLayer())
+    if (!bindDrawLayer(true))
         return;
     const Rml::Rectanglei scissor = currentScissorTarget();
     if (isEmpty(scissor))
@@ -1139,7 +1269,7 @@ void RmlRenderer::stencilClear(uint8_t value){
 }
 
 bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state){
-    if (!bindTopLayer())
+    if (!bindDrawLayer(state.writeMask == ColorWriteMask::NONE))
         return false;
     // clipped away: sokol widens an empty scissor to 1x1 on Metal/Vulkan/WebGPU
     const Rml::Rectanglei scissor = currentScissorTarget();
@@ -1162,6 +1292,8 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
     geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
     geometryObject.draw(0, indexCount, 1);
     stats.drawCalls++;
+    if (state.writeMask != ColorWriteMask::NONE)
+        noteColorWrite();
     return true;
 }
 
@@ -1254,8 +1386,11 @@ void RmlRenderer::PopLayer(){
         Log::error("[HTML UI] PopLayer without a pushed layer");
         return;
     }
-    // the next draw switches back to the new top layer
+    // the next draw switches back to the new top layer; a deferred composite into the popped
+    // layer is dropped with it (its content is never read again)
     layersSize--;
+    if (deferred.layer >= layersSize)
+        deferred = DeferredComposite();
 }
 
 void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandle destinationHandle, Rml::BlendMode blendMode,
@@ -1270,6 +1405,28 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
         return;
     }
 
+    // the second composite of a backdrop: the filter output straight into the destination,
+    // within both composites' scissors (the layer is transparent beyond the first's)
+    if (deferred.layer == source && filters.empty() && blendMode == Rml::BlendMode::Blend){
+        Framebuffer* post = postTarget(deferred.post);
+        Framebuffer* destinationLayer = target->ensureLayer(destination);
+        const Rml::Rectanglei scissor = intersect(deferred.scissor, currentScissorTarget());
+        if (post && destinationLayer){
+            if (!isEmpty(scissor)){
+                PostDraw draw;
+                draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+                draw.source = &post->getRender().getColorTexture();
+                draw.scissor = scissor;
+                fusingDeferred = true;
+                drawPost(*destinationLayer, LoadAction::LOAD, draw, getGeometryState(BlendMode::PREMULTIPLIED));
+                fusingDeferred = false;
+            }
+            stats.compositesFused++;
+            return;
+        }
+    }
+    flushDeferredComposite();
+
     // a layer nothing was drawn into is transparent: blending or adding it changes nothing
     if (blendMode != Rml::BlendMode::Replace && source < (int)layerClearPending.size() && layerClearPending[source])
         return;
@@ -1278,9 +1435,8 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
     Framebuffer* sourceLayer = target->getLayer(source);
     if (!sourceLayer)
         return;
-    // its pass ends, so it is resolved and can be read
-    if (activeFramebuffer == sourceLayer)
-        endPass();
+    // resolved, so it can be read
+    ensureResolved(*sourceLayer);
 
     RmlFilterContext context(*this, *sourceLayer);
     if (!filters.empty()){
@@ -1305,6 +1461,15 @@ void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandl
     Framebuffer* destinationLayer = target->ensureLayer(destination);
     if (!destinationLayer)
         return;
+    // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
+    if (compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
+        destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(currentScissorTarget())){
+        deferred.layer = destination;
+        deferred.post = context.primaryIndex;
+        deferred.scissor = currentScissorTarget();
+        deferred.state = getGeometryState(BlendMode::PREMULTIPLIED);
+        return;
+    }
     PostDraw draw;
     draw.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
     draw.source = &context.primary().getRender().getColorTexture();
@@ -1510,8 +1675,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     Framebuffer* layer = target->getLayer(top);
     if (!layer)
         return 0;
-    if (activeFramebuffer == layer)
-        endPass();
+    ensureResolved(*layer);
 
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::RENDER_TARGET;
@@ -1561,8 +1725,7 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
     Framebuffer* layer = target->getLayer(top);
     if (!layer)
         return 0;
-    if (activeFramebuffer == layer)
-        endPass();
+    ensureResolved(*layer);
 
     // textureDimensions and destinationOffset are in document px; the layer holds target pixels.
     // The texture is made at the target's scale, as SaveLayerAsTexture makes its texture the size
@@ -1629,8 +1792,7 @@ Rml::CompiledFilterHandle RmlRenderer::SaveLayerAsMaskImage(){
     Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
     if (!layer || !mask)
         return 0;
-    if (activeFramebuffer == layer)
-        endPass();
+    ensureResolved(*layer);
 
     PostDraw copy;
     copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
@@ -1845,6 +2007,7 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::Comp
     gradientObject.applyUniformBlock(gradientFsSlot, sizeof(GradientParams), &gradient);
     gradientObject.draw(0, indexCount, 1);
     stats.drawCalls++;
+    noteColorWrite();
 }
 
 void RmlRenderer::ReleaseShader(Rml::CompiledShaderHandle shader){
@@ -2028,6 +2191,13 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
 
     target = &renderTarget;
     targetSize = Rml::Vector2i(renderTarget.getWidth(), renderTarget.getHeight());
+    // the tracked regions hold for these framebuffers only
+    activeRegions = nullptr;
+    deferred = DeferredComposite();
+    if (regionsGeneration != target->getGeneration()){
+        regions.clear();
+        regionsGeneration = target->getGeneration();
+    }
 
     // document pixels to clip space; the viewport maps them onto the target's pixels, which
     // is the resolution scaling. GL renders offscreen Y-flipped, so the target's row 0 is
@@ -2072,9 +2242,11 @@ bool RmlRenderer::endFrame(){
     if (layersSize != 1)
         Log::error("[HTML UI] a frame ended with %d layers pushed", layersSize - 1);
 
-    // layer 0 is cleared even when nothing was drawn, and resolved by its pass end
+    // layer 0 is cleared even when nothing was drawn, and resolved
     layersSize = std::max(layersSize, 1);
     ensureLayerCleared(0);
+    if (Framebuffer* layer = target->getLayer(0))
+        ensureResolved(*layer);
     endPass();
 
     stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);

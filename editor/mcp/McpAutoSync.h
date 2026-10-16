@@ -79,6 +79,15 @@ namespace jasperengine::editor::mcp {
         void afterCall(McpContext& ctx, const std::string& tool,
                        std::chrono::system_clock::time_point start, std::chrono::system_clock::time_point end);
 
+        // A call that may write files starts its handler (McpServer; afterCall ends it): while one
+        // runs, the editor's HTML UI poller holds, so the call's writes reload once, with its sync
+        // (p5-tooling)
+        // (a call that never completes stops holding it after 10 minutes)
+        void callStarted() { writingCalls++; lastCallStart = std::chrono::steady_clock::now(); }
+        bool writingCallInFlight() const {
+            return writingCalls > 0 && std::chrono::steady_clock::now() - lastCallStart < std::chrono::minutes(10);
+        }
+
         // Whether a call may write project files, so it needs afterCall: read-only tools don't,
         // except where they save a file on request (screenshot save_path)
         static bool mayWriteFiles(bool readOnly, const Json& args);
@@ -125,6 +134,8 @@ namespace jasperengine::editor::mcp {
             bool report = true;
         };
 
+        int writingCalls = 0;                      // callStarted() without afterCall yet
+        std::chrono::steady_clock::time_point lastCallStart{};
         std::filesystem::path root;                // project folder of the baseline; empty = none
         int64_t serverStartNs = 0;                 // serverStarted(), ns since the Unix epoch
         bool startupBaselineTaken = false;

@@ -4,7 +4,7 @@
 // @category   interactive
 // @summary    A fading paint stroke that follows the pointer
 // @source     shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
-// @cost       low
+// @cost       medium
 // @pointer    trail
 // @param      colors palette "#00aaff #ff00aa" -- Colours of the stroke from fresh to old
 // @param      radius length 18px 2px 128px -- Radius of the stroke

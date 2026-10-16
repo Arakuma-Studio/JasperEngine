@@ -15,6 +15,7 @@
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/css/CssRewriter.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
+#include "htmlui/effects/EffectInstancers.h"
 #include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -1219,6 +1220,15 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         }
     }
     out.flags = flagsOf(doc, element);
+    for (EffectUse& use : collectEffectUses(element)){
+        InspectEffect effect;
+        effect.property = use.property;
+        effect.index = use.index;
+        effect.name = use.name;
+        effect.form = use.filterForm ? "filter" : "paint";
+        effect.params = std::move(use.params);
+        out.effects.push_back(std::move(effect));
+    }
     return out;
 }
 

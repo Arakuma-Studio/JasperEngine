@@ -1939,7 +1939,13 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         for (ProjectChecks::ShaderUse& use : forks) {
             const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
-            run.findings.insert(run.findings.end(), check.findings.begin(), check.findings.end());
+            // a UI effect's forms (phase 5) share their source: an error is reported once
+            for (const ProjectChecks::Finding& finding : check.findings) {
+                const bool seen = std::any_of(run.findings.begin(), run.findings.end(), [&](const ProjectChecks::Finding& f) {
+                    return f.path == finding.path && f.line == finding.line && f.col == finding.col && f.message == finding.message;
+                });
+                if (!seen) run.findings.push_back(finding);
+            }
         }
         run.checked.push_back({"shaders", forks.size()});
     }
@@ -2190,80 +2196,6 @@ namespace fx = ::jasperengine::htmlui;
 
 namespace {
 
-    // a parameter's range as written in manifests ("-180deg..180deg", "0%..100%")
-    std::string effectRangeText(const fx::EffectParamDef& def) {
-        if (def.type == fx::EffectParamType::Enum)
-            return "";
-        if (!def.hasRange)
-            return "";
-        auto number = [](double v) {
-            char text[64];
-            std::snprintf(text, sizeof(text), "%.6g", v);
-            return std::string(text);
-        };
-        auto value = [&](float v) {
-            switch (def.type) {
-                case fx::EffectParamType::Angle: return number(v * 180.0 / 3.14159265358979323846) + "deg";
-                case fx::EffectParamType::Time: return number(v) + "s";
-                case fx::EffectParamType::Length: return number(v) + "px";
-                case fx::EffectParamType::Percentage: return number(v * 100.0) + "%";
-                default: return number(v);
-            }
-        };
-        return value(def.minValue) + ".." + value(def.maxValue);
-    }
-
-    // one CSS declaration using the effect (its first simple parameter at its default)
-    std::string effectExample(const fx::EffectManifest& m) {
-        std::string call = "effect(" + m.name;
-        for (const fx::EffectParamDef& def : m.params) {
-            if (def.type == fx::EffectParamType::Palette || def.type == fx::EffectParamType::Position ||
-                def.type == fx::EffectParamType::Color || def.defaultText.empty())
-                continue;
-            call += ", " + def.name + " " + def.defaultText;
-            break;
-        }
-        call += ")";
-        if (m.kind == fx::EffectKind::Paint)
-            return "background-image: " + call + ";";
-        return std::string(m.backdrop ? "backdrop-filter: " : "filter: ") + call + ";";
-    }
-
-    nlohmann::json effectJson(const fx::EffectManifest& m) {
-        nlohmann::json params = nlohmann::json::array();
-        for (const fx::EffectParamDef& def : m.params) {
-            nlohmann::json p = {{"name", def.name}, {"type", fx::effectParamTypeName(def.type)}, {"default", def.defaultText},
-                                {"range", effectRangeText(def)}, {"description", def.description}, {"uniform", def.uniform}};
-            if (def.hasRange && def.type != fx::EffectParamType::Enum) {
-                p["min"] = def.minValue;
-                p["max"] = def.maxValue;
-            }
-            if (!def.options.empty())
-                p["options"] = def.options;
-            params.push_back(std::move(p));
-        }
-        auto scaled = [](const fx::EffectScaledParam& s) {
-            if (s.param.empty())
-                return nlohmann::json(std::to_string(s.addPx) + "px");
-            return nlohmann::json({{"param", s.param}, {"scale", s.scale}, {"addPx", s.addPx}});
-        };
-        nlohmann::json entry = {
-            {"name", m.name}, {"kind", fx::effectKindName(m.kind)}, {"category", m.category}, {"summary", m.summary},
-            {"source", m.source}, {"cost", fx::effectCostName(m.cost)}, {"backdrop", m.backdrop},
-            {"pointer", fx::effectPointerName(m.pointer)}, {"time", m.timeParams}, {"suggestFor", m.suggestFor},
-            {"params", params}, {"builtin", m.builtin}, {"path", m.builtin ? "engine/shaderlib/" + m.sourcePath : m.sourcePath},
-            {"example", effectExample(m)},
-            {"thumbnail", m.builtin ? "docs/mcp/guide/img/effects/" + m.name + ".png" : std::string()}};
-        if (m.hasPrepass) {
-            entry["prepass"] = {{"blur", scaled(m.prepassSigma)}, {"threshold", m.prepassThreshold}};
-        }
-        if (!m.margin.param.empty() || m.margin.addPx != 0.f)
-            entry["margin"] = scaled(m.margin);
-        if (m.boundsGeometry)
-            entry["geometry"] = {{"bounds", scaled(m.boundsExtent)}};
-        return entry;
-    }
-
     bool readFileText(const fs::path& path, std::string& content) {
         std::ifstream file(path, std::ios::binary);
         if (!file)
@@ -2416,7 +2348,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
     if (json) {
         nlohmann::json list = nlohmann::json::array();
         for (const fx::EffectManifest* m : effects)
-            list.push_back(effectJson(*m));
+            list.push_back(ProjectChecks::uiEffectJson(*m));
         nlohmann::json out = {{"effects", list}};
         if (validate)
             out["problems"] = problems;
@@ -2425,7 +2357,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
         for (const fx::EffectManifest* m : effects) {
             std::cout << m->name << "  " << fx::effectKindName(m->kind) << ", " << m->category << ", cost " << fx::effectCostName(m->cost)
                       << (m->backdrop ? ", backdrop" : "") << (m->builtin ? "" : ", project " + m->sourcePath) << "\n    " << m->summary << "\n    "
-                      << effectExample(*m) << "\n";
+                      << ProjectChecks::uiEffectExample(*m) << "\n";
         }
         std::cout << effects.size() << " effects\n";
         for (const std::string& problem : problems)

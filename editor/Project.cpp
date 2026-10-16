@@ -3032,7 +3032,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         prefabContents.push_back(std::move(content));
     }
 
-    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys);
+    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath());
 }
 
 void editor::Project::buildStandaloneShaderCache() {

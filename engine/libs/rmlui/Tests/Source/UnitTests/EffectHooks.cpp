@@ -21,6 +21,7 @@ using namespace Rml;
 // - P5-2: Decorator::PaintsOwnClip, a background layer drawn without a clip mask.
 // - P5-3: DecoratorInstancer::InterpolatesAsImageLayer, background-image lists interpolating decorator layers.
 // - P5-5: the region of a filter covers its subtree's ink overflow, not the empty boxes of collapsed whitespace.
+// - P5-6: image-layer lists parsed once per text (a var() resolved the same way again shares the list).
 
 namespace {
 
@@ -308,5 +309,69 @@ TEST_CASE("EffectHooks.filter_region_of_the_subtree")
 	CHECK(region.Bottom() == doctest::Approx(150.f));
 
 	document->Close();
+	TestsShell::ShutdownShell();
+}
+
+TEST_CASE("EffectHooks.image_layers_parsed_once_per_text")
+{
+	Context* context = TestsShell::GetContext();
+	REQUIRE(context);
+	LayerDecoratorInstancer first(true, true);
+	Factory::RegisterDecoratorInstancer("fx-layer", &first);
+
+	// the var() of four elements resolves to the same text in each, every time it is resolved (style, geometry, clip)
+	ElementDocument* document = context->LoadDocumentFromMemory(R"(
+<rml>
+<head>
+	<style>
+		body { display: block; width: 400px; height: 300px; --k: 3; }
+		div { display: block; width: 100px; height: 50px; background-image: fx-layer(var(--k)); }
+	</style>
+</head>
+<body><div id="a"/><div id="b"/><div id="c"/><div id="d"/></body>
+</rml>
+)");
+	REQUIRE(document);
+	document->Show();
+	context->Update();
+	context->Render();
+	Element* a = document->GetElementById("a");
+	Element* d = document->GetElementById("d");
+	CHECK(LayerValue(a) == doctest::Approx(3.f));
+
+	const uint64_t hits_before = GetImageLayerParseCacheHits();
+	document->SetProperty("--k", "7");
+	context->Update();
+	context->Render();
+	CHECK(LayerValue(a) == doctest::Approx(7.f));
+	CHECK(LayerValue(d) == doctest::Approx(7.f));
+	// one parse of "fx-layer(7)", the other resolutions share it
+	CHECK(GetImageLayerParseCacheHits() - hits_before >= 3);
+	const Property* pa = a->GetProperty(PropertyId::BackgroundImage);
+	const Property* pd = d->GetProperty(PropertyId::BackgroundImage);
+	REQUIRE(pa);
+	REQUIRE(pd);
+	const StyleValuePtr list_a = pa->value.GetReference<StyleValuePtr>();
+	const StyleValuePtr list_d = pd->value.GetReference<StyleValuePtr>();
+	CHECK((list_a.get() == list_d.get()));
+
+	// a decorator instancer registered again: its lists are parsed again, with it
+	LayerDecoratorInstancer second(true, true);
+	Factory::RegisterDecoratorInstancer("fx-layer", &second);
+	document->SetProperty("--k", "3");
+	context->Update();
+	document->SetProperty("--k", "7");
+	context->Update();
+	const Property* pa2 = a->GetProperty(PropertyId::BackgroundImage);
+	REQUIRE(pa2);
+	const auto* list = rmlui_dynamic_cast<const ImageLayerList*>(pa2->value.GetReference<StyleValuePtr>().get());
+	REQUIRE(list);
+	REQUIRE(bool(list->decorators));
+	REQUIRE(list->decorators->list.size() == 1);
+	CHECK((list->decorators->list[0].instancer == &second));
+	CHECK((pa2->value.GetReference<StyleValuePtr>().get() != list_a.get()));
+
+	document->Close();
+	context->Update();
 	TestsShell::ShutdownShell();
 }

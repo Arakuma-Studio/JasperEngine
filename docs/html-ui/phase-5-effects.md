@@ -1523,6 +1523,193 @@ build-settings round-trip of `uieffect/<name>` additions, hot reload of project 
 the `.sdat` list and the license file), `test_checks.py`, `test_autosync.py`,
 `test_protocol.py` and `test_ui_anchors.py`.
 
+#### p5-tooling as implemented
+
+Built as specified (3.8 collection and export, 3.10 hot reload and `check`, 3.13 MCP tools, 3.16
+notice, 5.4-5.7), with these differences. Wave 2 builds on them.
+
+- **Collection** (`ShaderVariantCollector`). `collectScene(scene, content, prefabs, keys, projectRoot)`
+  takes the project root (`Project::collectRequiredShaderKeys` passes it; empty = no effects) and
+  calls `collectUiEffects(documents, projectRoot, keys)` for the scene's and its prefabs' UI
+  Documents. A document is compiled through compat with the project's files
+  (`DocumentLoader::compile(path, options, ProjectChecks::projectFiles(root))`, not cached), which
+  also declares its `@effect`s; `scanUiEffects` reads the typed RCSS (`jfx-<name>(`) of its sheets,
+  hints, `!important` sheet and style attributes, and every file the compile read **as written**
+  (comments blanked), so an effect only a `@media` block the conversion drops on this device uses
+  (`(hover: none)`, `(pointer: coarse)`: static features evaluated at load) is collected too. The
+  form comes from the declaration's property: `background(-image)`, `mask(-image)`, `decorator` →
+  paint; `filter`, `backdrop-filter`, `-jfx-text-fill` (gradient text) → filter; a custom property
+  (`--bg: effect(...)`) → both. The documents' own scripts and every `.lua` of the project are
+  scanned for `effect(<name>`; a paint effect named there adds both forms. A declared project effect
+  is exported where it is used, like a built-in: a declared but unused one is not (the "unused effect
+  not exported" case); so is a `.frag` nothing declares. `addUiEffectKeys` adds `_bright` for a
+  prepass with a threshold.
+- **Notice.** `Exporter::writeEffectLicense` copies `shaderlib/effects/LICENSE.shaders-com.txt` to
+  `<export>/licenses/shaders.com-LICENSE.txt` whenever the exported keys contain **any** UI_EFFECT
+  variant, not only a built-in whose `@source` is shaders.com: every effect (a project one too) is
+  compiled with the include library, which ports kit functions under that license (the notice says
+  so). Desktop and Web copy it next to the player (`copyLicenses`); a stale one is removed.
+- **Project effects in an assets directory.** A project effect's custom name is its asset path (as
+  `@effect` registers it and the shipped game reads it); `ShaderBuilder::resolveCustomSources` read
+  custom sources from the project root only, so an effect failed to build ("Shader build failed")
+  in a project whose `assetsDir` is not its root (the MCP fixture). A fragment-only custom shader's
+  files are now read from the assets directory first, then the project root.
+- **Hot reload.** `UIDocumentSystem::reloadChangedFiles` calls `EffectRegistry::onProjectFileChanged`
+  for every file whose stamp changed, before the documents reload: a project effect's `.frag`
+  re-parses and recompiles it, and a `.glsl` it `#include`s recompiles every effect including it
+  (`ProjectEffect::includes`, every path the includes resolved to or were looked for at;
+  `includeFilesOf(name)`; compat adds them to the document's dependencies, so the document
+  reloader stamps them and reloads the document when one changes). `onProjectFileChanged` now
+  **forgets** a declaration whose file is gone or whose manifest no longer parses (it kept the old
+  manifest, so the reloading document re-declared nothing and reported nothing): the reload reports
+  `HTMLUI-FX-0013`/`-0014` (at the `.frag` line) in the document's diagnostics and the effect is
+  not drawn; the fixed or restored file is declared again by the next reload. New
+  `EffectRegistry::setProjectEffectListener(fn)`: called after a project effect's variants were
+  dropped; the editor (`App.cpp`) drops `ShaderBuilder`'s compiled cache of project shaders there
+  (the engine cannot reach it), so the editor's own poller (`HtmlUIWatcher`) recompiles too.
+  Renaming a `.frag` during play showed three more gaps, fixed in the registry:
+  `declareProjectEffect` replaces a declaration whose earlier src no longer exists (it was an
+  `HTMLUI-FX-0012` conflict until restart); `forgetMissingProjectEffects()` (called first by
+  `reloadChangedFiles`) forgets declarations whose file is gone even when no loaded document reads
+  it (the stopped play scene's), and forgetting one clears compat's compile cache
+  (`DocumentLoader::clearCache`: a cache hit runs no `@effect`, so the edit-mode document whose CSS
+  is back to an earlier text would keep the stale binding); re-registering an effect's instancers
+  clears RmlUi's style-sheet cache (`Rml::Factory::ClearStyleSheetCache`: the RCSS text of a sheet
+  does not change with its `@effect` src, so a cached sheet kept the replaced decorators). The
+  phase-1 race (a file changed while a document was reloading, e.g. right after play stops, was
+  stamped as seen and never reloaded) is fixed: the reloader takes the stamps of the files it
+  expects to read (the previous load's files, the document, the scanner's references) *before*
+  loading and records those (`HtmlUIReloadState::stampsOf`, `recordStamps(document, before)`), so
+  a write during the load leaves a stamp that differs next time. `TestDocumentReload.
+  FileChangedDuringAReloadIsReloadedNext` writes the file inside that window through
+  `UIDocumentSystem::setLoadedHookForTesting` (style-sheet-only and full reloads); the MCP rename
+  test no longer waits for the edit view. Undoing the rename at once showed two more gaps, fixed:
+  the edit-mode document restyled with the original CSS kept the decorators of the effect
+  declared from the renamed file (an effect value whose text does not change is not instanced
+  again), so `reloadChangedFiles` now loads a document in full when the project effects changed
+  during its stylesheet-only reload (`EffectRegistry::projectGeneration()`); and the variants of
+  the restored file had failed while it was gone (an instance asked for them) and `ShaderPool`
+  remembers failures, so a new declaration removes them (`EffectHotReload.
+  RedeclarationRetriesVariantsThatFailed`, `UIDocumentReloadTest.
+  ProjectEffectChangeDuringARestyleReloadsInFull`). Each change reloads once, whichever path
+  sees it first (the agent-sim test once counted an extra reload): the editor's poller ran between
+  files an agent writes back to back, or inside an MCP call between its writes (import_files'
+  manifest, files and rewrite). The poller now waits until a document's changed files are older
+  than 0.3 s (`reloadChangedFiles(files, settleSeconds)`; the MCP pick-up and a code-editor save
+  reload at once) and holds while an MCP call that may write files runs
+  (`UIDocumentReloadTest.SettleWindowReloadsABatchOfWritesOnce`; `test_html_ui_agent_sim.py::
+  test_fix_and_reload` stamps its three-file edit as one and counts the reloads exactly). `w4::isHtmlUiFile` takes `.frag` and `.glsl`; during play
+  `McpAutoSync` reloads the documents of a changed effect `.frag`, `.glsl` (or a removed `.frag`)
+  instead of deferring it as a shader. `test_include_edit_reloads` (MCP) and
+  `EffectHotReloadTest.IncludesAreDependencies` cover the includes.
+- **`check`** (`ProjectChecks`). `ShaderUse` gained `properties` (the form). `isUiEffectFile`,
+  `uiEffectUses` (paint: both forms; filter, or a manifest that does not parse: the filter form),
+  `uiEffectFiles`, `uiEffectFile`; `shaderForksUsingFiles` gives an effect `.frag`'s forms (a `.glsl`
+  checks every effect too), `shaderForksInProject` adds every effect `.frag`; `guessShaderType` and
+  `shaderTypeName` know `ui_effect`. `runShaderCheck` checks the manifest first (`HTMLUI-FX-0014` at
+  its line; a built-in's name `HTMLUI-FX-0012`; a missing file `-0013`), then compiles (errors
+  `HTMLUI-FX-0015` at the `.frag` or include line, sources shown project-relative), then checks the
+  compiled parameter block against the manifest (`checkReflection`; `HTMLUI-FX-0014` at the
+  `@param` line). `toJson(ShaderCheck)` adds `effect`, `form` and, on failure, `code`. The two forms
+  of a paint effect fail alike: `check`, `check_shader` and the auto-sync report an error once.
+  `uiEffectJson`/`uiEffectExample` moved from `CommandLine.cpp` (the `ui-effects --json` entry) so
+  `list_ui_effects` gives the same entries.
+- **MCP.** `list_ui_effects {name?, category?, kind?}`: `{count, effects}`; the parameters are in
+  each entry when a name is given or at most 12 match, else `param_names` (83 full entries are
+  ~60 KB); project effects add `declared` and `path` (project-relative) and the project's `.frag`
+  effects nothing declares are listed too; an unknown name or category is an error with the
+  nearest names / the categories. `set_ui_effect_time {time: number|null}`: `{time, clock}`,
+  activity Control, every HTML UI scene redrawn. `inspect_ui`: `InspectElement::effects`
+  (`InspectEffect {property, index, name, form, params}`, from `collectEffectUses`), the JSON key
+  `effects` (omitted when empty), `fx:<name>` in the outline; its description says "effects" (+9).
+  `write_file` and `check_shader` (which takes an effect `.frag`) name the form and code
+  (`<shader> (paint form) [HTMLUI-FX-0015]: line N: ...`). `build_project`'s `shaders.add/exclude`
+  and `generate_shaders`' `shaders` also take specs (`uieffect/<name>[:Flt]`, `uieffect/all`).
+  Budget (`tool_budget.py`, fixture): before 133 tools, 99,006 characters; after 135, 99,843:
+  `list_ui_effects` 559, `set_ui_effect_time` 269, `inspect_ui` 1,806 → 1,815; `test_budget` caps
+  `list_ui_effects` 900, `set_ui_effect_time` 500, `inspect_ui` 1,806 + 150 and the total
+  99,800 + 837. `gen_tool_docs.py` `MODULES` has `UIEffectTools` in "HTML/CSS UI".
+- **Tests against the reference effects.** Wave 1 has 5 effects, so 5.5 uses them: `aurora` →
+  `stripes`, `holographic` text → `stripes` with `background-clip: text`, `sheen` with a hover
+  transition → `spotlight`; `list_ui_effects` returns every registered effect (not >= 83) and
+  `category: "glass"` returns `frosted-glass` (wave 2 adds the other three). 5.4's cost table
+  enumerates `EffectRegistry::all()`, so wave 2's effects join it with no change. 5.4's metric is
+  the main thread's CPU time of a frame (`RenderTestContext`: compat runtime, `Context::Update`, the
+  render submission and its composite), the median of 120 frames, the least of up to 5 runs as in
+  `PerfFixtures.h`; the cost table's time is the process's CPU time of a render + readback (the GL
+  driver's threads draw). The export test is `test_html_ui_effects_export.py` (its CLI export
+  builds GLSL 410 and GLSL 300 es, the web's, so 5.6's "web export contains glsl300es" is checked
+  there; the Desktop player is built without the runtime shader compiler). `EffectHotReloadTest`
+  covers the registry's reload rules.
+- **Measured (5.4, glcore on llvmpipe, this host).** The cost table puts `cursor-trail` (with the
+  golden harness's 12-point trail) at 8.2 x the fill, above `low`'s bound of 6: its `@cost` is now
+  `medium` (3.14: classes are measured; Appendix A said L). The others: `stripes` 1.9, `spotlight`
+  1.2, `pixelate` 2.4 (low), `frosted-glass` 3.3 (medium). The grid's counters pass (no instance,
+  compile or pipeline in the steady state; A2 re-instances 3 + 16 a frame, since 3.6's decorators
+  are shared by equal values, not 64, and every element follows). The first measurements (before
+  the work below): glcore B 0.34 ms, C 5.83, A 7.20 (budget 1.51), A2 10.68 (budget 5.02); Vulkan
+  (lavapipe) B 0.38, C 1.58, A 2.05 (budget 1.58), A2 4.62 (budget 5.15). A document C has A's
+  layers drawn by RmlUi's own filters (`brightness()`, `blur()`); the test also checks CPU(A) <=
+  1.5 x CPU(C) + 1 ms, the effect system's own work.
+- **The cost table over the catalogue (after wave 2).** `EffectPerfTest.CostTable` measures the 83
+  effects one row each (an effect that does not compile or render fails its row, the others are
+  still measured; the count is checked) and takes the fill as the least of 5 averages (one high
+  sample of the fill lowered every ratio). Merged tree: every effect within its class on Vulkan
+  (fill 207 ms; `cursor-trail` 9.0, `multi-point-gradient` 3.5) and on glcore with the fill at
+  134-155 ms (`cursor-trail` 8.2-8.7, the highest `low` ones `multi-point-gradient` 4.7-4.9,
+  `water-ripple` 3.0-4.3). One glcore run on an idle host (load 3) measured the fill at 95 ms and
+  `multi-point-gradient` (low) at 7.1 x, over `low`'s 6: on llvmpipe the fill's process time falls
+  more than the effects' when the host is idle, so a calm gate may see it there (reported, its
+  class unchanged).
+- **The layer path (after review: "fix the real cost").** Profiled with callgrind (main thread,
+  instructions per frame of the grid; `--separate-threads`, collection toggled on the frame),
+  timed with the test's clock. What a frame cost and why:
+  - *GL resolves.* sokol's GL backend resolved every MSAA layer at every pass end (a
+    `glBlitFramebuffer`, a scene of its own on llvmpipe). `RmlRenderer` now resolves a layer only
+    when it is read (`CompositeLayers`, `SaveLayerAs*`, `endFrame`: `ensureResolved`) and only over
+    what was written since its last resolve (`TargetRegions`: the rect outside which the layer is
+    transparent and the rect outside which its resolve image is current, the scissor of the blit; a
+    pixel of margin for Mesa's MSAA scissor edge, `MsaaScissor.HtmlUIClipEdge`). Vulkan resolves
+    the whole render area at every pass end (the regions stay empty there).
+  - *Backdrops.* RmlUi draws a backdrop filter into a pushed layer and composites that layer into
+    the destination at once; the second composite now draws the filter output straight into the
+    destination (`DeferredComposite`; the pushed layer's pass and resolve are skipped; a clip mask
+    drawn between the two composites goes to the layer under it, they share the stencil; anything
+    else that touches the layer draws it in first). Byte-identical:
+    `RenderP1Test.BackdropCompositeFusedExactly` renders six backdrop pages both ways.
+  - *Draws.* sokol objects memoize their last dynamic pipeline (`SokolPipelineCache::get(base,
+    baseHash, state)`, `generation()`): no layout hash per draw. The effect seed is computed once per
+    instance.
+  - *A2's styles (fork P5-6).* Every A2 frame resolved each paint's `background-image` (a `var()`)
+    three times per element (style, colour clip, geometry) and parsed each: 59 % of A2's main thread
+    on Vulkan was the image-layer parser. Lists are now parsed once per text (FORK.md P5-6): A2 on
+    Vulkan 18.7 M -> 8.5 M instructions a frame. (A2's instructions are the same with and without
+    p5-property's merge: 93.60 M and 93.56 M for 5 frames.)
+  - No `glFinish`, `glFlush`, `glReadPixels` or `glGetTexImage` in a measured frame (callgrind);
+    `glFinish` is called by the test harness's readback (`harness/Readback.cpp`) and the editor's
+    `GraphicUtils` only.
+  - Goldens: every golden image the glcore suite writes is pixel-identical before and after
+    (`JASPER_HTMLUI_UPDATE_GOLDEN=1` runs of html-ui's renderer and of this one; the 19 committed
+    PNGs that this host renders a few levels off, within their tolerance, are the same in both).
+- **Result.** *Vulkan (lavapipe)* passes: `EffectPerfTest.GridSteadyStateAndBudgets` on a calm
+  host (load 8-12), final tree: B 0.368 ms, C 0.851, A 1.507 (budget 1.552), A2 3.634 (budget
+  5.105). On a loaded host (load 50-160) A is at its budget (1.45-1.75 against 1.56-1.72) and A2
+  4.3-5.2 after P5-6 (7.1-7.5 before it); the test takes the least of 5 runs. Main-thread instructions a
+  frame: B 0.65 M, A 3.6 M -> 2.4 M (the GL-only resolve change does not apply; pipelines, seed and
+  the composites do), A2 8.5 M. *glcore (llvmpipe)* cannot meet 5.4's A budget on this driver:
+  llvmpipe bins and copies state on the calling thread for every render pass (a scene: the
+  `begin_binning` of every 64 x 64 tile of the 1280 x 720 target and the `try_update_scene_state`
+  copy of the fragment state, about 125 k instructions) and again for every draw that changes
+  textures or constants. B is one pass (1.44 M instructions a frame); A's 12 filters need four
+  passes each (the layer, its resolve, the filter, the composite back) and its 4 frosted-glass
+  backdrops nine (layer 0's resolve, the prepass copy, the blur's downscale, vertical, horizontal
+  and upscale, the effect, the composite), every one required by RmlUi's layer protocol and a
+  byte-identical image: A is 17.9 M instructions a frame, 82 % of it in those two driver functions,
+  against about 6.4 M for 1.5 x B + 1 ms at B's rate; without any of the engine's own work it would
+  still be 14.7 M. C (CSS filters, no effects) is the same: 12.3 M, 88 % in the driver. A on
+  llvmpipe stays about 1.5 x C (the effect system's own budget, met). The budgets are unchanged;
+  the integrator gates them (BRIEF.md).
+
 ### 4.4 `p5-fx-paint` (wave 2)
 **Goal.** Port or author the 28 paint effects of Appendix A.2: gradients, noise, patterns,
 energy and space.
@@ -1893,6 +2080,41 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   harness (render + readback). Baseline is a `background-color` fill. The test writes
   `build/linux/htmlui-effects-cost.json` and asserts ratio ≤ 6 for `low` and ≤ 24 for
   `medium` (class bound × 1.5); `high` is unbounded.
+- **Deviation (p5-tooling, after review).** *What is gated on glcore.* The budgets keep their
+  numbers. On Vulkan (lavapipe) the frame's CPU time is gated as written. On glcore (llvmpipe)
+  the test gates the engine's own main-thread work: the frame less the time the graphics backend
+  took on the thread (`RenderBackendTime`: the sokol calls and the GL driver under them: passes,
+  viewport and scissor, pipelines, uniforms, bindings, draws, buffer and texture updates, the
+  frame commit), both on the steady clock (a wait for the driver is the driver's; the thread's
+  CPU clock is a system call, which cost more than many of the calls it timed and inflated the
+  frame itself), less the measurement's own clock reads (calibrated, about 35 ns a scope);
+  A ≤ 1.5 × B + 1 ms and A2 ≤ 3 × B + 4 ms with B measured the same way. The full frame is
+  printed, not gated. Measured on the idle remote test host (BRIEF.md, 173.249.49.126, load
+  under 10), final tree: glcore engine's own work B 0.17-0.19 ms, C 0.63-0.74, A 1.05-1.28
+  (budget 1.26-1.29: passes in 5 runs of 5, by 1 to 18 %), A2 2.54-2.90 (budget 4.52-4.57);
+  glcore full frame (reported) B 0.76-0.77, C 12.0-12.5, A 15.2-15.8, A2 16.9-17.8. Vulkan full
+  frame (gated) B 0.44-0.48, C 1.02-1.04, A 1.51-1.56 (budget 1.66-1.72), A2 3.91-4.02 (budget
+  5.32-5.44); its engine's own work A 0.44-0.46. The same engine code costs about 0.8 ms more on
+  glcore than on Vulkan: llvmpipe's per-pass work evicts the engine's caches between the calls. Why: llvmpipe sets up every render pass on
+  the calling thread (it bins every 64 × 64 tile of the 1280 × 720 target and copies the fragment
+  state, about 125 k instructions a pass) and again on draws that change state. A has 12 filters
+  of four passes each and 4 frosted-glass backdrops of nine, all required by RmlUi's layer
+  protocol and a byte-identical image: 17.9 M instructions a frame, 82 % of them in those two
+  driver functions, against about 6.4 M for 1.5 × B + 1 ms at B's rate (callgrind; "p5-tooling as
+  implemented"). A GPU driver does not have that cost. The secondary check A ≤ 1.5 × C + 1 ms is
+  dropped: A ≤ 1.5 × B + 1 ms is the same check against a cheaper reference (C has A's layers, B
+  none), so it implies it whenever C costs at least B; C is reported. *Cost table.* Each effect is
+  measured against the fill in interleaved rounds (8 captures of the fill, then 8 of the effect;
+  the least of 3 to 6 rounds for both), so the ratio does not follow the host's load: the fill
+  alone measured 95 ms idle and 650 ms at load 130, the ratios stay put. Remote host, final
+  tree: every effect within its class, the highest `low` 3.00 (glcore, `water-ripple`) and 2.74
+  (Vulkan), the highest `medium` 9.12 (glcore, `sparkle`) and 5.87 (Vulkan); `cursor-trail` 5.6
+  and 5.2 (medium, kept); `multi-point-gradient` 2.1 and 1.9 after its mix became one closed
+  form (the kit's running mix of five colours, each step leaving and re-entering the colour
+  space, is sum(c a w) / sum(a w) with alpha sum(a w) / sum(w): one pass, each colour converted
+  once; weights as exp2 of the negated logarithm, no reciprocal; its golden unchanged within the
+  tolerance). It measured 7.1 x before, on an idle local host with the fill taken alone. A2's re-instancing is
+  3 + 16 a frame (3.6's shared decorators), not 64.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
@@ -1989,7 +2211,7 @@ Notation:
 |---|---|---|---|---|---|---|---|---|
 | `stripes` | paint | pattern | Stripes | color-a col #000000; color-b col #ffffff; angle ang 45deg [-180deg,180deg]; density n 5 [1,30]; balance n 0.5 [0,1]; softness n 0 [0,1]; speed n 0.2 [-1,1] (t); offset n 0 [0,1]; cs linear | – | none | L | |
 | `spotlight` | paint | interactive | original | color col #ffffff; radius len 160px [8px,2000px]; softness n 0.6 [0,1]; intensity n 0.35 [0,1]; idle-position pos "50% 50%"; idle-intensity n 0 [0,1] (eased by presence) | – | position | L | `@suggest-for cursor-light flashlight` |
-| `cursor-trail` | paint | interactive | CursorTrail (adapted: CPU trail buffer replaces the fluid grid) | colors pal "#00aaff #ff00aa"; radius len 18px [2px,128px]; lifetime time 0.5s [0.1s,2s] (source `length`); shrink n 1 [0,1]; softness n 0 [0,1]; cs linear | – | trail | L | |
+| `cursor-trail` | paint | interactive | CursorTrail (adapted: CPU trail buffer replaces the fluid grid) | colors pal "#00aaff #ff00aa"; radius len 18px [2px,128px]; lifetime time 0.5s [0.1s,2s] (source `length`); shrink n 1 [0,1]; softness n 0 [0,1]; cs linear | – | trail | M (measured, p5-tooling; was L) | |
 | `pixelate` | filter | stylize | Pixelate (adapted: cell size in px) | size len 8px [1px,256px]; gap n 0 [0,0.95]; roundness n 0 [0,1] | – | none | L | `@suggest-for pixel mosaic` |
 | `frosted-glass` | filter | glass | original (Glass kit `glassTint`/`glassBorderHighlight`, `gpu/kit/effects/glass.ts:170-199`) | blur len 12px [0px,64px]; tint col #ffffff1f; saturation n 1.2 [0,3]; brightness n 1 [0,2]; noise n 0.04 [0,0.3]; highlight n 0.35 [0,1]; light-angle ang 300deg [0deg,360deg] | yes | none | M | `@prepass blur blur`; `@margin blur*3`; `@suggest-for glass glassmorphism frost blur-glass acrylic` |
 

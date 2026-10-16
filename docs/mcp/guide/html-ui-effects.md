@@ -50,7 +50,7 @@ Every effect also takes the universal parameters: `opacity` (percentage, default
 | [`smoke`](#smoke) | paint | energy | medium | Drifting clouds of smoke or fog in two colours |
 | [`starfield`](#starfield) | paint | space | medium | Twinkling stars drifting in parallax layers, or streaking toward the centre |
 | [`cursor-ripples`](#cursor-ripples) | filter | interactive | medium | Water ripples spreading from the pointer through the content |
-| [`cursor-trail`](#cursor-trail) | paint | interactive | low | A fading paint stroke that follows the pointer |
+| [`cursor-trail`](#cursor-trail) | paint | interactive | medium | A fading paint stroke that follows the pointer |
 | [`spotlight`](#spotlight) | paint | interactive | low | A soft light that follows the pointer over the element |
 | [`fluted-glass`](#fluted-glass) | filter, backdrop | glass | medium | Reeded glass: what is behind refracted through rows of cylindrical flutes |
 | [`frosted-glass`](#frosted-glass) | filter, backdrop | glass | medium | Blurred, tinted glass over what lies behind the element, with a lit edge |
@@ -1163,7 +1163,7 @@ Kind: filter; cost: medium; backdrop: no; pointer: ripples; source: shaders.com 
 
 A fading paint stroke that follows the pointer.
 
-Kind: paint; cost: low; backdrop: no; pointer: trail; source: shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid).
+Kind: paint; cost: medium; backdrop: no; pointer: trail; source: shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid).
 
 | Param | Type | Default | Range or options | Description |
 |---|---|---|---|---|

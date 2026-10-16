@@ -13,6 +13,7 @@
 #include "../../Include/RmlUi/Core/TypeConverter.h"
 #include <algorithm>
 #include "PropertyShorthandDefinition.h"
+#include <mutex>
 #include <numeric>
 
 namespace Rml {
@@ -364,6 +365,26 @@ namespace {
 
 	// ---- Parsers ----
 
+	// The image lists parsed last, by text (fork, P5-6): a value with var() is parsed again each time it is resolved (style
+	// computation, then the background's geometry and colour clip), and the elements whose var() resolve to the same text
+	// parse it each; a list is immutable, so they share the first one. Dropped when decorator instancers change.
+	struct ImageLayerParseCache {
+		struct Entry {
+			String text;
+			bool mask = false;
+			StyleValuePtr list;
+		};
+		static constexpr size_t capacity = 64;
+		std::mutex mutex;
+		Vector<Entry> entries; // the most recent last
+		uint64_t hits = 0;
+	};
+	ImageLayerParseCache& GetImageLayerParseCache()
+	{
+		static ImageLayerParseCache cache;
+		return cache;
+	}
+
 	class PropertyParserImageLayers final : public PropertyParser {
 	public:
 		bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override
@@ -371,8 +392,39 @@ namespace {
 			const String stripped = StringUtilities::StripWhitespace(value);
 			if (stripped.empty())
 				return false;
+			const bool mask = (parameters.find("mask") != parameters.end());
+			ImageLayerParseCache& cache = GetImageLayerParseCache();
+			{
+				std::lock_guard<std::mutex> lock(cache.mutex);
+				for (size_t i = cache.entries.size(); i-- > 0;)
+				{
+					ImageLayerParseCache::Entry& entry = cache.entries[i];
+					if (entry.mask == mask && entry.text == stripped)
+					{
+						SetStyleValue(property, entry.list);
+						cache.hits++;
+						return true;
+					}
+				}
+			}
+			StyleValuePtr parsed;
+			if (!Parse(parsed, stripped, mask))
+				return false;
+			{
+				std::lock_guard<std::mutex> lock(cache.mutex);
+				if (cache.entries.size() >= ImageLayerParseCache::capacity)
+					cache.entries.erase(cache.entries.begin());
+				cache.entries.push_back(ImageLayerParseCache::Entry{stripped, mask, parsed});
+			}
+			SetStyleValue(property, std::move(parsed));
+			return true;
+		}
+
+	private:
+		static bool Parse(StyleValuePtr& out, const String& stripped, bool mask)
+		{
 			auto list = MakeShared<ImageLayerList>();
-			list->mask = (parameters.find("mask") != parameters.end());
+			list->mask = mask;
 			auto decorators = MakeShared<DecoratorDeclarationList>();
 			PropertyParser* decorator_parser = StyleSheetSpecification::GetParser("decorator");
 			for (const String& item : SplitLayerList(stripped, ','))
@@ -424,7 +476,7 @@ namespace {
 			}
 			decorators->value = stripped;
 			list->decorators = std::move(decorators);
-			SetStyleValue(property, std::move(list));
+			out = std::move(list);
 			return true;
 		}
 	};
@@ -1042,6 +1094,20 @@ bool LayerKeywordList::Equals(const StyleValue& other) const
 }
 
 // ---- Registration -------------------------------------------------------------------------------------------------------
+
+void ClearImageLayerParseCache()
+{
+	ImageLayerParseCache& cache = GetImageLayerParseCache();
+	std::lock_guard<std::mutex> lock(cache.mutex);
+	cache.entries.clear();
+}
+
+uint64_t GetImageLayerParseCacheHits()
+{
+	ImageLayerParseCache& cache = GetImageLayerParseCache();
+	std::lock_guard<std::mutex> lock(cache.mutex);
+	return cache.hits;
+}
 
 void RegisterBackgroundLayerParsers()
 {

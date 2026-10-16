@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/RenderBackendTime.h"
 #include "SokolBuffer.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
@@ -68,6 +69,7 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
 
 // called by draw
 void SokolBuffer::updateBuffer(unsigned int size, void* data){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (buffer.id != SG_INVALID_ID && data && size > 0){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
@@ -79,6 +81,7 @@ void SokolBuffer::updateBuffer(unsigned int size, void* data){
 
 // main thread: the offset is needed right away
 int SokolBuffer::appendBuffer(unsigned int size, const void* data){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (buffer.id == SG_INVALID_ID || !data || size == 0 || Engine::isAsyncThread())
         return -1;
     return sg_append_buffer(buffer, {data, (size_t)size});

@@ -579,6 +579,7 @@ void editor::Exporter::runExport() {
     if (!copyEngine()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!buildAndSaveShaders()) return;
+    if (!writeEffectLicense()) return;
     if (config.mode == ExportMode::SourceCode) {
         if (isCancelled()) { setError("Build cancelled"); return; }
         if (!collectSourceResourcePack()) return;
@@ -1021,6 +1022,9 @@ bool editor::Exporter::collectDesktopArtifacts() {
         setError("Failed to copy executable: " + ec.message());
         return false;
     }
+    if (!copyLicenses()) {
+        return false;
+    }
 
     bool packCreated = false;
     if (config.packNativeResources) {
@@ -1352,6 +1356,10 @@ bool editor::Exporter::collectWebArtifacts() {
             setError("Failed to copy " + src.filename().string() + ": " + ec.message());
             return false;
         }
+    }
+
+    if (!copyLicenses()) {
+        return false;
     }
 
     const fs::path favicon = buildDir / "favicon.png";
@@ -3396,6 +3404,59 @@ bool editor::Exporter::buildAndSaveShaders() {
         return false;
     }
 
+    return true;
+}
+
+// ---- the shaders.com notice (phase-5 spec 3.16)
+
+const char* editor::Exporter::effectLicensePath() {
+    return "licenses/shaders.com-LICENSE.txt";
+}
+
+bool editor::Exporter::writeEffectLicense() {
+    // Every UI effect is compiled with the effects include library, which ports functions of
+    // the shaders.com kit (engine/shaderlib/effects/LICENSE.shaders-com.txt lists it with the
+    // ported effects): a build with any UI effect variant ships the notice
+    const bool effects = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::UI_EFFECT;
+    });
+    const fs::path target = config.targetDir / effectLicensePath();
+    std::error_code ec;
+    if (!effects) {
+        fs::remove(target, ec);
+        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+        return true;
+    }
+    // copyEngine put the engine's shaderlib next to the export
+    const fs::path source = config.targetDir / "shaderlib" / "effects" / "LICENSE.shaders-com.txt";
+    if (!fs::is_regular_file(source, ec)) {
+        setError("The UI effects notice is missing: " + source.string());
+        return false;
+    }
+    fs::create_directories(target.parent_path(), ec);
+    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        setError("Failed to write " + target.string() + ": " + ec.message());
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::copyLicenses() {
+    const fs::path source = config.targetDir / effectLicensePath();
+    const fs::path target = config.destinationDir / effectLicensePath();
+    std::error_code ec;
+    if (!fs::is_regular_file(source, ec)) {
+        fs::remove(target, ec);
+        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+        return true;
+    }
+    fs::create_directories(target.parent_path(), ec);
+    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        setError("Failed to copy " + target.filename().string() + ": " + ec.message());
+        return false;
+    }
     return true;
 }
 

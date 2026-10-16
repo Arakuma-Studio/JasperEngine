@@ -22,6 +22,13 @@ namespace jasperengine{
     public:
         // creates on a miss; SG_INVALID_ID when sokol could not create it
         static sg_pipeline get(const sg_pipeline_desc& base, const PipelineState& state);
+        // the same with the base's hash computed once by the caller (baseHash()): hashing the
+        // vertex layout costs more than the lookup
+        static sg_pipeline get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state);
+        static uint64_t baseHash(const sg_pipeline_desc& base);
+        // bumped whenever pipelines are destroyed (releaseShader, clear): a pipeline a caller kept
+        // from get() is valid while it is the same
+        static uint32_t generation();
         // destroys every pipeline made with it (SokolShader::destroyShader)
         static void releaseShader(sg_shader shader);
         // every pipeline (SokolSystem shutdown)

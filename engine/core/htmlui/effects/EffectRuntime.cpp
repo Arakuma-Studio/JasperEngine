@@ -482,7 +482,10 @@ void EffectRuntime::prepare(EffectInstance& instance){
     set4(f.pointerEx, state.velocity.x, state.velocity.y, sincePress, sinceEnter);
     set4(f.radii, instance.radii[0], instance.radii[1], instance.radii[2], instance.radii[3]);
     // misc.w: the paint form clips to the area's rounded box (@geometry fill)
-    set4(f.misc, instance.opacity, (float)instance.blend, seedOf(element), instance.clipToArea ? 1.f : 0.f);
+    // the element's address string is built once per instance, not every frame
+    if (instance.seed < 0.f)
+        instance.seed = seedOf(element);
+    set4(f.misc, instance.opacity, (float)instance.blend, instance.seed, instance.clipToArea ? 1.f : 0.f);
 
     // the trail and the ripples in local px
     for (int i = 0; i < 32; i++)
