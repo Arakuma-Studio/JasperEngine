@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/RenderBackendTime.h"
 #include "SokolObject.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -529,6 +530,7 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
 }
 
 bool SokolObject::beginDraw(const PipelineState& state){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
         return false;
 
@@ -551,6 +553,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
 }
 
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
 
     // Deferred resource creation can leave an allocated handle in FAILED state.
@@ -596,12 +599,14 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 }
 
 void SokolObject::applyUniformBlock(int slot, unsigned int count, void* data){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (slot != -1){
         sg_apply_uniforms(slot, {data, count});
     }
 }
 
 void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_apply_bindings(bind);
     sg_draw(baseElement, vertexCount, instanceCount);
 }

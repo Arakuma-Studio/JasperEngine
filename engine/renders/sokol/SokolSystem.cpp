@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/RenderBackendTime.h"
 #include "SokolSystem.h"
 
 #include "System.h"
@@ -70,6 +71,7 @@ void SokolSystem::executeQueue(){
 }
 
 void SokolSystem::commit(){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_commit();
 }
 

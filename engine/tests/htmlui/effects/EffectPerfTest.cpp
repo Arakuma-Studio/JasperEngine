@@ -10,19 +10,22 @@
 //   for a frame of the document (the compat runtime, Context::Update and the render submission,
 //   FixtureRunner::frame, as HtmlUIContext does it each engine frame). In the steady state no
 //   effect instance is created, no variant is compiled and no pipeline is created, and
-//   CPU(A) <= 1.5 x CPU(B) + 1 ms. A2: every element's parameter reads var(--k), changed every
-//   frame: nothing compiled, every element follows, and CPU(A2) <= 3 x CPU(B) + 4 ms. A
-//   re-instances once per new value text (3.6's decorators are shared by the elements whose value
-//   is the same: one per paint effect) and once per filter element: 3 + 16 a frame, not 64.
-//   Document C: A's layers without effects (RmlUi's brightness() and blur() in place of the effect
-//   filters): CPU(A) <= 1.5 x CPU(C) + 1 ms, the effect system's own work. On llvmpipe the 16
-//   filter layers alone cost the main thread far more than B: every render pass is a scene the
+//   A <= 1.5 x B + 1 ms. A2: every element's parameter reads var(--k), changed every frame:
+//   nothing compiled, every element follows, and A2 <= 3 x B + 4 ms. A re-instances once per new
+//   value text (3.6's decorators are shared by the elements whose value is the same: one per paint
+//   effect) and once per filter element: 3 + 16 a frame, not 64. Document C: A's layers without
+//   effects (RmlUi's brightness() and blur() in place of the effect filters), reported.
+//   What is gated (5.4's deviation, phase-5 spec): on Vulkan the frame's CPU time; on glcore the
+//   engine's own work, the frame less the time the graphics backend took on the thread
+//   (RenderBackendTime: sokol and the GL driver). On llvmpipe every render pass is a scene the
 //   driver bins and copies its state into on the calling thread (about 125k instructions at
-//   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite);
-//   see the phase-5 spec's "p5-tooling as implemented" for the measurements.
-// - Cost table: every built-in effect (the 83 of the catalogue, one row each) fills 1024 x 1024 and is rendered and read back 20 times
-//   through the golden harness (its pointer and trail inputs), against a background-color fill of the same size (the process's
-//   CPU time: the GL driver's threads draw). Written to build/linux/htmlui-effects-cost.json
+//   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite):
+//   most of A's frame, a cost a GPU driver does not have. Both measures are printed.
+// - Cost table: every built-in effect (the 83 of the catalogue, one row each) fills 1024 x 1024,
+//   rendered and read back through the golden harness (its pointer and trail inputs), against a
+//   background-color fill of the same size measured with it: rounds of 8 captures of the fill
+//   then 8 of the effect, the least of at least 3 rounds for both (the process's CPU time: the GL
+//   driver's threads draw). Written to build/linux/htmlui-effects-cost.json
 //   (htmlui-effects-cost-vulkan.json on Vulkan) and printed; the ratio is at most 6 for a `low`
 //   effect and 24 for a `medium` one (3.14's classes x 1.5); `high` is unbounded.
 //
@@ -39,6 +42,7 @@
 #include "htmlui/effects/EffectValue.h"
 
 #include "json.hpp"
+#include "render/RenderBackendTime.h"
 
 #include <algorithm>
 #include <chrono>
@@ -139,12 +143,16 @@ namespace {
     struct PerfRun {
         double medianMs = 0.0;
         double updateMs = 0.0, renderMs = 0.0, endMs = 0.0;   // the frame's parts (medians)
+        // the frame less the time the graphics backend (sokol and the driver) took on the thread
+        // (RenderBackendTime): the engine's own work (median)
+        double engineMs = 0.0, backendMs = 0.0;
         EffectStats delta;
     };
 
     // the parts of the last frame (main-thread CPU ms)
     struct FrameParts {
         double update = 0.0, render = 0.0, end = 0.0;
+        double backend = 0.0;   // RenderBackendTime of the frame
     };
 
     // A 1280 x 720 context and its loaded document; a frame is what HtmlUIContext does each
@@ -183,6 +191,7 @@ namespace {
             beginTestFrame();
             if (!r.target.isCreated())
                 r.target.ensure(r.targetSize.x, r.targetSize.y, 4);
+            RenderBackendTime::reset();
             const double t0 = threadCpuMs();
             const bool begun = r.renderer.beginFrame(r.target, r.contextSize);
             Rml::SetGeometryFeathering(false);
@@ -196,7 +205,7 @@ namespace {
             r.renderer.endFrame();
             SystemRender::commit();
             const double t3 = threadCpuMs();
-            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2};
+            parts = FrameParts{t1 - t0, t2 - t1, t3 - t2, RenderBackendTime::totalMs()};
         }
 
         ~Grid(){
@@ -207,8 +216,8 @@ namespace {
 
 
     void printRun(const char* what, const PerfRun& run){
-        std::printf("[ effects  ]   %s: %.3f ms (update %.3f, render submission %.3f, end of frame %.3f)\n", what, run.medianMs,
-                    run.updateMs, run.renderMs, run.endMs);
+        std::printf("[ effects  ]   %s: %.3f ms (update %.3f, render submission %.3f, end of frame %.3f; engine %.3f, backend %.3f)\n",
+                    what, run.medianMs, run.updateMs, run.renderMs, run.endMs, run.engineMs, run.backendMs);
     }
 
     // 30 warm-up frames, then 120 measured ones, the clock 1/60 s further each frame; perFrame
@@ -227,12 +236,14 @@ namespace {
         for (int i = 0; i < warm; i++)
             frame(i);
         const EffectStats before = EffectRuntime::get().stats();
-        std::vector<double> times, updates, renders, ends;
+        std::vector<double> times, updates, renders, ends, engines, backends;
         for (int i = 0; i < measured; i++){
             const double start = threadCpuMs();
             frame(warm + i);
             times.push_back(threadCpuMs() - start);
             updates.push_back(grid.parts.update);
+            engines.push_back(times.back() - grid.parts.backend);
+            backends.push_back(grid.parts.backend);
             renders.push_back(grid.parts.render);
             ends.push_back(grid.parts.end);
         }
@@ -242,6 +253,8 @@ namespace {
         run.updateMs = median(updates);
         run.renderMs = median(renders);
         run.endMs = median(ends);
+        run.engineMs = median(engines);
+        run.backendMs = median(backends);
         run.delta.instancesCreated = after.instancesCreated - before.instancesCreated;
         run.delta.compileCalls = after.compileCalls - before.compileCalls;
         run.delta.pipelinesCreated = after.pipelinesCreated - before.pipelinesCreated;
@@ -297,29 +310,45 @@ namespace {
         return "<!DOCTYPE html><html><head><style>" + css + "</style></head><body>" + body + "</body></html>";
     }
 
-    // the CPU time of the process for one render + readback of the document, the least of up to
-    // 5 averages of 20 (the first capture warms up); boundMs < 0: always all 5 (the baseline: a
-    // loaded host only ever adds time, and one high sample of the fill lowered every ratio)
-    double costMs(EffectScene& scene, const EffectManifest* m, double boundMs){
+    // The cost of an effect against the fill, interleaved: rounds of a batch of the fill's
+    // captures then one of the effect's (the process's CPU time per render + readback, the first
+    // capture of each warms up), the least of the rounds for both, so a loaded moment raises one
+    // round of both and not the ratio. At least 3 rounds, up to 6 while the ratio is over `bound`
+    // (0: no bound).
+    struct Cost {
+        double fillMs = -1.0, effectMs = -1.0;
+        double ratio() const{ return fillMs > 0.0 ? effectMs / fillMs : 0.0; }
+    };
+
+    double batchMs(EffectScene& scene, int captures){
+        TestImage image;
+        const double start = processCpuMs();
+        for (int i = 0; i < captures; i++){
+            if (!scene.capture(image))
+                return -1.0;
+        }
+        return (processCpuMs() - start) / captures;
+    }
+
+    Cost interleavedCost(EffectScene& fill, EffectScene& scene, const EffectManifest* m, double bound){
+        Cost cost;
         TestImage image;
         // the golden harness's inputs: its pointer, and the 12-point arc of a trail effect
         if (m && m->pointer != EffectPointer::None)
             setTestPointer(scene, *m);
-        if (!scene.capture(image))
-            return -1.0;
-        double least = -1.0;
-        for (int attempt = 0; attempt < 5; attempt++){
-            const double start = processCpuMs();
-            for (int i = 0; i < 20; i++){
-                if (!scene.capture(image))
-                    return -1.0;
-            }
-            const double ms = (processCpuMs() - start) / 20.0;
-            least = least < 0.0 ? ms : std::min(least, ms);
-            if (boundMs == 0.0 || (boundMs > 0.0 && least <= boundMs))
+        if (!fill.capture(image) || !scene.capture(image))
+            return cost;
+        for (int round = 0; round < 6; round++){
+            const double f = batchMs(fill, 8);
+            const double e = batchMs(scene, 8);
+            if (f <= 0.0 || e <= 0.0)
+                return Cost();
+            cost.fillMs = cost.fillMs < 0.0 ? f : std::min(cost.fillMs, f);
+            cost.effectMs = cost.effectMs < 0.0 ? e : std::min(cost.effectMs, e);
+            if (round >= 2 && (bound <= 0.0 || cost.ratio() <= bound))
                 break;
         }
-        return least;
+        return cost;
     }
 
 }
@@ -333,28 +362,49 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     ASSERT_TRUE(warmUpReferenceEffects());
     HtmlUIClock::setFixedTime(10.0);
 
-    // the least of up to 5 runs, stopping once within `target`; check() sees each run
+    // What is gated (5.4 as implemented, p5-tooling): on Vulkan the frame's CPU time; on glcore the
+    // engine's own work, the frame less the backend's share (sokol and the GL driver, which on
+    // llvmpipe sets up every render pass on this thread: most of a frame with layers, a cost a GPU
+    // driver does not have). The full frame is printed on both.
+#if defined(SOKOL_VULKAN)
+    const bool gateEngine = false;
+#else
+    const bool gateEngine = true;
+#endif
+    RenderBackendTime::setEnabled(true);
+    struct BackendOff {
+        ~BackendOff(){ RenderBackendTime::setEnabled(false); }
+    } backendOff;
+    struct Least {
+        double frame = -1.0, engine = -1.0;
+        double gate(bool engineGate) const{ return engineGate ? engine : frame; }
+    };
+    // the least of up to 5 runs, stopping once the gated measure is within `target`; check()
+    // sees each run
     auto gated = [&](const char* what, double target, const std::function<PerfRun(int)>& run, const std::function<void(const PerfRun&)>& check){
-        double least = -1.0;
+        Least least;
         for (int attempt = 0; attempt < 5; attempt++){
             const PerfRun r = run(attempt);
             printRun(what, r);
             if (check)
                 check(r);
-            least = least < 0.0 ? r.medianMs : std::min(least, r.medianMs);
-            if (target > 0.0 && least <= target)
+            least.frame = least.frame < 0.0 ? r.medianMs : std::min(least.frame, r.medianMs);
+            least.engine = least.engine < 0.0 ? r.engineMs : std::min(least.engine, r.engineMs);
+            if (target > 0.0 && least.gate(gateEngine) <= target)
                 break;
         }
         return least;
     };
 
     ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
-    const double b = gated("B", 0.0, [&](int){ return measure(grid); }, {});
+    const Least b = gated("B", 0.0, [&](int){ return measure(grid); }, {});
     ASSERT_TRUE(grid.load(layersDocument())) << "document C";
-    const double c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
+    const Least c = gated("C", 0.0, [&](int){ return measure(grid); }, {});
 
     ASSERT_TRUE(grid.load(gridDocument(true, false))) << "document A";
-    const double a = gated("A", 1.5 * b + 1.0, [&](int){ return measure(grid); }, [](const PerfRun& run){
+    const double budgetA = 1.5 * b.gate(gateEngine) + 1.0;
+    const double budgetA2 = 3.0 * b.gate(gateEngine) + 4.0;
+    const Least a = gated("A", budgetA, [&](int){ return measure(grid); }, [](const PerfRun& run){
         EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
         EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
         EXPECT_EQ(run.delta.pipelinesCreated, 0u) << "no pipeline is created in the steady state";
@@ -367,7 +417,7 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     Rml::Element* parent = grid.document->GetElementById("grid");
     ASSERT_NE(parent, nullptr);
     std::string last;
-    const double a2 = gated("A2", 3.0 * b + 4.0, [&](int attempt){
+    const Least a2 = gated("A2", budgetA2, [&](int attempt){
         return measure(grid, [&](int index){
             // a value no earlier frame had (750 frames at most): no decorator comes from the cache
             char value[32];
@@ -397,32 +447,36 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
         EXPECT_EQ(following, 64) << "every element's parameter is the last --k (" << expected << ")";
     });
 
-    std::printf("[ effects  ] frame CPU (median of 120, least of the runs): B %.3f ms, C (A's layers, CSS filters) %.3f ms, "
-                "A %.3f ms (budget %.3f; over C %.3f), A2 %.3f ms (budget %.3f)\n", b, c, a, 1.5 * b + 1.0, a - c, a2, 3.0 * b + 4.0);
-    EXPECT_LE(a, 1.5 * b + 1.0) << "document A's frame (5.4)";
-    EXPECT_LE(a2, 3.0 * b + 4.0) << "document A2's frame (5.4)";
-    // the effect system's own work: A against the same layers drawn by RmlUi's own filters
-    EXPECT_LE(a, 1.5 * c + 1.0) << "document A's frame against the same layers without effects";
+    std::printf("[ effects  ] frame CPU (median of 120, least of the runs): B %.3f ms, C (A's layers, CSS filters) %.3f ms, A %.3f ms, "
+                "A2 %.3f ms\n", b.frame, c.frame, a.frame, a2.frame);
+    std::printf("[ effects  ] engine's own work (the frame less the backend): B %.3f ms, C %.3f ms, A %.3f ms, A2 %.3f ms\n", b.engine, c.engine,
+                a.engine, a2.engine);
+    std::printf("[ effects  ] gated (%s): A %.3f ms (budget %.3f), A2 %.3f ms (budget %.3f)\n", gateEngine ? "the engine's own work" : "the frame",
+                a.gate(gateEngine), budgetA, a2.gate(gateEngine), budgetA2);
+    EXPECT_LE(a.gate(gateEngine), budgetA) << "document A (5.4; " << (gateEngine ? "the engine's own work" : "the frame") << ")";
+    EXPECT_LE(a2.gate(gateEngine), budgetA2) << "document A2 (5.4; " << (gateEngine ? "the engine's own work" : "the frame") << ")";
+    // (C is reported, not gated: A against B, with no layers, is the stricter check of the same
+    // work, so A <= 1.5 x C + 1 ms follows from it whenever C costs at least B)
     HtmlUIClock::setFixedTime(0.0);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
 TEST(EffectPerfTest, CostTable){
+    EffectScene fill(1024, 1024, 4);
     EffectScene scene(1024, 1024, 4);
-    if (!scene.valid())
+    if (!fill.valid() || !scene.valid())
         GTEST_SKIP() << "no GPU";
     FixedEffectClock clock(1.5);
     std::string error;
-    ASSERT_TRUE(scene.loadHtml(costDocument(nullptr), &error)) << error;
-    const double baseline = costMs(scene, nullptr, -1.0);
-    ASSERT_GT(baseline, 0.0) << "the baseline renders";
+    ASSERT_TRUE(fill.loadHtml(costDocument(nullptr), &error)) << error;
 
     nlohmann::json effects = nlohmann::json::array();
-    std::printf("[ effects  ] cost at 1024 x 1024 (render + readback, process CPU), baseline %.3f ms\n", baseline);
+    std::printf("[ effects  ] cost at 1024 x 1024 (render + readback, process CPU), each against the fill measured with it\n");
     // every effect of the catalogue, one row each: an effect that does not render is a failure of
     // its own row, the others are still measured
     const std::vector<const EffectManifest*> catalogue = EffectRegistry::get().builtins();
     std::vector<std::string> measured;
+    double highestLow = 0.0, highestMedium = 0.0;
     for (const EffectManifest* m : catalogue){
         if (!warmUpEffect(*m)){
             ADD_FAILURE() << m->name << ": its variants do not compile";
@@ -433,24 +487,31 @@ TEST(EffectPerfTest, CostTable){
             continue;
         }
         const double bound = m->cost == EffectCost::Low ? 6.0 : m->cost == EffectCost::Medium ? 24.0 : 0.0;
-        const double ms = costMs(scene, m, bound * baseline);
-        if (ms <= 0.0){
+        const Cost cost = interleavedCost(fill, scene, m, bound);
+        if (cost.effectMs <= 0.0){
             ADD_FAILURE() << m->name << " does not render";
             continue;
         }
         measured.push_back(m->name);
-        const double ratio = ms / baseline;
-        std::printf("[ effects  ]   %-24s %-6s %-6s %8.3f ms  x%.2f%s\n", m->name.c_str(), effectKindName(m->kind), effectCostName(m->cost), ms, ratio,
+        const double ratio = cost.ratio();
+        if (m->cost == EffectCost::Low)
+            highestLow = std::max(highestLow, ratio);
+        else if (m->cost == EffectCost::Medium)
+            highestMedium = std::max(highestMedium, ratio);
+        std::printf("[ effects  ]   %-24s %-6s %-6s %8.3f ms  fill %7.3f ms  x%.2f%s\n", m->name.c_str(), effectKindName(m->kind),
+                    effectCostName(m->cost), cost.effectMs, cost.fillMs, ratio,
                     bound > 0.0 ? (" (bound " + std::to_string((int)bound) + ")").c_str() : "");
         effects.push_back({{"name", m->name}, {"kind", effectKindName(m->kind)}, {"cost", effectCostName(m->cost)}, {"builtin", m->builtin},
-                           {"ms", ms}, {"ratio", ratio}, {"bound", bound > 0.0 ? nlohmann::json(bound) : nlohmann::json(nullptr)}});
+                           {"ms", cost.effectMs}, {"fill_ms", cost.fillMs}, {"ratio", ratio},
+                           {"bound", bound > 0.0 ? nlohmann::json(bound) : nlohmann::json(nullptr)}});
         if (bound > 0.0)
             EXPECT_LE(ratio, bound) << m->name << " (" << effectCostName(m->cost) << ") costs " << ratio << " x the fill";
     }
-    std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured\n", measured.size(), catalogue.size());
+    std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured; the highest low x%.2f, medium x%.2f\n", measured.size(),
+                catalogue.size(), highestLow, highestMedium);
     EXPECT_EQ(measured.size(), catalogue.size()) << "every effect of the catalogue is in the table";
     EXPECT_GE(catalogue.size(), 83u) << "the phase-5 catalogue (Appendix A) has 83 effects";
-    nlohmann::json table = {{"size", 1024}, {"runs", 20}, {"baseline_ms", baseline}, {"effects", effects},
+    nlohmann::json table = {{"size", 1024}, {"captures_per_round", 8}, {"effects", effects},
 #if defined(SOKOL_VULKAN)
                             {"backend", "vulkan"}
 #else

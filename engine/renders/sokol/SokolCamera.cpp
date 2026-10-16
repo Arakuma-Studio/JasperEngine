@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/RenderBackendTime.h"
 #include "SokolCamera.h"
 
 #include "System.h"
@@ -73,6 +74,7 @@ void SokolCamera::setDepthStencilActions(LoadAction load, StoreAction store, flo
 }
 
 void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.swapchain = {};
     pass.attachments = framebuffer->backend.get(face);
     sg_begin_pass(pass);
@@ -80,6 +82,7 @@ void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
 }
 
 void SokolCamera::startRenderPass(int width, int height){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
     pass.swapchain = System::instance().getSokolSwapchain();
     pass.swapchain.width = width;
@@ -89,6 +92,7 @@ void SokolCamera::startRenderPass(int width, int height){
 }
 
 void SokolCamera::startRenderPass(){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
     pass.swapchain = System::instance().getSokolSwapchain();
     sg_begin_pass(pass);
@@ -96,6 +100,7 @@ void SokolCamera::startRenderPass(){
 }
 
 void SokolCamera::applyViewport(Rect rect){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     float x = rect.getX();
     float y = rect.getY();
     float flooredX = std::floor(x);
@@ -108,6 +113,7 @@ void SokolCamera::applyViewport(Rect rect){
 }
 
 void SokolCamera::applyScissor(Rect rect){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     float x = rect.getX();
     float y = rect.getY();
     float flooredX = std::floor(x);
@@ -122,13 +128,16 @@ void SokolCamera::applyScissor(Rect rect){
 // top-left rects as they are on every backend: GL's offscreen targets are rendered Y-flipped
 // (RenderSystem::isRenderingFlipped), so its bottom-left origin is the image's top there
 void SokolCamera::applyViewportTopLeft(int x, int y, int width, int height){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_apply_viewport(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_apply_scissor_rect(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::endRenderPass(){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_end_pass();
 }

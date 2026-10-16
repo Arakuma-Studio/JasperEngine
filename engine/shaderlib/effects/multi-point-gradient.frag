@@ -40,12 +40,12 @@ uniform u_fs_effectParams {
     float colorSpace;
 } params;
 
-// mpgWeight: inverse distance to a power, in aspect-corrected space
+// mpgWeight: inverse distance to a power, in aspect-corrected space (as exp2 of the negated
+// logarithm: no reciprocal)
 float mpg_weight(vec2 uvAspect, vec2 pos, float power){
-    float dx = uvAspect.x - pos.x;
-    float dy = uvAspect.y - pos.y;
-    float dist = sqrt(dx * dx + dy * dy) + 0.001;
-    return 1.0 / pow(dist, power);
+    vec2 d = uvAspect - pos;
+    float dist = sqrt(dot(d, d)) + 0.001;
+    return exp2(-power * log2(dist));
 }
 
 vec4 jfx_paint(JfxContext c){
@@ -58,28 +58,31 @@ vec4 jfx_paint(JfxContext c){
     float wC = mpg_weight(uvAspect, params.positionC * scale, power);
     float wD = mpg_weight(uvAspect, params.positionD * scale, power);
     float wE = mpg_weight(uvAspect, params.positionE * scale, power);
-    // the running weighted average as four mix factors
-    float acc1 = wA;
-    float t1 = wB / (acc1 + wB);
-    float acc2 = acc1 + wB;
-    float t2 = wC / (acc2 + wC);
-    float acc3 = acc2 + wC;
-    float t3 = wD / (acc3 + wD);
-    float acc4 = acc3 + wD;
-    float t4 = wE / (acc4 + wE);
+    // The kit mixes the colours as a running weighted average, A with B by wB / (wA + wB), that
+    // with C by wC / (wA + wB + wC) and so on, each mix weighting by alpha (jfx_mix_colors). That
+    // chain is the closed form below: colour = sum(c_i a_i w_i) / sum(a_i w_i), alpha =
+    // sum(a_i w_i) / sum(w_i), in the mix's space; each colour enters its space once and the result
+    // leaves it once (the kit's chain left and entered the space at every step: the same values up
+    // to rounding, as the space conversions invert each other).
+    float aA = params.colorA.a * wA;
+    float aB = params.colorB.a * wB;
+    float aC = params.colorC.a * wC;
+    float aD = params.colorD.a * wD;
+    float aE = params.colorE.a * wE;
+    float weights = wA + wB + wC + wD + wE;
+    float alphaWeights = aA + aB + aC + aD + aE;
+    float alpha = alphaWeights / weights;
+    float safe = max(alphaWeights, 0.001 * weights);
     float space = params.colorSpace;
-    // the linear space on a branch of its own, the same mixes without the colour-space
-    // conversions (software rasterisers evaluate every space of jfx_mix_colors otherwise)
+    // the linear space on a branch of its own: no conversions
     if (space < 0.5){
-        vec4 lin = fam_mix_in_space(params.colorA, params.colorB, t1);
-        lin = fam_mix_in_space(lin, params.colorC, t2);
-        lin = fam_mix_in_space(lin, params.colorD, t3);
-        return fam_mix_in_space(lin, params.colorE, t4);
+        vec3 lin = params.colorA.rgb * aA + params.colorB.rgb * aB + params.colorC.rgb * aC + params.colorD.rgb * aD + params.colorE.rgb * aE;
+        return vec4(lin / safe, alpha);
     }
-    vec4 acc = jfx_mix_colors(params.colorA, params.colorB, t1, space);
-    acc = jfx_mix_colors(acc, params.colorC, t2, space);
-    acc = jfx_mix_colors(acc, params.colorD, t3, space);
-    return jfx_mix_colors(acc, params.colorE, t4, space);
+    vec3 mixed = jfx_to_space(params.colorA.rgb, space) * aA + jfx_to_space(params.colorB.rgb, space) * aB +
+                 jfx_to_space(params.colorC.rgb, space) * aC + jfx_to_space(params.colorD.rgb, space) * aD +
+                 jfx_to_space(params.colorE.rgb, space) * aE;
+    return vec4(jfx_from_space(mixed / safe, space), alpha);
 }
 
 #include "effects/lib/main_paint.glsl"
