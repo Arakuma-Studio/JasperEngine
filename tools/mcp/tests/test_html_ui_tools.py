@@ -862,19 +862,29 @@ async def test_assert_contrast_background(ed: Editor):
 
 # ---------------------------------------------------------------------------- play: models, send_input target
 
-async def test_play_setup(ed: Editor):
+async def play_scene(ed: Editor) -> None:
+    """The play tests' scene (clicks.html with its Lua probe under a transparent overlay), made by
+    the first test that needs it: each play test runs alone (-k) as well as after the others."""
+    if "play" in S:
+        return
     made = await ed.call("create_scene", name="HtmlUiPlay", type="UI")
     S["play"] = made["scene"]["id"]
     clicks = await document(ed, "assets/ui/clicks.html", CLICKS_HTML, "assets/ui/clicks.css", CLICKS_CSS, scene=S["play"])
     S["clicks"] = clicks["entity"]["id"]
     await ed.call("create_script", kind="lua", name="ClicksProbe", content=CLICKS_LUA, scene=S["play"], entity=S["clicks"])
     overlay = await document(ed, "assets/ui/overlay.html", OVERLAY_HTML, scene=S["play"], sort_order=10)
-    ed.check_eq(overlay["document"]["sort_order"], 10, "sort_order")
     S["overlay"] = overlay["entity"]["id"]
+    S["overlay_sort_order"] = overlay["document"]["sort_order"]
     await ed.call("save_scene", scene=S["play"], path="scenes/HtmlUiPlay")
 
 
+async def test_play_setup(ed: Editor):
+    await play_scene(ed)
+    ed.check_eq(S["overlay_sort_order"], 10, "sort_order")
+
+
 async def test_inspect_models_play(ed: Editor):
+    await play_scene(ed)
     made = await ed.call("create_scene", name="HtmlUiHud", type="UI")
     S["hud_scene"] = made["scene"]["id"]
     hud = await ed.call("create_ui_document", scene=S["hud_scene"], html="assets/ui/hud_test.html", template="hud")
@@ -899,6 +909,7 @@ async def test_inspect_models_play(ed: Editor):
 
 
 async def test_send_input_target_click(ed: Editor):
+    await play_scene(ed)
     await ed.call("play", action="start", scene=S["play"])
     try:
         await ed.call("wait", frames=10)
@@ -944,6 +955,7 @@ async def test_send_input_target_click(ed: Editor):
 
 
 async def test_send_input_target_late_resolution(ed: Editor):
+    await play_scene(ed)
     await ed.call("play", action="start", scene=S["play"])
     try:
         await ed.call("wait", frames=10)
@@ -963,7 +975,12 @@ async def test_send_input_target_late_resolution(ed: Editor):
 
 
 async def test_gamepad_focus_in_inspect(ed: Editor):
-    await ed.call("play", action="start", scene=S["play"])
+    await play_scene(ed)
+    # A fixed frame delta and auto-pause: send_input's press holds dpad_down for 2 frames, and a
+    # held direction repeats after 0.4 s of UI clock (Engine::updateGamepadNavigation). With the
+    # measured delta, two stalled frames on a loaded host (each counted up to maxDeltatime, 0.25 s)
+    # made the 2-frame press a held one: the repeat moved the focus on past #open to #ghost.
+    await ed.call("play", action="start", scene=S["play"], fixed_fps=60, auto_pause=True)
     try:
         await ed.call("wait", frames=5)
         await lua(ed, f"UIDocument(scene, entity({S['clicks']})):getElementById('ok'):focus()")
@@ -974,8 +991,17 @@ async def test_gamepad_focus_in_inspect(ed: Editor):
         ed.check(re.search(r"button#open .*:focus", r.text), f"the outline shows it: {r.text}")
         styles = await ed.call("inspect_ui", entity=S["clicks"], selector="#open", styles=["background-color"])
         ed.check_eq(styles["elements"][0]["styles"]["background-color"], "rgb(64, 96, 192)", "the :focus style applies")
+
+        # the failure on a loaded host, reproduced: frames of 0.5 s make the same 2-frame press a held
+        # one, whose repeat moves the focus a second time
+        await ed.call("play", action="set", fixed_fps=2)
+        await lua(ed, f"UIDocument(scene, entity({S['clicks']})):getElementById('ok'):focus()")
+        await ed.call("send_input", events=[{"type": "gamepad", "button": "dpad_down", "action": "press"}], frames_after=3)
+        r = await ed.call_raw("inspect_ui", {"entity": S["clicks"], "selector": "button", "depth": 0})
+        pseudo = {e["id"]: e.get("pseudo", []) for e in r.structured["elements"] if e.get("id")}
+        ed.check("focus" in pseudo["ghost"], f"a press held across 1 s of UI clock repeats: {pseudo}")
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
 
 async def test_send_input_drag_to_target(ed: Editor):
@@ -1000,6 +1026,7 @@ async def test_send_input_drag_to_target(ed: Editor):
 
 
 async def test_send_input_touch_target(ed: Editor):
+    await play_scene(ed)
     await ed.call("configure_game_view", simulate_touch=True)
     await ed.call("play", action="start", scene=S["play"])
     try:
