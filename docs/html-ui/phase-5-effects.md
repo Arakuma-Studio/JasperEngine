@@ -1324,7 +1324,7 @@ Built as specified (3.2–3.10, 3.12, 3.13, 3.16, deliverables 1–6), with thes
   instead of running `ui-effects --json` (its `--check` needs no build); it also copies the thumbnails and writes
   `LICENSE.shaders-com.txt` (which lists `original` effects that follow the kit, `frosted-glass`, and the include
   library too).
-- **Guide examples** are the six of 3.2 adapted to the reference effects (`grain` and `holographic` become `stripes`,
+- **Guide examples** (wave 1; the wave-2 packages put the spec's own effects back, verbatim: 4.4-4.6 "Guide") were the six of 3.2 adapted to the reference effects (`grain` and `holographic` become `stripes`,
   `noise-dissolve` becomes `pixelate`, `conic-spin` becomes `stripes` with `angle var(--spin)`). The gradient-text
   example uses `color: transparent`: by 3.2's own trigger, `color: #fff` drops the clip. `EffectGuideTest` renders
   every css block of the section; the project effect of "Writing an effect" is the fixture
@@ -1632,7 +1632,9 @@ notice, 5.4-5.7), with these differences. Wave 2 builds on them.
 - **Tests against the reference effects.** Wave 1 has 5 effects, so 5.5 uses them: `aurora` →
   `stripes`, `holographic` text → `stripes` with `background-clip: text`, `sheen` with a hover
   transition → `spotlight`; `list_ui_effects` returns every registered effect (not >= 83) and
-  `category: "glass"` returns `frosted-glass` (wave 2 adds the other three). 5.4's cost table
+  `category: "glass"` returns `frosted-glass` (wave 2 adds the other three; p5-accept moved 5.5 to the spec's effects
+  once the catalogue was complete: `aurora`, `holographic` text, a `sheen` hover transition checked in play, 83 built-ins,
+  the four glass effects). 5.4's cost table
   enumerates `EffectRegistry::all()`, so wave 2's effects join it with no change. 5.4's metric is
   the main thread's CPU time of a frame (`RenderTestContext`: compat runtime, `Context::Update`, the
   render submission and its composite), the median of 120 frames, the least of up to 5 runs as in
