@@ -11,6 +11,7 @@ Where to read about the engine's shader library, its lighting and its post-proce
 | [library.md#blend-modes](library.md#blend-modes) | Blend modes and how a shader's output follows the blend drawn |
 | [../mcp/guide/shaders.md](../mcp/guide/shaders.md) | Working with shaders: library shaders on materials and components, presets, stencil and the extra pass (outlines), forking built-in shaders, editing rules, the custom parameter block, manifests, scene depth and colour |
 | [../mcp/guide/post-processing.md](../mcp/guide/post-processing.md) | Post-processing of the main camera: cost tiers (in-shader colour, uber pass, bloom/blur chain, custom passes), presets, the cost readout, mobile advice, every field, Lua, measuring with frame stats, limits |
+| [../mcp/guide/html-ui.md#effects](../mcp/guide/html-ui.md#effects), [../mcp/guide/html-ui-effects.md](../mcp/guide/html-ui-effects.md) | HTML/CSS UI effects: `effect(<name>, ...)` in a document's CSS, the effects library (shader type `UI_EFFECT`, ids `@effects/<name>`, project effects declared with `@effect`), separate from `library:` shaders; its frame order with post-processing (`docs/html-ui/DESIGN.md`, "Integration with origin/main") |
 | [../mcp/guide/lua-api.md](../mcp/guide/lua-api.md) | Lua: `material.shader`, `setShaderParam` / `setShaderTexture` / `setShaderFeature`, `light.shading`, `scene.maxLightsPerObject`, `scene.postProcessing` (custom passes: the post-processing guide) |
 
 The same guides are served to coding agents by the editor's MCP server as

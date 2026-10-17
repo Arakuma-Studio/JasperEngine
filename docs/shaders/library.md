@@ -10,6 +10,11 @@ material's **Shader** row (mesh shaders, per submesh) or in the component's cust
 `material:setShaderParam`, `setShaderTexture`, `setShaderFeature`), from MCP `list_shaders`
 describes them. Unset parameters and textures take the defaults listed here.
 
+`ui` shaders are for the component UI (Image, Text, Polygon). HTML/CSS UI documents (UI
+Document component) draw with their own shaders; their GPU effects are a library of their own,
+`effect(<name>, ...)` in CSS (shader type `UI_EFFECT`, ids `@effects/<name>`, a project's own
+`.frag` declared with `@effect`): `jasper://docs/html-ui-effects`, MCP `list_ui_effects`.
+
 ## Lighting modes
 
 A mesh shader lists the lighting modes it supports; the first is its default (Auto). The

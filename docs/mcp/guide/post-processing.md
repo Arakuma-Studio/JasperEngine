@@ -77,8 +77,12 @@ Design limits of this stack, each a trade for mobile cost:
   glows like a light.
 - UI. UI components the main camera draws are part of its image: the uber pass and
   `render_scale` reach them (as fixed resolution and custom passes always did); UI shaders
-  never take the in-shader colour. Put a HUD that must stay sharp and untouched in a layer
-  scene. Point sprites keep their size in pixels of the scaled image.
+  never take the in-shader colour. HTML/CSS UI documents (UI Document) of the main camera's
+  scene are composited into that image too, after the transparent queue and before the
+  passes after the scene (custom passes, bloom, the uber pass): graded, antialiased and
+  scaled like the component UI, never in-shader coloured, multisampled with `msaa_samples`.
+  Put a HUD that must stay sharp and untouched in a layer scene (its documents draw after
+  the uber pass). Point sprites keep their size in pixels of the scaled image.
 - Frosted panels. The blurred scene (`blur_enabled`, `u_blurredSceneTexture`) exists for
   layer scenes drawn after the post-processed scene; in that scene itself it is black.
 - MSAA applies to the main camera's scene pass only: not to mirrors, other render-to-texture

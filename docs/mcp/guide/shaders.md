@@ -14,7 +14,10 @@ default render state (`state`, including `shadows: "off"` for shaders that cast 
 `state_rules`: state a feature or keyword value turns on, e.g. hologram's
 `BLEND_MODE_ALPHA` makes it alpha blended).
 `type` filters by shader type: `mesh`, `ui`, `points`, `lines` or `sky` (sprites, tilemaps and
-models draw with mesh shaders).
+models draw with mesh shaders). `ui` is the component UI's (Image, Text, Polygon). HTML/CSS UI
+documents have their own effects library instead, `effect(<name>, ...)` in CSS (shader type
+`UI_EFFECT`; `list_ui_effects`, `jasper://docs/html-ui-effects`); a document's GPU work is not a
+`library:` shader and takes no material.
 
 - **Mesh shaders go on a material**, per submesh: `set_properties` on the mesh with
   `submeshes[0].material.shader = "library:toon"` (`""` is the built-in Lit shader). A
