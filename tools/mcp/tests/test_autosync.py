@@ -236,6 +236,75 @@ def describe(m: dict) -> str:
                      for k in ("read_cpu", "write_cpu", "read_wall", "write_wall"))
 
 
+EFFECT_FRAG = """#version 450
+// @effect     auto-glow
+// @kind       paint
+// @category   light
+// @summary    A project effect of the auto-sync tests
+// @cost       low
+// @param      color color #ff8800 -- Colour
+
+#include "effects/lib/jfx_common.glsl"
+
+uniform u_fs_effectParams {
+    vec4 color;
+} params;
+
+vec4 jfx_paint(JfxContext c){
+    return params.color;
+}
+
+#include "effects/lib/main_paint.glsl"
+"""
+EFFECT_HTML = '<html><head><link rel="stylesheet" href="auto.css"/></head><body><div id="glow"></div></body></html>\n'
+EFFECT_CSS = ("@effect auto-glow { src: url(fx/auto-glow.frag); }\n"
+              "#glow { position: absolute; left: 0; top: 0; width: 200px; height: 100px; background-image: effect(auto-glow); }\n")
+
+
+async def test_ui_effect_frag_picked_up(ed: Editor):
+    """A project UI effect's .frag (phase 5): an external edit reloads the documents declaring it,
+    a GLSL error comes back as effect-shader-compile at its line, also while playing."""
+    ed.require_tools("create_ui_document", "play")
+    frag_rel = "assets/ui/fx/auto-glow.frag"
+    touch_write(ed.project / frag_rel, EFFECT_FRAG)
+    touch_write(ed.project / "assets/ui/auto.html", EFFECT_HTML)
+    touch_write(ed.project / "assets/ui/auto.css", EFFECT_CSS)
+    made = await ed.call("create_ui_document", html="assets/ui/auto.html", name="AutoGlow")
+    ed.check_eq(made["diagnostics"], [], "the document declaring the effect loads clean")
+    await status_call(ed)
+
+    broken = EFFECT_FRAG.replace("return params.color;", "return params.colour;")
+    line = broken.split("\n").index("    return params.colour;") + 1
+    touch_write(ed.project / frag_rel, broken)
+    ext = external(await status_call(ed))
+    ed.check(ext is not None and frag_rel in ext["changed"], f"the .frag edit is reported: {ext!r}")
+    problems = [p for p in ext.get("problems", []) if p.get("path") == frag_rel]
+    ed.check(problems and all(p.get("code") == "HTMLUI-FX-0015" for p in problems), f"effect-shader-compile: {ext!r}")
+    ed.check_eq([p.get("line") for p in problems], [line], f"once (both forms fail alike), at the .frag line: {problems!r}")
+    # reloaded by this pick-up, or already by the editor's poller (ui_current)
+    ed.check(any(r.get("html") == "assets/ui/auto.html" for r in ext.get("ui_reloaded", [])) or ext.get("ui_current", 0) >= 1,
+             f"its document reloaded: {ext!r}")
+
+    touch_write(ed.project / frag_rel, EFFECT_FRAG)
+    ext = external(await status_call(ed))
+    ed.check(ext is not None and not [p for p in ext.get("problems", []) if p.get("path") == frag_rel], f"fixed: {ext!r}")
+
+    # while playing: the documents reload now (a fork shader would be deferred)
+    r = await ed.call_raw("play", {"action": "start", "timeout_seconds": 300})
+    ed.check(not r.is_error, f"play failed: {r.text[:500]}")
+    try:
+        touch_write(ed.project / frag_rel, EFFECT_FRAG.replace("#ff8800", "#00ff88"))
+        ext = external(await ed.call_raw("get_play_state"))
+        ed.check(ext is not None and frag_rel in ext["changed"], f"reported during play: {ext!r}")
+        ed.check("deferred" not in ext, f"not deferred: {ext!r}")
+        ed.check(any(r.get("html") == "assets/ui/auto.html" for r in ext.get("ui_reloaded", [])) or ext.get("ui_current", 0) >= 1,
+                 f"reloaded in play: {ext!r}")
+    finally:
+        await ed.call("play", action="stop")
+    touch_write(ed.project / frag_rel, EFFECT_FRAG)
+    await status_call(ed)
+
+
 async def test_no_change_timing(ed: Editor):
     await status_call(ed)
     m = await measure_no_change(ed, 25)
@@ -401,6 +470,8 @@ async def test_instructions_name_real_tools(ed: Editor):
         "inspect_ui": ["selector", "at"],
         "assert_ui": ["checks", "viewports"],
         "import_files": ["fonts", "icons", "from_document"],
+        "list_ui_effects": ["name", "category", "kind"],
+        "set_ui_effect_time": ["time"],
     }
     for tool, names in pairs.items():
         ed.check(tool in tools, f"guide tool {tool} missing")

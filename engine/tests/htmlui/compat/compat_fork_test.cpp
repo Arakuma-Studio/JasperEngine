@@ -88,7 +88,9 @@ TEST(ForkFeatures, PresentFeatures){
                                       .with(ForkFeature::ObjectFit, true)
                                       .with(ForkFeature::BackgroundLayers, true)
                                       .with(ForkFeature::RelativeFontWeight, true)
-                                      .with(ForkFeature::ColorFunctions, true);
+                                      .with(ForkFeature::ColorFunctions, true)
+                                      .with(ForkFeature::TextFillFilter, true)   // phase 5, p5-infra: -jfx-text-fill (P5-1)
+                                      .with(ForkFeature::RegisteredProperties, true);   // phase 5, p5-property
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

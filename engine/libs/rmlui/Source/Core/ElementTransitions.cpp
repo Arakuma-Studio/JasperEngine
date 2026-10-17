@@ -61,6 +61,21 @@ namespace {
 		return GetTransitionLonghandIds().Contains(id) || GetAnimationLonghandIds().Contains(id);
 	}
 
+	// The transition of a property: 'all' leaves custom properties alone, registered ones too (as Chromium does); they
+	// transition when the list names them (fork, phase 5).
+	const Transition* FindTransition(const TransitionList& list, PropertyId id)
+	{
+		const Transition* found = list.Find(id);
+		if (found && found->id == PropertyId::Invalid && StyleSheetSpecification::IsRegisteredCustomProperty(id))
+		{
+			for (auto it = list.transitions.rbegin(); it != list.transitions.rend(); ++it)
+				if (it->id == id)
+					return &*it;
+			return nullptr;
+		}
+		return found;
+	}
+
 } // namespace
 
 const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage) const
@@ -75,7 +90,14 @@ const Property* ElementStyle::GetDeclaredValue(PropertyId id, Property& storage)
 		{
 			SmallUnorderedSet<String> variable_dependencies;
 			Property resolved_storage;
-			if (const Property* resolved = style->ResolveVariables(id, property, variable_dependencies, resolved_storage))
+			// The registered custom properties its var() read are taken without animation layers too (fork, phase 5).
+			PropertySources sources = style->GetPropertySources();
+			sources.animation_layers = nullptr;
+			const bool was_declared_only = declared_only;
+			declared_only = true;
+			const Property* resolved = ResolveVariables(sources, style->expanded_shorthands, id, property, variable_dependencies, resolved_storage);
+			declared_only = was_declared_only;
+			if (resolved)
 			{
 				storage = *resolved;
 				return &storage;
@@ -209,8 +231,8 @@ void ElementStyle::CaptureBeforeChangeValues(const PropertyIdSet& changed_proper
 	if (!definition || changed_properties.Empty())
 		return;
 	const PropertyIdSet& transition_ids = GetTransitionLonghandIds();
-	bool transitions = (transition_snapshot != nullptr) || !(definition->GetPropertyIds() & transition_ids).Empty() ||
-		(new_definition && !(new_definition->GetPropertyIds() & transition_ids).Empty());
+	bool transitions = (transition_snapshot != nullptr) || definition->GetPropertyIds().Intersects(transition_ids) ||
+		(new_definition && new_definition->GetPropertyIds().Intersects(transition_ids));
 	for (auto it = transition_ids.begin(); !transitions && it != transition_ids.end(); ++it)
 		transitions = (inline_properties.GetProperty(*it) != nullptr);
 	if (!transitions)
@@ -264,6 +286,8 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	if (!transition_snapshot)
 		transition_snapshot = MakeUnique<TransitionSnapshot>();
 	TransitionSnapshot& snapshot = *transition_snapshot;
+	snapshot.registered_applied.Clear();
+	bool registered_applied = false;
 	const bool first_style = (!snapshot.initialized || !element->animation_displayed || snapshot.restart);
 
 	// The properties to look at: the changed ones the list covers; at the first style, every one the list covers.
@@ -320,6 +344,11 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 
 	auto Apply = [&](PropertyId id, const Property& applied) {
 		ComputeValue(context.values, context.dp_ratio, context.vp_dimensions, font_size, document_font_size, dirty_font_face_handle, id, &applied);
+		if (StyleSheetSpecification::AnyRegisteredCustomProperties() && StyleSheetSpecification::IsRegisteredCustomProperty(id))
+		{
+			snapshot.registered_applied.Insert(id);
+			registered_applied = true;
+		}
 	};
 
 	// 'display' first: whether the element is displayed now depends on its transition (allow-discrete keeps it shown).
@@ -336,6 +365,9 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	{
 		if (IsAnimationProperty(id) || !StyleSheetSpecification::GetProperty(id))
 			continue;
+		// (a registered custom property that only 'all' covers keeps no before-change value: none of its changes starts one)
+		if (list->all && StyleSheetSpecification::IsRegisteredCustomProperty(id) && !FindTransition(*list, id))
+			continue;
 		Property applied;
 		if (TransitionProperty(id, first_style, displayed, context, applied))
 			Apply(id, applied);
@@ -348,6 +380,11 @@ void ElementStyle::TransitionChangedProperties(const ComputeContext& context, co
 	snapshot.starting_definition.reset();
 	snapshot.starting_looked_up = false;
 	snapshot.restart = false;
+
+	// A transition of a registered custom property that starts, reverses or ends now applies another value than the one
+	// the main loop of ComputeValues read through var() (fork, phase 5): the properties that read it are computed again.
+	if (registered_applied)
+		RecomputeRegisteredDependents(context, font_size, document_font_size, dirty_font_face_handle);
 }
 
 bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool displayed, const ComputeContext& context, Property& applied)
@@ -411,7 +448,7 @@ bool ElementStyle::TransitionProperty(PropertyId id, bool first_style, bool disp
 			return false;
 
 	const TransitionList* list = GetTransitionList();
-	const Transition* found = (list ? list->Find(id) : nullptr);
+	const Transition* found = (list ? FindTransition(*list, id) : nullptr);
 	const PropertyDefinition* property_definition = StyleSheetSpecification::GetProperty(id);
 	if (!found || !displayed)
 	{

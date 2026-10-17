@@ -45,6 +45,11 @@ public:
 	/// other decorators return none and are painted with GenerateElementData over the layer's clip box.
 	virtual CompiledShader CompileImageShader(Element* element, Vector2f size) const;
 
+	/// Fork (phase 5, P5-2): the decorator clips itself to the rounded box of the area it is generated for (or draws
+	/// beyond it on purpose), so a background or mask layer painted with it needs no clip mask: it draws into the current
+	/// layer, where its blending sees what lies below it.
+	virtual bool PaintsOwnClip() const;
+
 	/// Value specifying an invalid or non-existent Decorator data handle.
 	/// @note This value will prevent the decorator from being rendered on the given element.
 	static const DecoratorDataHandle INVALID_DECORATORDATAHANDLE = 0;
@@ -83,6 +88,11 @@ public:
 	/// @return A shared_ptr to the decorator if it was instanced successfully.
 	virtual SharedPtr<Decorator> InstanceDecorator(const String& name, const PropertyDictionary& properties,
 		const DecoratorInstancerInterface& instancer_interface) = 0;
+
+	/// Fork (phase 5, P5-3): two background or mask image lists of the same structure whose differing layers are this
+	/// instancer's decorator functions interpolate property by property, as the 'decorator' property does (an image list
+	/// with any other function is discrete, as in Chromium). The engine's effects opt in.
+	virtual bool InterpolatesAsImageLayer() const;
 };
 
 class RMLUICORE_API DecoratorInstancerInterface {

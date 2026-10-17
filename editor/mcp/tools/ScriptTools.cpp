@@ -379,7 +379,9 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
 bool isHtmlUiFile(const std::string& path) {
     if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
     const std::string ext = extensionOf(fs::u8path(path));
-    return ext == ".json" || ext == ".lottie";
+    // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
+    // declaring it read (phase 5)
+    return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
 }
 
 Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {

@@ -10,6 +10,7 @@
 
 #include "htmlui/compat/css/CssRewriter.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/Hash.h"
@@ -703,6 +704,11 @@ namespace {
                 continue;
             }
             if (name == "property"){
+                // registered custom properties with the fork (phase 5): registered when the document
+                // loads, or dropped; a syntax the fork does not register falls back to phase 2's root rule
+                if (session.options.fork.has(ForkFeature::RegisteredProperties) &&
+                    CompatAtProperty::take(session, rule, scope.parents != nullptr, scope.media) != CompatAtProperty::Outcome::Fallback)
+                    continue;
                 // @property --x { initial-value: v; inherits: ...; } -> the root gets --x: v
                 const std::string property = serialize(trimWhitespace(rule.prelude));
                 const Declaration* initial = nullptr;
@@ -728,6 +734,17 @@ namespace {
                 std::optional<SelectorList> root = SelectorRewriter::parseList(":root");
                 if (root)
                     addRule(session, scope, *root, {declaration}, rule.ref, rule.preludeRef);
+                continue;
+            }
+            // an at-rule a later phase handles (phase 5: @effect); flattening runs before any
+            // declaration is written, so it applies to the whole document wherever it is
+            if (const AtRuleHandler* handler = findAtRuleHandler(name)){
+                if (scope.parents){
+                    session.sink->reportAs(Severity::Warning, codes::UnsupportedAtRule, rule.ref, "@" + name + " inside a style rule is dropped",
+                                           "move it to the top level");
+                    continue;
+                }
+                (*handler)(rule, session, *session.sink);
                 continue;
             }
             AtRules::reportDropped(session, rule);
@@ -1504,6 +1521,12 @@ namespace {
         const PropertyFacts& facts = declaredFacts ? *declaredFacts : session.facts(name);
         const PropertySupport* row = facts.row;
         const Support support = effectiveSupport(*row, session.options.fork);
+        // phase 5: effect() outside the properties that take it (HTMLUI-FX-0002)
+        if (rejectsHandledFunction(session, d, name))
+            return done;
+        // phase 5: background-blend-mode is the blend of the rule's effect layers (EffectCompat)
+        if (name == "background-blend-mode" && rule && ruleHasEffectLayer(session, *rule))
+            return done;
         if (support == Support::Unsupported){
             Severity severity = isInfoNote(row->note) ? Severity::Info : Severity::Warning;
             std::string suggestion = row->suggestion;
@@ -1828,6 +1851,21 @@ namespace {
             context.options = &session.options;
             // RmlUi substitutes the written value where it is used (the index keeps a folded copy)
             context.calcNative = true;
+            // a registered custom property (phase 5) is a property of the fork: units it computes stay, a
+            // <color>'s currentcolor stays the keyword; a value that does not match is reported (it is invalid at
+            // computed-value time, as in CSS) and written as declared
+            const RegisteredProperty* registered = CompatAtProperty::find(session, d.name.view());
+            if (registered){
+                context.unitsNative = session.options.fork.has(ForkFeature::ExtraUnits);
+                context.keepCurrentColorKeyword = registered->type == AtPropertySyntax::Color;
+                if (!CompatAtProperty::matches(registered->type, d.value))
+                    session.sink->reportAs(Severity::Warning, codes::AtPropertyInvalid, d.ref,
+                                           "'" + serialize(trimWhitespace(d.value)) + "' is not a " + registered->syntax + ", the syntax @property gives " +
+                                           d.name + ": the declaration is invalid at computed-value time and " + d.name + " takes " +
+                                           (registered->inherits ? "its parent's value" : "its initial value") +
+                                           (registered->hasInitialValue ? " (initial-value " + registered->initialValue + ")" : std::string()),
+                                           std::string("write a ") + registered->syntax + " value", std::string(), d.name);
+            }
             context.inlineStyle = origin == RuleOrigin::StyleAttribute;
             context.report = [&](DiagCode code, Severity severity, const std::string& message, const std::string& suggestion){
                 session.sink->reportAs(severity, code, d.ref, message, suggestion, std::string(), d.name);
@@ -1872,7 +1910,9 @@ namespace {
             }
             std::string text = serialize(value);
             std::vector<std::pair<std::string, std::string>> copies;
-            for (const std::string& familyName : session.vars.families(d.name)){
+            // (a typed registered property is read by the fork as it is: no typed copies)
+            for (const std::string& familyName : (registered && registered->type != AtPropertySyntax::Universal) ? std::set<std::string>()
+                                                                                                                : session.vars.families(d.name)){
                 const VarFamily* family = findVarFamily(familyName);
                 if (!family)
                     continue;
@@ -2147,6 +2187,8 @@ RewriteResult CssRewriter::rewrite(Span<const StylesheetInput> inputs){
     }
 
     // ---- pre-pass
+    // (the registered custom properties of every sheet are known before any declaration is rewritten: hoisted)
+    CompatAtProperty::finish(session);
     prePass(session, styleAttributeList);
     // (the session's facts about the document are complete: declarations can be memoized)
     session.memoOn = !session.memoDisabled;

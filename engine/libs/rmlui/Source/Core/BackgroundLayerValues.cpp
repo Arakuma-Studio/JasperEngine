@@ -1,4 +1,7 @@
 #include "BackgroundLayerValues.h"
+#include "ElementAnimation.h"
+#include "../../Include/RmlUi/Core/Decorator.h"
+#include "../../Include/RmlUi/Core/StyleSheetTypes.h"
 #include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Math.h"
 #include "../../Include/RmlUi/Core/Property.h"
@@ -10,6 +13,7 @@
 #include "../../Include/RmlUi/Core/TypeConverter.h"
 #include <algorithm>
 #include "PropertyShorthandDefinition.h"
+#include <mutex>
 #include <numeric>
 
 namespace Rml {
@@ -361,6 +365,26 @@ namespace {
 
 	// ---- Parsers ----
 
+	// The image lists parsed last, by text (fork, P5-6): a value with var() is parsed again each time it is resolved (style
+	// computation, then the background's geometry and colour clip), and the elements whose var() resolve to the same text
+	// parse it each; a list is immutable, so they share the first one. Dropped when decorator instancers change.
+	struct ImageLayerParseCache {
+		struct Entry {
+			String text;
+			bool mask = false;
+			StyleValuePtr list;
+		};
+		static constexpr size_t capacity = 64;
+		std::mutex mutex;
+		Vector<Entry> entries; // the most recent last
+		uint64_t hits = 0;
+	};
+	ImageLayerParseCache& GetImageLayerParseCache()
+	{
+		static ImageLayerParseCache cache;
+		return cache;
+	}
+
 	class PropertyParserImageLayers final : public PropertyParser {
 	public:
 		bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override
@@ -368,8 +392,39 @@ namespace {
 			const String stripped = StringUtilities::StripWhitespace(value);
 			if (stripped.empty())
 				return false;
+			const bool mask = (parameters.find("mask") != parameters.end());
+			ImageLayerParseCache& cache = GetImageLayerParseCache();
+			{
+				std::lock_guard<std::mutex> lock(cache.mutex);
+				for (size_t i = cache.entries.size(); i-- > 0;)
+				{
+					ImageLayerParseCache::Entry& entry = cache.entries[i];
+					if (entry.mask == mask && entry.text == stripped)
+					{
+						SetStyleValue(property, entry.list);
+						cache.hits++;
+						return true;
+					}
+				}
+			}
+			StyleValuePtr parsed;
+			if (!Parse(parsed, stripped, mask))
+				return false;
+			{
+				std::lock_guard<std::mutex> lock(cache.mutex);
+				if (cache.entries.size() >= ImageLayerParseCache::capacity)
+					cache.entries.erase(cache.entries.begin());
+				cache.entries.push_back(ImageLayerParseCache::Entry{stripped, mask, parsed});
+			}
+			SetStyleValue(property, std::move(parsed));
+			return true;
+		}
+
+	private:
+		static bool Parse(StyleValuePtr& out, const String& stripped, bool mask)
+		{
 			auto list = MakeShared<ImageLayerList>();
-			list->mask = (parameters.find("mask") != parameters.end());
+			list->mask = mask;
 			auto decorators = MakeShared<DecoratorDeclarationList>();
 			PropertyParser* decorator_parser = StyleSheetSpecification::GetParser("decorator");
 			for (const String& item : SplitLayerList(stripped, ','))
@@ -421,7 +476,7 @@ namespace {
 			}
 			decorators->value = stripped;
 			list->decorators = std::move(decorators);
-			SetStyleValue(property, std::move(list));
+			out = std::move(list);
 			return true;
 		}
 	};
@@ -803,9 +858,84 @@ namespace {
 	}
 } // namespace
 
-SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& /*element*/) const
+// Fork (phase 5, P5-3): the same layers, the differing ones decorator functions of one instancer that opts in
+// (DecoratorInstancer::InterpolatesAsImageLayer, the engine's effects), interpolated property by property.
+static SharedPtr<const StyleValue> InterpolateDecoratorLayers(const ImageLayerList& from, const ImageLayerList& to, float alpha, Element& element)
+{
+	if (from.layers.size() != to.layers.size() || from.layers.empty() || !from.decorators || !to.decorators)
+		return nullptr;
+	auto result = MakeShared<ImageLayerList>();
+	result->mask = from.mask;
+	result->layers = from.layers;
+	auto declarations = MakeShared<DecoratorDeclarationList>();
+	bool interpolated = false;
+	for (size_t i = 0; i < from.layers.size(); i++)
+	{
+		const ImageLayer& a = from.layers[i];
+		const ImageLayer& b = to.layers[i];
+		if (a.kind != b.kind)
+			return nullptr;
+		if (a.kind != ImageLayer::Kind::Decorator)
+		{
+			if (a.kind == ImageLayer::Kind::CrossFade || a.url != b.url)
+				return nullptr;
+			continue;
+		}
+		if (a.decorator_index < 0 || a.decorator_index >= (int)from.decorators->list.size() || b.decorator_index < 0 ||
+			b.decorator_index >= (int)to.decorators->list.size())
+			return nullptr;
+		const DecoratorDeclaration& da = from.decorators->list[a.decorator_index];
+		const DecoratorDeclaration& db = to.decorators->list[b.decorator_index];
+		if (!da.instancer || da.instancer != db.instancer)
+			return nullptr;
+		DecoratorDeclaration declaration{da.type, da.instancer, PropertyDictionary(), da.paint_area};
+		if (da.instancer->InterpolatesAsImageLayer())
+		{
+			if (!InterpolateDecoratorDeclaration(declaration.properties, da, db, alpha, element))
+				return nullptr;
+			interpolated = true;
+		}
+		else
+		{
+			// another decorator function (a gradient) interpolates only when it does not change
+			if (da.type != db.type || da.paint_area != db.paint_area || da.properties.GetNumProperties() != db.properties.GetNumProperties())
+				return nullptr;
+			for (const auto& entry : da.properties.GetProperties())
+			{
+				const Property* other = db.properties.GetProperty(entry.first);
+				if (!other || !(*other == entry.second))
+					return nullptr;
+			}
+			declaration.properties = da.properties;
+		}
+		result->layers[i].decorator_index = (int)declarations->list.size();
+		if (da.instancer->InterpolatesAsImageLayer())
+		{
+			// the layer's text is the interpolated values (ToString and Equals compare the text: each frame's value
+			// differs from the last, so the element takes it), in property id order
+			Vector<std::pair<PropertyId, String>> values;
+			for (const auto& entry : declaration.properties.GetProperties())
+				values.emplace_back(entry.first, entry.second.ToString());
+			std::sort(values.begin(), values.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+			String text = declaration.type + "(";
+			for (size_t k = 0; k < values.size(); k++)
+				text += (k ? " " : "") + values[k].second;
+			result->layers[i].text = text + ")";
+		}
+		declarations->list.push_back(std::move(declaration));
+	}
+	if (!interpolated)
+		return nullptr;
+	// (an empty value: the style sheet does not cache the interpolated decorators)
+	result->decorators = std::move(declarations);
+	return result;
+}
+
+SharedPtr<const StyleValue> ImageLayerList::Interpolate(const StyleValue& to_value, float alpha, Element& element) const
 {
 	const ImageLayerList& to = static_cast<const ImageLayerList&>(to_value);
+	if (SharedPtr<const StyleValue> layers = InterpolateDecoratorLayers(*this, to, alpha, element))
+		return layers;
 	if (!OnlyImages(*this) || !OnlyImages(to))
 		return nullptr;
 
@@ -964,6 +1094,20 @@ bool LayerKeywordList::Equals(const StyleValue& other) const
 }
 
 // ---- Registration -------------------------------------------------------------------------------------------------------
+
+void ClearImageLayerParseCache()
+{
+	ImageLayerParseCache& cache = GetImageLayerParseCache();
+	std::lock_guard<std::mutex> lock(cache.mutex);
+	cache.entries.clear();
+}
+
+uint64_t GetImageLayerParseCacheHits()
+{
+	ImageLayerParseCache& cache = GetImageLayerParseCache();
+	std::lock_guard<std::mutex> lock(cache.mutex);
+	return cache.hits;
+}
 
 void RegisterBackgroundLayerParsers()
 {

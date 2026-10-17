@@ -8,6 +8,7 @@
 #include "../../Include/RmlUi/Core/Filter.h"
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/StyleSheet.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "ElementBackgroundLayers.h"
 #include "ElementStyle.h"
 
@@ -95,8 +96,13 @@ void ElementEffects::InstanceEffects()
 
 	if (computed.has_filter() || computed.has_backdrop_filter())
 	{
-		for (const auto id : {PropertyId::Filter, PropertyId::BackdropFilter})
+		// Fork (phase 5, P5-1): '-jfx-text-fill' is applied before the element's 'filter' list, so a filter set by another
+		// rule never replaces it, and a drop-shadow() of 'filter' shadows the filled text.
+		const PropertyId text_fill_id = StyleSheetSpecification::GetTextFillPropertyId();
+		for (const auto id : {text_fill_id, PropertyId::Filter, PropertyId::BackdropFilter})
 		{
+			if (id == PropertyId::Invalid)
+				continue;
 			const Property* property = element->GetStyle()->GetLocalPropertyWithResolvedVariables(id);
 			if (!property || property->unit != Unit::FILTER)
 				continue;
@@ -105,7 +111,7 @@ void ElementEffects::InstanceEffects()
 			if (!filters_ptr)
 				continue;
 
-			FilterEntryList& list = (id == PropertyId::Filter ? filters : backdrop_filters);
+			FilterEntryList& list = (id == PropertyId::BackdropFilter ? backdrop_filters : filters);
 			list.reserve(filters_ptr->list.size());
 
 			for (const FilterDeclaration& declaration : filters_ptr->list)
@@ -203,7 +209,10 @@ static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int
 				(computed.outline_style() == Style::BorderStyle::Auto ? 3.f : 0.f);
 			if (outline > 0.f)
 				child_region = child_region.Extend(Vector2f(outline));
-			region = region.Join(child_region);
+			// An element without area paints nothing: a collapsed whitespace text element has no layout position (its box
+			// sits at the origin), and joining it would stretch the region to the top-left of the context.
+			if (child_region.Width() > 0.f && child_region.Height() > 0.f)
+				region = region.Join(child_region);
 		}
 		if (depth < 256)
 			ExtendBySubtreeInkOverflow(child, region, depth + 1);

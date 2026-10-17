@@ -1,0 +1,12 @@
+{
+ "comment": "Registered <length> and <color> custom properties transition on :hover (CSS Properties and Values API, phase 5 3.11): at 0.5 s the width read through var() is half way (140px) and the color is the premultiplied mix of #2050d0 and rgb(224 160 32 / 50%); the non-inherited child keeps the initial values.",
+ "viewport": [300, 140],
+ "steps": [
+  {"capture": "rest"},
+  {"hover": "#box"},
+  {"advance": 0.5},
+  {"capture": "half"},
+  {"advance": 0.6},
+  {"capture": "end"}
+ ]
+}

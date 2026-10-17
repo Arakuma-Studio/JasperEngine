@@ -4,6 +4,7 @@
 #include "../../Include/RmlUi/Core/Profiling.h"
 #include "../../Include/RmlUi/Core/PropertyDefinition.h"
 #include "../../Include/RmlUi/Core/PropertyDictionary.h"
+#include "../../Include/RmlUi/Core/StyleSheetSpecification.h"
 #include "Cascade.h"
 #include "IdNameMap.h"
 #include "PropertyShorthandDefinition.h"
@@ -357,7 +358,16 @@ bool PropertySpecification::ParsePropertyDeclaration(PropertyDictionary& diction
 
 	Property new_property;
 	if (!property_definition->ParseValue(new_property, value_as_written ? StringUtilities::StripWhitespace(property_value) : property_values[0]))
+	{
+		// A registered custom property takes any value at parse time, as every custom property does: one that does not match
+		// its syntax is kept as written and is invalid at computed-value time (fork, phase 5; ElementStyle).
+		if (StyleSheetSpecification::IsRegisteredCustomProperty(property_id) && this == &StyleSheetSpecification::GetPropertySpecification())
+		{
+			dictionary.SetProperty(property_id, Property{StringUtilities::StripWhitespace(property_value), Unit::VAR_EXPRESSION});
+			return true;
+		}
 		return false;
+	}
 
 	dictionary.SetProperty(property_id, new_property);
 	return true;

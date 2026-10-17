@@ -29,9 +29,12 @@
 #include "TextShadow.h"
 #include "ValuesShorthands.h"
 
+#include <algorithm>
+
 namespace Rml {
 
 static StyleSheetSpecification* instance = nullptr;
+bool StyleSheetSpecification::any_registered_custom_properties = false;
 
 struct DefaultStyleSheetParsers : NonCopyMoveable {
 #ifdef RMLUI_MATH_EXPRESSIONS
@@ -71,20 +74,163 @@ struct DefaultStyleSheetParsers : NonCopyMoveable {
 	PropertyParserBoxShadow box_shadow = PropertyParserBoxShadow(&color, &length);
 };
 
+namespace {
+	// The parser of a registered custom property's syntax. Each syntax reads what CSS's type does: no unitless zero for an
+	// angle or a time (only for a length), percentages only for '<percentage>' and '<length-percentage>', integers only for
+	// '<integer>' (an expression is rounded when it is computed), a time in seconds.
+	class PropertyParserRegistered final : public PropertyParser {
+	public:
+		explicit PropertyParserRegistered(RegisteredPropertySyntax syntax) :
+			syntax(syntax),
+#ifdef RMLUI_MATH_EXPRESSIONS
+			number(Unit::NUMBER, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Number)),
+			length(Unit::LENGTH, Unit::PX, MakeCalculationParseTarget(CalculationFinalType::Length)),
+			percentage(Unit::PERCENT, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Percent)),
+			length_percentage(Unit::LENGTH_PERCENT, Unit::PX, MakeCalculationParseTarget(CalculationFinalType::Length, CalculationPercentageHint::Length)),
+			angle(Unit::ANGLE, Unit::UNKNOWN, MakeCalculationParseTarget(CalculationFinalType::Angle))
+#else
+			number(Unit::NUMBER), length(Unit::LENGTH, Unit::PX), percentage(Unit::PERCENT), length_percentage(Unit::LENGTH_PERCENT, Unit::PX),
+			angle(Unit::ANGLE)
+#endif
+		{}
+
+		bool ParseValue(Property& property, const String& value, const ParameterMap& parameters) const override
+		{
+			// One numeric token or one math function: the number parser reads a number prefix and stops ('1px 2px', '1p2px').
+			if (syntax != RegisteredPropertySyntax::Universal && syntax != RegisteredPropertySyntax::Color && syntax != RegisteredPropertySyntax::Time &&
+				!IsNumericToken(value) && !IsMathFunction(value))
+				return false;
+			switch (syntax)
+			{
+			case RegisteredPropertySyntax::Universal:
+				property.value = Variant(value);
+				property.unit = Unit::STRING;
+				return true;
+			case RegisteredPropertySyntax::Number: return number.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::Integer:
+				if (!number.ParseValue(property, value, parameters))
+					return false;
+				// An integer literal; an expression is rounded to the nearest integer when computed.
+				return property.unit != Unit::NUMBER || property.Get<float>() == float(int(property.Get<float>()));
+			case RegisteredPropertySyntax::Length: return length.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::Percentage: return percentage.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::LengthPercentage: return length_percentage.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::Color: return colour.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::Angle: return angle.ParseValue(property, value, parameters);
+			case RegisteredPropertySyntax::Time:
+			{
+				float seconds = 0.f;
+				if (!ParseAnimationTime(StringUtilities::StripWhitespace(value), seconds))
+					return false;
+				property.value = seconds;
+				property.unit = Unit::NUMBER;
+				return true;
+			}
+			}
+			return false;
+		}
+
+	private:
+		// [+-]?(digits[.digits]|.digits)([eE][+-]?digits)? followed by a unit or '%' (letters), nothing else.
+		static bool IsNumericToken(const String& value)
+		{
+			size_t i = 0;
+			const size_t n = value.size();
+			auto digits = [&]() {
+				const size_t start = i;
+				while (i < n && value[i] >= '0' && value[i] <= '9')
+					i++;
+				return i > start;
+			};
+			if (i < n && (value[i] == '+' || value[i] == '-'))
+				i++;
+			const bool integer_part = digits();
+			bool fraction_part = false;
+			if (i < n && value[i] == '.')
+			{
+				i++;
+				fraction_part = digits();
+			}
+			if (!integer_part && !fraction_part)
+				return false;
+			if (i + 1 < n && (value[i] == 'e' || value[i] == 'E'))
+			{
+				size_t exponent = i + 1;
+				if (exponent < n && (value[exponent] == '+' || value[exponent] == '-'))
+					exponent++;
+				if (exponent < n && value[exponent] >= '0' && value[exponent] <= '9')
+				{
+					i = exponent;
+					digits();
+				}
+			}
+			if (i < n && value[i] == '%')
+				return i + 1 == n;
+			for (; i < n; i++)
+				if (!((value[i] >= 'a' && value[i] <= 'z') || (value[i] >= 'A' && value[i] <= 'Z')))
+					return false;
+			return true;
+		}
+		static bool IsMathFunction(const String& value)
+		{
+			const String lower = StringUtilities::ToLower(value.substr(0, 6));
+			return (StringUtilities::StartsWith(lower, "calc(") || StringUtilities::StartsWith(lower, "min(") ||
+					   StringUtilities::StartsWith(lower, "max(") || StringUtilities::StartsWith(lower, "clamp(")) &&
+				!value.empty() && value.back() == ')';
+		}
+
+		RegisteredPropertySyntax syntax;
+		PropertyParserNumber number, length, percentage, length_percentage, angle;
+		PropertyParserColour colour;
+	};
+
+	const char* RegisteredParserName(RegisteredPropertySyntax syntax)
+	{
+		switch (syntax)
+		{
+		case RegisteredPropertySyntax::Universal: return "registered_universal";
+		case RegisteredPropertySyntax::Number: return "registered_number";
+		case RegisteredPropertySyntax::Integer: return "registered_integer";
+		case RegisteredPropertySyntax::Length: return "registered_length";
+		case RegisteredPropertySyntax::Percentage: return "registered_percentage";
+		case RegisteredPropertySyntax::LengthPercentage: return "registered_length_percentage";
+		case RegisteredPropertySyntax::Color: return "registered_color";
+		case RegisteredPropertySyntax::Angle: return "registered_angle";
+		case RegisteredPropertySyntax::Time: return "registered_time";
+		}
+		return "";
+	}
+} // namespace
+
+// Registered custom properties (fork, phase 5; CSS Properties and Values API 1).
+struct RegisteredCustomProperties : NonCopyMoveable {
+	static constexpr size_t NumSyntaxes = size_t(RegisteredPropertySyntax::Time) + 1;
+	PropertyIdSet ids;
+	UnorderedMap<PropertyId, RegisteredCustomProperty> registrations;
+	UniquePtr<PropertyParserRegistered> parsers[NumSyntaxes];
+	// Unregistered: their ids, oldest first (taken again by a name only when no fresh id is left, or by the name they
+	// had), the id each name had last, and their definitions (elements may still hold values that point to them).
+	Vector<PropertyId> free_ids;
+	UnorderedMap<String, PropertyId> last_ids;
+	Vector<UniquePtr<PropertyDefinition>> retired;
+};
+
 StyleSheetSpecification::StyleSheetSpecification() :
 	// Reserve space for all defined ids and some more for custom properties
-	properties((size_t)PropertyId::MaxNumIds, 2 * (size_t)ShorthandId::NumDefinedIds)
+	properties((size_t)PropertyId::NumDefinedIds + 128, 2 * (size_t)ShorthandId::NumDefinedIds)
 {
 	RMLUI_ASSERT(instance == nullptr);
 	instance = this;
 
 	default_parsers.reset(new DefaultStyleSheetParsers);
+	registered_custom_properties.reset(new RegisteredCustomProperties);
 }
 
 StyleSheetSpecification::~StyleSheetSpecification()
 {
 	RMLUI_ASSERT(instance == this);
 	instance = nullptr;
+	any_registered_custom_properties = false;
 }
 
 PropertyDefinition& StyleSheetSpecification::RegisterProperty(PropertyId id, const String& property_name, const String& default_value, bool inherited,
@@ -153,6 +299,11 @@ PropertyDefinition& StyleSheetSpecification::RegisterProperty(const String& prop
 	RMLUI_ASSERTMSG((size_t)instance->properties.property_map->GetId(property_name) < (size_t)PropertyId::FirstCustomId,
 		"Custom property name matches an internal property, please make a unique name for the given property.");
 	return instance->RegisterProperty(PropertyId::Invalid, property_name, default_value, inherited, forces_layout);
+}
+
+PropertyId StyleSheetSpecification::GetTextFillPropertyId()
+{
+	return instance ? instance->text_fill_id : PropertyId::Invalid;
 }
 
 const PropertyDefinition* StyleSheetSpecification::GetProperty(const String& property_name)
@@ -256,6 +407,131 @@ const PropertySpecification& StyleSheetSpecification::GetPropertySpecification()
 	return instance->properties;
 }
 
+PropertyId StyleSheetSpecification::RegisterCustomProperty(const String& name, RegisteredPropertySyntax syntax, bool inherits,
+	const String& initial_value)
+{
+	if (name.size() < 3 || !StringUtilities::StartsWith(name, "--"))
+		return PropertyId::Invalid;
+	const PropertyId existing = GetPropertyId(name);
+	if (existing != PropertyId::Invalid)
+		return IsRegisteredCustomProperty(existing) ? existing : PropertyId::Invalid;
+	if (GetNumFreePropertyIds() <= 0)
+		return PropertyId::Invalid;
+
+	// The initial value must match the syntax (CSS: else the rule is invalid); none is allowed for the universal syntax only.
+	const bool has_initial_value = !StringUtilities::StripWhitespace(initial_value).empty();
+	PropertyParser* parser = GetParser(RegisteredParserName(syntax));
+	if (!parser)
+		return PropertyId::Invalid;
+	if (has_initial_value)
+	{
+		Property parsed;
+		if (!parser->ParseValue(parsed, StringUtilities::StripWhitespace(initial_value), ParameterMap()))
+			return PropertyId::Invalid;
+	}
+	else if (syntax != RegisteredPropertySyntax::Universal)
+		return PropertyId::Invalid;
+
+	// The id: the one the name had last if it is free (a document registering again after a reload keeps its ids), else
+	// a fresh one, else the oldest free one.
+	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	PropertySpecification& specification = instance->properties;
+	size_t free_index = registered.free_ids.size();
+	const auto last = registered.last_ids.find(name);
+	if (last != registered.last_ids.end())
+		free_index = size_t(std::find(registered.free_ids.begin(), registered.free_ids.end(), last->second) - registered.free_ids.begin());
+	if (free_index == registered.free_ids.size() && specification.property_map->GetNumIds() >= (size_t)PropertyId::MaxNumIds)
+		free_index = 0;
+	PropertyDefinition* new_definition = nullptr;
+	if (free_index < registered.free_ids.size())
+	{
+		const PropertyId id = registered.free_ids[free_index];
+		if (!specification.property_map->AssignName(id, name))
+			return PropertyId::Invalid;
+		registered.free_ids.erase(registered.free_ids.begin() + free_index);
+		// (the old definition stays alive: values parsed with it may remain on elements)
+		registered.retired.push_back(std::move(specification.properties[(size_t)id]));
+		specification.properties[(size_t)id] = MakeUnique<PropertyDefinition>(id, StringUtilities::StripWhitespace(initial_value), inherits, false);
+		specification.property_ids.Insert(id);
+		if (inherits)
+			specification.property_ids_inherited.Insert(id);
+		new_definition = specification.properties[(size_t)id].get();
+	}
+	else
+		new_definition = &instance->RegisterProperty(PropertyId::Invalid, name, StringUtilities::StripWhitespace(initial_value), inherits, false);
+	PropertyDefinition& definition = *new_definition;
+	if (definition.GetId() == PropertyId::Invalid)
+		return PropertyId::Invalid;
+	if (syntax == RegisteredPropertySyntax::Universal)
+		definition.SetValueAsWritten();
+	definition.AddParser(RegisteredParserName(syntax));
+
+	RegisteredCustomProperty registration;
+	registration.syntax = syntax;
+	registration.inherits = inherits;
+	registration.has_initial_value = has_initial_value;
+	registration.initial_value = StringUtilities::StripWhitespace(initial_value);
+	MarkRegisteredCustomProperty(definition.GetId(), registration);
+	return definition.GetId();
+}
+
+void StyleSheetSpecification::MarkRegisteredCustomProperty(PropertyId id, const RegisteredCustomProperty& registration)
+{
+	if (id == PropertyId::Invalid || !GetProperty(id))
+		return;
+	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	registered.ids.Insert(id);
+	registered.registrations[id] = registration;
+	any_registered_custom_properties = true;
+}
+
+bool StyleSheetSpecification::UnregisterCustomProperty(PropertyId id)
+{
+	if (!IsRegisteredCustomProperty(id))
+		return false;
+	RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	PropertySpecification& specification = instance->properties;
+	registered.ids.Erase(id);
+	registered.registrations.erase(id);
+	specification.property_ids.Erase(id);
+	specification.property_ids_inherited.Erase(id);
+	specification.property_ids_forcing_layout.Erase(id);
+	const String name = specification.property_map->GetName(id);
+	specification.property_map->ReleaseName(id);
+	registered.free_ids.push_back(id);
+	registered.last_ids[name] = id;
+	any_registered_custom_properties = !registered.registrations.empty();
+	return true;
+}
+
+bool StyleSheetSpecification::IsRegisteredCustomProperty(PropertyId id)
+{
+	return instance && instance->registered_custom_properties->ids.Contains(id);
+}
+
+const RegisteredCustomProperty* StyleSheetSpecification::GetRegisteredCustomProperty(PropertyId id)
+{
+	const RegisteredCustomProperties& registered = *instance->registered_custom_properties;
+	if (!registered.ids.Contains(id))
+		return nullptr;
+	const auto it = registered.registrations.find(id);
+	return it != registered.registrations.end() ? &it->second : nullptr;
+}
+
+const PropertyIdSet& StyleSheetSpecification::GetRegisteredCustomProperties()
+{
+	return instance->registered_custom_properties->ids;
+}
+
+
+int StyleSheetSpecification::GetNumFreePropertyIds()
+{
+	// The next id GetOrCreateId gives is one past the last name (reserved ids included).
+	const size_t next = (size_t)instance->properties.property_map->GetNumIds();
+	const size_t fresh = (next >= (size_t)PropertyId::MaxNumIds ? 0 : (size_t)PropertyId::MaxNumIds - next);
+	return int(fresh + instance->registered_custom_properties->free_ids.size());
+}
+
 void StyleSheetSpecification::RegisterDefaultParsers()
 {
 	RegisterParser("number", &default_parsers->number);
@@ -336,6 +612,14 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 
 	// -- Animation (p3-animation) --
 	PropertyParserAnimation::RegisterParsers();
+
+	// -- Registered custom properties (fork, phase 5) --
+	for (size_t i = 0; i < RegisteredCustomProperties::NumSyntaxes; i++)
+	{
+		const RegisteredPropertySyntax syntax = RegisteredPropertySyntax(i);
+		registered_custom_properties->parsers[i] = MakeUnique<PropertyParserRegistered>(syntax);
+		RegisterParser(RegisteredParserName(syntax), registered_custom_properties->parsers[i].get());
+	}
 
 	// -- Grid (p3-grid) --
 	RegisterGridParsers();
@@ -767,6 +1051,10 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	instance->properties.property_map->ReserveUnnamed(PropertyId::NumDefinedIds);
 	instance->properties.shorthand_map->ReserveUnnamed(ShorthandId::NumDefinedIds);
+
+	// Fork (phase 5, P5-1): a filter list applied before 'filter' (the engine's gradient text of effect layers); after the
+	// reservation, so its id is past the defined ones
+	text_fill_id = RegisterProperty(PropertyId::Invalid, "-jfx-text-fill", "", false, false).AddParser("filter", "filter").GetId();
 
 	RMLUI_ASSERTMSG(instance->properties.shorthand_map->AssertAllInserted(ShorthandId::NumDefinedIds), "Missing specification for one or more Shorthand IDs.");
 	RMLUI_ASSERTMSG(instance->properties.property_map->AssertAllInserted(PropertyId::NumDefinedIds), "Missing specification for one or more Property IDs.");

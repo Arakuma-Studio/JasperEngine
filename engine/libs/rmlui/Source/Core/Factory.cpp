@@ -1,3 +1,4 @@
+#include "BackgroundLayerValues.h"
 #include "../../Include/RmlUi/Core/Factory.h"
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/ContextInstancer.h"
@@ -275,6 +276,7 @@ void Factory::Shutdown()
 	event_instancer = nullptr;
 
 	XMLParser::ReleaseHandlers();
+	ClearImageLayerParseCache();
 
 	factory_data.Shutdown();
 }
@@ -457,6 +459,8 @@ void Factory::RegisterDecoratorInstancer(const String& name, DecoratorInstancer*
 {
 	RMLUI_ASSERT(instancer);
 	factory_data->decorator_instancers[StringUtilities::ToLower(name)] = instancer;
+	// (parsed image layers hold their decorators' instancers: fork, P5-6)
+	ClearImageLayerParseCache();
 }
 
 DecoratorInstancer* Factory::GetDecoratorInstancer(const String& name)
@@ -524,6 +528,7 @@ SharedPtr<StyleSheetContainer> Factory::InstanceStyleSheetStream(Stream* stream)
 void Factory::ClearStyleSheetCache()
 {
 	StyleSheetFactory::ClearStyleSheetCache();
+	ClearImageLayerParseCache();
 }
 
 void Factory::RegisterPseudoClass(const String& name)

@@ -428,7 +428,8 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				if (!draw.decorator_data)
 					continue;
 				const RenderBox clip_box = element->GetRenderBox(clip_area, 0, false);
-				if (clip_box.HasBorderRadius() && !canvas)
+				// (fork, P5-2: a decorator that clips itself, as the engine's effects do, needs no mask)
+				if (clip_box.HasBorderRadius() && !canvas && !draw.decorator->PaintsOwnClip())
 					draw.clip_mask = MakeClipMask(*render_manager, clip_box, ElementBackgroundBorder::GetFeatherUnit(element));
 				draws.push_back(std::move(draw));
 				continue;

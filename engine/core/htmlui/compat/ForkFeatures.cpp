@@ -4,6 +4,7 @@
 #include "ForkFeatures.h"
 
 #include "RmlLogTranslator.h"
+#include "htmlui/effects/EffectRuntime.h"
 
 #include <RmlUi/Core.h>
 
@@ -48,6 +49,8 @@ namespace {
         true,    // BackgroundLayers (phase 3, p3-paint: background-* and mask-* layers, the canvas background; docs/html-ui/FORK.md)
         true,    // RelativeFontWeight (phase 3, p3-values: bolder/lighter computed against the parent's weight, FORK.md P3-V4)
         true,    // ColorFunctions (phase 3, p3-values: CSS Color 4 functions parsed at runtime, a var() inside them too, FORK.md P3-V2)
+        true,    // TextFillFilter (phase 5, p5-infra: -jfx-text-fill applies before filter, FORK.md P5-1)
+        true,    // RegisteredProperties (phase 5, p5-property: registered custom properties, @property; FORK.md P5-4)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -60,6 +63,8 @@ namespace {
         "Has", "FocusPseudoClasses", "SelectorsLevel4", "ListMarkers",
         "Outline", "ObjectFit", "BackgroundLayers",
         "RelativeFontWeight", "ColorFunctions",
+        "TextFillFilter",
+        "RegisteredProperties",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -195,11 +200,72 @@ div { display: block; }
         return result;
     }
 
+    // TextFillFilter: -jfx-text-fill holds a filter list, and an element that has only it compiles
+    // one filter when drawn (the fork's ElementEffects applies it as a filter). Needs the effects'
+    // instancers (EffectRegistry::initialise, in HtmlUI::acquire)
+    std::optional<bool> probeTextFill(){
+        if (!Rml::StyleSheetSpecification::GetProperty("-jfx-text-fill"))
+            return false;
+        if (!Rml::Factory::GetFilterInstancer("jfx-pixelate"))
+            return std::nullopt;
+        const Rml::String name = "htmlui-compat-textfill-probe";
+        Rml::Context* context = Rml::CreateContext(name, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return std::nullopt;
+        std::optional<bool> result;
+        Rml::ElementDocument* document = context->LoadDocumentFromMemory(R"(<rml><head><style>
+body { display: block; width: 64px; height: 64px; }
+#t { display: block; width: 10px; height: 10px; -jfx-text-fill: jfx-pixelate(v(8px)); }
+</style></head><body><div id="t"/></body></rml>)", "[htmlui-compat-textfill-probe]");
+        if (document){
+            document->Show();
+            context->Update();
+            const uint64_t before = jasperengine::htmlui::EffectRuntime::get().getFilterCompileCount();
+            context->Render();
+            result = jasperengine::htmlui::EffectRuntime::get().getFilterCompileCount() - before == 1;
+            document->Close();
+        }
+        Rml::RemoveContext(name);
+        return result;
+    }
+
     // a sheet loads and every selector of it is valid (an invalid selector is dropped with a warning)
     bool loadsCleanly(const char* rcss, RmlLogTranslator::Capture& capture){
         const size_t before = capture.problems();
         Rml::SharedPtr<Rml::StyleSheetContainer> sheet = Rml::Factory::InstanceStyleSheetString(rcss);
         return sheet != nullptr && capture.problems() == before;
+    }
+
+    // RegisteredProperties: '--htmlui-probe' registered as <length> (process-global, as every registration), set to 3px on a
+    // scratch element of a scratch document, and read back through a dependent 'width: var(--htmlui-probe)'
+    bool probeRegisteredProperties(){
+        const char* name = "--htmlui-probe";
+        Rml::PropertyId id = Rml::StyleSheetSpecification::GetPropertyId(name);
+        if (id == Rml::PropertyId::Invalid)
+            id = Rml::StyleSheetSpecification::RegisterCustomProperty(name, Rml::RegisteredPropertySyntax::Length, false, "0px");
+        if (id == Rml::PropertyId::Invalid || !Rml::StyleSheetSpecification::IsRegisteredCustomProperty(id))
+            return false;
+
+        const Rml::String contextName = "htmlui-compat-fork-probe-property";
+        Rml::Context* context = Rml::CreateContext(contextName, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return false;
+        bool result = false;
+        const char* rml = R"(<rml><head><style>body { display: block; width: 64px; } #p { display: block; width: var(--htmlui-probe); height: 1px; }</style></head>
+<body><div id="p"/></body></rml>)";
+        if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(rml, "[htmlui-compat-fork-probe-property]")){
+            document->Show();
+            context->Update();
+            if (Rml::Element* element = document->GetElementById("p")){
+                element->SetProperty(name, "3px");
+                context->Update();
+                const Rml::Property* value = element->GetProperty(name);
+                result = std::fabs(element->GetClientWidth() - 3.0f) < 0.01f && value && value->unit == Rml::Unit::PX;
+            }
+            document->Close();
+        }
+        Rml::RemoveContext(contextName);
+        return result;
     }
 
     bool isRmlInitialised(){
@@ -337,6 +403,10 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
                 return std::nullopt;
             return result.listMarkers;
         }
+        case ForkFeature::TextFillFilter:
+            return probeTextFill();
+        case ForkFeature::RegisteredProperties:
+            return probeRegisteredProperties();
         case ForkFeature::SelectorsLevel4:
             return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:

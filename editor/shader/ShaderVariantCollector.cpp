@@ -29,13 +29,22 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "htmlui/compat/CompatApi.h"
+#include "htmlui/compat/DocumentLoader.h"
+#include "htmlui/effects/EffectRegistry.h"
+#include "util/ProjectChecks.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <filesystem>
 #include <map>
 #include <memory>
 #include <unordered_set>
 
 using namespace jasperengine;
+namespace fs = std::filesystem;
+namespace fx = ::jasperengine::htmlui;
 
 namespace {
 
@@ -516,9 +525,198 @@ namespace {
 
 }
 
+// ---- UI effects (phase-5 spec 3.8)
+
+namespace {
+
+    bool isIdentChar(char c){
+        return std::isalnum((unsigned char)c) || c == '-' || c == '_';
+    }
+
+    std::string lowerAscii(std::string text){
+        for (char& c : text)
+            c = (char)std::tolower((unsigned char)c);
+        return text;
+    }
+
+    // CSS and HTML comments blanked out (kept the same length), so what they mention is no use
+    std::string withoutComments(const std::string& text){
+        std::string out = text;
+        auto blank = [&](const char* open, const char* close){
+            size_t at = 0;
+            while ((at = out.find(open, at)) != std::string::npos){
+                size_t end = out.find(close, at + std::strlen(open));
+                end = (end == std::string::npos) ? out.size() : end + std::strlen(close);
+                for (size_t i = at; i < end; i++){
+                    if (out[i] != '\n')
+                        out[i] = ' ';
+                }
+                at = end;
+            }
+        };
+        blank("/*", "*/");
+        blank("<!--", "-->");
+        return out;
+    }
+
+    // The property of the declaration a value at `at` belongs to: the name before the ':' that
+    // follows the last ';', '{', '}' or quote ("" when there is none)
+    std::string propertyAt(const std::string& text, size_t at){
+        size_t start = at;
+        while (start > 0){
+            const char c = text[start - 1];
+            if (c == ';' || c == '{' || c == '}' || c == '"' || c == '\'')
+                break;
+            start--;
+        }
+        const size_t colon = text.find(':', start);
+        if (colon == std::string::npos || colon >= at)
+            return std::string();
+        size_t b = start, e = colon;
+        while (b < e && std::isspace((unsigned char)text[b]))
+            b++;
+        while (e > b && std::isspace((unsigned char)text[e - 1]))
+            e--;
+        return lowerAscii(text.substr(b, e - b));
+    }
+
+    // the effect form a property draws with: 'p' paint, 'f' filter, 0 either (custom properties, unknown)
+    char formOfProperty(std::string property){
+        for (const char* prefix : {"-webkit-", "-moz-"}){
+            if (property.rfind(prefix, 0) == 0)
+                property = property.substr(std::strlen(prefix));
+        }
+        if (property == "filter" || property == "backdrop-filter" || property == "jfx-text-fill")
+            return 'f';
+        if (property == "background" || property == "background-image" || property == "mask" || property == "mask-image" ||
+            property == "decorator")
+            return 'p';
+        return 0;
+    }
+
+}
+
+void editor::ShaderVariantCollector::scanUiEffects(const std::string& textIn, bool lua, UiEffectUses& uses){
+    const std::string text = lua ? textIn : withoutComments(textIn);
+    auto add = [&](const std::string& name, size_t at){
+        if (name.empty())
+            return;
+        if (lua){
+            uses.any.insert(name);
+            return;
+        }
+        switch (formOfProperty(propertyAt(text, at))){
+            case 'p': uses.paint.insert(name); break;
+            case 'f': uses.filter.insert(name); break;
+            default: uses.any.insert(name); break;
+        }
+    };
+    // effect(<name> ...) as an author writes it (CSS, Lua, the runtime form), and the typed
+    // RCSS function jfx-<name>(...) the compatibility layer writes for it
+    for (const char* prefix : {"effect(", "jfx-"}){
+        const bool typed = prefix[0] == 'j';
+        const size_t length = std::strlen(prefix);
+        size_t at = 0;
+        while ((at = text.find(prefix, at)) != std::string::npos){
+            const size_t found = at;
+            at += length;
+            if (found > 0 && isIdentChar(text[found - 1]))
+                continue;
+            size_t p = at;
+            if (!typed){
+                while (p < text.size() && std::isspace((unsigned char)text[p]))
+                    p++;
+            }
+            const size_t nameStart = p;
+            if (nameStart >= text.size() || !std::isalpha((unsigned char)text[nameStart]))
+                continue;
+            while (p < text.size() && (std::isalnum((unsigned char)text[p]) || text[p] == '-'))
+                p++;
+            std::string name = lowerAscii(text.substr(nameStart, p - nameStart));
+            if (typed && (p >= text.size() || text[p] != '('))
+                continue;
+            add(name, found);
+        }
+    }
+}
+
+void editor::ShaderVariantCollector::addUiEffectKeys(const UiEffectUses& uses, std::set<ShaderKey>& keys){
+    fx::EffectRegistry& registry = fx::EffectRegistry::get();
+    auto add = [&](const std::string& name, bool paintForm, bool filterForm){
+        const fx::EffectManifest* m = registry.find(name);
+        if (!m)
+            return;
+        // a filter effect has the filter form only
+        if (m->kind == fx::EffectKind::Filter){
+            paintForm = false;
+            filterForm = true;
+        }
+        if (paintForm)
+            keys.insert(ShaderPool::normalizeKey(registry.shaderKey(*m, false)));
+        if (filterForm)
+            keys.insert(ShaderPool::normalizeKey(registry.shaderKey(*m, true)));
+        if (m->hasPrepass && !m->prepassThreshold.empty())
+            keys.insert(ShaderPool::normalizeKey(registry.brightPassKey()));
+    };
+    for (const std::string& name : uses.paint)
+        add(name, true, false);
+    for (const std::string& name : uses.filter)
+        add(name, false, true);
+    for (const std::string& name : uses.any)
+        add(name, true, true);
+}
+
+void editor::ShaderVariantCollector::collectUiEffects(const std::vector<std::string>& documents, const fs::path& projectRoot,
+                                                      std::set<ShaderKey>& keys){
+    if (documents.empty() || projectRoot.empty())
+        return;
+    const fx::compat::FileAccess files = ProjectChecks::projectFiles(projectRoot);
+    UiEffectUses uses;
+    std::set<std::string> scanned;   // files read as written
+    auto scanFile = [&](const std::string& assetPath){
+        if (!scanned.insert(assetPath).second)
+            return;
+        const std::string ext = lowerAscii(fs::path(assetPath).extension().string());
+        if (ext != ".html" && ext != ".htm" && ext != ".css" && ext != ".rml" && ext != ".rcss")
+            return;
+        std::string content;
+        if (files.read && files.read(assetPath, content))
+            scanUiEffects(content, false, uses);
+    };
+    for (const std::string& document : documents){
+        if (fx::compat::isHtmlDocumentPath(document)){
+            // as it loads: what the conversion writes (it also declares the @effect project
+            // effects, so their names are known below)
+            fx::compat::CompatOptions options;
+            const std::shared_ptr<const fx::compat::CompatDocument> compiled =
+                fx::compat::DocumentLoader::compile(document, options, files);
+            if (compiled && compiled->compiled){
+                for (const auto& sheet : compiled->stylesheets)
+                    scanUiEffects(sheet.rcss, false, uses);
+                scanUiEffects(compiled->hints.rcss, false, uses);
+                scanUiEffects(compiled->important.rcss, false, uses);
+                for (const auto& attribute : compiled->styleAttributes)
+                    scanUiEffects(attribute.second, false, uses);
+                for (const auto& script : compiled->scripts)
+                    scanUiEffects(script.code, true, uses);
+                for (const std::string& dependency : compiled->dependencies)
+                    scanFile(dependency);
+            }
+        }
+        scanFile(document);
+    }
+    // the project's Lua scripts (style.backgroundImage = "effect(...)")
+    for (const fs::path& script : ProjectChecks::findProjectFiles(projectRoot, {".lua"})){
+        std::string code;
+        if (ProjectChecks::readFile(script, code) && code.find("effect") != std::string::npos)
+            scanUiEffects(code, true, uses);
+    }
+    addUiEffectKeys(uses, keys);
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
-                                                  std::set<ShaderKey>& keys){
+                                                  std::set<ShaderKey>& keys, const fs::path& projectRoot){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -571,5 +769,26 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW2D, 0));
+    }
+
+    // the UI effects the scene's (and its prefabs') HTML UI documents use
+    if (!projectRoot.empty()){
+        std::vector<std::string> documents;
+        auto addDocuments = [&](const ShaderVariantContent& content){
+            if (!content.registry || !content.registry->isComponentRegistered<UIDocumentComponent>())
+                return;
+            for (Entity entity : content.entities){
+                if (!content.registry->isEntityCreated(entity))
+                    continue;
+                const UIDocumentComponent* document = content.registry->findComponent<UIDocumentComponent>(entity);
+                if (document && !document->filename.empty() &&
+                    std::find(documents.begin(), documents.end(), document->filename) == documents.end())
+                    documents.push_back(document->filename);
+            }
+        };
+        addDocuments(sceneContent);
+        for (const ShaderVariantContent& prefab : prefabContents)
+            addDocuments(prefab);
+        collectUiEffects(documents, projectRoot, keys);
     }
 }

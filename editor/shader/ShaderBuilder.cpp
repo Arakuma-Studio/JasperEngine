@@ -65,10 +65,18 @@ std::shared_ptr<const CustomSourceSnapshot> resolveCustomSources(editor::Project
         return it->second;
 
     const std::filesystem::path projectRoot = project->getProjectPath();
+    // A project UI effect (a fragment-only custom shader, phase 5) is named by its asset path,
+    // as @effect declares it and the shipped game's runtime compiler reads it: its files are
+    // read from the assets directory first (the project root when that is the same)
+    const bool fragmentOnly = customShader.find('|') == std::string::npos && customShader.size() > 5 &&
+                              customShader.compare(customShader.size() - 5, 5, ".frag") == 0;
+    const std::filesystem::path assetsRoot = fragmentOnly ? project->getAssetsPath() : std::filesystem::path();
     auto snapshot = std::make_shared<CustomSourceSnapshot>();
     snapshot->sources = ShaderVariantCompiler::resolveCustomShaderSources(customShader,
-        [&projectRoot](const std::string& relativePath, std::string& content) {
+        [&projectRoot, &assetsRoot](const std::string& relativePath, std::string& content) {
             std::error_code ec;
+            if (!assetsRoot.empty() && std::filesystem::is_regular_file(assetsRoot / relativePath, ec))
+                return readTextFile(assetsRoot / relativePath, content);
             const std::filesystem::path path = projectRoot / relativePath;
             return std::filesystem::is_regular_file(path, ec) && readTextFile(path, content);
         });
@@ -121,7 +129,9 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     // their exact resolved include graph. The validation key is the storage key
     // (customId stripped) because that id is session-local and would not match across
     // the editor and a separate run process.
-    const bool isCustom = ShaderPool::getCustomIdFromKey(shaderKey) != 0;
+    // a library id (an effect of the engine library) is cached like a built-in
+    const uint16_t keyCustomId = ShaderPool::getCustomIdFromKey(shaderKey);
+    const bool isCustom = keyCustomId != 0 && !ShaderPool::isLibraryCustomShader(keyCustomId);
     if (project) {
         lock.unlock();
         const std::filesystem::path cachePath = getShaderCachePath(shaderKey);
@@ -201,7 +211,8 @@ void editor::ShaderBuilder::buildMissingShaders(const std::set<ShaderKey>& shade
 
     for (const ShaderKey& shaderKey : shaderKeys) {
         const std::filesystem::path cachePath = getShaderCachePath(shaderKey);
-        const bool isCustom = ShaderPool::getCustomIdFromKey(shaderKey) != 0;
+        const uint16_t keyCustomId = ShaderPool::getCustomIdFromKey(shaderKey);
+        const bool isCustom = keyCustomId != 0 && !ShaderPool::isLibraryCustomShader(keyCustomId);
         const bool fresh = !isCustom || !isCustomCacheStale(shaderKey, project, cachePath);
 
         ShaderData diskData;
@@ -244,7 +255,7 @@ ShaderData editor::ShaderBuilder::compileShader(ShaderKey shaderKey, Project* pr
     // engine library (the variant system is identical for forked shaders)
     std::shared_ptr<const CustomSourceSnapshot> custom;
     const uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
-    if (customId != 0) {
+    if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)) {
         std::string setupError;
         if (!project) {
             setupError = "Custom shader requested without a project";
@@ -350,7 +361,7 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
         return false;
 
     const uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
-    if (customId == 0)
+    if (customId == 0 || ShaderPool::isLibraryCustomShader(customId))
         return true;
 
     const std::string customShader = ShaderPool::getCustomShaderName(customId);
@@ -410,8 +421,13 @@ std::string editor::ShaderBuilder::getShaderDisplayName(ShaderKey key) {
 
 void editor::ShaderBuilder::invalidateCustomShaders() {
     std::lock_guard<std::mutex> lock(cacheMutex);
+    // the engine library's effects (library ids) do not change with the project
+    auto projectCustom = [](ShaderKey key) {
+        const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+        return customId != 0 && !ShaderPool::isLibraryCustomShader(customId);
+    };
     for (auto it = shaderDataCache.begin(); it != shaderDataCache.end(); ) {
-        if (ShaderPool::getCustomIdFromKey(it->first) != 0)
+        if (projectCustom(it->first))
             it = shaderDataCache.erase(it);
         else
             ++it;
@@ -420,7 +436,7 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
     // future into the cache. ThreadPoolManager futures don't block on destruction; an
     // in-flight task simply discards its result and the next get() restarts the build.
     for (auto it = pendingBuilds.begin(); it != pendingBuilds.end(); ) {
-        if (ShaderPool::getCustomIdFromKey(it->first) != 0)
+        if (projectCustom(it->first))
             it = pendingBuilds.erase(it);
         else
             ++it;

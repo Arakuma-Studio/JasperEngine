@@ -1,0 +1,13 @@
+{
+ "comment": "A registered <percentage> transitions and moves both stops of a conic gradient through var(): a quarter at 0.25 s, half at 0.5 s (the hard edges are then axis-aligned), full at the end.",
+ "viewport": [160, 160],
+ "steps": [
+  {"addClass": ["#ring", "full"]},
+  {"advance": 0.25},
+  {"capture": "quarter"},
+  {"advance": 0.25},
+  {"capture": "half"},
+  {"advance": 0.6},
+  {"capture": "end"}
+ ]
+}

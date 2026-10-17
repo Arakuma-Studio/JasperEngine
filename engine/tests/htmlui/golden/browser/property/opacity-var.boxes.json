@@ -1,0 +1,112 @@
+{
+ "fixture": "property/opacity-var.html",
+ "viewport": [
+  260,
+  160
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 140,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "child-holder",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   },
+   {
+    "id": "child",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   }
+  ],
+  "one": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 140,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "child-holder",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   },
+   {
+    "id": "child",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   }
+  ],
+  "end": [
+   {
+    "id": "fade",
+    "tag": "div",
+    "x": 20,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 140,
+    "y": 20,
+    "w": 100,
+    "h": 80
+   },
+   {
+    "id": "child-holder",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   },
+   {
+    "id": "child",
+    "tag": "div",
+    "x": 20,
+    "y": 110,
+    "w": 220,
+    "h": 30
+   }
+  ]
+ }
+}

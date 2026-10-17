@@ -59,6 +59,7 @@ SECTIONS = [
     "Examples",
     "Performance",
     "C++",
+    "Effects",
 ]
 
 FENCE = re.compile(r"^```(\w*)\s*$")
@@ -181,6 +182,12 @@ def placeholder_asset(path: Path) -> None:
         shutil.copy(FIXTURES / "p1" / "lottie" / "shapes.json", path)
     elif ext in (".ttf", ".otf"):
         shutil.copy(REPO / "libs" / "imgui" / "misc" / "fonts" / "Karla-Regular.ttf", path)
+    elif ext == ".frag":
+        # a project effect (phase 5): the guide's own text block of that effect
+        found = [b["code"] for b in guide_blocks() if b["lang"] == "text" and f"// @effect     {path.stem}\n" in b["code"]]
+        if len(found) != 1:
+            fail(f"the guide has no effect file for {path.name}")
+        path.write_text(found[0])
     else:
         fail(f"a guide snippet refers to {path.name}, a kind no placeholder exists for")
 
@@ -284,7 +291,7 @@ async def test_guide_css_html_snippets_clean():
         # fragments name images, animations and fonts the reader provides: provide real ones
         code, data = run_json(project, "--ui")
         for f in data["findings"]:
-            if f.get("code") == "HTMLUI-GEN-0001" and f["path"].startswith("assets/ui/guide_snippet_"):
+            if f.get("code") in ("HTMLUI-GEN-0001", "HTMLUI-FX-0013") and f["path"].startswith("assets/ui/guide_snippet_"):
                 m = re.search(r"'([^']+)' not found", f["message"])
                 check(m, f"a missing-file finding without the file: {f}")
                 placeholder_asset((project / f["path"]).parent / m.group(1))
@@ -319,8 +326,17 @@ async def test_guide_served(ed: Editor):
     ed.check("# HTML/CSS support matrix" in support or "jasper://docs/html-ui-support/" in support,
              f"jasper://docs/html-ui-support: {support[:300]}")
     docs = await read_text(ed, "jasper://docs")
-    for name in ("jasper://docs/html-ui`", "jasper://docs/html-ui-support`"):
+    for name in ("jasper://docs/html-ui`", "jasper://docs/html-ui-support`", "jasper://docs/html-ui-effects`"):
         ed.check(name in docs, f"jasper://docs lists {name}: {docs}")
+    # the effect catalogue (phase 5 §3.13): every built-in effect has its entry in some part of it
+    effects = await read_text(ed, "jasper://docs/html-ui-effects")
+    parts = [line.split("`")[1] for line in effects.splitlines() if line.startswith("- `jasper://docs/html-ui-effects/")]
+    catalogue = effects + "".join([await read_text(ed, uri) for uri in parts])
+    listed_effects = (await ed.call("list_ui_effects"))["effects"]
+    builtin = [e["name"] for e in listed_effects if e["builtin"]]
+    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects")
+    missing = [name for name in builtin if f"### `{name}`" not in catalogue]
+    ed.check(not missing, f"jasper://docs/html-ui-effects lacks {missing}")
 
 
 # ---------------------------------------------------------------------------- 4. names
@@ -486,12 +502,14 @@ async def test_guide_snippets_play(ed: Editor):
             return table.concat(out, '\\n'), object('{name}', 'UIDocument').loaded""", allow_edit_mode=True)
         ed.check_eq(diags, ["", True], f"{name}: loads clean in edit mode")
 
-    started = await ed.call("play", action="start", scene=S["scene"], fixed_fps=60)
+    # fixed_fps + auto_pause: the game runs only inside wait / send_input, each frame exactly 1/60 s,
+    # so every check sees the same frame however fast the machine is (the wall clock decides nothing)
+    started = await ed.call("play", action="start", scene=S["scene"], fixed_fps=60, auto_pause=True)
     ed.check(started, "play started")
     try:
         await play_checks(ed)
     finally:
-        await ed.call("play", action="stop")
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
 
 async def play_checks(ed: Editor):
@@ -718,7 +736,8 @@ async def test_agents_md_section(ed: Editor):
         ed.check("## HTML/CSS UI" in agents, f"AGENTS.md has the HTML/CSS UI section: {agents[:2000]}")
         section = agents.split("## HTML/CSS UI", 1)[1].split("\n## ", 1)[0]
         for phrase in ("check --ui", ".jasperengine/engine-api/html-ui-examples/", "jasper://docs/html-ui",
-                       "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/"):
+                       "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/",
+                       "effect(<name>", "jasper://docs/html-ui-effects", "@effect"):
             ed.check(phrase in section, f"the AGENTS.md section mentions {phrase}: {section}")
         ed.check("HTML/CSS UI, C++ build" in agents, "the check bullet names the UI check")
     finally:

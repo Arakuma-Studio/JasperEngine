@@ -170,6 +170,12 @@ namespace jasperengine::editor {
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
+        // licenses/shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5 spec
+        // 3.16); removed when they do not. copyLicenses: the build's to the destination.
+        bool writeEffectLicense();
+        bool copyLicenses();
+        // the path the export writes the shaders.com notice to, relative to its root
+        static const char* effectLicensePath();
 
         // Aggregates SceneMaxValues across all project scenes and builds the
         // add_definitions() block that sizes the engine's fixed-capacity

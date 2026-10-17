@@ -338,6 +338,12 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "") not in ("", "0", "false", "no")
 
 
+# Tools that run game frames (wait, send_input, play step): the editor ends them when the game stops
+# advancing, so the client only guards against a hung editor (Editor.call_raw)
+FRAME_TOOLS = frozenset({"wait", "send_input", "play"})
+FRAME_CALL_TIMEOUT = 3600.0
+
+
 class Editor:
     """One editor driven over MCP. Use as `async with Editor(...) as ed:`.
 
@@ -385,6 +391,9 @@ class Editor:
         self.instructions: str = ""
         self.tool_list: list[Any] = []
         self.failed = False
+        # the runner's hang guard (run_tests.py) measures the time without a tool call in flight
+        self.in_flight = 0
+        self.last_activity = time.monotonic()
         self._stack: contextlib.AsyncExitStack | None = None
         self._xvfb: Xvfb | None = None
         self._stderr_file = None
@@ -500,15 +509,30 @@ class Editor:
 
     async def call_raw(self, tool: str, args: dict | None = None, *, timeout: float | None = None,
                        progress=None) -> CallResult:
-        """tools/call; returns the CallResult whatever isError is. JSON-RPC errors raise ProtocolError."""
+        """tools/call; returns the CallResult whatever isError is. JSON-RPC errors raise ProtocolError.
+
+        The tools that run game frames (FRAME_TOOLS) take as long as their frames take: the editor
+        ends them itself when the game stops advancing (60 s without a frame), so their default
+        client timeout is FRAME_CALL_TIMEOUT, a guard against a hung editor only. However slowly a
+        loaded machine renders, a wait for N frames is never cut short here."""
         if not self.session:
             raise HarnessError("editor is not running")
+        if timeout is None:
+            timeout = max(self.call_timeout, FRAME_CALL_TIMEOUT) if tool in FRAME_TOOLS else self.call_timeout
+        self.in_flight += 1
         try:
             r = await self.session.call_tool(
-                tool, args or {}, read_timeout_seconds=timeout or self.call_timeout, progress_callback=progress)
+                tool, args or {}, read_timeout_seconds=timeout, progress_callback=progress)
         except MCPError as e:
             raise ProtocolError(f"tools/call {tool}", e) from e
+        finally:
+            self.in_flight -= 1
+            self.last_activity = time.monotonic()
         return CallResult.from_mcp(tool, r)
+
+    def idle_seconds(self) -> float:
+        """Seconds since the last tool call ended; 0 while one is in flight."""
+        return 0.0 if self.in_flight else time.monotonic() - self.last_activity
 
     async def call(self, tool: str, _args: dict | None = None, *, expect_error: bool = False,
                    timeout: float | None = None, **args: Any) -> Any:

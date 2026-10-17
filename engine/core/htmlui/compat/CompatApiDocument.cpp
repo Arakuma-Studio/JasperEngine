@@ -6,6 +6,7 @@
 
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/RmlLogTranslator.h"
@@ -117,6 +118,11 @@ namespace {
         for (const std::string& model : dataModelNames(compiled.rml))
             context->CreateDataModel(model, nullptr, true);
 
+        // the registered custom properties (phase 5) before RmlUi parses the sheets, for this check only (a live
+        // document's definition of a name stays: no conflict is reported here)
+        const uint64_t propertyOwner = CompatAtProperty::newOwner();
+        diagnostics = CompatAtProperty::registerFor(propertyOwner, compiled.sourcePath, compiled.registeredProperties, compiled.files, false);
+
         // fresh parses of the sheets (the factory caches them by path)
         Rml::Factory::ClearStyleSheetCache();
         if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(compiled.rml, compiled.sourcePath)){
@@ -126,6 +132,7 @@ namespace {
             context->Update();
         }
         Rml::RemoveContext(name);
+        CompatAtProperty::release(propertyOwner);
         Rml::ReleaseTextures(&renderInterface);
         Rml::ReleaseRenderManagers();
 

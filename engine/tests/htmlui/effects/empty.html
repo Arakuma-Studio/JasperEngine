@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<!-- Invariant I6 (phase-5 spec 5.3): an effect in filter form over nothing (a transparent page and
+     an empty element) leaves everything transparent. -->
+<html>
+<head>
+<style>
+html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: transparent; }
+#fx { position: absolute; left: 20px; top: 20px; width: 320px; height: 200px; __DECL__; }
+</style>
+</head>
+<body><div id="fx"></div></body>
+</html>

@@ -20,6 +20,8 @@ file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/harness/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/anime/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/compat/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/effects/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/property/*.cpp
 )
 
 # editor logic without ImGui or editor state, tested here because the editor has no

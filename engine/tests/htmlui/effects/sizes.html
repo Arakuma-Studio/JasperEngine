@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<!-- Invariant I5 (phase-5 spec 5.3): degenerate element sizes render without a renderer error. -->
+<html>
+<head>
+<style>
+html, body { margin: 0; width: 420px; height: 420px; overflow: hidden; background: #101218; }
+div { position: absolute; __DECL__; }
+#a { left: 0; top: 0; width: 0; height: 0; }
+#b { left: 10px; top: 10px; width: 1px; height: 1px; }
+#c { left: 20px; top: 10px; width: 1px; height: 400px; }
+#d { left: 10px; top: 415px; width: 400px; height: 1px; }
+</style>
+</head>
+<body><div id="a"></div><div id="b"></div><div id="c"></div><div id="d"></div></body>
+</html>

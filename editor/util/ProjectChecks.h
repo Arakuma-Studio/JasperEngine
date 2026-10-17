@@ -20,6 +20,10 @@
 
 struct lua_State;
 
+namespace jasperengine::htmlui {
+    struct EffectManifest;
+}
+
 namespace jasperengine::editor {
 
     class Project;
@@ -186,12 +190,22 @@ namespace jasperengine::editor {
         // features present)
         static nlohmann::json uiSupportJson();
 
+        // ---- HTML UI effects (phase 5)
+
+        // An effect as `ui-effects --json` and MCP list_ui_effects give it: every manifest field
+        // (name kind category summary source cost backdrop pointer time suggestFor params builtin
+        // path, prepass/margin/geometry when set), an example declaration and the thumbnail path
+        static nlohmann::json uiEffectJson(const jasperengine::htmlui::EffectManifest& manifest);
+        // "background-image: effect(stripes, angle 45deg);" (its first simple parameter)
+        static std::string uiEffectExample(const jasperengine::htmlui::EffectManifest& manifest);
+
         // ---- shaders
 
         // A shader fork (a customShader value) and the ShaderType it is used as (-1: unknown)
         struct ShaderUse {
             std::string base;
             int shaderType = -1;
+            uint32_t properties = 0;   // UI effects: 1 = the filter form ('Flt')
         };
         // The ShaderType a component's customShader is used as (false: no custom shaders)
         static bool shaderTypeForComponent(ComponentType component, ShaderType& out);
@@ -202,9 +216,20 @@ namespace jasperengine::editor {
         static std::vector<ShaderUse> shaderForksUsingFiles(Project* project, const std::vector<std::string>& relativeFiles);
         // Every fork in use plus every .vert/.frag pair of the project no scene uses yet
         static std::vector<ShaderUse> shaderForksInProject(Project* project);
+        // A project UI effect (phase-5 spec 3.10): a .frag whose manifest (the comment lines after
+        // #version 450) starts with "// @effect". Its uses are its forms (a paint effect both, a
+        // filter effect the filter form; one use when the manifest does not parse, so the check
+        // reports it), named by the effect's custom shader name: the asset-relative path
+        // (project-relative outside the assets directory), as @effect registers it.
+        static bool isUiEffectFile(const std::filesystem::path& absolute);
+        static std::vector<ShaderUse> uiEffectUses(Project* project, const std::string& relativeFile);
+        // every UI effect .frag of the project (project-relative, sorted)
+        static std::vector<std::string> uiEffectFiles(Project* project);
+        // the file a UI effect's custom shader name stands for (absolute)
+        static std::filesystem::path uiEffectFile(Project* project, const std::string& base);
         // The type an unused fork most likely is, from its fragment shader
         static int guessShaderType(Project* project, const std::string& base);
-        // mesh, ui, sky, points, lines, depth, post_process (or unknown)
+        // mesh, ui, sky, points, lines, depth, post_process, ui_effect (or unknown)
         static std::string shaderTypeName(int shaderType);
         // glslang lines "ERROR: <source>:<line>: <message>" as [{severity, source, line, message}]
         static nlohmann::json parseShaderLog(const std::string& log);
@@ -222,9 +247,13 @@ namespace jasperengine::editor {
         // Main thread: resolves an unknown type and registers the fork; returns its ShaderKey
         static uint64_t prepareShaderCheck(Project* project, ShaderUse& use);
         // Any thread: compiles the fork with the editor's shader builder for the editor's
-        // backend (ShaderBuilder::buildShaderForExport), the files read from the project
+        // backend (ShaderBuilder::buildShaderForExport), the files read from the project. A UI
+        // effect's manifest is checked first (HTMLUI-FX-0014 effect-manifest at its line, no
+        // compile then); a compile error is HTMLUI-FX-0015 effect-shader-compile at the .frag
+        // line, and the compiled variant is checked against the manifest (its parameter block)
         static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey);
-        // {shader, type, ok, errors, log} (log and errors only on failure)
+        // {shader, type, ok, errors, log} (log and errors only on failure); a UI effect adds
+        // effect, form (paint/filter) and, on failure, code
         static nlohmann::json toJson(const ShaderCheck& check);
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)

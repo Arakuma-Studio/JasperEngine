@@ -27,7 +27,13 @@ namespace {
         {"@-moz-keyframes", R, FF::None, R, "@keyframes", "prefix removed; names sanitized; per-keyframe easing dropped until the fork has AnimationLonghands", ""},
         {"@supports", R, FF::None, R, "", "evaluated statically against the support tables", ""},
         {"@layer", R, FF::None, R, "", "flattened by layer order (Info on specificity conflicts)", ""},
-        {"@property", A, FF::None, A, "initial value on the root", "initial value written on the root; inherits: false lost (Info)", ""},
+        {"@property", A, FF::RegisteredProperties, N, "registered with the fork",
+         "registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, "
+         "time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; "
+         "a document's registrations are its own (a hot reload applies an edited definition, an unload releases them; two live "
+         "documents defining a name differently: the first one's applies, HTMLUI-AT-0013). Other syntaxes, and without the fork: the initial "
+         "value written on the root, inherits: false lost (Info)", ""},
+        {"@effect", R, FF::None, R, "", "declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014", ""},
         {"@container", U, FF::None, U, "", "contents dropped (Warning)", "use @media on the viewport size, or toggle classes from Lua"},
         {"@scope", U, FF::None, U, "", "contents dropped (Warning)", "use descendant selectors under a class"},
         {"@starting-style", U, FF::AnimationLonghands, N, "@starting-style", "contents dropped until the fork has AnimationLonghands (Warning)", "set the start values with a class and remove it from Lua after load, or use @keyframes"},

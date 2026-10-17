@@ -9,6 +9,7 @@
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
 #include "compat/runtime/RuntimeRegistry.h"
+#include "effects/EffectRegistry.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -90,6 +91,8 @@ bool HtmlUI::acquire(){
     UILottieElement::registerInstancer();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
+    // the UI effects (phase 5): their typed instancers, property parsers and runtime plugin
+    htmlui::EffectRegistry::get().initialise();
 
     referenceCount = 1;
     subscribeViewDestroyed();
@@ -125,6 +128,7 @@ void HtmlUI::release(){
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
     htmlui::compat::releaseRuntime();
+    htmlui::EffectRegistry::get().shutdown();
     ThorVGRuntime::release();
 
     Engine::onViewDestroyed.remove(viewDestroyedTag);

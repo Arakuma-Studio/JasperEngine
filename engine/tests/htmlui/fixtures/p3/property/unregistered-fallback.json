@@ -1,0 +1,11 @@
+{
+ "comment": "An unregistered custom property does not transition (it changes at once, without allow-discrete); the registered inherited one does, and the child follows its parent's transitioned value (140px at 0.5 s).",
+ "viewport": [300, 140],
+ "steps": [
+  {"addClass": ["#parent", "wide"]},
+  {"advance": 0.5},
+  {"capture": "half"},
+  {"advance": 0.6},
+  {"capture": "end"}
+ ]
+}

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: inherited and non-inherited lookups of registered properties</title>
+<style>
+  @property --ni-own { syntax: '<length>'; inherits: false; initial-value: 20px; }
+  @property --ni-down { syntax: '<length>'; inherits: true; initial-value: 20px; }
+  @property --ni-em { syntax: '<length>'; inherits: true; initial-value: 0px; }
+  @property --ni-color { syntax: '<color>'; inherits: false; initial-value: #808080; }
+  html, body { margin: 0; }
+  #parent { position: absolute; left: 10px; top: 10px; width: 280px; height: 180px; font-size: 10px;
+            --ni-own: 120px; --ni-down: 120px; --ni-em: 6em; --ni-color: #c03030;
+            background-color: var(--ni-color); }
+  #parent > div { height: 30px; margin-bottom: 6px; background-color: #2050a0; }
+  #own { width: var(--ni-own); }
+  #down { width: var(--ni-down); }
+  #em { font-size: 20px; width: var(--ni-em); }
+  #color { width: 200px; background-color: var(--ni-color) !important; }
+  #grandparent-reset { width: 200px; --ni-down: inherit; }
+  #grandparent-reset > div { height: 10px; width: var(--ni-down); background-color: #e0c040; }
+</style>
+</head>
+<body>
+<div id="parent">
+  <div id="own"></div>
+  <div id="down"></div>
+  <div id="em"></div>
+  <div id="color"></div>
+  <div id="grandparent-reset"><div id="deep"></div></div>
+</div>
+</body>
+</html>

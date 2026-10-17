@@ -271,7 +271,7 @@ async def test_anime_translate_and_stagger(ed: Editor):
     await ed.call("play", action="start", scene=S["anime_scene"])
     try:
         await anime_lua(ed, "box = anime.animate('#box', { translateX = 400, duration = 400, ease = 'outQuad' })")
-        r = await ed.call_raw("wait", {"until": "box.completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "box.completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the translateX animation completes: {r.text[:300]}")
         ed.check_eq(await anime_lua(ed, "return anime.utils.get('#box', 'translateX')"), ["400px"], "translateX at the end")
         shot = await anime_shoot(ed, "anime-moved")
@@ -296,7 +296,7 @@ async def test_anime_translate_and_stagger(ed: Editor):
             return #handle.targets, handle.targets[1] == d2, #scoped.targets
         """)
         ed.check_eq(values, [1, True, 3], "element handles, root and function values")
-        r = await ed.call_raw("wait", {"until": "handle.completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "handle.completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the handle animation completes: {r.text[:300]}")
         await ed.call("wait", frames=2)
         rects = await anime_lua(ed, """
@@ -309,7 +309,7 @@ async def test_anime_translate_and_stagger(ed: Editor):
         await anime_lua(ed, "dots = anime.animate('.dot', { opacity = 0, delay = anime.stagger(100), duration = 200, ease = 'linear' })")
         ed.check_eq(await anime_lua(ed, "return dots.duration, #dots.targets, dots.targets[1].id, dots.targets[3].id"),
                     [400, 3, "d1", "d3"], "three staggered UIElement targets from the selector")
-        r = await ed.call_raw("wait", {"until": "dots.completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "dots.completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the staggered animation completes: {r.text[:300]}")
         shot = await anime_shoot(ed, "anime-faded")
         for x in (60, 160, 260):
@@ -334,7 +334,7 @@ async def test_anime_timeline_labels_and_clocks(ed: Editor):
             return tl.labels.mid, tl.duration
         """)
         ed.check_eq(values, [200, 500], "label and duration")
-        r = await ed.call_raw("wait", {"until": "tl.completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "tl.completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the timeline completes: {r.text[:300]}")
         ed.check_eq(await anime_lua(ed, "return t.v, log[1]"), [0, "called"], "timeline end state")
 
@@ -344,11 +344,12 @@ async def test_anime_timeline_labels_and_clocks(ed: Editor):
             ga = anime.animate(game, { v = 100, duration = 300, ease = 'linear', clock = 'game' })
             ua = anime.animate(ui, { v = 100, duration = 300, ease = 'linear' })
         """)
-        r = await ed.call_raw("wait", {"until": "ua.completed", "timeout_seconds": 10})
+        # time scale 0: the game time stands still, so the cap is in frames (they run at any time scale)
+        r = await ed.call_raw("wait", {"until": "ua.completed", "frames": 600})
         ed.check(not r.is_error, f"the UI-clock animation runs at time scale 0: {r.text[:300]}")
         ed.check_eq(await anime_lua(ed, "return game.v"), [0], "the game-clock animation is frozen")
         await anime_lua(ed, "Engine.timeScale = 1")
-        r = await ed.call_raw("wait", {"until": "ga.completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "ga.completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the game-clock animation runs again: {r.text[:300]}")
 
         bad = await ed.call_raw("eval_lua", {"code": "anime.createTimer({ clock = 'wall' })"})
@@ -447,7 +448,7 @@ async def test_lottie_control_and_events(ed: Editor):
     """play/pause/seek/setSegment from Lua, the load/error/play/pause/complete events, and the
     animation on screen in the Game view."""
     try:
-        r = await ed.call_raw("wait", {"until": "lottieError ~= nil", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "lottieError ~= nil", "game_seconds": 10})
         ed.check(not r.is_error, f"the error event reached init's listener: {r.text[:300]}")
         values = await anime_lua(ed, """
             local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')
@@ -495,7 +496,7 @@ async def test_lottie_control_and_events(ed: Editor):
             anim:setSegment(50, 60)
             anim:play()
         """)
-        r = await ed.call_raw("wait", {"until": "completed", "timeout_seconds": 10})
+        r = await ed.call_raw("wait", {"until": "completed", "game_seconds": 10})
         ed.check(not r.is_error, f"the complete event: {r.text[:300]}")
         values = await anime_lua(ed, """
             local anim = object('LottieDoc', 'UIDocument'):getElementById('anim')

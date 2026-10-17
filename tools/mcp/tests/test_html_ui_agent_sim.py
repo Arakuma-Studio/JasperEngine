@@ -313,12 +313,18 @@ async def test_editor_loop(ed: Editor):
 
 async def test_fix_and_reload(ed: Editor):
     # round 1: the errors (JavaScript, canvas) and the layout bug; the click handlers in the Lua script.
-    # The three files are written back to back, as one edit: the editor's poller (0.25 s) would reload
-    # twice if it ran between them (each reload is still counted once, but the round would be two).
+    # The three files are one edit. The editor reloads each change once, whichever path sees it first:
+    # its poller waits until a document's changed files are older than its settle window (0.3 s) and
+    # holds while an MCP call that may write files runs; the call's pick-up reloads at once. The three
+    # files get one stamp a moment ahead, so the edit is one batch for the poller however the host
+    # schedules the writes (a stall between two writes longer than the window would make it two).
     fill_mirror()
     time.sleep(0.02)
+    stamp = time.time() + 2.0
     for rel, text in ((LUA, FIXED_LUA), (CSS, FIXED_CSS_1), (HTML, FIXED_HTML)):
         (ed.project / rel).write_text(text, encoding="utf-8")
+    for rel in (LUA, CSS, HTML):
+        os.utime(ed.project / rel, (stamp, stamp))
     r = await ed.call_raw("import_files", {"from_document": HTML})
     check(not r.is_error, r.text)
     ext = r.structured.get("external_changes")

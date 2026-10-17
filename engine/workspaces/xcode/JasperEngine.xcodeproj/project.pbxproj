@@ -1625,6 +1625,10 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */; };
+		524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */; };
+		524D4C552958E4ECFBAF4FBD /* ElementStyleRegistered.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */; };
+		524D4C5543296A2EB89D57EC /* ElementStyleRegistered.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */; };
 		524D4C55977FE4A6E8958740 /* WillChange.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */; };
 		524D4C55B334F014CA1586CE /* WillChange.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */; };
 		524D4C55E9E92CC63F397D9E /* ShorthandBorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */; };
@@ -1840,6 +1844,37 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D505B1F49763171CF59 /* EffectValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503752E7417C733B6D /* EffectValue.h */; };
+		434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5076BA00E1D61AA319 /* EffectValue.cpp */; };
+		434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5076BA00E1D61AA319 /* EffectValue.cpp */; };
+		434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50577C374643F5FC29 /* EffectTypes.h */; };
+		434F4D50E87BF4E2065C1065 /* EffectSyntax.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50E36CA9B0BF16DCE1 /* EffectSyntax.h */; };
+		434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502A9047F57F6A865B /* EffectSyntax.cpp */; };
+		434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502A9047F57F6A865B /* EffectSyntax.cpp */; };
+		434F4D50387FE622CC80F05F /* EffectRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50335AB1EAA484B35C /* EffectRuntime.h */; };
+		434F4D502AFB0B7186F6D699 /* EffectRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FCE1176197293962 /* EffectRuntime.cpp */; };
+		434F4D50F57F3CE131954601 /* EffectRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FCE1176197293962 /* EffectRuntime.cpp */; };
+		434F4D5047ECE306AE5555EA /* EffectRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5051A11BC3AB847D4F /* EffectRenderer.h */; };
+		434F4D50BC769C2EA2206334 /* EffectRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E2D5FF13DDE2B832 /* EffectRenderer.cpp */; };
+		434F4D508D9219DB385BABD4 /* EffectRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E2D5FF13DDE2B832 /* EffectRenderer.cpp */; };
+		434F4D50E23DC7052443B0DB /* EffectRegistry.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D509DBC4B0FD05D3388 /* EffectRegistry.h */; };
+		434F4D503AEBB5B05B571DF9 /* EffectRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50AE0BBB69091510FA /* EffectRegistry.cpp */; };
+		434F4D5082558F390BD4F88A /* EffectRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50AE0BBB69091510FA /* EffectRegistry.cpp */; };
+		434F4D50F3134D09DB3EED14 /* EffectManifest.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D505CC0BF0AF095528F /* EffectManifest.h */; };
+		434F4D506652F136209AEAD6 /* EffectManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BC26D8C823C14AB0 /* EffectManifest.cpp */; };
+		434F4D5039CECCC737C2CB9A /* EffectManifest.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BC26D8C823C14AB0 /* EffectManifest.cpp */; };
+		434F4D50649B8AE1025292F4 /* EffectInstancers.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D508E5B8C9925FB7C31 /* EffectInstancers.h */; };
+		434F4D506F3D7FC71093B70E /* EffectInstancers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FA1804295FB0C494 /* EffectInstancers.cpp */; };
+		434F4D50EB4EBDACFC2E3E28 /* EffectInstancers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FA1804295FB0C494 /* EffectInstancers.cpp */; };
+		434F4D50929DBDDE21D59C2A /* EffectCompat.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C3534A1B6F46648E /* EffectCompat.h */; };
+		434F4D50B32D31489084D226 /* EffectCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50DCB5F5F826BE0450 /* EffectCompat.cpp */; };
+		434F4D50151A262CF91F8E20 /* EffectCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50DCB5F5F826BE0450 /* EffectCompat.cpp */; };
+		434F4D505D1FE530999B724F /* BuiltinEffectManifests.gen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50249B3AE7F5987E70 /* BuiltinEffectManifests.gen.cpp */; };
+		434F4D501819E8D87DF47BB2 /* BuiltinEffectManifests.gen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50249B3AE7F5987E70 /* BuiltinEffectManifests.gen.cpp */; };
+		434F4D5039F57A98C3ABA6C5 /* CompatAtPropertyTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */; };
+		434F4D50BDDAB01C4828D2A6 /* CompatAtProperty.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */; };
+		434F4D50F2AE031457ED6B91 /* CompatAtProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */; };
+		434F4D507944123B6B7E3629 /* CompatAtProperty.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */; };
 		48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */; };
 		48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
 		48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */; };
@@ -4767,6 +4802,8 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
+		524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyleRegistered.cpp; sourceTree = "<group>"; };
 		524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WillChange.cpp; sourceTree = "<group>"; };
 		524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShorthandBorder.cpp; sourceTree = "<group>"; };
 		524D4C557174AEEF16171B3E /* ObjectFit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ObjectFit.cpp; sourceTree = "<group>"; };
@@ -4876,6 +4913,27 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D503752E7417C733B6D /* EffectValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectValue.h; sourceTree = "<group>"; };
+		434F4D5076BA00E1D61AA319 /* EffectValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectValue.cpp; sourceTree = "<group>"; };
+		434F4D50577C374643F5FC29 /* EffectTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectTypes.h; sourceTree = "<group>"; };
+		434F4D50E36CA9B0BF16DCE1 /* EffectSyntax.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectSyntax.h; sourceTree = "<group>"; };
+		434F4D502A9047F57F6A865B /* EffectSyntax.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSyntax.cpp; sourceTree = "<group>"; };
+		434F4D50335AB1EAA484B35C /* EffectRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectRuntime.h; sourceTree = "<group>"; };
+		434F4D50FCE1176197293962 /* EffectRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectRuntime.cpp; sourceTree = "<group>"; };
+		434F4D5051A11BC3AB847D4F /* EffectRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectRenderer.h; sourceTree = "<group>"; };
+		434F4D50E2D5FF13DDE2B832 /* EffectRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectRenderer.cpp; sourceTree = "<group>"; };
+		434F4D509DBC4B0FD05D3388 /* EffectRegistry.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectRegistry.h; sourceTree = "<group>"; };
+		434F4D50AE0BBB69091510FA /* EffectRegistry.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectRegistry.cpp; sourceTree = "<group>"; };
+		434F4D505CC0BF0AF095528F /* EffectManifest.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectManifest.h; sourceTree = "<group>"; };
+		434F4D50BC26D8C823C14AB0 /* EffectManifest.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectManifest.cpp; sourceTree = "<group>"; };
+		434F4D508E5B8C9925FB7C31 /* EffectInstancers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectInstancers.h; sourceTree = "<group>"; };
+		434F4D50FA1804295FB0C494 /* EffectInstancers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectInstancers.cpp; sourceTree = "<group>"; };
+		434F4D50C3534A1B6F46648E /* EffectCompat.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectCompat.h; sourceTree = "<group>"; };
+		434F4D50DCB5F5F826BE0450 /* EffectCompat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectCompat.cpp; sourceTree = "<group>"; };
+		434F4D50249B3AE7F5987E70 /* BuiltinEffectManifests.gen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BuiltinEffectManifests.gen.cpp; sourceTree = "<group>"; };
+		434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatAtPropertyTypes.h; sourceTree = "<group>"; };
+		434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompatAtProperty.h; sourceTree = "<group>"; };
+		434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompatAtProperty.cpp; sourceTree = "<group>"; };
 		48544D4CD1BC6E137B04E6B6 /* HtmlUIInspector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspector.h; sourceTree = "<group>"; };
 		48544D4C1D9C506F82E136FE /* HtmlUIInspector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIInspector.cpp; sourceTree = "<group>"; };
 		48544D4CF6E10DE1E9E06189 /* HtmlUIInspectorInternal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIInspectorInternal.h; sourceTree = "<group>"; };
@@ -8540,6 +8598,9 @@
 				434F4D50ECBC67D4F3E0662E /* Arena.cpp */,
 				434F4D5040E9455FCD450F67 /* Arena.h */,
 				434F4D509829603415289A0C /* DiagnosticsJson.h */,
+				434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */,
+				434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */,
+				434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -8721,6 +8782,31 @@
 			path = props;
 			sourceTree = "<group>";
 		};
+		434F4D50147CAC73EC41A50D /* effects */ = {
+			isa = PBXGroup;
+			children = (
+				434F4D50249B3AE7F5987E70 /* BuiltinEffectManifests.gen.cpp */,
+				434F4D50DCB5F5F826BE0450 /* EffectCompat.cpp */,
+				434F4D50C3534A1B6F46648E /* EffectCompat.h */,
+				434F4D50FA1804295FB0C494 /* EffectInstancers.cpp */,
+				434F4D508E5B8C9925FB7C31 /* EffectInstancers.h */,
+				434F4D50BC26D8C823C14AB0 /* EffectManifest.cpp */,
+				434F4D505CC0BF0AF095528F /* EffectManifest.h */,
+				434F4D50AE0BBB69091510FA /* EffectRegistry.cpp */,
+				434F4D509DBC4B0FD05D3388 /* EffectRegistry.h */,
+				434F4D50E2D5FF13DDE2B832 /* EffectRenderer.cpp */,
+				434F4D5051A11BC3AB847D4F /* EffectRenderer.h */,
+				434F4D50FCE1176197293962 /* EffectRuntime.cpp */,
+				434F4D50335AB1EAA484B35C /* EffectRuntime.h */,
+				434F4D502A9047F57F6A865B /* EffectSyntax.cpp */,
+				434F4D50E36CA9B0BF16DCE1 /* EffectSyntax.h */,
+				434F4D50577C374643F5FC29 /* EffectTypes.h */,
+				434F4D5076BA00E1D61AA319 /* EffectValue.cpp */,
+				434F4D503752E7417C733B6D /* EffectValue.h */,
+			);
+			path = effects;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -8762,6 +8848,7 @@
 				414E494D4500000000000047 /* anim */,
 				505645430000000000000179 /* vector */,
 				434F4D50564A0EBD33D8D4B9 /* compat */,
+				434F4D50147CAC73EC41A50D /* effects */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -8946,6 +9033,8 @@
 				524D4C557174AEEF16171B3E /* ObjectFit.cpp */,
 				524D4C5580D853E3200868C1 /* ShorthandBorder.cpp */,
 				524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */,
+				524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */,
+				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -10063,6 +10152,17 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D505B1F49763171CF59 /* EffectValue.h in Headers */,
+				434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */,
+				434F4D50E87BF4E2065C1065 /* EffectSyntax.h in Headers */,
+				434F4D50387FE622CC80F05F /* EffectRuntime.h in Headers */,
+				434F4D5047ECE306AE5555EA /* EffectRenderer.h in Headers */,
+				434F4D50E23DC7052443B0DB /* EffectRegistry.h in Headers */,
+				434F4D50F3134D09DB3EED14 /* EffectManifest.h in Headers */,
+				434F4D50649B8AE1025292F4 /* EffectInstancers.h in Headers */,
+				434F4D50929DBDDE21D59C2A /* EffectCompat.h in Headers */,
+				434F4D5039F57A98C3ABA6C5 /* CompatAtPropertyTypes.h in Headers */,
+				434F4D50BDDAB01C4828D2A6 /* CompatAtProperty.h in Headers */,
 				48544D4C78124CC99E1EABE6 /* HtmlUIInspector.h in Headers */,
 				48544D4C98EA102F865794CB /* HtmlUIInspectorInternal.h in Headers */,
 				48544D4CE1234BC040797AA1 /* HtmlUIAssertions.h in Headers */,
@@ -11844,6 +11944,16 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */,
+				434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */,
+				434F4D50F57F3CE131954601 /* EffectRuntime.cpp in Sources */,
+				434F4D508D9219DB385BABD4 /* EffectRenderer.cpp in Sources */,
+				434F4D5082558F390BD4F88A /* EffectRegistry.cpp in Sources */,
+				434F4D5039CECCC737C2CB9A /* EffectManifest.cpp in Sources */,
+				434F4D50EB4EBDACFC2E3E28 /* EffectInstancers.cpp in Sources */,
+				434F4D50151A262CF91F8E20 /* EffectCompat.cpp in Sources */,
+				434F4D501819E8D87DF47BB2 /* BuiltinEffectManifests.gen.cpp in Sources */,
+				434F4D507944123B6B7E3629 /* CompatAtProperty.cpp in Sources */,
 				48544D4CE2CF0E65C2C973C2 /* HtmlUIInspector.cpp in Sources */,
 				48544D4C49B8ED581219210D /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50607312AEAD952E55 /* HtmlFieldsetElement.cpp in Sources */,
@@ -12188,6 +12298,16 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */,
+				434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */,
+				434F4D502AFB0B7186F6D699 /* EffectRuntime.cpp in Sources */,
+				434F4D50BC769C2EA2206334 /* EffectRenderer.cpp in Sources */,
+				434F4D503AEBB5B05B571DF9 /* EffectRegistry.cpp in Sources */,
+				434F4D506652F136209AEAD6 /* EffectManifest.cpp in Sources */,
+				434F4D506F3D7FC71093B70E /* EffectInstancers.cpp in Sources */,
+				434F4D50B32D31489084D226 /* EffectCompat.cpp in Sources */,
+				434F4D505D1FE530999B724F /* BuiltinEffectManifests.gen.cpp in Sources */,
+				434F4D50F2AE031457ED6B91 /* CompatAtProperty.cpp in Sources */,
 				48544D4CED116BC10893A7C5 /* HtmlUIInspector.cpp in Sources */,
 				48544D4C2474E6B89BDA709B /* HtmlUIAssertions.cpp in Sources */,
 				434F4D50DA09FAE463E22E38 /* HtmlFieldsetElement.cpp in Sources */,
@@ -12904,6 +13024,8 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
+				524D4C552958E4ECFBAF4FBD /* ElementStyleRegistered.cpp in Sources */,
 				524D4C55977FE4A6E8958740 /* WillChange.cpp in Sources */,
 				524D4C55E9E92CC63F397D9E /* ShorthandBorder.cpp in Sources */,
 				524D4C5588399584E46A0FA2 /* ObjectFit.cpp in Sources */,
@@ -13154,6 +13276,8 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,
+				524D4C5543296A2EB89D57EC /* ElementStyleRegistered.cpp in Sources */,
 				524D4C55B334F014CA1586CE /* WillChange.cpp in Sources */,
 				524D4C55128BA1FC840FCDA8 /* ShorthandBorder.cpp in Sources */,
 				524D4C55DB94DAFA992E8A7E /* ObjectFit.cpp in Sources */,

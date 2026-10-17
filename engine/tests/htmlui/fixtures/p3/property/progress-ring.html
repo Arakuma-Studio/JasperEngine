@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: a registered percentage moves conic-gradient stops</title>
+<style>
+  @property --pr-ring { syntax: '<percentage>'; inherits: false; initial-value: 0%; }
+  html, body { margin: 0; }
+  #ring { position: absolute; left: 20px; top: 20px; width: 120px; height: 120px;
+          background: conic-gradient(#40c060 var(--pr-ring), #20242c var(--pr-ring));
+          transition: --pr-ring 1s linear; }
+  #ring.full { --pr-ring: 100%; }
+</style>
+</head>
+<body>
+<div id="ring"></div>
+</body>
+</html>

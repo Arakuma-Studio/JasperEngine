@@ -13,11 +13,11 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | Option | |
 |---|---|
 | `--lua` | Every `.lua` file of the project: syntax (compiled, not run), then the script's top level run in an isolated Lua state to read its `properties`, as the editor does (see below). |
-| `--shaders` | Every shader fork: the forks the scenes, prefabs and scene settings use, and every `.vert`/`.frag` pair no scene uses yet (its type guessed from the fragment shader). Compiled with the engine's shader compiler for the editor's backend, exactly as `check_shader` does, includes resolved as the engine resolves them. |
+| `--shaders` | Every shader fork: the forks the scenes, prefabs and scene settings use, and every `.vert`/`.frag` pair no scene uses yet (its type guessed from the fragment shader). Compiled with the engine's shader compiler for the editor's backend, exactly as `check_shader` does, includes resolved as the engine resolves them. A project UI effect (a `.frag` whose manifest, the comment lines after `#version 450`, starts with `// @effect`; declared with `@effect` or not) is checked as one: its manifest (`HTMLUI-FX-0014` at the line, a built-in's name `HTMLUI-FX-0012`), then a compile in each of its forms (paint effects: paint and filter; errors `HTMLUI-FX-0015` at the `.frag` or include line), then its parameter block against the manifest (`HTMLUI-FX-0014` at the `@param` line); the two forms of a paint effect report an error once. |
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--all` | All four. Without `--lua/--shaders/--cpp/--ui/--all`: `--lua --shaders --ui` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork; a `.glsl` checks every fork (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -69,7 +69,8 @@ JSON (`--format json`):
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
-when there is a fix, `suggestion`; the other tools' findings have exactly the six keys above.
+when there is a fix, `suggestion`; so do the shader findings of a UI effect (`code`
+`HTMLUI-FX-0012` to `HTMLUI-FX-0015`); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own).
 

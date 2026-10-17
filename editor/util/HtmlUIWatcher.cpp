@@ -12,15 +12,17 @@
 
 using namespace jasperengine;
 
-std::vector<uint32_t> editor::HtmlUIWatcher::update(Project* project){
+std::vector<uint32_t> editor::HtmlUIWatcher::update(Project* project, bool hold){
     std::vector<uint32_t> reloadedScenes;
-    if (!project)
+    if (!project || hold)
         return reloadedScenes;
 
     const auto now = std::chrono::steady_clock::now();
     if (!checkRequested && std::chrono::duration<double>(now - lastCheck).count() < intervalSec)
         return reloadedScenes;
     lastCheck = now;
+    // a save from the code editor reloads at once; the poll waits for the files to settle
+    const double settle = checkRequested ? 0.0 : settleSec;
     checkRequested = false;
 
     for (SceneProject* sceneProject : project->getHtmlUIScenes()){
@@ -47,7 +49,7 @@ std::vector<uint32_t> editor::HtmlUIWatcher::update(Project* project){
         if (unique.empty())
             continue;
 
-        const std::vector<UIDocumentSystem::Reloaded> reloaded = system->reloadChangedFiles(std::vector<std::string>(unique.begin(), unique.end()));
+        const std::vector<UIDocumentSystem::Reloaded> reloaded = system->reloadChangedFiles(std::vector<std::string>(unique.begin(), unique.end()), settle);
         if (reloaded.empty())
             continue;
 

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>property: keyframes on a registered angle driving conic-gradient(from var())</title>
+<style>
+  @property --kcs-spin { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+  @keyframes kcs-spin { to { --kcs-spin: 360deg; } }
+  html, body { margin: 0; }
+  #dial { position: absolute; left: 20px; top: 20px; width: 120px; height: 120px;
+          background: conic-gradient(from var(--kcs-spin), #e04040, #e0c040, #40c060, #4060e0, #e04040);
+          animation: kcs-spin 4s linear infinite; }
+  #hand { position: absolute; left: 180px; top: 75px; width: 100px; height: 10px; background-color: #303030;
+          transform: rotate(var(--kcs-spin)); animation: kcs-spin 4s linear infinite; }
+</style>
+</head>
+<body>
+<div id="dial"></div>
+<div id="hand"></div>
+</body>
+</html>

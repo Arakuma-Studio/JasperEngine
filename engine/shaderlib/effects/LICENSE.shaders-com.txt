@@ -1,0 +1,118 @@
+Effects of the JasperEngine HTML UI ported from shaders.com
+
+These UI effects of engine/shaderlib/effects are ports of shaders.com effects
+(https://shaders.com/, https://github.com/shader-effects-inc/shaders, packages/core/src/shaders/<Name>)
+to GLSL, under the MIT license below:
+
+  angular-blur          shaders.com AngularBlur
+  aurora                shaders.com Aurora
+  block-dissolve        shaders.com BlockDissolve
+  bulge                 shaders.com Bulge (+ original `follow-pointer`)
+  chromatic-aberration  shaders.com ChromaticAberration
+  color-wheel           shaders.com ColorWheel
+  conic-spin            shaders.com ConicGradient (adapted: speed in turns/s)
+  crt                   shaders.com CRTScreen
+  curl-noise            shaders.com CurlNoise
+  cursor-ripples        shaders.com CursorRipples (adapted: analytic ripple events replace the wave grid, CursorRipples/index.ts:12-26)
+  cursor-trail          shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
+  diamond-gradient      shaders.com DiamondGradient
+  diamond-wipe          shaders.com DiamondWipe
+  dither                shaders.com Dither (adapted: Floyd–Steinberg omitted, it needs sequential error diffusion)
+  dot-grid              shaders.com DotGrid
+  duotone               shaders.com Duotone
+  emboss                shaders.com Emboss (adapted: relief from the content alpha)
+  falling-lines         shaders.com FallingLines
+  film-grain            shaders.com FilmGrain
+  flow-field            shaders.com FlowField
+  flowing-gradient      shaders.com FlowingGradient
+  fluted-glass          shaders.com FlutedGlass
+  fractal-noise         shaders.com FractalNoise
+  glass-tiles           shaders.com GlassTiles
+  glitch                shaders.com Glitch
+  glow                  shaders.com Glow
+  godrays               shaders.com Godrays
+  gradient-map          shaders.com GradientMap
+  gradient-pan          shaders.com LinearGradient (adapted: speed scrolls the stops)
+  grid                  shaders.com Grid
+  halftone              shaders.com Halftone
+  hex-grid              shaders.com HexGrid
+  hologram              shaders.com Hologram (adapted: applied to the element's content instead of a shape)
+  holographic           shaders.com Holographic (adapted: shape = element box; tilt follows the pointer)
+  iris-wipe             shaders.com IrisWipe
+  light-edge            shaders.com LightEdge (adapted: shape = element rounded box, sizes in px)
+  light-leak            shaders.com LightLeak
+  linear-wipe           shaders.com LinearWipe
+  liquid-glass          shaders.com Glass (adapted: shape = element rounded box, thickness in px)
+  marble                shaders.com Marble
+  mesh-gradient         shaders.com MeshGradient
+  motion-blur           shaders.com LinearBlur
+  multi-point-gradient  shaders.com MultiPointGradient
+  neon-border           shaders.com Neon (adapted: tube along the border, sizes in px)
+  noise-dissolve        shaders.com NoiseDissolve (+ original burn edge)
+  perlin-noise          shaders.com PerlinNoise
+  pixelate              shaders.com Pixelate (adapted: cell size in px)
+  plasma                shaders.com Plasma
+  posterize             shaders.com Posterize
+  progressive-blur      shaders.com ProgressiveBlur
+  radial-pulse          shaders.com RadialGradient (adapted: speed moves rings outward)
+  radial-wipe           shaders.com RadialWipe
+  ripple-rings          shaders.com Ripples
+  ripple-wipe           shaders.com RippleWipe
+  simplex-noise         shaders.com SimplexNoise
+  sine-wave             shaders.com SineWave
+  sparkle               shaders.com Sparkle
+  strands               shaders.com Strands
+  stripes               shaders.com Stripes
+  sunburst              shaders.com SunBurst
+  swirl                 shaders.com Swirl (adapted: source `blend` renamed `balance`)
+  thin-film             shaders.com ThinFilm (adapted: rim along the element edges)
+  tilt-shift            shaders.com TiltShift
+  twirl                 shaders.com Twirl
+  venetian-blinds       shaders.com VenetianBlinds
+  vhs                   shaders.com VHS
+  vignette              shaders.com Vignette
+  voronoi               shaders.com Voronoi
+  wave-distortion       shaders.com WaveDistortion
+  zoom-blur             shaders.com ZoomBlur
+
+These effects are original but follow parts of the shaders.com kit:
+
+  fire           original (domain-warped fbm flame; palette after GradientMap `fire`)
+  frosted-glass  original (Glass kit glassTint/glassBorderHighlight, gpu/kit/effects/glass.ts:170-199)
+  glints         original (paint counterpart of Sparkle)
+  grain          original (FilmGrain look, gpu/kit/colorOps.ts:267)
+  heat-haze      original (FlowField-derived)
+  scanlines      original (CRTScreen's scanline term)
+  smoke          original (stateless fbm smoke; look and params after shaders.com Fog)
+  starfield      original
+  water-ripple   original (Ripples' ring math as a displacement; CursorRipples' chromatic split)
+
+The include library engine/shaderlib/effects/lib (jfx_color, jfx_hash, jfx_noise, jfx_sdf,
+jfx_blend, jfx_tone and the other jfx_*.glsl files) and the effect families' includes there
+(fam_*.glsl) port functions of the shaders.com kit (packages/core/src/gpu/kit) under the same
+license.
+
+Generated by tools/htmlui/gen_effects_docs.py from the effects' @source lines.
+
+------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) 2026 Shader Effects Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

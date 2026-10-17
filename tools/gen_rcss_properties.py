@@ -6,8 +6,10 @@ offers as suggestions in CSS files and in HTML style="" attributes.
 
 The names are read from RmlUi's property registrations
 (engine/libs/rmlui/Source/Core/StyleSheetSpecification.cpp): every
-`RegisterProperty(PropertyId::X, "name", ...)` and `RegisterShorthand(ShorthandId::X, "name", ...)`.
-Re-run it after updating RmlUi. --check writes nothing and exits 1 if the header is stale.
+`RegisterProperty(PropertyId::X, "name", ...)` and `RegisterShorthand(ShorthandId::X, "name", ...)`,
+the longhands every shorthand lists (names registered in loops), and the `names[]` tables of
+registration loops. Re-run it after changing the fork's registrations. --check writes nothing and
+exits 1 if the header is stale; tools/mcp/tests/test_generators.py runs it.
 """
 import re
 import sys
@@ -18,10 +20,21 @@ SOURCE = ROOT / "engine/libs/rmlui/Source/Core/StyleSheetSpecification.cpp"
 OUTPUT = ROOT / "editor/window/widget/RcssProperties.h"
 
 REGISTRATION = re.compile(r'\bRegister(?:Property|Shorthand)\s*\(\s*(?:PropertyId|ShorthandId)::\w+\s*,\s*"([^"]+)"')
+# a shorthand's longhands, "name, name, ...": names registered in loops or built at run time
+# (the fork's per-side border widths and corner radii, phase 3) appear in these lists
+SHORTHAND_ITEMS = re.compile(r'\bRegisterShorthand\s*\(\s*ShorthandId::\w+\s*,\s*[^,]+,\s*"([^"]+)"')
+# the names a registration loop takes them from: static const char* const names[] = {"a", "b"}
+NAME_TABLE = re.compile(r'static\s+const\s+char\s*\*\s*const\s+names\s*\[\s*\]\s*=\s*\{([^}]*)\}')
 
 
 def collect(source_text):
-    names = sorted(set(REGISTRATION.findall(source_text)))
+    names = set(REGISTRATION.findall(source_text))
+    for items in SHORTHAND_ITEMS.findall(source_text):
+        # internal longhands (-rmlui-...-x/-y of the corner radii) are not written by authors
+        names.update(item.strip() for item in items.split(",") if item.strip() and not item.strip().startswith("-"))
+    for table in NAME_TABLE.findall(source_text):
+        names.update(re.findall(r'"([^"]+)"', table))
+    names = sorted(names)
     if not names:
         sys.exit(f"no property registrations found in {SOURCE}")
     return names

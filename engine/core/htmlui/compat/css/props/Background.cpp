@@ -15,6 +15,7 @@
 
 #include "htmlui/compat/css/props/Rewriters.h"
 #include "htmlui/compat/LiteralCompare.h"
+#include "htmlui/compat/CompatAtProperty.h"
 
 #include "htmlui/compat/css/BaseRules.h"
 #include "htmlui/compat/css/ColorValue.h"
@@ -24,6 +25,7 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
+#include "htmlui/effects/EffectCompat.h"
 
 #include <cmath>
 
@@ -314,6 +316,8 @@ namespace {
         Words colors;
         bool reportedHint = false;
         bool any = false;
+        // the fork's layers substitute a var() stop position (a registered <percentage> animates the stop; phase 5)
+        const bool native = scope.context && scope.context->fork(ForkFeature::BackgroundLayers);
         for (size_t i = first; i < groups.size(); i++){
             const Words w = wordsOf(groups[i]);
             if (w.empty())
@@ -332,7 +336,7 @@ namespace {
             for (const ComponentValue* v : w){
                 if (!color && (isColor(scope.session, *v) || isVar(*v))){
                     color = v;
-                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v))){
+                }else if (v->isToken(TokenType::Percentage) || isLength(scope.session, *v) || (angular && isAngle(*v)) || (native && isVar(*v))){
                     if (positionCount < 2)
                         positions[positionCount] = v;
                     positionCount++;
@@ -403,6 +407,15 @@ namespace {
         bool headIsStop = false;
         if (!head.empty() && (isColor(scope.session, *head[0]) || isVar(*head[0])))
             headIsStop = true;
+        // a var() of a registered <angle> is the gradient's angle, which the fork's layers substitute (phase 5)
+        const bool angleVar = linear && head.size() == 1 && isVar(*head[0]) && scope.context &&
+                              scope.context->fork(ForkFeature::BackgroundLayers) && [&](){
+                                  const RegisteredProperty* registered = CompatAtProperty::find(scope.session,
+                                                                                                CustomPropertyIndex::varName(*head[0]));
+                                  return registered && registered->type == AtPropertySyntax::Angle;
+                              }();
+        if (angleVar)
+            headIsStop = false;
         if (head.empty() && groups[0].size() > 0)
             headIsStop = false;
         out += name;
@@ -411,7 +424,9 @@ namespace {
         bool lostOffset = false;
         if (!headIsStop && !head.empty()){
             if (linear){
-                if (head.size() == 1 && isAngle(*head[0])){
+                if (angleVar){
+                    appendSerialized(out, *head[0]);
+                }else if (head.size() == 1 && isAngle(*head[0])){
                     double angle = head[0]->token.number;
                     if (legacy)
                         angle = std::fmod(90.0 - angle + 360.0 * 4, 360.0);
@@ -553,6 +568,10 @@ namespace {
                         }else if (isAngle(angle)){
                             out += "from ";
                             appendSerialized(out, angle);
+                        }else if (isVar(angle) && scope.context && scope.context->fork(ForkFeature::BackgroundLayers)){
+                            // the fork's layers substitute it (a registered <angle> animates the gradient; phase 5)
+                            out += "from ";
+                            appendSerialized(out, angle);
                         }else{
                             return false;
                         }
@@ -656,10 +675,13 @@ namespace {
 
     // (trivially copied: the layers of a declaration are copied from one to the next)
     struct Layer {
-        enum class Kind : uint8_t { None, Gradient, Image, Var };
+        enum class Kind : uint8_t { None, Gradient, Image, Var, Effect };
         Kind kind = Kind::None;
-        Text image;                                    // the gradient decorator or the image path
+        Text image;                                    // the gradient decorator or the image path; Effect: its typed RCSS once resolved
         const ComponentValue* var = nullptr;           // Var: the var() written as it is
+        const ComponentValue* effect = nullptr;        // Effect: the function (a handled image function, phase 5)
+        uint32_t effectFile = 0;                       // Effect: the file it is written in
+        bool repeatSet = false;                        // a background-repeat was given for the layer
         const ComponentValue* middleColor = nullptr;   // a gradient's middle stop (gradient text)
         Axis x, y;
         bool positionSet = false;
@@ -770,6 +792,14 @@ namespace {
             layer.var = &v;
             return true;
         }
+        // phase 5: an image function a later phase handles (effect())
+        if (findImageFunctionHandler(name)){
+            layer.kind = Layer::Kind::Effect;
+            layer.effect = &v;
+            layer.effectFile = scope.file;
+            layer.image = Text();
+            return true;
+        }
         if (name == "-webkit-gradient"){
             say(scope, Severity::Warning, codes::UnsupportedFunction, "the 2008 -webkit-gradient() syntax is not supported; layer dropped",
                 "use linear-gradient() or radial-gradient()");
@@ -777,8 +807,20 @@ namespace {
             return true;
         }
         if (name == "element" || name == "cross-fade" || name == "-webkit-cross-fade" || name == "paint" || name == "image"){
+            // paint(<name>) of an effect the engine has: phase 5's suggestion
+            std::string suggestion = "use url() or a gradient";
+            if (name == "paint"){
+                for (const ComponentValue& arg : v.children){
+                    if (arg.isToken(TokenType::Ident)){
+                        const std::string effect = jasperengine::htmlui::EffectCompat::paintSuggestion(std::string(arg.token.value.view()));
+                        if (!effect.empty())
+                            suggestion = effect;
+                        break;
+                    }
+                }
+            }
             say(scope, Severity::Warning, codes::UnsupportedFunction, "'" + std::string(name) + "()' is not supported; layer dropped",
-                "use url() or a gradient");
+                suggestion);
             dropped = true;
             return true;
         }
@@ -928,8 +970,10 @@ namespace {
                 return false;
             layer.positionSet = true;
         }
-        if (repeats > 0)
+        if (repeats > 0){
             setRepeat(layer, repeat, repeats);
+            layer.repeatSet = true;
+        }
         if (boxCount >= 1){
             if (boxText[0])
                 layer.clipText = true;
@@ -963,6 +1007,13 @@ namespace {
                 case Layer::Kind::Var:
                     separate();
                     appendSerialized(out, *layer.var);
+                    break;
+                case Layer::Kind::Effect:
+                    // the typed RCSS of the effect (resolveEffects), with its paint area
+                    if (!layer.image.empty()){
+                        separate();
+                        out += layer.image.view();
+                    }
                     break;
                 case Layer::Kind::Gradient: {
                     const bool fullBox = !layer.sizeSet && (!layer.positionSet || (atZero(layer.x) && atZero(layer.y)));
@@ -1124,6 +1175,7 @@ namespace {
                     count++;
                 }
                 setRepeat(layer, repeat, count);
+                layer.repeatSet = true;
             }else if (name == "background-origin"){
                 Box box;
                 bool isText = false;
@@ -1197,6 +1249,125 @@ namespace {
         return buffer;
     }
 
+    // ---- effect layers (phase 5): an effect() layer is written as the typed RCSS its image
+    // function handler gives (EffectCompat); with background-clip: text and a transparent text
+    // fill, the fork fills the text with it (-jfx-text-fill, ForkFeature::TextFillFilter)
+
+    // what the rule says of its layers beyond one declaration
+    struct RuleLayerFacts {
+        bool size = false, position = false, repeat = false;
+        std::vector<std::string> blend;     // background-blend-mode per layer (the list repeats)
+        std::vector<bool> textClip;         // background-clip: text per layer (the list repeats)
+    };
+
+    RuleLayerFacts ruleLayerFacts(Session& session, const FlatRule* rule, bool mask){
+        RuleLayerFacts facts;
+        if (!rule)
+            return facts;
+        session.memoTaint++;   // (reads the rule's other declarations)
+        for (const Declaration& d : rule->declarations){
+            std::string_view name = plainName(d.name);
+            std::string mapped;
+            if (mask && startsWith(name, "mask-")){
+                mapped = "background-" + std::string(name.substr(5));
+                name = mapped;
+            }else if (!mask && startsWith(name, "mask")){
+                continue;
+            }
+            if (name == "background-size")
+                facts.size = true;
+            else if (name == "background-position" || name == "background-position-x" || name == "background-position-y")
+                facts.position = true;
+            else if (name == "background-repeat")
+                facts.repeat = true;
+            else if (!mask && name == "background-blend-mode"){
+                facts.blend.clear();
+                for (const ValueRange& group : commaRanges(d.value)){
+                    const Words w = wordsOf(group);
+                    facts.blend.push_back(w.size() == 1 ? std::string(identView(*w[0])) : std::string("?"));
+                }
+            }else if (!mask && name == "background-clip"){
+                facts.textClip.clear();
+                for (const ValueRange& group : commaRanges(d.value)){
+                    const Words w = wordsOf(group);
+                    facts.textClip.push_back(w.size() == 1 && identView(*w[0]) == "text");
+                }
+            }
+        }
+        return facts;
+    }
+
+    // the rule (or its base rule) makes the text fill transparent
+    bool ruleTransparentFill(Session& session, const FlatRule* rule){
+        if (!rule)
+            return false;
+        if (transparentFill(session, *rule))
+            return true;
+        return BaseRules::find(session, *rule, [&](const FlatRule& candidate){ return transparentFill(session, candidate); }) != nullptr;
+    }
+
+    // Writes the typed RCSS of the effect layers (layer.image); a dropped effect is no layer.
+    // With textFill, the effect layers clipped to text go into `fills` in their filter form,
+    // bottom layer first, and leave the list (native: a `none` placeholder keeps the indices).
+    void resolveEffects(LayerScope& scope, ArenaList<Layer>& layers, bool mask, bool native, const RuleLayerFacts& facts, bool textFill,
+                        std::vector<std::string>* fills){
+        DiagnosticSink quiet(scope.session.files);
+        DiagnosticSink& sink = (scope.context || scope.toSink) ? *scope.session.sink : quiet;
+        for (size_t i = 0; i < layers.size(); i++){
+            Layer& layer = layers[i];
+            if (layer.kind != Layer::Kind::Effect || !layer.effect)
+                continue;
+            const ImageFunctionHandler* handler = findImageFunctionHandler(layer.effect->name().view());
+            if (!handler){
+                layer.kind = Layer::Kind::None;
+                continue;
+            }
+            ImageLayerContext context;
+            context.session = &scope.session;
+            context.declaration = scope.context;
+            context.function = layer.effect;
+            context.file = layer.effectFile;
+            context.ref = layer.effect->length > 0 ? SourceRef{layer.effectFile, layer.effect->offset, layer.effect->length} : scope.ref;
+            context.property = mask ? "mask-image" : "background-image";
+            context.layerIndex = i;
+            context.clip = boxName(layer.clip);
+            context.sizeSet = layer.sizeSet || facts.size;
+            context.positionSet = layer.positionSet || facts.position;
+            context.repeatSet = layer.repeatSet || facts.repeat;
+            context.blendMode = facts.blend.empty() ? std::string() : facts.blend[i % facts.blend.size()];
+            context.native = native;
+            const bool clipped = layer.clipText || (!facts.textClip.empty() && facts.textClip[i % facts.textClip.size()]);
+            context.textFill = textFill && clipped && !mask && fills;
+            std::optional<std::string> rcss = (*handler)(context, sink);
+            if (!rcss){
+                layer.kind = Layer::Kind::None;
+                layer.image = Text();
+                continue;
+            }
+            if (context.textFill){
+                fills->insert(fills->begin(), *rcss);
+                layer.clipText = false;
+                layer.image = Text();
+                if (!native)
+                    layer.kind = Layer::Kind::None;
+                continue;
+            }
+            layer.image = Text(*rcss);
+        }
+    }
+
+    // writes the text fill of gradient text with effect layers
+    void emitTextFill(DeclContext& context, const std::vector<std::string>& fills){
+        std::string list;
+        for (const std::string& fill : fills)
+            list += (list.empty() ? "" : " ") + fill;
+        context.emit("-jfx-text-fill", list);
+        context.emit("color", "#ffffffff");
+        context.reportAs(Severity::Info, codes::EffectTextFill,
+                         "background-clip: text fills the content with the effect: the transparent text color is drawn white for it",
+                         "all of the element's content is filled, not only its glyphs");
+    }
+
     // ---- the fork's layers (ForkFeature::BackgroundLayers, phase 3 p3-paint): each declaration is written as the
     // native longhands it sets, the values normalized (url() resolved, gradients as the fork's gradient functions)
 
@@ -1213,6 +1384,7 @@ namespace {
                     case Layer::Kind::None: out += "none"; break;
                     case Layer::Kind::Var: appendSerialized(out, *layer.var); break;
                     case Layer::Kind::Gradient: out += layer.image.view(); break;
+                    case Layer::Kind::Effect: out += layer.image.empty() ? std::string_view("none") : layer.image.view(); break;
                     case Layer::Kind::Image:
                         out += "url(";
                         appendString(out, layer.image);
@@ -1294,6 +1466,20 @@ namespace {
                              "check the background syntax");
             context.dropped = true;
             return;
+        }
+
+        // effect layers (phase 5): their typed RCSS; with gradient text, the fork fills the text with them
+        if (name == "background" || name == "background-image"){
+            std::vector<std::string> fills;
+            const RuleLayerFacts facts = ruleLayerFacts(context.session, context.rule, mask);
+            const bool textFill = !mask && context.fork(ForkFeature::TextFillFilter) && ruleTransparentFill(context.session, context.rule);
+            resolveEffects(scope, state.layers, mask, true, facts, textFill, &fills);
+            if (!fills.empty())
+                emitTextFill(context, fills);
+        }else if (name == "background-clip" && !mask && context.rule && ruleHasEffectTextFill(context.session, *context.rule)){
+            // the effect layers fill the text (-jfx-text-fill): their clip is the border box
+            for (Layer& layer : state.layers)
+                layer.clipText = false;
         }
 
         // gradient text: background-clip: text with a transparent text fill, as without the fork
@@ -1496,6 +1682,17 @@ namespace {
             return;
         }
 
+        // effect layers (phase 5): their typed RCSS with their paint area; with gradient text,
+        // the fork fills the text with them
+        {
+            std::vector<std::string> fills;
+            const RuleLayerFacts facts = ruleLayerFacts(context.session, context.rule, mask);
+            const bool textFill = !mask && context.fork(ForkFeature::TextFillFilter) && ruleTransparentFill(context.session, context.rule);
+            resolveEffects(scope, state.layers, mask, false, facts, textFill, &fills);
+            if (!fills.empty())
+                emitTextFill(context, fills);
+        }
+
         // gradient text: background-clip: text with a transparent text fill
         bool clipText = false;
         std::string middle;
@@ -1586,6 +1783,7 @@ namespace {
         Layers state;
         if (!applyDeclaration(scope, "background", value, state))
             return std::nullopt;
+        resolveEffects(scope, state.layers, mask, false, RuleLayerFacts(), false, nullptr);
         std::string decorators;
         appendDecorators(scope, state.layers, decorators);
         return decorators.empty() ? std::string(companions::kNoLayer) : decorators;
@@ -1613,7 +1811,26 @@ namespace {
     }
     std::optional<std::string> transformNativeLayers(Session& session, const ValueList& value, const std::string&, SourceRef ref){
         std::string out;
+        size_t layerIndex = 0;
         for (const ComponentValue& v : value){
+            if (v.isToken(TokenType::Comma))
+                layerIndex++;
+            // phase 5: an effect() layer in its typed form (a dropped one is no image)
+            if (v.kind == ComponentValue::Kind::Function){
+                if (const ImageFunctionHandler* handler = findImageFunctionHandler(v.name().view())){
+                    ImageLayerContext context;
+                    context.session = &session;
+                    context.function = &v;
+                    context.file = ref.file;
+                    context.ref = v.length > 0 ? SourceRef{ref.file, v.offset, v.length} : ref;
+                    context.property = "background-image";
+                    context.layerIndex = layerIndex;
+                    context.native = true;
+                    std::optional<std::string> rcss = (*handler)(context, *session.sink);
+                    out += rcss ? *rcss : std::string("none");
+                    continue;
+                }
+            }
             if (v.isToken(TokenType::Url) || v.isFunction("url")){
                 std::optional<std::string> url = urlOf(v);
                 const std::string path = url ? resolveUrlIn(session, *url, ref.file, ref, "image") : std::string();
@@ -1663,4 +1880,33 @@ void jasperengine::htmlui::compat::rewriteClipPath(DeclContext& context){
         return;
     }
     rewriteLayers(context, true);
+}
+
+bool jasperengine::htmlui::compat::ruleHasEffectLayer(Session& session, const FlatRule& rule){
+    session.memoTaint++;
+    for (const Declaration& d : rule.declarations){
+        const std::string_view name = plainName(d.name);
+        if (name != "background" && name != "background-image")
+            continue;
+        for (const ComponentValue& v : d.value){
+            if (v.kind == ComponentValue::Kind::Function && findImageFunctionHandler(v.name().view()))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool jasperengine::htmlui::compat::ruleHasEffectTextFill(Session& session, const FlatRule& rule){
+    if (!session.fork(ForkFeature::TextFillFilter) || !ruleHasEffectLayer(session, rule) || !ruleTransparentFill(session, &rule))
+        return false;
+    for (const Declaration& d : rule.declarations){
+        const std::string_view name = plainName(d.name);
+        if (name != "background" && name != "background-clip")
+            continue;
+        for (const ComponentValue& v : d.value){
+            if (v.isToken(TokenType::Ident) && equalsNoCase(v.token.value, "text"))
+                return true;
+        }
+    }
+    return false;
 }

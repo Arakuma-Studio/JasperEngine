@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <functional>
 #include <vector>
 
 typedef struct lua_State lua_State;
@@ -167,8 +168,15 @@ namespace jasperengine{
         uint32_t getLoadCount(Entity entity) const;                // +1 on every (re)load, a stylesheet-only refresh included
         // The one reload entry point for both the editor watcher and phase 4's McpAutoSync pick-up:
         // reloads each document of this scene that depends on one of `files` whose stamp
-        // (mtime, size) differs from the one recorded at that document's last (re)load
-        std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files);
+        // (mtime, size) differs from the one recorded at that document's last (re)load.
+        // settleSeconds > 0 (the editor's poller; p5-tooling): a document with a changed file
+        // modified less than that long ago is left for a later call, its stamps untouched, so
+        // files written back to back (one edit) reload once, not once per file the poll saw
+        std::vector<Reloaded> reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds = 0.0);
+        // Tests: called after a document's files were read by a (re)load and before the load
+        // records what they were (p5-tooling: a file changed in that window is still seen as
+        // changed by the next reloadChangedFiles); nullptr removes it
+        static void setLoadedHookForTesting(std::function<void(Entity)> hook);
         bool setDebuggerVisible(bool visible);   // false when the debugger is not compiled in
         bool isDebuggerVisible() const;
         // seconds until a document of this scene needs the next update to animate (CSS

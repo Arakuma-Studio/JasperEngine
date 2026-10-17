@@ -37,6 +37,7 @@ namespace jasperengine{
                 stats.textureBinds += frame.textureBinds;
                 stats.layersPushed += frame.layersPushed;
                 stats.filtersApplied += frame.filtersApplied;
+                stats.compositesFused += frame.compositesFused;
             }
             stats.geometryLive += frame.geometryLive;
             stats.geometryBytes += frame.geometryBytes;

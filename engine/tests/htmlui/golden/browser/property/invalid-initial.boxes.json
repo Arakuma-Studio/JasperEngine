@@ -1,0 +1,60 @@
+{
+ "fixture": "property/invalid-initial.html",
+ "viewport": [
+  300,
+  170
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "parent",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 280,
+    "h": 150
+   },
+   {
+    "id": "cascade",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 30,
+    "h": 24
+   },
+   {
+    "id": "substituted",
+    "tag": "div",
+    "x": 10,
+    "y": 40,
+    "w": 30,
+    "h": 24
+   },
+   {
+    "id": "color",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 200,
+    "h": 24
+   },
+   {
+    "id": "inherited",
+    "tag": "div",
+    "x": 10,
+    "y": 100,
+    "w": 150,
+    "h": 24
+   },
+   {
+    "id": "valid",
+    "tag": "div",
+    "x": 10,
+    "y": 130,
+    "w": 220,
+    "h": 24
+   }
+  ]
+ }
+}

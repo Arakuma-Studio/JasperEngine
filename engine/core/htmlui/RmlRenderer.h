@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -31,6 +32,10 @@ namespace jasperengine {
     class FramebufferRender;
     class ShaderRender;
     class RmlFilterContext;
+
+    namespace htmlui {
+        class EffectRenderer;
+    }
 
     struct HtmlUITexture;
     struct RmlGeometry;
@@ -71,6 +76,9 @@ namespace jasperengine {
         int getPostprocessCount() const;    // created post-process targets
         // framebuffers created over the target's life (performance tests)
         uint64_t getCreateCount() const;
+        // changes whenever one of its framebuffers is made (unique across targets): what a
+        // renderer knows about their contents holds while it is the same
+        uint64_t getGeneration() const;
 
     private:
         friend class RmlRenderer;
@@ -78,13 +86,23 @@ namespace jasperengine {
 
         Framebuffer* ensureLayer(int index);
         Framebuffer* ensurePostprocess(int index);
+        // A framebuffer's GPU objects are checked once per frame (Framebuffer::isCreated asks
+        // sokol for every attachment view: hundreds of lookups a frame with layers and filters,
+        // on memory the driver has just evicted); they can only go between frames (the view
+        // reloads) or through destroy()
+        void newFrame();
+        bool checkedThisFrame(const Framebuffer& framebuffer) const;
 
         std::vector<std::unique_ptr<Framebuffer>> layers;
         std::unique_ptr<Framebuffer> postprocess[POSTPROCESS_COUNT];
+        std::vector<uint64_t> layerChecked;              // the frame each layer was last found created
+        uint64_t postprocessChecked[POSTPROCESS_COUNT] = {};
+        uint64_t frame = 1;
         int width = 0;
         int height = 0;
         int sampleCount = 1;
         uint64_t createCount = 0;
+        uint64_t generation = 0;
     };
 
     // CompileFilter handles (bit 0 clear; phase 5 uses handles with bit 0 set)
@@ -203,6 +221,10 @@ namespace jasperengine {
         static void sigmaToParameters(float desiredSigma, int& passLevel, float& sigma);
         static void blurWeights(float sigma, float weights[4]);
 
+        // tests: false draws every backdrop through its temporary layer, as RmlUi's GL3 renderer
+        // (DeferredComposite); the images are the same
+        static void setCompositeFusionForTesting(bool enabled);
+
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
         const Rml::Matrix4f& getCurrentTransform() const;
@@ -237,6 +259,8 @@ namespace jasperengine {
 
     private:
         friend class RmlFilterContext;
+        // phase 5: the UI effects draw with the renderer's passes, geometry and state
+        friend class htmlui::EffectRenderer;
 
         enum class TargetKind { NONE, LAYER, POSTPROCESS, OTHER };
         // DROPPED: beginFrame could not draw (shaders compiling, no target); RmlUi's calls
@@ -274,10 +298,48 @@ namespace jasperengine {
             PostParams params;
         };
 
+        // What an MSAA layer holds, so its resolves cover only what they must, with the result of
+        // full ones: content, the rect outside which every sample is transparent; stale, the rect
+        // outside which its resolve image equals its samples. Invalid rects are empty; a layer not
+        // seen since it was made is full/full.
+        struct TargetRegions {
+            Rml::Rectanglei content = Rml::Rectanglei::MakeInvalid();
+            Rml::Rectanglei stale = Rml::Rectanglei::MakeInvalid();
+        };
+        TargetRegions& regionsOf(const Framebuffer& framebuffer);
+        // a target's sample count without asking its framebuffer object (the layers have the
+        // render target's, the post-process targets one)
+        int samplesOf(Framebuffer& framebuffer, TargetKind kind) const;
+        // the open pass wrote colour within its viewport and scissor
+        void noteColorWrite();
+        // the layer's resolve image is current (before it is read): ends its pass with the resolve,
+        // or resolves it in a pass of its own
+        void ensureResolved(Framebuffer& layer);
+
+        // A backdrop's filter output not drawn into its temporary layer yet. RmlUi composites the
+        // filtered backdrop into a pushed layer and that layer at once into the destination
+        // (ElementEffects): the second composite draws the post target straight into the
+        // destination (the layer would hold exactly it within the first scissor, transparent
+        // elsewhere), saving the layer's pass and resolve. Anything else that binds a target or
+        // reads the layer first draws it in (flushDeferredComposite); popping the layer drops it.
+        struct DeferredComposite {
+            int layer = -1;                  // the pushed layer; -1: none
+            int post = -1;                   // the post target holding the filter output
+            Rml::Rectanglei scissor;         // the first composite's
+            PipelineState state;             // the first composite's (no clip mask)
+        };
+        DeferredComposite deferred;
+        bool fusingDeferred = false;
+        void flushDeferredComposite();
+
         // targets and passes
-        void endPass();
+        // resolve: an MSAA layer's pass ends with its resolve (stale region); else, on GL, the
+        // resolve is left for when the layer is read (other backends resolve at every pass end)
+        void endPass(bool resolve = false);
         bool beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad);
         bool bindLayer(int index);
+        // the top layer, or for a stencil-only draw over a deferred composite the layer under it
+        bool bindDrawLayer(bool stencilOnly);
         // any target: a layer binds as a layer; another target keeps the open pass for LOAD
         bool bindTarget(Framebuffer& framebuffer, LoadAction load);
         TargetKind kindOf(const Framebuffer& framebuffer, int& index) const;
@@ -320,6 +382,7 @@ namespace jasperengine {
         void abortFrame();
 
         std::unordered_set<RmlGeometry*> liveGeometry;
+        std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
         std::unordered_set<HtmlUITexture*> liveTextures;
         std::vector<HtmlUITexture*> pendingReleases;
         std::vector<std::unique_ptr<RmlGeometryPage>> pages;
@@ -351,6 +414,17 @@ namespace jasperengine {
         Rml::Rectanglei appliedViewport;
         Rml::Rectanglei appliedScissor;
 
+        std::unordered_map<const Framebuffer*, TargetRegions> regions;
+        struct RegionsCacheEntry {
+            const Framebuffer* framebuffer = nullptr;
+            TargetRegions* regions = nullptr;
+        };
+        RegionsCacheEntry regionsCache[2];   // the last two regionsOf answers (cleared with regions)
+        int activeSamples = 1;               // the open pass's framebuffer's sample count
+        Rml::Rectanglei activeFull;          // and its full rectangle
+        TargetRegions* activeRegions = nullptr;   // the open pass's, when it is an MSAA layer
+        uint64_t regionsGeneration = 0;
+
         HtmlUIRenderStats stats;
         uint64_t frameMissesStart = 0;
         uint64_t frameAppliesStart = 0;
@@ -374,6 +448,8 @@ namespace jasperengine {
         BufferRender compositeIndexBuffer;
         ObjectRender compositeObject;
         TextureRender placeholderWhite;
+        // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
+        std::unique_ptr<htmlui::EffectRenderer> effects;
     };
 
 }
