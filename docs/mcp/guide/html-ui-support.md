@@ -471,7 +471,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `background` | native | layers -> decorators (gradients native, url() through html-layer); first CSS layer on top |  |
 | `background-attachment` | native | fixed exact for url() layers; local -> scroll (Info) |  |
 | `background-blend-mode` | unsupported | blend modes are not supported (Warning); on effect() layers normal, multiply, screen and plus-lighter (lighter) set the effect's blend (others: HTMLUI-FX-0010) (HTMLUI-CSS-0002) | pre-blend the images, or layer elements with opacity |
-| `background-clip` | native | text -> gradient-text fallback in a solid color (approximated, Warning) |  |
+| `background-clip` | native | text -> gradient-text fallback in a solid color (approximated, Warning); exact for effect() layers (phase 5, HTMLUI-FX-0011 Info) |  |
 | `background-color` | native | colors normalized to hex |  |
 | `background-image` | native | merged into the layer list: gradients native, url() -> html-layer, image-set() resolved; element(), cross-fade(), paint() unsupported |  |
 | `background-origin` | native | merged into the layer list |  |
@@ -2066,7 +2066,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `@media` | rewritten | normalized (3.9.4); nested blocks combined |  |
 | `@namespace` | ignored | namespaces are not used; dropped (Info) (HTMLUI-AT-0001) |  |
 | `@page` | ignored | printing only; dropped (Info) (HTMLUI-AT-0001) |  |
-| `@property` | native | registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; registrations are process-global (the first one of a name wins). Other syntaxes, and without the fork: the initial value written on the root, inherits: false lost (Info) |  |
+| `@property` | native | registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; a document's registrations are its own (a hot reload applies an edited definition, an unload releases them; two live documents defining a name differently: the first one's applies, HTMLUI-AT-0013). Other syntaxes, and without the fork: the initial value written on the root, inherits: false lost (Info) |  |
 | `@scope` | unsupported | contents dropped (Warning) (HTMLUI-AT-0001) | use descendant selectors under a class |
 | `@spritesheet` | native | RmlUi extension |  |
 | `@starting-style` | native | contents dropped until the fork has AnimationLonghands (Warning) | set the start values with a class and remove it from Lua after load, or use @keyframes |
