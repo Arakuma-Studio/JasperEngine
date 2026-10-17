@@ -71,12 +71,15 @@ namespace jasperengine::htmlui {
 
         Program* programFor(EffectInstance& instance, bool filterForm);
         Program* loadProgram(const std::shared_ptr<ShaderRender>& shader, bool filterForm);
+        Program* rememberProgram(EffectInstance& instance, Program* program);
         void packParams(EffectInstance& instance, Program& program);
         float scaledPx(EffectInstance& instance, const EffectScaledParam& scaled);
         bool brightPass(EffectInstance& instance, RmlFilterContext& context, float threshold);
         void uploadCommon(EffectInstance& instance, Program& program, ObjectRender& object);
 
         RmlRenderer& renderer;
+        // changes whenever a program is destroyed or replaced (instances cache their program)
+        uint64_t programsGeneration = 1;
         std::map<ShaderRender*, std::unique_ptr<Program>> programs;
         std::shared_ptr<ShaderRender> brightShader;
     };

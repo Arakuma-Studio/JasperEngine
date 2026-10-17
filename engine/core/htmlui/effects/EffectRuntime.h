@@ -95,6 +95,7 @@ namespace jasperengine::htmlui {
 
     // One element's use of one effect; its address | 1 is the RmlUi shader/filter handle
     struct EffectInstance {
+        bool alive = false;                   // acquired and not released (EffectRuntime::isLive)
         const EffectManifest* manifest = nullptr;
         bool filterForm = false;
         Rml::Element* element = nullptr;
@@ -105,7 +106,13 @@ namespace jasperengine::htmlui {
         int paintArea = 0;                    // Rml::BoxArea of the decorator's area (filters: the border box)
         std::shared_ptr<ShaderRender> shader;
         uint16_t customShaderId = 0;          // the id the shader was asked with (re-asked when it changes)
-        uint32_t customShaderGeneration = 0;
+        uint32_t customShaderGeneration = 0;  // ShaderPool's custom-shader generation the id was resolved in
+        int8_t shaderForm = -1;               // the form the shader was asked for (1 filter, 0 paint)
+        // the EffectRenderer program last drawn with (EffectRenderer::programFor): valid while
+        // that renderer's program generation is the same
+        void* program = nullptr;
+        const void* programOwner = nullptr;
+        uint64_t programGeneration = 0;
         EffectFrameBlock frame{};
         // u_fs_effectParams packed for the shader's reflection; repacked when the inputs change
         std::vector<uint8_t> params;
@@ -116,9 +123,11 @@ namespace jasperengine::htmlui {
         Rml::Vector2f areaSize{0.f, 0.f};
         float radii[4] = {0.f, 0.f, 0.f, 0.f};
         bool clipToArea = true;               // @geometry fill: the shader clips to the rounded area
-        // trail and ripples in local px (filled by prepare)
-        float trail[32][4];
-        float ripples[8][4];
+        // trail and ripples in local px (filled by prepare for an effect with @pointer trail or
+        // ripples, the entries past the current ones zero; uploaded only when the shader has them)
+        float trail[32][4] = {};
+        float ripples[8][4] = {};
+        int trailUsed = 0, ripplesUsed = 0;   // the entries prepare wrote last
         uint64_t preparedFrame = UINT64_MAX;
         float seed = -1.f;                    // seedOf(element), once per instance (< 0: not yet)
     };
@@ -220,6 +229,10 @@ namespace jasperengine::htmlui {
         std::unordered_map<Rml::Element*, ElementEntry> elements;
         std::unordered_map<Rml::Context*, PointerState> pointers;
         std::unordered_map<EffectInstance*, std::unique_ptr<EffectInstance>> live;
+        // Released instances, kept for reuse: an instance's memory stays the runtime's, so
+        // isLive reads its flag (the draw touches that memory anyway) instead of looking the
+        // address up in `live` every draw
+        std::vector<std::unique_ptr<EffectInstance>> released;
         EffectStats totals;
         EffectStats frameTotals;
         uint64_t filterCompiles = 0;

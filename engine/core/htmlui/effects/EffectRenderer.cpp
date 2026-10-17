@@ -88,6 +88,7 @@ void EffectRenderer::releaseGpuResources(){
     for (auto& entry : programs)
         entry.second->object.destroy();
     programs.clear();
+    programsGeneration++;
     brightShader.reset();
 }
 
@@ -119,6 +120,7 @@ EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<Shade
         return slot.get();
     if (slot)
         slot->object.destroy();
+    programsGeneration++;
     slot = std::make_unique<Program>();
     Program& program = *slot;
     program.shader = shader;
@@ -144,6 +146,7 @@ EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<Shade
         if (!program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
             Log::error("[HTML UI] could not load the program of a UI effect (filter form)");
             programs.erase(shader.get());
+            programsGeneration++;
             return nullptr;
         }
         return &program;
@@ -158,18 +161,37 @@ EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<Shade
     if (!program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::UINT32)){
         Log::error("[HTML UI] could not load the program of a UI effect (paint form)");
         programs.erase(shader.get());
+        programsGeneration++;
         return nullptr;
     }
     return &program;
 }
 
 EffectRenderer::Program* EffectRenderer::programFor(EffectInstance& instance, bool filterForm){
+    // The variant's key is resolved once per custom-shader generation (custom ids are re-resolved
+    // when it changes; a manifest is never changed in place): looking it up by name every draw cost
+    // the registry's lock, the name's string and its hash
+    const uint32_t generation = ShaderPool::getCustomShaderGeneration();
+    const int8_t form = filterForm ? 1 : 0;
+    if (instance.shader && instance.customShaderGeneration == generation && instance.shaderForm == form){
+        // the program it drew with last: still this renderer's, for this shader, which is still the
+        // one created (destroying a shader resets its id); no lookup by shader, no sokol query
+        Program* cached = static_cast<Program*>(instance.program);
+        if (cached && instance.programOwner == this && instance.programGeneration == programsGeneration && cached->shader == instance.shader &&
+            cached->shaderId != 0 && cached->shaderId == instance.shader->backend.get().id)
+            return cached;
+        if (instance.shader->isCreated())
+            return rememberProgram(instance, loadProgram(instance.shader, filterForm));
+    }
+
     const ShaderKey key = EffectRegistry::get().shaderKey(*instance.manifest, filterForm);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-    if (!instance.shader || instance.customShaderId != customId){
+    if (!instance.shader || instance.customShaderId != customId || instance.shaderForm != form){
         instance.shader = ShaderPool::get(ShaderType::UI_EFFECT, ShaderPool::getPropertiesFromKey(key), customId);
         instance.customShaderId = customId;
     }
+    instance.customShaderGeneration = generation;
+    instance.shaderForm = form;
     if (!instance.shader)
         return nullptr;
     if (!instance.shader->isCreated()){
@@ -180,7 +202,14 @@ EffectRenderer::Program* EffectRenderer::programFor(EffectInstance& instance, bo
         if (!instance.shader || !instance.shader->isCreated())
             return nullptr;
     }
-    return loadProgram(instance.shader, filterForm);
+    return rememberProgram(instance, loadProgram(instance.shader, filterForm));
+}
+
+EffectRenderer::Program* EffectRenderer::rememberProgram(EffectInstance& instance, Program* program){
+    instance.program = program;
+    instance.programOwner = this;
+    instance.programGeneration = programsGeneration;
+    return program;
 }
 
 float EffectRenderer::scaledPx(EffectInstance& instance, const EffectScaledParam& scaled){

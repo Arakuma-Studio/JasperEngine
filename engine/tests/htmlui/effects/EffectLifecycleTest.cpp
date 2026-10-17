@@ -60,6 +60,10 @@ div { position: absolute; width: 140px; height: 80px; border-radius: 8px; }
 
 TEST(EffectLifecycleTest, HundredLoadUnloadCycles){
     TestSystem::get().clearLogs();
+    // the headless device first: RenderTestContext does not make it, and this may be the first
+    // GPU test of the run (the shaders cannot warm up without it)
+    if (!GpuEnvironment::ensure())
+        GTEST_SKIP() << "no GPU";
     RenderTestContext r(320, 200, 0, 0, 1);
     if (!r.isValid())
         GTEST_SKIP() << "no GPU";

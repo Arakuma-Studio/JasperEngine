@@ -86,9 +86,18 @@ namespace jasperengine {
 
         Framebuffer* ensureLayer(int index);
         Framebuffer* ensurePostprocess(int index);
+        // A framebuffer's GPU objects are checked once per frame (Framebuffer::isCreated asks
+        // sokol for every attachment view: hundreds of lookups a frame with layers and filters,
+        // on memory the driver has just evicted); they can only go between frames (the view
+        // reloads) or through destroy()
+        void newFrame();
+        bool checkedThisFrame(const Framebuffer& framebuffer) const;
 
         std::vector<std::unique_ptr<Framebuffer>> layers;
         std::unique_ptr<Framebuffer> postprocess[POSTPROCESS_COUNT];
+        std::vector<uint64_t> layerChecked;              // the frame each layer was last found created
+        uint64_t postprocessChecked[POSTPROCESS_COUNT] = {};
+        uint64_t frame = 1;
         int width = 0;
         int height = 0;
         int sampleCount = 1;
@@ -370,6 +379,7 @@ namespace jasperengine {
         void abortFrame();
 
         std::unordered_set<RmlGeometry*> liveGeometry;
+        std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
         std::unordered_set<HtmlUITexture*> liveTextures;
         std::vector<HtmlUITexture*> pendingReleases;
         std::vector<std::unique_ptr<RmlGeometryPage>> pages;

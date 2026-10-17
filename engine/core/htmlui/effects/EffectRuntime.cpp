@@ -213,7 +213,15 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
             entry.states.erase(entry.states.begin());
     }
 
-    auto instance = std::make_unique<EffectInstance>();
+    std::unique_ptr<EffectInstance> instance;
+    if (!released.empty()){
+        instance = std::move(released.back());
+        released.pop_back();
+        *instance = EffectInstance();
+    }else{
+        instance = std::make_unique<EffectInstance>();
+    }
+    instance->alive = true;
     instance->manifest = &manifest;
     instance->filterForm = filterForm;
     instance->element = element;
@@ -240,13 +248,18 @@ void EffectRuntime::release(EffectInstance* instance){
     auto it = live.find(instance);
     if (it == live.end())
         return;
+    std::unique_ptr<EffectInstance> owned = std::move(it->second);
     live.erase(it);
+    // its references (state, snapshot, shader) go now; the memory waits for the next acquire
+    *owned = EffectInstance();
+    released.push_back(std::move(owned));
     totals.liveInstances = live.size();
     frameTotals.liveInstances = live.size();
 }
 
 bool EffectRuntime::isLive(const EffectInstance* instance) const{
-    return live.count(const_cast<EffectInstance*>(instance)) > 0;
+    // every handle's instance is the runtime's memory (live or released, see `released`)
+    return instance && instance->alive;
 }
 
 size_t EffectRuntime::elementStateCount() const{
@@ -487,31 +500,36 @@ void EffectRuntime::prepare(EffectInstance& instance){
         instance.seed = seedOf(element);
     set4(f.misc, instance.opacity, (float)instance.blend, instance.seed, instance.clipToArea ? 1.f : 0.f);
 
-    // the trail and the ripples in local px
-    for (int i = 0; i < 32; i++)
-        set4(instance.trail[i], 0.f, 0.f, 0.f, 0.f);
-    for (int i = 0; i < 8; i++)
-        set4(instance.ripples[i], 0.f, 0.f, 0.f, 0.f);
+    // the trail and the ripples in local px, for the effects that read them (the others' stay
+    // zero); the entries past the current ones are cleared
     if (m.pointer == EffectPointer::Trail){
+        int count = 0;
         if (pointer && pointer->testTrail){
-            for (size_t i = 0; i < pointer->trail.size() && i < 32; i++){
+            for (size_t i = 0; i < pointer->trail.size() && i < 32; i++, count++){
                 const Rml::Vector4f s = pointer->trail[i];
                 const Rml::Vector2f p = toLocal(element, Rml::Vector2f(s.x, s.y), areaOrigin);
                 set4(instance.trail[i], p.x, p.y, s.z, 1.f);
             }
         }else{
-            for (int i = 0; i < state.trailCount; i++){
+            for (int i = 0; i < state.trailCount && i < 32; i++, count++){
                 const Rml::Vector4f s = state.trail[i];
                 const Rml::Vector2f p = toLocal(element, Rml::Vector2f(s.x, s.y), areaOrigin);
                 set4(instance.trail[i], p.x, p.y, s.z, s.w);
             }
         }
+        for (int i = count; i < instance.trailUsed; i++)
+            set4(instance.trail[i], 0.f, 0.f, 0.f, 0.f);
+        instance.trailUsed = count;
     }
     if (m.pointer == EffectPointer::Ripples){
-        for (int i = 0; i < state.rippleCount; i++){
+        int count = 0;
+        for (int i = 0; i < state.rippleCount && i < 8; i++, count++){
             const Rml::Vector4f r = state.ripples[i];
             const Rml::Vector2f p = toLocal(element, Rml::Vector2f(r.x, r.y), areaOrigin);
             set4(instance.ripples[i], p.x, p.y, r.z, r.w);
         }
+        for (int i = count; i < instance.ripplesUsed; i++)
+            set4(instance.ripples[i], 0.f, 0.f, 0.f, 0.f);
+        instance.ripplesUsed = count;
     }
 }

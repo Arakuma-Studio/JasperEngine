@@ -41,6 +41,7 @@ namespace jasperengine {
     // transient buffers on the first draw, into persistent storage at the end of that frame,
     // and again after the GPU objects went with the view.
     struct RmlGeometry {
+        bool alive = false;         // compiled and not released (released ones wait for reuse)
         Rml::Span<const Rml::Vertex> vertices;
         Rml::Span<const int> indices;
         // persistent storage
@@ -204,9 +205,28 @@ void RmlRenderTarget::destroy(){
         layers[i].reset();
     }
     layers.clear();
+    layerChecked.clear();
     for (std::unique_ptr<Framebuffer>& target : postprocess){
         target.reset();
     }
+    for (uint64_t& checked : postprocessChecked)
+        checked = 0;
+}
+
+void RmlRenderTarget::newFrame(){
+    frame++;
+}
+
+bool RmlRenderTarget::checkedThisFrame(const Framebuffer& framebuffer) const{
+    for (size_t i = 0; i < layers.size(); i++){
+        if (layers[i].get() == &framebuffer)
+            return i < layerChecked.size() && layerChecked[i] == frame;
+    }
+    for (int i = 0; i < POSTPROCESS_COUNT; i++){
+        if (postprocess[i].get() == &framebuffer)
+            return postprocessChecked[i] == frame;
+    }
+    return false;
 }
 
 int RmlRenderTarget::getWidth() const{
@@ -259,8 +279,12 @@ uint64_t RmlRenderTarget::getGeneration() const{
 Framebuffer* RmlRenderTarget::ensureLayer(int index){
     if (index < 0)
         return nullptr;
-    if (index < (int)layers.size() && layers[index] && layers[index]->isCreated())
+    if ((int)layerChecked.size() < (int)layers.size())
+        layerChecked.resize(layers.size(), 0);
+    if (index < (int)layers.size() && layers[index] && (layerChecked[index] == frame || layers[index]->isCreated())){
+        layerChecked[index] = frame;
         return layers[index].get();
+    }
     // layer 0 first: the others share its depth-stencil
     if (index > 0 && !ensureLayer(0))
         return nullptr;
@@ -284,14 +308,18 @@ Framebuffer* RmlRenderTarget::ensureLayer(int index){
         return nullptr;
     }
     layers[index] = std::move(layer);
+    layerChecked.resize(layers.size(), 0);
+    layerChecked[index] = frame;
     return layers[index].get();
 }
 
 Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
     if (index < 0 || index >= POSTPROCESS_COUNT)
         return nullptr;
-    if (postprocess[index] && postprocess[index]->isCreated())
+    if (postprocess[index] && (postprocessChecked[index] == frame || postprocess[index]->isCreated())){
+        postprocessChecked[index] = frame;
         return postprocess[index].get();
+    }
 
     FramebufferDesc desc;
     desc.width = width;
@@ -309,6 +337,7 @@ Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
         return nullptr;
     }
     postprocess[index] = std::move(target);
+    postprocessChecked[index] = frame;
     return postprocess[index].get();
 }
 
@@ -412,6 +441,10 @@ RmlRenderer::~RmlRenderer(){
         delete geometry;
     }
     liveGeometry.clear();
+    for (RmlGeometry* geometry : releasedGeometry){
+        delete geometry;
+    }
+    releasedGeometry.clear();
     for (HtmlUITexture* texture : liveTextures){
         delete texture;
     }
@@ -419,7 +452,15 @@ RmlRenderer::~RmlRenderer(){
 }
 
 Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices){
-    RmlGeometry* geometry = new RmlGeometry();
+    RmlGeometry* geometry = nullptr;
+    if (!releasedGeometry.empty()){
+        geometry = releasedGeometry.back();
+        releasedGeometry.pop_back();
+        *geometry = RmlGeometry();
+    }else{
+        geometry = new RmlGeometry();
+    }
+    geometry->alive = true;
     geometry->vertices = vertices;
     geometry->indices = indices;
     liveGeometry.insert(geometry);
@@ -436,7 +477,10 @@ void RmlRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle handle){
         releaseRange(geometry->vertexPage, geometry->vertexBytes);
     if (geometry->indexPage)
         releaseRange(geometry->indexPage, geometry->indexBytes);
-    delete geometry;
+    // kept for reuse, so a handle stays readable: draws check its flag instead of looking it up
+    // in liveGeometry (a hash lookup per draw)
+    *geometry = RmlGeometry();
+    releasedGeometry.push_back(geometry);
     stats.geometryLive = (uint32_t)liveGeometry.size();
 }
 
@@ -568,7 +612,7 @@ void RmlRenderer::persistGeometry(){
     std::vector<RmlGeometry*> pending;
     pending.swap(pendingGeometry);
     for (RmlGeometry* geometry : pending){
-        if (liveGeometry.count(geometry) == 0 || (geometry->vertexPage && geometry->indexPage))
+        if (!geometry->alive || (geometry->vertexPage && geometry->indexPage))
             continue;
         const size_t vertexBytes = geometry->vertices.size() * sizeof(Rml::Vertex);
         const size_t indexBytes = geometry->indices.size() * sizeof(int);
@@ -647,7 +691,7 @@ void RmlRenderer::destroyGeometryBuffers(){
 
 bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender& program, uint32_t& indexCount){
     RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
-    if (!geometry || liveGeometry.count(geometry) == 0 || geometry->vertices.empty() || geometry->indices.empty())
+    if (!geometry || !geometry->alive || geometry->vertices.empty() || geometry->indices.empty())
         return false;
 
     BufferRender* vertices = nullptr;
@@ -1007,7 +1051,8 @@ void RmlRenderer::endPass(bool resolve){
 bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad){
     flushDeferredComposite();
     endPass();
-    if (!framebuffer.isCreated())
+    // a layer or post-process target found created this frame is (see RmlRenderTarget::newFrame)
+    if (!(target && target->checkedThisFrame(framebuffer)) && !framebuffer.isCreated())
         return false;
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     // ignored by a pass without a depth-stencil attachment
@@ -2190,6 +2235,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         return false;
 
     target = &renderTarget;
+    target->newFrame();
     targetSize = Rml::Vector2i(renderTarget.getWidth(), renderTarget.getHeight());
     // the tracked regions hold for these framebuffers only
     activeRegions = nullptr;
