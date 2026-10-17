@@ -17,10 +17,35 @@ FramebufferRender::~FramebufferRender(){
 }
 
 bool FramebufferRender::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
+    return createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap, !shadowMap);
+}
+
+bool FramebufferRender::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil){
+    return createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap,
+                             stencil ? FramebufferDepth::DEPTH_STENCIL : FramebufferDepth::DEPTH);
+}
+
+bool FramebufferRender::createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth,
+                                          ColorFormat colorFormat){
     if (Engine::isViewLoaded() && !isCreated())
-        return backend.createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap);
+        return backend.createFramebuffer(textureType, width, height, minFilter, magFilter, wrapU, wrapV, shadowMap, depth, colorFormat);
     else
         return false;
+}
+
+bool FramebufferRender::createMultisampleFramebuffer(int width, int height, int samples){
+    if (Engine::isViewLoaded() && !isCreated())
+        return backend.createMultisampleFramebuffer(width, height, samples);
+    else
+        return false;
+}
+
+int FramebufferRender::getMsaaSamples() const{
+    return backend.getMsaaSamples();
+}
+
+int FramebufferRender::getMaxMsaaSamples(int requested){
+    return SokolFramebuffer::getMaxMsaaSamples(requested);
 }
 
 bool FramebufferRender::createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap){
@@ -30,9 +55,9 @@ bool FramebufferRender::createDepthOnlyFramebuffer(int width, int height, Textur
         return false;
 }
 
-bool FramebufferRender::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats){
+bool FramebufferRender::createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats, bool stencil){
     if (Engine::isViewLoaded() && !isCreated())
-        return backend.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColor, formats);
+        return backend.createFramebufferMRT(width, height, minFilter, magFilter, wrapU, wrapV, numColor, formats, stencil);
     else
         return false;
 }

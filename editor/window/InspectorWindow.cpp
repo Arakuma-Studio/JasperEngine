@@ -33,6 +33,7 @@
 #include "command/type/ComponentValuesCmd.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
+#include "shader/ShaderManifest.h"
 #include "command/type/ScenePropertyCmd.h"
 #include "render/SceneRender2D.h"
 #include "window/ProjectWindow.h"
@@ -165,6 +166,17 @@ static std::vector<editor::EnumEntry> entriesLightType = {
 static std::vector<editor::EnumEntry> entriesShadowCaster2DShape = {
     { (int)ShadowCaster2DShape::AUTO_QUAD, "Auto Quad" },
     { (int)ShadowCaster2DShape::POLYGON, "Polygon" }
+};
+
+static std::vector<editor::EnumEntry> entriesLightShading = {
+    { (int)LightShading::BOTH, "Both" },
+    { (int)LightShading::PIXEL, "Per Pixel" },
+    { (int)LightShading::VERTEX, "Per Vertex" }
+};
+
+static std::vector<editor::EnumEntry> entriesCullingMode = {
+    { (int)CullingMode::BACK, "Back" },
+    { (int)CullingMode::FRONT, "Front" }
 };
 
 static std::vector<editor::EnumEntry> entriesFogType = {
@@ -564,6 +576,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
                 if (changed) {
                     value = static_cast<ShadowQuality>(currentItem);
+                }
+            }
+            if constexpr (std::is_same_v<T, SceneColorScale>) {
+                const char* scaleNames[] = { "Full", "Half" };
+                int currentItem = static_cast<int>(value);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, scaleNames, IM_ARRAYSIZE(scaleNames));
+                if (changed) {
+                    value = static_cast<SceneColorScale>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, TextureFilter>) {
@@ -2336,24 +2356,18 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
     );
 }
 
-Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL){
+Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL,
+                                                   const std::string& meshShader){
     MaterialRender& materialRender = materialRenders[id];
 
-    auto texPending = [](const Texture& t) {
-        if (t.isFramebuffer() || CameraTextureLink::isCameraTexture(t))
-            return false; // framebuffer textures never enter the pool
-        std::string tid = t.getId();
-        return !tid.empty() && !TexturePool::get(tid);
-    };
-
-    bool pending = texPending(material.baseColorTexture) || texPending(material.emissiveTexture) ||
-                   texPending(material.metallicRoughnessTexture) || texPending(material.occlusionTexture) ||
-                   texPending(material.normalTexture);
-
-    if ((materialRender.getMaterial() != material) || materialRender.getReceiveIBL() != receiveIBL ||
-        !materialRender.getFramebuffer()->isCreated() || pending){
+    // drawn again until the sphere has the material's shader variant and textures: a library
+    // shader builds off the UI thread, and the first frames would keep the previous image
+    const std::string previewShader = material.shader.empty() ? meshShader : std::string();
+    if ((materialRender.getMaterial() != material) || materialRender.getMeshShader() != previewShader ||
+        materialRender.getReceiveIBL() != receiveIBL || !materialRender.getFramebuffer()->isCreated() ||
+        materialRender.isPending()){
         materialRender.setReceiveIBL(receiveIBL);
-        materialRender.applyMaterial(material);
+        materialRender.applyMaterial(material, previewShader);
         Engine::executeSceneOnce(materialRender.getScene());
     }
 
@@ -4668,11 +4682,16 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::BeginGroup();
 
         bool receiveIBL = true;
+        std::string meshShader;
         if (cpType == ComponentType::MeshComponent && !entities.empty()) {
-            receiveIBL = sceneProject->scene->getComponent<MeshComponent>(entities[0]).receiveIBL;
+            const MeshComponent& previewMesh = sceneProject->scene->getComponent<MeshComponent>(entities[0]);
+            receiveIBL = previewMesh.receiveIBL;
+            // a material without its own shader draws with the mesh's, else the scene's
+            meshShader = previewMesh.customShader.empty() ? sceneProject->scene->getDefaultCustomShader(ShaderType::MESH)
+                                                          : previewMesh.customShader;
         }
 
-        Texture texRender = getMaterialPreview(newValue, id, receiveIBL);
+        Texture texRender = getMaterialPreview(newValue, id, receiveIBL, meshShader);
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Widgets::image(Backend::getImGuiTexture(texRender.getRender()), ImVec2(thumbSize, thumbSize));
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
@@ -5614,7 +5633,22 @@ void editor::InspectorWindow::drawCustomShaderRow(ComponentType cpType, ShaderTy
         }
     }
 
-    drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
+    // a shader with a manifest (a library shader) gets its labelled rows: parameters in
+    // shaderUniforms, textures, features. A mesh keeps those on its materials.
+    bool manifestRows = false;
+    if (cpType != ComponentType::MeshComponent) {
+        const std::string shader = Catalog::getShaderReferenceForProperty(sceneProject->scene, shaderEntity, cpType, "customShader");
+        manifestRows = drawShaderManifestRows(cpType, sceneProject, shaderEntity, shader, "shaderUniforms", "shaderTextures", "shaderFeatures", nullptr);
+        if (manifestRows && uniformRows.buildFailed) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::TextDisabled("Shader failed to build");
+        }
+    }
+    if (!manifestRows)
+        drawShaderUniformRows(cpType, sceneProject, shaderEntity, uniformRows);
+
+    drawComponentStateRows(cpType, sceneProject, entities);
 
     endTable();
 }
@@ -5652,6 +5686,11 @@ void editor::InspectorWindow::drawComponentShaderRow(ComponentType cpType, Shade
             });
     };
 
+    // the library shaders of this type, or the built-in one (a depth program comes from the
+    // library shader's @depth, so the depth row has no picker)
+    if (shaderType != ShaderType::DEPTH)
+        drawLibraryShaderCombo(currentShader, shaderType, setShader, "Edit Shader Files##" + idSuffix);
+
     drawShaderRowContents(currentShader, setShader, onFork, idSuffix);
 }
 
@@ -5660,6 +5699,21 @@ editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShade
     Scene* scene = sceneProject->scene;
 
     std::vector<const CustomUniformBlock*> blocks = Catalog::getShaderUniformBlocks(scene, entity, cpType);
+    if (cpType == ComponentType::MeshComponent) {
+        // a submesh whose material names its own shader takes its values from the material
+        // (its rows are in the material section), not from the mesh's shaderUniforms
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)) {
+            blocks.erase(std::remove_if(blocks.begin(), blocks.end(), [mesh](const CustomUniformBlock* block) {
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                    const Submesh& sub = mesh->submeshes[s];
+                    if (!sub.material.shader.empty() && (block == &sub.customVSParams || block == &sub.customFSParams ||
+                            block == &sub.customVSDepthParams || block == &sub.customFSDepthParams))
+                        return true;
+                }
+                return false;
+            }), blocks.end());
+        }
+    }
     for (const CustomUniformBlock* block : blocks) {
         for (const ShaderUniform& uniform : block->members) {
             bool listed = false;
@@ -5774,9 +5828,13 @@ void editor::InspectorWindow::drawShaderUniformRows(ComponentType cpType, SceneP
             ShaderUniformValues newValues = values;
             ShaderUniforms::set(newValues, uniform.name, newValue);
 
-            // dragging merges into one undo step
-            CommandHandle::get(sceneId)->addCommand(
-                new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, "shaderUniforms", newValues));
+            // dragging merges into one undo step, closed when the widget is released
+            cmd = new PropertyCmd<ShaderUniformValues>(project, sceneId, entity, cpType, "shaderUniforms", newValues);
+            CommandHandle::get(sceneId)->addCommand(cmd);
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
+            cmd->setNoMerge();
+            cmd = nullptr;
         }
     }
 
@@ -5819,6 +5877,7 @@ void editor::InspectorWindow::drawSceneShaderRow(SceneProject* sceneProject, Sha
     ImGui::Text("%s", label);
     ImGui::TableSetColumnIndex(1);
 
+    drawLibraryShaderCombo(currentShader, shaderType, setShader, std::string("Edit Shader Files##") + scenePropertyName);
     drawShaderRowContents(currentShader, setShader, onFork, scenePropertyName);
 }
 
@@ -5833,15 +5892,34 @@ editor::InspectorWindow::PostProcessShader editor::InspectorWindow::resolvePostP
         resolved.block.resolve(resolved.shader->shaderData, "u_fs_postParams");
     }
 
+    if (!pass.shader.empty()){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(pass.shader);
+        if (manifest && manifest->present)
+            resolved.manifest = manifest;
+    }
+
     return resolved;
 }
 
 // widest uniform name the pass declares, so the rows are not truncated to "Shader"
-float editor::InspectorWindow::getPostProcessLabelSize(const PostProcessShader& resolved){
+float editor::InspectorWindow::getPostProcessLabelSize(const PostProcessShader& resolved, const PostProcessPass& pass){
     // no reset arrow on these rows, so they only need getLabelSize's half-icon padding
     float width = getLabelSize("Shader", false);
-    for (const ShaderUniform& uniform : resolved.block.members)
-        width = std::max(width, getLabelSize(uniform.name, false));
+    for (const ShaderUniform& uniform : resolved.block.members){
+        const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+        // a manifest row shows its label and the reset arrow
+        if (property && !property->label.empty())
+            width = std::max(width, getLabelSize(property->label));
+        else
+            width = std::max(width, getLabelSize(uniform.name, property != nullptr));
+    }
+    // the texture slots (drawPostProcessPassFields): the manifest's labels and any set by name
+    if (resolved.manifest){
+        for (const ShaderManifestTexture& texture : resolved.manifest->textures)
+            width = std::max(width, getLabelSize(texture.label.empty() ? texture.uniform : texture.label, false));
+    }
+    for (const auto& entry : pass.textures)
+        width = std::max(width, getLabelSize(entry.first, false));
 
     return width;
 }
@@ -5858,16 +5936,79 @@ void editor::InspectorWindow::drawPostProcessUniforms(uint32_t sceneId, const st
         return;
     }
 
+    const ShaderUniformValues& values = passes[index].uniforms;
     for (const ShaderUniform& uniform : resolved.block.members){
-        Vector4 newValue;
-        if (drawShaderUniformRow(uniform, passes[index].uniforms, "##pp_uniform_", newValue)){
-            std::vector<PostProcessPass> newPasses = passes;
-            newPasses[index].setUniform(uniform.name, newValue);
+        ImGui::PushID(uniform.name.c_str());
+        // a member the shader's manifest declares (@property): its label, range and widget, and
+        // its default while unset (what the engine renders), with a reset arrow once set
+        const ShaderManifestProperty* property = resolved.manifest ? resolved.manifest->findProperty(uniform.name) : nullptr;
+        if (property && !ShaderUniforms::isReserved(uniform.name) && ShaderUniforms::isEditable(uniform)){
+            const bool hasValue = ShaderUniforms::has(values, uniform.name);
+            const Vector4 value = hasValue ? ShaderUniforms::get(values, uniform.name) : property->defaultValue;
 
-            // dragging merges into one undo step
-            CommandHandle::get(sceneId)->addCommand(
-                new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted(property->label.empty() ? uniform.name.c_str() : property->label.c_str());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s", uniform.name.c_str());
+            bool reset = false;
+            if (hasValue){
+                ImGui::SameLine();
+                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                reset = ImGui::Button(ICON_FA_ROTATE_LEFT "##reset");
+                ImGui::SetItemTooltip("Reset to the shader's default");
+                ImGui::PopStyleColor(2);
+                ImGui::PopStyleVar(2);
+            }
+            if (reset){
+                std::vector<PostProcessPass> newPasses = passes;
+                ShaderUniforms::remove(newPasses[index].uniforms, uniform.name);
+                CommandHandle::get(sceneId)->addCommandNoMerge(
+                    new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses));
+                ImGui::PopID();
+                continue;
+            }
+
+            ImGui::TableSetColumnIndex(1);
+            Vector4 edited;
+            bool continuous = true;
+            if (drawShaderPropertyValue(*property, "##pp_param_" + uniform.name, value, edited, continuous)){
+                std::vector<PostProcessPass> newPasses = passes;
+                newPasses[index].setUniform(uniform.name, edited);
+                Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
+                if (continuous){
+                    // dragging merges into one undo step, closed when the widget is released
+                    cmd = passCmd;
+                    CommandHandle::get(sceneId)->addCommand(passCmd);
+                }else{
+                    CommandHandle::get(sceneId)->addCommandNoMerge(passCmd);
+                }
+            }
+            if (ImGui::IsItemHovered() && !ImGui::IsItemActive())
+                ImGui::SetTooltip("%s", uniform.name.c_str());
+        }else{
+            Vector4 newValue;
+            if (drawShaderUniformRow(uniform, values, "##pp_uniform_", newValue)){
+                std::vector<PostProcessPass> newPasses = passes;
+                newPasses[index].setUniform(uniform.name, newValue);
+
+                // dragging merges into one undo step, closed when the widget is released
+                Command* passCmd = new ScenePropertyCmd<std::vector<PostProcessPass>>(project, sceneId, "post_process", newPasses);
+                cmd = passCmd;
+                CommandHandle::get(sceneId)->addCommand(passCmd);
+            }
         }
+        // a released drag ends its undo step: the next drag (of any row of the chain, all one
+        // scene property) is a step of its own
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
+            cmd->setNoMerge();
+            cmd = nullptr;
+        }
+        ImGui::PopID();
     }
 
     drawShaderUniformWarnings(Catalog::getShaderUniformWarnings({&resolved.block}));
@@ -5951,7 +6092,7 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
         PostProcessShader resolved = resolvePostProcessShader(passes[i]);
 
         if (ImGui::BeginTable("scene_post_process_pass_table", 2, tableFlags)){
-            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getPostProcessLabelSize(resolved));
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getPostProcessLabelSize(resolved, passes[i]));
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
             ImGui::TableNextRow();
@@ -5963,6 +6104,13 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
                 std::vector<PostProcessPass> newPasses = passes;
                 newPasses[i].shader = value;
                 newPasses[i].uniforms.clear(); // another shader has other members
+                // and other textures: keep only the ones the new shader's manifest declares
+                // (an old one with a colliding name would be bound silently otherwise)
+                std::shared_ptr<const ShaderManifest> manifest = value.empty() ? nullptr : ShaderManifests::get(value);
+                auto& textures = newPasses[i].textures;
+                textures.erase(std::remove_if(textures.begin(), textures.end(), [&](const std::pair<std::string, Texture>& entry){
+                    return !manifest || !manifest->present || !manifest->findTexture(entry.first);
+                }), textures.end());
                 setPasses(newPasses);
             };
             std::string defaultName = sceneProject->name + " Post " + std::to_string(i + 1);
@@ -5990,7 +6138,12 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
                     });
             };
 
-            drawShaderRowContents(passes[i].shader, setShader, onFork, "post_process_" + std::to_string(i));
+            // the library's post-process shaders (@shader postprocess), a project file, or a fork
+            const std::string passId = "post_process_" + std::to_string(i);
+            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId);
+            drawShaderRowContents(passes[i].shader, setShader, onFork, passId);
+
+            drawPostProcessPassFields(sceneProject, passes, i);
 
             drawPostProcessUniforms(sceneId, passes, i, resolved);
 
@@ -6016,11 +6169,14 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
 
     // The .vert/.frag entry points either share a base name (stored as "shaders/mesh")
     // or live in separate files (stored as "shaders/mesh.vert|shaders/other.frag").
-    const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(currentShader);
+    // a library shader ("library:<name>") lives in the engine: no project file to open
+    const bool library = ShaderReference::isLibrary(currentShader);
+    // (project-relative files; an assets-relative fork path resolves under the assets directory)
+    const Util::CustomShaderPaths paths = library ? Util::CustomShaderPaths() : project->resolveCustomShaderFiles(currentShader);
     const bool hasCustom = !currentShader.empty();
-    const bool separate = Util::isSeparateCustomShader(currentShader);
-    const bool vertExists = hasCustom && std::filesystem::exists(projectPath / paths.vert);
-    const bool fragExists = hasCustom && std::filesystem::exists(projectPath / paths.frag);
+    const bool separate = !library && Util::isSeparateCustomShader(currentShader);
+    const bool vertExists = hasCustom && !library && std::filesystem::exists(projectPath / paths.vert);
+    const bool fragExists = hasCustom && !library && std::filesystem::exists(projectPath / paths.frag);
     const std::string popupName = "Edit Shader Files##" + idSuffix;
 
     auto openRelative = [&](const std::string& rel) {
@@ -6040,7 +6196,15 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
 
     if (!hasCustom)
         ImGui::TextDisabled("Built-in");
-    else if (separate)
+    else if (library){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
+        if (manifest && !manifest->name.empty())
+            ImGui::TextWrapped("%s (%s)", manifest->name.c_str(), currentShader.c_str());
+        else
+            ImGui::TextWrapped("%s", currentShader.c_str());
+        if (manifest && !manifest->description.empty() && ImGui::IsItemHovered())
+            ImGui::SetTooltip("%s", manifest->description.c_str());
+    }else if (separate)
         ImGui::TextWrapped("%s, %s", paths.vert.c_str(), paths.frag.c_str());
     else
         ImGui::TextWrapped("%s", currentShader.c_str());
@@ -6069,6 +6233,8 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
     if (ImGui::IsItemHovered()) {
         if (vertExists)
             ImGui::SetTooltip("Open %s", paths.vert.c_str());
+        else if (library)
+            ImGui::SetTooltip("A library shader is part of the engine");
         else if (hasCustom)
             ImGui::SetTooltip("Vertex shader file not found");
         else
@@ -6083,6 +6249,8 @@ void editor::InspectorWindow::drawShaderRowContents(const std::string& currentSh
     if (ImGui::IsItemHovered()) {
         if (fragExists)
             ImGui::SetTooltip("Open %s", paths.frag.c_str());
+        else if (library)
+            ImGui::SetTooltip("A library shader is part of the engine");
         else if (hasCustom)
             ImGui::SetTooltip("Fragment shader file not found");
         else
@@ -6453,6 +6621,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
 
+    RowSettings cullingSettings;
+    cullingSettings.enumEntries = &entriesCullingMode;
+    cullingSettings.help = "Which faces the submeshes with Face Culling on leave out: the back faces (the default) or the front ones (inverted-hull outlines, insides). A material's cull mode overrides it.";
+    propertyRow(RowPropertyType::Enum, cpType, "cullingMode", "Culling Mode", sceneProject, entities, cullingSettings);
+
     RowSettings lodSettings;
     lodSettings.help = "Let this mesh use simplified detail levels while the scene's Mesh Detail (LOD) is on. Turn off to always keep it at full detail.";
     propertyRow(RowPropertyType::Bool, cpType, "lodEnabled", "Detail Levels", sceneProject, entities, lodSettings);
@@ -6614,6 +6787,14 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             RowSettings settingsAlphaMode = settingsMaterial;
             settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
 
+            // the shader (built-in Lit, a library shader or a custom file) and its own rows
+            beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
+            // one-click setups of the shader, extra pass and state (shader library phase 2)
+            drawMaterialPresetRow(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            const bool pbrRows = drawMaterialShaderRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            endTable();
+
+            if (pbrRows){
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_options");
             propertyRow(RowPropertyType::Color4L, cpType, "submeshes["+std::to_string(s)+"].material.baseColorFactor", "Base Color", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.baseColorTexture", "Base Texture", sceneProject, entities,settingsMaterial);
@@ -6628,6 +6809,13 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
             endTable();
+            }
+
+            ImGui::SeparatorText("Surface");
+            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+
+            ImGui::SeparatorText("Extra pass");
+            drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
         }
 
         beginTable(cpType, getLabelSize("Texture Shadow"), "submeshes_settings");
@@ -7689,6 +7877,20 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
         }
     }
 
+    // the scene's post-processing (scene settings) reaches the main camera only
+    if (entities.size() == 1 && sceneProject->sceneType != SceneType::SCENE_UI) {
+        const bool mainCamera = sceneProject->mainCamera == entities[0];
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::Text("Post");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::TextDisabled("%s", mainCamera ? "Main camera: post-processed" : "Not post-processed");
+        ImGui::SetItemTooltip("%s", mainCamera
+            ? "The scene's Post-processing settings (Inspector with nothing selected) apply to this camera's image."
+            : "Only the scene's main camera is post-processed (Scene settings > Post-processing); other cameras, "
+              "render-to-texture ones included, draw without it.");
+    }
+
     endTable();
 
     // framebuffer settings only matter when the camera renders into a texture
@@ -8635,6 +8837,12 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     RowSettings settingsCulling;
     settingsCulling.help = "Layers this light lights. GameObjects on other layers get no light and cast no shadow from it.";
     propertyRow(RowPropertyType::LayerMask, cpType, "cullingMask", "Culling Mask", sceneProject, entities, settingsCulling);
+    RowSettings settingsShading;
+    settingsShading.enumEntries = &entriesLightShading;
+    settingsShading.help = "Where this light is evaluated on materials whose Lighting is Mixed: Per Pixel (specular, shadows, spot masks) "
+                           "or Per Vertex (diffuse only, cheapest). Both leaves it to the material (per pixel under Mixed). "
+                           "Materials lit Per Pixel or Per Vertex evaluate every light their own way.";
+    propertyRow(RowPropertyType::Enum, cpType, "shading", "Shading", sceneProject, entities, settingsShading);
     endTable();
 
     ImGui::SeparatorText("Shadow settings");
@@ -14255,6 +14463,21 @@ void editor::InspectorWindow::show(){
                     ImGui::EndTable();
                 }
 
+                ImGui::SeparatorText("Lights");
+
+                if (ImGui::BeginTable("scene_lights_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Max Lights Per Object"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    drawScenePropertyRow<int>(sceneProject, "max_lights_per_object", "Max Lights Per Object", ScenePropertyInputType::DragInt, -1.0f, 1.0f, 16.0f,
+                        "How many lights each object is lit by (1-16). The scene can have any number of lights: each object "
+                        "takes the ones that reach it and give it the most light, and the others reaching it are folded into "
+                        "its ambient light (spherical harmonics), so they still brighten it without popping. More costs more "
+                        "per lit pixel; 4, 8 and 16 are the shader tiers.");
+
+                    ImGui::EndTable();
+                }
+
                 ImGui::SeparatorText("Shadows");
 
                 if (ImGui::BeginTable("scene_shadow_settings_table", 2, tableFlags)) {
@@ -14296,6 +14519,45 @@ void editor::InspectorWindow::show(){
 
                     drawScenePropertyRow<bool>(sceneProject, "depth_prepass_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
                         "Write depth before the opaque color pass so each pixel is shaded once. Pays off with heavy overdraw (dense foliage); costs an extra geometry pass.");
+
+                    ImGui::EndTable();
+                }
+
+                ImGui::SeparatorText("Scene Color");
+
+                if (ImGui::BeginTable("scene_color_settings_table", 2, tableFlags)) {
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("In Use"));
+                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+                    const float sceneColorScaleComboWidth = ImGui::CalcTextSize("Half").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+                    drawScenePropertyRow<SceneColorScale>(sceneProject, "scene_color_scale", "Scale", ScenePropertyInputType::Combo, sceneColorScaleComboWidth, 0.0f, 1.0f,
+                        "Resolution of the copy of the opaque scene and sky that shaders reading the scene colour (glass, heat haze, refraction) sample, taken once per camera pass that draws such a shader. "
+                        "Half (default): a quarter of the pixels to copy and keep, slightly blurred (each texel averages 2x2 pixels), right for distortion and on mobile. "
+                        "Full: sharp, for clear glass seen up close, at four times the copy's bandwidth and memory.");
+
+                    // what the last frame made for the draws reading the scene (depth too: no table of its own)
+                    const uint32_t sceneInputsInUse = jasperengine::editor::Catalog::getSceneInputsInUse(sceneProject->scene);
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::TextUnformatted("In Use");
+                    ImGui::TableSetColumnIndex(1);
+                    if (sceneInputsInUse) {
+                        const std::string label = jasperengine::editor::Catalog::getSceneInputsLabel(sceneInputsInUse);
+                        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_GAUGE_HIGH " %c%s", (char)std::toupper((unsigned char)label[0]), label.c_str() + 1);
+                    } else {
+                        ImGui::TextDisabled("None");
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        const std::string help = sceneInputsInUse
+                            ? "What the last frame made for the shaders reading the scene " + jasperengine::editor::Catalog::getSceneInputsLabel(sceneInputsInUse) +
+                              " in the cameras and views drawing one: " + jasperengine::editor::Catalog::getSceneInputsCost(sceneInputsInUse, true) + "."
+                            : std::string("What the last frame made for shaders reading the scene depth or colour: nothing, no visible draw reads them, so they cost nothing.");
+                        ImGui::BeginTooltip();
+                        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+                        ImGui::TextUnformatted(help.c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndTooltip();
+                    }
 
                     ImGui::EndTable();
                 }
@@ -14410,10 +14672,18 @@ void editor::InspectorWindow::show(){
                 ImGui::EndTable();
             }
 
-            // Ordered fullscreen passes run after the scene color (and SSR) pass; each one
-            // is a forked shader whose uniforms become rows here.
+            // The engine's post-processing of the main camera (effects, presets, cost), then the
+            // ordered user passes run after the scene color (and SSR) pass: each one a library
+            // post-process shader or a fork whose uniforms become rows here.
             if (sceneProject->sceneType != SceneType::SCENE_UI) {
                 ImGui::SeparatorText("Post-processing");
+                drawScenePostProcessing(sceneProject);
+                ImGui::Spacing();
+                ImGui::SeparatorText("Custom Passes");
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("Fullscreen shaders of the library or your own, run in order after the scene is drawn (before "
+                                    "the uber pass): each costs one more pass at the scene's resolution.");
+                ImGui::PopTextWrapPos();
                 drawScenePostProcess(sceneProject);
             }
 

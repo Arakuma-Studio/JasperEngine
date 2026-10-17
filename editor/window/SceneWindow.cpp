@@ -1938,6 +1938,9 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
+        if (sceneProject.sceneType != SceneType::SCENE_UI) {
+            drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
+        }
 
         ImGui::EndTable();
     }
@@ -2196,10 +2199,28 @@ void editor::SceneWindow::show() {
                 const std::string gizmosPopupId = "GizmosPopup" + std::to_string(sceneProject.id);
                 const std::string gizmosLabel = std::string("Gizmos ") + ICON_FA_CARET_DOWN + "##Gizmos" + std::to_string(sceneProject.id);
                 const float gizmosWidth = ImGui::CalcTextSize(gizmosLabel.c_str(), nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-                const float rightX = ImGui::GetWindowContentRegionMax().x - gizmosWidth;
+                // the post-processing toggle left of Gizmos (not in UI scenes: never post-processed)
+                const bool postToggle = sceneProject.sceneType != SceneType::SCENE_UI;
+                const std::string postLabel = std::string(ICON_FA_WAND_MAGIC_SPARKLES) + "##ScenePost" + std::to_string(sceneProject.id);
+                const float postWidth = postToggle ? ImGui::CalcTextSize(postLabel.c_str(), nullptr, true).x +
+                                                     ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+                const float rightX = ImGui::GetWindowContentRegionMax().x - gizmosWidth - postWidth;
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
+                }
+                if (postToggle) {
+                    bool& show = sceneProject.displaySettings.showPostProcessing;
+                    ImGui::PushStyleColor(ImGuiCol_Button, show ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+                    if (ImGui::Button(postLabel.c_str())) {
+                        show = !show;
+                        sceneProject.needUpdateRender = true;
+                        project->saveWorkspaceFile();
+                    }
+                    ImGui::PopStyleColor();
+                    ImGui::SetItemTooltip(show ? "Post-processing shown in this Scene view (click to hide; the Game view always shows it)"
+                                               : "Show the scene's post-processing in this Scene view (the Game view always shows it)");
+                    ImGui::SameLine();
                 }
                 if (ImGui::Button(gizmosLabel.c_str())) {
                     ImGui::OpenPopup(gizmosPopupId.c_str());

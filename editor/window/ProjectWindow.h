@@ -219,6 +219,9 @@ namespace jasperengine::editor {
         bool hasPendingMaterialRender = false; // guarded by thumbnailMutex
         uint64_t pendingMaterialGeneration = 0; // guarded by thumbnailMutex
         std::mutex materialRenderMutex;
+        // frames a material thumbnail waited for its shader variant or textures (main thread)
+        int materialRenderWaits = 0;
+        fs::path materialRenderWaitPath;
 
         fs::path pendingModelPath;
         bool hasPendingModelRender = false; // guarded by thumbnailMutex

@@ -871,6 +871,10 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
 
     try {
         def.handler(call);
+    } catch (const Json::type_error& e) {
+        // an argument a handler read without checking its type: still an error the agent can fix
+        call->fail(std::string("Tool ") + def.name + ": an argument has the wrong type (" + e.what() +
+                   "); its inputSchema (tools/list) gives each argument's type.");
     } catch (const std::exception& e) {
         call->fail(std::string("Tool ") + def.name + " failed: " + e.what());
     } catch (...) {

@@ -871,6 +871,7 @@ bool NativeEngine::initSurface() {
 
     EGLint numConfigs;
 
+    // the swapchain is a depth-stencil target (stencil masks of the shader library)
     const EGLint attribs[] = {
             EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, // request OpenGL ES 3.0
             EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
@@ -878,11 +879,27 @@ bool NativeEngine::initSurface() {
             EGL_GREEN_SIZE, 8,
             EGL_RED_SIZE, 8,
             EGL_DEPTH_SIZE, 24,
+            EGL_STENCIL_SIZE, 8,
             EGL_NONE
     };
 
     // Pick the first EGLConfig that matches.
     eglChooseConfig(mEglDisplay, attribs, &mEglConfig, 1, &numConfigs);
+
+    if (!numConfigs){
+        // without stencil (stencil tests then always pass)
+        const EGLint attribs[] = {
+                EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, // request OpenGL ES 3.0
+                EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+                EGL_BLUE_SIZE, 8,
+                EGL_GREEN_SIZE, 8,
+                EGL_RED_SIZE, 8,
+                EGL_DEPTH_SIZE, 24,
+                EGL_NONE
+        };
+
+        eglChooseConfig(mEglDisplay, attribs, &mEglConfig, 1, &numConfigs);
+    }
 
     if (!numConfigs){
         // fall back to 16bit depth buffer

@@ -155,6 +155,29 @@ namespace jasperengine {
                 keys[i] = it != otherComponent->entityToIndexMap.end() ? it->second : missing;
             }
 
+            sortByKeys(keys);
+        }
+
+        // In the order the entities have in `order` (those not in it go last, in their order).
+        // For components without a Transform whose order is a list's, e.g. the editor's
+        // scene entity list for skyboxes (the first one is the scene's sky).
+        void sortByEntityOrder(const std::vector<Entity>& order) {
+            const size_t count = componentArray.size();
+            if (count < 2){
+                return;
+            }
+            std::vector<size_t> keys(count);
+            for (size_t i = 0; i < count; i++){
+                auto it = std::find(order.begin(), order.end(), indexToEntity[i]);
+                keys[i] = (it != order.end()) ? (size_t)(it - order.begin()) : order.size() + i;
+            }
+            sortByKeys(keys);
+        }
+
+    private:
+        // reorders the components by ascending key (one key per component, in array order)
+        void sortByKeys(const std::vector<size_t>& keys) {
+            const size_t count = componentArray.size();
             // Usually already ordered (a block appended at the end). Check the
             // keys directly before allocating and filling the permutation.
             if (std::is_sorted(keys.begin(), keys.end())){
@@ -193,6 +216,7 @@ namespace jasperengine {
             reindex(first, last);
         }
 
+    public:
         bool hasEntity(Entity entity) {
             return entityToIndexMap.find(entity) != entityToIndexMap.end();
         }

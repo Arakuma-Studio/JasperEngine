@@ -104,6 +104,10 @@ namespace jasperengine{
         static std::string getShaderTypeName(ShaderType shaderType, bool lowerCase = false);
         static bool parseShaderTypeToken(const std::string& typeToken, ShaderType& shaderType);
         static int getShaderPropertyCount(ShaderType shaderType);
+        // the variant bit of the post-processing colour (USE_POST_COLOR, includes/post_color.glsl:
+        // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
+        // depth, effects)
+        static uint32_t getPostColorProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint32_t getPropertiesFromKey(ShaderKey key);
@@ -186,8 +190,13 @@ namespace jasperengine{
                         bool terrain, bool instanced, bool ibl, bool mirror, bool ssao = false,
                         bool light2d = false, bool shadows2d = false,
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
-                        bool terrainPBR = false);
-        static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false);
+                        bool terrainPBR = false,
+                        bool vertexLights = false, int lightCapacity = 8);
+        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires;
+        // textureRect: the sprite texture rect its UV (texture or uv1) goes through
+        static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
+                                               bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
+                                               bool textureRect = false);
         static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
         static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint32_t getHtmlUIProperties(bool texture);

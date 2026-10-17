@@ -1,0 +1,45 @@
+name: UnifiedLighting
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene
+export:
+  # The script builds everything, so the export cannot see these: precompiled at the
+  # default cap (8) so the first frames draw at once. The cap 4 variants (Lc4) compile in
+  # the game when the script lowers the cap.
+  shaderAdditions:
+    - type: mesh
+      properties: 1112 # PucShwNorVc4
+    - type: mesh
+      properties: 33555162 # Uv1PucShwNorNmpVc3Aop
+    - type: mesh
+      properties: 268436568 # PucShwNorVc4Vtl
+    - type: mesh
+      properties: 301990618 # Uv1PucShwNorNmpVc3AopVtl
+    - type: mesh
+      properties: 268436544 # NorVc4Vtl
+    - type: mesh
+      properties: 301990594 # Uv1NorNmpVc3AopVtl
+    - type: mesh
+      properties: 268698712 # PucShwNorVc4IstVtl
+    - type: mesh
+      properties: 88 # PucShwNor
+    - type: mesh
+      properties: 268435544 # PucShwNorVtl
+    - type: mesh
+      properties: 268435520 # NorVtl
+    - type: mesh
+      properties: 1112
+      customShader: assets/shaders/tinted
+    - type: depth
+    - type: depth
+      properties: 64 # Ist

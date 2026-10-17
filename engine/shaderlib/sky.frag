@@ -22,6 +22,12 @@ uniform u_fs_skyParams {
     vec4 color; //sRGB
 } skyParams;
 
+// the post-processing colour (USE_POST_COLOR): the sky is display colour, decoded to apply it
+#include "includes/post_color.glsl"
+
 void main(){
     frag_color = skyParams.color * texture(samplerCube(u_skyTexture, u_sky_smp), uv);
+    #ifdef USE_POST_COLOR
+        frag_color.rgb = postColorEncode(sRGBToLinear(frag_color.rgb));
+    #endif
 }

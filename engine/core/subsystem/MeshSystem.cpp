@@ -205,7 +205,10 @@ MeshSystem::SubmeshOverrides MeshSystem::collectSubmeshOverrides(Entity entity, 
     for (auto const& [mesh, base] : getSubmeshRuns(entity, model)) {
         for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
             if (mesh->submeshes[i].overrideFields != 0) {
-                overrides.emplace(base + i, mesh->submeshes[i]);
+                // the saved copy must not hold the render's extra pass: a second owner makes
+                // the load's destroyMesh take the pass for a component copy's and keep its
+                // pipelines alive (only the material is restored from it)
+                overrides.emplace(base + i, mesh->submeshes[i]).first->second.extraPass.reset();
             }
         }
     }
@@ -264,6 +267,24 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
         material.normalTexture = savedMaterial.normalTexture;
         material.normalTexCoord = savedMaterial.normalTexCoord;
     }
+
+    if (fields & SubmeshOverride_Shader)         material.shader         = savedMaterial.shader;
+    if (fields & SubmeshOverride_ShaderParams)   material.shaderParams   = savedMaterial.shaderParams;
+    if (fields & SubmeshOverride_ShaderTextures) material.shaderTextures = savedMaterial.shaderTextures;
+    if (fields & SubmeshOverride_ShaderFeatures) material.shaderFeatures = savedMaterial.shaderFeatures;
+    if (fields & SubmeshOverride_BlendMode)      material.blendMode      = savedMaterial.blendMode;
+    if (fields & SubmeshOverride_CullMode)       material.cullMode       = savedMaterial.cullMode;
+    if (fields & SubmeshOverride_DepthWrite)     material.depthWrite     = savedMaterial.depthWrite;
+    if (fields & SubmeshOverride_DepthTest)      material.depthTest      = savedMaterial.depthTest;
+    if (fields & SubmeshOverride_DepthOffset) {
+        material.depthOffsetFactor = savedMaterial.depthOffsetFactor;
+        material.depthOffsetUnits = savedMaterial.depthOffsetUnits;
+    }
+    if (fields & SubmeshOverride_SortPriority)   material.sortPriority   = savedMaterial.sortPriority;
+    if (fields & SubmeshOverride_Lighting)       material.lighting       = savedMaterial.lighting;
+    if (fields & SubmeshOverride_Stencil)        material.stencil        = savedMaterial.stencil;
+    if (fields & SubmeshOverride_ColorWrite)     material.colorWrite     = savedMaterial.colorWrite;
+    if (fields & SubmeshOverride_ExtraPass)      material.extraPass      = savedMaterial.extraPass;
 
     if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
     if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;
@@ -4476,7 +4497,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         transform.needUpdate = true;
     }
 
-    mesh.cullingMode = CullingMode::BACK;
+    // cullingMode is the user's (a glTF has none to give): a load keeps it
     mesh.windingOrder = (matrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {
@@ -4641,7 +4662,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
             }
 
-            mesh.cullingMode = CullingMode::BACK;
             // Legacy skinned children stay at identity; hierarchy children use their node transform.
             double windingDet = nodeSkin && !useNodeHierarchy
                 ? matrix.determinant()

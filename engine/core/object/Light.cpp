@@ -33,7 +33,7 @@ void Light::setType(LightType type){
 
         lightcomp.needUpdateShadowCamera = true;
         lightcomp.needUpdateShadowMap = true;
-        scene->getSystem<RenderSystem>()->needReloadMeshes();
+        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -196,7 +196,7 @@ void Light::setShadows(bool shadows){
         lightcomp.shadows = shadows;
 
         lightcomp.needUpdateShadowCamera = true;
-        scene->getSystem<RenderSystem>()->needReloadMeshes();
+        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -225,7 +225,7 @@ void Light::setShadowMapSize(unsigned int size){
         lightcomp.mapResolution = size;
 
         lightcomp.needUpdateShadowMap = true;
-        scene->getSystem<RenderSystem>()->needReloadMeshes();
+        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -326,4 +326,12 @@ void Light::setCullingMask(uint32_t cullingMask){
 
 uint32_t Light::getCullingMask() const{
     return getComponent<LightComponent>().cullingMask;
+}
+
+void Light::setShading(LightShading shading){
+    getComponent<LightComponent>().shading = shading;
+}
+
+LightShading Light::getShading() const{
+    return getComponent<LightComponent>().shading;
 }

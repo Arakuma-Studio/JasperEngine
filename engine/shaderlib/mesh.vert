@@ -104,6 +104,14 @@ in vec3 a_position;
     out vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
 #endif
 
+#ifdef USE_VERTEX_LIGHTS
+    // the object's vertex lights (includes/lights.glsl), Lambert per vertex
+    #define LIGHTS_VS
+    #include "includes/lights.glsl"
+
+    out vec3 v_vertexLight;
+#endif
+
 #ifdef HAS_INSTANCING
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
@@ -253,6 +261,20 @@ void main() {
     #else
         #if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
             v_color = a_color;
+        #endif
+    #endif
+
+    #ifdef USE_VERTEX_LIGHTS
+        #ifdef HAS_NORMALS
+            vec3 lightingNormal = worldNormal;
+        #else
+            vec3 lightingNormal = normalize(vec3(pbrParams.normalMatrix * vec4(0.0, 1.0, 0.0, 0.0)));
+        #endif
+        v_vertexLight = vertexDiffuse(worldPos.xyz / worldPos.w, lightingNormal);
+        #ifndef USE_PUNCTUAL
+            // VERTEX: the fragment stage has no lights block, so the SH ambient (the scene
+            // ambient and the lights over the cap) comes along
+            v_vertexLight += ambientLight(lightingNormal);
         #endif
     #endif
 

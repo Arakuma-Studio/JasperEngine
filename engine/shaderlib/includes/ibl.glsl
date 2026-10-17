@@ -16,9 +16,17 @@ vec2 envBRDFApprox(float NdotV, float roughness){
 }
 
 #ifdef USE_IBL
+    // environment colour (rgb) and rotation (w): from Lit's camera block, or from the
+    // legacy u_fs_lighting block of a fork that declares it instead
+    #ifdef LIT_FRAME_DECLARED
+        #define IBL_ENVIRONMENT vec4(litFrame.environmentColor.rgb, litFrame.viewport_ssao_envRotation.w)
+    #else
+        #define IBL_ENVIRONMENT lighting.envColor
+    #endif
+
     // Rotate an environment lookup direction to match the sky rotation
     vec3 rotateEnv(vec3 dir){
-        float angle = lighting.envColor.w;
+        float angle = IBL_ENVIRONMENT.w;
         float c = cos(angle);
         float s = sin(angle);
         return vec3(c * dir.x - s * dir.z, dir.y, s * dir.x + c * dir.z);
@@ -27,7 +35,7 @@ vec2 envBRDFApprox(float NdotV, float roughness){
     // Cosine-convolved irradiance (already divided by PI on generation)
     vec3 getDiffuseLight(vec3 n){
         vec3 color = sRGBToLinear(texture(samplerCube(u_lambertianEnvTexture, u_lambertianEnv_smp), rotateEnv(n))).rgb;
-        return color * lighting.envColor.rgb;
+        return color * IBL_ENVIRONMENT.rgb;
     }
 
     vec3 boxProjectReflection(vec3 direction, vec3 worldPosition){
@@ -66,7 +74,7 @@ vec2 envBRDFApprox(float NdotV, float roughness){
 
     // GGX prefiltered sky radiance blended with a box-projected local probe.
     vec3 getSpecularLight(vec3 reflection, vec3 worldPosition, float lod){
-        vec3 sky = sRGBToLinear(textureLod(samplerCube(u_GGXEnvTexture, u_GGXEnv_smp), rotateEnv(reflection), lod)).rgb * lighting.envColor.rgb;
+        vec3 sky = sRGBToLinear(textureLod(samplerCube(u_GGXEnvTexture, u_GGXEnv_smp), rotateEnv(reflection), lod)).rgb * IBL_ENVIRONMENT.rgb;
         float weight = clamp(reflectionProbe.position_weight.w, 0.0, 1.0);
         if (weight <= 0.0) return sky;
         vec3 localDirection = boxProjectReflection(reflection, worldPosition);

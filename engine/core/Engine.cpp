@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <map>
 #include <functional>
 
@@ -1143,6 +1144,72 @@ void Engine::systemViewChanged(){
     onViewChanged.call();
 }
 
+// With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
+// every scene drawn is fully loaded and no shader variant is still compiling, so a test
+// can wait for that instead of a fixed time. A few frames in a row must be ready: a
+// script creating objects in its first updates leaves the scenes loaded for a frame.
+// With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of frames 2, 30 and 90 after
+// it (SystemRender::logFrameStats): passes, draws and live resources, to
+// compare builds and to see that nothing is made per frame; JASPERENGINE_FRAME_STATS=all logs
+// every frame from the first (loading, and a frame that skips draws or remakes pipelines).
+namespace{
+    // the frames signalReadyOnce counted (frame stats: Engine::drawView names its view's line by it)
+    uint64_t frameStatsFrames = 0;
+
+    bool frameStatsEveryFrame(){
+        static const bool all = [](){
+            const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
+            return value && std::string(value) == "all";
+        }();
+        return all;
+    }
+}
+
+void Engine::signalReadyOnce(){
+    static const bool enabled = [](){
+        const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
+    static const bool frameStats = [](){
+        const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
+        return value && value[0] != '\0' && value[0] != '0';
+    }();
+    // "all": every frame from the first, loading included (what a frame makes or skips)
+    const bool frameStatsAll = frameStatsEveryFrame();
+    static bool signalled = false;
+    static int readyFrames = 0;
+    uint64_t& frames = frameStatsFrames;
+    static uint64_t signalledFrame = 0;
+    if (!enabled)
+        return;
+    if (signalled){
+        if (frameStats){
+            frames++;
+            const uint64_t after = frames - signalledFrame;
+            if (frameStatsAll || after == 2 || after == 30 || after == 90)
+                SystemRender::logFrameStats(frames);
+        }
+        return;
+    }
+
+    frames++;
+    if (frameStatsAll && frames > 1)
+        SystemRender::logFrameStats(frames - 1);
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
+    for (size_t i = 0; ready && i < scenes.size(); i++){
+        ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
+    }
+    readyFrames = ready ? readyFrames + 1 : 0;
+    if (readyFrames >= 10){
+        signalled = true;
+        signalledFrame = frames;
+        Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
+        for (Scene* scene : scenes){
+            scene->getSystem<RenderSystem>()->logRenderObjects();
+        }
+    }
+}
+
 void Engine::systemDraw(){
     const int MAX_UPDATES_PER_FRAME = 100;
 
@@ -1271,6 +1338,8 @@ void Engine::systemDraw(){
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
 
+    signalReadyOnce();
+
     frameRunning = false;
 
     drawSemaphore.release();
@@ -1300,6 +1369,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.fixedResolution = layer.fixedResolution;
         desc.disableFog = layer.disableFog;
         desc.disableFaceCulling = layer.disableFaceCulling;
+        desc.postProcessing = layer.postProcessing;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -1310,6 +1380,9 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
     currentFrameStats = gameFrameStats;
 
     SystemRender::commit();
+    // JASPERENGINE_FRAME_STATS=all: this view's passes too (each view commits on its own)
+    if (frameStatsEveryFrame())
+        SystemRender::logFrameStats(frameStatsFrames, viewId);
 
     drawSemaphore.release();
 }

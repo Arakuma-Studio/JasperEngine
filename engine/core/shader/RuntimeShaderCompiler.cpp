@@ -10,6 +10,7 @@
 #include "io/FileData.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderDataSerializer.h"
+#include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
 
 #include "sokol_time.h"
@@ -138,17 +139,6 @@ const std::string& prepareCacheDirectory(State& s){
     return s.cacheDirectory;
 }
 
-// A fork's files come from the build's assets, at their project-relative paths
-// (the export puts them there)
-bool readAssetFile(const std::string& path, std::string& content){
-    if (!ShaderVariantCompiler::isSafeRelativePath(path))
-        return false;
-    Data data;
-    if (data.open(path.c_str()) != FileErrors::FILEDATA_OK)
-        return false;
-    content = data.readString();
-    return true;
-}
 
 bool writeCacheFile(ShaderKey key, const std::string& path, const ShaderData& data){
     // written aside and renamed into place: a run reading the cache never sees half a file
@@ -305,11 +295,14 @@ ShaderBuildResult RuntimeShaderCompiler::request(ShaderKey key){
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
     if (customId != 0 && !ShaderPool::isLibraryCustomShader(customId)){
         const std::string customShader = ShaderPool::getCustomShaderName(customId);
-        auto sourceIt = s.customSources.find(customShader);
+        const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
+        // a library shader's depth variant is its depth program: keyed by type too
+        const std::string sourceKey = customShader + "\n" + std::to_string(static_cast<int>(shaderType));
+        auto sourceIt = s.customSources.find(sourceKey);
         if (sourceIt == s.customSources.end()){
             auto sources = std::make_shared<CustomShaderSources>(
-                ShaderVariantCompiler::resolveCustomShaderSources(customShader, readAssetFile));
-            sourceIt = s.customSources.emplace(customShader, sources).first;
+                ShaderVariantCompiler::resolveCustomShaderSources(customShader, ShaderManifests::readForkFile, shaderType));
+            sourceIt = s.customSources.emplace(sourceKey, sources).first;
         }
         job.sources = sourceIt->second;
         if (!job.sources->valid){

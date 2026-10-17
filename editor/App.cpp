@@ -3580,9 +3580,20 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      transmission adds foliageTransmission to u_fs_pbrParams.
     // v29: sprite and tilemap UVs (HAS_TEXTURERECT) use centroid interpolation, so MSAA
     //      edge pixels no longer sample outside their atlas rect.
-    // v30: HTML UI gradient and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST).
-    // v31: HTML UI effects (UI_EFFECT), library effects named by their custom-shader id.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v31";
+    // v30: unified lighting — per-object lights blocks (u_vs/u_fs_objectLights, includes/
+    //      lights.glsl) with vertex-light ('Vtl') and capacity-tier ('Lc4', 'L16') bits; Lit
+    //      reads the camera and fog from the frame block (u_fs_fog and u_fs_lighting are gone
+    //      from the built-in shader; forks declaring u_fs_lighting are still filled).
+    // v31: one light unit for every shader (includes/lights.glsl): vertexDiffuse and the
+    //      folded SH lights carry Lambert's 1/PI, so Lit no longer divides them itself.
+    // v32: the lights block packs 4 vectors per light (the vertex stage declares a prefix),
+    //      Lit reads its own camera block (u_fs_litFrame), unlit fog is u_fs_fog again, the
+    //      depth programs take the sprite texture rect ('Txr'), library variants a blend define.
+    // v33: merge of the HTML UI work (its v30 and v31 on the html-ui branch): HTML UI gradient
+    //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
+    //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
+    //      UI_EFFECT moved after BLOOM.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
 }
 
 void editor::App::pushTabNotificationStyle(){

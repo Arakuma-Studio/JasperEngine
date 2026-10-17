@@ -98,11 +98,11 @@ std::string ShaderHeaderBuilder::buildShaderHeader(const std::string& suffix, st
     return content;
 }
 
-std::string ShaderHeaderBuilder::buildShaderLibHeader(const std::map<std::string, std::string>& sources) {
+std::string ShaderHeaderBuilder::buildShaderLibHeader(const std::map<std::string, std::string>& sources, const std::string& namespaceName) {
     // Byte for byte what embed_shaderlib.cmake writes (std::map orders like list(SORT))
     std::string content = "// Generated from engine/shaderlib. Do not edit.\n\n";
     content += "#pragma once\n\n#include <cstddef>\n\n";
-    content += "namespace jasperengine { namespace shaderlib {\n\n";
+    content += "namespace jasperengine { namespace " + namespaceName + " {\n\n";
     content += "struct File { const char* name; const char* source; };\n\n";
 
     std::string table;

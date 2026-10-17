@@ -13,6 +13,8 @@
 
 namespace jasperengine{
 
+    struct ShaderManifest;
+
     // values of a forked shader's custom uniform block, by member name
     // (a vector keeps the serialized order stable)
     typedef std::vector<std::pair<std::string, Vector4>> ShaderUniformValues;
@@ -46,6 +48,9 @@ namespace jasperengine{
 
         // every member from the value of the same name (zero when unset), reserved ones skipped
         void writeValues(const ShaderUniformValues& values);
+        // the same, a member taking the first of: values, fallbackValues (when given), the
+        // manifest's @property default (when given), zero
+        void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest);
         void writeTime(float seconds);
         void writeResolution(float width, float height);
 
@@ -53,6 +58,69 @@ namespace jasperengine{
         // an array member (std140: 16-byte stride), at most its declared count of elements;
         // each element takes the components its type has (UI effect palettes, phase 5)
         static void writeUniformArray(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4* values, size_t count);
+    };
+
+    // A custom texture (manifest @texture, or a shaderTextures entry of a shader without a
+    // manifest) a loaded shader declares: its bind slot, resolved by name at load
+    struct JASPERENGINE_API ShaderTextureSlot{
+        std::pair<int, int> slot = {-1, -1};
+        int source = -1;      // index in the object's shaderTextures, -1: the default texture
+        int fallback = 0;     // ShaderTextureDefault
+        bool cube = false;    // declared as a textureCube
+    };
+
+    // What a loaded shader reads of the shader library's engine data: the frame block
+    // (u_vs_frame / u_fs_frame, includes/frame.glsl), its custom textures and the scene
+    // inputs (includes/scene.glsl: u_fs_sceneInputs, u_sceneDepthTexture,
+    // u_sceneColorTexture). Slots are resolved once at load, so a draw does no name lookup;
+    // -1 when not declared.
+    struct JASPERENGINE_API ShaderLibraryBindings{
+        int slotVSFrame = -1;
+        int slotFSFrame = -1;
+        unsigned int frameSize = 0;   // bytes of the vertex block the shader declares
+        unsigned int frameSizeFS = 0; // of the fragment block (larger with the post colour)
+        // the post-processing colour (phase 4, includes/post_color.glsl): its own block when
+        // the shader has no frame or Lit block to hold it, and its LUT
+        int slotFSPostColor = -1;
+        std::pair<int, int> slotPostColorLut = {-1, -1};
+        // how the draw's blend takes that colour (RenderSystem's PostColorBlend: which pass
+        // block it uploads), for a shader without a manifest (no BLEND_* define); set by the
+        // load after the render state is resolved, 0 (its own colour) otherwise
+        uint8_t postColorBlend = 0;
+        std::vector<ShaderTextureSlot> textures;
+        int slotFSSceneInputs = -1;
+        unsigned int sceneInputsSize = 0;
+        std::pair<int, int> slotSceneDepth = {-1, -1};
+        std::pair<int, int> slotSceneColor = {-1, -1};
+        // the reflection environment (includes/environment.glsl, @require environment)
+        int slotFSEnvironment = -1;
+        std::pair<int, int> slotEnvironment = {-1, -1};
+        // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
+        int slotFSBlurredScene = -1;
+        std::pair<int, int> slotBlurredScene = {-1, -1};
+
+        void clear(){
+            slotVSFrame = -1;
+            slotFSFrame = -1;
+            frameSize = 0;
+            frameSizeFS = 0;
+            slotFSPostColor = -1;
+            slotPostColorLut = {-1, -1};
+            postColorBlend = 0;
+            textures.clear();
+            slotFSSceneInputs = -1;
+            sceneInputsSize = 0;
+            slotSceneDepth = {-1, -1};
+            slotSceneColor = {-1, -1};
+            slotFSEnvironment = -1;
+            slotEnvironment = {-1, -1};
+            slotFSBlurredScene = -1;
+            slotBlurredScene = {-1, -1};
+        }
+        // the shader declares a scene input (its draws get the pass's, RenderSystem::applySceneInputs)
+        bool readsScene() const{
+            return slotFSSceneInputs != -1 || slotSceneDepth.first != -1 || slotSceneColor.first != -1;
+        }
     };
 
 }

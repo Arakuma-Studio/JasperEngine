@@ -16,19 +16,14 @@ namespace jasperengine {
     // sokol pipeline per (shader, vertex layout, state) on first use. The fixed pipeline types
     // (PipelineType, ObjectRender::endLoad) are untouched by this path.
 
-    // rgb and alpha alike, additive blend equation; the last two are phase-5 effect blends
-    //   NONE                    blending off
-    //   ALPHA                   SRC_ALPHA, ONE_MINUS_SRC_ALPHA (alpha: ONE, ONE_MINUS_SRC_ALPHA)
-    //   PREMULTIPLIED           ONE, ONE_MINUS_SRC_ALPHA
-    //   ADDITIVE_PREMULTIPLIED  ONE, ONE
-    //   SCREEN_PREMULTIPLIED    ONE, ONE_MINUS_SRC_COLOR
-    //   MULTIPLY_PREMULTIPLIED  DST_COLOR, ONE_MINUS_SRC_ALPHA
-    enum class BlendMode : uint8_t { NONE, ALPHA, PREMULTIPLIED, ADDITIVE_PREMULTIPLIED,
-                                     SCREEN_PREMULTIPLIED, MULTIPLY_PREMULTIPLIED };
+    // BlendMode (rgb and alpha alike, additive blend equation) and StencilOp are Render.h's,
+    // shared with the fixed pipeline types' RenderState; the dynamic path takes every
+    // BlendMode, the HTML UI uses NONE, ALPHA, PREMULTIPLIED and the three *_PREMULTIPLIED
+    // effect blends.
     enum class ColorWriteMask : uint8_t { NONE = 0, R = 1, G = 2, B = 4, A = 8, RGB = 7, RGBA = 15 };
     enum class CompareFunc : uint8_t { NEVER, LESS, EQUAL, LESS_EQUAL, GREATER, NOT_EQUAL, GREATER_EQUAL, ALWAYS };
-    enum class StencilOp : uint8_t { KEEP, ZERO, REPLACE, INCR_CLAMP, DECR_CLAMP, INVERT, INCR_WRAP, DECR_WRAP };
-    enum class DepthStencilFormat : uint8_t { NONE, DEPTH, DEPTH_STENCIL };
+    // a target's depth attachment: the same enum as Framebuffer's (Render.h FramebufferDepth)
+    using DepthStencilFormat = FramebufferDepth;
     enum class IndexType : uint8_t { NONE, UINT16, UINT32 };
 
     // pass load/store actions (CameraRender::setColorActions/setDepthStencilActions)
@@ -106,8 +101,10 @@ namespace jasperengine {
     };
 
     // The formats PIP_DEFAULT / PIP_RTT / ... resolve to (SokolObject::makePipelineDesc), so
-    // code drawing inside an existing camera pass can build a matching state
-    inline RenderTargetFormat targetFormatFor(PipelineType pipelineType){
+    // code drawing inside an existing camera pass can build a matching state. msaaSamples is
+    // the sample count of the PIP_MSAA* types (the post-processed camera's multisampled
+    // scene target, RenderSystem's), ignored by the others
+    inline RenderTargetFormat targetFormatFor(PipelineType pipelineType, int msaaSamples = 1){
         RenderTargetFormat format;
         switch (pipelineType){
         case PipelineType::PIP_DEFAULT:
@@ -116,9 +113,31 @@ namespace jasperengine {
             // the swapchain pass: sokol's environment defaults
             format.swapchain = true;
             break;
+        case PipelineType::PIP_RTT:
+        case PipelineType::PIP_RTT_NODEPTH:
+        case PipelineType::PIP_RTT_INVERT:
+        case PipelineType::PIP_ZPREPASS_RTT:
+            // offscreen colour passes that draw meshes: RGBA8, depth-stencil, one sample
+            format.color = ColorFormat::RGBA;
+            format.depth = DepthStencilFormat::DEPTH_STENCIL;
+            format.sampleCount = 1;
+            break;
+        case PipelineType::PIP_MSAA:
+        case PipelineType::PIP_MSAA_NODEPTH:
+        case PipelineType::PIP_ZPREPASS_MSAA:
+            format.color = ColorFormat::RGBA;
+            format.depth = DepthStencilFormat::DEPTH_STENCIL;
+            format.sampleCount = msaaSamples > 1 ? msaaSamples : 1;
+            break;
+        case PipelineType::PIP_POST:
+            // the bloom and blur chain's targets
+            format.color = ColorFormat::SRGB8A8;
+            format.depth = DepthStencilFormat::NONE;
+            format.sampleCount = 1;
+            break;
         default:
-            // offscreen: RGBA8 colour (attachment 0), DEPTH, one sample
-            format.swapchain = false;
+            // depth-only attachments: the fullscreen effect targets (PIP_EFFECT), the depth,
+            // shadow and G-buffer passes (attachment 0 RGBA8)
             format.color = ColorFormat::RGBA;
             format.depth = DepthStencilFormat::DEPTH;
             format.sampleCount = 1;

@@ -40,9 +40,15 @@ namespace jasperengine {
         void setIndexBuffer(BufferRender* buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
-        // color blending of the color pipelines (PIP_DEFAULT*, PIP_RTT*) instead of their
-        // built-in straight alpha; between beginLoad and endLoad
+        // the texture through the sampler (filter, wrap) of another one: a pass that needs
+        // bilinear taps of a target the user made NEAREST
+        void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
+        // color blending of the color pipelines (PIP_DEFAULT*, PIP_RTT*, PIP_MSAA*, PIP_EFFECT)
+        // instead of the render state's blend; between beginLoad and endLoad
         void setBlendState(const BlendState& state);
+        // builds every pipeline type in pipelines with the render state; the PIP_MSAA* types
+        // take msaaSamples (the post-processed camera's multisampled target, 2 or 4)
+        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
         // The dynamic path: records the shader, vertex layout and index type and creates no
         // pipeline; every draw then picks its state with beginDraw(const PipelineState&).
@@ -63,6 +69,9 @@ namespace jasperengine {
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
+
+        // pipelines made by every object and not destroyed yet (diagnostics)
+        static int getLivePipelineCount();
     };
 }
 

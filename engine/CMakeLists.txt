@@ -364,13 +364,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     if((CMAKE_SYSTEM_NAME STREQUAL "Linux") OR (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD"))
         # The native X11 backend creates a GLX context or a Vulkan surface and
         # swapchain.
+        # gles3 runs the mobile/web backend in an OpenGL ES context (GLX), for testing
+        # (Mesa provides it; needs the GLES headers and libGLESv2)
         if(GRAPHIC_BACKEND STREQUAL "glcore")
             add_definitions("-DSOKOL_GLCORE")
+        elseif(GRAPHIC_BACKEND STREQUAL "gles3")
+            add_definitions("-DSOKOL_GLES3")
         elseif(GRAPHIC_BACKEND STREQUAL "vulkan")
             add_definitions("-DSOKOL_VULKAN")
             add_definitions("-DVK_USE_PLATFORM_XLIB_KHR")
         else()
-            message(FATAL_ERROR "APP_BACKEND=linux supports GRAPHIC_BACKEND glcore or vulkan (got '${GRAPHIC_BACKEND}')")
+            message(FATAL_ERROR "APP_BACKEND=linux supports GRAPHIC_BACKEND glcore, vulkan or gles3 (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-DWITH_MINIAUDIO")
@@ -413,6 +417,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             )
             jasperengine_find_vulkan("GRAPHIC_BACKEND")
             list(APPEND PLATFORM_LIBS Vulkan::Vulkan)
+        elseif(GRAPHIC_BACKEND STREQUAL "gles3")
+            # the GLES entry points, and GLX for the context
+            list(APPEND PLATFORM_LIBS GLESv2 GL)
         else()
             list(APPEND PLATFORM_LIBS GL)
         endif()
@@ -787,6 +794,7 @@ set(JASPERENGINE_SRCS
     core/Input.cpp
     core/Log.cpp
     core/Scene.cpp
+    core/SceneSettings.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
@@ -947,6 +955,7 @@ set(JASPERENGINE_SRCS
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp
+    core/shader/ShaderManifest.cpp
     core/shader/ShaderUniforms.cpp
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
@@ -976,6 +985,7 @@ set(JASPERENGINE_SRCS
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/PostColorLut.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/TextShaper.cpp
@@ -1052,6 +1062,27 @@ target_link_libraries(
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+
+# The manifests of the library shaders (shaderlib/library/), embedded in every build: a
+# game reads their properties, textures and render state even without the runtime
+# compiler. Ahead of shaders/, whose stand-in the Xcode workspace uses.
+set(JASPERENGINE_SHADERLIB_MANIFESTS_HEADER ${CMAKE_CURRENT_BINARY_DIR}/generated/shaderlib_manifests.h)
+file(GLOB_RECURSE JASPERENGINE_SHADERLIB_LIBRARY_FILES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaderlib/library/*.frag
+)
+add_custom_command(
+    OUTPUT ${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+            -DSHADERLIB_DIR=${CMAKE_CURRENT_SOURCE_DIR}/shaderlib
+            -DOUTPUT=${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER}
+            -DMANIFESTS=ON
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler/embed_shaderlib.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler/embed_shaderlib.cmake ${JASPERENGINE_SHADERLIB_LIBRARY_FILES}
+    COMMENT "Embedding the library shader manifests"
+)
+target_sources(jasperengine PRIVATE ${JASPERENGINE_SHADERLIB_MANIFESTS_HEADER})
+target_include_directories(jasperengine BEFORE PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # The engine shader library (shaderlib/), embedded as the sources the runtime

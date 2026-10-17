@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Skybox.h"
+#include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
@@ -205,4 +206,38 @@ bool Skybox::removeShaderUniform(const std::string& name){
 
     sky.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 Skybox::getShaderParam(const std::string& name) const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    return ShaderLibraryValues::getParam(sky.shaderUniforms, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, name);
+}
+
+void Skybox::setShaderTexture(const std::string& name, const std::string& path){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(sky.shaderTextures, name, path))
+        sky.needReload = true;
+}
+
+std::string Skybox::getShaderTexture(const std::string& name) const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    return ShaderLibraryValues::getTexture(sky.shaderTextures, name);
+}
+
+void Skybox::setShaderFeature(const std::string& define, bool enabled){
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, define, enabled))
+        sky.needReload = true;
+}
+
+bool Skybox::isShaderFeatureEnabled(const std::string& define) const{
+    SkyboxComponent& sky = getComponent<SkyboxComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, define);
 }

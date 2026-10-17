@@ -355,6 +355,21 @@ void editor::ProjectWindow::processMaterialThumbnails() {
     if (!Engine::isSceneRunning(materialRender.getScene())) {
         std::lock_guard<std::mutex> lock(materialRenderMutex);
 
+        // a library shader's variant builds off the UI thread (and textures load): draw again
+        // until the sphere has them, within a bound (a texture that never loads)
+        constexpr int maxMaterialRenderWaits = 600;
+        if (materialRenderWaitPath != pending.path) {
+            materialRenderWaitPath = pending.path;
+            materialRenderWaits = 0;
+        }
+        if (materialRender.isPending() && materialRenderWaits < maxMaterialRenderWaits) {
+            materialRenderWaits++;
+            Engine::executeSceneOnce(materialRender.getScene());
+            return;
+        }
+        materialRenderWaits = 0;
+        materialRenderWaitPath.clear();
+
         fs::path thumbnailPath = project->getThumbnailPath(pending.path);
         fs::create_directories(thumbnailPath.parent_path());
 

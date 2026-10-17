@@ -12,18 +12,35 @@
 #include "SokolShader.h"
 #include "Engine.h"
 
+#include <atomic>
+
 using namespace jasperengine;
 
 namespace {
+    // pipelines made and not destroyed yet (SokolObject::getLivePipelineCount)
+    std::atomic<int> livePipelines(0);
+
+    // the bit index of a pipeline type
+    int pipelineIndex(PipelineType pipType){
+        int index = 0;
+        while (index < 16 && (1 << index) != (int)pipType){
+            index++;
+        }
+        return index;
+    }
+
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        if (Engine::isAsyncThread())
-            return SokolCmdQueue::add_command_make_pipeline(desc);
-        return sg_make_pipeline(desc);
+        const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
+        // an invalid handle (pool full) is never destroyed, so it is not counted
+        if (pipeline.id != SG_INVALID_ID)
+            livePipelines++;
+        return pipeline;
     }
 
     void destroyPipeline(sg_pipeline pipeline){
         if (pipeline.id == SG_INVALID_ID)
             return;
+        livePipelines--;
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_pipeline(pipeline);
         }else{
@@ -33,16 +50,10 @@ namespace {
 }
 
 SokolObject::SokolObject(){
-    pip.id = SG_INVALID_ID;
-    depth_pip.id = SG_INVALID_ID;
-    shadow_depth_pip.id = SG_INVALID_ID;
-    rtt_pip.id = SG_INVALID_ID;
-    rtt_invert_pip.id = SG_INVALID_ID;
-    gbuffer_pip.id = SG_INVALID_ID;
-    nodepth_pip.id = SG_INVALID_ID;
-    rtt_nodepth_pip.id = SG_INVALID_ID;
-    zprepass_pip.id = SG_INVALID_ID;
-    zprepass_rtt_pip.id = SG_INVALID_ID;
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline.id = SG_INVALID_ID;
+    }
+    msaaSamples = 1;
     bind = {};
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
@@ -52,11 +63,7 @@ SokolObject::SokolObject(){
     dynamicBaseHash = 0;
     lastDynamicPipeline.id = SG_INVALID_ID;
     lastDynamicGeneration = 0;
-    loadFaceCulling = false;
-    loadDepthWrite = true;
-    loadCullingMode = CullingMode::BACK;
-    loadWindingOrder = WindingOrder::CCW;
-    loadPrepassFaceCulling = true;
+    loadState = RenderState();
     bindSlotIndex = 0;
     blendOverride = false;
     blendState = BlendState();
@@ -72,6 +79,10 @@ void SokolObject::resetPipelines(){
     }
     noCullSame = 0;
 #endif
+}
+
+int SokolObject::getLivePipelineCount(){
+    return livePipelines.load();
 }
 
 SokolObject::SokolObject(const SokolObject& rhs) = default;
@@ -145,18 +156,129 @@ sg_face_winding SokolObject::getFaceWinding(WindingOrder windingOrder){
     return _SG_FACEWINDING_DEFAULT;
 }
 
+sg_compare_func SokolObject::getCompareFunc(DepthCompare compare){
+    switch (compare){
+        case DepthCompare::LESS:          return SG_COMPAREFUNC_LESS;
+        case DepthCompare::EQUAL:         return SG_COMPAREFUNC_EQUAL;
+        case DepthCompare::GREATER_EQUAL: return SG_COMPAREFUNC_GREATER_EQUAL;
+        case DepthCompare::GREATER:       return SG_COMPAREFUNC_GREATER;
+        case DepthCompare::NOT_EQUAL:     return SG_COMPAREFUNC_NOT_EQUAL;
+        case DepthCompare::ALWAYS:        return SG_COMPAREFUNC_ALWAYS;
+        default:                          return SG_COMPAREFUNC_LESS_EQUAL;
+    }
+}
+
+void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) const{
+    if (loadState.blend == BlendMode::NONE){
+        if (!offscreen){
+            target.blend.enabled = false;
+            return;
+        }
+        // an offscreen target composites coverage in alpha as the legacy pipelines did
+        // (below), so an opaque surface writing alpha < 1 does not punch a hole in what
+        // is behind it; the colour replaces
+        target.blend.enabled = true;
+        target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_rgb = SG_BLENDFACTOR_ZERO;
+        target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        return;
+    }
+    target.blend.enabled = true;
+    switch (loadState.blend){
+        case BlendMode::PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        case BlendMode::ADDITIVE:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            break;
+        case BlendMode::MULTIPLY:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ZERO;
+            break;
+        // the HTML UI effects' blends of premultiplied colour (PipelineState's; alpha below)
+        case BlendMode::ADDITIVE_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            break;
+        case BlendMode::SCREEN_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR;
+            break;
+        case BlendMode::MULTIPLY_PREMULTIPLIED:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        default:
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+    }
+    // an offscreen target keeps its coverage in alpha, whatever the colour blend
+    if (offscreen){
+        target.blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+        target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+}
+
+namespace {
+    sg_compare_func toSokolStencilCompare(StencilCompare compare){
+        switch (compare){
+            case StencilCompare::NEVER:         return SG_COMPAREFUNC_NEVER;
+            case StencilCompare::LESS:          return SG_COMPAREFUNC_LESS;
+            case StencilCompare::EQUAL:         return SG_COMPAREFUNC_EQUAL;
+            case StencilCompare::LESS_EQUAL:    return SG_COMPAREFUNC_LESS_EQUAL;
+            case StencilCompare::GREATER:       return SG_COMPAREFUNC_GREATER;
+            case StencilCompare::NOT_EQUAL:     return SG_COMPAREFUNC_NOT_EQUAL;
+            case StencilCompare::GREATER_EQUAL: return SG_COMPAREFUNC_GREATER_EQUAL;
+            default:                            return SG_COMPAREFUNC_ALWAYS;
+        }
+    }
+
+    sg_stencil_op toSokolStencilOp(StencilOp op){
+        switch (op){
+            case StencilOp::ZERO:       return SG_STENCILOP_ZERO;
+            case StencilOp::REPLACE:    return SG_STENCILOP_REPLACE;
+            case StencilOp::INCR_CLAMP: return SG_STENCILOP_INCR_CLAMP;
+            case StencilOp::DECR_CLAMP: return SG_STENCILOP_DECR_CLAMP;
+            case StencilOp::INVERT:     return SG_STENCILOP_INVERT;
+            case StencilOp::INCR_WRAP:  return SG_STENCILOP_INCR_WRAP;
+            case StencilOp::DECR_WRAP:  return SG_STENCILOP_DECR_WRAP;
+            default:                    return SG_STENCILOP_KEEP;
+        }
+    }
+}
+
+void SokolObject::applyStencilAndColorMask(sg_pipeline_desc& desc, bool offscreen) const{
+    if (loadState.stencilEnabled){
+        sg_stencil_face_state face = {};
+        face.compare = toSokolStencilCompare(loadState.stencilCompare);
+        face.fail_op = toSokolStencilOp(loadState.stencilFail);
+        face.depth_fail_op = toSokolStencilOp(loadState.stencilDepthFail);
+        face.pass_op = toSokolStencilOp(loadState.stencilPass);
+        desc.stencil.enabled = true;
+        desc.stencil.front = face;
+        desc.stencil.back = face;
+        desc.stencil.read_mask = loadState.stencilReadMask;
+        desc.stencil.write_mask = loadState.stencilWriteMask;
+        desc.stencil.ref = loadState.stencilRef;
+    }
+
+    // the swapchain keeps its alpha (RGB only, as before the mask was configurable)
+    int mask = loadState.colorWriteMask & (offscreen ? COLOR_WRITE_ALL : (COLOR_WRITE_R | COLOR_WRITE_G | COLOR_WRITE_B));
+    // ColorWriteBits are sokol's channel bits; 0 is sokol's "default" (all), so none is explicit
+    desc.colors[0].write_mask = (mask == 0) ? SG_COLORMASK_NONE : (sg_color_mask)mask;
+}
+
 void SokolObject::beginLoad(PrimitiveType primitiveType){
+    // forgets every pipeline without destroying it (a copy may share them; destroy() releases
+    // a load's own), so what endLoad does not make again is never drawn or destroyed stale
     bind = {0};
-    pip = {0};
-    depth_pip = {0};
-    shadow_depth_pip = {0};
-    rtt_pip = {0};
-    rtt_invert_pip = {0};
-    gbuffer_pip = {0};
-    nodepth_pip = {0};
-    rtt_nodepth_pip = {0};
-    zprepass_pip = {0};
-    zprepass_rtt_pip = {0};
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline = {0};
+    }
     pipeline_desc = {0};
     baseDesc = {};
     dynamicLoaded = false;
@@ -276,6 +398,15 @@ void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, Te
     }
 }
 
+void SokolObject::addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf){
+    if (slot.first != -1){
+        if (stage == ShaderStageType::VERTEX || stage == ShaderStageType::FRAGMENT){
+            bind.views[slot.first] = texture->backend.getView();
+            bind.samplers[slot.second] = samplerOf->backend.getSampler();
+        }
+    }
+}
+
 // The description of one pipeline type, from the load description and face state.
 // endLoad creates each pipeline from it, and a no-culling variant only changes its cull mode.
 sg_blend_factor SokolObject::getBlendFactor(BlendFactor factor){
@@ -316,18 +447,22 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     sg_pipeline_desc desc = pipeline_desc;
 
     // offscreen passes render with a Y-flipped projection on GL (top-left
-    // origin), which reverses the triangle winding
-    WindingOrder rttWinding = loadWindingOrder;
+    // origin), which reverses the triangle winding.
+    // The winding is set even without culling: it also decides gl_FrontFacing, which a
+    // double-sided material shades its back with (sokol's default is CW, so a CCW mesh drawn
+    // to the screen would have its front faces lit as backs)
+    const WindingOrder loadWinding = loadState.windingOrder;
+    WindingOrder rttWinding = loadWinding;
     if (Engine::isOpenGL()){
-        rttWinding = (loadWindingOrder == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
+        rttWinding = (loadWinding == WindingOrder::CCW) ? WindingOrder::CW : WindingOrder::CCW;
     }
 
     switch (pipType){
     case PipelineType::PIP_DEPTH:
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -340,33 +475,40 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     case PipelineType::PIP_ZPREPASS:
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
+        // the depth the color pass tests, offset like it
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
-        if (loadPrepassFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.prepassFaceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         break;
 
     case PipelineType::PIP_ZPREPASS_RTT:
+    case PipelineType::PIP_ZPREPASS_MSAA:
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         desc.depth.write_enabled = true;
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         desc.colors[0].write_mask = SG_COLORMASK_NONE;
-        desc.sample_count = 1;
-        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.sample_count = (pipType == PipelineType::PIP_ZPREPASS_MSAA) ? msaaSamples : 1;
+        // the offscreen colour pass it draws into has a depth-stencil attachment
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-        if (loadPrepassFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(rttWinding);
+        if (loadState.prepassFaceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
+        desc.face_winding = getFaceWinding(rttWinding);
         break;
 
     case PipelineType::PIP_SHADOW_DEPTH:
         // Depth-only pipeline (no color target); keeps the fragment stage for
         // alpha-mask discard. SG_PIXELFORMAT_NONE marks it depth-only in Sokol.
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -380,10 +522,10 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
         //   color[0] = packed depth (same as PIP_DEPTH, so SSAO/SSR depth is unchanged)
         //   color[1] = view-space normal (octahedral .rg) + roughness (.b) + metallic (.a)
         //   color[2] = linear base color (.rgb) + hasIBL flag (.a)
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
+        desc.face_winding = getFaceWinding(loadWinding);
         desc.sample_count = 1;
         desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
@@ -396,17 +538,17 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
 
     case PipelineType::PIP_DEFAULT:
     case PipelineType::PIP_DEFAULT_NODEPTH:
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
-            desc.face_winding = getFaceWinding(loadWindingOrder);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
         }
-        desc.colors[0].write_mask = SG_COLORMASK_RGB;
-        desc.colors[0].blend.enabled = true;
-        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        desc.face_winding = getFaceWinding(loadWinding);
+        applyStencilAndColorMask(desc, false);
+        applyBlend(desc.colors[0], false);
         if (pipType == PipelineType::PIP_DEFAULT){
-            desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-            desc.depth.write_enabled = loadDepthWrite;
+            desc.depth.compare = getCompareFunc(loadState.depthCompare);
+            desc.depth.write_enabled = loadState.depthWrite;
+            desc.depth.bias = loadState.depthBias;
+            desc.depth.bias_slope_scale = loadState.depthBiasSlope;
         }else{
             desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
             desc.depth.write_enabled = false;
@@ -418,19 +560,24 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     case PipelineType::PIP_RTT:
     case PipelineType::PIP_RTT_NODEPTH:
     case PipelineType::PIP_RTT_INVERT:
-        desc.sample_count = 1;
-        desc.depth.write_enabled = loadDepthWrite;
-        desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-        desc.colors[0].write_mask = SG_COLORMASK_RGBA;
-        desc.colors[0].blend.enabled = true;
-        desc.colors[0].blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
-        desc.colors[0].blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        desc.colors[0].blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
-        desc.colors[0].blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+    case PipelineType::PIP_MSAA:
+    case PipelineType::PIP_MSAA_NODEPTH:
+        // the multisampled scene target is PIP_RTT's at its sample count
+        desc.sample_count = (pipType == PipelineType::PIP_MSAA || pipType == PipelineType::PIP_MSAA_NODEPTH) ? msaaSamples : 1;
+        desc.depth.write_enabled = loadState.depthWrite;
+        desc.depth.compare = getCompareFunc(loadState.depthCompare);
+        desc.depth.bias = loadState.depthBias;
+        desc.depth.bias_slope_scale = loadState.depthBiasSlope;
+        applyStencilAndColorMask(desc, true);
+        applyBlend(desc.colors[0], true);
+        // offscreen colour passes (cameras, editor views, effects) have a depth-stencil
+        // attachment, see SokolFramebuffer
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH_STENCIL;
         desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-        if (loadFaceCulling){
-            desc.cull_mode = getCullMode(loadCullingMode);
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+        }
+        {
             // planar reflection mirrors handedness, reversing winding once more
             WindingOrder winding = rttWinding;
             if (pipType == PipelineType::PIP_RTT_INVERT){
@@ -438,15 +585,42 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
             }
             desc.face_winding = getFaceWinding(winding);
         }
-        if (pipType == PipelineType::PIP_RTT_NODEPTH){
+        if (pipType == PipelineType::PIP_RTT_NODEPTH || pipType == PipelineType::PIP_MSAA_NODEPTH){
             desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
             desc.depth.write_enabled = false;
         }
         break;
+
+    // a fullscreen effect into a target with a depth-only attachment (FramebufferDepth::DEPTH):
+    // PIP_RTT's colour state; the depth is never tested or written, there is no stencil
+    case PipelineType::PIP_EFFECT:
+        desc.sample_count = 1;
+        applyBlend(desc.colors[0], true);
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+        desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        if (loadState.faceCulling){
+            desc.cull_mode = getCullMode(loadState.cullingMode);
+        }
+        desc.face_winding = getFaceWinding(rttWinding);
+        break;
+
+    // a fullscreen pass of the bloom chain: an SRGB8A8 target without depth, written whole
+    case PipelineType::PIP_POST:
+        desc.sample_count = 1;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_SRGB8A8;
+        desc.colors[0].blend.enabled = false;
+        desc.depth.pixel_format = SG_PIXELFORMAT_NONE;
+        desc.depth.compare = SG_COMPAREFUNC_ALWAYS;
+        desc.depth.write_enabled = false;
+        desc.face_winding = getFaceWinding(rttWinding);
+        break;
     }
 
-    // a blend state set at load replaces the color pipelines' built-in blending; the write
-    // mask stays as the pipeline type sets it, depth-only and G-buffer passes ignore it
+    // a blend state set at load replaces the color pipelines' blending (the render state's
+    // blend); the write mask stays as the pipeline type and the render state set it,
+    // depth-only, G-buffer and bloom-chain (PIP_POST, never blended) passes ignore it
     if (blendOverride){
         switch (pipType){
         case PipelineType::PIP_DEFAULT:
@@ -454,6 +628,9 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
         case PipelineType::PIP_RTT:
         case PipelineType::PIP_RTT_NODEPTH:
         case PipelineType::PIP_RTT_INVERT:
+        case PipelineType::PIP_MSAA:
+        case PipelineType::PIP_MSAA_NODEPTH:
+        case PipelineType::PIP_EFFECT:
             desc.colors[0].blend.enabled = blendState.enabled;
             desc.colors[0].blend.src_factor_rgb = getBlendFactor(blendState.srcFactorRGB);
             desc.colors[0].blend.dst_factor_rgb = getBlendFactor(blendState.dstFactorRGB);
@@ -471,37 +648,28 @@ sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
 }
 
 sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
-    switch (pipType){
-    case PipelineType::PIP_DEPTH: return depth_pip;
-    case PipelineType::PIP_ZPREPASS: return zprepass_pip;
-    case PipelineType::PIP_ZPREPASS_RTT: return zprepass_rtt_pip;
-    case PipelineType::PIP_SHADOW_DEPTH: return shadow_depth_pip;
-    case PipelineType::PIP_GBUFFER: return gbuffer_pip;
-    case PipelineType::PIP_RTT: return rtt_pip;
-    case PipelineType::PIP_RTT_INVERT: return rtt_invert_pip;
-    case PipelineType::PIP_DEFAULT_NODEPTH: return nodepth_pip;
-    case PipelineType::PIP_RTT_NODEPTH: return rtt_nodepth_pip;
-    default: return pip;
-    }
+    const int index = pipelineIndex(pipType);
+    return pipelines[index < PIPELINE_TYPES ? index : 0];
 }
 
-bool SokolObject::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
-    loadFaceCulling = enableFaceCulling;
-    loadDepthWrite = enableDepthWrite;
-    loadCullingMode = cullingMode;
-    loadWindingOrder = windingOrder;
-    loadPrepassFaceCulling = prepassFaceCulling;
+bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples){
+    loadState = state;
+    // the PIP_MSAA* types' sample count, given by the RenderSystem loading the object (never
+    // shared state: another scene or the editor's thumbnail thread loads with its own)
+    msaaSamples = samples > 1 ? samples : 1;
 
     // creation order of the pipeline types
-    static const PipelineType types[] = {
+    static const PipelineType order[] = {
         PipelineType::PIP_DEPTH, PipelineType::PIP_ZPREPASS, PipelineType::PIP_ZPREPASS_RTT,
         PipelineType::PIP_SHADOW_DEPTH, PipelineType::PIP_GBUFFER,
         PipelineType::PIP_DEFAULT, PipelineType::PIP_DEFAULT_NODEPTH,
-        PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT
+        PipelineType::PIP_RTT, PipelineType::PIP_RTT_NODEPTH, PipelineType::PIP_RTT_INVERT,
+        PipelineType::PIP_EFFECT, PipelineType::PIP_POST,
+        PipelineType::PIP_ZPREPASS_MSAA, PipelineType::PIP_MSAA, PipelineType::PIP_MSAA_NODEPTH
     };
 
-    for (PipelineType type : types){
-        if (!(pipelines & (int)type)){
+    for (PipelineType type : order){
+        if (!(types & (int)type)){
             continue;
         }
         sg_pipeline& pipeline = pipelineOf(type);
@@ -566,10 +734,7 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 
 #ifdef JASPERENGINE_EDITOR
     if (disableFaceCulling){
-        int index = 0;
-        while (index < PIPELINE_TYPES && (1 << index) != (int)pipType){
-            index++;
-        }
+        const int index = pipelineIndex(pipType);
         if (index < PIPELINE_TYPES){
             sg_pipeline& variant = noCullPipelines[index];
             if (variant.id == SG_INVALID_ID && !(noCullSame & (1u << index))){
@@ -613,16 +778,9 @@ void SokolObject::draw(unsigned int baseElement, unsigned int vertexCount, unsig
 
 void SokolObject::destroy(){
     if (sg_isvalid()){
-        destroyPipeline(pip);
-        destroyPipeline(depth_pip);
-        destroyPipeline(shadow_depth_pip);
-        destroyPipeline(rtt_pip);
-        destroyPipeline(rtt_invert_pip);
-        destroyPipeline(gbuffer_pip);
-        destroyPipeline(nodepth_pip);
-        destroyPipeline(rtt_nodepth_pip);
-        destroyPipeline(zprepass_pip);
-        destroyPipeline(zprepass_rtt_pip);
+        for (sg_pipeline& pipeline : pipelines){
+            destroyPipeline(pipeline);
+        }
 #ifdef JASPERENGINE_EDITOR
         for (sg_pipeline& variant : noCullPipelines){
             destroyPipeline(variant);
@@ -630,16 +788,9 @@ void SokolObject::destroy(){
 #endif
     }
 
-    pip.id = SG_INVALID_ID;
-    depth_pip.id = SG_INVALID_ID;
-    shadow_depth_pip.id = SG_INVALID_ID;
-    rtt_pip.id = SG_INVALID_ID;
-    rtt_invert_pip.id = SG_INVALID_ID;
-    gbuffer_pip.id = SG_INVALID_ID;
-    nodepth_pip.id = SG_INVALID_ID;
-    rtt_nodepth_pip.id = SG_INVALID_ID;
-    zprepass_pip.id = SG_INVALID_ID;
-    zprepass_rtt_pip.id = SG_INVALID_ID;
+    for (sg_pipeline& pipeline : pipelines){
+        pipeline.id = SG_INVALID_ID;
+    }
     resetPipelines();
     bind = {};
     pipeline_desc = {};

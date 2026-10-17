@@ -490,7 +490,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `shadowQuality`, `lightState`, `shadow2DQuality`, `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
@@ -682,7 +682,40 @@ sprites) sorted by their distance to the camera position, not by Z.
 
 `Material` (rw): `baseColorFactor`, `metallicFactor`, `roughnessFactor`, `alphaMode`,
 `alphaCutoff`, `emissiveFactor`, `baseColorTexture`, `emissiveTexture`,
-`metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`.
+`metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`, `lighting`
+(`MaterialLighting.*`: the stages evaluating the object's lights; set it on the copy
+`getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
+`shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
+(`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
+`depthOffsetUnits`, `sortPriority` (draw order within its queue, opaque or transparent, lower
+first, before distance); methods `setShaderParam(name, value)` (colours linear; a
+`Vector3` colour is opaque), `getShaderParam(name)` (unset: the manifest default),
+`removeShaderParam(name)`, `setShaderTexture(uniform, path)` (`""` back to the default; on a
+`@texture ... cube` uniform it sets a 2D texture: use the cube form),
+`setShaderCubeTexture(uniform, path)` (a `@texture ... cube` uniform: one image holding the six
+faces, the layouts a Skybox takes) or `setShaderCubeTexture(uniform, front, back, left, right,
+up, down)` (six images), `getShaderTexture(uniform)` (a cube map's single image or front
+face), `setShaderFeature(define, on)` (a `@keywords` value is
+`"GROUP_VALUE"`), `isShaderFeatureEnabled(define)`. A material with `shader = ""` feeds the
+shader its submesh draws with (the mesh's `customShader`, else the scene default): a copy from
+`getMaterial` / `material` resolves defaults and features against that one. UI (Image, Text,
+Polygon), Points, LineRenderer and Skybox objects have the same parameter/texture/feature
+methods for their `customShader` (but `setShaderCubeTexture`: set a cube uniform of theirs from
+the editor or MCP), and (but Skybox) `blendMode` and `depthWrite`.
+`stencil` (`MaterialStencil()`: `compare` (`MaterialStencilCompare.*`: `AUTO` takes the shader's
+rule, `DISABLED`, `NEVER` ... `ALWAYS`), `ref`, `readMask`, `writeMask` (0-255), `pass`, `fail`,
+`depthFail` (`MaterialStencilOp.*`)) and `colorWrite` (`MaterialColorWrite.*`: `AUTO`, `NONE`,
+`RGB`, `ALL`, or the bits `R`, `G`, `B`, `A` summed): on the material (`m.stencil.ref = 2`
+edits the copy's) and on UI, Points and LineRenderer objects (a copy there: set it back,
+`local s = image.stencil; s.compare = MaterialStencilCompare.EQUAL; image.stencil = s`).
+`extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
+of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
+them; on a mesh of several submeshes every After pass draws after all of its submeshes and
+every Before pass ahead of all of them, in submesh order) with its own
+`shader` (`""`: none), the same state fields as the material plus `stencil` and `colorWrite`,
+and the same parameter/texture/feature methods (`setShaderCubeTexture` included), resolved
+against its own shader; e.g.
+`m.extraPass.shader = "shaders/outline"; m.extraPass:setShaderParam("width", 0.05)`.
 
 ### 4.4 Primitive (Mesh)
 
@@ -746,7 +779,8 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
-`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`; methods
+`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`, `shading`
+(`LightShading.*`, the stage evaluating it on MIXED-lighting materials); methods
 `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setShadows(b)`, `setShadowCameraNearFar(n, f)`.
 
@@ -915,6 +949,9 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`.
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
+- `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
+  made and did not destroy yet (a leak check: the count before creating objects and after
+  destroying them, once their loads settled).
 
 ### 4.18 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
 
@@ -1017,8 +1054,21 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
 | `PrimitiveType` | `TRIANGLES`, `TRIANGLE_STRIP`, `POINTS`, `LINES` |
 | `MaterialAlphaMode` | `AUTO`, `ALPHA_OPAQUE`, `MASK`, `BLEND` |
+| `MaterialLighting` | `AUTO`, `PIXEL`, `VERTEX`, `MIXED`, `NONE` |
+| `LightShading` | `BOTH`, `PIXEL`, `VERTEX` |
 | `LightState` | `OFF`, `ON`, `AUTO` |
 | `ShadowQuality` | `NONE`, `LOW`, `MEDIUM`, `HIGH` |
+| `SceneColorScale` | `FULL`, `HALF` |
+| `TonemapMode` | `NONE`, `ACES`, `NEUTRAL`, `REINHARD`, `AGX` (`PostProcessingSettings.tonemap`) |
+| `MonochromeMode` | `GRAYSCALE`, `SEPIA` (`PostProcessingSettings.monochromeMode`) |
+| `MaterialBlendMode` | `AUTO`, `NONE` (opaque), `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MULTIPLY` |
+| `MaterialCullMode` | `AUTO`, `BACK`, `FRONT`, `OFF` |
+| `MaterialDepthWrite` | `AUTO`, `ENABLED`, `DISABLED` |
+| `MaterialDepthTest` | `AUTO`, `LESS`, `LESS_EQUAL`, `EQUAL`, `GREATER_EQUAL`, `GREATER`, `NOT_EQUAL`, `ALWAYS` |
+| `MaterialPassOrder` | `AFTER`, `BEFORE` |
+| `MaterialStencilCompare` | `AUTO`, `DISABLED`, `NEVER`, `LESS`, `EQUAL`, `LESS_EQUAL`, `GREATER`, `NOT_EQUAL`, `GREATER_EQUAL`, `ALWAYS` |
+| `MaterialStencilOp` | `KEEP`, `ZERO`, `REPLACE`, `INCR_CLAMP`, `DECR_CLAMP`, `INVERT`, `INCR_WRAP`, `DECR_WRAP` |
+| `MaterialColorWrite` | `AUTO` (-1), `NONE` (0), `R` (1), `G` (2), `B` (4), `A` (8), `RGB` (7), `ALL` (15); any sum of `R`, `G`, `B`, `A` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |

@@ -112,6 +112,13 @@ namespace jasperengine {
         // use: moving a block of branches directly in the Transform array needs one call,
         // where moveChildToIndex re-sorts once per branch.
         void sortComponentsByTransform(Signature entitySignature);
+        // The T components in the order their entities have in `entities` (the others last):
+        // for components without a Transform ordered by a list, e.g. the skyboxes by the
+        // editor's scene entity list, whose first one is the scene's sky
+        template<typename T>
+        void sortComponentsByEntityOrder(const std::vector<Entity>& entities){
+            componentManager.getComponentArray<T>()->sortByEntityOrder(entities);
+        }
 
         void moveChildToTop(Entity entity);
         void moveChildUp(Entity entity);

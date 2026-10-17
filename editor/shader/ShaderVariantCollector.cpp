@@ -33,6 +33,7 @@
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "util/ProjectChecks.h"
+#include "util/Util.h"
 
 #include <algorithm>
 #include <cctype>
@@ -59,11 +60,41 @@ namespace {
         FACT_LIGHTS_2D       = 1u << 5,
         FACT_SHADOW_LIGHTS_2D= 1u << 6, // a 2D light casting shadows
         FACT_OCCLUDERS_2D    = 1u << 7, // Shadow Caster 2D components
+        FACT_SCENE_DEPTH     = 1u << 8, // a shader requiring the scene depth (every mesh gets a depth program)
     };
 
-    uint32_t collectFacts(const editor::ShaderVariantContent& content){
+    // whether a shader reference reads the scene depth with these features (manifest @require
+    // scenedepth, shader library phase 3)
+    bool readsSceneDepth(const std::string& shader, const std::vector<std::string>& features){
+        if (shader.empty())
+            return false;
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+        if (!manifest || !manifest->present)
+            return false;
+        return (manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_SceneDepth) != 0;
+    }
+
+    // RenderSystem::loadPostProcess: a pass of the chain (enabled or not: a script may turn it
+    // on) whose fork declares u_depthTexture
+    bool postProcessReadsDepth(Scene* scene){
+        for (const PostProcessPass& pass : scene->getPostProcessPasses()){
+            if (pass.shader.empty())
+                continue;
+            std::string source;
+            if (ShaderManifests::readForkFile(editor::Util::resolveCustomShaderPaths(pass.shader).frag, source) &&
+                    source.find("u_depthTexture") != std::string::npos)
+                return true;
+        }
+        return false;
+    }
+
+    uint32_t collectFacts(const editor::ShaderVariantContent& content, Scene* scene){
         EntityRegistry* registry = content.registry;
         uint32_t facts = 0;
+        // what draws without a shader of its own draws the scene's default (a prefab spawned
+        // in this scene too), with its own features: RenderSystem resolves them so
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        const std::string& scenePointsShader = scene->getDefaultCustomShader(ShaderType::POINTS);
         for (Entity entity : content.entities){
             if (!registry->isEntityCreated(entity)){
                 continue;
@@ -95,6 +126,22 @@ namespace {
             if (registry->findComponent<ShadowCaster2DComponent>(entity)){
                 facts |= FACT_OCCLUDERS_2D;
             }
+            // RenderSystem::update: a loaded mesh or points component reading the scene depth
+            if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)){
+                for (unsigned int s = 0; s < mesh->numSubmeshes && !(facts & FACT_SCENE_DEPTH); s++){
+                    const Material& material = mesh->submeshes[s].material;
+                    const std::string& shader = RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[s], sceneMeshShader);
+                    if (readsSceneDepth(shader, material.shaderFeatures) ||
+                            readsSceneDepth(material.extraPass->shader, material.extraPass->shaderFeatures)){
+                        facts |= FACT_SCENE_DEPTH;
+                    }
+                }
+            }
+            if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
+                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader, points->shaderFeatures)){
+                    facts |= FACT_SCENE_DEPTH;
+                }
+            }
         }
         return facts;
     }
@@ -104,6 +151,7 @@ namespace {
         // RenderSystem::checkLightsAndShadow
         const LightState lightState = scene->getLightState();
         environment.lights = lightState == LightState::ON || (lightState == LightState::AUTO && (facts & FACT_LIGHTS));
+        environment.lightCapacity = RenderSystem::getLightCapacity(scene->getMaxLightsPerObject());
         environment.shadows = (facts & FACT_SHADOW_LIGHTS) != 0;
         environment.ibl = (facts & FACT_SKY_IBL) != 0;
         environment.reflectionProbes = (facts & FACT_PROBES) != 0;
@@ -114,19 +162,38 @@ namespace {
         environment.ssao = scene->isSSAOEnabled();
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
+        // a scene default shader reading the scene depth with its default features is drawn by
+        // what a script makes without a shader of its own (the content's own objects resolve it
+        // with their features: collectFacts); a post pass sampling the depth needs the depth
+        // pre-pass too
+        environment.sceneDepth = (facts & FACT_SCENE_DEPTH) ||
+            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
+            readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
+            postProcessReadsDepth(scene);
         return environment;
     }
 
     uint32_t environmentBits(const MeshShaderEnvironment& e){
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
-            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u);
+            (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
+            (e.postColor ? (1u << 21) : 0u);
+    }
+
+    // the states of the post-processing colour bit (RenderSystem::getPostProcessingTiers) the
+    // scene's variants can be in: its settings', and both when a script changes them
+    std::vector<bool> postColorStates(Scene* scene, bool scriptsSetPostProcessing){
+        const bool own = RenderSystem::getPostProcessingTiers(scene->getPostProcessing()).tailColor;
+        if (scriptsSetPostProcessing)
+            return {own, !own};
+        return {own};
     }
 
     // The lighting setups a scene can be in: its own content, with any of the build's prefabs
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
-    std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts){
+    std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
+                                                             bool allLightCapacities, const std::vector<bool>& postColor){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -149,9 +216,21 @@ namespace {
         std::vector<MeshShaderEnvironment> environments;
         std::set<uint32_t> distinct;
         for (uint32_t facts : withLoading){
-            MeshShaderEnvironment environment = toEnvironment(facts, scene);
-            if (distinct.insert(environmentBits(environment)).second){
-                environments.push_back(environment);
+            for (bool postColorOn : postColor){
+                MeshShaderEnvironment environment = toEnvironment(facts, scene);
+                environment.postColor = postColorOn;
+                if (distinct.insert(environmentBits(environment)).second){
+                    environments.push_back(environment);
+                }
+                // a script setting maxLightsPerObject reaches the other capacity tiers
+                if (allLightCapacities && environment.lights){
+                    for (int capacity : {4, 8, 16}){
+                        environment.lightCapacity = capacity;
+                        if (distinct.insert(environmentBits(environment)).second){
+                            environments.push_back(environment);
+                        }
+                    }
+                }
             }
         }
         return environments;
@@ -285,8 +364,8 @@ namespace {
 
     class Collector {
     public:
-        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, std::set<ShaderKey>& keys):
-            scene(scene), environments(environments), keys(keys) {}
+        Collector(Scene* scene, const std::vector<MeshShaderEnvironment>& environments, const std::vector<bool>& postColor, std::set<ShaderKey>& keys):
+            scene(scene), environments(environments), postColor(postColor), keys(keys) {}
 
         void collect(const editor::ShaderVariantContent& content){
             EntityRegistry* registry = content.registry;
@@ -330,10 +409,10 @@ namespace {
                     collectPoints(points);
                 }
                 if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)){
-                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES));
+                    insertKeys(ShaderType::LINES, ShaderPool::getLinesProperties(false, true), shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
                 }
                 if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
-                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX));
+                    insertKeys(ShaderType::SKYBOX, 0, shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
                 }
             }
         }
@@ -341,18 +420,30 @@ namespace {
     private:
         Scene* scene;
         const std::vector<MeshShaderEnvironment>& environments;
+        // the post colour bit's states, for the points, lines and sky (meshes: environments)
+        const std::vector<bool>& postColor;
         std::set<ShaderKey>& keys;
 
-        // The effective custom shader: the component's, the scene default, or built-in
-        uint16_t shaderId(const std::string& customShader, ShaderType type){
-            return ShaderPool::registerCustomShader(customShader.empty() ? scene->getDefaultCustomShader(type) : customShader);
+        // The effective custom shader: the component's, the scene default, or built-in, with
+        // the features the component enables and the define of its blend mode
+        // (RenderSystem::getComponentShaderReference)
+        uint16_t shaderId(const std::string& customShader, ShaderType type, const std::vector<std::string>& features, MaterialBlendMode blendMode){
+            return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
+                customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
         }
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
         void insertKeys(ShaderType type, uint32_t properties, uint16_t customId){
-            keys.insert(ShaderPool::getShaderKey(type, properties, customId));
-            if (customId != 0){
-                keys.insert(ShaderPool::getShaderKey(type, properties, 0));
+            // a mesh's post colour bit comes with its environment; the others take it here
+            const uint32_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
+            for (bool postColorOn : postColor){
+                const uint32_t variant = properties | (postColorOn ? postColorBit : 0u);
+                keys.insert(ShaderPool::getShaderKey(type, variant, customId));
+                if (customId != 0){
+                    keys.insert(ShaderPool::getShaderKey(type, variant, 0));
+                }
+                if (!postColorBit)
+                    break;
             }
         }
 
@@ -365,10 +456,13 @@ namespace {
             if (buffers){
                 RenderSystem::scanSubmeshAttributes(submesh, *buffers);
             }
-            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror);
+            // the submesh's shader as RenderSystem::loadMesh picks it: its material's, the
+            // mesh's or the scene's, with its features; the depth pass's library program
+            const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t meshShaderId = shaderId(mesh.customShader, ShaderType::MESH);
-            const uint16_t depthShaderId = ShaderPool::registerCustomShader(mesh.customDepthShader);
+            const uint16_t meshShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader));
+            const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
             for (const MeshShaderEnvironment& environment : environments){
                 const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
                 insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
@@ -377,6 +471,16 @@ namespace {
                 }
                 if (variant.gbuffer){
                     keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
+                }
+            }
+
+            // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
+            // that fails is not drawn: no built-in fallback)
+            if (RenderSystem::hasExtraPass(submesh, terrain != nullptr)){
+                const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
+                const uint16_t passShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh));
+                for (const MeshShaderEnvironment& environment : environments){
+                    keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
                 }
             }
         }
@@ -508,7 +612,7 @@ namespace {
         // its texture comes and goes with what the UI shows (a button's state, a script, a
         // font atlas), see RenderSystem::loadUI
         void collectUI(const UIComponent& ui){
-            const uint16_t id = shaderId(ui.customShader, ShaderType::UI);
+            const uint16_t id = shaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(true, false, false, true), id);
             insertKeys(ShaderType::UI, ShaderPool::getUIProperties(false, true, false, false), id);
@@ -516,7 +620,9 @@ namespace {
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
-            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS);
+            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
+                                         points ? points->shaderFeatures : std::vector<std::string>(),
+                                         points ? points->blendMode : MaterialBlendMode::AUTO);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, false), id);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(true, false, true, true), id);
@@ -714,30 +820,95 @@ void editor::ShaderVariantCollector::collectUiEffects(const std::vector<std::str
     addUiEffectKeys(uses, keys);
 }
 
+const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEffectFields(){
+    static const std::vector<std::string> fields = {
+        "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
+        "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
+        "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale"
+    };
+    return fields;
+}
+
+std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,
+                                                                         const std::vector<std::string>& namedFields){
+    std::set<uint32_t> features;
+    auto add = [&features](const PostProcessingSettings& candidate){
+        const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(candidate);
+        if (tiers.uber && tiers.uberFeatures != 0)
+            features.insert(tiers.uberFeatures);
+    };
+    add(settings);
+    if (!scriptsSetPostProcessing)
+        return features;
+
+    // the switches: the ones the scripts name, else all of them
+    std::vector<const PostProcessingSettings::Field*> switches;
+    const std::vector<std::string>& candidates = namedFields.empty() ? getScriptableEffectFields() : namedFields;
+    for (const std::string& name : candidates){
+        const PostProcessingSettings::Field* field = PostProcessingSettings::findField(name);
+        // the bool switches, and the render scale (below 1 runs the uber pass: its upscale)
+        if (field && (field->type == PostProcessingSettings::FieldType::Bool || name == "renderScale"))
+            switches.push_back(field);
+    }
+    auto flipped = [&](uint32_t mask){
+        PostProcessingSettings candidate = settings;
+        for (size_t i = 0; i < switches.size(); i++){
+            if (mask & (1u << i)){
+                if (switches[i]->type == PostProcessingSettings::FieldType::Bool){
+                    bool* value = static_cast<bool*>(switches[i]->ref(candidate));
+                    *value = !*value;
+                }else{
+                    // the render scale: full against scaled
+                    float* value = static_cast<float*>(switches[i]->ref(candidate));
+                    *value = *value < 1.0f ? 1.0f : 0.5f;
+                }
+            }
+        }
+        // a switched-on effect at its neutral value would add nothing: its default instead
+        static const PostProcessingSettings defaults;
+        if (candidate.bloomEnabled && candidate.bloomIntensity <= 0.0f) candidate.bloomIntensity = defaults.bloomIntensity;
+        if (candidate.chromaticAberrationEnabled && candidate.chromaticAberrationIntensity <= 0.0f)
+            candidate.chromaticAberrationIntensity = defaults.chromaticAberrationIntensity;
+        return candidate;
+    };
+    if (!namedFields.empty() && switches.size() <= 4){
+        // every combination of the few switches the scripts name
+        for (uint32_t mask = 1; mask < (1u << switches.size()); mask++)
+            add(flipped(mask));
+    }else{
+        for (size_t i = 0; i < switches.size(); i++)
+            add(flipped(1u << i));
+    }
+    return features;
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
-                                                  std::set<ShaderKey>& keys, const fs::path& projectRoot){
+                                                  std::set<ShaderKey>& keys, const fs::path& projectRoot,
+                                                  bool allLightCapacities, bool scriptsSetPostProcessing,
+                                                  const std::vector<std::string>& scriptPostProcessingFields){
     if (!scene || !sceneContent.registry){
         return;
     }
+    const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
-    const uint32_t sceneFacts = collectFacts(sceneContent);
+    const uint32_t sceneFacts = collectFacts(sceneContent, scene);
     std::vector<uint32_t> prefabFacts;
     uint32_t allFacts = sceneFacts;
     for (const ShaderVariantContent& prefab : prefabContents){
         if (!prefab.registry){
             continue;
         }
-        const uint32_t facts = collectFacts(prefab);
+        const uint32_t facts = collectFacts(prefab, scene);
         allFacts |= facts;
         if (facts != 0){
             prefabFacts.push_back(facts);
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor);
 
-    Collector collector(scene, environments, keys);
+    Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
     for (const ShaderVariantContent& prefab : prefabContents){
         if (prefab.registry){
@@ -765,6 +936,27 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+    // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features),
+    // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
+    bool bloom = false;
+    bool blur = false;
+    for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
+        bloom = bloom || (features & UBER_BLOOM);
+        blur = blur || (features & UBER_BLUR);
+    }
+    // ShaderType::BLOOM bits: 'Pre' 1, 'Thr' 2, 'Ups' 4, 'Mix' 8 (RenderSystem::loadBloomProgram)
+    if (bloom || blur){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 0));
+    }
+    if (bloom){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u | 2u));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u | 8u));
+    }
+    if (blur){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u));
+    }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){

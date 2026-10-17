@@ -101,8 +101,39 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
     if (mesh.submeshes[submesh].material != material){
+        const Material& current = mesh.submeshes[submesh].material;
+        // the shader, its features, its render state and which custom textures it has
+        // are baked when the mesh loads; parameters only rewrite the uniform blocks
+        bool reload = current.shader != material.shader || current.shaderFeatures != material.shaderFeatures ||
+            current.blendMode != material.blendMode || current.cullMode != material.cullMode ||
+            current.depthWrite != material.depthWrite || current.depthTest != material.depthTest ||
+            current.depthOffsetFactor != material.depthOffsetFactor || current.depthOffsetUnits != material.depthOffsetUnits ||
+            current.sortPriority != material.sortPriority || current.lighting != material.lighting ||
+            current.stencil != material.stencil || current.colorWrite != material.colorWrite ||
+            current.shaderTextures.size() != material.shaderTextures.size();
+        for (size_t t = 0; !reload && t < material.shaderTextures.size(); t++){
+            reload = current.shaderTextures[t].first != material.shaderTextures[t].first;
+        }
+        // so is all of the extra pass but its parameters and texture files
+        const MaterialPass& currentPass = *current.extraPass;
+        const MaterialPass& pass = *material.extraPass;
+        reload = reload || currentPass.shader != pass.shader || currentPass.shaderFeatures != pass.shaderFeatures ||
+            currentPass.blendMode != pass.blendMode || currentPass.cullMode != pass.cullMode ||
+            currentPass.depthWrite != pass.depthWrite || currentPass.depthTest != pass.depthTest ||
+            currentPass.depthOffsetFactor != pass.depthOffsetFactor || currentPass.depthOffsetUnits != pass.depthOffsetUnits ||
+            currentPass.stencil != pass.stencil || currentPass.colorWrite != pass.colorWrite || currentPass.order != pass.order ||
+            currentPass.shaderTextures.size() != pass.shaderTextures.size();
+        for (size_t t = 0; !reload && t < pass.shaderTextures.size(); t++){
+            reload = currentPass.shaderTextures[t].first != pass.shaderTextures[t].first;
+        }
+        const bool paramsChanged = current.shaderParams != material.shaderParams || currentPass.shaderParams != pass.shaderParams;
+
         mesh.submeshes[submesh].material = material;
         mesh.submeshes[submesh].needUpdateTexture = true;
+        if (reload)
+            mesh.needReload = true;
+        if (paramsChanged)
+            mesh.needUpdateShaderUniforms = true;
     }
 }
 

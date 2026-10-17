@@ -28,6 +28,8 @@
 #include "render/FramebufferRender.h"
 #include "buffer/ExternalBuffer.h"
 #include "shader/ShaderBuildTypes.h"
+#include "shader/ShaderManifest.h"
+#include "util/PostColorLut.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -35,15 +37,18 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace jasperengine{
+	// Legacy u_fs_lighting, declared by forks written before per-object lights: filled per
+	// draw with the object's first MAX_LIGHTS pixel lights (the camera part per camera)
 	typedef struct fs_lighting_t {
 	    Vector4 direction_range[MAX_LIGHTS];
 	    Vector4 color_intensity[MAX_LIGHTS];
 	    Vector4 position_type[MAX_LIGHTS];
 	    Vector4 inCon_ouCon_shadows_cascades[MAX_LIGHTS];
 	    Vector4 spotUp_maskAspect[MAX_LIGHTS]; // world up.xyz; w > 0 means a ready mask and stores its width/height
-		Vector4 eyePos;
+		Vector4 eyePos; // w = spot mask atlas tile of each light, 3 bits per light
 		Vector4 cameraDir; // xyz = camera backward axis, w = 3D shadow PCF tap radius
 		Vector4 globalIllum; //global illumination
 		Vector4 envColor; //environment color.rgb (linear) and environment rotation.w (radians)
@@ -58,12 +63,93 @@ namespace jasperengine{
 		Vector4 atlasInfo;                       // x = 1/atlasWidth, y = 1/MAX_LIGHTS_2D, z = atlasWidth, w = PCF tap radius
 	} fs_lighting2d_t;
 
+	// The post-processing colour's parameters (phase 4, shaderlib/includes/post_color.glsl),
+	// per camera pass: the end of u_fs_frame, the start of u_fs_litFrame, or u_fs_postColor
+	typedef struct post_color_t {
+		Vector4 vignetteScaleOffset; // p = gl_FragCoord.xy * xy - zw (centred, 1 at the edges)
+		Vector4 vignetteColor;       // rgb display colour, a intensity (0 = none)
+		Vector4 params;              // x, y vignette falloff, z dither amplitude, w LUT side (0 = no LUT)
+		Vector4 shaper;              // x the LUT shaper's k (s = sqrt(x / (x + k))), y how a built-in shader's
+		                             // blend takes its colour (PostColorBlend: 0 own, 1 added, 2 premultiplied)
+	} post_color_t;
+
+	// How the blend of a draw takes the post-processing colour of a shader without a manifest
+	// (built-in mesh, points, lines and their forks: no BLEND_* define), the index of its pass
+	// block (RenderSystem::passPostColors): its own colour (opaque, alpha), an added one
+	// (black adds nothing, includes/post_color.glsl), a plain factor (multiply: neutral data),
+	// or a premultiplied colour (the straight colour's, times alpha). Library shaders follow
+	// their BLEND_* define and always take POST_BLEND_OWN.
+	enum PostColorBlend : uint8_t {
+		POST_BLEND_OWN = 0,
+		POST_BLEND_ADDITIVE = 1,
+		POST_BLEND_PREMULTIPLIED = 2,
+		POST_BLEND_MULTIPLY = 3,
+		POST_BLEND_COUNT = 4
+	};
+
+	// u_vs_frame / u_fs_frame (shaderlib/includes/frame.glsl): per-camera-pass data for any
+	// shader that declares the block. The layout up to ambient is a contract with the
+	// library shaders; engine-internal members may only be appended after it, in the
+	// same order as in frame.glsl.
+	typedef struct frame_t {
+		Matrix4 viewMatrix;
+		Matrix4 projectionMatrix;
+		Matrix4 viewProjectionMatrix;
+		Vector4 cameraPosition;     // xyz world position, w = 1 orthographic / 0 perspective
+		Vector4 cameraDirection;    // xyz world forward
+		Vector4 time;               // x seconds since startup, y sin(x), z cos(x), w frame delta
+		Vector4 resolution;         // xy render target size in pixels, zw 1/size
+		Vector4 mainLightDirection; // xyz towards the brightest directional light, w intensity (0 = none)
+		Vector4 mainLightColor;     // rgb linear
+		Vector4 ambient;            // rgb scene ambient (global illumination colour * intensity)
+		// engine-internal (RenderSystem::fillFrameLighting)
+		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
+		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
+		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
+		// the fragment block of a variant with the post-processing colour (USE_POST_COLOR)
+		post_color_t postColor;
+	} frame_t;
+
+	// u_vs_objectLights / u_fs_objectLights (shaderlib/includes/lights.glsl) at the largest
+	// capacity. A variant of capacity C reads, in order: counts, position_type[C],
+	// direction_inner[C], color_outer[C] (the vertex stage stops here, in mixed mode), the
+	// L1 SH ambient (3, the vertex stage stops here in vertex mode), spot_shadow[C]: 4 + 4 C
+	// vectors in the fragment stage (RenderSystem::buildObjectLights).
+	typedef struct object_lights_t {
+		Vector4 data[4 + 4 * MAX_LIGHTS_PER_OBJECT];
+	} object_lights_t;
+
+	// u_fs_litFrame (shaderlib/includes/lit_frame.glsl): what the built-in Lit's lit variants
+	// read of the camera pass, filled with the frame block (RenderSystem::updatePassFrame). A
+	// variant declares a prefix of it (2 to 6 vectors, by fog, shadows, SSAO and IBL).
+	typedef struct lit_frame_t {
+		Vector4 cameraPosition_fogEnd;     // xyz camera world position, w fog linear end
+		Vector4 ambient_fogType;           // rgb scene ambient, w fog type
+		Vector4 fogColor_param;            // rgb fog colour, w fog linear start (linear) or density
+		Vector4 cameraForward_pcf;         // xyz camera world forward, w 3D shadow PCF tap radius
+		Vector4 viewport_ssao_envRotation; // xy 1 / viewport size, z SSAO flags (1 debug, 2 Y flip), w environment rotation
+		Vector4 environmentColor;          // rgb environment colour (linear)
+	} lit_frame_t;
+
+	// u_fs_litFrame of a variant with the post-processing colour: its parameters first, then the
+	// prefix of lit_frame_t the variant declares
+	typedef struct lit_frame_block_t {
+		post_color_t postColor;
+		lit_frame_t lit;
+	} lit_frame_block_t;
+
 	typedef struct fs_terrain_layers_t {
 		Vector4 colorFactor[MAX_TERRAIN_LAYERS]; // rgb = linear tint, w = 1 on a PBR layer
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
 		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
 		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
 	} fs_terrain_layers_t;
+
+	// includes/environment.glsl (u_fs_environment)
+	typedef struct fs_environment_t {
+		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
+		Vector4 params;        // x highest mip level, y 1 with an environment
+	} fs_environment_t;
 
 	typedef struct fs_reflection_probe_t {
 		Vector4 position_weight; // xyz = capture position, w = local probe blend weight
@@ -145,9 +231,60 @@ namespace jasperengine{
 		Vector4 envColor; // rgb = env color (linear), w = env rotation (radians)
 	} fs_composite_t;
 
+	// the uber pass's parameters (shaderlib/uber.vert, uber.frag)
+	typedef struct vs_uber_t {
+		Vector4 uvScaleOffset;       // source UV = position * xz + yw
+		Vector4 sourceTexel;         // xy 1 / source size, zw source size
+	} vs_uber_t;
+	typedef struct fs_uber_t {
+		Vector4 uvScaleOffset;
+		Vector4 sourceTexel;
+		Vector4 outputTexel;         // xy 1 / output viewport size, zw its size
+		Vector4 effects;             // x chromatic aberration, y pixel block (output pixels), z grain, w grain response
+		Vector4 crt;                 // x scanlines, y mask, z curvature, w tube vignette
+		Vector4 edgeSharpenTime;     // x edge threshold, y edge intensity, z sharpen, w time
+		Vector4 edgeColorDither;     // rgb edge colour (display), a dither amplitude
+		Vector4 vignetteScaleOffset; // as post_color_t
+		Vector4 vignetteColor;
+		Vector4 vignetteLutScan;     // x, y vignette falloff, z grade LUT side, w scanline period (output pixels)
+		Vector4 bloomBlur;           // rgb bloom tint * intensity (linear), a blur mix
+		Vector4 sampling;            // x 1: the source is a NEAREST target, its UV snaps to texel centres
+	} fs_uber_t;
+
+	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
+	typedef struct vs_bloom_t {
+		Vector4 offset;              // xy tap distance in source UV
+	} vs_bloom_t;
+	typedef struct fs_bloom_t {
+		Vector4 curve;               // threshold: x threshold - knee, y 2 knee, z 0.25 / knee, w threshold (linear)
+		Vector4 params;              // x scatter (the upsample's mix with its level)
+	} fs_bloom_t;
+
+	// u_fs_blurredScene (shaderlib/includes/blurred_scene.glsl): where a draw reads the blurred
+	// scene of the frame (PostProcessingSettings::blurEnabled), for frosted UI panels
+	typedef struct blurred_scene_t {
+		Vector4 screenToUV;          // blurred texture UV = gl_FragCoord.xy * xy + zw
+		Vector4 params;              // x 1 when the blurred scene is bound (0: black, none this frame)
+	} blurred_scene_t;
+
 	typedef struct fs_blit_t {
-		Vector4 params; // x = flip source Y on sample (GL swapchain destination), yzw unused
+		// source UV = destination UV * xz + yw: (1, 0, 1, 0) copies, (1, 0, -1, 1) flips Y (a GL
+		// swapchain destination), anything else reads a part of the source (a scene-colour copy
+		// of a colour pass whose viewport is a part of its target)
+		Vector4 params;
 	} fs_blit_t;
+
+	// u_fs_sceneInputs (shaderlib/includes/scene.glsl): what shaders requiring scenedepth /
+	// scenecolor read of the camera pass, filled once per pass that has such a draw
+	// (RenderSystem::fillSceneInputs)
+	typedef struct scene_inputs_t {
+		Matrix4 inverseViewProjection; // clip -> world, the camera's unflipped matrices
+		Vector4 inverseProjectionZ;    // -(row z) of the inverse projection (view distance numerator)
+		Vector4 inverseProjectionW;    // row w of the inverse projection
+		Vector4 screenParams;          // screen UV (y up) = fragment coordinate * xy + zw
+		Vector4 colorParams;           // colour copy v = uv.y * x + y, zw = 1 / copy size
+		Vector4 depthParams;           // depth texture uv = screen uv * xy + zw
+	} scene_inputs_t;
 
 	typedef struct vs_points_params_t {
 		Matrix4 mvpMatrix;
@@ -165,6 +302,7 @@ namespace jasperengine{
 	// a build has to ship.
 	struct MeshShaderEnvironment {
 		bool lights = false;            // punctual lights (Light components, or lighting forced on)
+		int lightCapacity = 8;          // per-object lights tier (RenderSystem::getLightCapacity)
 		bool shadows = false;           // a light casts shadows
 		bool ibl = false;               // the skybox's environment maps are ready
 		bool reflectionProbes = false;
@@ -174,6 +312,50 @@ namespace jasperengine{
 		bool ssao = false;
 		bool ssr = false;
 		bool depthPrepass = false;
+		// a loaded object reads the scene depth (@require scenedepth) or a post pass samples the
+		// depth: every mesh has a depth program, so the opaque depth pre-pass can draw it
+		bool sceneDepth = false;
+		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
+		// RenderSystem::getPostProcessingTiers
+		bool postColor = false;
+	};
+
+	// The uber pass's compile-time features (shader library phase 4): the property bits of a
+	// ShaderType::BLIT variant (shaderlib/uber.vert / uber.frag; properties 0 is the plain
+	// blit, blit.frag). Appended only: the bits are part of saved shader keys.
+	enum UberFeature : uint32_t {
+		UBER_FXAA         = 1u << 0,  // 'Fxa' FXAA 3.11 console, luma from green
+		UBER_CHROMATIC    = 1u << 1,  // 'Cab' chromatic aberration (red and blue taps)
+		UBER_PIXELATE     = 1u << 2,  // 'Pix' pixelate (UV snapped to blocks)
+		UBER_CRT          = 1u << 3,  // 'Crt' CRT curvature, scanlines, mask, tube vignette
+		UBER_EDGE         = 1u << 4,  // 'Edg' Sobel edges on luma
+		UBER_GRAIN        = 1u << 5,  // 'Grn' film grain
+		UBER_SHARPEN      = 1u << 6,  // 'Shp' sharpen
+		UBER_LUT          = 1u << 7,  // 'Lut' the colour grade's LUT (display domain)
+		UBER_VIGNETTE     = 1u << 8,  // 'Vig' vignette
+		UBER_DITHER       = 1u << 9,  // 'Dth' dither
+		UBER_BLOOM        = 1u << 10, // 'Blm' bloom composite (u_bloomTexture, the bloom chain's)
+		UBER_BLUR         = 1u << 11, // 'Blr' blur composite (u_blurTexture, the blur chain's)
+		UBER_UPSCALE      = 1u << 12, // 'Scl' none of the above: the plain upscale of a render scale below 1
+		UBER_FEATURE_COUNT = 13
+	};
+
+	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
+	// (tier T0, USE_POST_COLOR in mesh, sky, points and lines variants), the uber pass (T1/T2)
+	// and its features. RenderSystem::getPostProcessingTiers.
+	struct PostProcessingTiers {
+		// the shaders' variants apply the post-processing colour (exposure, curve, and without
+		// the uber pass the grade, vignette and dither): the scene's variant bit
+		bool tailColor = false;
+		// the tail's LUT holds the grade too and the tail does vignette and dither (no uber pass)
+		bool tailGrade = false;
+		// the uber pass runs after the scene (one fullscreen pass, the fixed-resolution blit's)
+		bool uber = false;
+		// its BLIT variant bits (RenderSystem::UberFeature)
+		uint32_t uberFeatures = 0;
+		// the 3D scene's resolution scale (uber only) and MSAA samples (1, 2, 4)
+		float renderScale = 1.0f;
+		int msaaSamples = 1;
 	};
 
 	// What the shader variant of a submesh depends on in its mesh and GameObject
@@ -197,6 +379,8 @@ namespace jasperengine{
 		bool occlusionTexture = false;
 		bool emissiveTexture = false;
 		MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
+		// as the material asks; the variant resolves it against the shader (resolveLighting)
+		MaterialLighting lighting = MaterialLighting::AUTO;
 		bool textureShadow = false;
 		// mesh
 		bool receiveLights = true;
@@ -211,6 +395,14 @@ namespace jasperengine{
 		bool instanced = false;
 		bool instanceFade = false;
 		bool mirror = false;
+		// shader library: the manifest of the shader the submesh draws with (null for the
+		// built-in shader and forks without one) and whether its depth pass draws with the
+		// library shader's own depth program (@depth)
+		std::shared_ptr<const ShaderManifest> manifest;
+		bool depthProgram = false;
+		// the manifest's defines the material enables (ShaderReference::getEnabledFeatures),
+		// which decide its feature= @require inputs; empty: the unconditional ones only
+		std::vector<std::string> features;
 	};
 
 	// The shaders one submesh draws with
@@ -241,6 +433,10 @@ namespace jasperengine{
 			TilemapComponent* tilemap;
 			Transform* transform;
 			float distanceToCamera;
+			// transparent queue order (MeshComponent::transparentSortPriority), lower first
+			int sortPriority;
+			// submission order: equal priority and distance draw in it, deterministically
+			uint32_t order;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -252,6 +448,10 @@ namespace jasperengine{
 			TilemapComponent* tilemap;
 			Transform* transform;
 			float distanceToCamera;
+			// MeshComponent::opaqueSortPriority, honoured before the distance (lower first)
+			int sortPriority;
+			// submission (transform) order: equal priority and distance draw in it
+			uint32_t order;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -261,11 +461,34 @@ namespace jasperengine{
 			unsigned int count;
 		};
 
+		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
+		// the submission order (a total order, so std::sort is deterministic)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
-				return lhs.distanceToCamera < rhs.distanceToCamera;
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera > rhs.distanceToCamera;
+				return lhs.order < rhs.order;
 			}
 		};
+
+		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the
+		// nearest, then the submission order
+		struct OpaqueRenderComparison{
+			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
+				if (lhs.sortPriority != rhs.sortPriority)
+					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.distanceToCamera != rhs.distanceToCamera)
+					return lhs.distanceToCamera < rhs.distanceToCamera;
+				return lhs.order < rhs.order;
+			}
+		};
+
+		// the queues of the camera pass being drawn (renderCameraPass, the reflection probe
+		// face), kept between passes so a pass allocates nothing once they have grown
+		std::vector<OpaqueRenderData> opaqueQueue;
+		std::vector<TransparentRenderData> transparentQueue;
 
 		struct SpotMaskAtlasEntry{
 			std::string sourceId;
@@ -319,6 +542,12 @@ namespace jasperengine{
 		static TextureRender emptyCubeWhite;
 		static TextureRender emptyNormal;
 		static TextureRender emptyShadowDepth;
+		// shader library @texture defaults besides white and black
+		static uint32_t pixelsGray[64];
+		static uint32_t pixelsFlatNormal[64];
+		static TextureRender emptyGray;
+		static TextureRender emptyFlatNormal;
+		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;
 		
@@ -338,10 +567,11 @@ namespace jasperengine{
 		// pipelines the objects were loaded with, to catch a destination change
 		uint16_t loadedPipelines;
 
-		// Projected spotlight masks share one horizontal R8 atlas. Each punctual-light
-		// array index maps directly to one fixed-size atlas tile.
+		// Projected spotlight masks share one horizontal R8 atlas of SPOT_MASK_ATLAS_TILES
+		// fixed-size tiles, given to the masked spot lights in scene order
+		// (LightComponent::spotMaskTile).
 		TextureRender spotMaskAtlas;
-		std::array<SpotMaskAtlasEntry, MAX_LIGHTS> spotMaskAtlasEntries;
+		std::array<SpotMaskAtlasEntry, SPOT_MASK_ATLAS_TILES> spotMaskAtlasEntries;
 		std::vector<unsigned char> spotMaskAtlasPixels;
 		bool spotMaskAtlasCreated;
 
@@ -432,14 +662,18 @@ namespace jasperengine{
 		// camera samples another camera's maps drawn after the same update() when they hold
 		// the same depths, and draws its own otherwise.
 		struct CameraShadows{
+			// the camera part of the legacy u_fs_lighting (eyePos, cameraDir, globalIllum,
+			// envColor, viewportInfo); its lights come from each object's list. The frame block
+			// (includes/frame.glsl) of the camera's passes is RenderSystem::passFrame.
 			fs_lighting_t fs_lighting;
 			vs_shadows_t vs_shadows;
 			fs_shadows_t fs_shadows;
 			fs_point_shadows_t fs_point_shadows;
 
-			// the cascades below, else the lights' own (the scene camera)
+			// the cascades below, else the lights' own (the scene camera); by the directional
+			// light's base shadow slot
 			bool ownLightCameras = false;
-			std::array<LightCameraSet, MAX_LIGHTS> lightCameras;
+			std::array<LightCameraSet, MAX_SHADOW_ATLAS_SLOTS> lightCameras;
 
 			// layers the camera draws, so the layers that cast into its maps
 			uint32_t cameraMask = LAYER_MASK_EVERYTHING;
@@ -493,6 +727,17 @@ namespace jasperengine{
 			void releaseInstances();
 			// every GPU resource it holds
 			void release();
+		};
+
+		// a target of the scene inputs (shader library phase 3): the opaque depth pre-pass
+		// (packed depth, nearest) or the scene-colour copy (linear) of a camera pass
+		struct SceneInputTarget{
+			Framebuffer framebuffer;
+			bool color = false;
+			unsigned int width = 0;
+			unsigned int height = 0;
+			uint64_t lastUsed = 0; // drawCount
+			uint64_t lastViewDraw = 0; // RenderView::sceneInputDraws
 		};
 
 		// one camera's color pass (see renderCameraPass)
@@ -576,6 +821,20 @@ namespace jasperengine{
 		// and the targets sized to the view (SSAO, SSR, fixed resolution, post-process).
 		// draw() uses primaryView; the editor's secondary views keep their own, so a
 		// second view in the same frame reallocates nothing and disturbs nothing.
+		// The bloom or the blur chain of a view (phase 4, T2): SRGB8A8 targets without depth at
+		// 1/4, 1/8, 1/16 and 1/32 of the uber pass's source, the way down (down[i]) and up
+		// (up[i], the size of down[i]); made for the levels in use, resized in place
+		struct PostChainTargets{
+			static const int LEVELS = 4;
+			Framebuffer down[LEVELS];
+			Framebuffer up[LEVELS - 1];
+			unsigned int sourceWidth = 0;
+			unsigned int sourceHeight = 0;
+			int levels = -1;              // the down levels below the first that exist
+			void destroy();
+			bool isCreated() const{ return levels >= 0; }
+		};
+
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
@@ -601,9 +860,52 @@ namespace jasperengine{
 			unsigned int fixedResHeight = 0;
 			Framebuffer fixedResFramebuffer;   // offscreen scene color at the fixed size
 
+			// the post-processed camera's scene, at the render scale, that the uber pass draws to
+			// the destination (phase 4; with fixed resolution the uber pass reads fixedResFramebuffer)
+			unsigned int postSceneWidth = 0;
+			unsigned int postSceneHeight = 0;
+			Framebuffer postSceneFramebuffer;
+
 			unsigned int postProcessWidth = 0;
 			unsigned int postProcessHeight = 0;
-			Framebuffer postProcessFramebuffer[2]; // ping-pong targets
+			// the user chain's full-size targets: 0 takes the scene (depth-stencil), 1 and 2 the
+			// passes (2 only while a pass after the first reads the original scene, which then
+			// stays in 0)
+			Framebuffer postProcessFramebuffer[3];
+			// the chain's passes below full size (PostProcessPass::scale): two targets per size,
+			// made when a size is used, freed in the frame it is not
+			struct PostScaledTargets{
+				unsigned int width = 0;
+				unsigned int height = 0;
+				Framebuffer framebuffer[2];
+				bool used = false;
+			};
+			std::vector<std::unique_ptr<PostScaledTargets>> postScaledTargets;
+
+			// the bloom and blur chains (phase 4)
+			PostChainTargets bloomTargets;
+			PostChainTargets blurTargets;
+			// the multisampled scene target of the post-processed camera (PostProcessingSettings::
+			// msaaSamples): its colour pass draws into it and resolves into its usual target
+			Framebuffer msaaFramebuffer;
+			unsigned int msaaWidth = 0;
+			unsigned int msaaHeight = 0;
+			int msaaSamples = 1;
+			// what the multisampled scene resolves into when the camera would draw to the
+			// swapchain (exported builds without another offscreen effect): blitted to it after
+			Framebuffer msaaResolveFramebuffer;
+
+			// scene inputs (shader library phase 3) of the camera passes drawn in this view:
+			// packed depth and colour copies by size, reused across passes and frames, freed
+			// once unused for a while (releaseSceneInputTargets)
+			std::vector<std::unique_ptr<SceneInputTarget>> sceneInputTargets;
+			uint64_t sceneInputDraws = 0;   // the drawCameras() of this view, the current one included
+			// the scene camera's colour pass when only the scene colour needs it offscreen
+			// (exported builds drawing to the swapchain): blitted to the swapchain after
+			Framebuffer sceneColorRedirect;
+			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
+			// always for the frame's own view)
+			bool postProcessing = true;
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -671,7 +973,7 @@ namespace jasperengine{
 		uint32_t cameraCasterLayers = 0;
 		// by light: layers holding casters that can reach its maps (all casters for a
 		// directional light, those inside its shadow frustums for a spot or point light)
-		uint32_t lightCasterLayers[MAX_LIGHTS] = {};
+		std::vector<uint32_t> lightCasterLayers;
 		uint64_t casterLayersEpoch = 0;
 		// what a camera being prepared wants its atlases to hold
 		ShadowAtlasKey wantedProjectiveKey;
@@ -749,6 +1051,9 @@ namespace jasperengine{
 			unsigned int lod = 0;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
+		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
+		// array after a removal or a reorder, see update)
+		Entity activeSky = NULL_ENTITY;
 		fs_reflection_probe_t fs_reflection_probe;
 
 		// 2D light path (Light2DComponent). Deliberately independent of
@@ -799,13 +1104,41 @@ namespace jasperengine{
 
 		bool needUpdateShadowBindings;
 
-		// Light culling masks per light slot (Everything past the scene's lights). When one
-		// leaves out a layer, drawMesh lights that layer's meshes from fs_lightingMasked:
-		// the view's fs_lighting with those lights at zero intensity. The masks belong to
-		// the lights, so every view shares them; the masked copy is scratch per draw.
-		uint32_t lightCullingMasks[MAX_LIGHTS];
-		bool hasLightCullingMasks;
-		fs_lighting_t fs_lightingMasked;
+		// Unified lighting: every light of the scene in the form the per-object lists copy
+		// (lights.glsl layout), rebuilt each update() by updateSceneLights. The lights whose
+		// data changed since the previous update are in changedLights; each mesh picks the
+		// lights reaching it in updateObjectLights (MeshComponent::lights), honouring the
+		// lights' culling masks, and drawMesh uploads them per draw.
+		struct SceneLight{
+			Vector4 position_type;    // xyz world position, w type (0 directional, 1 point, 2 spot)
+			Vector4 direction_range;  // xyz world direction, w range
+			Vector4 color_intensity;  // rgb linear colour, w intensity
+			Vector4 cone_shadow;      // inner, outer cone cos, shadow slot, cascades
+			Vector4 spot_mask;        // xyz projection up, w mask aspect (0 = none)
+			// as the per-object lights block holds it: position_type, direction_inner,
+			// color_outer, spot_shadow (its w filled per draw)
+			Vector4 packed[4];
+			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+			int spotMaskTile = -1;
+			LightShading shading = LightShading::BOTH;
+			bool active = false;      // enabled, on an active entity, giving light
+
+			bool operator==(const SceneLight& other) const;
+		};
+		std::vector<SceneLight> sceneLights;
+		std::vector<SceneLight> previousSceneLights;
+		std::vector<Entity> sceneLightEntities;
+		std::vector<int> changedLights;
+		// bumped when every mesh has to pick its lights again: lights added, removed or
+		// reordered, the scene ambient or the cap changed
+		uint64_t lightListEpoch;
+		Vector3 lightListAmbient;
+		int lightListCap;
+		// capacity tier the meshes loaded their variants with
+		int lightCapacityTier;
+		// per-draw scratch of drawMesh
+		object_lights_t objectLightsBlock;
+		fs_lighting_t legacyLightingBlock;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
 
@@ -829,6 +1162,19 @@ namespace jasperengine{
 		float frameTime;
 		Vector2 passResolution;
 
+		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
+		// filled once per pass and uploaded to every draw whose shader declares it, and the
+		// built-in Lit's part of it (u_fs_litFrame)
+		frame_t passFrame;
+		// (its lit member is the prefix every Lit variant declares; a variant with the post
+		// colour uploads from postColor), one per PostColorBlend (built-in Lit meshes take the
+		// one of their blend)
+		lit_frame_block_t passLitFrameBlocks[POST_BLEND_COUNT];
+		// the post-processing colour's parameters of the camera pass (post_color_t): the
+		// scene's in the main camera's colour pass, neutral elsewhere (updatePassFrame), as
+		// each PostColorBlend takes them (u_fs_postColor)
+		post_color_t passPostColors[POST_BLEND_COUNT];
+
 		// SSR: per-frame fullscreen passes for the main camera. The opaque color pass
 		// renders into sceneColorFramebuffer, the ssr pass marches the depth pre-pass
 		// and samples that color, then the composite pass blends reflections into the
@@ -849,6 +1195,13 @@ namespace jasperengine{
 		int ssrBlurSlotParams;
 		int compositeSlotParams;
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
+		// exported builds, a scene with a scene-colour reader (phase 3): the scene camera may draw
+		// offscreen (allowed: its pipelines exist), does this frame (a reader in view, or seen
+		// in the last frames: hold), and the frames its target went unused
+		bool sceneColorRedirectAllowed;
+		bool sceneColorRedirect;
+		int sceneColorRedirectHold;
+		int sceneColorRedirectIdle;
 		bool mvpFlipped = false;           // the Y flip the MVP matrices were made with
 
 		// Fixed game resolution: when enabled on the Engine main scene (Scene
@@ -856,6 +1209,59 @@ namespace jasperengine{
 		// fixedResFramebuffer and a fullscreen blit pass upscales it to the
 		// real destination (view rect).
 		bool blitLoaded;
+		// the uber pass (phase 4): a BLIT variant with the features of postTiers, replacing the
+		// fixed-resolution blit when that is on, else one pass after the scene
+		bool uberLoaded = false;
+		uint32_t uberFeatures = 0;         // the variant loaded
+		CameraRender uberPassRender;
+		ObjectRender uberRender;
+		std::shared_ptr<ShaderRender> uberShader;
+		int uberSlotVSParams = -1;
+		int uberSlotFSParams = -1;
+		std::pair<int, int> uberSlotSource = {-1, -1};
+		std::pair<int, int> uberSlotLut = {-1, -1};
+		std::pair<int, int> uberSlotBloom = {-1, -1};
+		std::pair<int, int> uberSlotBlur = {-1, -1};
+		vs_uber_t vs_uber;
+		fs_uber_t fs_uber;
+		// what the uber pass composites (the bloom chain's output and its blurred copy, phase 4
+		// T2): null binds black (bloom) and the scene itself (blur), so a variant with the
+		// feature compiles and draws without them
+		TextureRender* uberBloomTexture = nullptr;
+		TextureRender* uberBlurTexture = nullptr;
+		// The bloom and blur chain (phase 4, T2; shaderlib/bloom.frag): one program per pass kind
+		enum BloomProgramKind{
+			BLOOM_PREFILTER_THRESHOLD,   // 'Pre,Thr' the bloom's prefilter
+			BLOOM_PREFILTER_PLAIN,       // 'Pre' the blur's prefilter
+			BLOOM_DOWN,                  // dual-filter downsample
+			BLOOM_UP_MIX,                // 'Ups,Mix' the bloom's upsample (with its level by scatter)
+			BLOOM_UP,                    // 'Ups' the blur's upsample
+			BLOOM_PROGRAMS
+		};
+		struct BloomProgram{
+			std::shared_ptr<ShaderRender> shader;
+			ObjectRender render;
+			bool loaded = false;
+			int slotVSParams = -1;
+			int slotFSParams = -1;
+			std::pair<int, int> slotSource = {-1, -1};
+			std::pair<int, int> slotLevel = {-1, -1};
+		};
+		BloomProgram bloomPrograms[BLOOM_PROGRAMS];
+		// MSAA of the post-processed camera (PostProcessingSettings::msaaSamples, as the device
+		// has it): the sample count the objects' PIP_MSAA pipelines are made with (1: none)
+		int msaaPipelineSamples = 1;
+		// exported builds drawing to the swapchain: the multisampled scene resolves offscreen
+		// and is blitted (updateSwapchainRedirect)
+		bool msaaRedirect = false;
+		CameraRender bloomPassRender;
+		vs_bloom_t vs_bloom;
+		fs_bloom_t fs_bloom;
+		// the blurred scene of the frame's last base-layer post-processed camera, for the draws
+		// after it in the same view (layer scenes: frosted UI panels; includes/blurred_scene.glsl),
+		// null while there is none; shared by every scene's RenderSystem
+		static TextureRender* frameBlurredScene;
+		static blurred_scene_t frameBlurredSceneBlock;
 		CameraRender fixedResPassRender;   // drives the upscale blit pass
 		ObjectRender blitRender;           // fullscreen blit.frag draw
 		std::shared_ptr<ShaderRender> blitShader;
@@ -874,14 +1280,92 @@ namespace jasperengine{
 			std::pair<int, int> slotDepth;
 			std::pair<int, int> slotGBuffer;
 			std::pair<int, int> slotSSAO;
+			// the scene before the chain (phase 4: u_originalSceneTexture)
+			std::pair<int, int> slotOriginal = {-1, -1};
+			// its manifest (a library shader's or a fork's, for its @property defaults), its
+			// textures and what it reads of the engine's shader-library data (frame block...)
+			std::shared_ptr<const ShaderManifest> manifest;
+			std::vector<std::pair<std::string, Texture>> textures;
+			ShaderLibraryBindings bindings;
 		};
 		bool postProcessLoaded;
 		bool postProcessNeedReload;
 		bool postProcessNeedUpdateUniforms;    // rewrite pass values, no chain rebuild
+		// the scene's PostProcessingSettings changed since they were applied (phase 4)
+		bool postProcessingDirty = true;
+		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
+		PostProcessingTiers postTiers;
+		// MeshShaderEnvironment::postColor the objects load with (the variant bit)
+		bool postColorVariants = false;
+		// the bit changed: the loaded points, lines and sky keep drawing their variant until the
+		// new ones are built, then reload (as meshes do, needReloadMeshVariants)
+		bool postColorReloadPending = false;
+		// the in-shader LUT (shaper domain, includes/post_color.glsl), side postTailLutSize
+		TextureRender postTailLut;
+		int postTailLutSize = 0;
+		// its shaper's k (getPostColorShaper), post_color_t::shaper.x
+		float postTailShaper = 1.0f;
+		// linearSampler's texture
+		TextureRender postLinearSampler;
+		// the uber pass's grade LUT (display domain), side postGradeLutSize
+		TextureRender postGradeLut;
+		int postGradeLutSize = 0;
+		// the user's LUT strip (PostProcessingSettings::lutTexture), loaded from postLutStripPath
+		std::string postLutStripPath;
+		PostColorLut::Strip postLutStrip;
+		// the bake buffer, kept between bakes
+		std::vector<uint8_t> postLutPixels;
+		bool postProcessKeepsOriginal = false; // a pass after the first reads the original scene
 		bool postProcessNeedsDepth;            // a pass samples the depth texture
 		bool postProcessNeedsGBuffer;          // a pass samples the G-buffer (needs SSR)
 		CameraRender postProcessPassRender;    // drives the offscreen post passes
 		std::vector<PostProcessRuntime> postProcessPasses;
+
+		// Scene inputs (shader library phase 3, includes/scene.glsl). The loaded objects whose
+		// shaders (main draw or extra pass) require scenedepth / scenecolor, by entity, with
+		// those ShaderRequire bits: empty in a scene without any, and then a camera pass does
+		// nothing for them. A pass with a visible requiring draw gets the opaque depth (the
+		// pre-pass SSAO, SSR or a post pass already ran, else its own) and, for scenecolor, one
+		// copy of its colour target after the opaque queue and the sky.
+		std::unordered_map<Entity, uint32_t> sceneInputMeshes;
+		std::unordered_map<Entity, uint32_t> sceneInputPoints;
+		uint32_t sceneInputUsage = 0;          // the bits of both maps
+		bool sceneDepthPrograms = false;       // MeshShaderEnvironment::sceneDepth the meshes load with
+		// updates since the last reader of the depth / colour went: the depth programs and the
+		// exported scene camera's offscreen pipelines stay a while (a reader spawned again soon
+		// reloads nothing)
+		uint32_t sceneDepthIdleUpdates = 0;
+		uint32_t sceneColorIdleUpdates = 0;
+		bool sceneColorReaders = false;        // the colour readers kept (sceneColorRedirectAllowed's)
+		// the loaded opaque meshes whose depth the SSR G-buffer does not hold as the depth
+		// pre-pass draws it (a library @depth program or depth fork moving or clipping them,
+		// the opaque submeshes of a split mesh): a pass reading the scene depth with one of
+		// them visible makes its own pre-pass instead of taking the G-buffer's
+		std::unordered_set<Entity> gbufferDepthMismatch;
+		// which submeshes a drawMesh / drawMeshDepth call draws: a split mesh
+		// (MeshComponent::splitQueues) draws its opaque ones in the opaque queue and the
+		// depth pre-passes, its blended ones in the transparent queue
+		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT };
+		SubmeshQueue passSubmeshQueue = SubmeshQueue::ALL;
+		// the camera pass being drawn: its block and textures (null: the neutral fallbacks)
+		scene_inputs_t passSceneBlock;
+		TextureRender* passSceneDepth = nullptr;
+		TextureRender* passSceneColor = nullptr;
+		CameraRender sceneInputPassRender;     // drives the scene depth pre-pass and the colour copy
+		ObjectRender sceneColorCopyRender;     // blit.frag into a copy target (PIP_EFFECT)
+		std::shared_ptr<ShaderRender> sceneColorCopyShader;
+		bool sceneColorCopyLoaded = false;
+		int sceneColorCopySlotParams = -1;
+		// what the passes of the last drawCameras() did for them (diagnostics, logRenderObjects)
+		struct SceneInputStats{
+			uint32_t passes = 0;           // camera passes with a requiring draw
+			uint32_t depthPrePasses = 0;   // scene depth pre-passes run for them
+			uint32_t sharedDepth = 0;      // passes that reused the SSAO / SSR / post-process depth
+			uint32_t colorCopies = 0;
+			uint32_t targetsCreated = 0;   // since the scene started (reuse keeps it constant)
+		};
+		SceneInputStats sceneInputStats;
+		SceneInputStats lastSceneInputStats;
 
 		static void changeLoaded(void* data);
 		static void changeDestroy(void* data);
@@ -900,14 +1384,37 @@ namespace jasperengine{
 		bool isRenderingFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
 		void updateSwapchainRedirect();
+		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 
 		void createEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
-		// the lighting block and shadow uniforms of target for camera
+		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
 		void processLights(CameraShadows& target, int numLights, const CameraComponent& camera, const Transform& cameraTransform);
 		void updateSpotMaskAtlas(int numLights);
+		// unified lighting: the scene's lights, then the lights each mesh is lit by
+		void updateSceneLights();
+		void updateObjectLights();
+		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
+		// the object's lights a submesh variant (its lighting mode and capacity) takes, pixel
+		// lights then vertex lights, as scene light indices
+		void orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
+		// the per-object lights block of a submesh variant for the camera pass being drawn
+		void buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		int passLightCascades(const SceneLight& light) const;
+		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
+		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
+		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
+		// filled by updatePassFrame after the contract members (fillFrameBlock)
+		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
+		// a material asks for a lighting mode its shader does not list (logged once per pair)
+		static void warnUnsupportedLighting(const Material& material, const std::string& shader, const ShaderManifest* manifest,
+		                                    const std::string& entityName, Entity entity, unsigned int submesh);
+		// PCF tap radius of the 3D shadow filter (Scene shadowQuality)
+		float shadowPCFRadius() const;
+		// rgb environment colour (linear), w environment rotation (radians)
+		Vector4 environmentInfo() const;
 		void loadSpotMaskTexture(ShaderData& shaderData, ObjectRender& render);
 		bool loadLights2D();
 		void processLights2D();
@@ -933,6 +1440,87 @@ namespace jasperengine{
 		Rect getShadowPointAtlasSlotRect(int slotIndex) const;
 		void configureLightShadowNearFar(LightComponent& light, const CameraComponent& camera);
 		Matrix4 getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition);
+		// shader library: the frame block of a camera pass (fillFrameBlock fills the members
+		// library shaders read; engine-internal members appended after them get their own
+		// fill functions, called after it), uploaded by applyFrameBlock. updatePassFrame
+		// fills passFrame once per camera pass, before its shadow, depth and colour draws.
+		void fillFrameBlock(frame_t& frame, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform);
+		void updatePassFrame(const CameraComponent& camera, const Transform& cameraTransform, const Vector2& resolution);
+		// the post-processing (phase 4): applies changed settings (LUT bakes, variant bit);
+		// the colour pass's post colour parameters (neutral unless active: the main camera of
+		// the base layer, post-processing on in the view), for its viewport in a target of
+		// targetHeight pixels; the post colour block (tiny block, frame and Lit's) and LUT of a draw
+		void applyPostProcessing();
+		void bakePostColorLut(TextureRender& texture, int& textureSize, PostColorLut::Stage stage);
+		void setPassPostColor(const post_color_t& postColor);
+		void fillPassPostColor(bool active, const Rect& viewport, float targetHeight);
+		void applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the vignette's parameters for a viewport of a target targetHeight high (gl_FragCoord)
+		void fillVignette(const PostProcessingSettings& settings, const Rect& viewport, float targetHeight,
+		                  Vector4& scaleOffset, Vector4& color, float& falloffScale, float& falloffBias) const;
+		// the uber pass: loads the variant of features (false while its shader builds), its
+		// scene target, and the pass from source (sourceWidth x sourceHeight) into destination
+		// (null: the view's target or the swapchain) at viewport
+		bool loadUber(uint32_t features);
+		void destroyUber();
+		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
+		// whether the variants the loaded points, lines and sky take with the current colour bit
+		// are built (or failed: the load falls back), asking for them
+		bool postColorVariantsReady();
+		// the bloom chain's programs (BloomProgramKind) loaded; false while one is building
+		bool loadBloomProgram(BloomProgramKind kind);
+		void destroyBloomPrograms();
+		// the chain's targets for a source size and down levels (0..3), made or resized
+		bool ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels);
+		// one pass of the chain: source (and level, a mixed upsample's) into target; the source
+		// through samplerOf's sampler when given (a NEAREST target, see linearSampler)
+		void renderBloomPass(BloomProgramKind kind, const char* label, TextureRender* source, unsigned int sourceWidth,
+		                     unsigned int sourceHeight, TextureRender* level, Framebuffer& target, const Vector4& offset,
+		                     TextureRender* samplerOf = nullptr);
+		// The bloom chain (threshold, 3 levels down and up with the scatter mix) or the blur chain
+		// (no threshold, levels from the blur radius) of the uber pass's source: its result at a
+		// quarter of the source's size, or null while its programs build. nearestSource: the source
+		// is a NEAREST target, which the prefilter's 2x2 averages read through a linear sampler
+		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
+		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
+		// a texture whose sampler is linear and clamped (its image is never read), made when a
+		// pass first reads a NEAREST target bilinear (the fixed resolution's, NEAREST by default)
+		TextureRender* linearSampler();
+	public:
+		// the blur chain's dual-filter levels for a radius (0..3: 1 + 2 x levels passes)
+		static int getBlurLevels(float radius);
+	private:
+		// the multisampled scene target for a colour target of this size (made or resized)
+		bool ensureMsaaFramebuffer(unsigned int width, unsigned int height, int samples);
+		// the target the multisampled scene resolves into before its blit to the swapchain
+		bool ensureMsaaResolveFramebuffer(unsigned int width, unsigned int height);
+		// binds the frame's blurred scene to a draw that reads it (includes/blurred_scene.glsl)
+		void applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// nearestSource: the source is a NEAREST target (fixed resolution): read through a linear
+		// sampler at its texel centres (uber.frag's sampling), so the upscale stays nearest
+		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
+		                FramebufferRender* destination, const Rect& viewport, bool nearestSource);
+		// the post colour bit of a shader type's variants while the scene's objects load with it
+		uint32_t postColorProperty(ShaderType type) const;
+		// the size of the target a camera's colour pass renders into
+		Vector2 passFrameResolution(const CameraComponent& camera) const;
+		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the scene inputs of the pass being drawn, to a colour draw whose shader declares them
+		// (the far-plane depth and black where the pass has none)
+		void applySceneInputs(ObjectRender& render, const ShaderLibraryBindings& bindings);
+		// the reflection environment around a mesh, to a draw whose shader declares it
+		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
+		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
+		// resolves the frame block slots and the custom textures of a loaded shader, then
+		// binds the textures (false while one is still loading)
+		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
+		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest);
+		// binds the resolved custom textures again (they changed or a render target was redrawn)
+		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
+		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
+		TextureRender* getDefaultShaderTexture(int fallback, bool cube);
+
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
@@ -988,6 +1576,33 @@ namespace jasperengine{
 		static uint64_t attributeHash(uint64_t seed, const LodAttribute& attribute);
 		static bool readLodSource(const LodAttributes& attributes, MeshLodSource& source);
 		void pollMeshLod(MeshComponent& mesh, Submesh& submesh);
+
+		// shader library phase 2: the extra pass of a submesh (Material::extraPass) and the
+		// generated a_smoothNormal (@require smoothnormals)
+		using BufferMap = std::map<std::string, Buffer*>;
+		using BufferRenderMap = std::map<std::string, BufferRender*>;
+		using BufferStrideMap = std::map<std::string, unsigned int>;
+		// builds (or, without an extra pass, releases) the submesh's extra pass; false while
+		// its shader or textures are not ready
+		bool loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, const SubmeshShaderInputs& submeshInputs,
+		                          const MeshShaderEnvironment& environment, uint16_t pipelines, BufferMap& buffers,
+		                          BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, InstancedMeshComponent* instmesh);
+		void releaseSubmeshExtraPass(Submesh& submesh, bool keepShader);
+		// draws it, with the instances, detail level and tilemap ranges of the submesh's draw
+		void drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsigned int submeshIndex, Transform& transform, PipelineType pipType,
+		                          InstancedMeshComponent* instmesh, int instanceView, const MeshDraw& draw, unsigned int instanceCount,
+		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
+		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
+		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
+		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
+		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
+		                                   InstancedMeshComponent* instmesh);
+		// a_smoothNormal for a render whose shader declares it: the mesh's generated buffer
+		// of the submesh's positions, made when missing; false when the mesh cannot have one
+		bool bindSmoothNormals(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers);
+		void releaseSmoothNormals(MeshComponent& mesh, bool keepData);
+		// forgets the generated buffers no submesh of the finished load uses
+		void trimSmoothNormals(MeshComponent& mesh);
 		static bool releaseSubmeshLod(Submesh& submesh);
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
@@ -1110,13 +1725,50 @@ namespace jasperengine{
 		// sharedDepth != null reuses an existing packed-depth texture (the SSR G-buffer),
 		// skipping the SSAO depth pre-pass; null runs the pre-pass
 		// fixedResolution: the color pass it feeds renders at the scene's fixed size
-		void renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth = nullptr);
+		// returns the packed depth it read (null when it did not run)
+		// perCameraTransform: as renderOpaqueDepth's
+		TextureRender* renderSSAO(CameraComponent& camera, bool fixedResolution, TextureRender* sharedDepth = nullptr,
+		                          Transform* perCameraTransform = nullptr);
 
 		// SSR
 		void loadSSR();
 		void destroySSR();
 		bool ensureSSRFramebuffers(unsigned int width, unsigned int height);
-		void renderDepthPrePass(CameraComponent& camera); // shared depth for SSAO/SSR
+		void renderDepthPrePass(CameraComponent& camera, Transform* perCameraTransform); // shared depth for SSAO/SSR
+		// the opaque meshes' packed depth (PIP_DEPTH) of a camera into target: the SSAO,
+		// post-process and scene depth pre-passes. perCameraTransform: the camera's, when the
+		// pass makes its own per-object matrices (renderCameraPass's perCameraMVP), else null
+		void renderOpaqueDepth(CameraComponent& camera, Framebuffer& target, unsigned int width, unsigned int height,
+		                       int instanceView, const LodView* lodView, Transform* perCameraTransform);
+
+		// scene inputs (phase 3)
+		// records what a loaded mesh or points component reads of the scene (0: nothing)
+		void setSceneInputUser(Entity entity, bool points, uint32_t inputs);
+		// registers what the meshes and points about to load will read, before update() decides
+		// from the readers what every mesh loads with (depth programs, offscreen pipelines)
+		void predictSceneInputUsers();
+		// whether the scene depth keeps depth programs on every mesh, and the exported scene
+		// camera its offscreen pipelines for a colour reader (with their hold after the last)
+		void updateSceneInputPrograms();
+		void setGBufferDepthMismatch(Entity entity, bool mismatch);
+		// whether a visible opaque mesh of this camera is drawn differently by the G-buffer
+		bool hasVisibleGBufferDepthMismatch(CameraComponent& camera, int instanceView);
+		// whether the entity has a draw requiring the scene colour this pass draws now
+		bool drawsSceneColorReader(Entity entity, Signature signature, Transform& transform, CameraComponent& camera, int instanceView);
+		// the scene inputs the visible draws of a camera pass require
+		uint32_t findPassSceneInputs(CameraComponent& camera, int instanceView);
+		// a depth or colour target of the view being drawn, made or reused
+		SceneInputTarget* ensureSceneInputTarget(bool color, unsigned int width, unsigned int height);
+		// frees the targets of a view unused for a while (all: every one)
+		void releaseSceneInputTargets(RenderView& view, bool all);
+		bool ensureSceneColorRedirect(unsigned int width, unsigned int height);
+		void loadSceneColorCopy();
+		// copies the viewport of a colour target (targetHeight: its height) into a copy target
+		// at the scene's Scene Color Scale; the copy, or null
+		TextureRender* copySceneColor(TextureRender* source, const Rect& viewport, unsigned int targetWidth, unsigned int targetHeight);
+		// passSceneBlock for a camera pass: its viewport in its target, whether its rows run
+		// flipped (isRenderingFlipped) and the target height (rows of a non-GL viewport)
+		void fillSceneInputs(const CameraComponent& camera, const Rect& viewport, unsigned int targetHeight, bool flipped, unsigned int copyWidth, unsigned int copyHeight);
 		// G-buffer geometry pass for SSR: MRT packed depth + view-space normal/roughness/metallic
 		bool ensureGBufferFramebuffer(unsigned int width, unsigned int height);
 		void renderGBufferPass(CameraComponent& camera);
@@ -1140,7 +1792,14 @@ namespace jasperengine{
 		void destroyPostProcess();
 		bool ensurePostProcessFramebuffers(unsigned int width, unsigned int height);
 		// runs the chain from ping-pong buffer 0 into destination (swapchain when null)
-		void renderPostProcess(FramebufferRender* destination);
+		// the chain into the destination (null: the swapchain, or with keepResult its last
+		// output is returned, the uber pass's source)
+		TextureRender* renderPostProcess(FramebufferRender* destination, bool keepResult = false);
+		// a full-size or scaled target of the user chain, not the one it reads (input) nor the
+		// original scene while kept
+		Framebuffer* postProcessOutput(unsigned int width, unsigned int height, TextureRender* input);
+		// a copy of a chain target into a destination framebuffer (the last pass below full size)
+		void renderPostProcessCopy(TextureRender* source, FramebufferRender* destination);
 
 		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType);
 		void destroyUI(Entity entity, UIComponent& ui);
@@ -1186,6 +1845,9 @@ namespace jasperengine{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
+		// the frame's own view draws without the scene's post-processing (the editor's edit-mode
+		// Scene view): the colour passes bypass the post colour (no variant change), no uber pass
+		void setDisablePostProcessing(bool disablePostProcessing);
 
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
@@ -1196,17 +1858,89 @@ namespace jasperengine{
 		// Sets the submesh's vertex attribute flags (hasTexCoord1, hasNormal, ...) from the
 		// buffers it draws from and its own attributes, and hasNormalMap from its material.
 		static void scanSubmeshAttributes(Submesh& submesh, const std::vector<const Buffer*>& buffers);
-		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror);
+		// sceneMeshShader: the scene's default mesh shader (Scene::getDefaultMeshShader)
+		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
+		                                                  const std::string& sceneMeshShader = std::string());
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// The lighting mode a submesh draws with: the material's when the shader lists it,
+		// else the shader's default (the first of its manifest's @lighting, NONE without one;
+		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED).
+		// Never AUTO. manifest: the one the submesh draws with (SubmeshShaderInputs::manifest).
+		static MaterialLighting resolveLighting(MaterialLighting requested, const ShaderManifest* manifest);
+		// whether the shader lists the mode (AUTO: always)
+		static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
+		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
+		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
+		static int getLightCapacity(int maxLightsPerObject);
+
+		// ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
+		// The shader a submesh draws with: its material's, else the mesh's fork, else the
+		// scene's default mesh shader; "" is the built-in Lit shader
+		static const std::string& getSubmeshShader(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// The custom shader strings (with the "#FEATURES" suffix the material's features
+		// resolve to) its color and depth variants are keyed by; "" for built-in. The depth
+		// pass draws with the library shader's @depth program, else the mesh's depth fork.
+		// A colour variant of a shader with a manifest also carries its resolved blend
+		// mode's BLEND_* define (ShaderReference::getColorVariantReference).
+		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		// ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+		// Whether the submesh draws an extra pass: its material names one (a non-empty
+		// MaterialPass::shader) and it is not a Terrain's (terrain: the submesh's inputs)
+		static bool hasExtraPass(const Submesh& submesh, bool terrain);
+		// The custom shader string the extra pass's colour variant is keyed by: its shader with
+		// its features and the BLEND_* define of its resolved blend mode
+		static std::string getSubmeshExtraPassReference(const Submesh& submesh);
+		// The inputs the extra pass's variant comes from: the submesh's (the same mesh variant
+		// bits: skinning, morph targets, instancing, texture rect, vertex colour, fog, from
+		// getSubmeshShaderInputs) with its own shader's manifest and features, its default
+		// lighting mode, and no received shadows, IBL or mirror
+		static SubmeshShaderInputs getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass);
+		// Its colour pipeline state, resolved as the submesh's (resolveSubmeshRenderState):
+		// the pass's values, else its shader's @state with the rules of its features
+		// (manifestState, null: none), else the submesh's legacy behaviour
+		static RenderState resolveExtraPassRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState);
+		// The color pipeline state of a submesh: the material's value, else the manifest's
+		// @state with the @state[...] rules of the material's features, else the legacy
+		// behaviour. blended: not opaque; transparentQueue: drawn sorted after the opaque objects
+		static RenderState resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifest* manifest,
+		                                             bool& blended, bool& transparentQueue);
+		// The same with a manifest state already resolved (Submesh::manifestState; null: none)
+		static RenderState resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState,
+		                                             bool& blended, bool& transparentQueue);
+		// Scene inputs (phase 3) a submesh's shaders (its own, else the mesh's or the scene's,
+		// and its extra pass) read with its material's features, ShaderRequire_SceneDepth /
+		// _SceneColor; opaqueQueue: whether the submesh resolves to the opaque queue, where
+		// they read black and its own depth (a material error the inspector and checks report)
+		static uint32_t getSubmeshSceneInputs(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
+		                                      bool& opaqueQueue);
+		// The scene inputs this scene's last frame produced: bit 0 the scene depth, bit 1 the colour
+		uint32_t getSceneInputUsage() const;
+		// The same for UI, points, lines and sky (AUTO: alpha blend and depth write, legacyCulling)
+		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite, const ShaderManifest* manifest,
+		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// with the component's stencil and colour write (phase 2; AUTO: the manifest's)
+		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
+		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
+		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// the shader-library custom shader string of a UI/points/lines/sky shader with its
+		// features and the BLEND_* define of its blend mode (Skybox: AUTO)
+		static std::string getComponentShaderReference(const std::string& customShader, const std::vector<std::string>& shaderFeatures,
+		                                               MaterialBlendMode blendMode);
 
 		// The shader variants an entity draws with as it is now, in this scene: its mesh
 		// (with the shadow/depth and SSR G-buffer passes), UI, points, lines or sky. A
 		// forked shader also lists the built-in variant it falls back to. For warming
 		// them up before the entity shows (ShaderVariantCollection::addEntityVariants).
 		void getShaderVariants(Entity entity, std::vector<ShaderKey>& keys);
+
+		// Logs what the loaded meshes hold on the GPU: submeshes, extra passes (none for a
+		// submesh without one), generated smoothed-normal buffers and the live pipelines of
+		// every object (Engine's ready signal prints it, for tests)
+		void logRenderObjects();
 
 		// copies the stacked scene composite to the swapchain (Engine::endCompositeFramebuffer)
 		void presentFramebufferToSwapchain(Framebuffer* source);
@@ -1242,14 +1976,52 @@ namespace jasperengine{
 		void needReloadPoints();
 		void needReloadLines();
 		void needReloadMeshes();
+		// a change of the scene's shader environment that leaves every resource the loaded
+		// variants bind alive (light cap, fog, lights added or removed, reflection probes, 2D
+		// shadows, scene depth programs): a loaded mesh keeps drawing its variant until the new
+		// one's shaders are built (meshVariantShadersReady), then reloads in that update, so a
+		// runtime compile shows no gap; with precompiled shaders it reloads in the same update
+		// as needReloadMeshes does
+		void needReloadMeshVariants();
+		bool meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
+		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
+		void needUpdatePostProcessing();
+		// the images post-processing reads changed on disk (the editor's file pick-up): the LUT
+		// strip (read by path, cached while the path stays) is read again and the user chain
+		// reloads, taking its pass textures again from the scene
+		void invalidatePostProcessTextures();
+		// what a set of post-processing settings turns on (the export collector and the editor
+		// use it to pick the same variants), and what the renderer applies now
+		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
+		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
+		// one putting the clip point (2^-exposure) on a texel, so whites reach 255 at any side
+		static float getPostColorShaper(const PostProcessingSettings& settings, int lutSide);
+		const PostProcessingTiers& getActivePostProcessingTiers() const { return postTiers; }
 		void needReloadUIs();
 		void needReloadSky();
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);
 
 		bool isAllLoaded() const;
 		void getLoadCount(size_t& loaded, size_t& total) const;
+
+		// Scene inputs (shader library phase 3) in detail: what the loaded objects read, and
+		// what the last frame's camera passes made for them (getSceneInputUsage: the short
+		// form). For the editor and diagnostics; no per-frame work.
+		struct SceneInputDetails{
+			uint32_t reads = 0;            // ShaderRequire_SceneDepth | _SceneColor of the loaded readers
+			uint32_t readers = 0;          // loaded meshes and points components reading the scene
+			uint32_t passes = 0;           // last frame: camera passes with a visible reader
+			uint32_t depthPrePasses = 0;   // last frame: scene depth pre-passes run for them
+			uint32_t sharedDepth = 0;      // last frame: passes that reused the SSAO / SSR / post depth
+			uint32_t colorCopies = 0;      // last frame: colour copies
+			uint32_t targets = 0;          // depth and copy targets alive (the editor's views included)
+			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
+			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
+		};
+		SceneInputDetails getSceneInputDetails();
 		bool hasPendingMeshLods() const;
 	
 #ifdef JASPERENGINE_EDITOR
@@ -1279,6 +2051,10 @@ namespace jasperengine{
 			bool fixedResolution = false;
 			// draws as if the scene had no fog
 			bool disableFog = false;
+			// the scene's post-processing applies to the view camera (the Game view; the Scene
+			// view leaves it off by default): with it off the colour passes draw as if the scene
+			// had none (its variants keep the post colour bit, bypassed)
+			bool postProcessing = true;
 			// the view camera's passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)

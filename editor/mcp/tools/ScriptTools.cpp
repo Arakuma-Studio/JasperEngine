@@ -30,6 +30,9 @@
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "pool/TextureDataPool.h"
+#include "pool/TexturePool.h"
+#include "script/LuaBinding.h"
+#include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
@@ -344,10 +347,54 @@ int reloadTextures(Project* project, const std::set<std::string>& images) {
                                 touched = true;
                             }
                         }
+                    } else if (property.type == PropertyType::Custom && name.size() >= 14 &&
+                               name.compare(name.size() - 14, 14, "shaderTextures") == 0) {
+                        // shader library textures, of a submesh material or a component; which
+                        // textures it binds is resolved when it loads
+                        bool reloaded = false;
+                        for (auto& shaderTexture : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
+                            if (matches(shaderTexture.second)) {
+                                reload(shaderTexture.second);
+                                reloaded = true;
+                            }
+                        }
+                        if (reloaded) {
+                            Catalog::updateEntity(sceneProject->scene, entity, property.updateFlags);
+                            touched = true;
+                        }
                     }
                 }
             }
         }
+        // the scene's post-processing images (phase 4): the user passes' textures and the LUT
+        // strip, which the renderer caches by path
+        bool postImages = false;
+        std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
+        for (PostProcessPass& pass : passes) {
+            for (auto& entry : pass.textures) {
+                if (matches(entry.second)) {
+                    // the GPU texture is held by the chain's copies, not by the scene's: the
+                    // pool entry is marked stale for them to rebuild it from the new pixels
+                    TexturePool::invalidate(entry.second.getId());
+                    reload(entry.second);
+                    postImages = true;
+                }
+            }
+        }
+        // the scene keeps the released textures (no pixels held), so the chain's reload below
+        // reads the file again; same paths, so this is no edit (and no undo step)
+        if (postImages) sceneProject->scene->setPostProcessPasses(passes);
+        const std::string lut = sceneProject->scene->getPostProcessing().lutTexture;
+        if (!lut.empty() && images.count(McpValues::assetPathToJson(project, lut)) > 0) {
+            count++;
+            postImages = true;
+        }
+        if (postImages) {
+            if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
+                render->invalidatePostProcessTextures();
+            touched = true;
+        }
+
         if (touched) sceneProject->needUpdateRender = true;
     }
     return count;

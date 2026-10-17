@@ -82,6 +82,54 @@ namespace jasperengine::editor {
         static std::string materialAlphaModeToString(MaterialAlphaMode mode);
         static MaterialAlphaMode stringToMaterialAlphaMode(const std::string& str);
 
+        // shader library render state and lighting (Material, UI/Points/LineRenderer, Light)
+        static std::string materialBlendModeToString(MaterialBlendMode mode);
+        static MaterialBlendMode stringToMaterialBlendMode(const std::string& str);
+        static std::string materialCullModeToString(MaterialCullMode mode);
+        static MaterialCullMode stringToMaterialCullMode(const std::string& str);
+        static std::string materialDepthWriteToString(MaterialDepthWrite mode);
+        static MaterialDepthWrite stringToMaterialDepthWrite(const std::string& str);
+        static std::string materialDepthTestToString(MaterialDepthTest mode);
+        static MaterialDepthTest stringToMaterialDepthTest(const std::string& str);
+        static std::string materialLightingToString(MaterialLighting mode);
+        static MaterialLighting stringToMaterialLighting(const std::string& str);
+        static std::string lightShadingToString(LightShading shading);
+        static LightShading stringToLightShading(const std::string& str);
+
+        // shader library textures (by @texture uniform) and features of a material or component
+        static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
+        static std::vector<std::pair<std::string, Texture>> decodeShaderTextures(const YAML::Node& node);
+        static YAML::Node encodeShaderFeatures(const std::vector<std::string>& features);
+        static std::vector<std::string> decodeShaderFeatures(const YAML::Node& node);
+        // the shaderTextures, shaderFeatures and (when given) blendMode/depthWrite keys of a
+        // UI, Points, LineRenderer or Skybox component
+        static void encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
+                const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite, bool embedData);
+        static void decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
+                std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite);
+
+        // shader library phase 2: stencil, colour write and the extra pass
+        // (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        static std::string materialStencilCompareToString(MaterialStencilCompare compare);
+        static MaterialStencilCompare stringToMaterialStencilCompare(const std::string& str);
+        static std::string materialStencilOpToString(MaterialStencilOp op);
+        static MaterialStencilOp stringToMaterialStencilOp(const std::string& str);
+        static std::string materialPassOrderToString(MaterialPassOrder order);
+        static MaterialPassOrder stringToMaterialPassOrder(const std::string& str);
+        // a colour write mask as the manifest writes it ("rgba", "rgb", "none"...; -1 "auto")
+        static std::string colorWriteToString(int colorWrite);
+        static int stringToColorWrite(const std::string& str);
+        // a stencil block: compare, then the fields away from their defaults
+        static YAML::Node encodeStencil(const MaterialStencil& stencil);
+        static MaterialStencil decodeStencil(const YAML::Node& node);
+        // the stencil and colorWrite keys of a material, pass or UI/Points/LineRenderer
+        // component, written only away from their defaults (AUTO)
+        static void encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite);
+        static void decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite);
+        // a material's extra pass; only the fields away from their defaults
+        static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
+        static MaterialPass decodeMaterialPass(const YAML::Node& node);
+
         static std::string scriptPropertyTypeToString(ScriptPropertyType type);
         static ScriptPropertyType stringToScriptPropertyType(const std::string& str);
 
@@ -278,6 +326,9 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeScene(Scene* scene);
         static Scene* decodeScene(Scene* scene, const YAML::Node& node);
+        // PostProcessingSettings: the fields away from their defaults (an empty map when none)
+        static YAML::Node encodePostProcessing(const PostProcessingSettings& settings);
+        static PostProcessingSettings decodePostProcessing(const YAML::Node& node);
 
         static YAML::Node encodeEntitySelection(const std::vector<Entity>& entities, const EntityRegistry* registry, const Project* project = nullptr, const SceneProject* sceneProject = nullptr);
         static std::vector<Entity> decodeEntitySelection(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, std::unordered_map<Entity, Entity>* entityRemap = nullptr);

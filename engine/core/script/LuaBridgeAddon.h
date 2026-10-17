@@ -50,6 +50,7 @@ namespace luabridge
     template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
+    template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
     template<> struct Stack<TextureWrap> : EnumWrapper<TextureWrap>{};
     template<> struct Stack<AdMobRating> : EnumWrapper<AdMobRating>{};
@@ -69,8 +70,12 @@ namespace luabridge
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
+    template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
     template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
+    template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
+    template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
+    template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
 
@@ -91,6 +96,17 @@ namespace luabridge
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
+
+    // shader library render state (Material, UI/points/lines)
+    template<> struct Stack<MaterialBlendMode> : EnumWrapper<MaterialBlendMode>{};
+    template<> struct Stack<MaterialCullMode> : EnumWrapper<MaterialCullMode>{};
+    template<> struct Stack<MaterialDepthWrite> : EnumWrapper<MaterialDepthWrite>{};
+    template<> struct Stack<MaterialDepthTest> : EnumWrapper<MaterialDepthTest>{};
+    // phase 2: the extra pass's order
+    template<> struct Stack<MaterialPassOrder> : EnumWrapper<MaterialPassOrder>{};
+    template<> struct Stack<MaterialStencilCompare> : EnumWrapper<MaterialStencilCompare>{};
+    template<> struct Stack<MaterialStencilOp> : EnumWrapper<MaterialStencilOp>{};
+    template<> struct Stack<MaterialColorWriteBits> : EnumWrapper<MaterialColorWriteBits>{};
 
     template <>
     struct Stack <Touch>
