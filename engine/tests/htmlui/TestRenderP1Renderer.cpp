@@ -322,6 +322,65 @@ TEST(RenderP1Test, SampleCountChoice){
     UIDocumentSystem::setPreferredSampleCount(initial);
 }
 
+// The composite inside the post-processed camera's multisampled scene target (the shader
+// library's MSAA, CameraRender::setMultisample): PIP_MSAA_NODEPTH through the pipeline cache at
+// the target's sample count draws the same pixels as the one-sample composite
+TEST(RenderP1Test, CompositeIntoMultisampledSceneTarget){
+    JASPER_REQUIRE_GPU();
+    const int width = 160, height = 90;
+    RenderTestContext test(width, height);
+    ASSERT_TRUE(test.isValid());
+    const std::string rml = "<html><head><style>body { width: 100%; height: 100%; }"
+                            " #a { position: absolute; left: 10px; top: 8px; width: 70px; height: 40px; background-color: #e04030;"
+                            " border-radius: 12px; }"
+                            " #b { position: absolute; left: 60px; top: 30px; width: 80px; height: 50px; background-color: #2080ffa0; }"
+                            "</style></head><body><div id=\"a\"/><div id=\"b\"/></body></html>";
+    ASSERT_NE(test.loadFromMemory(rml, "p1/msaa-scene-composite.html"), nullptr);
+    ASSERT_TRUE(test.renderUntilDrawn());
+    std::vector<uint8_t> single;
+    ASSERT_TRUE(test.readScreen(single));
+
+    const int samples = FramebufferRender::getMaxMsaaSamples(4);
+    ASSERT_GT(samples, 1) << "the test devices multisample";
+    FramebufferRender msaa;
+    ASSERT_TRUE(msaa.createMultisampleFramebuffer(width, height, samples));
+    FramebufferRender scene;
+    ASSERT_TRUE(scene.createFramebuffer(TextureType::TEXTURE_2D, width, height, TextureFilter::LINEAR, TextureFilter::LINEAR,
+                                        TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE, false));
+
+    const uint64_t missesBefore = SystemRender::getPipelineCacheMisses();
+    bool drawn = false;
+    for (int frame = 0; frame < 2; frame++){
+        CameraRender pass;
+        const float bg = RenderTestContext::background / 255.0f;
+        pass.setClearColor(Vector4(bg, bg, bg, 1.0f));
+        pass.setMultisample(&msaa);
+        pass.startRenderPass(&scene);
+        const Rect full(0, 0, (float)width, (float)height);
+        pass.applyViewport(full);
+        pass.applyScissor(full);
+        // an offscreen camera pass renders Y-flipped on GL (RenderSystem::isRenderingFlipped)
+        const Rml::Matrix4f clipFromQuad = Engine::isOpenGL() ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity();
+        drawn = test.renderer.drawComposite(test.target.getComposited()->getColorTexture(), PIP_MSAA_NODEPTH, clipFromQuad, samples);
+        pass.endRenderPass();
+        SystemRender::commit();
+        EXPECT_TRUE(drawn) << "frame " << frame;
+    }
+    // one pipeline for the multisampled composite, made once
+    EXPECT_EQ(SystemRender::getPipelineCacheMisses() - missesBefore, 1u);
+
+    std::vector<uint8_t> resolved;
+    ASSERT_TRUE(readTexture(scene.getColorTexture(), width, height, resolved));
+    ASSERT_EQ(resolved.size(), single.size());
+    int worst = 0;
+    for (size_t i = 0; i < resolved.size(); i++)
+        worst = std::max(worst, std::abs((int)resolved[i] - (int)single[i]));
+    EXPECT_LE(worst, 1) << "the resolved composite differs from the one-sample one";
+
+    msaa.destroyFramebuffer();
+    scene.destroyFramebuffer();
+}
+
 //-------------------------------------------------------------------------------------------
 // CompileFilter, CompileShader, blur parameters (CPU)
 //-------------------------------------------------------------------------------------------
