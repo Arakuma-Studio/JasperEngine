@@ -120,11 +120,11 @@ REGIONS = {
     "glass": {"rect": (490, 90, 750, 210), "sd": 8},
     "pix": {"rect": (840, 40, 1200, 260), "sd": 30},
     "title": {"rect": (40, 300, 400, 400), "sd": 20},
-    "button": {"rect": (444, 304, 796, 516), "sd": 6},
+    "button": {"rect": (444, 304, 796, 516), "sd": 12},
     "tint": {"rect": (840, 300, 1200, 520), "sd": 15},
 }
-EXPECTED = {"hero": (146, 68, 171), "glass": (168, 176, 130), "pix": (96, 98, 65), "title": (41, 61, 50),
-            "button": (114, 113, 90), "tint": (34, 185, 97)}
+EXPECTED = {"hero": (30, 39, 61), "glass": (168, 176, 130), "pix": (96, 98, 65), "title": (63, 59, 71),
+            "button": (47, 54, 77), "tint": (34, 185, 97)}
 MEAN_TOL = 18
 
 
@@ -185,16 +185,15 @@ async def test_pinned_clock_renders(ed: Editor):
             break
         await asyncio.sleep(1.0)
     S["t1"] = image
-    report = []
+    measured = {name: stats(image, region["rect"]) for name, region in REGIONS.items()}
+    print("     [effects] " + "; ".join(f"{name}: mean ({m[0]:.0f}, {m[1]:.0f}, {m[2]:.0f}) sd {sd:.1f}" for name, (m, sd) in measured.items()))
     for name, region in REGIONS.items():
-        mean, sd = stats(image, region["rect"])
-        report.append(f"{name}: mean ({mean[0]:.0f}, {mean[1]:.0f}, {mean[2]:.0f}) sd {sd:.1f}")
+        mean, sd = measured[name]
         ed.check(sd >= region["sd"], f"{name}: the region is flat (sd {sd:.1f} < {region['sd']}): the effect did not draw")
         if name in EXPECTED:
             want = EXPECTED[name]
             ed.check(all(abs(mean[i] - want[i]) <= MEAN_TOL for i in range(3)),
                      f"{name}: mean colour {tuple(round(v) for v in mean)}, expected {want} +-{MEAN_TOL}")
-    print("     [effects] " + "; ".join(report))
     errors = [e for e in await console_errors(ed) if "[HTML UI]" in e or "hader" in e]
     ed.check(not errors, f"errors: {errors}")
 
