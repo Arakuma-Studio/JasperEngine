@@ -2116,7 +2116,8 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   space, is sum(c a w) / sum(a w) with alpha sum(a w) / sum(w): one pass, each colour converted
   once; weights as exp2 of the negated logarithm, no reciprocal; its golden unchanged within the
   tolerance). It measured 7.1 x before, on an idle local host with the fill taken alone. A2's re-instancing is
-  3 + 16 a frame (3.6's shared decorators), not 64.
+  3 + 16 a frame (3.6's shared decorators), not 64. *After p5-accept (7.3):* glcore engine's own work A 0.80-0.95 ms
+  against 1.22-1.26, Vulkan frame A 1.27-1.37 against 1.69-1.74 (5 runs each, 7.4).
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
@@ -2156,43 +2157,195 @@ the same goldens and phase 0's tolerance. The filter-form orientation golden (an
 `pixelate` on the test card) must pass on both glcore and Vulkan.
 
 ## 6 Acceptance criteria
-- [ ] All 83 effects of Appendix A are registered, with manifests exactly as listed, goldens
+- [x] All 83 effects of Appendix A are registered, with manifests exactly as listed, goldens
       (t1, t2 when animated), docs entries with thumbnails, and cost classes consistent with
       the measured table.
-- [ ] `effect()` works in `background-image`, `background`, `mask-image`, `filter` and
+- [x] `effect()` works in `background-image`, `background`, `mask-image`, `filter` and
       `backdrop-filter`, layered with gradients, url images and standard filters, in CSS
       order. `background-blend-mode` and `background-clip: text` work for effect layers.
-- [ ] Every diagnostic code in 3.13 is produced with file:line:col and its suggestion, at load
+- [x] Every diagnostic code in 3.13 is produced with file:line:col and its suggestion, at load
       (Console) and in `check --ui`. Nothing is dropped silently, including runtime-form
       warnings.
-- [ ] Transitions and keyframes interpolate effect parameters. `var()` and the anime API
+- [x] Transitions and keyframes interpolate effect parameters. `var()` and the anime API
       drive them. `@property`-registered custom properties transition and animate, and every
       `var()` follows.
-- [ ] The fixed effect clock makes renders deterministic (C++, Lua, MCP). Live speed changes
+- [x] The fixed effect clock makes renders deterministic (C++, Lua, MCP). Live speed changes
       never jump.
-- [ ] Pointer data (position, smoothed, presence, velocity, press, trail, ripples) is
+- [x] Pointer data (position, smoothed, presence, velocity, press, trail, ripples) is
       element-local and correct under transforms.
-- [ ] Backdrop effects read and refract what is behind the element, clipped to its rounded
+- [x] Backdrop effects read and refract what is behind the element, clipped to its rounded
       border box. The blur prepass works.
-- [ ] `ShaderType::UI_EFFECT` variants are precompiled and exported: exactly the used ones
+- [x] `ShaderType::UI_EFFECT` variants are precompiled and exported: exactly the used ones
       plus Build Settings additions. Shipped games compile nothing. `uieffect/all` builds for
       every backend, including GLSL ES 300. The web build passes.
-- [ ] Project effects: `@effect` + `.frag` compile in the editor, report errors with `.frag`
+- [x] Project effects: `@effect` + `.frag` compile in the editor, report errors with `.frag`
       lines, hot reload, export, and run in an exported game.
-- [ ] Performance: 5.4 counters and budgets pass. No GPU object leaks across 100
+- [x] Performance: 5.4 counters and budgets pass. No GPU object leaks across 100
       load/unload cycles.
-- [ ] MCP: `list_ui_effects`, `set_ui_effect_time` and `inspect_ui` effects work.
+- [x] MCP: `list_ui_effects`, `set_ui_effect_time` and `inspect_ui` effects work.
       `test_html_ui_effects.py`, `test_protocol.py` and `test_ui_anchors.py` pass, and the
       screenshots were looked at.
-- [ ] Goldens pass on Linux glcore and Vulkan.
-- [ ] Docs: the guide's Effects section and the generated `html-ui-effects.md`
+- [x] Goldens pass on Linux glcore and Vulkan.
+- [x] Docs: the guide's Effects section and the generated `html-ui-effects.md`
       (`gen_effects_docs.py --check` clean), the support-matrix rows, `TOOLS.md` regenerated,
       and the Lua stubs regenerated.
-- [ ] Attribution: `LICENSE.shaders-com.txt` lists every ported effect, ported files carry
+- [x] Attribution: `LICENSE.shaders-com.txt` lists every ported effect, ported files carry
       the header, `NOTICE.md` is updated, and exports include the license when they ship
       shaders.com-derived effects.
-- [ ] `FORK.md` records the `@property` patch. Each package's report lists its additive edits
+- [x] `FORK.md` records the `@property` patch. Each package's report lists its additive edits
       outside its ownership.
+
+## 7 Phase 5 acceptance (p5-accept)
+
+Run on `hui/p5-accept`, branched from `html-ui` at `1b496f94b` (all six packages merged: p5-infra,
+p5-property, p5-fx-paint, p5-fx-light, p5-fx-filters, p5-tooling, with their follow-ups). Every
+build, suite, perf run, MCP run and export ran on the idle remote test host (BRIEF.md,
+`173.249.49.126`, 12 cores, nothing else running during the runs), in the worktree
+`/root/jasper/wt/p5-accept`: `JOBS=10`, one heavy job at a time, the MCP suite with `-j 4` and
+`LP_NUM_THREADS=2`, Android under `flock /root/jasper/android.lock`, lua-language-server 3.19.1
+and clangd installed, the reference renderer with playwright-core 1.63.0 and Chromium 153.0.8010.12
+(headless shell revision 1243). The local host was used for editing and git only. Final tree:
+`5174b7ca9` (code; later commits are documentation).
+
+### 7.1 Section 6, item by item
+
+| §6 item | Evidence on the merged tree | Result |
+|---|---|---|
+| All 83 effects registered, manifests as Appendix A, goldens (t1, t2 when animated), docs entries with thumbnails, cost classes consistent with the measured table | Every `.frag` manifest compared with Appendix A by a script (kind, category, source, cost, backdrop, pointer, every parameter's name, order, type, default, range and options, `@time`, `@suggest-for`, `@prepass`, `@margin`, `@geometry`): 83 of 83 match (the only difference, the order of `hologram`'s two `@time` rates, is not something the appendix fixes). `gen_effect_manifests.py --check` current; `EffectRegistryTest.*`; `EveryEffect/EffectGoldenTest` (134 goldens: 83 `.t1`, 39 `.t2`, 7 `.text`, the 4 edge modes, `glitch.burst`; I1-I7) on glcore and Vulkan; `gen_effects_docs.py --check` (83 effects, 83 thumbnails); contact sheets of all 134 goldens looked at here, every family; `EffectPerfTest.CostTable` 83 of 83 within their class in every run: glcore highest `low` x2.87-3.19, `medium` x8.48-8.92; Vulkan x2.90-3.14, x6.17-6.75 (bounds 6 and 24) | pass |
+| `effect()` in `background-image`, `background`, `mask-image`, `filter`, `backdrop-filter`, layered with gradients, `url()` and standard filters in CSS order; `background-blend-mode` and `background-clip: text` for effect layers | `EffectCompatTest` (`BackgroundImageNative`, `LayersKeepTheirOrder`, `MaskImage`, `FilterLists`, `BlendModes`, `GradientTextFill`, `LegacyDecoratorsWithPaintAreas`); `EffectGuideTest.EveryExampleRenders` (every css block of the guide's Effects section, which holds the examples of §1 and §3.2 verbatim: `.hero`, `.panel`, `.title` with `drop-shadow()`, `.button`, `.card`'s grain over a gradient over a colour, `.logo`, `.closing`, `.ring`, `.menu`); the `.text` goldens; `test_html_ui_effects.py` | pass |
+| Every diagnostic code of 3.13 with file:line:col and suggestion, at load and in `check --ui`; nothing silent, runtime form included | `EffectCompatTest.DiagnosticsWithPositions`, `WrongContextNamesTheCounterpart`, `AtEffectDiagnostics`, `ManyHighCostEffects`, `PaintSuggestion`, `EveryCodeIsRegistered` (FX-0001 ... 0016); `RegisteredPropertyTest` (`at-property-*`); `test_html_ui_effects.py::test_check_ui_effect_diagnostics` (`inspect_ui {file}`: FX-0001 suggesting `frosted-glass`, FX-0004 suggesting `speed`, FX-0002, each at its line:col), `test_manifest_error`, `test_hot_reload_project_effect` (FX-0014/0015 at the `.frag` line); the runtime form: `EffectFallbackTest.EffectsThatBypassCompatAreInstancedAndReported` (new, 7.2) | pass |
+| Transitions and keyframes interpolate effect parameters; `var()` and anime drive them; `@property` properties transition and animate, every `var()` follows | `EffectAnimationTest` (midpoint, keyframes on filters, one re-instance and no compile per `var()` change, anime, discrete switch); `RegisteredPropertyTest.*`, `RegisteredPropertyEffectTest.*`, `RegisteredPropertyGolden.*`; the `property/*` browser-parity fixtures; the fork's `registered_properties.*`; `test_html_ui_effects.py::test_sheen_hover_transition` (new: in play the hover transition reaches its value) | pass |
+| The fixed effect clock makes renders deterministic (C++, Lua, MCP); live speed changes never jump | C++: `EffectRuntimeTest.FixedClock`, `IntegratedClockClosedFormWhenFixed`, `IntegratedClockLiveAndNoJump`, the golden driver (I2); Lua: `EffectScriptTest.LuaPinsTheEffectClockAndListsEffects` (new); MCP: `test_determinism_and_live_clock` (identical screenshots at a pinned time; the live clock moves the aurora) | pass |
+| Pointer data element-local and correct under transforms | `EffectRuntimeTest.PointerUnderTransforms`, `SmoothingAndPresence`, `TrailOrderingAgeingAndExpiry`, `RipplesByPressAndMovement`, `SeedIsStablePerElement`; `EffectFilterTest.BulgeFollowsThePointer`; the pointer goldens (`spotlight`, `cursor-trail`, `cursor-ripples`, `holographic`) | pass |
+| Backdrop effects read and refract what is behind, clipped to the rounded border box; the blur prepass | the backdrop goldens of every `backdrop: yes` effect; `EffectFilterTest.BackdropOpticsKeepTheirClearParts`; `RenderP1Test.BackdropCompositeFusedExactly`; the MCP glass region | pass |
+| UI_EFFECT variants precompiled and exported: exactly the used ones plus Build Settings additions; shipped games compile nothing; `uieffect/all` on every backend incl. GLSL ES 300; the web build | `check_effect_shaders.sh`: every built-in effect variant (`uieffect/all`: 124 variants, a paint effect in both forms, a filter effect and `_bright` in the filter form) for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS, MSL 2.1 iOS and SPIR-V, one file per variant per backend, exit 0, then `ui-effects --validate` (PASS); `ui-effects --validate`: "83 effects; every effect compiles in both forms and matches its manifest", exit 0; `test_html_ui_effects_export.py` (the CLI export ships exactly the used variants for GLSL 410 and GLSL 300 es, the Build Settings addition `uieffect/cursor-trail:Flt` round trip, the licence; with `JASPER_SLOW_BUILD=1` a Desktop player built without the runtime shader compiler runs the exported document and draws the effects: its screenshot, looked at here, shows the `stripes` background, the `pixelate` filter, the `stripes` gradient text, the `spotlight` and the project effect `tint-wave` drawn (the `frosted-glass` panel is in a `(hover: none)` block, left out on a desktop as the test intends)); `JOBS=10 tools/build.sh web`: exit 0, 0 warnings | pass |
+| Project effects: `@effect` + `.frag` compile in the editor, report errors at `.frag` lines, hot reload, export, run in an exported game | `test_html_ui_effects.py` (`tint-wave` with a project include: draws; hot reload of the `.frag` and of the include; a GLSL error at its line from `write_file`; a manifest error; renamed during play); `EffectHotReloadTest.*`; `test_html_ui_effects_export.py` (exported, drawn by the Desktop player); `test_checks.py` | pass |
+| Performance: 5.4 counters and budgets pass; no GPU object leaks across 100 load/unload cycles | `EffectPerfTest.GridSteadyStateAndBudgets` in 5 runs per backend (7.4), counters exact in every run; glcore (the engine's own work) A 0.798-0.949 ms against 1.225-1.264 (margin 23.5-35.3 %), A2 2.47-2.86 against 4.45-4.53; Vulkan (the frame) A 1.274-1.365 against 1.693-1.741 (20.1-24.7 %), A2 3.28-3.56 against 5.39-5.48; `EffectLifecycleTest.HundredLoadUnloadCycles` (live instances 0, states 0, geometry, textures, buffers and images back to the first cycle's) | pass |
+| MCP: `list_ui_effects`, `set_ui_effect_time`, `inspect_ui` effects; `test_html_ui_effects.py`, `test_protocol.py`, `test_ui_anchors.py` pass; screenshots looked at | both full MCP runs (7.4): `test_html_ui_effects.py` 12, `test_protocol.py` 12, `test_ui_anchors.py` 7 passed in each; the effect screenshots (pinned, live, hover in play, hot reload, broken and fixed effect, renamed during play) looked at | pass |
+| Goldens on Linux glcore and Vulkan | full suites: glcore 3143 tests, 3070 passed, 0 failed, 73 skipped; Vulkan the same; the 73 are the Taffy fixtures the phase-3 baseline excludes | pass |
+| Docs: the guide's Effects section, `html-ui-effects.md` (`--check` clean), support-matrix rows, TOOLS.md regenerated, Lua stubs regenerated | `test_html_ui_docs.py` (13: structure with "Effects", names exist, Lua parses, CSS clean, served; the catalogue served: new); `gen_effects_docs.py --check`; `gen_html_ui_support.py --check`: current (1878 features, 105 codes); `gen_tool_docs.py`: TOOLS.md regenerated (135 tools): identical but for the editor version in its first line; the stubs generated at build time give `UIDocument.setEffectTime(seconds: number?)`, `getEffectTime(): number`, `UIElement:getEffects(): UIEffectInfo[]`, nothing unresolved (`test_stubs.py`, 12) | pass |
+| Attribution: `LICENSE.shaders-com.txt` lists every ported effect, ported files carry the header, `NOTICE.md`, exports include the licence | 70 effects whose `@source` is shaders.com, 70 listed, 70 headers (checked by a script here); I7; `NOTICE.md`'s paragraph; `test_html_ui_effects_export.py` (`licenses/shaders.com-LICENSE.txt` with effects, none without) | pass |
+| `FORK.md` records the `@property` patch; each package lists its additive edits | `FORK.md` P5-1 ... P5-6 with commit ids and tests (P5-5's id and the `EffectHooks` tests' commit added here); the "as implemented" sections of 4.1-4.6; every phase-5 commit touching `engine/libs/rmlui` is an `rmlui:` commit (P5-6's reads `HTML UI p5-tooling: rmlui: ...`) | pass |
+
+### 7.2 What the acceptance run found and changed
+
+| Kind | What was wrong | Fix |
+|---|---|---|
+| Thin perf gate | 5.4's glcore gate (A <= 1.5 x B + 1 ms, the engine's own work) passed by 1 to 18 % (p5-tooling's runs; here 1.131 against 1.311 in the first full run) | the effect and layer draw paths touch less cold memory and make fewer backend calls (7.3): A 0.798-0.949 ms against 1.225-1.264 in 5 runs (mean margin 31 %), budgets and goldens unchanged; the Vulkan frame gate went from 6-9 % to 20-25 % with it |
+| Bug | an animated filter effect (`filter`/`backdrop-filter`) asked its context for the next update only when compiled, once per reload: the editor's edit view, which redraws HTML UI on `GetNextUpdateDelay`, froze after one frame a document whose animated effects were all filters (paint effects asked every frame) | `EffectRenderer::applyFilter` asks too, once per context render (`EffectRuntime::requestRedraw`); `EffectRedrawTest.AnAnimatedFilterAsksForTheNextUpdate` (fails without the fix) |
+| Order-dependent test | `EffectLifecycleTest.HundredLoadUnloadCycles` failed when run first or alone: `RenderTestContext` does not make the headless device, so the shaders could not warm up | it calls `GpuEnvironment::ensure()` first, as `EffectPerfTest` does; passes alone and in the suite |
+| Test short of 5.5 | `test_html_ui_effects.py` still used p5-infra's wave-1 stand-ins (`stripes` for `aurora` and for `holographic` text, `spotlight` for `sheen`) and checked 5 built-ins and one glass effect | the spec's document: `aurora` hero, `holographic` gradient text, `sheen` with a hover transition (checked in play: the hover intensity reaches 0.9 and the region brightens), `list_ui_effects` >= 83 built-ins, `category: "glass"` = the four glass effects, the spec's bad CSS (`effect(aurora, speeed 2)`, `color: effect(plasma)`); region colours recorded on this host (stable over runs) |
+| Untested §6 items | nothing exercised the Lua effect API (`UIDocument.setEffectTime/getEffectTime`, `UIElement:getEffects`) or the runtime fallback `effect` instancers (§3.5) and their Console warnings | `EffectScriptTest.LuaPinsTheEffectClockAndListsEffects`, `EffectFallbackTest.EffectsThatBypassCompatAreInstancedAndReported` |
+| Untested served doc | no test read `jasper://docs/html-ui-effects` | `test_html_ui_docs.py::test_guide_served` reads it (split into its sections) and finds every built-in effect's entry |
+| Stale support row | `@property` said "registrations are process-global (the first one of a name wins)"; since p5-property they are per live document | `AtRuleTable.cpp` and the regenerated matrix say per document; `background-clip`'s property row adds "exact for effect() layers" |
+| Stale or missing docs | `checks.md` did not know project UI effects (`--shaders`, `--files`, the FX codes on shader findings); AGENTS.md's HTML/CSS UI section and the MCP instructions did not name `mask-image`, the catalogue or `@effect`; a paragraph of the guide's "Backdrop effects" was broken by a stray line start; DESIGN.md lacked spec 3.18 items 4, 5 and 7; FORK.md lacked P5-5's commit id and the `EffectHooks` tests' commit and did not say which package made P5-4 to P5-6; the spec's wave-1 notes on the adapted guide examples and 5.5's stand-ins read as current; CONTRACTS.md lacked the acceptance's interface changes | each updated (AGENTS.md and the instructions checked by `test_agents_md_section` and `test_instructions_name_real_tools`); DESIGN deviations 8 and 9 widened, 20-22 added, 10 lists P5-1 to P5-6; 3.18's heading says where it went |
+
+Searched and found current (no change needed): TODO/FIXME/XXX added in phase 5 (none); "wave 2 adds"
+notes (historical, in the as-implemented sections); the guide's effects, catalogue, support
+matrix, TOOLS.md, AGENTS.md, the instructions, CONTRACTS.md and FORK.md agree with each other and
+with the code after the changes above.
+
+### 7.3 The 5.4 gate on glcore: what the engine's own work was, and what changed
+
+Measured with a profiling build of the test (Release + `-g`, the `jasperengine/p2perf-prof` image,
+not committed), document A, 1280 x 720, llvmpipe:
+
+- **callgrind**: of the main thread's instructions in A's frames, 96.4 % are under the sokol entry
+  points the gate counts as the backend (llvmpipe's per-pass scene setup); the engine's own code
+  (RmlUi's render traversal, `RmlRenderer`, the effects, the sokol wrappers) is the other 3.6 %.
+- **The gate's 1.1 ms was where that code ran, not how much of it there was.** A frame makes about
+  1,100 backend calls (73 passes, 178 draws). With the `RenderBackendTime` gaps between them
+  instrumented: a median gap of 80 ns, but 133 gaps a frame over 2 us held 1.09 ms. `perf`
+  (cpu-clock) samples correlated with the gap intervals (CLOCK_MONOTONIC on both sides) put that
+  time in on-CPU engine code (RmlUi 37 %, `RmlRenderer` 20 %, effects 14 %, render wrappers 13 %,
+  clock reads 4.5 %) running cold after each llvmpipe call: every lookup, query or object first
+  touched in a gap is a cache miss while llvmpipe's 12 rasterizer threads load the memory system.
+  Neither preemption (it was worse with `LP_NUM_THREADS=2` and no involuntary switch) nor
+  allocator trimming (`GLIBC_TUNABLES`, no effect) was the cause. Vulkan measures the same code at
+  about 0.45 ms: lavapipe rasterizes at submit, inside a scope.
+- **What changed** (savings on any driver; behaviour and images unchanged):
+  - `EffectRenderer::programFor` resolved the variant's key by name every draw (the registry's
+    recursive lock, a `std::string`, a hash lookup, `ShaderPool`'s mutex): 329 us a frame for the
+    16 filter passes alone. An instance now keeps its key per custom-shader generation and the
+    program it drew with (valid while the renderer's program generation and the shader's id hold);
+    the generation is a lock-free atomic, read once a frame.
+  - `EffectRuntime::isLive` and `RmlRenderer::bindGeometry` looked every draw's instance or
+    geometry up in a hash set: released instances and geometries are kept for reuse with an
+    `alive` flag, so a handle's memory stays the runtime's and the check reads memory the draw
+    touches anyway.
+  - `RmlRenderTarget::ensureLayer/ensurePostprocess` and `RmlRenderer::beginPass` asked sokol for
+    every attachment view (`Framebuffer::isCreated`) 236 times a frame: once a frame now; a pass's
+    sample count and size come from the render target; `regionsOf` answers the last two
+    framebuffers from a cache.
+  - `beginPass` applied the full viewport and scissor after `sg_begin_pass`, which sets both on
+    every backend: 146 backend calls a frame, and their gaps, less.
+  - Per effect draw: the instance keeps its element's context; the last context's pointer state is
+    cached; `integrate` reads the `@time` rates found at acquire (it compared parameter names every
+    frame); `packParams`, the prepass sigma and a filter's ink overflow read font sizes, the
+    viewport or the colour only for values that need them; an animated effect asks its context to
+    redraw once per context render; effects without a trail or ripples no longer rewrite 640 bytes
+    of arrays every frame.
+- **Result** (`EffectPerfTest.GridSteadyStateAndBudgets`, glcore, the engine's own work): A
+  1.07-1.16 ms before, 0.798-0.949 after (5 runs; margins 34.9, 31.4, 35.3, 31.1, 23.5 %), B
+  0.14-0.18 ms both; the steady-state counters (no instance, compile or pipeline; 48 draws and 16
+  passes a frame; A2's 3 + 16 re-instances) unchanged. Every golden image the glcore suite renders
+  is pixel-identical before and after: the suite was run with `JASPER_HTMLUI_UPDATE_GOLDEN=1` in a
+  worktree at `html-ui` and in this one, and the 550 PNGs compared (all identical; the same 20
+  committed images are re-rendered a few levels off on this host in both, within their tolerance).
+
+### 7.4 Runs
+
+All on the remote host, final code unless said otherwise.
+
+- `JOBS=10 tools/build.sh linux`: exit 0; the no-exported-`Rml::`/lexbor symbol checks pass; 0
+  warnings in the 46 steps rebuilt after the renderer and effect changes; the only warning of the
+  whole first build is `-Wstringop-overflow` in `engine/core/math/Matrix3.cpp:51`, older than
+  phase 5 (phase 4's 7.1 lists it).
+- `JOBS=10 tools/build.sh htmlui-tests`, glcore: 3143 tests, 3070 passed, 0 failed, 73 skipped,
+  376 s. Vulkan (`HTMLUI_BACKEND=vulkan`, lavapipe): 3143 / 3070 / 0 / 73, 396 s. (At `html-ui`
+  before any change: 3140 / 3067 / 0 / 73; the three new tests are 7.2's.) Taffy: 1595 fixtures,
+  73 excluded, 1522 compared, 0 known failures; `fixtures/p3/known-failures.txt` and
+  `fixtures/taffy/known-failures.txt` empty; 184 `BrowserParity` fixtures and the 8 phase-2 golden
+  pages (`CompatGolden/CompatGoldenPages.*`) pass; `ExamplesCompat.*` pass.
+- Perf tests, 5 runs per backend on the quiet host
+  (`HTMLUI_TEST_ARGS=--gtest_filter=CompatPerf.*:CompatCssPerf.*:EffectPerfTest.*`), all 10 tests
+  passing in every run:
+
+  | | glcore | Vulkan |
+  |---|---|---|
+  | 5.4 gate, A (ms) | the engine's own work: 0.798, 0.867, 0.815, 0.859, 0.949 against 1.225-1.264 (margins 34.9, 31.4, 35.3, 31.1, 23.5 %) | the frame: 1.360, 1.334, 1.360, 1.274, 1.365 against 1.693-1.741 (20.1, 23.4, 20.7, 24.7, 20.4 %) |
+  | 5.4 gate, A2 (ms) | 2.469-2.860 against 4.450-4.528 | 3.280-3.559 against 5.386-5.482 |
+  | engine's own work B / C (ms) | 0.150-0.176 / 0.537-0.623 | 0.146-0.165 / 0.207-0.225 |
+  | frame CPU B / C / A (ms) | 0.664-0.750 / 10.67-12.03 / 13.70-16.21 | 0.462-0.494 / 0.945-1.007 / 1.274-1.365 |
+  | cost table, highest `low` / `medium` | x2.87-3.19 / x8.48-8.92 | x2.90-3.14 / x6.17-6.75 |
+  | `CompatPerf` HTML stage / cold compile / cache hit (targets 3, 8, 0.1 ms) | 2.260-2.417 / 5.790-6.307 / 0.025 ms | 2.294-2.418 / 5.935-7.302 / 0.025-0.026 ms |
+  | `CompatPerf` memory kept (target 4 x) | 3.81 x | 3.81 x |
+  | `CompatCssPerf` 50 KB sheet / page rules / UA sheet (targets 4, 4, 1 ms) | 2.958-3.166 / 2.917-3.002 / 0.721-0.898 | 2.965-3.798 / 2.820-3.141 / 0.717-0.816 |
+
+- `JOBS=10 tools/htmlui/run-rmlui-tests.sh --docker`: 426 test cases, 19,721 assertions, all
+  passing, no warning.
+- `JOBS=10 tools/build.sh htmlui-editor-tests`: 63 tests, 62 passed, 1 skipped
+  (`GoogleFonts.LiveNetwork`, only with `HTMLUI_LIVE_NETWORK=1`).
+- `JOBS=10 tools/build.sh web`: exit 0, 1,117 steps, 0 warnings.
+- `flock /root/jasper/android.lock env JOBS=10 tools/build.sh android`: BUILD SUCCESSFUL, the APK,
+  0 warnings.
+- MCP suite (`LP_NUM_THREADS=2 ... run_tests.py -j 4`, 43 files): run 1, 487 passed, 0 failed, 5
+  skipped, 61 min; run 2, 487 passed, 0 failed, 5 skipped, 62 min. Every `html_ui` test ran (LuaLS and clangd installed); `test_html_ui_examples.py` 56 (the examples' `assert_ui` at every manifest viewport), `test_generators.py` 2 (every generator `--check`), `test_html_ui_effects.py` 12, `test_protocol.py` 12, `test_ui_anchors.py` 7, `test_checks.py` 12, `test_autosync.py` 13, `test_stubs.py` 12, `test_html_ui_docs.py` 13 in each run. The 5 skips are the slow-build/slow-test gates, run on their own
+  below. `[budget] 135 tools, 99863 chars` (cap 99,800 + 837).
+- Slow tests (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1`, `-j 1`): `test_build.py`, `test_play.py`,
+  `test_playctl.py`, `test_html_ui_export.py`, `test_html_ui_effects_export.py`: 43 passed, 0 failed, 0 skipped, 59 min, among them `test_desktop_build_and_run` (682 s), `test_desktop_player_driven` (714 s), `test_desktop_build_runs_the_document` (1061 s), `test_desktop_player_draws_the_effects` (989 s) and `test_cpp_build_failure_reported`.
+- `check_effect_shaders.sh`: every built-in effect variant (`uieffect/all`: 124 variants, a paint effect in both forms, a filter effect and `_bright` in the filter form) for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS, MSL 2.1 iOS and SPIR-V, one file per variant per backend, exit 0, then `ui-effects --validate` (PASS). `ui-effects --validate`: "83 effects; every effect compiles in both forms and matches its manifest", exit 0.
+- Generators: `gen_rcss_properties.py`, `gen_effect_manifests.py`, `gen_effects_docs.py` (83 effects), `gen_testcard.py`, `kit_reference.py`, `xcode_sync_compat.py`, `xcode_sync_effects.py`, `xcode_sync_rmlui.py`, `xcode_add_lexbor.py` with `--check`: all current, exit 0. `gen_html_ui_support.py --check`: current (1878 features, 105 codes). `gen_tool_docs.py`:
+  TOOLS.md regenerated (135 tools): identical but for the editor version in its first line.
+- `render-reference.mjs --all --check`: the 8 phase-2 pages, 24 files, all the same. `--fixtures all --check --jobs 4`: 494 files of the browser-parity fixtures (the phase-3, phase-4 and `property/*` fixtures) and the 1,522 Taffy fixtures' boxes, all the same as committed.
+
+### 7.5 Not verified here
+
+Windows, macOS and iOS cannot be built on this host: their effect variants (HLSL 5, MSL 2.1 for
+macOS and iOS) are compiled for every built-in effect by `check_effect_shaders.sh`, not run. The
+Xcode project's source lists are checked by `xcode_sync_effects.py --check` and the compat, RmlUi
+and lexbor scripts.
+
 
 ## Appendix A: Effect catalogue
 
