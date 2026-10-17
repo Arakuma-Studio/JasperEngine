@@ -116,8 +116,10 @@ namespace jasperengine{
         // --- p1-render (UIDocumentSystemRender.cpp, §3.5) ---
         // camera-aware composite: UI and orthographic cameras draw the canvas rectangle in world
         // space (the editor's Scene view shows it in place), perspective ones fill the viewport
-        // like drawComposite(PipelineType, bool)
-        void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY);
+        // like drawComposite(PipelineType, bool). msaaSamples: the camera pass's sample count when
+        // colorPipeline is PIP_MSAA* (the post-processed camera's multisampled scene target)
+        void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
+                           int msaaSamples = 1);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
         // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
         // HtmlUIContext::setPreferredSampleCount for the editor's project setting and the

@@ -171,12 +171,14 @@ TEST(RenderP1Test, PipelineStateHashCoversEveryField){
         }
     }
 
-    // the camera-pass formats of the fixed pipeline types
+    // the camera-pass formats of the fixed pipeline types (offscreen camera passes have a
+    // depth-stencil attachment since the shader library's stencil work; BlendStateTest
+    // compares every type with its pipeline description)
     EXPECT_TRUE(targetFormatFor(PIP_DEFAULT).swapchain);
     EXPECT_TRUE(targetFormatFor(PIP_DEFAULT_NODEPTH).swapchain);
     const RenderTargetFormat rtt = targetFormatFor(PIP_RTT_NODEPTH);
     EXPECT_FALSE(rtt.swapchain);
-    EXPECT_EQ(rtt.depth, DepthStencilFormat::DEPTH);
+    EXPECT_EQ(rtt.depth, DepthStencilFormat::DEPTH_STENCIL);
     EXPECT_EQ(rtt.sampleCount, 1);
 }
 

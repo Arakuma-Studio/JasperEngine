@@ -109,7 +109,9 @@ namespace jasperengine {
         // the quad (-1,1) top-left .. (1,-1) bottom-right (a world-space canvas); without it
         // the quad fills the viewport (flipped on Y for offscreen GL passes)
         void composite(PipelineType colorPipeline, bool flipY);
-        void composite(PipelineType colorPipeline, const Rml::Matrix4f& clipFromQuad);
+        // msaaSamples: the sample count of the camera pass when colorPipeline is PIP_MSAA* (the
+        // post-processed camera's multisampled scene target)
+        void composite(PipelineType colorPipeline, const Rml::Matrix4f& clipFromQuad, int msaaSamples = 1);
         void releaseGpuResources();      // target + renderer->releaseGpuResources()
         bool hasRenderedFrame() const;   // at least one successful render() since (re)creation
         float getPixelRatio() const;

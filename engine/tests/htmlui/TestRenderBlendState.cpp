@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // Configurable blend state of the render abstraction (ObjectRender::setBlendState): without
-// one, every pipeline type is described exactly as before; with one, only the color
-// pipelines change their blending. CPU only (SokolObject::describePipeline).
+// one, every pipeline type is described as the render state model makes it (the shader
+// library's RenderState, SokolObject::makePipelineDesc); with one, only the color pipelines
+// change their blending. CPU only (SokolObject::describePipeline).
 
 #include "Engine.h"
 #include "render/ObjectRender.h"
+#include "render/PipelineState.h"
 
 #include <gtest/gtest.h>
 
@@ -16,15 +18,21 @@ namespace {
 
     const PipelineType allTypes[] = {
         PIP_DEFAULT, PIP_RTT, PIP_DEPTH, PIP_RTT_INVERT, PIP_GBUFFER, PIP_SHADOW_DEPTH,
-        PIP_DEFAULT_NODEPTH, PIP_RTT_NODEPTH, PIP_ZPREPASS, PIP_ZPREPASS_RTT
+        PIP_DEFAULT_NODEPTH, PIP_RTT_NODEPTH, PIP_ZPREPASS, PIP_ZPREPASS_RTT,
+        PIP_EFFECT, PIP_POST, PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA
     };
 
+    // the types a BlendState applies to (PIP_POST, the bloom chain's, is never blended)
     bool isColorPipeline(PipelineType type){
-        return type == PIP_DEFAULT || type == PIP_DEFAULT_NODEPTH || type == PIP_RTT || type == PIP_RTT_NODEPTH || type == PIP_RTT_INVERT;
+        return type == PIP_DEFAULT || type == PIP_DEFAULT_NODEPTH || type == PIP_RTT || type == PIP_RTT_NODEPTH || type == PIP_RTT_INVERT ||
+               type == PIP_MSAA || type == PIP_MSAA_NODEPTH || type == PIP_EFFECT;
     }
 
-    // what makePipelineDesc produced before blend states existed, for an object loaded
-    // without face culling and with depth writes (SokolObject defaults)
+    // what makePipelineDesc produces for an object loaded with the default RenderState (no
+    // face culling, depth writes, less-equal, alpha blend; SokolObject defaults, one sample
+    // for the PIP_MSAA* types before an endLoad gives the count). Offscreen colour passes
+    // that draw meshes have a depth-stencil attachment, effect targets a depth-only one, the
+    // bloom chain's SRGB8A8 targets none
     struct Expected {
         bool blend;
         sg_blend_factor srcRGB, dstRGB, srcAlpha, dstAlpha;
@@ -45,7 +53,8 @@ namespace {
         case PIP_ZPREPASS:
             return {false, none, none, none, none, SG_COLORMASK_NONE, SG_COMPAREFUNC_LESS_EQUAL, true, _SG_PIXELFORMAT_DEFAULT, _SG_PIXELFORMAT_DEFAULT, 0, 0};
         case PIP_ZPREPASS_RTT:
-            return {false, none, none, none, none, SG_COLORMASK_NONE, SG_COMPAREFUNC_LESS_EQUAL, true, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_RGBA8, 1, 0};
+        case PIP_ZPREPASS_MSAA:
+            return {false, none, none, none, none, SG_COLORMASK_NONE, SG_COMPAREFUNC_LESS_EQUAL, true, SG_PIXELFORMAT_DEPTH_STENCIL, SG_PIXELFORMAT_RGBA8, 1, 0};
         case PIP_SHADOW_DEPTH:
             return {false, none, none, none, none, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_LESS_EQUAL, true, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_NONE, 1, 0};
         case PIP_GBUFFER:
@@ -56,9 +65,15 @@ namespace {
             return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, none, none, SG_COLORMASK_RGB, SG_COMPAREFUNC_ALWAYS, false, _SG_PIXELFORMAT_DEFAULT, _SG_PIXELFORMAT_DEFAULT, 0, 0};
         case PIP_RTT:
         case PIP_RTT_INVERT:
-            return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_COLORMASK_RGBA, SG_COMPAREFUNC_LESS_EQUAL, true, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_RGBA8, 1, 0};
+        case PIP_MSAA:
+            return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_COLORMASK_RGBA, SG_COMPAREFUNC_LESS_EQUAL, true, SG_PIXELFORMAT_DEPTH_STENCIL, SG_PIXELFORMAT_RGBA8, 1, 0};
         case PIP_RTT_NODEPTH:
-            return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_COLORMASK_RGBA, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_RGBA8, 1, 0};
+        case PIP_MSAA_NODEPTH:
+            return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_COLORMASK_RGBA, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_DEPTH_STENCIL, SG_PIXELFORMAT_RGBA8, 1, 0};
+        case PIP_EFFECT:
+            return {true, SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_DEPTH, SG_PIXELFORMAT_RGBA8, 1, 0};
+        case PIP_POST:
+            return {false, none, none, none, none, _SG_COLORMASK_DEFAULT, SG_COMPAREFUNC_ALWAYS, false, SG_PIXELFORMAT_NONE, SG_PIXELFORMAT_SRGB8A8, 1, 0};
         }
         return {};
     }
@@ -76,15 +91,24 @@ namespace {
         if (desc.colors[0].pixel_format != e.colorFormat || desc.sample_count != e.sampleCount || desc.color_count != e.colorCount)
             return ::testing::AssertionFailure() << "formats of type " << int(type);
         // only the z-prepass pipelines cull without face culling at load (prepassFaceCulling
-        // defaults to true), and an offscreen one winds the other way on GL
+        // defaults to true). Every type sets its winding (it decides gl_FrontFacing): the load's
+        // (CCW) for the swapchain and depth-only passes, the other way on GL for an offscreen
+        // pass (Y-flipped there), once more for a planar reflection
         sg_cull_mode cull = _SG_CULLMODE_DEFAULT;
-        sg_face_winding winding = _SG_FACEWINDING_DEFAULT;
-        if (type == PIP_ZPREPASS){
+        if (type == PIP_ZPREPASS || type == PIP_ZPREPASS_RTT || type == PIP_ZPREPASS_MSAA)
             cull = SG_CULLMODE_BACK;
-            winding = SG_FACEWINDING_CCW;
-        }else if (type == PIP_ZPREPASS_RTT){
-            cull = SG_CULLMODE_BACK;
-            winding = Engine::isOpenGL() ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+        const sg_face_winding offscreen = Engine::isOpenGL() ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+        sg_face_winding winding = SG_FACEWINDING_CCW;
+        switch (type){
+        case PIP_ZPREPASS_RTT: case PIP_ZPREPASS_MSAA: case PIP_RTT: case PIP_RTT_NODEPTH: case PIP_MSAA: case PIP_MSAA_NODEPTH:
+        case PIP_EFFECT: case PIP_POST:
+            winding = offscreen;
+            break;
+        case PIP_RTT_INVERT:
+            winding = (offscreen == SG_FACEWINDING_CW) ? SG_FACEWINDING_CCW : SG_FACEWINDING_CW;
+            break;
+        default:
+            break;
         }
         if (desc.cull_mode != cull || desc.face_winding != winding)
             return ::testing::AssertionFailure() << "face state of type " << int(type);
@@ -157,7 +181,7 @@ TEST(BlendStateTest, PremultipliedOverride){
             EXPECT_EQ(desc.depth.write_enabled, reference.depth.write_enabled) << int(type);
             EXPECT_EQ(desc.colors[0].pixel_format, reference.colors[0].pixel_format) << int(type);
         }else{
-            // depth, shadow, G-buffer and z-prepass pipelines ignore it
+            // depth, shadow, G-buffer, z-prepass and bloom-chain pipelines ignore it
             EXPECT_TRUE(sameDescription(desc, reference)) << int(type);
         }
     }
@@ -211,4 +235,27 @@ TEST(BlendStateTest, CustomFactorsAndOperations){
     EXPECT_EQ(blend.src_factor_alpha, SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA);
     EXPECT_EQ(blend.dst_factor_alpha, SG_BLENDFACTOR_SRC_COLOR);
     EXPECT_EQ(blend.op_alpha, SG_BLENDOP_SUBTRACT);
+}
+
+// targetFormatFor (the HTML UI's camera-pass formats) says what the fixed types are built with
+TEST(BlendStateTest, TargetFormatsMatchPipelines){
+    ObjectRender object;
+    object.beginLoad(PrimitiveType::TRIANGLES);
+    for (PipelineType type : {PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT, PIP_ZPREPASS_RTT, PIP_EFFECT, PIP_POST,
+                              PIP_MSAA, PIP_MSAA_NODEPTH, PIP_ZPREPASS_MSAA}){
+        const sg_pipeline_desc desc = object.backend.describePipeline(type);
+        const RenderTargetFormat format = targetFormatFor(type);
+        EXPECT_FALSE(format.swapchain) << int(type);
+        const sg_pixel_format depth = format.depth == DepthStencilFormat::DEPTH_STENCIL ? SG_PIXELFORMAT_DEPTH_STENCIL :
+                                      format.depth == DepthStencilFormat::DEPTH ? SG_PIXELFORMAT_DEPTH : SG_PIXELFORMAT_NONE;
+        EXPECT_EQ(desc.depth.pixel_format, depth) << int(type);
+        EXPECT_EQ(desc.colors[0].pixel_format, format.color == ColorFormat::SRGB8A8 ? SG_PIXELFORMAT_SRGB8A8 : SG_PIXELFORMAT_RGBA8) << int(type);
+        EXPECT_EQ(desc.sample_count, format.sampleCount) << int(type);
+    }
+    for (PipelineType type : {PIP_DEFAULT, PIP_DEFAULT_NODEPTH, PIP_ZPREPASS})
+        EXPECT_TRUE(targetFormatFor(type).swapchain) << int(type);
+    // the multisampled scene target's count
+    EXPECT_EQ(targetFormatFor(PIP_MSAA_NODEPTH, 4).sampleCount, 4);
+    EXPECT_EQ(targetFormatFor(PIP_MSAA_NODEPTH, 4).depth, DepthStencilFormat::DEPTH_STENCIL);
+    EXPECT_EQ(targetFormatFor(PIP_RTT_NODEPTH, 4).sampleCount, 1);
 }

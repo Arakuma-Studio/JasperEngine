@@ -14430,7 +14430,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 #endif
     if (drawDocuments){
         camera.render.applyScissor(colorPassViewport);
-        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera));
+        scene->getSystem<UIDocumentSystem>()->drawComposite(camera, cameraTransform, colorPip, isRenderingFlipped(camera), passMsaa);
     }
 
     camera.render.endRenderPass();

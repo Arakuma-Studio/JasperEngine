@@ -2190,7 +2190,8 @@ bool RmlRenderer::loadPipelines(){
         return false;
     }
 
-    if (!loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
+    if (!loadGeometryObject(compositeMsaaObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
+        !loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
         !loadGeometryObject(gradientObject, gradientShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite)){
         Log::error("[HTML UI] could not load the HTML UI geometry programs");
         destroyPipelineObjects();
@@ -2336,17 +2337,31 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     return drawComposite(source, compositePipeline, clipFromQuad);
 }
 
-bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad){
+bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
+                                int msaaSamples){
     if (!isReady() || !source.isCreated())
         return false;
 
-    if (!compositeObject.beginDraw(compositePipeline))
+    ObjectRender* object = &compositeObject;
+    if (compositePipeline == PIP_MSAA_NODEPTH || compositePipeline == PIP_MSAA){
+        // the fixed composite's state (premultiplied, no depth, no culling) at the target's
+        // sample count
+        PipelineState state;
+        state.target = targetFormatFor(PIP_MSAA_NODEPTH, msaaSamples);
+        state.blend = BlendMode::PREMULTIPLIED;
+        state.depthCompare = CompareFunc::ALWAYS;
+        state.depthWrite = false;
+        object = &compositeMsaaObject;
+        if (!object->beginDraw(state))
+            return false;
+    }else if (!compositeObject.beginDraw(compositePipeline)){
         return false;
+    }
 
-    compositeObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &source);
+    object->addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &source);
     HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
-    compositeObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
-    compositeObject.draw(0, 6, 1);
+    object->applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+    object->draw(0, 6, 1);
 
     return true;
 }
@@ -2412,6 +2427,7 @@ void RmlRenderer::destroyPipelineObjects(){
     geometryObject.destroy();
     gradientObject.destroy();
     compositeObject.destroy();
+    compositeMsaaObject.destroy();
     for (PostProgram& program : postPrograms){
         program.object.destroy();
     }
