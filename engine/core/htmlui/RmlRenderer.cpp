@@ -1033,9 +1033,9 @@ void RmlRenderer::endPass(bool resolve){
     // honours the scissor box: what may differ is resolved (the result of a full resolve), or
     // nothing when the layer is not read yet (a later pass resolves it). The other backends
     // resolve the whole render area at every pass end (nothing is tracked there).
-    if (activeFramebuffer && Engine::isOpenGL() && activeFramebuffer->getRender().getSampleCount() > 1){
+    if (activeFramebuffer && Engine::isOpenGL() && activeSamples > 1){
         TargetRegions& r = regionsOf(*activeFramebuffer);
-        const Rml::Rectanglei full = fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight());
+        const Rml::Rectanglei full = activeFull;
         const Rml::Rectanglei region = resolve ? intersect(r.stale, full) : Rml::Rectanglei::MakeInvalid();
         applyPassScissor(isEmpty(region) ? Rml::Rectanglei::FromSize(Rml::Vector2i(0, 0)) : region);
         if (resolve)
@@ -1061,18 +1061,23 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     activeKind = kind;
     activeIndex = index;
     activeFramebuffer = &framebuffer;
+    activeSamples = samplesOf(framebuffer, kind);
     // an MSAA layer on GL: what its resolve image may lack is tracked (the other backends resolve
     // the whole render area at every pass end)
-    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && framebuffer.getRender().getSampleCount() > 1) ? &regionsOf(framebuffer)
-                                                                                                                    : nullptr;
+    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && activeSamples > 1) ? &regionsOf(framebuffer) : nullptr;
     stats.passes++;
 
-    // the viewport and the scissor, nothing else: pipelines are applied per draw
-    const Rml::Rectanglei full = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
-    appliedViewport = Rml::Rectanglei::MakeInvalid();
-    appliedScissor = Rml::Rectanglei::MakeInvalid();
-    applyPassViewport(full);
-    applyPassScissor(full);
+    // the viewport and the scissor, nothing else: pipelines are applied per draw (the layers and
+    // post-process targets have the render target's size)
+    const Rml::Rectanglei full = ((kind == TargetKind::LAYER || kind == TargetKind::POSTPROCESS) && target)
+                                 ? fullRect(target->getWidth(), target->getHeight())
+                                 : fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
+    activeFull = full;
+    // sg_begin_pass sets both to the whole framebuffer on every backend (sokol_gfx.h: "sg_begin_pass()
+    // will reset both the viewport and scissor rectangles"): applying them again was two backend
+    // calls a pass, at once overridden by the first draw's
+    appliedViewport = full;
+    appliedScissor = full;
 
     // a clear changes the samples where they held something: the resolve image differs there
     if (activeRegions && colorLoad == LoadAction::CLEAR){
@@ -1083,14 +1088,23 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
 }
 
 RmlRenderer::TargetRegions& RmlRenderer::regionsOf(const Framebuffer& framebuffer){
+    // the last two looked up (a pass's end and the next one's start ask for them): no hash lookup
+    // on memory the driver has evicted (references into the map stay valid until it is cleared)
+    for (int i = 0; i < 2; i++){
+        if (regionsCache[i].framebuffer == &framebuffer)
+            return *regionsCache[i].regions;
+    }
     auto it = regions.find(&framebuffer);
-    if (it != regions.end())
-        return it->second;
-    // not seen since it was made: anything may be in it
-    TargetRegions unknown;
-    unknown.content = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
-    unknown.stale = unknown.content;
-    return regions.emplace(&framebuffer, unknown).first->second;
+    if (it == regions.end()){
+        // not seen since it was made: anything may be in it
+        TargetRegions unknown;
+        unknown.content = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
+        unknown.stale = unknown.content;
+        it = regions.emplace(&framebuffer, unknown).first;
+    }
+    regionsCache[1] = regionsCache[0];
+    regionsCache[0] = RegionsCacheEntry{&framebuffer, &it->second};
+    return it->second;
 }
 
 void RmlRenderer::noteColorWrite(){
@@ -1107,18 +1121,27 @@ void RmlRenderer::noteColorWrite(){
     activeRegions->stale = unite(activeRegions->stale, written);
 }
 
+int RmlRenderer::samplesOf(Framebuffer& framebuffer, TargetKind kind) const{
+    if (kind == TargetKind::LAYER && target)
+        return target->getSampleCount();
+    if (kind == TargetKind::POSTPROCESS)
+        return 1;
+    return framebuffer.getRender().getSampleCount();
+}
+
 void RmlRenderer::ensureResolved(Framebuffer& layer){
-    if (layer.getRender().getSampleCount() <= 1)
-        return;
     if (activeFramebuffer == &layer){
-        endPass(true);
+        if (activeSamples > 1)
+            endPass(true);
         return;
     }
+    int index = -1;
+    const TargetKind kind = kindOf(layer, index);
+    if (samplesOf(layer, kind) <= 1)
+        return;
     if (!Engine::isOpenGL() || isEmpty(regionsOf(layer).stale))
         return;
     // a pass that only resolves
-    int index = -1;
-    const TargetKind kind = kindOf(layer, index);
     if (beginPass(layer, kind, index, LoadAction::LOAD, LoadAction::LOAD))
         endPass(true);
 }
@@ -2216,8 +2239,9 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
     frameNumber = SystemRender::getFrameCount();
-    // the effects' per-frame state (phase 5; once per sokol frame)
+    // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
     htmlui::EffectRuntime::get().beginFrame();
+    effects->beginFrame();
 
     // per-frame statistics; the geometry counts are current
     const uint32_t geometryLive = stats.geometryLive;
@@ -2242,6 +2266,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     deferred = DeferredComposite();
     if (regionsGeneration != target->getGeneration()){
         regions.clear();
+        regionsCache[0] = regionsCache[1] = RegionsCacheEntry();
         regionsGeneration = target->getGeneration();
     }
 

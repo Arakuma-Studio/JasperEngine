@@ -92,6 +92,10 @@ void EffectRenderer::releaseGpuResources(){
     brightShader.reset();
 }
 
+void EffectRenderer::beginFrame(){
+    shaderGeneration = ShaderPool::getCustomShaderGeneration();
+}
+
 Rml::CompiledShaderHandle EffectRenderer::compileShader(const Rml::Dictionary& parameters){
     auto it = parameters.find("instance");
     if (it == parameters.end() || it->second.GetType() != Rml::Variant::VOIDPTR)
@@ -171,7 +175,7 @@ EffectRenderer::Program* EffectRenderer::programFor(EffectInstance& instance, bo
     // The variant's key is resolved once per custom-shader generation (custom ids are re-resolved
     // when it changes; a manifest is never changed in place): looking it up by name every draw cost
     // the registry's lock, the name's string and its hash
-    const uint32_t generation = ShaderPool::getCustomShaderGeneration();
+    const uint32_t generation = shaderGeneration;
     const int8_t form = filterForm ? 1 : 0;
     if (instance.shader && instance.customShaderGeneration == generation && instance.shaderForm == form){
         // the program it drew with last: still this renderer's, for this shader, which is still the
@@ -220,11 +224,14 @@ float EffectRenderer::scaledPx(EffectInstance& instance, const EffectScaledParam
             const EffectValue& v = instance.snapshot->values[index];
             if (v.type == EffectParamType::Length && instance.element){
                 EffectLengthContext context;
-                context.fontSize = instance.element->GetComputedValues().font_size();
-                if (Rml::ElementDocument* document = instance.element->GetOwnerDocument())
-                    context.rootFontSize = document->GetComputedValues().font_size();
-                if (Rml::Context* rml = instance.element->GetContext())
-                    context.viewport = Vector2((float)rml->GetDimensions().x, (float)rml->GetDimensions().y);
+                // the font sizes and the viewport only for the units that read them
+                if (v.length.unit != EffectLength::Unit::Px && v.length.unit != EffectLength::Unit::Percent){
+                    context.fontSize = instance.element->GetComputedValues().font_size();
+                    if (Rml::ElementDocument* document = instance.element->GetOwnerDocument())
+                        context.rootFontSize = document->GetComputedValues().font_size();
+                    if (Rml::Context* rml = instance.element->GetContext())
+                        context.viewport = Vector2((float)rml->GetDimensions().x, (float)rml->GetDimensions().y);
+                }
                 context.areaShorterSide = std::min(instance.areaSize.x, instance.areaSize.y);
                 value = EffectValueParser::resolveLength(v.length, context);
             }else{
@@ -240,12 +247,29 @@ void EffectRenderer::packParams(EffectInstance& instance, Program& program){
     if (block.slot < 0 || !instance.snapshot || !instance.element)
         return;
     Rml::Element* element = instance.element;
+    const EffectManifest& m = *instance.manifest;
+    // what the values read besides the area, found once: the font sizes and the viewport only
+    // for a length in em, rem or a viewport unit, the element's colour only for currentColor
+    if (instance.paramsContext < 0){
+        int8_t needs = 0;
+        for (size_t i = 0; i < m.params.size() && i < instance.snapshot->values.size(); i++){
+            const EffectValue& value = instance.snapshot->values[i];
+            if (m.params[i].type == EffectParamType::Length && value.length.unit != EffectLength::Unit::Px &&
+                value.length.unit != EffectLength::Unit::Percent)
+                needs |= 1;
+            if (m.params[i].type == EffectParamType::Color && value.currentColor)
+                needs |= 2;
+        }
+        instance.paramsContext = needs;
+    }
     EffectLengthContext lengths;
-    lengths.fontSize = element->GetComputedValues().font_size();
-    if (Rml::ElementDocument* document = element->GetOwnerDocument())
-        lengths.rootFontSize = document->GetComputedValues().font_size();
-    if (Rml::Context* context = element->GetContext())
-        lengths.viewport = Vector2((float)context->GetDimensions().x, (float)context->GetDimensions().y);
+    if (instance.paramsContext & 1){
+        lengths.fontSize = element->GetComputedValues().font_size();
+        if (Rml::ElementDocument* document = element->GetOwnerDocument())
+            lengths.rootFontSize = document->GetComputedValues().font_size();
+        if (Rml::Context* context = element->GetContext())
+            lengths.viewport = Vector2((float)context->GetDimensions().x, (float)context->GetDimensions().y);
+    }
     lengths.areaShorterSide = std::min(instance.areaSize.x, instance.areaSize.y);
     const float key[6] = {instance.areaSize.x, instance.areaSize.y, lengths.fontSize, lengths.rootFontSize, lengths.viewport.x, lengths.viewport.y};
     if (instance.paramsLayout == &block && sameKey(key, instance.paramsKey) && instance.params.size() == block.data.size())
@@ -254,8 +278,7 @@ void EffectRenderer::packParams(EffectInstance& instance, Program& program){
     instance.paramsLayout = &block;
     instance.params.assign(block.data.size(), 0);
 
-    const EffectManifest& m = *instance.manifest;
-    const Rml::Colourb elementColor = element->GetComputedValues().color();
+    const Rml::Colourb elementColor = (instance.paramsContext & 2) ? element->GetComputedValues().color() : Rml::Colourb();
     for (size_t i = 0; i < m.params.size() && i < instance.snapshot->values.size(); i++){
         const EffectParamDef& def = m.params[i];
         const EffectValue& value = instance.snapshot->values[i];
@@ -415,7 +438,7 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     f.layer[1] = (float)layer.y;
     f.layer[2] = layer.x > 0 ? 1.f / (float)layer.x : 0.f;
     f.layer[3] = layer.y > 0 ? 1.f / (float)layer.y : 0.f;
-    const Rml::Vector2f areaOrigin = element->GetAbsoluteOffset(Rml::BoxArea::Border) + instance->areaOffset;
+    const Rml::Vector2f areaOrigin = instance->areaOrigin;   // prepare's, this frame
     const Rml::Vector2f p0 = areaOrigin;
     const float step = 64.f;
     Rml::Vector2f l0 = p0, l1 = p0 + Rml::Vector2f(step, 0.f), l2 = p0 + Rml::Vector2f(0.f, step);
@@ -486,5 +509,10 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     context.swap();
     runtime.mutableStats().filterPasses++;
     runtime.mutableFrameStats().filterPasses++;
+    // a running clock redraws the effect every frame, as a paint effect's decorator asks (a
+    // filter is compiled once per reload: a view that redraws on demand, the editor's, stopped
+    // animating a document whose effects were all filters)
+    if (!EffectClock::isFixed())
+        runtime.requestRedraw(instance->context ? instance->context : element->GetContext());
     return true;
 }

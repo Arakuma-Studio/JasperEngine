@@ -93,6 +93,9 @@ int EffectRuntime::GetEventClasses(){
 }
 
 void EffectRuntime::beginFrame(){
+    // every context render (a context may render twice in a sokol frame, Context::Update
+    // clearing its next-update request in between)
+    renders++;
     const uint64_t key = SystemRender::getFrameCount();
     if (key == frameKey)
         return;
@@ -109,6 +112,7 @@ void EffectRuntime::countReinstance(){
 
 void EffectRuntime::onPointerMove(Rml::Context* context, Rml::Vector2f contextPx){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.position = contextPx;
@@ -117,6 +121,7 @@ void EffectRuntime::onPointerMove(Rml::Context* context, Rml::Vector2f contextPx
 
 void EffectRuntime::onPointerButton(Rml::Context* context, Rml::Vector2f contextPx, bool down){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.position = contextPx;
@@ -137,6 +142,7 @@ void EffectRuntime::onPointerButton(Rml::Context* context, bool down){
 
 void EffectRuntime::onPointerLeave(Rml::Context* context){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.valid = false;
@@ -145,6 +151,7 @@ void EffectRuntime::onPointerLeave(Rml::Context* context){
 
 void EffectRuntime::setTestPointer(Rml::Context* context, std::optional<Rml::Vector2f> contextPx, bool down, float sincePress){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     p.testOverride = true;
     p.valid = contextPx.has_value();
     if (contextPx)
@@ -160,6 +167,7 @@ void EffectRuntime::setTestPointer(Rml::Context* context, std::optional<Rml::Vec
 
 void EffectRuntime::setTestTrail(Rml::Context* context, const std::vector<Rml::Vector4f>& samples){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     p.testTrail = true;
     p.trail = samples;
 }
@@ -222,6 +230,7 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
         instance = std::make_unique<EffectInstance>();
     }
     instance->alive = true;
+    instance->context = element ? element->GetContext() : nullptr;
     instance->manifest = &manifest;
     instance->filterForm = filterForm;
     instance->element = element;
@@ -257,6 +266,14 @@ void EffectRuntime::release(EffectInstance* instance){
     frameTotals.liveInstances = live.size();
 }
 
+void EffectRuntime::requestRedraw(Rml::Context* context){
+    if (!context || (context == redrawContext && renders == redrawRender))
+        return;
+    context->RequestNextUpdate(0);
+    redrawContext = context;
+    redrawRender = renders;
+}
+
 bool EffectRuntime::isLive(const EffectInstance* instance) const{
     // every handle's instance is the runtime's memory (live or released, see `released`)
     return instance && instance->alive;
@@ -280,6 +297,9 @@ void EffectRuntime::OnElementDestroy(Rml::Element* element){
 
 void EffectRuntime::OnContextDestroy(Rml::Context* context){
     pointers.erase(context);
+    pointerCacheValid = false;
+    if (redrawContext == context)
+        redrawContext = nullptr;
 }
 
 void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* /*document*/){
@@ -289,6 +309,8 @@ void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* /*document*/){
 void EffectRuntime::OnShutdown(){
     elements.clear();
     pointers.clear();
+    pointerCacheValid = false;
+    redrawContext = nullptr;
 }
 
 void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& state, double now, float dt, bool fixed,
@@ -447,13 +469,19 @@ void EffectRuntime::prepare(EffectInstance& instance){
     instance.radii[2] = std::max(0.f, std::min(radius[2].x - edges[1], radius[2].y - edges[2]));
     instance.radii[3] = std::max(0.f, std::min(radius[3].x - edges[3], radius[3].y - edges[2]));
     const Rml::Vector2f areaOrigin = element->GetAbsoluteOffset(Rml::BoxArea::Border) + instance.areaOffset;
+    instance.areaOrigin = areaOrigin;
 
     const double now = EffectClock::now();
     const bool fixed = EffectClock::isFixed();
     EffectElementState& state = *instance.state;
-    Rml::Context* context = element->GetContext();
-    auto pointerIt = pointers.find(context);
-    const PointerState* pointer = pointerIt != pointers.end() ? &pointerIt->second : nullptr;
+    Rml::Context* context = instance.context ? instance.context : element->GetContext();
+    if (!pointerCacheValid || pointerCacheContext != context){
+        auto pointerIt = pointers.find(context);
+        pointerCache = pointerIt != pointers.end() ? &pointerIt->second : nullptr;
+        pointerCacheContext = context;
+        pointerCacheValid = true;
+    }
+    const PointerState* pointer = pointerCache;
 
     float dt = 0.f;
     if (state.lastFrame != frame){

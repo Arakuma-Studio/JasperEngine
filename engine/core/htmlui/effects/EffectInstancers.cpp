@@ -310,6 +310,7 @@ namespace {
     struct DecoratorData {
         Rml::Geometry geometry;
         Rml::CompiledShader shader;
+        Rml::Context* context = nullptr;      // the element's, asked to redraw while the clock runs
     };
 
     float scaledLength(Rml::Element* element, const EffectParamsSnapshot& snapshot, const EffectScaledParam& scaled, Rml::Vector2f area){
@@ -537,6 +538,7 @@ Rml::DecoratorDataHandle EffectDecorator::GenerateElementData(Rml::Element* elem
     const EffectManifest& m = *snapshot->manifest;
 
     auto* data = new DecoratorData();
+    data->context = element->GetContext();
     EffectRuntime& runtime = EffectRuntime::get();
     EffectInstance* instance = runtime.acquire(element, m, false, snapshot, (int)paint_area);
     data->shader = renderManager->CompileShader("jfx", Rml::Dictionary{{"instance", Rml::Variant((void*)instance)}});
@@ -582,10 +584,8 @@ void EffectDecorator::RenderElement(Rml::Element* element, Rml::DecoratorDataHan
         return;
     data->geometry.Render(element->GetAbsoluteOffset(Rml::BoxArea::Border), {}, data->shader);
     // a running clock redraws the effect every frame (the editor redraws on GetNextUpdateDelay)
-    if (!EffectClock::isFixed()){
-        if (Rml::Context* context = element->GetContext())
-            context->RequestNextUpdate(0);
-    }
+    if (!EffectClock::isFixed())
+        EffectRuntime::get().requestRedraw(data->context);
 }
 
 // ---- the filter

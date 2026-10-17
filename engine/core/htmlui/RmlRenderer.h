@@ -307,6 +307,9 @@ namespace jasperengine {
             Rml::Rectanglei stale = Rml::Rectanglei::MakeInvalid();
         };
         TargetRegions& regionsOf(const Framebuffer& framebuffer);
+        // a target's sample count without asking its framebuffer object (the layers have the
+        // render target's, the post-process targets one)
+        int samplesOf(Framebuffer& framebuffer, TargetKind kind) const;
         // the open pass wrote colour within its viewport and scissor
         void noteColorWrite();
         // the layer's resolve image is current (before it is read): ends its pass with the resolve,
@@ -412,6 +415,13 @@ namespace jasperengine {
         Rml::Rectanglei appliedScissor;
 
         std::unordered_map<const Framebuffer*, TargetRegions> regions;
+        struct RegionsCacheEntry {
+            const Framebuffer* framebuffer = nullptr;
+            TargetRegions* regions = nullptr;
+        };
+        RegionsCacheEntry regionsCache[2];   // the last two regionsOf answers (cleared with regions)
+        int activeSamples = 1;               // the open pass's framebuffer's sample count
+        Rml::Rectanglei activeFull;          // and its full rectangle
         TargetRegions* activeRegions = nullptr;   // the open pass's, when it is an MSAA layer
         uint64_t regionsGeneration = 0;
 

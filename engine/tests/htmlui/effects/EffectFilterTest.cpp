@@ -203,3 +203,31 @@ TEST_F(EffectFilterTest, TheFilterRegionIsTheElements){
         EXPECT_GT(maxDifferenceIn(page, image, 20, 20, 340, 220), 32) << declaration;
     }
 }
+
+// A running clock redraws an animated filter every frame, as it does a paint effect: a view that
+// redraws only when its context asks (the editor's edit view, GetNextUpdateDelay) kept the first
+// frame of a document whose effects were all filters (a filter is compiled once per reload, the
+// only time it asked)
+TEST(EffectRedrawTest, AnAnimatedFilterAsksForTheNextUpdate){
+    EffectScene scene(320, 200, 1);
+    if (!scene.valid())
+        GTEST_SKIP() << "no GPU";
+    const EffectManifest* m = EffectRegistry::get().find("wave-distortion");
+    ASSERT_NE(m, nullptr);
+    ASSERT_TRUE(warmUpEffect(*m));
+    std::string error;
+    ASSERT_TRUE(scene.loadHtml("<!DOCTYPE html><html><head><style>\n"
+                               "html, body { margin: 0; width: 320px; height: 200px; background: #101218; }\n"
+                               "#fx { position: absolute; left: 20px; top: 20px; width: 200px; height: 120px; background: #e74c3c; "
+                               "filter: effect(wave-distortion); }\n"
+                               "</style></head><body><div id=\"fx\">FX</div></body></html>",
+                               &error)) << error;
+    TestImage image;
+    for (int i = 0; i < 3; i++){
+        ASSERT_TRUE(scene.capture(image));
+        EXPECT_EQ(scene.context()->GetNextUpdateDelay(), 0.0) << "capture " << i << ": the live clock animates the filter";
+    }
+    FixedEffectClock clock(1.5);
+    ASSERT_TRUE(scene.capture(image));
+    EXPECT_GT(scene.context()->GetNextUpdateDelay(), 0.0) << "a fixed effect clock animates nothing";
+}
