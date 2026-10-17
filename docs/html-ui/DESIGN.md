@@ -115,10 +115,14 @@ and keeps working; both systems coexist in the same scene.
   satisfies RmlUi's layers (filters, opacity, masks), stencil clip masks for
   `border-radius`/transforms, and sokol's Vulkan one-swapchain-pass rule: all UI passes run
   at the end of `RenderSystem::drawFramePasses()`, before any camera pass. Documents stay
-  inside the camera colour pass like component UI (post-process applies to them).
+  inside the camera colour pass like component UI (post-process applies to them: since the
+  shader library's post-processing, they are graded, antialiased and render-scaled with the
+  scene, never in-shader coloured; "Integration with origin/main" below).
 - Pipeline state is configurable in the render abstraction: a per-object `BlendState`
   override for fixed pipeline types (phase 0) and dynamic `PipelineState` pipelines through
-  a pipeline cache (phase 1: blend, stencil, write mask, target format, sample count).
+  a pipeline cache (phase 1: blend, stencil, write mask, target format, sample count). The
+  fixed types are built from the shader library's `RenderState` since the merge of
+  origin/main; both share one `BlendMode`.
 - Gradients, filters (blur, drop-shadow, color matrix) and masks are precompiled shader
   variants registered as `ShaderType`s (`HTMLUI`, `HTMLUI_GRADIENT`, `HTMLUI_POST`; engine
   shaders live in `engine/shaderlib/`, cross-compiled by the editor's ShaderBuilder; exports
@@ -237,6 +241,63 @@ binding (the sections above already say them in place):
 | 20 | Stateful GPU simulations of shaders.com (fluids, particles, reaction-diffusion, pixel sort, ...) are excluded: phase-5 effects are stateless on the GPU, their state (integrated clocks, pointer smoothing, the pointer trail, ripple events) lives on the CPU; cursor trail and cursor ripples are rebuilt on that model | phase 5 §2, §3.18 item 4 |
 | 21 | Effect colours are linear sRGB (CSS colours converted sRGB → linear in C++), not shaders.com's default p3-linear: hues differ slightly from their website by design | phase 5 §3.9, §3.18 item 5 |
 | 22 | Phase 2 behaviours extended for effect layers, not contradicted: `background-blend-mode` (normal, multiply, screen, plus-lighter) and gradient text (`background-clip: text`, the internal `-jfx-text-fill` filter list, fork feature `TextFillFilter`) are exact for `effect()` layers; phase 2's reports and solid-colour approximation stay for gradient and `url()` layers. With the fork's native background layers effects are image layers of `background-image`/`mask-image`, not `decorator` entries | phase 5 §3.2, §3.18 item 7, §4.1 "as implemented" |
+| 23 | Merge of origin/main (shader library): the agent guide's HTML/CSS UI section is condensed (the library's test caps the guide at 16 KB; the UI tools' shared rules live in `jasper://docs/html-ui`), and the tool descriptions are shortened so the library's five new tools fit the total cap of phase 4/5 (no cap raised); the frame order and render-state model of "Integration with origin/main" | phase 4 §3.8.3, §3.6.7; phase 5 §3.13; this file, "Integration with origin/main" |
+
+## Integration with origin/main (shader library)
+
+On 17 October 2026 GitHub's `main`, which had merged the shader-library project on 14 October
+(phases 1-4: `docs/superpowers/specs/2026-10-10-shader-library-phase{1,2,3,4}-design.md`,
+`docs/shaders/`), was merged into the HTML UI work (`hui/sync-origin`). Both sides keep every
+feature; what the merge decided:
+
+- **Render state.** The fixed pipeline types are built from the library's `RenderState`
+  (`ObjectRender::endLoad(pipelines, state, msaaSamples)`: blend, cull, depth, bias, stencil,
+  colour mask) with its new types `PIP_EFFECT`, `PIP_POST`, `PIP_MSAA*`; a phase-0 `BlendState`
+  set on an object replaces the state's blend on the colour types. One `BlendMode` (`Render.h`)
+  serves `RenderState` and the HTML UI's `PipelineState` (the library's `ADDITIVE`/`MULTIPLY`
+  beside the effects' `*_PREMULTIPLIED`), one `StencilOp`; `DepthStencilFormat` is the library's
+  `FramebufferDepth`. Offscreen camera passes are depth-stencil (library phase 2), so
+  `targetFormatFor` says so and knows the new types; the HTML UI's own targets keep their
+  `FramebufferDesc` formats. Single-sampled depth-stencil attachments get a texture view again
+  (the library samples them); multisampled images still get none.
+- **Shaders.** `ShaderType` keeps the library's published `BLOOM` and appends `HTMLUI` ...
+  `UI_EFFECT` after it; editor cache `v33`. There are two libraries: library shaders
+  (`library:<name>`, `// @shader` manifests, for materials and components) and the HTML UI's
+  library effects (`@effects/<name>`, `// @effect` manifests; `ShaderPool::isLibraryCustomShader`
+  keeps its name). Neither is a project fork (`destroyCustomShaders` skips both). A project UI
+  effect `.frag` is checked as an effect (`ProjectChecks`, `check_shader`), never as a library
+  manifest (its `// @effect` header would read as an invalid one); `guessShaderType` tries the
+  effect header first; `ShaderBuilder` reads a fragment-only effect from the assets directory
+  first, other forks project-relative first (the library's `Project::findShaderFile`). Export
+  collects the UI_EFFECT keys of the documents beside the library's light-capacity,
+  post-colour, uber and bloom variants (`collectScene` takes both sides' arguments).
+- **Frame order (decision).** Unchanged for the HTML UI: every document pass (layers, filters,
+  texture-mode documents) runs at the end of `drawFramePasses()` before any camera pass, and a
+  scene's screen documents are composited last in its camera's colour pass, after the
+  transparent queue and component UI. The library's passes after the scene (SSR, custom passes,
+  bloom and blur, the uber pass with grading, FXAA, CRT, render scale) therefore take the
+  documents with the image, as both specs state: deviation 12 here ("post-process applies to
+  them") and library phase 4 §5.1 "UI (deviation ...)" (UI the main camera draws is part of its
+  image). UI shaders never apply the in-shader (T0) colour, so with only in-shader colour on, a
+  document is not graded, with the uber pass it is, like component UI; a HUD that must stay
+  untouched and at native resolution goes in a layer scene, whose documents composite in that
+  scene's camera pass after the uber pass. The scene-colour copy (library phase 3) is taken
+  before the transparent queue, without documents. With `msaaSamples` the composite draws into
+  the multisampled scene target through the pipeline cache at its sample count
+  (`PIP_MSAA_NODEPTH`). Frame stats name the HTML UI passes (`html ui layer`, `html ui post`,
+  `html ui`, `html ui texture`), and `JASPERENGINE_READY_SIGNAL` also waits for the documents.
+- **sokol_gfx.h.** Two local patches: the Vulkan descriptor size (320 by default for lavapipe,
+  now overridable), and the library's GLES fix in `_sg_gl_end_render_pass` (depth/stencil of a
+  pass that has them are invalidated when not stored). The HTML UI stores its layers'
+  depth-stencil, so the fix changes nothing for it.
+- **Tooling.** `tools/build.sh`: `CPUS`, else the library's `DOCKER_CPUS`, else `JOBS` caps the
+  container; empty-array-safe expansions. The agent guide fits the library's 16 KB cap with a
+  shorter HTML/CSS UI section (the tools' shared rules moved to `jasper://docs/html-ui`, "The UI
+  tools' shared rules"). The tool definitions fit the HTML UI's total cap (99,800 + 837) with
+  the library's five new tools by shorter descriptions (deviation 23). `UpdateFlags_UIDocument_Reload`
+  moved to bit 38. The phase-0 `BlendStateTest` describes the pipeline types as the render
+  state model builds them.
+- Interfaces changed: `CONTRACTS.md` (rows citing "the merge of origin/main").
 
 ## Research facts (verified in code, October 2026)
 
@@ -250,7 +311,9 @@ Engine, for implementers (paths relative to the repo root):
   premultiplied).
 - Pipeline state hard-coded per pipeline type: `engine/renders/sokol/SokolObject.cpp`
   `makePipelineDesc` (~265–395). Offscreen depth is `SG_PIXELFORMAT_DEPTH` (no stencil,
-  `SokolTexture.cpp` ~479); swapchain is depth-stencil. Desktop MSAA sample count 1.
+  `SokolTexture.cpp` ~479); swapchain is depth-stencil. Desktop MSAA sample count 1. (Before
+  the merge of origin/main: the fixed types take a `RenderState` now, and offscreen camera
+  targets are depth-stencil.)
 - Frame: `Engine::systemDraw` → each scene layer `draw()` (`Engine.cpp` ~1153); Vulkan allows
   one swapchain pass per frame, stacked scenes go through an offscreen composite
   (`Engine.cpp` ~725–745). Scene layers: `Engine::addSceneLayer`.
