@@ -1145,7 +1145,8 @@ void Engine::systemViewChanged(){
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
-// every scene drawn is fully loaded and no shader variant is still compiling, so a test
+// every scene drawn is fully loaded (its HTML UI documents drawn too) and no shader variant
+// is still compiling, so a test
 // can wait for that instead of a fixed time. A few frames in a row must be ready: a
 // script creating objects in its first updates leaves the scenes loaded for a frame.
 // With JASPERENGINE_FRAME_STATS=1 too, it then logs the GPU work of frames 2, 30 and 90 after
@@ -1198,6 +1199,11 @@ void Engine::signalReadyOnce(){
     bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
     for (size_t i = 0; ready && i < scenes.size(); i++){
         ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
+        // and its HTML UI documents loaded (or failed) and drawn once
+        if (ready){
+            const auto documents = scenes[i]->getSystem<UIDocumentSystem>();
+            ready = !documents || documents->isAllLoaded();
+        }
     }
     readyFrames = ready ? readyFrames + 1 : 0;
     if (readyFrames >= 10){

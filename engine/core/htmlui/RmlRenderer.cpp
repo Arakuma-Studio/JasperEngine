@@ -1057,6 +1057,8 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     // ignored by a pass without a depth-stencil attachment
     pass.setDepthStencilActions(depthStencilLoad, StoreAction::STORE, 1.0f, 0);
+    // its name in the frame stats' pass list (JASPERENGINE_FRAME_STATS)
+    pass.setLabel(kind == TargetKind::LAYER ? "html ui layer" : (kind == TargetKind::POSTPROCESS ? "html ui post" : "html ui"));
     pass.startRenderPass(&framebuffer.getRender());
     activeKind = kind;
     activeIndex = index;
@@ -2372,6 +2374,7 @@ bool RmlRenderer::drawUnpremultiplied(RmlRenderTarget& source, FramebufferRender
 
     CameraRender copyPass;
     copyPass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+    copyPass.setLabel("html ui texture");
     copyPass.startRenderPass(&dst);
     copyPass.applyViewportTopLeft(0, 0, width, height);
     copyPass.applyScissorTopLeft(0, 0, width, height);
