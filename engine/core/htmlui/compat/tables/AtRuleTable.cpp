@@ -30,7 +30,8 @@ namespace {
         {"@property", A, FF::RegisteredProperties, N, "registered with the fork",
          "registered custom properties (phase 5): the syntaxes length, number, integer, percentage, length-percentage, color, angle, "
          "time and * are typed, inherits: false is honoured, transitions and @keyframes interpolate them and var() follows; "
-         "registrations are process-global (the first one of a name wins). Other syntaxes, and without the fork: the initial "
+         "a document's registrations are its own (a hot reload applies an edited definition, an unload releases them; two live "
+         "documents defining a name differently: the first one's applies, HTMLUI-AT-0013). Other syntaxes, and without the fork: the initial "
          "value written on the root, inherits: false lost (Info)", ""},
         {"@effect", R, FF::None, R, "", "declares a project UI effect (phase 5): { src: url(<file>.frag) }, hoisted; problems are HTMLUI-FX-0012 to 0014", ""},
         {"@container", U, FF::None, U, "", "contents dropped (Warning)", "use @media on the viewport size, or toggle classes from Lua"},

@@ -326,8 +326,17 @@ async def test_guide_served(ed: Editor):
     ed.check("# HTML/CSS support matrix" in support or "jasper://docs/html-ui-support/" in support,
              f"jasper://docs/html-ui-support: {support[:300]}")
     docs = await read_text(ed, "jasper://docs")
-    for name in ("jasper://docs/html-ui`", "jasper://docs/html-ui-support`"):
+    for name in ("jasper://docs/html-ui`", "jasper://docs/html-ui-support`", "jasper://docs/html-ui-effects`"):
         ed.check(name in docs, f"jasper://docs lists {name}: {docs}")
+    # the effect catalogue (phase 5 §3.13): every built-in effect has its entry in some part of it
+    effects = await read_text(ed, "jasper://docs/html-ui-effects")
+    parts = [line.split("`")[1] for line in effects.splitlines() if line.startswith("- `jasper://docs/html-ui-effects/")]
+    catalogue = effects + "".join([await read_text(ed, uri) for uri in parts])
+    listed_effects = (await ed.call("list_ui_effects"))["effects"]
+    builtin = [e["name"] for e in listed_effects if e["builtin"]]
+    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects")
+    missing = [name for name in builtin if f"### `{name}`" not in catalogue]
+    ed.check(not missing, f"jasper://docs/html-ui-effects lacks {missing}")
 
 
 # ---------------------------------------------------------------------------- 4. names
@@ -727,7 +736,8 @@ async def test_agents_md_section(ed: Editor):
         ed.check("## HTML/CSS UI" in agents, f"AGENTS.md has the HTML/CSS UI section: {agents[:2000]}")
         section = agents.split("## HTML/CSS UI", 1)[1].split("\n## ", 1)[0]
         for phrase in ("check --ui", ".jasperengine/engine-api/html-ui-examples/", "jasper://docs/html-ui",
-                       "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/"):
+                       "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/",
+                       "effect(<name>", "jasper://docs/html-ui-effects", "@effect"):
             ed.check(phrase in section, f"the AGENTS.md section mentions {phrase}: {section}")
         ed.check("HTML/CSS UI, C++ build" in agents, "the check bullet names the UI check")
     finally:

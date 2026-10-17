@@ -86,9 +86,18 @@ namespace jasperengine {
 
         Framebuffer* ensureLayer(int index);
         Framebuffer* ensurePostprocess(int index);
+        // A framebuffer's GPU objects are checked once per frame (Framebuffer::isCreated asks
+        // sokol for every attachment view: hundreds of lookups a frame with layers and filters,
+        // on memory the driver has just evicted); they can only go between frames (the view
+        // reloads) or through destroy()
+        void newFrame();
+        bool checkedThisFrame(const Framebuffer& framebuffer) const;
 
         std::vector<std::unique_ptr<Framebuffer>> layers;
         std::unique_ptr<Framebuffer> postprocess[POSTPROCESS_COUNT];
+        std::vector<uint64_t> layerChecked;              // the frame each layer was last found created
+        uint64_t postprocessChecked[POSTPROCESS_COUNT] = {};
+        uint64_t frame = 1;
         int width = 0;
         int height = 0;
         int sampleCount = 1;
@@ -298,6 +307,9 @@ namespace jasperengine {
             Rml::Rectanglei stale = Rml::Rectanglei::MakeInvalid();
         };
         TargetRegions& regionsOf(const Framebuffer& framebuffer);
+        // a target's sample count without asking its framebuffer object (the layers have the
+        // render target's, the post-process targets one)
+        int samplesOf(Framebuffer& framebuffer, TargetKind kind) const;
         // the open pass wrote colour within its viewport and scissor
         void noteColorWrite();
         // the layer's resolve image is current (before it is read): ends its pass with the resolve,
@@ -370,6 +382,7 @@ namespace jasperengine {
         void abortFrame();
 
         std::unordered_set<RmlGeometry*> liveGeometry;
+        std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
         std::unordered_set<HtmlUITexture*> liveTextures;
         std::vector<HtmlUITexture*> pendingReleases;
         std::vector<std::unique_ptr<RmlGeometryPage>> pages;
@@ -402,6 +415,13 @@ namespace jasperengine {
         Rml::Rectanglei appliedScissor;
 
         std::unordered_map<const Framebuffer*, TargetRegions> regions;
+        struct RegionsCacheEntry {
+            const Framebuffer* framebuffer = nullptr;
+            TargetRegions* regions = nullptr;
+        };
+        RegionsCacheEntry regionsCache[2];   // the last two regionsOf answers (cleared with regions)
+        int activeSamples = 1;               // the open pass's framebuffer's sample count
+        Rml::Rectanglei activeFull;          // and its full rectangle
         TargetRegions* activeRegions = nullptr;   // the open pass's, when it is an MSAA layer
         uint64_t regionsGeneration = 0;
 

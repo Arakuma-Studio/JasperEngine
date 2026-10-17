@@ -41,6 +41,7 @@ namespace jasperengine {
     // transient buffers on the first draw, into persistent storage at the end of that frame,
     // and again after the GPU objects went with the view.
     struct RmlGeometry {
+        bool alive = false;         // compiled and not released (released ones wait for reuse)
         Rml::Span<const Rml::Vertex> vertices;
         Rml::Span<const int> indices;
         // persistent storage
@@ -204,9 +205,28 @@ void RmlRenderTarget::destroy(){
         layers[i].reset();
     }
     layers.clear();
+    layerChecked.clear();
     for (std::unique_ptr<Framebuffer>& target : postprocess){
         target.reset();
     }
+    for (uint64_t& checked : postprocessChecked)
+        checked = 0;
+}
+
+void RmlRenderTarget::newFrame(){
+    frame++;
+}
+
+bool RmlRenderTarget::checkedThisFrame(const Framebuffer& framebuffer) const{
+    for (size_t i = 0; i < layers.size(); i++){
+        if (layers[i].get() == &framebuffer)
+            return i < layerChecked.size() && layerChecked[i] == frame;
+    }
+    for (int i = 0; i < POSTPROCESS_COUNT; i++){
+        if (postprocess[i].get() == &framebuffer)
+            return postprocessChecked[i] == frame;
+    }
+    return false;
 }
 
 int RmlRenderTarget::getWidth() const{
@@ -259,8 +279,12 @@ uint64_t RmlRenderTarget::getGeneration() const{
 Framebuffer* RmlRenderTarget::ensureLayer(int index){
     if (index < 0)
         return nullptr;
-    if (index < (int)layers.size() && layers[index] && layers[index]->isCreated())
+    if ((int)layerChecked.size() < (int)layers.size())
+        layerChecked.resize(layers.size(), 0);
+    if (index < (int)layers.size() && layers[index] && (layerChecked[index] == frame || layers[index]->isCreated())){
+        layerChecked[index] = frame;
         return layers[index].get();
+    }
     // layer 0 first: the others share its depth-stencil
     if (index > 0 && !ensureLayer(0))
         return nullptr;
@@ -284,14 +308,18 @@ Framebuffer* RmlRenderTarget::ensureLayer(int index){
         return nullptr;
     }
     layers[index] = std::move(layer);
+    layerChecked.resize(layers.size(), 0);
+    layerChecked[index] = frame;
     return layers[index].get();
 }
 
 Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
     if (index < 0 || index >= POSTPROCESS_COUNT)
         return nullptr;
-    if (postprocess[index] && postprocess[index]->isCreated())
+    if (postprocess[index] && (postprocessChecked[index] == frame || postprocess[index]->isCreated())){
+        postprocessChecked[index] = frame;
         return postprocess[index].get();
+    }
 
     FramebufferDesc desc;
     desc.width = width;
@@ -309,6 +337,7 @@ Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
         return nullptr;
     }
     postprocess[index] = std::move(target);
+    postprocessChecked[index] = frame;
     return postprocess[index].get();
 }
 
@@ -412,6 +441,10 @@ RmlRenderer::~RmlRenderer(){
         delete geometry;
     }
     liveGeometry.clear();
+    for (RmlGeometry* geometry : releasedGeometry){
+        delete geometry;
+    }
+    releasedGeometry.clear();
     for (HtmlUITexture* texture : liveTextures){
         delete texture;
     }
@@ -419,7 +452,15 @@ RmlRenderer::~RmlRenderer(){
 }
 
 Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices){
-    RmlGeometry* geometry = new RmlGeometry();
+    RmlGeometry* geometry = nullptr;
+    if (!releasedGeometry.empty()){
+        geometry = releasedGeometry.back();
+        releasedGeometry.pop_back();
+        *geometry = RmlGeometry();
+    }else{
+        geometry = new RmlGeometry();
+    }
+    geometry->alive = true;
     geometry->vertices = vertices;
     geometry->indices = indices;
     liveGeometry.insert(geometry);
@@ -436,7 +477,10 @@ void RmlRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle handle){
         releaseRange(geometry->vertexPage, geometry->vertexBytes);
     if (geometry->indexPage)
         releaseRange(geometry->indexPage, geometry->indexBytes);
-    delete geometry;
+    // kept for reuse, so a handle stays readable: draws check its flag instead of looking it up
+    // in liveGeometry (a hash lookup per draw)
+    *geometry = RmlGeometry();
+    releasedGeometry.push_back(geometry);
     stats.geometryLive = (uint32_t)liveGeometry.size();
 }
 
@@ -568,7 +612,7 @@ void RmlRenderer::persistGeometry(){
     std::vector<RmlGeometry*> pending;
     pending.swap(pendingGeometry);
     for (RmlGeometry* geometry : pending){
-        if (liveGeometry.count(geometry) == 0 || (geometry->vertexPage && geometry->indexPage))
+        if (!geometry->alive || (geometry->vertexPage && geometry->indexPage))
             continue;
         const size_t vertexBytes = geometry->vertices.size() * sizeof(Rml::Vertex);
         const size_t indexBytes = geometry->indices.size() * sizeof(int);
@@ -647,7 +691,7 @@ void RmlRenderer::destroyGeometryBuffers(){
 
 bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender& program, uint32_t& indexCount){
     RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
-    if (!geometry || liveGeometry.count(geometry) == 0 || geometry->vertices.empty() || geometry->indices.empty())
+    if (!geometry || !geometry->alive || geometry->vertices.empty() || geometry->indices.empty())
         return false;
 
     BufferRender* vertices = nullptr;
@@ -989,9 +1033,9 @@ void RmlRenderer::endPass(bool resolve){
     // honours the scissor box: what may differ is resolved (the result of a full resolve), or
     // nothing when the layer is not read yet (a later pass resolves it). The other backends
     // resolve the whole render area at every pass end (nothing is tracked there).
-    if (activeFramebuffer && Engine::isOpenGL() && activeFramebuffer->getRender().getSampleCount() > 1){
+    if (activeFramebuffer && Engine::isOpenGL() && activeSamples > 1){
         TargetRegions& r = regionsOf(*activeFramebuffer);
-        const Rml::Rectanglei full = fullRect((int)activeFramebuffer->getWidth(), (int)activeFramebuffer->getHeight());
+        const Rml::Rectanglei full = activeFull;
         const Rml::Rectanglei region = resolve ? intersect(r.stale, full) : Rml::Rectanglei::MakeInvalid();
         applyPassScissor(isEmpty(region) ? Rml::Rectanglei::FromSize(Rml::Vector2i(0, 0)) : region);
         if (resolve)
@@ -1007,7 +1051,8 @@ void RmlRenderer::endPass(bool resolve){
 bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index, LoadAction colorLoad, LoadAction depthStencilLoad){
     flushDeferredComposite();
     endPass();
-    if (!framebuffer.isCreated())
+    // a layer or post-process target found created this frame is (see RmlRenderTarget::newFrame)
+    if (!(target && target->checkedThisFrame(framebuffer)) && !framebuffer.isCreated())
         return false;
     pass.setColorActions(colorLoad, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
     // ignored by a pass without a depth-stencil attachment
@@ -1016,18 +1061,23 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
     activeKind = kind;
     activeIndex = index;
     activeFramebuffer = &framebuffer;
+    activeSamples = samplesOf(framebuffer, kind);
     // an MSAA layer on GL: what its resolve image may lack is tracked (the other backends resolve
     // the whole render area at every pass end)
-    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && framebuffer.getRender().getSampleCount() > 1) ? &regionsOf(framebuffer)
-                                                                                                                    : nullptr;
+    activeRegions = (Engine::isOpenGL() && kind == TargetKind::LAYER && activeSamples > 1) ? &regionsOf(framebuffer) : nullptr;
     stats.passes++;
 
-    // the viewport and the scissor, nothing else: pipelines are applied per draw
-    const Rml::Rectanglei full = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
-    appliedViewport = Rml::Rectanglei::MakeInvalid();
-    appliedScissor = Rml::Rectanglei::MakeInvalid();
-    applyPassViewport(full);
-    applyPassScissor(full);
+    // the viewport and the scissor, nothing else: pipelines are applied per draw (the layers and
+    // post-process targets have the render target's size)
+    const Rml::Rectanglei full = ((kind == TargetKind::LAYER || kind == TargetKind::POSTPROCESS) && target)
+                                 ? fullRect(target->getWidth(), target->getHeight())
+                                 : fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
+    activeFull = full;
+    // sg_begin_pass sets both to the whole framebuffer on every backend (sokol_gfx.h: "sg_begin_pass()
+    // will reset both the viewport and scissor rectangles"): applying them again was two backend
+    // calls a pass, at once overridden by the first draw's
+    appliedViewport = full;
+    appliedScissor = full;
 
     // a clear changes the samples where they held something: the resolve image differs there
     if (activeRegions && colorLoad == LoadAction::CLEAR){
@@ -1038,14 +1088,23 @@ bool RmlRenderer::beginPass(Framebuffer& framebuffer, TargetKind kind, int index
 }
 
 RmlRenderer::TargetRegions& RmlRenderer::regionsOf(const Framebuffer& framebuffer){
+    // the last two looked up (a pass's end and the next one's start ask for them): no hash lookup
+    // on memory the driver has evicted (references into the map stay valid until it is cleared)
+    for (int i = 0; i < 2; i++){
+        if (regionsCache[i].framebuffer == &framebuffer)
+            return *regionsCache[i].regions;
+    }
     auto it = regions.find(&framebuffer);
-    if (it != regions.end())
-        return it->second;
-    // not seen since it was made: anything may be in it
-    TargetRegions unknown;
-    unknown.content = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
-    unknown.stale = unknown.content;
-    return regions.emplace(&framebuffer, unknown).first->second;
+    if (it == regions.end()){
+        // not seen since it was made: anything may be in it
+        TargetRegions unknown;
+        unknown.content = fullRect((int)framebuffer.getWidth(), (int)framebuffer.getHeight());
+        unknown.stale = unknown.content;
+        it = regions.emplace(&framebuffer, unknown).first;
+    }
+    regionsCache[1] = regionsCache[0];
+    regionsCache[0] = RegionsCacheEntry{&framebuffer, &it->second};
+    return it->second;
 }
 
 void RmlRenderer::noteColorWrite(){
@@ -1062,18 +1121,27 @@ void RmlRenderer::noteColorWrite(){
     activeRegions->stale = unite(activeRegions->stale, written);
 }
 
+int RmlRenderer::samplesOf(Framebuffer& framebuffer, TargetKind kind) const{
+    if (kind == TargetKind::LAYER && target)
+        return target->getSampleCount();
+    if (kind == TargetKind::POSTPROCESS)
+        return 1;
+    return framebuffer.getRender().getSampleCount();
+}
+
 void RmlRenderer::ensureResolved(Framebuffer& layer){
-    if (layer.getRender().getSampleCount() <= 1)
-        return;
     if (activeFramebuffer == &layer){
-        endPass(true);
+        if (activeSamples > 1)
+            endPass(true);
         return;
     }
+    int index = -1;
+    const TargetKind kind = kindOf(layer, index);
+    if (samplesOf(layer, kind) <= 1)
+        return;
     if (!Engine::isOpenGL() || isEmpty(regionsOf(layer).stale))
         return;
     // a pass that only resolves
-    int index = -1;
-    const TargetKind kind = kindOf(layer, index);
     if (beginPass(layer, kind, index, LoadAction::LOAD, LoadAction::LOAD))
         endPass(true);
 }
@@ -2171,8 +2239,9 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
     frameNumber = SystemRender::getFrameCount();
-    // the effects' per-frame state (phase 5; once per sokol frame)
+    // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
     htmlui::EffectRuntime::get().beginFrame();
+    effects->beginFrame();
 
     // per-frame statistics; the geometry counts are current
     const uint32_t geometryLive = stats.geometryLive;
@@ -2190,12 +2259,14 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         return false;
 
     target = &renderTarget;
+    target->newFrame();
     targetSize = Rml::Vector2i(renderTarget.getWidth(), renderTarget.getHeight());
     // the tracked regions hold for these framebuffers only
     activeRegions = nullptr;
     deferred = DeferredComposite();
     if (regionsGeneration != target->getGeneration()){
         regions.clear();
+        regionsCache[0] = regionsCache[1] = RegionsCacheEntry();
         regionsGeneration = target->getGeneration();
     }
 

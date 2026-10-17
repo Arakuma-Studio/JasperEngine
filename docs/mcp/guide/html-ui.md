@@ -1682,11 +1682,11 @@ reeds and tiles, and `tilt-shift` and `progressive-blur` blur it in a band or a 
 .dock { backdrop-filter: effect(liquid-glass, thickness 28px, refraction 1.2, highlight 0.4); border-radius: 24px; }
 .sheet { backdrop-filter: effect(liquid-glass, blur 10px, tint-color #8ecbff, tint-intensity 0.15); border-radius: 18px; }
 ```
- A paint effect in
-`backdrop-filter` recolours what is behind (`backdrop-filter: effect(stripes, opacity 30%)`).
-Backdrop effects copy the layer below once more than a `filter` does; blurring ones (prepass
-effects such as `frosted-glass`) are the costliest per pixel: use them on panels, not full
-screen.
+
+A paint effect in `backdrop-filter` recolours what is behind
+(`backdrop-filter: effect(stripes, opacity 30%)`). Backdrop effects copy the layer below once more
+than a `filter` does; blurring ones (prepass effects such as `frosted-glass`) are the costliest per
+pixel: use them on panels, not full screen.
 
 ### Writing an effect
 

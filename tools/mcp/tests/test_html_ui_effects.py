@@ -1,16 +1,18 @@
 """UI effects in the editor through MCP (phase 5, p5-tooling, spec §5.5).
 
-A document using the reference effects of p5-infra in every place effect() goes: a paint effect
-as a background (`stripes`, the spec's `aurora`), a backdrop filter with its blur prepass
-(`frosted-glass`), a filter (`pixelate`), gradient text (`stripes` with background-clip: text, the
-spec's `holographic`), a hover transition of a pointer effect (`spotlight`, the spec's `sheen`) and
-a project effect declared with @effect (`tint-wave`, its .frag including a .glsl next to it) in a
-project whose assets directory is not the project root.
+A document using the catalogue's effects in every place effect() goes, as §5.5 lists them: a paint
+effect as a background (`aurora`, the spec's hero), a backdrop filter with its blur prepass
+(`frosted-glass`), a filter (`pixelate`), gradient text (`holographic` with background-clip: text),
+a hover transition of a paint effect (`sheen`) and a project effect declared with @effect
+(`tint-wave`, its .frag including a .glsl next to it) in a project whose assets directory is not
+the project root.
 
 - set_ui_effect_time pins the clock: every effect region is drawn (its pixels vary) with the
-  colours recorded here, a second screenshot is identical, the live clock moves the stripes.
+  colours recorded here, a second screenshot is identical, the live clock moves the aurora.
 - inspect_ui lists each element's effects with their parameters (fx:<name> in the outline);
-  list_ui_effects filters by name, category and kind and includes the project effect.
+  list_ui_effects lists the whole catalogue (83 built-in effects) and the project effects, and
+  filters by name, category (glass: the four glass effects) and kind.
+- In play, the pointer over the button transitions its sheen to the hover intensity.
 - inspect_ui {file} (check --ui) reports effect-unknown, effect-unknown-param and
   effect-wrong-context with their line:col and suggestions.
 - Hot reload: the .frag's colour changes the render; a GLSL error is reported by write_file
@@ -58,7 +60,7 @@ CSS = """@effect tint-wave { src: url(fx/tint-wave.frag); }
 body { margin: 0; width: 1280px; height: 720px; background-color: #101218; font-family: sans-serif; }
 .hero, .behind, .glass, .pix, .title, .button, .tint { position: absolute; display: block; margin: 0; }
 .hero { left: 40px; top: 40px; width: 360px; height: 220px; border-radius: 12px;
-        background: #0b0d14; background-image: effect(stripes, color-a #ff3355, color-b #2255ff, density 6, speed 0.5); }
+        background: #0b0d14; background-image: effect(aurora, speed 2, color-b #44ccff); }
 .behind { left: 440px; top: 40px; width: 360px; height: 220px; }
 .behind div, .pix div { position: absolute; width: 50%; height: 50%; }
 .b1 { left: 0; top: 0; background-color: #e74c3c; }
@@ -69,12 +71,11 @@ body { margin: 0; width: 1280px; height: 720px; background-color: #101218; font-
          backdrop-filter: effect(frosted-glass, blur 14px, tint #ffffff22); }
 .pix { left: 840px; top: 40px; width: 360px; height: 220px; filter: effect(pixelate, size 24px, gap 0.2); }
 .title { left: 40px; top: 300px; width: 360px; height: 100px; font-size: 80px; font-weight: bold; color: transparent;
-         background-image: effect(stripes, color-a #ffcc00, color-b #00ccff, density 4, speed 0.3); background-clip: text; }
+         background-image: effect(holographic, speed 0.6); background-clip: text; }
 .button { left: 440px; top: 300px; width: 360px; height: 220px; border: 0; border-radius: 20px; color: #ffffff;
           background-color: #202840;
-          background-image: effect(spotlight, color #ffee88, radius 140px, intensity 0.3, idle-intensity 0.9);
-          transition: background-image 300ms; }
-.button:hover { background-image: effect(spotlight, color #ffee88, radius 140px, intensity 1, idle-intensity 0.9); }
+          background-image: effect(sheen, intensity 0.3); transition: background-image 300ms; }
+.button:hover { background-image: effect(sheen, intensity 0.9); }
 .tint { left: 840px; top: 300px; width: 360px; height: 220px; background-color: #000000;
         background-image: effect(tint-wave, color #33ff88, speed 0.5); }
 """
@@ -119,11 +120,11 @@ REGIONS = {
     "glass": {"rect": (490, 90, 750, 210), "sd": 8},
     "pix": {"rect": (840, 40, 1200, 260), "sd": 30},
     "title": {"rect": (40, 300, 400, 400), "sd": 20},
-    "button": {"rect": (444, 304, 796, 516), "sd": 6},
+    "button": {"rect": (444, 304, 796, 516), "sd": 12},
     "tint": {"rect": (840, 300, 1200, 520), "sd": 15},
 }
-EXPECTED = {"hero": (146, 68, 171), "glass": (168, 176, 130), "pix": (96, 98, 65), "title": (41, 61, 50),
-            "button": (114, 113, 90), "tint": (34, 185, 97)}
+EXPECTED = {"hero": (30, 39, 61), "glass": (168, 176, 130), "pix": (96, 98, 65), "title": (63, 59, 71),
+            "button": (47, 54, 77), "tint": (34, 185, 97)}
 MEAN_TOL = 18
 
 
@@ -184,16 +185,15 @@ async def test_pinned_clock_renders(ed: Editor):
             break
         await asyncio.sleep(1.0)
     S["t1"] = image
-    report = []
+    measured = {name: stats(image, region["rect"]) for name, region in REGIONS.items()}
+    print("     [effects] " + "; ".join(f"{name}: mean ({m[0]:.0f}, {m[1]:.0f}, {m[2]:.0f}) sd {sd:.1f}" for name, (m, sd) in measured.items()))
     for name, region in REGIONS.items():
-        mean, sd = stats(image, region["rect"])
-        report.append(f"{name}: mean ({mean[0]:.0f}, {mean[1]:.0f}, {mean[2]:.0f}) sd {sd:.1f}")
+        mean, sd = measured[name]
         ed.check(sd >= region["sd"], f"{name}: the region is flat (sd {sd:.1f} < {region['sd']}): the effect did not draw")
         if name in EXPECTED:
             want = EXPECTED[name]
             ed.check(all(abs(mean[i] - want[i]) <= MEAN_TOL for i in range(3)),
                      f"{name}: mean colour {tuple(round(v) for v in mean)}, expected {want} +-{MEAN_TOL}")
-    print("     [effects] " + "; ".join(report))
     errors = [e for e in await console_errors(ed) if "[HTML UI]" in e or "hader" in e]
     ed.check(not errors, f"errors: {errors}")
 
@@ -206,7 +206,7 @@ async def test_determinism_and_live_clock(ed: Editor):
     ed.check(r["time"] is None, f"live: {r}")
     await asyncio.sleep(0.5)
     live = await shot(ed, "live")
-    ed.check(not same(S["t1"], live, REGIONS["hero"]["rect"]), "the live clock moves the stripes")
+    ed.check(not same(S["t1"], live, REGIONS["hero"]["rect"]), "the live clock moves the aurora")
     await ed.call("set_ui_effect_time", time=1.5)
 
 
@@ -230,16 +230,17 @@ async def inspect(ed: Editor, selector: str) -> tuple[dict, str]:
 
 async def test_inspect_ui_effects(ed: Editor):
     hero, text = await inspect(ed, ".hero")
-    ed.check("fx:stripes" in text, f"the outline names the effect: {text}")
+    ed.check("fx:aurora" in text, f"the outline names the effect: {text}")
     ed.check_eq([(e["property"], e["index"], e["name"], e["form"]) for e in hero["effects"]],
-                [("background-image", 1, "stripes", "paint")], "the hero's effects")
+                [("background-image", 1, "aurora", "paint")], "the hero's effects")
     params = hero["effects"][0]["params"]
-    ed.check_eq((params.get("color-a"), params.get("color-b"), params.get("density"), params.get("speed")),
-                ("#ff3355ff", "#2255ffff", "6", "0.5"), f"canonical parameter values: {params}")
+    # the given ones and the manifest's defaults, in canonical form
+    ed.check_eq((params.get("speed"), params.get("color-b"), params.get("color-a"), params.get("curtains"), params.get("center")),
+                ("2", "#44ccffff", "#a533f8ff", "4", "50% 0%"), f"canonical parameter values: {params}")
     for universal in ("opacity", "time-scale", "time-offset", "blend"):
         ed.check(universal in params, f"the universal parameter {universal} is listed: {params}")
     cases = {".glass": ("backdrop-filter", "frosted-glass", "filter"), ".pix": ("filter", "pixelate", "filter"),
-             ".title": ("background-image", "stripes", "filter"), ".button": ("background-image", "spotlight", "paint"),
+             ".title": ("background-image", "holographic", "filter"), ".button": ("background-image", "sheen", "paint"),
              ".tint": ("background-image", "tint-wave", "paint")}
     for selector, (prop, name, form) in cases.items():
         element, text = await inspect(ed, selector)
@@ -255,16 +256,20 @@ async def test_list_ui_effects(ed: Editor):
     everything = await ed.call("list_ui_effects")
     names = [e["name"] for e in everything["effects"]]
     ed.check_eq(everything["count"], len(names), "count")
-    for name in ("cursor-trail", "frosted-glass", "pixelate", "spotlight", "stripes", "tint-wave", "spare-glow"):
+    for name in ("aurora", "cursor-trail", "frosted-glass", "holographic", "pixelate", "sheen", "spotlight", "stripes", "tint-wave",
+                 "spare-glow"):
         ed.check(name in names, f"{name} listed: {names}")
     ed.check_eq(names, sorted(names), "sorted by name")
     builtin = [e for e in everything["effects"] if e["builtin"]]
-    ed.check(len(builtin) >= 5 and all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
-    if len(names) > 12:
-        ed.check(all("params" not in e and "param_names" in e for e in everything["effects"]), "a long list leaves the params out")
+    # the whole catalogue (Appendix A: 83 effects), the project's two effects beside it
+    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects listed, the catalogue has 83")
+    ed.check_eq(everything["count"] - len(builtin), 2, "the project effects: tint-wave and spare-glow")
+    ed.check(all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
+    ed.check(all("params" not in e and "param_names" in e for e in everything["effects"]), "a long list leaves the params out")
 
     glass = await ed.call("list_ui_effects", category="glass")
-    ed.check("frosted-glass" in [e["name"] for e in glass["effects"]], f"glass: {glass}")
+    ed.check_eq(sorted(e["name"] for e in glass["effects"]), ["fluted-glass", "frosted-glass", "glass-tiles", "liquid-glass"],
+                f"glass: {glass}")
     ed.check(all(e["category"] == "glass" for e in glass["effects"]), "only glass")
     filters = await ed.call("list_ui_effects", kind="filter")
     ed.check(filters["count"] >= 2 and all(e["kind"] == "filter" for e in filters["effects"]), f"filters: {filters}")
@@ -287,9 +292,31 @@ async def test_list_ui_effects(ed: Editor):
     ed.check("glass" in error and "pattern" in error, f"the categories: {error}")
 
 
+async def test_sheen_hover_transition(ed: Editor):
+    """In play, the pointer over the button: `transition: background-image 300ms` takes its sheen from
+    intensity 0.3 to the :hover rule's 0.9 (the effect clock stays pinned, the transition runs on the
+    UI clock)."""
+    rect = REGIONS["button"]["rect"]
+    await ed.call("play", action="start", scene=S["scene"])
+    try:
+        await ed.call("set_ui_effect_time", time=1.5)
+        await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": 20, "y": 700}], space="canvas", frames_after=3)
+        idle = await shot(ed, "sheen-idle")
+        await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": (rect[0] + rect[2]) // 2, "y": rect[3] - 10}],
+                      space="canvas", frames_after=40)
+        hover = await shot(ed, "sheen-hover")
+        r = await ed.call("inspect_ui", entity=S["entity"], selector=".button", depth=0)
+        params = r["elements"][0]["effects"][0]["params"]
+        ed.check_eq(params.get("intensity"), "0.9", f"the hover rule's intensity after the transition: {params}")
+        (a, sd_a), (b, sd_b) = stats(idle, rect), stats(hover, rect)
+        ed.check(sum(b) > sum(a) + 30, f"the hovered sheen is brighter: mean {tuple(round(v) for v in b)}, was {tuple(round(v) for v in a)}")
+    finally:
+        await ed.call("play", action="stop")
+
+
 BAD_CSS = """.a { background-image: effect(glassmorphism); }
-.b { background-image: effect(stripes, speeed 2); }
-.c { color: effect(pixelate); }
+.b { background-image: effect(aurora, speeed 2); }
+.c { color: effect(plasma); }
 """
 
 
@@ -298,7 +325,7 @@ async def test_check_ui_effect_diagnostics(ed: Editor):
     r = await ed.call("inspect_ui", file="assets/ui/bad.css")
     found = {d["code"]: d for d in r["diagnostics"]}
     cases = [("HTMLUI-FX-0001", "glassmorphism", "frosted-glass"), ("HTMLUI-FX-0004", "speeed", "speed"),
-             ("HTMLUI-FX-0002", "effect(pixelate)", "filter")]
+             ("HTMLUI-FX-0002", "effect(plasma)", "background-image")]
     for code, needle, suggestion in cases:
         ed.check(code in found, f"{code} reported: {r['diagnostics']}")
         d = found[code]

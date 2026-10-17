@@ -39,6 +39,9 @@ namespace jasperengine::htmlui {
         EffectRenderer& operator=(const EffectRenderer&) = delete;
 
         static bool isEffectHandle(uintptr_t handle) { return (handle & 1) != 0; }
+
+        // RmlRenderer::beginFrame: what the frame's draws read once
+        void beginFrame();
         static EffectInstance* instanceOf(uintptr_t handle) { return reinterpret_cast<EffectInstance*>(handle & ~uintptr_t(1)); }
 
         // RmlRenderer hooks: CompileShader/CompileFilter named "jfx" take the instance
@@ -71,12 +74,17 @@ namespace jasperengine::htmlui {
 
         Program* programFor(EffectInstance& instance, bool filterForm);
         Program* loadProgram(const std::shared_ptr<ShaderRender>& shader, bool filterForm);
+        Program* rememberProgram(EffectInstance& instance, Program* program);
         void packParams(EffectInstance& instance, Program& program);
         float scaledPx(EffectInstance& instance, const EffectScaledParam& scaled);
         bool brightPass(EffectInstance& instance, RmlFilterContext& context, float threshold);
         void uploadCommon(EffectInstance& instance, Program& program, ObjectRender& object);
 
         RmlRenderer& renderer;
+        // changes whenever a program is destroyed or replaced (instances cache their program)
+        uint64_t programsGeneration = 1;
+        // ShaderPool's custom-shader generation, read once a frame (beginFrame)
+        uint32_t shaderGeneration = 0;
         std::map<ShaderRender*, std::unique_ptr<Program>> programs;
         std::shared_ptr<ShaderRender> brightShader;
     };

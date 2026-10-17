@@ -95,30 +95,45 @@ namespace jasperengine::htmlui {
 
     // One element's use of one effect; its address | 1 is the RmlUi shader/filter handle
     struct EffectInstance {
+        bool alive = false;                   // acquired and not released (EffectRuntime::isLive)
         const EffectManifest* manifest = nullptr;
         bool filterForm = false;
         Rml::Element* element = nullptr;
+        Rml::Context* context = nullptr;      // the element's when acquired (its pointer state, redraws)
         std::shared_ptr<EffectElementState> state;
         std::shared_ptr<const EffectParamsSnapshot> snapshot;
         float opacity = 1.f, timeScale = 1.f, timeOffset = 0.f;
         int blend = 0;
+        float timeRates[4] = {};              // the @time parameters' values (the snapshot's, set by acquire)
         int paintArea = 0;                    // Rml::BoxArea of the decorator's area (filters: the border box)
         std::shared_ptr<ShaderRender> shader;
         uint16_t customShaderId = 0;          // the id the shader was asked with (re-asked when it changes)
-        uint32_t customShaderGeneration = 0;
+        uint32_t customShaderGeneration = 0;  // ShaderPool's custom-shader generation the id was resolved in
+        int8_t shaderForm = -1;               // the form the shader was asked for (1 filter, 0 paint)
+        // the EffectRenderer program last drawn with (EffectRenderer::programFor): valid while
+        // that renderer's program generation is the same
+        void* program = nullptr;
+        const void* programOwner = nullptr;
+        uint64_t programGeneration = 0;
         EffectFrameBlock frame{};
         // u_fs_effectParams packed for the shader's reflection; repacked when the inputs change
         std::vector<uint8_t> params;
         const void* paramsLayout = nullptr;   // the reflection the bytes were packed for
         float paramsKey[6] = {-1.f, -1.f, -1.f, -1.f, -1.f, -1.f};   // area size, font sizes, viewport
+        // what the packed values read besides the area (found once per snapshot): a length in em,
+        // rem or a viewport unit (the font sizes, the viewport), a currentColor (the element's colour)
+        int8_t paramsContext = -1;            // -1 unknown, 0 nothing, else bit 0 lengths, bit 1 colour
         // the area in the element's border box (CSS px) and its radii, set by prepare
+        Rml::Vector2f areaOrigin{0.f, 0.f};   // the area's top-left in the context (CSS px)
         Rml::Vector2f areaOffset{0.f, 0.f};
         Rml::Vector2f areaSize{0.f, 0.f};
         float radii[4] = {0.f, 0.f, 0.f, 0.f};
         bool clipToArea = true;               // @geometry fill: the shader clips to the rounded area
-        // trail and ripples in local px (filled by prepare)
-        float trail[32][4];
-        float ripples[8][4];
+        // trail and ripples in local px (filled by prepare for an effect with @pointer trail or
+        // ripples, the entries past the current ones zero; uploaded only when the shader has them)
+        float trail[32][4] = {};
+        float ripples[8][4] = {};
+        int trailUsed = 0, ripplesUsed = 0;   // the entries prepare wrote last
         uint64_t preparedFrame = UINT64_MAX;
         float seed = -1.f;                    // seedOf(element), once per instance (< 0: not yet)
     };
@@ -153,6 +168,9 @@ namespace jasperengine::htmlui {
                                 const std::shared_ptr<const EffectParamsSnapshot>& snapshot, int paintArea);
         void release(EffectInstance* instance);
         bool isLive(const EffectInstance* instance) const;
+        // An animated effect (live clock) asks its context to update again at once; once per
+        // context render, however many elements draw effects
+        void requestRedraw(Rml::Context* context);
         // Fills the frame block and integrates the state, once per frame: the area (the paint
         // area of a decorator, the border box of a filter) from the element, the clocks, the
         // pointer mapped through the element's transform into area-local CSS px
@@ -219,7 +237,21 @@ namespace jasperengine::htmlui {
         uint64_t frameKey = UINT64_MAX;
         std::unordered_map<Rml::Element*, ElementEntry> elements;
         std::unordered_map<Rml::Context*, PointerState> pointers;
+        // the last context prepare looked up (a context renders its elements together): reset
+        // whenever `pointers` gains or loses an entry
+        Rml::Context* pointerCacheContext = nullptr;
+        const PointerState* pointerCache = nullptr;
+        bool pointerCacheValid = false;
+        // the context whose next update the animated effects asked for, once per context render
+        // (beginFrame counts the renders)
+        Rml::Context* redrawContext = nullptr;
+        uint64_t redrawRender = UINT64_MAX;
+        uint64_t renders = 0;
         std::unordered_map<EffectInstance*, std::unique_ptr<EffectInstance>> live;
+        // Released instances, kept for reuse: an instance's memory stays the runtime's, so
+        // isLive reads its flag (the draw touches that memory anyway) instead of looking the
+        // address up in `live` every draw
+        std::vector<std::unique_ptr<EffectInstance>> released;
         EffectStats totals;
         EffectStats frameTotals;
         uint64_t filterCompiles = 0;

@@ -93,6 +93,9 @@ int EffectRuntime::GetEventClasses(){
 }
 
 void EffectRuntime::beginFrame(){
+    // every context render (a context may render twice in a sokol frame, Context::Update
+    // clearing its next-update request in between)
+    renders++;
     const uint64_t key = SystemRender::getFrameCount();
     if (key == frameKey)
         return;
@@ -109,6 +112,7 @@ void EffectRuntime::countReinstance(){
 
 void EffectRuntime::onPointerMove(Rml::Context* context, Rml::Vector2f contextPx){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.position = contextPx;
@@ -117,6 +121,7 @@ void EffectRuntime::onPointerMove(Rml::Context* context, Rml::Vector2f contextPx
 
 void EffectRuntime::onPointerButton(Rml::Context* context, Rml::Vector2f contextPx, bool down){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.position = contextPx;
@@ -137,6 +142,7 @@ void EffectRuntime::onPointerButton(Rml::Context* context, bool down){
 
 void EffectRuntime::onPointerLeave(Rml::Context* context){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     if (p.testOverride)
         return;
     p.valid = false;
@@ -145,6 +151,7 @@ void EffectRuntime::onPointerLeave(Rml::Context* context){
 
 void EffectRuntime::setTestPointer(Rml::Context* context, std::optional<Rml::Vector2f> contextPx, bool down, float sincePress){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     p.testOverride = true;
     p.valid = contextPx.has_value();
     if (contextPx)
@@ -160,6 +167,7 @@ void EffectRuntime::setTestPointer(Rml::Context* context, std::optional<Rml::Vec
 
 void EffectRuntime::setTestTrail(Rml::Context* context, const std::vector<Rml::Vector4f>& samples){
     PointerState& p = pointers[context];
+    pointerCacheValid = false;
     p.testTrail = true;
     p.trail = samples;
 }
@@ -213,7 +221,16 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
             entry.states.erase(entry.states.begin());
     }
 
-    auto instance = std::make_unique<EffectInstance>();
+    std::unique_ptr<EffectInstance> instance;
+    if (!released.empty()){
+        instance = std::move(released.back());
+        released.pop_back();
+        *instance = EffectInstance();
+    }else{
+        instance = std::make_unique<EffectInstance>();
+    }
+    instance->alive = true;
+    instance->context = element ? element->GetContext() : nullptr;
     instance->manifest = &manifest;
     instance->filterForm = filterForm;
     instance->element = element;
@@ -227,6 +244,9 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
     }
     instance->paintArea = paintArea;
     instance->clipToArea = !manifest.boundsGeometry;
+    // the integrated clocks' rates, looked up by name once (integrate runs every frame)
+    for (size_t i = 0; i < manifest.timeParams.size() && i < 4; i++)
+        instance->timeRates[i] = paramNumber(*instance, manifest.timeParams[i]);
     EffectInstance* raw = instance.get();
     live[raw] = std::move(instance);
     totals.instancesCreated++;
@@ -240,13 +260,26 @@ void EffectRuntime::release(EffectInstance* instance){
     auto it = live.find(instance);
     if (it == live.end())
         return;
+    std::unique_ptr<EffectInstance> owned = std::move(it->second);
     live.erase(it);
+    // its references (state, snapshot, shader) go now; the memory waits for the next acquire
+    *owned = EffectInstance();
+    released.push_back(std::move(owned));
     totals.liveInstances = live.size();
     frameTotals.liveInstances = live.size();
 }
 
+void EffectRuntime::requestRedraw(Rml::Context* context){
+    if (!context || (context == redrawContext && renders == redrawRender))
+        return;
+    context->RequestNextUpdate(0);
+    redrawContext = context;
+    redrawRender = renders;
+}
+
 bool EffectRuntime::isLive(const EffectInstance* instance) const{
-    return live.count(const_cast<EffectInstance*>(instance)) > 0;
+    // every handle's instance is the runtime's memory (live or released, see `released`)
+    return instance && instance->alive;
 }
 
 size_t EffectRuntime::elementStateCount() const{
@@ -267,6 +300,9 @@ void EffectRuntime::OnElementDestroy(Rml::Element* element){
 
 void EffectRuntime::OnContextDestroy(Rml::Context* context){
     pointers.erase(context);
+    pointerCacheValid = false;
+    if (redrawContext == context)
+        redrawContext = nullptr;
 }
 
 void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* /*document*/){
@@ -276,6 +312,8 @@ void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* /*document*/){
 void EffectRuntime::OnShutdown(){
     elements.clear();
     pointers.clear();
+    pointerCacheValid = false;
+    redrawContext = nullptr;
 }
 
 void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& state, double now, float dt, bool fixed,
@@ -286,7 +324,7 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
 
     // integrated clocks (@time): never jump when a rate changes, the closed form when fixed
     for (size_t i = 0; i < m.timeParams.size() && i < 4; i++){
-        const float rate = paramNumber(instance, m.timeParams[i]);
+        const float rate = instance.timeRates[i];
         if (fixed){
             state.anim[i] = time * rate;
         }else{
@@ -434,13 +472,19 @@ void EffectRuntime::prepare(EffectInstance& instance){
     instance.radii[2] = std::max(0.f, std::min(radius[2].x - edges[1], radius[2].y - edges[2]));
     instance.radii[3] = std::max(0.f, std::min(radius[3].x - edges[3], radius[3].y - edges[2]));
     const Rml::Vector2f areaOrigin = element->GetAbsoluteOffset(Rml::BoxArea::Border) + instance.areaOffset;
+    instance.areaOrigin = areaOrigin;
 
     const double now = EffectClock::now();
     const bool fixed = EffectClock::isFixed();
     EffectElementState& state = *instance.state;
-    Rml::Context* context = element->GetContext();
-    auto pointerIt = pointers.find(context);
-    const PointerState* pointer = pointerIt != pointers.end() ? &pointerIt->second : nullptr;
+    Rml::Context* context = instance.context ? instance.context : element->GetContext();
+    if (!pointerCacheValid || pointerCacheContext != context){
+        auto pointerIt = pointers.find(context);
+        pointerCache = pointerIt != pointers.end() ? &pointerIt->second : nullptr;
+        pointerCacheContext = context;
+        pointerCacheValid = true;
+    }
+    const PointerState* pointer = pointerCache;
 
     float dt = 0.f;
     if (state.lastFrame != frame){
@@ -487,31 +531,36 @@ void EffectRuntime::prepare(EffectInstance& instance){
         instance.seed = seedOf(element);
     set4(f.misc, instance.opacity, (float)instance.blend, instance.seed, instance.clipToArea ? 1.f : 0.f);
 
-    // the trail and the ripples in local px
-    for (int i = 0; i < 32; i++)
-        set4(instance.trail[i], 0.f, 0.f, 0.f, 0.f);
-    for (int i = 0; i < 8; i++)
-        set4(instance.ripples[i], 0.f, 0.f, 0.f, 0.f);
+    // the trail and the ripples in local px, for the effects that read them (the others' stay
+    // zero); the entries past the current ones are cleared
     if (m.pointer == EffectPointer::Trail){
+        int count = 0;
         if (pointer && pointer->testTrail){
-            for (size_t i = 0; i < pointer->trail.size() && i < 32; i++){
+            for (size_t i = 0; i < pointer->trail.size() && i < 32; i++, count++){
                 const Rml::Vector4f s = pointer->trail[i];
                 const Rml::Vector2f p = toLocal(element, Rml::Vector2f(s.x, s.y), areaOrigin);
                 set4(instance.trail[i], p.x, p.y, s.z, 1.f);
             }
         }else{
-            for (int i = 0; i < state.trailCount; i++){
+            for (int i = 0; i < state.trailCount && i < 32; i++, count++){
                 const Rml::Vector4f s = state.trail[i];
                 const Rml::Vector2f p = toLocal(element, Rml::Vector2f(s.x, s.y), areaOrigin);
                 set4(instance.trail[i], p.x, p.y, s.z, s.w);
             }
         }
+        for (int i = count; i < instance.trailUsed; i++)
+            set4(instance.trail[i], 0.f, 0.f, 0.f, 0.f);
+        instance.trailUsed = count;
     }
     if (m.pointer == EffectPointer::Ripples){
-        for (int i = 0; i < state.rippleCount; i++){
+        int count = 0;
+        for (int i = 0; i < state.rippleCount && i < 8; i++, count++){
             const Rml::Vector4f r = state.ripples[i];
             const Rml::Vector2f p = toLocal(element, Rml::Vector2f(r.x, r.y), areaOrigin);
             set4(instance.ripples[i], p.x, p.y, r.z, r.w);
         }
+        for (int i = count; i < instance.ripplesUsed; i++)
+            set4(instance.ripples[i], 0.f, 0.f, 0.f, 0.f);
+        instance.ripplesUsed = count;
     }
 }

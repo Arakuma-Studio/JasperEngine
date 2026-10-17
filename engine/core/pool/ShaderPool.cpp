@@ -10,6 +10,7 @@
 #include "shader/ShaderDataSerializer.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
@@ -162,7 +163,8 @@ static std::set<ShaderKey>& notPrecompiledShaders(){
 
 // Custom shader registry: index = customId-1, value = project-relative base path.
 // Bumped whenever the registry is reset (clear/clearUnused): ids held elsewhere are stale.
-static uint32_t customShaderGeneration = 1;
+// read without the lock (UI effects ask for it every draw); changed under customShaderMutex()
+static std::atomic<uint32_t> customShaderGeneration{1};
 static std::function<std::string(const std::string&)>& customShaderNameResolver(){
     static std::function<std::string(const std::string&)>* resolver = new std::function<std::string(const std::string&)>();
     return *resolver;
@@ -1033,8 +1035,7 @@ void ShaderPool::setUiEffectResolver(std::function<std::string(const std::string
 }
 
 uint32_t ShaderPool::getCustomShaderGeneration(){
-    std::lock_guard<std::mutex> lock(customShaderMutex());
-    return customShaderGeneration;
+    return customShaderGeneration.load(std::memory_order_acquire);
 }
 
 std::string ShaderPool::resolveCustomShaderBasename(const std::string& basename){

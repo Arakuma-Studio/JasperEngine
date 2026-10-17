@@ -263,8 +263,9 @@ Remote fonts, icons, Lottie and images: import_files (fonts, icons, from_documen
 no Lua, so dynamic content appears only in play. Reference: jasper://docs/html-ui (Lua API,
 data binding, anime animations), jasper://docs/html-ui-support (what CSS works),
 examples in .jasperengine/engine-api/html-ui-examples/.
-GPU effects: effect(<name>, <param> <value>, ...) in background-image, filter or backdrop-filter;
-list_ui_effects finds them (params, example), set_ui_effect_time pins their clock for stable images.
+GPU effects: effect(<name>, <param> <value>, ...) in background-image, mask-image, filter or
+backdrop-filter (catalogue: jasper://docs/html-ui-effects; a project's own: a .frag declared with
+@effect); list_ui_effects finds them (params, example), set_ui_effect_time pins their clock.
 The UI tools share these rules: entity is the GameObject with the UI Document (omitted: the
 scene's only one, else the only one of the open scenes, or of the running ones in play); a
 ref works as a selector again; boxes are [x, y, width, height] in canvas px (CSS px), origin top
