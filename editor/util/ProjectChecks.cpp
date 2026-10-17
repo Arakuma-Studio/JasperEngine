@@ -1415,7 +1415,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
     const uint64_t before = Out::lastLogId();
     try {
         ShaderBuilder builder;
-        const ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
+        ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
         if (effect) {
             // the parameter block the shader declares is the manifest's
