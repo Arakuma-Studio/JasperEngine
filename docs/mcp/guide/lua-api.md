@@ -774,6 +774,9 @@ far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`,
 `rotatePosition(a)`, `elevateView(a)`, `elevatePosition(a)`, `walkForward(d)`, `zoom(d)`,
 `slide(d)`, `slideForward(d)`, `slideUp(d)`, `getViewMatrix()`, `getProjectionMatrix()`,
 `getViewProjectionMatrix()`, `getDistanceFromTarget()`, `updateCamera()`.
+A camera looks at its target by default (`isUsingTarget()`): the GameObject's rotation is
+ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
+cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 
 ### 4.10 Light (GameObject) / Light2D (GameObject)
 

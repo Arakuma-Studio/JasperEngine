@@ -144,28 +144,19 @@ return Player
   property paths (submeshes[0]...) in scripts.
 
 ## C++ scripts
-Two kinds, as create_script generates them: a ScriptBase subclass for general logic, or a
-subclass of the GameObject's own class (Mesh, Primitive, Sprite, ...) to call its methods on
-`this` (e.g. setColor). No reflection or declaration macros (no GENERATED_BODY, GDCLASS,
-D_OBJECT): inherit, declare a (jasperengine::Scene*, jasperengine::Entity) constructor, expose
-fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors). Includes are flat and
-quoted from the engine API snapshot: #include "ScriptBase.h", "Engine.h", "Input.h", "Log.h",
-"Mesh.h"; never <core/...>. In the constructor REGISTER_ENGINE_EVENT(onUpdate) /
-REGISTER_ENGINE_EVENT(onFixedUpdate), with the matching UNREGISTER_ENGINE_EVENT in the
-destructor; component events with REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT /
-REGISTER_COMPONENT_EVENT(Component, event, method) + UNREGISTER_*. Log with
-Log::print("x %f", x) (Log::warn, Log::error); never printf, std::cout or Engine::log. Key
-codes are D_KEY_* in C++ (Input.KEY_* in Lua). Angles are DEGREES by default: Quaternion(angle,
-axis) takes the angle first; std::sin/cos want radians (Angle::defaultToRad).
-- Script directories (project setting) are include roots compiled whole: shared helper
-  classes go there; a .cpp outside a root and not included by an attached script is not
-  compiled. A C++ build runs only when an enabled C++ script is attached somewhere.
-- Custom build settings go in ProjectBuild.cmake (never the generated CMakeLists.txt), on
-  ${JASPERENGINE_TARGET}, paths from ${JASPERENGINE_SCRIPTS_DIR}. The C++ standard is a
-  project setting (cxxStandard).
-- compile_scripts reports compile errors with file and line without playing.
-)JE"
-R"JE(
+Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
+(Mesh, Primitive, Sprite, ...) to call its methods on `this`. No reflection macros
+(GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
+constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
+Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
+<core/...>. REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in the
+destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
+(+ UNREGISTER_*). Log::print("x %f", x), never printf or std::cout. Keys are D_KEY_*. Angles are
+DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
+directories are include roots compiled whole (a build runs only with an enabled C++ script
+attached); build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
+compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
+
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart. Clock options with any action, or
   alone with action "set": time_scale (slow motion / fast forward), fixed_fps (every frame
@@ -183,14 +174,11 @@ R"JE(
   when the light's shadows are on.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
-  disableTarget(). Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
-  cos(pitch)cos(yaw)) * distance, then setTarget(target).
-- UI, two systems. Component UI (text, image, button, panel, scrollbar, progressbar, input
-  field, layout group): create_ui lays out in pixels with y DOWN from the parent's top-left, in
-  2D scenes and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer
-  input needs a UI camera: put HUDs and menus in a UI scene attached as a child scene
-  (set_child_scene). HTML/CSS UI (pages drawn over the scene, in front of the component UI):
-  the section "HTML/CSS UI" below.
+  disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
+  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
+  and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
+  UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
@@ -209,8 +197,8 @@ R"JE(
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
-- Layer Collision Matrix (project settings, per backend) gates contacts; Physics.raycast /
-  Physics2D.raycast take an optional layer mask.
+- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
+  optional layer mask.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -243,35 +231,18 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform; it is a
-long job (wait/timeout_seconds, get_job). The 2D/3D physics switches only strip backends from
-the export; guard code with JASPERENGINE_PHYSICS_2D / JASPERENGINE_PHYSICS_3D if needed.
-Before exporting: every scene saved, Console clean in play, the start scene correct.
+long job (wait/timeout_seconds, get_job). The 2D/3D physics switches strip backends from the
+export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
-Menus, HUDs and dialogs: write standard HTML + CSS; logic is Lua (no JavaScript, no browser).
-create_ui_document makes a GameObject whose UI Document loads assets/ui/<name>.html (template:
-blank, or an example such as main_menu, hud, inventory, settings, shop) and writes its .css and
-Lua. Edit the files with your own tools: before your next call the documents reload (also while
-playing) and external_changes lists what the engine drops or rewrites, with file:line:col, code
-and a fix: fix those first. inspect_ui: element tree (ref = reusable selector, box in canvas px =
-send_input coords, overflow/clipped/hidden flags), computed styles with the rule that set them,
-hit test (at), data models. assert_ui: checks such as text_fits, no_overlap, within_parent,
-within_viewport, visible, contrast, min_size, optionally at other viewports, with an outlined
-image of failures. While playing, send_input mouse/touch events take target: "<selector>".
-Remote fonts, icons, Lottie and images: import_files (fonts, icons, from_document). Edit mode has
-no Lua, so dynamic content appears only in play. Reference: jasper://docs/html-ui (Lua API,
-data binding, anime animations), jasper://docs/html-ui-support (what CSS works),
-examples in .jasperengine/engine-api/html-ui-examples/.
-GPU effects: effect(<name>, <param> <value>, ...) in background-image, mask-image, filter or
-backdrop-filter (catalogue: jasper://docs/html-ui-effects; a project's own: a .frag declared with
-@effect); list_ui_effects finds them (params, example), set_ui_effect_time pins their clock.
-The UI tools share these rules: entity is the GameObject with the UI Document (omitted: the
-scene's only one, else the only one of the open scenes, or of the running ones in play); a
-ref works as a selector again; boxes are [x, y, width, height] in canvas px (CSS px), origin top
-left; they wait up to 5 s for a document to load and report why one did not. The Console shows
-the same diagnostics at every load ("[HTML UI] file:line:col: severity: message (fix: ...)
-[HTMLUI-CSS-0004]"); jasperengine-editor check --ui gives them without the editor.
+Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
+(template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes
+assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_changes reports.
+inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert_ui (text_fits,
+no_overlap, within_viewport...) check layouts; import_files (fonts, icons, from_document) brings
+remote resources; effect(<name>, ...) draws GPU effects (list_ui_effects, set_ui_effect_time).
+Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
