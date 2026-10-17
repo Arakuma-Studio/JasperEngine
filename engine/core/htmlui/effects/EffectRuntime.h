@@ -104,6 +104,7 @@ namespace jasperengine::htmlui {
         std::shared_ptr<const EffectParamsSnapshot> snapshot;
         float opacity = 1.f, timeScale = 1.f, timeOffset = 0.f;
         int blend = 0;
+        float timeRates[4] = {};              // the @time parameters' values (the snapshot's, set by acquire)
         int paintArea = 0;                    // Rml::BoxArea of the decorator's area (filters: the border box)
         std::shared_ptr<ShaderRender> shader;
         uint16_t customShaderId = 0;          // the id the shader was asked with (re-asked when it changes)

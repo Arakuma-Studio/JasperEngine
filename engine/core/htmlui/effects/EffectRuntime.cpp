@@ -244,6 +244,9 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
     }
     instance->paintArea = paintArea;
     instance->clipToArea = !manifest.boundsGeometry;
+    // the integrated clocks' rates, looked up by name once (integrate runs every frame)
+    for (size_t i = 0; i < manifest.timeParams.size() && i < 4; i++)
+        instance->timeRates[i] = paramNumber(*instance, manifest.timeParams[i]);
     EffectInstance* raw = instance.get();
     live[raw] = std::move(instance);
     totals.instancesCreated++;
@@ -321,7 +324,7 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
 
     // integrated clocks (@time): never jump when a rate changes, the closed form when fixed
     for (size_t i = 0; i < m.timeParams.size() && i < 4; i++){
-        const float rate = paramNumber(instance, m.timeParams[i]);
+        const float rate = instance.timeRates[i];
         if (fixed){
             state.anim[i] = time * rate;
         }else{

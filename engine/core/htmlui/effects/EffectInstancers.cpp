@@ -321,11 +321,15 @@ namespace {
                 const EffectValue& v = snapshot.values[index];
                 if (v.type == EffectParamType::Length){
                     EffectLengthContext context;
-                    context.fontSize = element->GetComputedValues().font_size();
-                    if (Rml::ElementDocument* document = element->GetOwnerDocument())
-                        context.rootFontSize = document->GetComputedValues().font_size();
-                    if (Rml::Context* rml = element->GetContext())
-                        context.viewport = Vector2((float)rml->GetDimensions().x, (float)rml->GetDimensions().y);
+                    // the font sizes and the viewport only for the units that read them (a filter's
+                    // ink overflow is asked for every frame)
+                    if (v.length.unit != EffectLength::Unit::Px && v.length.unit != EffectLength::Unit::Percent){
+                        context.fontSize = element->GetComputedValues().font_size();
+                        if (Rml::ElementDocument* document = element->GetOwnerDocument())
+                            context.rootFontSize = document->GetComputedValues().font_size();
+                        if (Rml::Context* rml = element->GetContext())
+                            context.viewport = Vector2((float)rml->GetDimensions().x, (float)rml->GetDimensions().y);
+                    }
                     context.areaShorterSide = std::min(area.x, area.y);
                     value = EffectValueParser::resolveLength(v.length, context);
                 }else{
