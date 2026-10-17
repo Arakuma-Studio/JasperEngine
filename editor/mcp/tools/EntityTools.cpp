@@ -1088,8 +1088,7 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "find_entities";
         tool.title = "Find Entities";
         tool.description =
-            "Finds GameObjects matching all given filters (globs: * ?, case-insensitive). Returns {count, entities: "
-            "[{id, name, path}], truncated}.";
+            "Find GameObjects matching all given filters (globs: * ?, case-insensitive).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"name", string("Name glob.")},
@@ -1115,10 +1114,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create, with parent, name, local transform, extra components and initial values in "
-            "one step. empty = Transform only; bare = no components (root only); model needs model (the way to "
-            "import a project model); *_tween/*_tracks are animation actions. values {component: {property: "
-            "value}} or changes, as in set_properties. Returns {entity_id, entity, components, children}.";
+            "GameObject > Create with parent, name, local transform, extra components and initial values in one "
+            "step. empty = Transform only; bare = no components (root only); model needs model (imports a project "
+            "model); *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as "
+            "set_properties.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
@@ -1141,8 +1140,7 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "delete_entities";
         tool.title = "Delete Entities";
         tool.description =
-            "Deletes GameObjects with their children; in a prefab instance only from that instance (an override). "
-            "Returns {deleted}.";
+            "Deletes GameObjects with their children; in a prefab instance only from that instance (an override).";
         tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"entities", entities()}});
         tool.annotations.destructive = true;
         tool.handler = deleteEntitiesTool;
@@ -1153,8 +1151,8 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "duplicate_entities";
         tool.title = "Duplicate Entities";
         tool.description =
-            "Duplicates GameObjects with their children next to the originals (Ctrl+D) and selects the copies. "
-            "Returns created [{id, name, path}] in order.";
+            "Duplicate GameObjects with their children next to the originals (Ctrl+D) and select the copies "
+            "(returned in order).";
         tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"entities", entities()}});
         tool.handler = duplicateEntitiesTool;
         registry.addTool(std::move(tool));
@@ -1163,7 +1161,8 @@ void registerEntityTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "rename_entity";
         tool.title = "Rename Entity";
-        tool.description = "Renames a GameObject. Returns {entity}.";
+        tool.description =
+            "Renames a GameObject.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"name", string("")}}, {"entity", "name"});
         tool.annotations.idempotent = true;
         tool.handler = renameEntityTool;
@@ -1174,8 +1173,8 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "move_entity";
         tool.title = "Move Entity";
         tool.description =
-            "Reparents/reorders GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its "
-            "children, default last), before or after (a sibling). Several keep their order. Keeps the world pose "
+            "Reparent/reorder GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its "
+            "children, default last), before or after (a sibling). Several keep their order and their world pose "
             "unless keep_world_transform=false. Prefab instance children cannot be rearranged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1225,8 +1224,7 @@ void registerEntityTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Select Entities";
         tool.description =
-            "Replaces a scene's selection (what the Inspector shows); add=true adds to it; entities: [] clears it. "
-            "Returns the selection.";
+            "Replace a scene's selection (what the Inspector shows); add=true adds to it; entities: [] clears it.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1243,7 +1241,7 @@ void registerEntityTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Copy Entities";
         tool.description =
-            "Copies GameObjects with their children to the clipboard (Ctrl+C) for paste_entities (any scene of the "
+            "Copy GameObjects with their children to the clipboard (Ctrl+C) for paste_entities (any scene of the "
             "project); cut=true also deletes them.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1260,8 +1258,8 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "paste_entities";
         tool.title = "Paste Entities";
         tool.description =
-            "Pastes the copy_entities clipboard (Ctrl+V): at the scene root, as last children of parent, or after "
-            "`after`; selects them. Returns created roots.";
+            "Paste the copy_entities clipboard (Ctrl+V): at the scene root, as last children of parent, or after "
+            "`after`; selects them.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"parent", entityRef("")}, {"after", entityRef("")}});
         tool.handler = pasteEntitiesTool;
         registry.addTool(std::move(tool));

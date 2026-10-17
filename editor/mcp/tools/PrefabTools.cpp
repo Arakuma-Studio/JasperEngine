@@ -1881,10 +1881,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab";
         tool.title = "Create Prefab";
         tool.description =
-            "Unity's Create Prefab: saves the GameObject (with children) as a new .prefab; it becomes that prefab's instance "
-            "root (same id). Several entities: one prefab each, <directory>/<name>.prefab. An instance root becomes an "
-            "original prefab (nested instances stay nested; variants: create_prefab_variant); an instance member is refused "
-            "(unpack_prefab first). Never overwrites a file. Returns {prefabs:[{path,guid,instance}]}.";
+            "Unity's Create Prefab: saves the GameObject (with children) as a new .prefab and makes it that prefab's "
+            "instance root (same id). Several entities: one prefab each, <directory>/<name>.prefab. An instance root "
+            "becomes an original prefab (nested instances stay; variants: create_prefab_variant); an instance member "
+            "is refused (unpack_prefab first). Never overwrites.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1901,10 +1901,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab_variant";
         tool.title = "Create Prefab Variant";
         tool.description =
-            "Unity's Prefab Variant: a prefab on top of a base (base edits reach it unless overridden). From "
-            "entity (outermost instance root): it becomes an instance of the new variant, which takes its "
-            "overrides and added GameObjects. From base: just the asset (undo scope=project). Returns {path, "
-            "guid, base, instance?}.";
+            "Unity's Prefab Variant: a prefab on top of a base (base edits reach it unless overridden). From entity "
+            "(outermost instance root): it becomes an instance of the variant, which takes its overrides and added "
+            "GameObjects. From base: the asset only (undo scope=project).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Outermost instance root.")},
@@ -1920,14 +1919,13 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "instantiate_prefab";
         tool.title = "Instantiate Prefab";
         tool.description =
-            "Place a prefab (or variant) instance in a scene or prefab stage and select it; name and local "
-            "placement default to the prefab root's. Under another instance's GameObject it is an "
-            "added-GameObject override (nest_in_parent_prefab: part of that prefab instead). Returns "
-            "{instance, prefab, guid, gameobjects}.";
+            "Place a prefab (or variant) instance in a scene or prefab stage and select it; name and local placement "
+            "default to the prefab root's. Under another instance's GameObject it is an added-GameObject override "
+            "(nest_in_parent_prefab: part of that prefab).";
         tool.inputSchema = object({
             {"prefab", prefabRef},
             {"scene", sceneRef()},
-            {"parent", entityRef("Parent (default: scene root).")},
+            {"parent", entityRef("Default: scene root.")},
             {"position", vec3("Local position.")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
@@ -1941,9 +1939,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "replace_prefab";
         tool.title = "Replace Prefab";
         tool.description =
-            "Unity's Replace Prefab Asset: an outermost (or added) instance root, or a Missing Prefab root, becomes an "
-            "instance of another prefab, keeping id, parent, name and pose. Overrides move to GameObjects matched by name "
-            "path (name), sibling-index path (hierarchy) or root only (none); dropped ones are listed in log.";
+            "Unity's Replace Prefab Asset: an outermost (or added) instance root, or a Missing Prefab root, becomes "
+            "an instance of another prefab, keeping id, parent, name and pose. Overrides move to GameObjects matched "
+            "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Instance root or Missing Prefab root.")},
@@ -1963,9 +1961,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "unpack_prefab";
         tool.title = "Unpack Prefab";
         tool.description =
-            "Unity's Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, values "
-            "stay). One level by default: nested instances stay instances, a variant instance becomes an instance of its "
-            "base. completely: plain GameObjects all the way down. Missing Prefab roots become plain GameObjects.";
+            "Unity's Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, "
+            "values stay). One level by default: nested instances stay, a variant instance becomes its base's. "
+            "completely: plain GameObjects all the way down. Missing Prefab roots become plain GameObjects.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Any GameObject of the instance.")},
@@ -1982,10 +1980,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "add_to_prefab";
         tool.title = "Add GameObject to Prefab";
         tool.description =
-            "Unity's Apply of an added GameObject: moves a GameObject under parent into that instance's "
-            "prefab, so every instance gets it. target: which prefab of a nested/variant chain (one of "
-            "parent's apply_targets); an outer one gets it as an override of its nested instance. The .prefab "
-            "is written when the scene is saved.";
+            "Unity's Apply of an added GameObject: moves it (under parent) into that instance's prefab, so every "
+            "instance gets it. target: a prefab of the nested/variant chain (one of parent's apply_targets); an "
+            "outer one gets it as an override of its nested instance. Written when the scene is saved.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("GameObject to add (with children).")},
@@ -2001,9 +1998,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "remove_from_prefab";
         tool.title = "Remove GameObject from Prefab";
         tool.description =
-            "Removes a GameObject (with children) from its prefab asset: other instances lose it, here it stays as a plain "
-            "GameObject (a nested instance root leaves the outer prefab). For this instance only, delete it instead. The "
-            ".prefab is written when the scene is saved.";
+            "Remove a GameObject (with children) from its prefab asset: other instances lose it, here it stays plain "
+            "(a nested instance root leaves the outer prefab). For this instance only, delete it. Written when the "
+            "scene is saved.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Instance member (not the root).")}
@@ -2018,10 +2015,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "get_prefab_info";
         tool.title = "Get Prefab Info";
         tool.description =
-            "Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesting (outermost "
-            "first), instance_root, prefab, apply_targets (innermost first) and the outermost instance's "
-            "overrides [{kind, entity, component, properties|state, apply_targets}] (pass entries to "
-            "prefab_overrides as is). prefab: path, guid, variant chain, variants, nested, standalone, "
+            "Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesting (outermost first), "
+            "instance_root, prefab, apply_targets (innermost first), the outermost instance's overrides (pass "
+            "entries to prefab_overrides as is). prefab: path, guid, variant chain, variants, nested, standalone, "
             "open_in_prefab_mode, usage, contents.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -2047,12 +2043,11 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_overrides";
         tool.title = "Apply / Revert Prefab Overrides";
         tool.description =
-            "Apply (into the prefab asset; all instances follow) or revert instance overrides. Select with "
-            "all=true + entity (Apply/Revert All of its outermost instance), entity [+ kind, component, "
-            "properties, state], or overrides (get_prefab_info.overrides entries as is; removed GameObjects by "
-            "name or registry_entity). target: one of the entry's apply_targets (default innermost = Apply to "
-            "Prefab; outer = Apply as Override); applying to a base clears those overrides in between. The "
-            ".prefab is written when a scene using it is saved.";
+            "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with all=true + "
+            "entity (Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
+            "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). target: "
+            "one of the entry's apply_targets (default innermost = Apply to Prefab; outer = Apply as Override; a "
+            "base clears the overrides in between). The .prefab is written when a scene using it is saved.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},
@@ -2077,12 +2072,11 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_mode";
         tool.title = "Prefab Mode";
         tool.description =
-            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; "
-            "stacks inside a stage); returns the stage's scene_id: pass it as scene to "
-            "scene/GameObject/component tools and undo (paths start at the prefab root). Edits change the "
-            "asset; nested instances record overrides. Auto Save (default on) writes the asset ~0.35 s after "
-            "each edit; save writes now. close keeps depth stages (unsaved ones follow unsaved). status lists "
-            "stages.";
+            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks "
+            "inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from "
+            "the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) "
+            "writes ~0.35 s after each edit; save writes now. close keeps depth stages (unsaved ones follow "
+            "unsaved). status lists stages.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
@@ -2103,8 +2097,8 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "list_prefabs";
         tool.title = "List Prefabs";
         tool.description =
-            "Every .prefab: path, guid, base (variants), standalone, instance count across scenes, prefabs nesting it; plus "
-            "Missing Prefabs (GUIDs referenced without a file).";
+            "Every .prefab: path, guid, base (variants), standalone, instance count across scenes, prefabs nesting "
+            "it; plus Missing Prefabs (GUIDs without a file).";
         tool.inputSchema = object({
             {"filter", string("Path substring (case-insensitive).")},
             {"usage", withDefault(boolean("Reads closed scene files."), true)}
@@ -2119,8 +2113,8 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "set_standalone_prefab";
         tool.title = "Set Standalone Prefab";
         tool.description =
-            "Adds/removes a prefab in the project's standalone list. A prefab no scene places is built only if listed (or "
-            "referenced by a script property), so scripts can load it by path (PrefabAsset.load). Saves project.yaml "
+            "Add/remove a prefab in the project's standalone list: a prefab no scene places is built only if listed "
+            "(or referenced by a script property), so scripts can PrefabAsset.load it by path. Saves project.yaml "
             "(not undoable).";
         tool.inputSchema = object({
             {"prefab", prefabRef},

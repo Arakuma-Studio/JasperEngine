@@ -524,10 +524,10 @@ void registerDocsTools(McpRegistry& registry) {
         tool.name = "search_engine_api";
         tool.title = "Search Engine API";
         tool.description =
-            "Search the scripting API (Lua bindings, C++ headers) and the jasper://docs reference: confirm a "
-            "class, method, property, enum or macro exists before using it. detail reads "
-            "Parent<sep>name(params) -> Return; sep ':' Lua method (also C++), '.' static/property (both), "
-            "'::' C++ only. Exact C++ signatures: search_engine_source.";
+            "Search the scripting API (Lua bindings, C++ headers) and the jasper://docs reference: confirm a class, "
+            "method, property, enum or macro exists before using it. detail: Parent<sep>name(params) -> Return; sep "
+            "':' Lua method (also C++), '.' static/property (both), '::' C++ only. Exact C++ signatures: "
+            "search_engine_source.";
         tool.inputSchema = object({
             {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
             {"parent", string("Only members of this class/enum.")},
@@ -545,9 +545,9 @@ void registerDocsTools(McpRegistry& registry) {
         tool.name = "search_engine_source";
         tool.title = "Search Engine Source";
         tool.description =
-            "Case-insensitive substring search over the engine's real C++ headers/sources and Lua bindings (engine/core): "
-            "ground truth for signatures, overloads, enum values, macros, key codes (D_KEY_* in C++, Input.KEY_* in Lua). "
-            "Returns {matches: [{path, line, text}], truncated}; read context with read_engine_source.";
+            "Case-insensitive substring search of the engine's C++ headers/sources and Lua bindings (engine/core): "
+            "ground truth for signatures, overloads, enum values, macros, key codes (D_KEY_* in C++, Input.KEY_* in "
+            "Lua); matches [{path, line, text}]; context: read_engine_source.";
         tool.inputSchema = object({
             {"query", string("e.g. \"Quaternion(\", \"isKeyPressed\".")},
             {"path_filter", string("Substring of the file path, e.g. \"math/\", \"binding\".")},
@@ -562,8 +562,9 @@ void registerDocsTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "read_engine_source";
         tool.title = "Read Engine Source";
-        tool.description = "Read an engine source file (path relative to the engine root, e.g. core/math/Quaternion.h, "
-                           "core/script/binding/CoreClassesLua.cpp). Returns the lines as text.";
+        tool.description =
+            "Read an engine source file (path relative to the engine root, e.g. core/math/Quaternion.h, "
+            "core/script/binding/CoreClassesLua.cpp).";
         tool.inputSchema = object({
             {"path", string("Engine-relative path.")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},

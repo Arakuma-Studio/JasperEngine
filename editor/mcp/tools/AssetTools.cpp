@@ -2811,9 +2811,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_assets";
         tool.title = "List Assets";
         tool.description =
-            "List/search project files as the Project window shows them. pattern globs the file name, or the path when it "
-            "has a '/' (\"assets/**/enemy*.png\"). Returns project-relative paths (usable as asset refs), the assets and "
-            "Lua dirs, total/truncated.";
+            "List/search project files as the Project window shows them. pattern globs the file name, or the path "
+            "with a '/' (\"assets/**/enemy*.png\"). Returns project-relative paths (asset refs), the assets and Lua "
+            "dirs, total/truncated.";
         tool.inputSchema = object({
             {"directory", assetPath("Default: project root.")},
             {"type", stringEnum("", types)},
@@ -2834,9 +2834,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "Details of one project file by type: image size/channels; model meshes, materials, animations, nodes; WAV "
-            "format/duration; .material fields and linked submeshes; shader includes and forks using it; Lua syntax "
-            "status; scene status; unsaved code editor edits.";
+            "One project file's details by type: image size/channels; model meshes, materials, animations, nodes; "
+            "WAV format/duration; .material fields, linked submeshes; shader includes, forks using it; Lua syntax; "
+            "scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2849,8 +2849,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "view_asset";
         tool.title = "View Asset";
         tool.description =
-            "See an image asset as PNG image content; models, materials and prefabs give their Project window thumbnail "
-            "(may take seconds). SVGs are not rasterized.";
+            "See an image asset as PNG image content; models, materials and prefabs give their Project window "
+            "thumbnail (may take seconds). SVGs are not rasterized.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"max_size", withDefault(integer("Longest side, px.", 16, 2048), 512)}
@@ -2866,8 +2866,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "read_file";
         tool.title = "Read File";
         tool.description =
-            "Read a project text file (as on disk); the result text is the content. For clients without file "
-            "access (e.g. remote HTTP): if you can reach the project folder, read it with your own tools.";
+            "Read a project text file (as on disk); the result text is the content. For clients without file access "
+            "(remote HTTP).";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
@@ -2884,11 +2884,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "For clients without file access (e.g. remote HTTP); if you can reach the project folder, edit with "
-            "your own tools (picked up automatically). Creates or changes a project text file (undo scope "
-            "project) and validates it: Lua syntax, shader forks using it recompiled (errors with lines), "
-            "materials parsed. content = whole file, or edits [{old_text, new_text}] (old_text must match once "
-            "unless replace_all). Refuses project.yaml, .scene, .prefab and files with unsaved code editor edits.";
+            "Create or change a project text file (undo scope project; for clients without file access) and validate "
+            "it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = whole file, "
+            "or edits [{old_text, new_text}] (old_text matches once unless replace_all). Refuses project.yaml, "
+            ".scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},
@@ -2920,9 +2919,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "move_asset";
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
-            "Rename/move a file or folder to a new path, updating references in scenes, prefabs, materials, script entries "
-            "and shader forks (as the Project window does); or copy it (a copied prefab gets a new GUID). The destination "
-            "must not exist; its folder must.";
+            "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
+            "shader forks (as the Project window does); or copy it (a copied prefab gets a new GUID). The "
+            "destination must not exist; its folder must.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"to", assetPath("New path (folder + name).")},
@@ -2939,7 +2938,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Delete Assets";
         tool.description =
             "Move files/folders to the project trash (undo restores them). References become missing (instances turn "
-            "into Missing Prefabs). Open scenes can't be deleted.";
+            "into Missing Prefabs). Open scenes cannot be deleted.";
         tool.inputSchema = object({{"paths", array(string(""), "")}}, {"paths"});
         tool.annotations.destructive = true;
         tool.allowedWhilePlaying = false;
@@ -2952,9 +2951,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "import_files";
         tool.title = "Import Files";
         tool.description =
-            "Copy files/folders from absolute paths on this machine into a project folder (created if missing), like "
-            "dropping them on the Project window. Assets go under the assets directory. Remote (network): URLs in sources, "
-            "fonts [\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
+            "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
+            "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
+            "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
             "from_document (import every remote URL a .html/.css uses and rewrite it).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
@@ -2972,19 +2971,18 @@ void registerAssetTools(McpRegistry& registry) {
 
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
-        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\", list_shaders), shaderParams "
-        "{member: value}, shaderTextures {uniform: path|null}, shaderFeatures [defines] or {define: bool}, blendMode, "
-        "cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, "
-        "readMask, writeMask, pass, fail, depthFail}, colorWrite (\"auto\", \"none\", \"rgb\"...), extraPass {shader, "
-        "its shaderParams/Textures/Features, render state, stencil, colorWrite, order} (null removes).");
+        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
+        "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
+        "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
+        "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");
 
     {
         ToolDef tool;
         tool.name = "create_material";
         tool.title = "Create Material";
         tool.description =
-            "Create a shared .material file (linked submeshes follow its edits), from defaults or from a mesh submesh's "
-            "current material (entity + submesh; then linked unless link=false), plus values.";
+            "Create a shared .material file (linked submeshes follow its edits) from defaults or a mesh submesh's "
+            "material (entity + submesh; linked unless link=false), plus values.";
         tool.inputSchema = object({
             {"path", assetPath("New .material path.")},
             {"values", materialValues},
@@ -3003,11 +3001,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "update_material";
         tool.title = "Update Material";
         tool.description =
-            "Change the given fields of a .material file; linked submeshes update. Current fields: get_asset_info. "
-            "Returns the fields and linked submeshes.";
+            "Change the given fields of a .material file; linked submeshes update. Current fields: get_asset_info.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"values", materialValues}
+            {"values", anyObject("The fields to change, as create_material's values (null removes).")}
         }, {"path", "values"});
         tool.handler = updateMaterialTool;
         registry.addTool(std::move(tool));
@@ -3018,8 +3015,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "link_material";
         tool.title = "Link Material";
         tool.description =
-            "Link a mesh submesh to a .material file, or unlink it (material null; it keeps a copy of the values). A "
-            "submesh's own values: set_properties submeshes[i].material.";
+            "Link a mesh submesh to a .material file, or unlink it (material null: it keeps a copy of the values). "
+            "Its own values: set_properties submeshes[i].material.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -3036,9 +3033,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_material_presets";
         tool.title = "List Material Presets";
         tool.description =
-            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency...): id, "
-            "name, description and the material fields each sets (shader, extraPass, stencil, colorWrite, render state). "
-            "Apply one with apply_material_preset.";
+            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency...): "
+            "id, name, description, the fields each sets. Apply with apply_material_preset.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3051,10 +3047,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "apply_material_preset";
         tool.title = "Apply Material Preset";
         tool.description =
-            "Apply a material preset (list_material_presets) to mesh submesh materials (entity/entities; every submesh "
-            "unless submesh) as one undo step, or to a .material file (path; linked submeshes follow, undo scope project). "
-            "Only the fields the preset sets change; a submesh linked to a .material file becomes its own material. "
-            "Fine-tune after with set_properties submeshes[i].material.* (extraPass.*, stencil.*).";
+            "Apply a material preset (list_material_presets) in one undo step to submesh materials (entity/entities, "
+            "all submeshes unless submesh) or a .material file (path: linked submeshes follow; undo scope project). "
+            "Only its fields change (a linked submesh gets its own material); fine-tune with set_properties "
+            "submeshes[i].material.*.";
         tool.inputSchema = object({
             {"preset", string("Preset id, e.g. \"outline_hull\".")},
             {"scene", sceneRef()},
@@ -3074,10 +3070,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Fork Shader";
         tool.description =
             "Copy a built-in shader into the project (<directory>/<name>.vert/.frag) and point a target at it: "
-            "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh "
-            "fork displaces or discards), scene_default (shader_type, for components without their own), "
-            "post_process (pass_index, or omit to add a pass). Edit the files; parameters with "
-            "set_shader_uniform. Returns {custom_shader, vert_path, frag_path}.";
+            "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh fork "
+            "displaces or discards), scene_default (shader_type, for components without their own), post_process "
+            "(pass_index, or omit to add a pass). Parameters: set_shader_uniform.";
         tool.inputSchema = object({
             {"target", stringEnum("Default: component when entity is given.", {"component", "depth", "scene_default", "post_process"})},
             {"scene", sceneRef()},
@@ -3099,16 +3094,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_shader_uniforms";
         tool.title = "Get Shader Uniforms";
         tool.description =
-            "A custom or library shader's parameters (members of u_vs/u_fs_customParams, u_fs_postParams for a pass): GLSL "
-            "type, engine-written flag (time, resolution), stored value; a library shader adds parameters (label, kind, "
-            "default, value). entity (+ component, + submesh for a material's shader) or pass_index. Members appear once "
-            "the shader compiled.";
+            "A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_postParams): GLSL type, "
+            "engine-written (time, resolution), value; library shaders add label, kind, default. entity (+ "
+            "component, + submesh) or pass_index; known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A mesh submesh's material (default: submesh 0 when its material has a shader).")},
-            {"pass_index", integer("Post-process pass instead of entity.")}
+            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"pass_index", integer("A post-process pass instead.")}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3121,14 +3115,14 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader by member name (entity (+ component, + submesh "
-            "for a material's shader) or pass_index). Undeclared names are stored but unused (the result says so).";
+            "Set or remove one parameter of a custom or library shader by member (entity (+ component, + submesh for "
+            "a material) or pass_index). Undeclared names are stored but unused (the result says so).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A mesh submesh's material (default: submesh 0 when its material has a shader).")},
-            {"pass_index", integer("Post-process pass instead of entity.")},
+            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"pass_index", integer("A post-process pass instead.")},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
                        {"description", "Number or [x,y(,z(,w))] (colours linear), or \"#RRGGBB[AA]\" (sRGB) for a colour."}}},
@@ -3143,12 +3137,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_shaders";
         tool.title = "List Shaders";
         tool.description =
-            "The engine's library shaders (\"library:<name>\"): pick one before forking. Each has a type (mesh shaders go "
-            "on a material: set_properties submeshes[i].material.shader; ui/points/lines/sky ones in the component's "
-            "customShader; postprocess ones are passes of set_scene_settings post_process), lighting modes, and with detail its parameters (shaderParams, colours linear), textures "
-            "(shaderTextures), features/keywords (shaderFeatures), required inputs and default render state (state, "
-            "shadows), with the require_rules/state_rules a feature or keyword turns on. scene_inputs/cost_note: reads the "
-            "scene depth/colour, an extra pass per camera.";
+            "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a material's "
+            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and "
+            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default "
+            "state and their rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Using them: "
+            "jasper://docs/shaders.";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
@@ -3165,10 +3158,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "check_shader";
         tool.title = "Check Shader";
         tool.description =
-            "Compile shader forks or library shaders now; returns errors (line, message, log). shader: a customShader base "
-            "(\"shaders/Water\") or its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if no component uses it "
-            "yet. Omit shader for every custom and library shader in use (materials included). A failing shader renders "
-            "with the built-in one.";
+            "Compile shader forks or library shaders now: errors (line, message, log). shader: a customShader base "
+            "(\"shaders/Water\"), its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if unused yet. No "
+            "shader: every custom and library shader in use. A failing shader draws as the built-in one.";
         tool.inputSchema = object({
             {"shader", string("")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}
@@ -3184,8 +3176,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_texture_settings";
         tool.title = "Set Texture Settings";
         tool.description =
-            "Sampler settings of a component's texture property (they live on the property, e.g. sprite texture or "
-            "submeshes[0].material.baseColorTexture, not on the file). Only given fields change; mag_filter nearest for "
+            "Sampler settings of a component's texture property (on the property, e.g. sprite texture or "
+            "submeshes[0].material.baseColorTexture, not the file). Only given fields change; mag_filter nearest for "
             "pixel art.";
         const std::vector<std::string> wraps = {"repeat", "mirrored_repeat", "clamp_to_edge", "clamp_to_border"};
         tool.inputSchema = object({
@@ -3210,12 +3202,11 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "generate_placeholder_art";
         tool.title = "Generate Placeholder Art";
         tool.description =
-            "Draw an antialiased placeholder PNG (when there is no art) and return a preview: a shape with fill color, "
-            "optional outline and background (default transparent); gradient goes color -> color2, checker alternates "
-            "them. Colors [r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
+            "An antialiased placeholder PNG (no art yet) and its preview: a shape with fill color, optional outline "
+            "and background (default transparent); gradient: color -> color2, checker alternates them. Colors "
+            "[r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("Project-relative .png path inside the assets dir, e.g. \"assets/sprites/coin.png\" "
-                               "(the path set_properties / create_entity then take).")},
+            {"path", assetPath("A .png inside the assets dir, e.g. \"assets/sprites/coin.png\" (then a texture path).")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
@@ -3238,8 +3229,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "search_files";
         tool.title = "Search Files";
         tool.description =
-            "Grep project text files (scripts, shaders, docs, configs): for HTTP clients without file access; "
-            "locally use grep. ECMAScript regex. Returns {matches: [{path, line, text, context}], total}.";
+            "Grep project text files (scripts, shaders, docs, configs), for HTTP clients without file access. "
+            "ECMAScript regex; matches [{path, line, text, context}].";
         tool.inputSchema = object({
             {"pattern", string("")},
             {"regex", boolean("")},

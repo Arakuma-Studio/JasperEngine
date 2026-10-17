@@ -186,9 +186,9 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.name = "list_ui_effects";
         tool.title = "List UI Effects";
         tool.description =
-            "The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: background-image, mask-image; filter: "
-            "filter, backdrop-filter), category, cost, summary, an example, and the parameters (name, type, default, range) when "
-            "one effect is named or few match. Includes the project's .frag effects.";
+            "The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: background-image, mask-image; "
+            "filter: filter, backdrop-filter), category, cost, summary, example; parameters (name, type, default, "
+            "range) when one is named or few match. Project .frag effects included.";
         tool.inputSchema = object({
             {"name", string("One effect: all its parameters.")},
             {"category", string("e.g. gradient, glass, blur, light, distort.")},

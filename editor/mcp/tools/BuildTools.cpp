@@ -1831,9 +1831,9 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "get_build_info";
         tool.title = "Get Build Info";
         tool.description =
-            "Build Settings state: toolchains found (cmake/compiler, emsdk; missing ones listed), graphics "
-            "APIs and last output dir per mode, jobs, scenes in build, shader count (include_shaders lists "
-            "keys for build_project shaders), running job, last result. Call before build_project.";
+            "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
+            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for build_project "
+            "shaders), running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)}
         });
@@ -1852,11 +1852,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: player for this computer (the first build "
-            "compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: standalone C++/CMake "
-            "project. Saves all scenes first. Past timeout_seconds returns {job_id} (poll get_job). Result: "
-            "output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit "
-            "scenes or play meanwhile.";
+            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles "
+            "the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
+            "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
+            "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
@@ -1907,11 +1906,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), then stop it. Returns the "
-            "log tail (full: log_file), errors (incl. Lua errors), exit code/signal, crashed, fatal_lines. "
-            "input (Linux): send_input events into the player window: key, text, mouse (window pixels or space "
-            "normalized), wait {ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: "
-            "seconds since launch.";
+            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log tail "
+            "(full: log_file), errors (Lua ones too), exit code/signal, crashed, fatal_lines. input (Linux): "
+            "send_input events into its window: key, text, mouse (window px or space normalized), wait "
+            "{ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", number("Default: 5, or past the input.", 0.5, 300)},

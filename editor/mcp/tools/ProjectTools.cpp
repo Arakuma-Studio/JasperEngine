@@ -1955,9 +1955,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "get_project_summary";
         tool.title = "Get Project Summary";
         tool.description =
-            "Open project overview: name, path, temporary, unsaved, Scenes in Build (0 = start) and untitled "
-            "scenes, assets_dir/lua_dir, script_dirs, cxx_standard, prefabs, physics, versions. All settings: "
-            "get_project_settings.";
+            "Open project overview: name, path, temporary, unsaved, Scenes in Build (0 = start), untitled scenes, "
+            "dirs, cxx_standard, prefabs, physics, versions. All settings: get_project_settings.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -1978,7 +1977,7 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Create Project";
         tool.description =
             "File > New Project: creates a project in `path` (no project.yaml there yet) with one untitled 3D scene, "
-            "opens it and waits for load. Returns the project summary. Save the scene (save_project) before building.";
+            "opens it and waits for load. Save the scene (save_project) before building.";
         tool.inputSchema = object({
             {"path", string("Absolute directory.")},
             {"name", string("Default: directory name.")},
@@ -2015,8 +2014,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "save_project";
         tool.title = "Save Project";
         tool.description =
-            "File > Save All: modified scenes (untitled ones to <untitled_scene_dir>/<name>.scene), Prefab Mode, open "
-            "scripts, project.yaml. Returns what was saved and the summary.";
+            "File > Save All: modified scenes (untitled ones to <untitled_scene_dir>/<name>.scene), Prefab Mode, "
+            "open scripts, project.yaml; returns what was saved.";
         tool.inputSchema = object({
             {"path", string("Temporary project: Save As to this empty absolute dir.")},
             {"name", string("Rename the project.")},
@@ -2033,8 +2032,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.title = "Get Project Settings";
         tool.description =
             "Project Settings and editor preferences as flat dotted keys (player.product_name, "
-            "physics.layer_collision_matrix, tags_and_layers.layers, preferences.build_jobs...). No args: all "
-            "but platform overrides. describe adds each key's type, allowed values and meaning.";
+            "physics.layer_collision_matrix, tags_and_layers.layers, preferences.build_jobs...). No args: all but "
+            "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
                                 "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
@@ -2052,10 +2051,10 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "set_project_settings";
         tool.title = "Set Project Settings";
         tool.description =
-            "Set get_project_settings keys. All values validated first (one bad value changes nothing); saved to "
-            "project.yaml at once, NOT undoable. Lists are replaced whole; tags_and_layers.layers merges by index. "
-            "Example: {\"values\": {\"player.window_width\": 800, "
-            "\"physics.layer_collision_matrix\": [[\"Player\", \"Water\"]]}}.";
+            "Set get_project_settings keys. Every value is validated first (one bad value changes nothing); saved to "
+            "project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges by index. "
+            "Example: {\"values\": {\"player.window_width\": 800, \"physics.layer_collision_matrix\": [[\"Player\", "
+            "\"Water\"]]}}.";
         tool.inputSchema = object({
             {"values", anyObject("{key: value}")}
         }, {"values"});
@@ -2071,9 +2070,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "edit_build_scenes";
         tool.title = "Edit Scenes in Build";
         tool.description =
-            "Edit Scenes in Build (index 0 = start scene). add: also a .scene path not in the project yet. "
-            "remove: off the list, file kept (refused if unsaved or the last scene). Not undoable. Returns "
-            "{scenes_in_build: [{index, id, name, path, start}], untitled_scenes}.";
+            "Edit Scenes in Build (index 0 = start scene). add: also a .scene path not in the project yet. remove: "
+            "off the list, file kept (refused if unsaved or the last scene). Not undoable.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"list", "add", "remove", "move", "set_start"}), "list")},
             {"scene", sceneRef("Required unless list.")},
@@ -2089,9 +2087,9 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "edit_project_build_file";
         tool.title = "Edit ProjectBuild.cmake";
         tool.description =
-            "Read (omit content) or replace ProjectBuild.cmake: the CMake hook for C++ scripts' include dirs, libraries "
-            "and definitions (Play and player builds). content \"\" deletes it. Use ${JASPERENGINE_TARGET} and "
-            "${JASPERENGINE_SCRIPTS_DIR}. Not undoable.";
+            "Read (omit content) or replace ProjectBuild.cmake, the CMake hook for C++ scripts' include dirs, "
+            "libraries and definitions (Play and player builds); content \"\" deletes it. Use ${JASPERENGINE_TARGET} "
+            "and ${JASPERENGINE_SCRIPTS_DIR}. Not undoable.";
         tool.inputSchema = object({
             {"content", string("Whole new file.")}
         });

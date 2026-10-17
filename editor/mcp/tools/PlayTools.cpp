@@ -3353,10 +3353,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (poll get_job). stop: restores the edit-time state and "
-            "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.\n"
-            "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen "
-            "between calls, runs only inside wait / send_input / step.";
+            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the "
+            "session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any action; set "
+            "= only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen between calls, runs only "
+            "inside wait / send_input / step.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
@@ -3378,9 +3378,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_play_state";
         tool.title = "Get Play State";
         tool.description =
-            "Play state: played and running scenes (child scenes run as copies with own ids), the session "
-            "(time, frames, game_time, errors, crash), how the last one ended, held input, console_cursor, "
-            "time {time_scale, fixed_fps, auto_pause, held, game_time, frames}; stopped: play_would_start.";
+            "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
+            "frames, errors, crash), how the last one ended, held input, console_cursor, the clock (time_scale, "
+            "fixed_fps, auto_pause, held); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3393,11 +3393,11 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "wait";
         tool.title = "Wait / Run Game";
         tool.description =
-            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
-            "the Lua `until` is truthy (checked between frames; then seconds/game_seconds/frames are caps); returns "
-            "reason, elapsed time/frames/game_seconds, console lines, play state. input: send_input events from the "
-            "first frame; the wait ends at its condition (leftover input skipped, its presses released) or when the "
-            "input is done. isError if play ended, input failed or `until` errored/timed out/hit its cap.";
+            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until the "
+            "Lua `until` is truthy (checked between frames; the others then cap it); returns reason, elapsed "
+            "time/frames/game_seconds, console lines, play state. input: send_input events from the first frame; it "
+            "ends at its condition (leftover input skipped, presses released) or when the input is done. isError if "
+            "play ended, input failed or `until` errored/timed out/hit its cap.";
         tool.inputSchema = object({
             {"seconds", number("", 0, 600)},
             {"game_seconds", number("", 0, 3600)},
@@ -3422,10 +3422,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "eval_lua";
         tool.title = "Evaluate Lua";
         tool.description =
-            "Run Lua in the running game; returns the values as JSON (handles as {type, entity, name, path}), "
-            "print() output and console lines. Helpers: scene, script(ref [,class]) -> its self table, "
-            "object(ref [,type]) -> handle (GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals "
-            "persist; changes revert at stop. Not playing: refused unless allow_edit_mode (NOT undoable).";
+            "Run Lua in the running game: the values as JSON (handles as {type, entity, name, path}), print() "
+            "output, console lines. Helpers: scene, script(ref [,class]) -> its self, object(ref [,type]) -> handle "
+            "(GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals persist; changes revert at stop. "
+            "Not playing: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
             {"code", string("Expression, or chunk with return.")},
             {"scene", runtimeScene},
@@ -3465,8 +3465,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "get_runtime_entity";
         tool.title = "Get Runtime GameObject";
         tool.description =
-            "Live values of a GameObject in the running game (runtime-spawned too): component properties this "
-            "frame and script state (Lua instance fields; C++ DPROPERTY members). Only while playing.";
+            "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
+            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
@@ -3486,8 +3486,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "set_runtime_property";
         tool.title = "Set Runtime Property";
         tool.description =
-            "Set component properties of a GameObject in the running game, live: property + value, or values "
-            "{name: value}. Reverted at stop, never saved. Only while playing. Lua script fields: eval_lua.";
+            "Set component properties of a GameObject in the running game, live: property + value, or values {name: "
+            "value}. Reverted at stop, never saved; only while playing. Lua script fields: eval_lua.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
@@ -3509,19 +3509,18 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames (no focus needed). events run in order, each "
-            "{type, ...}; first action listed = default:\nkey: key (space, a, 0, left, f1, kp_0...), action "
-            "press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8, one input)\n"
-            "ime: text, cursor (code points; -1 selects) = composition; ime_commit: text; ime_cancel\n"
-            "mouse_leave, mouse_enter: the pointer leaves/enters the game\nmouse: action "
-            "click|double_click|down|up|move|drag|scroll, x, y (click/down/up: default the pointer's position), "
-            "button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\n"
-            "mouse/touch: target / to_target = CSS selector of a UI Document element (its center; document: which)\ngamepad: "
-            "gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) + value "
-            "-1..1\nwait: frames, ms. release_all.\nspace: canvas = canvas pixels from top-left "
-            "(Input.getMousePosition); normalized = 0..1; view = Game view pixels. down holds until "
-            "up/release_all/stop. Returns frames, console lines, play state. auto_pause: runs only for the "
-            "events + frames_after.";
+            "Inject input into the running game across frames (no focus needed). events in order, each {type, ...} "
+            "(first action = default):\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames "
+            "(2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code points; -1 "
+            "selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter (the game "
+            "window)\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (click/down/up default: the "
+            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
+            "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector of a "
+            "UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
+            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\nwait: frames, ms. "
+            "release_all.\nspace: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game "
+            "view px. down holds until up/release_all/stop. Returns frames, console lines, play state; auto_pause: "
+            "only the events + frames_after run.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},
             {"space", withDefault(stringEnum("", {"canvas", "normalized", "view"}), "canvas")},
