@@ -315,7 +315,9 @@ TEST_CASE("Justification.trailing_white_space")
 		"<div id='pw' style='white-space: pre-wrap; text-align: justify'>XX  XXX <span id='pw1'>X</span>    XXXXXXXX  XXXXXXXXXX XX</div>"
 		"<div id='pwr' style='white-space: pre-wrap; text-align: right'><span id='pwr1'>XX</span>  XXX X    XXXXXXXX  XXXXXXXXXX XX</div>"
 		// 'pre' keeps them
-		"<div id='pre' style='white-space: pre; text-align: right'><span id='p1'>XX</span>   </div>");
+		"<div id='pre' style='white-space: pre; text-align: right'><span id='p1'>XX</span>   </div>"
+		// a word fits when it fits without the collapsible space after it (the line ends there)
+		"<div id='fit' style='width: 154px'>XX XXX X XXXX X <span id='f1'>XX</span> X XX</div>");
 
 	const auto Check = [&](const char* id, float left, float width) {
 		INFO(id);
@@ -330,6 +332,8 @@ TEST_CASE("Justification.trailing_white_space")
 	Check("pw1", 83.f, 10.f);
 	Check("pwr1", 7.f, 20.f);
 	Check("p1", 167.f, 20.f);
+	Check("f1", 0.f, 20.f);
+	CHECK(Get(document, "f1")->GetAbsoluteOffset(BoxArea::Border).y - Get(document, "fit")->GetAbsoluteOffset(BoxArea::Border).y == doctest::Approx(10.f));
 
 	// the removed space is not drawn (its text ends before it)
 	Vector<ElementText*> texts = TextsOf(document, "tr1");

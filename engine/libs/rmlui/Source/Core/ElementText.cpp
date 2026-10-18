@@ -429,6 +429,13 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 			const bool is_last_token = LastToken(next_token_begin, string_end, collapse_white_space, break_at_endline);
 			int max_token_width = RoundDownToIntegerClamped(maximum_line_width - (is_last_token ? line_width + right_spacing_width : line_width));
 
+			// The collapsible space that ends the element's text is removed when the line ends after it (CSS Text 3 §4.1.3,
+			// LineBox::TrimTrailingWhiteSpace): the token fits when its word does, and the line breaks after the space.
+			if (token_width > max_token_width && collapse_white_space && is_last_token && token.size() > 1 && token.back() == ' ' &&
+				font_engine_interface->GetStringWidth(font_face_handle, StringView(token.data(), token.data() + token.size() - 1), text_shaping_context,
+					previous_codepoint) <= max_token_width)
+				max_token_width = token_width;
+
 			if (token_width > max_token_width && hang_spaces && IsWhiteSpaceToken(token))
 			{
 				// Hanging spaces: consumed on this line, without width; the line ends after them.
