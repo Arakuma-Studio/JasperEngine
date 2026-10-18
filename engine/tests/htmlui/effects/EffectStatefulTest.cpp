@@ -67,7 +67,7 @@ namespace {
                "html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #000; }\n"
                ".p { position: absolute; top: 20px; width: 160px; height: 80px; background-image: effect(sim-probe); }\n"
                ".p.seeded { background-image: effect(sim-probe, seed 5); }\n"
-               ".p.wide { width: 240px; }\n"
+               ".p.wide { width: 240px; }\n" +
                extraCss +
                "</style></head><body>" + elements + "</body></html>";
     }
