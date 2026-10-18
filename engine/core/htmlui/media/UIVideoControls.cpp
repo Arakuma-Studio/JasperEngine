@@ -33,17 +33,51 @@ UIVideoControls::UIVideoControls(UIVideoElement& owner): video(owner){
     progress = track ? make(track, "videoprogress", "htmlui-video-progress", true) : nullptr;
     thumb = timeline ? make(timeline, "videothumb", "htmlui-video-thumb", true) : nullptr;
     muteButton = make(bar, "videobutton", "htmlui-video-mute", true);
+    video.AddEventListener(Rml::EventId::Mousemove, this);
+    if (timeline){
+        timeline->AddEventListener(Rml::EventId::Drag, this);
+        timeline->AddEventListener(Rml::EventId::Dragend, this);
+    }
     update();
 }
 
 UIVideoControls::~UIVideoControls(){
+    detach();
     // the attribute went: the bar goes
     if (bar && bar->GetParentNode() == &video)
         video.RemoveChild(bar);
 }
 
+void UIVideoControls::detach(){
+    if (!bar)
+        return;
+    video.RemoveEventListener(Rml::EventId::Mousemove, this);
+    if (timeline){
+        timeline->RemoveEventListener(Rml::EventId::Drag, this);
+        timeline->RemoveEventListener(Rml::EventId::Dragend, this);
+    }
+}
+
 void UIVideoControls::forget(){
+    detach();
     bar = playButton = timeText = timeline = track = progress = thumb = muteButton = nullptr;
+}
+
+void UIVideoControls::ProcessEvent(Rml::Event& event){
+    switch (event.GetId()){
+        case Rml::EventId::Mousemove:
+            lastPointerMove = HtmlUIClock::now();
+            break;
+        case Rml::EventId::Drag:
+            if (scrubbing)
+                seekToPointer(event.GetParameter<float>("mouse_x", 0.0f));
+            break;
+        case Rml::EventId::Dragend:
+            scrubbing = false;
+            break;
+        default:
+            break;
+    }
 }
 
 Rml::Element* UIVideoControls::make(Rml::Element* parent, const char* tag, const char* className, bool dom){
@@ -165,25 +199,15 @@ bool UIVideoControls::processDefaultAction(Rml::Event& event){
     Rml::Element* target = event.GetTargetElement();
     const double now = HtmlUIClock::now();
     switch (event.GetId()){
-        case Rml::EventId::Mousemove:
-            lastPointerMove = now;
-            return false;
         case Rml::EventId::Mousedown:
             lastPointerMove = now;
+            // (not stopped: RmlUi starts the timeline's drag from a press that propagates)
             if (event.GetParameter<int>("button", 0) == 0 && inside(target, timeline)){
                 scrubbing = true;
                 seekToPointer(event.GetParameter<float>("mouse_x", 0.0f));
-                event.StopPropagation();
                 return true;
             }
             return false;
-        case Rml::EventId::Drag:
-            if (scrubbing){
-                seekToPointer(event.GetParameter<float>("mouse_x", 0.0f));
-                return true;
-            }
-            return false;
-        case Rml::EventId::Dragend:
         case Rml::EventId::Mouseup:
             scrubbing = false;
             return false;

@@ -13,7 +13,7 @@ width: 200px;
 </head
 ><body id="htmlui-root" data-htmlui-loc="0"
 ><htmlbody data-htmlui-loc="1"
-><div id="v" class="clip htmlui-unsupported htmlui-h0" data-html-tag="video" data-htmlui-loc="2"/>
+><div id="v" class="clip htmlui-unsupported htmlui-h0" data-html-tag="canvas" data-htmlui-loc="2"/>
 <div class="htmlui-unsupported" data-html-tag="audio" data-htmlui-loc="3"/>
 <div class="htmlui-unsupported htmlui-h1" data-html-tag="iframe" data-htmlui-loc="4"/>
 <div id="c" class="htmlui-unsupported" data-html-tag="canvas" data-htmlui-loc="5"

@@ -7,6 +7,7 @@
 #include "Export.h"
 
 #include <RmlUi/Core/Element.h>
+#include <RmlUi/Core/EventListener.h>
 #include <RmlUi/Core/Types.h>
 
 #include <string>
@@ -37,7 +38,9 @@ namespace jasperengine {
     // gamepad's left/right seek -/+5 s, J/L -/+10 s; Home/End; M mutes. They are consumed (no
     // spatial navigation on left/right); up/down are left to navigation. A listener's
     // preventDefault disables them.
-    class JASPERENGINE_INTERNAL UIVideoControls {
+    // (RmlUi gives mousemove no default action and drag only one at its target: the controls
+    // listen to them on the video and on the timeline)
+    class JASPERENGINE_INTERNAL UIVideoControls : private Rml::EventListener {
     public:
         static constexpr double HIDE_AFTER = 2.5;     // seconds of UI time
         static constexpr double KEY_SEEK = 5.0;
@@ -49,7 +52,7 @@ namespace jasperengine {
         UIVideoControls& operator=(const UIVideoControls&) = delete;
 
         void update();     // states, time text, progress (each update of the video)
-        // the video is being destroyed: its children go with it, the bar is not removed
+        // the video is being destroyed: the listeners go, its children go with it (the bar is not removed)
         void forget();
         void layout();
         // the video's default action for an event on it or on the controls; true when used
@@ -68,6 +71,8 @@ namespace jasperengine {
         static std::string formatTime(double seconds, bool hours);
 
     private:
+        void ProcessEvent(Rml::Event& event) override;
+        void detach();
         Rml::Element* make(Rml::Element* parent, const char* tag, const char* className, bool dom);
         bool inside(Rml::Element* element, Rml::Element* container) const;
         void seekToPointer(float x);

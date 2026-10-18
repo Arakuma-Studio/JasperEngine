@@ -854,6 +854,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
     core/htmlui/media/Av1Decoder.cpp
+    core/htmlui/media/UIElementVideo.cpp
     core/htmlui/media/OpusAudioDecoder.cpp
     core/htmlui/media/UIVideoControls.cpp
     core/htmlui/media/UIVideoElement.cpp
@@ -964,6 +965,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
+    core/script/binding/HtmlUIMediaLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp

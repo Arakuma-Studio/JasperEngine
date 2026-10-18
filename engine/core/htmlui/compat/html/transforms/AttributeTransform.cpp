@@ -167,8 +167,9 @@ namespace {
                                 VideoFormats::conversionHint(), "", value);
             return false;
         }
+        // remote, missing (the resolver reported it) or virtual: not known here, not counted against the video
         if (!resolved.local() || resolved.assetPath.empty() || !resolved.exists || VirtualFiles::isVirtual(resolved.assetPath))
-            return resolved.exists;
+            return true;
         // the header only (a file read through the document's file access is read whole)
         VideoProbe probe;
         if (context.fileAccess.read){

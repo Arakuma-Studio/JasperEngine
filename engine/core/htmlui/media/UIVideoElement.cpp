@@ -325,7 +325,8 @@ void UIVideoElement::pollStream(){
     if (state == VideoStream::State::FAILED){
         const MediaError streamError = stream->getError();
         std::string message = streamError.message;
-        if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED)
+        // a file that is there but in a format the engine does not play: the fix is a conversion
+        if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED && message.find("could not be read") == std::string::npos)
             message += "; " + std::string(VideoFormats::conversionHint()) + diagnosticSuffix(htmlui::compat::codes::UnsupportedMediaFormat);
         if (streamError.code == MediaErrorCode::SRC_NOT_SUPPORTED || streamError.code == MediaErrorCode::NETWORK){
             tryNextCandidate(message);
@@ -894,6 +895,17 @@ bool UIVideoElement::GetIntrinsicDimensions(Rml::Vector2f& dimensions, float& ra
     else
         dimensions = Rml::Vector2f(300.0f, 150.0f);
     ratio = dimensions.x / dimensions.y;
+    // width/height attributes: a presentational size below author CSS (as <img>'s)
+    const float width = GetAttribute<float>("width", -1.0f);
+    const float height = GetAttribute<float>("height", -1.0f);
+    if (width > 0.0f && height > 0.0f){
+        dimensions = Rml::Vector2f(width, height);
+        ratio = width / height;
+    }else if (width > 0.0f){
+        dimensions = Rml::Vector2f(width, width / ratio);
+    }else if (height > 0.0f){
+        dimensions = Rml::Vector2f(height * ratio, height);
+    }
     dimensions *= Rml::ElementUtilities::GetDensityIndependentPixelRatio(this);
     return true;
 }
@@ -938,6 +950,8 @@ void UIVideoElement::OnAttributeChange(const Rml::ElementAttributes& changed){
         if (stream)
             stream->setLoop(getLoop());
     }
+    if (changed.count("width") || changed.count("height"))
+        DirtyLayout();
     if (changed.count("poster")){
         posterDirty = true;
         geometryDirty = true;
