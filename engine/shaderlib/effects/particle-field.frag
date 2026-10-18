@@ -2,7 +2,7 @@
 // @effect     particle-field
 // @kind       filter
 // @category   interactive
-// @summary    Explodes the content into a breathing 3D relief of particles the pointer throws and springs home
+// @summary    Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home
 // @source     shaders.com ParticleField
 // @cost       stateful
 // @pointer    trail
