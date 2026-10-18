@@ -553,6 +553,15 @@ Built by `p6-stateful-fx` (branch `hui/p6-stateful-fx`, from `main` at `4958e5f7
   the next frame. `EffectRuntime::pendingReplays()` / `UIDocument::getPendingEffectReplays()`
   count them: the effects tests' captures and MCP screenshots wait until none is running. The
   same budget applies on every backend, so the frames are the same everywhere.
+- **One set of goldens for glcore and Vulkan.** llvmpipe and lavapipe compile the same GLSL along
+  different paths (SPIRV-Cross GLSL vs SPIR-V), and the chaotic simulations amplify the last-bit
+  differences: over a 2 s replay `fluid-smoke`, `smoke-fill`, `fog` and `particle-flow` ended
+  0.1-10 % of pixels apart, `particles` 8 %. Measured and fixed per effect, within phase 0's
+  tolerance (no slack): `particles` hashes its turbulence from the particle's seed and the step
+  (upstream: from the position, whose last bits differ) and sums its density as floats (upstream's
+  6-bit rounding flipped between backends); `fluid-smoke` and `smoke-fill` replay 1 s,
+  `particle-flow` 0.25 s (`@replay`); `fog` warms up with 50 steps of 0.05 s (upstream 0.1 s, a
+  violent pre-roll whose differences the restore force kept). The other 13 matched as built.
 - **Pointer.** Live: the frame's movement is spread over its steps; press and release edges on the
   first step. Pinned: the history at age `T − t` (the harness's synthetic arc); press edges are not
   replayed (the effects ported here react to movement, not clicks).
@@ -570,14 +579,15 @@ Built by `p6-stateful-fx` (branch `hui/p6-stateful-fx`, from `main` at `4958e5f7
 All 18 effects of 3.13 are built, MIT-attributed in `LICENSE.shaders-com.txt`, with catalogue
 entries and thumbnails; goldens: `.t0` and `.t1` for all, `.t2` where t1 and t2 differ (all but
 `chroma-flow`, `fluid-cursor-trail`, `pixel-throw`, `shatter` and `smoke-flow`, which draw only
-what the pointer's arc leaves, the same at 1.5 s and 4 s). Port notes are in each `.frag`'s
+what the pointer's arc leaves, the same at 1.5 s and 4 s, and `fluid-smoke` and `smoke-fill`,
+whose 1 s replay is the same at both). Port notes are in each `.frag`'s
 header; the adaptations:
 
 | Effect | State (per instance) | Steps | Port notes |
 |---|---|---|---|
-| `fog` | vel, pd, dye 256² rgba16f | seed (init), force, curl, vorticity, divergence, Jacobi ×10, project, advect velocity and dye, restore; `@warmup 50 0.1s` | toroidal; the random start time is a hash of `seed` and the element |
-| `fluid-smoke` | vel, pd, dye 256² | cone emitter, solve (Jacobi ×10), advect density+age | the stateless `smoke` stays |
-| `smoke-fill` | vel, pd, dye 256² | masked emitter and solve | the shape is the element's rounded box |
+| `fog` | vel, pd, dye 256² rgba16f | seed (init), force, curl, vorticity, divergence, Jacobi ×10, project, advect velocity and dye, restore; `@warmup 50 0.05s` | toroidal; the random start time is a hash of `seed` and the element |
+| `fluid-smoke` | vel, pd, dye 256² | cone emitter, solve (Jacobi ×10), advect density+age | the stateless `smoke` stays; `@replay 1s` |
+| `smoke-fill` | vel, pd, dye 256² | masked emitter and solve | the shape is the element's rounded box; `@replay 1s` |
 | `smoke-flow` | ptr 1², vel, pd, dye 256² | tracker, puff ribbon (16 stamps), solve | tracker smoothing in `ptr` |
 | `ink-flow` | vel, pd, dye 256², cycle 1² | brush ribbon, solve, RGB dye | colour cycle in `cycle` |
 | `fluid-cursor-trail` | ptr 1², vel, pd, dye 256² | stroke ribbon, solve | CursorTrail's look (`lifetime`, colours) over SmokeFlow's fluid; upstream has no fluid CursorTrail |
@@ -590,9 +600,9 @@ header; the adaptations:
 | `time-trail` | history, display, prev-live 640² rgba16f | decay, stamp, keep | upstream's one kernel as three passes |
 | `boids` | agents, accel, place 64² rgba32f, agit 64² r32f, accum, trail (box) | spawn (init), steer, move, excite, place, splat (scatter), resolve | Jacobi update (upstream Gauss-Seidel); brute-force neighbours (4096 max) |
 | `magnetic-filings` | ptr 1², agents 128×96 rgba32f, agit, place, accum, field (box) | torque, place, splat, resolve | jittered-grid start |
-| `particles` | pos, vel, place 128² rgba32f, dplace 1024×128, dens 256×128 (32³ atlas), accum, field (box) | dplace, density (scatter), forces, move, place, splat (scatter), resolve | the default sphere container; trilinear density as 8 one-texel quads a particle |
+| `particles` | pos, vel, place 128² rgba32f, dplace 1024×128, dens 256×128 (32³ atlas), accum, field (box) | dplace, density (scatter), forces, move, place, splat (scatter), resolve | the default sphere container; trilinear density as 8 one-texel quads a particle, summed as floats; turbulence hashed from the seed and the step |
 | `particle-field` | pos, vel, place 256² rgba32f, col 256² rgba16f, accum, field (box) | color, forces, move, place, splat (scatter), resolve | upstream's one integrator as three passes; float RGBW accumulation; field stored premultiplied |
-| `particle-flow` | vel, pd 256², agents, place 128² rgba32f, accum, trail (box) | force ribbon, solve, advect agents, place, splat (scatter), resolve | idle freeze not ported |
+| `particle-flow` | vel, pd 256², agents, place 128² rgba32f, accum, trail (box) | force ribbon, solve, advect agents, place, splat (scatter), resolve | idle freeze not ported; `@replay 0.25s` |
 
 ### 6.3 Measured cost and memory
 glcore on llvmpipe, the remote test host (4 threads), `EffectPerfTest` Release:

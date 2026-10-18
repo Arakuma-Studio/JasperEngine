@@ -1726,7 +1726,7 @@ effect:
   or changing it to another effect, ends it; a change of a parameter that seeds it (`seed`,
   `preset`: marked in the catalogue) restarts it. A resize keeps it going.
 - **Pinned time** (`setEffectTime`, `set_ui_effect_time`): the state at a pinned time is computed
-  from scratch (the last 2 s simulated, with the pointer's recent path), so two captures at the
+  from scratch (the last 2 s simulated, less for a few fluids, with the pointer's recent path), so two captures at the
   same time are identical whatever happened before. That takes a few frames, during which the
   effect is not drawn (`screenshot` waits for it).
 - **Input from scripts**: `el:effectSplat{ x = 120, y = 80, dx = 300, dy = 0, radius = 30,
