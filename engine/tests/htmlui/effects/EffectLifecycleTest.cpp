@@ -12,6 +12,8 @@
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/HtmlUIClock.h"
+
+#include <cstdio>
 #include "htmlui/effects/EffectSimulator.h"
 
 using namespace jasperengine;
