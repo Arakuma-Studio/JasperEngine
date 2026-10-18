@@ -206,6 +206,25 @@ bool VideoDemuxer::openMemory(const uint8_t* data, size_t size, const std::strin
     return openReader(memory, headersOnly);
 }
 
+bool VideoDemuxer::openStdio(FILE* handle, const std::string& name, bool headersOnly){
+    close();
+    error = MediaError();
+    path = name;
+    docType.clear();
+    videoCodecId.clear();
+    audioCodecId.clear();
+    videoTrack = VideoTrackInfo();
+    audioTrack = AudioTrackInfo();
+    if (!handle)
+        return fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "' could not be read");
+    File* file = new File(handle);
+    if (file->length() == 0){
+        delete file;
+        return fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "' could not be read");
+    }
+    return openReader(file, headersOnly);
+}
+
 bool VideoDemuxer::openReader(FileData* file, bool headersOnly){
     const std::string& filePath = path;
     reader = std::make_unique<Reader>(file);

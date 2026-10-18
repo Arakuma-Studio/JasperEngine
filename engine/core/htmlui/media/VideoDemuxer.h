@@ -8,6 +8,7 @@
 #include "VideoTypes.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
@@ -66,6 +67,9 @@ namespace jasperengine {
         bool open(const std::string& path, bool headersOnly = false);
         // the same over bytes in memory (copied); `name` is used in messages
         bool openMemory(const uint8_t* data, size_t size, const std::string& name, bool headersOnly = false);
+        // the same over an open stdio file, owned from here on (a host file read without the
+        // engine's System and asset paths: the editor's importer); `name` is used in messages
+        bool openStdio(FILE* handle, const std::string& name, bool headersOnly = false);
         void close();
 
         const MediaError& getError() const;

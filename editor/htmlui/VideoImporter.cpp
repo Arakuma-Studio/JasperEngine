@@ -8,6 +8,7 @@
 #include "util/ShellEnv.h"
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <mutex>
 #include <system_error>
@@ -51,6 +52,17 @@ namespace {
         return d;
     }
 
+    // the probe over the host file (fopen, not the engine's FileData: that resolves asset paths
+    // through the engine's System, which the importer does not need)
+    jasperengine::VideoProbe probeHost(const fs::path& path){
+#ifdef _WIN32
+        FILE* handle = _wfopen(path.wstring().c_str(), L"rb");
+#else
+        FILE* handle = std::fopen(path.c_str(), "rb");
+#endif
+        return jasperengine::VideoFormats::probeStdio(handle, pathString(path.filename()));
+    }
+
     bool isExecutable(const std::string& path){
         std::error_code ec;
         return !path.empty() && fs::is_regular_file(fs::u8path(path), ec);
@@ -63,7 +75,7 @@ bool VideoImporter::isVideoFile(const fs::path& path){
 }
 
 bool VideoImporter::isPlayable(const fs::path& path){
-    return jasperengine::VideoFormats::probeFile(pathString(path)).playable;
+    return probeHost(path).playable;
 }
 
 void VideoImporter::setFfmpegPath(const std::string& path){
@@ -134,7 +146,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     fs::create_directories(targetDir, ec);
 
     // already the engine's format: copied
-    const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeFile(pathString(input));
+    const jasperengine::VideoProbe probe = probeHost(input);
     if (probe.playable && probe.audioPlayable){
         result.output = targetDir / input.filename();
         if (fs::exists(result.output, ec) && !overwrite){
@@ -198,7 +210,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
             onLine(line);
     });
     result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-    const bool playable = success && jasperengine::VideoFormats::probeFile(pathString(output)).playable;
+    const bool playable = success && probeHost(output).playable;
     if (!playable){
         fs::remove(output, ec);
         // the last lines say what went wrong

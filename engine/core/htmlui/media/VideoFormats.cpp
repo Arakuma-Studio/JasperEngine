@@ -142,6 +142,12 @@ VideoProbe VideoFormats::probeMemory(const uint8_t* data, size_t size, const std
     return probeWith(demuxer, opened);
 }
 
+VideoProbe VideoFormats::probeStdio(FILE* handle, const std::string& name){
+    VideoDemuxer demuxer;
+    const bool opened = demuxer.openStdio(handle, name, true);
+    return probeWith(demuxer, opened);
+}
+
 namespace {
 
 VideoProbe probeWith(VideoDemuxer& demuxer, bool opened){

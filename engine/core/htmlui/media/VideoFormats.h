@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 namespace jasperengine {
@@ -48,6 +49,9 @@ namespace jasperengine {
         static VideoProbe probeFile(const std::string& path);
         // the same over a file's bytes
         static VideoProbe probeMemory(const uint8_t* data, size_t size, const std::string& name);
+        // the same over an open stdio file (owned; closed when done): host files outside the
+        // engine's file system, e.g. the editor's importer (no System needed)
+        static VideoProbe probeStdio(FILE* handle, const std::string& name);
 
         // "V_VP9" -> "VP9", "A_VORBIS" -> "Vorbis", "V_MPEG4/ISO/AVC" -> "H.264", ...
         static std::string codecName(const std::string& matroskaCodecId);
