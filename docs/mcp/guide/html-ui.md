@@ -1727,7 +1727,8 @@ effect:
   `preset`: marked in the catalogue) restarts it. A resize keeps it going.
 - **Pinned time** (`setEffectTime`, `set_ui_effect_time`): the state at a pinned time is computed
   from scratch (the last 2 s simulated, with the pointer's recent path), so two captures at the
-  same time are identical whatever happened before.
+  same time are identical whatever happened before. That takes a few frames, during which the
+  effect is not drawn (`screenshot` waits for it).
 - **Input from scripts**: `el:effectSplat{ x = 120, y = 80, dx = 300, dy = 0, radius = 30,
   color = "#ff8a00" }` pushes dye and velocity into the element's simulations at their next step
   (x, y and radius in the element's CSS px, dx and dy px/s; `effect = "ink-flow"` targets one);

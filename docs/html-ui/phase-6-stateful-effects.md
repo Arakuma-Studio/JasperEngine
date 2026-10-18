@@ -542,6 +542,17 @@ Built by `p6-stateful-fx` (branch `hui/p6-stateful-fx`, from `main` at `4958e5f7
   the document element). Phase 5 hashed the full address, whose last part is the context's root,
   named after the context: the seed depended on which context drew the element, and the goldens of
   seed-hashed simulations (`fog`'s start time) on the test order. Every phase-5 golden is unchanged.
+- **Uniform budget: replays and warm-ups span frames.** sokol keeps one uniform buffer per frame
+  (4 MB on Vulkan, Metal and WebGPU) and drops the draws past it: a fog replay (50 warm-up steps
+  and 120 steps, about 20 passes each, about 1 KB of uniform blocks a pass) overflowed it on Vulkan
+  and lost passes, so its goldens differed from glcore's. The passes count the uniform data they
+  apply (`EffectRuntime::simulationUniformBytes`, 256-byte blocks); a pinned replay, and a live
+  reset's `@init` and `@warmup`, run their units (the init, each warm-up step, each step) until
+  the frame has used 1.5 MB (`kSimulationUniformBudget`, at least one unit a frame) and continue
+  next frame with the inputs they started with; the effect is not drawn meanwhile and asks for
+  the next frame. `EffectRuntime::pendingReplays()` / `UIDocument::getPendingEffectReplays()`
+  count them: the effects tests' captures and MCP screenshots wait until none is running. The
+  same budget applies on every backend, so the frames are the same everywhere.
 - **Pointer.** Live: the frame's movement is spread over its steps; press and release edges on the
   first step. Pinned: the history at age `T − t` (the harness's synthetic arc); press edges are not
   replayed (the effects ported here react to movement, not clicks).
