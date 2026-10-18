@@ -428,7 +428,7 @@ TEST_F(CompatLoaderSceneTest, DiagnosticsAndThemes){
     // the dark rule after the base rule: with the same specificity, the later one wins (as in CSS)
     files.write("menu.html", "<!DOCTYPE html><html><head><style>#box { display: block; width: 10px; height: 10px; }"
                              " @media (prefers-color-scheme: dark) { #box { width: 20px; } }</style></head>"
-                             "<body><div id=\"box\"></div><video></video></body></html>");
+                             "<body><div id=\"box\"></div><canvas></canvas></body></html>");
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
     UIDocument document = fixture.addDocument(files.path("menu.html"));

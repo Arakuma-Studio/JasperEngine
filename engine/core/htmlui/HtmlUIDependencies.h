@@ -16,7 +16,7 @@ namespace jasperengine {
     // reload dependencies of a document (UIDocumentSystem::getDocumentFiles) and the export
     // check (Exporter::checkHtmlUIReferences).
     struct JASPERENGINE_API HtmlUIReference {
-        enum Kind { STYLESHEET, IMAGE, FONT, SVG, LOTTIE, TEMPLATE, OTHER };
+        enum Kind { STYLESHEET, IMAGE, FONT, SVG, LOTTIE, TEMPLATE, OTHER, VIDEO };   // VIDEO: phase 6
 
         std::string path;            // asset-relative (FileData rules), normalized; the URL itself when remote
         std::string raw;             // as written in the file
@@ -37,7 +37,8 @@ namespace jasperengine {
     // Every reference of an HTML/RML document, recursively through the stylesheets
     // (<link>, @import), <style> blocks, style="" attributes and templates it loads, in the
     // order they are found:
-    // - HTML: link[href], img[src], svg[src], lottie[src], template[src]; @import and url(...)
+    // - HTML: link[href], img[src], svg[src], lottie[src], template[src], video[src], video[poster],
+    //   source[src] (a video's); @import and url(...)
     //   in <style> and style="";
     // - CSS: @import, url(...), @font-face src (url(), or RCSS's bare path, which RmlUi 6.3
     //   opens from the asset root), @spritesheet src,

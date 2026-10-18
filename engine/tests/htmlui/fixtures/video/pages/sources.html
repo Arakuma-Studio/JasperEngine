@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><style>body { margin: 0; } video { display: block; width: 320px; height: 180px; }</style></head>
+<body>
+<video id="typed">
+  <source src="../testcard-vp9.webm" type='video/webm; codecs="vp9"'>
+  <source src="../movie.mp4" type="video/mp4">
+  <source src="../testcard-noaudio.webm" type='video/webm; codecs="av01.0.05M.08"'>
+</video>
+<video id="untyped">
+  <source id="bad" src="../testcard-vp9.webm">
+  <source id="good" src="../testcard-noaudio.webm">
+</video>
+<video id="none">
+  <source src="../movie.mp4" type="video/mp4">
+</video>
+</body></html>

@@ -5,8 +5,8 @@ blur, drop-shadow, opacity), a backdrop blur, a rounded clip, a box shadow and a
 Game view screenshots are probed at listed canvas points (expected colours +-6/255 where the
 colour is exact). The Scene view of the UI scene shows the document too (its canvas in world
 space). Then generate_shaders cross-compiles every HTML UI shader variant (HTMLUI, the
-gradient and the six post-process variants) for every graphics API the editor exports, so
-the backends that cannot run here (D3D11, Metal, GLES) still get valid shaders.
+gradient and the seven post-process variants, phase 6's YUV conversion included) for every
+graphics API the editor exports, so the backends that cannot run here (D3D11, Metal, GLES) still get valid shaders.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720). Coordinates are canvas
 pixels; screenshots map them with canvas_rect_in_image.
@@ -179,7 +179,7 @@ async def test_shaders_cross_compile(ed: Editor):
     await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiRender")
     # by spec, not by ShaderKey number (the ShaderType values of the HTML UI's types moved by one
     # when origin/main's BLOOM came before them)
-    posts = ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp")
+    posts = ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv")
     specs = ["htmlui", "htmlui:Tex", "htmluigradient"] + [f"htmluipost:{name}" for name in posts]
     out = ed.scratch.root / "htmlui-shaders"
     r = await ed.call("generate_shaders", output_dir=str(out), backends="all", format="binary",
@@ -188,7 +188,7 @@ async def test_shaders_cross_compile(ed: Editor):
     files = [p.name for p in out.rglob("*") if p.is_file()]
     # every variant for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 (macOS, iOS) and SPIR-V
     languages = ("glsl410", "glsl300es", "hlsl5", "msl21macos", "msl21ios", "spirv10")
-    stems = ["htmlui", "htmlui_Tex", "htmluigradient"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp")]
+    stems = ["htmlui", "htmlui_Tex", "htmluigradient"] + [f"htmluipost_{name}" for name in ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp", "Yuv")]
     for stem in stems:
         for language in languages:
             ed.check(f"{stem}_{language}.sdat" in files, f"{stem}_{language}.sdat not generated: {sorted(files)}")

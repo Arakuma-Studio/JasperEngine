@@ -278,9 +278,16 @@ TEST(CompatTables, AppendixSamples){
     const ElementSupport* body = findElement("BODY");
     ASSERT_NE(body, nullptr);
     EXPECT_STREQ(body->rmlTag, "htmlbody");
+    const ElementSupport* canvas = findElement("canvas");
+    ASSERT_NE(canvas, nullptr);
+    EXPECT_EQ(canvas->support, Support::Unsupported);
+    // phase 6: <video> is the engine's element
     const ElementSupport* video = findElement("video");
     ASSERT_NE(video, nullptr);
-    EXPECT_EQ(video->support, Support::Unsupported);
+    EXPECT_EQ(video->support, Support::Emulated);
+    const AttributeSupport* playsinline = findAttribute("video", "playsinline");
+    ASSERT_NE(playsinline, nullptr);
+    EXPECT_EQ(playsinline->support, Support::Ignored);
     const AttributeSupport* onclick = findAttribute("div", "onclick");
     ASSERT_NE(onclick, nullptr);
     EXPECT_EQ(onclick->support, Support::Unsupported);

@@ -1,0 +1,6 @@
+{
+ "comment": "The poster of a video that loads nothing (preload none), fitted by object-fit cover and rounded. Boxes exact (box 0).",
+ "viewport": [320, 240],
+ "steps": [],
+ "tolerance": {"box": 0}
+}

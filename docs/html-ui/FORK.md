@@ -565,6 +565,16 @@ All 248 cases against html-ui: -1.1 % .. +1.9 % apart from that `FormatText` cas
 `ElementStyle::ComputeValues` and `Iterate` (GCC's code for the iterator loop and the robin_hood increments, a few
 instructions per property); the cases without a style pass do not move.
 
+## Phase 6 (video)
+
+Phase 6 (`docs/html-ui/phase-6-video.md`, p6-video) added **no fork patch**. `<video>` is an engine
+element (`UIVideoElement`, a `video` instancer like `<lottie>`) built on what the fork already has:
+non-DOM children for the controls (`AppendChild(…, false)`, as scrollbars), `ComputeObjectFitRect`
+for `object-fit`/`object-position`, `ReplacedContentGeometry` for rounded content (P4-G1), and the
+render interface's `CallbackTexture`/render targets for the converted frame. The fork's unit tests
+and its file list are unchanged; the `mkvparser::` entry of `engine/libs/rmlui/hidden-symbols.map`
+keeps libwebm's C++ symbols out of the shared engine (that map is the engine's, not RmlUi code).
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at

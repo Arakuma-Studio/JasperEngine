@@ -28,6 +28,9 @@ namespace jasperengine {
         int width = 0, height = 0;
         bool dead = false;                          // GPU object dropped by view loss (phase-0 releaseGpuResources)
         uint64_t lastUpdateFrame = UINT64_MAX;      // DYNAMIC: one sg_update_image per frame
+        // RENDER_TARGET of a <video> (phase 6): the dynamic R8 Y, U and V planes its frames are
+        // converted from (RmlRenderer::queueVideoConversion), owned and released with it
+        std::unique_ptr<TextureRender> planes[3];
 
         HtmlUITexture() = default;
         HtmlUITexture(const HtmlUITexture&) = delete;

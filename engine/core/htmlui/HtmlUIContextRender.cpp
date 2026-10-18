@@ -138,6 +138,8 @@ bool HtmlUIContext::render(const Rect& viewRect){
     if (hasContent && !updatedSinceRender && contextDimensions == targetDimensions)
         return true;
 
+    // <video> frames decoded since the last frame, converted before the document draws them
+    renderer->runVideoConversions();
     if (!renderer->beginFrame(*renderTarget, contextDimensions)){
         // shaders still compiling: nothing drawn, the old content (if any) stays valid
         renderer->endFrame();
