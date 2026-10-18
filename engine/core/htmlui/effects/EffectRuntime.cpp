@@ -188,7 +188,16 @@ void EffectRuntime::clearTestInput(){
 float EffectRuntime::seedOf(Rml::Element* element){
     if (!element)
         return 0.f;
-    const std::string address = element->GetAddress();
+    // the element's address within its document (up to the document element): the context's
+    // root above it carries the context's name, which differs between runs and between contexts
+    std::string address;
+    Rml::ElementDocument* document = element->GetOwnerDocument();
+    for (Rml::Element* e = element; e; e = e->GetParentNode()){
+        address += e->GetAddress(false, false);
+        if (e == document)
+            break;
+        address += " < ";
+    }
     uint32_t h = 2166136261u;
     for (unsigned char c : address){
         h ^= c;

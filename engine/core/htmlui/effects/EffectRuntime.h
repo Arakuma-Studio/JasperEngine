@@ -293,7 +293,8 @@ namespace jasperengine::htmlui {
         void setTestTrail(Rml::Context* context, const std::vector<Rml::Vector4f>& samples);
         void clearTestInput();
 
-        // the per-element seed: FNV-1a of the element's address string, in [0, 1)
+        // the per-element seed: FNV-1a of the element's address in its document (up to the
+        // document element: not the context's root, named after the context), in [0, 1)
         static float seedOf(Rml::Element* element);
 
         // --- phase 6: stateful effects ---
