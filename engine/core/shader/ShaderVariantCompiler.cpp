@@ -168,7 +168,7 @@ std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es
 
 // The defines and annotations of a stateful UI effect (phase 6), read from its manifest block (the
 // "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step pass in
-// declaration order, JFX_PASS_COUNT, JFX_STATEFUL; and the 32-bit float states' textures and
+// declaration order, JFX_PASSES (their count), JFX_STATEFUL; and the 32-bit float states' textures and
 // samplers annotated unfilterable (GLES3/WebGL2 cannot filter them), in a buffer of their own.
 void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args_t& args) {
     std::vector<std::string> lines;
@@ -230,7 +230,7 @@ void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args
     if (!stateful)
         return;
     args.defines.push_back({"JFX_STATEFUL", "1"});
-    args.defines.push_back({"JFX_PASS_COUNT", std::to_string(passes)});
+    args.defines.push_back({"JFX_PASSES", std::to_string(passes)});
     if (!annotations.empty())
         args.fileBuffers["effects/__state_annotations__.glsl"] = annotations;
 }

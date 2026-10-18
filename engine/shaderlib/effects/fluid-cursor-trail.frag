@@ -95,11 +95,11 @@ vec4 trail_splat(JfxStep s, bool velocityPass){
     float smoothSpeed = length(smoothVel);
     vec2 delta = trail_delta(s);
     // any movement paints (CursorTrail's minDrag 0.001, no teleport guard)
-    bool active = s.pointerKnown && length(delta) > 0.001;
+    bool isActive = s.pointerKnown && length(delta) > 0.001;
     float width = min(1.0, max(WIDTH_MIN, sqrt(smoothSpeed / SPEED_FULL)));
     float emitRad = max(params.radius * 0.1 * n * width * 0.5, 1.0);
     vec2 emitVel = smoothVel * n * params.momentum * 0.12;
-    if (active){
+    if (isActive){
         vec2 from = s.pointerPrev / max(s.c.size, vec2(1.0));
         float stepSize = max(0.004, params.radius * 0.1 * 0.5 * width);
         int steps = fluid_ribbon_steps(length(delta), stepSize, MAX_STEPS);

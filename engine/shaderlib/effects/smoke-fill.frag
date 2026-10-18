@@ -107,10 +107,10 @@ FluidEmitter fill_emitter(JfxStep s){
     vec2 size = max(s.c.size, vec2(1.0));
     vec2 delta = s.pointerKnown ? (s.pointer - s.pointerPrev) / size : vec2(0.0);
     float dragDist = length(delta);
-    bool active = s.pointerKnown && dragDist < 0.25 && dragDist > 0.0005 && params.mouseInfluence > 0.0;
-    e.cursor = active ? s.pointer / size * n : vec2(0.0);
-    e.cursorVel = active ? delta * n * 15.0 * params.mouseInfluence : vec2(0.0);
-    e.mouseActive = active ? 1.0 : 0.0;
+    bool isActive = s.pointerKnown && dragDist < 0.25 && dragDist > 0.0005 && params.mouseInfluence > 0.0;
+    e.cursor = isActive ? s.pointer / size * n : vec2(0.0);
+    e.cursorVel = isActive ? delta * n * 15.0 * params.mouseInfluence : vec2(0.0);
+    e.mouseActive = isActive ? 1.0 : 0.0;
     float mouseRadGrid = params.mouseRadius * n;
     e.mouseRadSq = mouseRadGrid * mouseRadGrid;
     e.densityGain = 8.0;

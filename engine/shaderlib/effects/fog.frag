@@ -110,14 +110,14 @@ vec4 jfx_step(JfxStep s){
         vec2 size = max(s.c.size, vec2(1.0));
         vec2 delta = s.pointerKnown ? (s.pointer - s.pointerPrev) / size : vec2(0.0);
         float dragDist = length(delta);
-        bool active = !s.warm && s.pointerKnown && dragDist < 0.25 && dragDist > 0.0005 && params.mouseInfluence > 0.0;
-        vec2 cursor = active ? s.pointer / size * n : vec2(0.0);
-        vec2 cursorVel = active ? delta * n * 15.0 * params.mouseInfluence : vec2(0.0);
+        bool isActive = !s.warm && s.pointerKnown && dragDist < 0.25 && dragDist > 0.0005 && params.mouseInfluence > 0.0;
+        vec2 cursor = isActive ? s.pointer / size * n : vec2(0.0);
+        vec2 cursorVel = isActive ? delta * n * 15.0 * params.mouseInfluence : vec2(0.0);
         float mouseRadGrid = params.mouseRadius * n;
-        float mouseRadSq = active ? mouseRadGrid * mouseRadGrid : 1.0;
+        float mouseRadSq = isActive ? mouseRadGrid * mouseRadGrid : 1.0;
         float cdx = jf - cursor.x;
         float cdy = iF - cursor.y;
-        float cursorInf = fluid_brush(cdx * cdx + cdy * cdy, max(mouseRadSq, 1.0)) * (active ? 1.0 : 0.0);
+        float cursorInf = fluid_brush(cdx * cdx + cdy * cdy, max(mouseRadSq, 1.0)) * (isActive ? 1.0 : 0.0);
         vec2 add = vec2(fx, fy) + cursorVel * cursorInf;
         // the injected splats push the fog
         vec2 cellsPerPx = n / size;

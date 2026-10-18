@@ -92,11 +92,11 @@ vec4 flow_splat(JfxStep s, bool velocityPass){
     vec4 v = vel_fetch(cell);
     vec2 smoothVel = ptr_fetch(ivec2(0)).xy;
     float gate = flow_speed_gate(length(smoothVel));
-    bool active = s.pointerKnown && gate > 0.005;
+    bool isActive = s.pointerKnown && gate > 0.005;
     vec2 delta = flow_delta(s);
     float emitRad = params.emitRadius * n;
     vec2 emitVel = smoothVel * n * params.momentum * 0.12;
-    if (active){
+    if (isActive){
         vec2 from = s.pointerPrev / max(s.c.size, vec2(1.0));
         float stepSize = max(0.004, params.emitRadius * 0.5);
         int steps = fluid_ribbon_steps(length(delta), stepSize, MAX_STEPS);
