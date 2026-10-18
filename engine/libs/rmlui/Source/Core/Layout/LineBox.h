@@ -49,10 +49,14 @@ public:
 	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes.
 	// The white space at the end of the line is removed (collapsible) or hangs ('pre-wrap'), and takes no part in the
 	// alignment; a justified line without justification opportunities is aligned to its start (p6-justify).
-	// @param[in] text_align The line's alignment: 'text-align', or 'text-align-last' for a last line, resolved.
+	// @param[in] text_align The line's alignment, 'text-align', resolved.
+	// @param[in] text_align_last The alignment of a last line, 'text-align-last', resolved: for a last line, also one whose
+	// text ends at a preserved line feed (a forced break).
+	// @param[in] last_line The line is the last of its container or ends with a <br>.
 	// @param[in] rtl The direction of the inline container is right-to-left (its start is the right).
 	// @note The line must have been vertically positioned before closing.
-	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl);
+	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, Style::TextAlign text_align_last, bool last_line,
+		bool rtl);
 
 	float GetBoxCursor() const { return box_cursor; }
 	Vector2f GetPosition() const { return line_position; }
@@ -63,8 +67,6 @@ public:
 
 	bool IsClosed() const { return is_closed; }
 	bool HasContent() const { return has_content; }
-	// The last fragment placed is text that ends at a preserved line feed: the line ends with a forced break.
-	bool EndsWithForcedBreak() const;
 
 	// Returns true if this line should be collapsed, such that it takes up no height in the inline container.
 	bool CanCollapseLine() const;
@@ -133,7 +135,8 @@ private:
 	void CloseTrimmedOrJustified(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl);
 	// The offset that aligns content of the given width.
 	float GetAlignmentOffset(Style::TextAlign text_align, float content_width) const;
-	// Positions and submits the fragments, with the spacing of the justified text runs (by fragment index).
+	// Positions and submits the fragments, with the spacing of the justified text runs (by fragment index) when justified.
+	template <bool justified>
 	void SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification);
 
 	// Removes the collapsible white space at the end of the line from its text and the boxes around it (CSS Text 3

@@ -71,7 +71,8 @@ private:
 
 	/// Close any open line box.
 	/// @param[in] split_all_open_boxes Split all open inline boxes, even if they have no content.
-	/// @param[in] last_line The line is the last of the container or ends with a forced break: 'text-align-last' aligns it.
+	/// @param[in] last_line The line is the last of the container or ends with a <br>: 'text-align-last' aligns it (as a line ended
+	/// by a preserved line feed, which LineBox::Close finds).
 	/// @param[out] out_split_line Optionally return any resulting split line, otherwise it will be added as a new line box to this container.
 	void CloseOpenLineBox(bool split_all_open_boxes, bool last_line, UniquePtr<LineBox>* out_split_line = nullptr);
 

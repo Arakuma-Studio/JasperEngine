@@ -306,7 +306,7 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 	#define RMLUI_LINEBOX_NOINLINE
 #endif
 
-char LineBox::GetLastTextCharacter() const
+inline char LineBox::GetLastTextCharacter() const
 {
 	if (last_text_run < 0)
 		return '\0';
@@ -315,17 +315,17 @@ char LineBox::GetLastTextCharacter() const
 	return text.empty() ? '\0' : text.back();
 }
 
-bool LineBox::EndsWithForcedBreak() const
-{
-	return GetLastTextCharacter() == '\n';
-}
-
-void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl)
+void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, Style::TextAlign text_align_last,
+	bool last_line, bool rtl)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
 
-	// White space at the end of the line, and justification (p6-justify), out of line.
+	// A line ended by a preserved line feed is a last line too (a forced break).
 	const char last_character = GetLastTextCharacter();
+	if (last_line || last_character == '\n')
+		text_align = text_align_last;
+
+	// White space at the end of the line, and justification (p6-justify), out of line.
 	if (text_align == Style::TextAlign::Justify || last_character == ' ' || last_character == '\n')
 	{
 		CloseTrimmedOrJustified(offset_parent, offset_parent_position, text_align, rtl);
@@ -336,7 +336,7 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 	if (box_cursor < line_width)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, box_cursor);
 
-	SubmitFragments(offset_parent, offset_parent_position, nullptr);
+	SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 }
 
 float LineBox::GetAlignmentOffset(Style::TextAlign text_align, float content_width) const
@@ -353,7 +353,8 @@ float LineBox::GetAlignmentOffset(Style::TextAlign text_align, float content_wid
 	return 0.f;
 }
 
-void LineBox::SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification)
+template <bool justified>
+inline void LineBox::SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification)
 {
 	const bool collapsed_line = CanCollapseLine();
 
@@ -367,7 +368,7 @@ void LineBox::SubmitFragments(Element* offset_parent, Vector2f offset_parent_pos
 		RMLUI_ASSERT(fragment.layout_width >= 0.f);
 
 		const Vector<JustificationSpacing>* fragment_justification = nullptr;
-		if (justification && fragment.type == FragmentType::TextRun)
+		if (justified && fragment.type == FragmentType::TextRun)
 		{
 			const Vector<JustificationSpacing>& spacing = (*justification)[&fragment - fragments.data()];
 			if (!spacing.empty())
@@ -411,7 +412,10 @@ RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_par
 	if (content_width < line_width)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, content_width);
 
-	SubmitFragments(offset_parent, offset_parent_position, justification.empty() ? nullptr : &justification);
+	if (justification.empty())
+		SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
+	else
+		SubmitFragments<true>(offset_parent, offset_parent_position, &justification);
 }
 
 float LineBox::TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset)

@@ -82,8 +82,8 @@ InlineBox* InlineContainer::AddInlineElement(Element* element, const Box& box)
 		minimum_width_next = (line_box->HasContent() ? 0.f : line_box->GetLineWidth() + 1.f);
 
 		// Keep adding boxes on a new line, either because the box couldn't fit on the current line at all, or because it had to be split
-		// (at a preserved line feed: a forced break).
-		CloseOpenLineBox(false, line_box->EndsWithForcedBreak());
+		// (a split at a preserved line feed is a forced break: LineBox::Close aligns it as a last line).
+		CloseOpenLineBox(false, false);
 	}
 
 	return inline_box;
@@ -160,7 +160,7 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
-		line_box->Close(parent->GetElement(), parent->GetPosition(), last_line ? text_align_last : text_align, rtl);
+		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align, text_align_last, last_line, rtl);
 
 		// Move the cursor down, unless we should collapse the line.
 		if (!line_box->CanCollapseLine())
