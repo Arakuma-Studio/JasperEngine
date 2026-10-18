@@ -2,3 +2,5 @@
 .l { text-align: left; } .r { text-align: right; } .c { text-align: center; } .j { text-align: justify; }
 .start { text-align: start; } .end { text-align: end; } .wc { text-align: -webkit-center; } .mc { text-align: -moz-center; }
 .mp { text-align: match-parent; } .ja { text-align: justify-all; } .last { text-align-last: center; } .invalid { text-align: middle; }
+/* text-align-last and text-justify: native with ForkFeature::Justify (p6-justify); match-parent is not parsed, as in Chromium */
+.lastj { text-align-last: justify; } .lastmp { text-align-last: match-parent; } .tj { text-justify: inter-character; } .tjd { text-justify: distribute; }
