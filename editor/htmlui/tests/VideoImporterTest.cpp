@@ -52,11 +52,12 @@ namespace {
 
         // a stand-in ffmpeg: -encoders lists `encoders`; a conversion copies the AV1 test card to
         // its last argument (exit 0), or prints an error and exits 1 when `fail`
-        fs::path fakeFfmpeg(const std::string& encoders, bool fail){
+        fs::path fakeFfmpeg(const std::string& encoders, bool fail, const std::string& filters = ""){
             const fs::path script = root / "ffmpeg";
             std::ofstream out(script);
             out << "#!/bin/sh\n"
-                << "case \"$*\" in *-encoders*) printf ' V....D " << encoders << " the encoder\\n'; exit 0;; esac\n";
+                << "case \"$*\" in *-encoders*) printf ' V....D " << encoders << " the encoder\\n'; exit 0;; esac\n"
+                << "case \"$*\" in *-filters*) printf '" << filters << "'; exit 0;; esac\n";
             if (fail)
                 out << "echo 'in.mp4: Invalid data found when processing input' >&2; exit 1\n";
             else
@@ -158,6 +159,34 @@ TEST_F(VideoImporterTest, WithoutFfmpegTheOriginalIsCopiedAndDiagnosed){
     ASSERT_EQ(noEncoder.diagnostics.size(), 1u);
     EXPECT_EQ(noEncoder.diagnostics[0].code, hc::codes::VideoNotConverted);
     EXPECT_NE(noEncoder.message.find("no AV1 encoder"), std::string::npos) << noEncoder.message;
+}
+
+TEST_F(VideoImporterTest, HdrInputIsToneMapped){
+    // an ffprobe next to the ffmpeg says the input is PQ
+    const fs::path ffprobe = root / "ffprobe";
+    {
+        std::ofstream out(ffprobe);
+        out << "#!/bin/sh\necho smpte2084\n";
+    }
+    fs::permissions(ffprobe, fs::perms::owner_all);
+    setenv("JASPER_FFMPEG", fakeFfmpeg("libsvtav1", false, " ... zscale            V->V       Apply resizing\\n ... tonemap           V->V       Conversion\\n").c_str(), 1);
+    EXPECT_TRUE(VideoImporter::isHdrInput(VideoImporter::findFfmpeg(), input()));
+    EXPECT_TRUE(VideoImporter::hasToneMapping(VideoImporter::findFfmpeg()));
+    const VideoImportResult result = VideoImporter::importFile(input(), root / "out", true);
+    EXPECT_TRUE(result.ok && result.hdr && result.toneMapped) << result.message;
+    EXPECT_NE(result.command.find("tonemap=tonemap=hable"), std::string::npos) << result.command;
+    EXPECT_NE(result.message.find("HDR tone-mapped"), std::string::npos) << result.message;
+    // an FFmpeg without zimg: converted as it is, and said so
+    setenv("JASPER_FFMPEG", fakeFfmpeg("libsvtav1", false, " ... scale  V->V  Scale\\n").c_str(), 1);
+    const VideoImportResult plain = VideoImporter::importFile(input(), root / "out", true);
+    EXPECT_TRUE(plain.ok && plain.hdr && !plain.toneMapped) << plain.message;
+    EXPECT_EQ(plain.command.find("tonemap"), std::string::npos) << plain.command;
+    EXPECT_NE(plain.message.find("washed out"), std::string::npos) << plain.message;
+    // SDR input (no ffprobe answer): no tone mapping
+    fs::remove(ffprobe);
+    const VideoImportResult sdr = VideoImporter::importFile(input(), root / "out", true);
+    EXPECT_FALSE(sdr.hdr);
+    EXPECT_EQ(sdr.command.find("zscale"), std::string::npos);
 }
 
 TEST_F(VideoImporterTest, AFailingConversion){

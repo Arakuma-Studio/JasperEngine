@@ -231,6 +231,7 @@ namespace jasperengine {
         bool hasPicture = false;           // a frame was converted into the texture
         bool uploadPending = false;        // `frame` is not in the texture yet
         int64_t shownSequence = -1;
+        bool hdrWarned = false;            // the HDR warning was logged (once per element)
         uint64_t uploadedFrame = UINT64_MAX;
 
         // RmlUi resources

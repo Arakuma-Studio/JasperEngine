@@ -342,7 +342,7 @@ before opening.
   ratio, else the coded size) once the metadata is known. Before that, the poster's size once it is
   loaded, else 300×150 (CSS 2, as in Chromium). Changing it relayouts the element.
 - The content is drawn like the fork's `<img>`. `ComputeObjectFitRect` places the frame in the
-  content box (default `object-fit: fill`, as in CSS; unlike `<lottie>`'s contain), and
+  content box (default `object-fit: contain`, from the UA sheet, as HTML's rendering section and Chromium say), and
   `ReplacedContentGeometry` trims it to the content edge curve of a rounded box (fork P4-G1). It is
   tinted by `image-color` × opacity. Filters, `backdrop-filter`, masks, transforms and phase-5
   effects need nothing: they act on the element's layer.
@@ -474,7 +474,7 @@ kills targets and planes. The element makes them again and re-uploads the shown 
 no pass inside the context frame: a frame without new video frames costs nothing extra.
 
 The ShaderPool table, the variant collector and export get the new variant through the existing
-HTMLUI_POST loops (property count 7). The editor's shader cache version is bumped.
+HTMLUI_POST loops (property count 7). No shader cache version bump is needed: the new variant is a new cache entry.
 
 #### 3.6.6 Memory
 Per video (C-build measurements are in the phase record, 7):
@@ -510,10 +510,13 @@ Unloading the document, or removing the element, frees all of it (leak tests, 5.
   0.25 mute the audio, as Chromium's range for audible rates). The voice is stopped at unload and
   when the element leaves the document. If SoLoud is torn down (`AudioSystem` deinit), the next
   update makes a new voice.
-- **Measured** (5.1): with the test consumer pulling 10 ms blocks while the fixture clock steps
-  1/60 s, the drift stays within 10 ms. A consumer running 3 % fast or slow stays within 25 ms (the
-  controller's band plus one block). After a seek or loop, the drift is within 10 ms by the first
-  callback.
+- **Measured** (5.1, as implemented): with the test consumer pulling 10 ms blocks while the
+  fixture clock steps 1/60 s, the drift stays within 10 ms (`VideoAudioSync.DriftStaysBoundedOnTheFixtureClock`,
+  `VideoElementTest`). A consumer running 3 % fast or slow stays within 25 ms against the
+  controller alone, and within 29 ms through the element (the 15 ms band, the 3 % accumulated over
+  the element's eight-update drift mean, one block), never resyncing (`AudioCorrectsAFastMixer`).
+  Audio is placed by counting samples from the start; after a seek or loop the first packet is
+  placed by its block timestamp, which WebM keeps in milliseconds: within about 1 ms (96 frames).
 
 ### 3.8 States and events
 
@@ -565,7 +568,7 @@ tag, and returns the neutral value (Lottie's rule). The existing `play()`, `paus
 | `canPlayType(type)` | `canPlayType(const std::string&)` | `"probably"`, `"maybe"`, `""` |
 | `fastSeek(t)` | `fastSeek(double)` | to the keyframe at or before `t` |
 | `currentTime` (get/set) | `getCurrentTime()`, `setCurrentTime(double)` | setting seeks (frame-exact), clamped |
-| `duration` | `getDuration()` | `NaN` before metadata |
+| `duration` | `getMediaDuration()` | `NaN` before metadata (`getDuration()`, shared with `<lottie>`, returns 0 then) |
 | `paused`, `ended`, `seeking` | `isPaused()`, `isEnded()`, `isSeeking()` | |
 | `loop`, `autoplay`, `controls`, `defaultMuted` (get/set) | `getLoop()`/`setLoop(bool)`, `getAutoplay()/setAutoplay`, `getControls()/setControls`, `getDefaultMuted()/setDefaultMuted` | reflect the attributes |
 | `muted`, `volume` (get/set) | `isMuted()/setMuted`, `getVolume()/setVolume(float)` | volume outside [0, 1]: warning, unchanged (HTML throws) |
@@ -637,16 +640,17 @@ drops on the Project window:
 - A file that `probeVideoFile` accepts (AV1/Opus WebM) is copied unchanged.
 - Any other video (by probe or extension: `.mp4 .m4v .mov .mkv .webm`(VP8/VP9) `.ogv .avi .wmv
   .flv .mpg .mpeg .ts .3gp .gif`) is converted when an FFmpeg is found. Lookup order: the
-  `JASPER_FFMPEG` environment variable, the editor setting `htmlui.ffmpegPath`, then `ffmpeg` on
-  `PATH`. Its encoders are listed once (`ffmpeg -hide_banner -encoders`), and the first AV1 encoder
+  `JASPER_FFMPEG` environment variable, the editor setting (Preferences > External Tools > FFmpeg,
+  MCP `preferences.ffmpeg_path`), then `ffmpeg` on `PATH`. Its encoders are listed once (`ffmpeg -hide_banner -encoders`), and the first AV1 encoder
   of `libsvtav1`, `libaom-av1` and `librav1e` is used:
   `ffmpeg -nostdin -y -i <in> -map 0:v:0 -map 0:a:0? -c:v libsvtav1 -preset 6 -crf 32 -g <2 s of
-  frames> -pix_fmt yuv420p[10le] -c:a libopus -b:a 128k -ac 2 -f webm <out>.webm`. `libaom-av1`
+  frames> -pix_fmt yuv420p -c:a libopus -b:a 128k -ac 2 -f webm <out>.webm`. `libaom-av1`
   uses `-cpu-used 6 -row-mt 1 -crf 30 -b:v 0`, and `librav1e` uses `-speed 6 -qp 100`. HDR input
-  is tone-mapped to BT.709 SDR (`zscale`+`tonemap` when FFmpeg has them, else a warning). Sizes
+  (PQ/HLG, by the `ffprobe` next to the `ffmpeg`) is tone-mapped to BT.709 SDR (`zscale`+`tonemap`, Hable, when FFmpeg has them; else converted as it is, and the result says the colours will look washed out). The output is 8-bit 4:2:0 SDR whatever the input. Sizes
   above 4096 px are scaled down. The output `<name>.webm` sits where the original would have gone,
-  and the original is not copied. The conversion runs as an MCP job (progress, cancel), and its
-  command line and result are returned and logged.
+  and the original is not copied. `import_files` runs the conversion on its worker and waits for it
+  (the call's 10-minute limit; no progress or cancel) and returns its command line and result; the
+  Project window converts dropped files on a worker and reports each in the Console.
 - No FFmpeg, or no AV1 encoder: the original is copied, and the result carries
   `HTMLUI-IMP-0010 video-not-converted` (Warning) with the exact FFmpeg command to run, or "install
   FFmpeg with an AV1 encoder (SVT-AV1)". The licence note: FFmpeg is the user's own tool, run as a
@@ -654,8 +658,10 @@ drops on the Project window:
 - A conversion failure (exit code, unreadable input) gives `HTMLUI-IMP-0011 video-conversion-failed`
   (Error) with FFmpeg's last stderr lines.
 - Remote URLs in `import_files` `sources` (and the HTML UI auto-import of a document's remote
-  `<video src>`/`<source src>`/`poster`) download into `assets/htmlui-imports/` (phase 2), then
-  convert as above. The manifest maps the URL to the converted file.
+  `<video src>`/`<source src>`) download into `assets/htmlui-imports/videos/<host>/` (phase 2's
+  `RemoteImporter`, `RemoteVideoImporter`: typed by their bytes, EBML/`ftyp`/`OggS`), then convert
+  as above in a scratch directory; the manifest maps the URL to the `.webm` (kind `video`). A remote
+  `poster` is an image and imports as one.
 
 #### 3.12.2 Export and per-platform shipping
 `.webm` files are ordinary assets: `copyAssets` copies them, and the resource pack (when enabled)
@@ -665,8 +671,8 @@ in the APK uncompressed (`.webm` is on AAPT's no-compress list), read through `A
 Web preloads them into the Emscripten file system, so they count fully in the page's memory, and
 the guide says so. `HtmlUIDependencies` lists a document's video `src`, `<source src>` and
 `poster` files, so the export check (`ProjectChecks`) reports missing ones and hot reload watches
-them. A changed video reloads the elements that use it, keeping their `currentTime` and paused
-state.
+them. A changed video reloads the documents that use it (as any changed dependency does): the
+video starts again from its load, its `currentTime` and paused state are not kept.
 
 #### 3.12.3 Budget (guide)
 | Platform | Guidance (C build, 3.1.4) |
@@ -810,7 +816,7 @@ clip. The same images on both backends within the harness's default tolerance.
 
 ### 5.3 Browser parity (`engine/tests/htmlui/fixtures/p3/video/`, Chromium 153)
 `render-reference.mjs` gains the step `{"seekVideo": ["#id", seconds]}` (the reference sets
-`currentTime`, waits for `seeked` and one `requestVideoFrameCallback`; the engine's `FixtureRunner`
+`currentTime`, waits for `seeked` and `HAVE_CURRENT_DATA` (not `requestVideoFrameCallback`: the headless shell presents no frame before a screenshot); the engine's `FixtureRunner`
 sets `currentTime` in frame-exact mode). Fixtures:
 - `seeked-cover-radius`: a paused video seeked to 1.0 s, `object-fit: cover`, `object-position:
   30% 70%`, `border-radius: 24px`;

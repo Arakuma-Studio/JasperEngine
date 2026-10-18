@@ -30,6 +30,8 @@ namespace jasperengine::editor::htmlui {
         std::string ffmpeg;              // the FFmpeg used ("" = none found)
         std::string encoder;             // libsvtav1, libaom-av1 or librav1e
         std::string message;             // for the report
+        bool hdr = false;                // the input is HDR (PQ/HLG)
+        bool toneMapped = false;         // ... and was mapped to SDR
         std::vector<jasperengine::htmlui::compat::Diagnostic> diagnostics;   // HTMLUI-IMP-0010 / 0011
         double seconds = 0.0;            // the conversion's duration
     };
@@ -51,10 +53,15 @@ namespace jasperengine::editor::htmlui {
         static std::vector<std::string> av1Encoders(const std::string& ffmpeg);
 
         // The command that converts `input` into `output` (AV1 + Opus WebM, keyframes every 2 s,
-        // 8-bit 4:2:0 (10-bit kept), at most 4096 px, stereo Opus 128 kb/s, the first video and
-        // audio streams)
+        // 8-bit 4:2:0 SDR, at most 4096 px, stereo Opus 128 kb/s, the first video and audio
+        // streams). toneMap: HDR (PQ/HLG) input mapped to BT.709 SDR (zscale + tonemap, hable)
         static std::string conversionCommand(const std::string& ffmpeg, const std::string& encoder, const std::filesystem::path& input,
-                                             const std::filesystem::path& output, bool tenBit);
+                                             const std::filesystem::path& output, bool toneMap = false);
+        // the input's first video stream has a PQ or HLG transfer (ffprobe next to `ffmpeg`;
+        // false when there is none or it cannot tell)
+        static bool isHdrInput(const std::string& ffmpeg, const std::filesystem::path& input);
+        // the FFmpeg has the zscale and tonemap filters (zimg)
+        static bool hasToneMapping(const std::string& ffmpeg);
 
         // Imports one file into `targetDir` (absolute): copied when the engine plays it, else
         // converted to <stem>.webm (the original is not copied), else copied with HTMLUI-IMP-0010.

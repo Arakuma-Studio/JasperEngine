@@ -412,6 +412,12 @@ void UIVideoElement::showFrameForTime(){
         case VideoStream::FrameResult::STALE:
             shownSequence = next.sequence;
             if (!next.y.empty()){
+                // shown as is: the UI composites SDR (3.6.5); the importer tone-maps HDR files
+                if (next.color.isHdr() && !hdrWarned){
+                    hdrWarned = true;
+                    Log::warn("[HTML UI] <video src=\"%s\">: HDR video (PQ/HLG) is shown without tone mapping: its colours look washed out; "
+                              "convert it to SDR (import_files tone-maps it with FFmpeg) [HTMLUI-HTML-0027]", currentSrc.c_str());
+                }
                 frame = std::move(next);
                 uploadPending = true;
                 stats.framesShown++;
