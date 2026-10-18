@@ -35,13 +35,13 @@ public:
 	virtual String DebugDumpNameValue() const = 0;
 	virtual String DebugDumpTree(int depth) const;
 
+	Element* GetElement() const { return element; }
+
 	void* operator new(size_t size);
 	void operator delete(void* chunk, size_t size);
 
 protected:
 	InlineLevelBox(Element* element) : element(element) { RMLUI_ASSERT(element); }
-
-	Element* GetElement() const { return element; }
 	const FontMetrics& GetFontMetrics() const;
 
 	// Set the height used for inline layout, and the vertical offset relative to our parent box.
@@ -105,9 +105,11 @@ public:
 
 	String DebugDumpNameValue() const override;
 
-private:
 	ElementText* GetTextElement();
+	// The text of a fragment, as it will be submitted (the line box trims the white space at the end of its line).
+	String& GetFragmentText(LayoutFragmentHandle handle) { return fragments[handle]; }
 
+private:
 	Vector2f element_offset;
 	StringList fragments;
 };

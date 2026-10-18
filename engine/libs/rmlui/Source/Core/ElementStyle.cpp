@@ -2203,6 +2203,14 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::GridColumnEnd:
 		break;
 
+	// -- Text (p6-justify) --
+	case PropertyId::TextAlignLast:
+		values.text_align_last((TextAlignLast)p->Get<int>());
+		break;
+	case PropertyId::TextJustify:
+		values.text_justify((TextJustify)p->Get<int>());
+		break;
+
 	// Invalid properties
 	case PropertyId::Invalid:
 	case PropertyId::NumDefinedIds:

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
+#include "../../../Include/RmlUi/Core/TextShapingContext.h"
 #include "InlineTypes.h"
 
 namespace Rml {
@@ -46,8 +47,12 @@ public:
 	UniquePtr<LineBox> DetermineVerticalPositioning(const InlineBoxRoot* root_inline_box, bool split_all_open_boxes, float& out_height_of_line);
 
 	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes.
+	// The white space at the end of the line is removed (collapsible) or hangs ('pre-wrap'), and takes no part in the
+	// alignment; a justified line without justification opportunities is aligned to its start (p6-justify).
+	// @param[in] text_align The line's alignment: 'text-align', or 'text-align-last' for a last line, resolved.
+	// @param[in] rtl The direction of the inline container is right-to-left (its start is the right).
 	// @note The line must have been vertically positioned before closing.
-	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align);
+	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl);
 
 	float GetBoxCursor() const { return box_cursor; }
 	Vector2f GetPosition() const { return line_position; }
@@ -58,6 +63,8 @@ public:
 
 	bool IsClosed() const { return is_closed; }
 	bool HasContent() const { return has_content; }
+	// The last fragment placed is text that ends at a preserved line feed: the line ends with a forced break.
+	bool EndsWithForcedBreak() const { return ends_with_forced_break; }
 
 	// Returns true if this line should be collapsed, such that it takes up no height in the inline container.
 	bool CanCollapseLine() const;
@@ -120,6 +127,16 @@ private:
 	// Splits the line, returning a new line if there are any open fragments.
 	UniquePtr<LineBox> SplitLine(bool split_all_open_boxes);
 
+	// Removes the collapsible white space at the end of the line from its text and the boxes around it (CSS Text 3
+	// §4.1.3). Returns the width of the preserved spaces that hang at its end ('pre-wrap'); 'out_justify_end' is where the
+	// justified content ends: the fragment and the byte offset in its text (the fragments after it are not justified).
+	float TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset);
+	// Changes the width of a fragment: the fragments after it move, the inline boxes around it grow or shrink.
+	void ResizeFragment(int fragment_index, float delta);
+	// Distributes the free space of the line over its justification opportunities (p6-justify). Returns false, and
+	// changes nothing, when there are none.
+	bool Justify(float space, bool rtl, int justify_end_fragment, int justify_end_offset, Vector<Vector<JustificationSpacing>>& out_spacing);
+
 	// Vertically align all descendants of the subtree. Returns the ascent of the top-most box, and descent of the bottom-most box.
 	void VerticallyAlignSubtree(int subtree_root_index, int children_end_index, float& max_ascent, float& max_descent);
 
@@ -173,11 +190,14 @@ private:
 	FragmentIndex open_fragments_leaf = RootFragmentIndex;
 
 	bool has_content = false;
+	bool ends_with_forced_break = false;
 	bool is_vertically_positioned = false;
 	bool is_closed = false;
 
 	// Content offset due to space distribution from 'text-align'. Available after close.
 	float offset_horizontal_alignment = 0.f;
+	// The right edge of a justified line's content (p6-justify). Available after close.
+	float justified_extent = 0.f;
 	// The line box's height above baseline. Available after close.
 	float total_height_above_baseline = 0.f;
 };

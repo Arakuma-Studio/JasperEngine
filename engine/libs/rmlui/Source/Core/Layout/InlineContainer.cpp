@@ -26,6 +26,8 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 	element_line_height = computed.line_height().value;
 	wrap_content = (computed.text_wrap_mode() == Style::TextWrapMode::Wrap);
 	text_align = computed.text_align();
+	text_align_last = computed.text_align_last();
+	rtl = (computed.direction() == Style::Direction::Rtl);
 }
 
 InlineContainer::~InlineContainer() {}
@@ -79,8 +81,9 @@ InlineBox* InlineContainer::AddInlineElement(Element* element, const Box& box)
 
 		minimum_width_next = (line_box->HasContent() ? 0.f : line_box->GetLineWidth() + 1.f);
 
-		// Keep adding boxes on a new line, either because the box couldn't fit on the current line at all, or because it had to be split.
-		CloseOpenLineBox(false);
+		// Keep adding boxes on a new line, either because the box couldn't fit on the current line at all, or because it had to be split
+		// (at a preserved line feed: a forced break).
+		CloseOpenLineBox(false, line_box->EndsWithForcedBreak());
 	}
 
 	return inline_box;
@@ -102,7 +105,7 @@ void InlineContainer::AddBreak(float line_height)
 {
 	// Simply end the line if one is open, otherwise increment by the line height.
 	if (GetOpenLineBox())
-		CloseOpenLineBox(true);
+		CloseOpenLineBox(true, true);
 	else
 		box_cursor += line_height;
 }
@@ -118,8 +121,9 @@ void InlineContainer::Close(UniquePtr<LineBox>* out_open_line_box, Vector2f& out
 {
 	RMLUI_ZoneScoped;
 
-	// The parent container may need the open line box to be split and resumed.
-	CloseOpenLineBox(true, out_open_line_box);
+	// The parent container may need the open line box to be split and resumed. The last line of an inline container is a
+	// last line for 'text-align-last', also when a block-level box interrupts an inline box (as in Chromium).
+	CloseOpenLineBox(true, true, out_open_line_box);
 
 	// It is possible that floats were queued between closing the last line and closing this container, if so place them now.
 	parent->PlaceQueuedFloats(position.y + box_cursor);
@@ -142,7 +146,7 @@ void InlineContainer::Close(UniquePtr<LineBox>* out_open_line_box, Vector2f& out
 	out_height = box_size.y;
 }
 
-void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<LineBox>* out_split_line)
+void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line, UniquePtr<LineBox>* out_split_line)
 {
 	if (LineBox* line_box = GetOpenLineBox())
 	{
@@ -156,7 +160,7 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<Line
 
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
-		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align);
+		line_box->Close(parent->GetElement(), parent->GetPosition(), last_line ? text_align_last : text_align, rtl);
 
 		// Move the cursor down, unless we should collapse the line.
 		if (!line_box->CanCollapseLine())

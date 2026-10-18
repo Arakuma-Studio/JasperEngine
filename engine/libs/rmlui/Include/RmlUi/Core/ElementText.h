@@ -4,6 +4,7 @@
 #include "Element.h"
 #include "Geometry.h"
 #include "Header.h"
+#include "TextShapingContext.h"
 
 namespace Rml {
 
@@ -42,6 +43,8 @@ public:
 	/// @param[in] line_position The position of this line, as an offset from the first line.
 	/// @param[in] line The contents of the line.
 	void AddLine(Vector2f line_position, String line);
+	/// Adds a new line of justified text (p6-justify): the space added around its characters.
+	void AddLine(Vector2f line_position, String line, const Vector<JustificationSpacing>& justification);
 
 	/// Prevents the element from dirtying its document's layout when its text is changed.
 	void SuppressAutoLayout();
@@ -52,6 +55,9 @@ public:
 		String text;
 		Vector2f position;
 		int width;
+		// The space a justified line adds around the characters (p6-justify; empty when the line is not justified),
+		// included in 'width'.
+		Vector<JustificationSpacing> justification;
 	};
 
 	using LineList = Vector<Line>;

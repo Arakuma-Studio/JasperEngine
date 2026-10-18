@@ -518,6 +518,12 @@ void ElementText::AddLine(Vector2f line_position, String line)
 	geometry_dirty = true;
 }
 
+void ElementText::AddLine(Vector2f line_position, String line, const Vector<JustificationSpacing>& justification)
+{
+	AddLine(line_position, std::move(line));
+	lines.back().justification = justification;
+}
+
 void ElementText::SuppressAutoLayout()
 {
 	dirty_layout_on_change = false;
@@ -663,10 +669,17 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	TexturedMeshList mesh_list;
 	mesh_list.reserve(geometry.size());
 
+	// A justified line draws its characters with the space added around them (p6-justify).
+	const auto LineContext = [&text_shaping_context](const Line& line) {
+		TextShapingContext context = text_shaping_context;
+		context.justification = line.justification;
+		return context;
+	};
+
 	for (Line& line : lines)
 	{
 		line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position, colour,
-			opacity, text_shaping_context, mesh_list);
+			opacity, line.justification.empty() ? text_shaping_context : LineContext(line), mesh_list);
 	}
 
 	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_edge; };
@@ -701,9 +714,11 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			if (abbreviated_text.empty())
 			{
 				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line_strings[i],
-					line.position, colour, opacity, text_shaping_context, mesh_list);
+					line.position, colour, opacity, line.justification.empty() ? text_shaping_context : LineContext(line), mesh_list);
 				continue;
 			}
+			// (an abbreviated line is drawn without its justification: it overflows)
+			line.justification.clear();
 			// the kept text in the text's colour, the overflow text after it in the block container's (CSS Overflow 4 §3.2)
 			const float kept_width = (float)font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, kept_text,
 				line.position, colour, opacity, text_shaping_context, mesh_list);
@@ -759,7 +774,7 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 				const Line& line = lines[i];
 				const Vector2f position = line.position + resolved.offset;
 				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
-					text_shaping_context, shadow_meshes);
+					line.justification.empty() ? text_shaping_context : LineContext(line), shadow_meshes);
 				const Rectanglef line_ink =
 					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
 				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);

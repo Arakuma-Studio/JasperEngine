@@ -1,6 +1,11 @@
 #include "LineBox.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
+#include "../../../Include/RmlUi/Core/ComputedValues.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
+#include "../../../Include/RmlUi/Core/ElementUtilities.h"
+#include "../../../Include/RmlUi/Core/StringUtilities.h"
+#include "../TextJustification.h"
 #include "InlineBox.h"
 #include "InlineLevelBox.h"
 #include "LayoutPools.h"
@@ -77,6 +82,7 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 
 		box_cursor = box_placement_cursor + constructor.layout_width;
 		open_spacing_left = 0.f;
+		ends_with_forced_break = constructor.forced_break;
 
 		if (constructor.overflow_handle)
 		{
@@ -292,35 +298,52 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 	return new_line_box;
 }
 
-void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align)
+void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
 
+	// White space at the end of the line: removed or hanging, it is not aligned (CSS Text 3 §4.1.3, as Chromium).
+	int justify_end_fragment = -1, justify_end_offset = 0;
+	const float hang_width = TrimTrailingWhiteSpace(justify_end_fragment, justify_end_offset);
+	const float content_width = box_cursor - hang_width;
+
 	const bool collapsed_line = CanCollapseLine();
 
+	// Justification (p6-justify): the space the line leaves is shared by its opportunities; a line that overflows, or has
+	// none, is aligned to its start (Chromium's InlineLayoutAlgorithm::ApplyTextAlign).
+	Vector<Vector<JustificationSpacing>> justification;
+	if (text_align == Style::TextAlign::Justify)
+	{
+		if (!Justify(line_width - content_width, rtl, justify_end_fragment, justify_end_offset, justification))
+			text_align = (rtl ? Style::TextAlign::Right : Style::TextAlign::Left);
+	}
+
 	// Horizontal alignment using available space on our line.
-	if (box_cursor < line_width)
+	if (content_width < line_width)
 	{
 		switch (text_align)
 		{
-		case Style::TextAlign::Center: offset_horizontal_alignment = (line_width - box_cursor) * 0.5f; break;
-		case Style::TextAlign::Right: offset_horizontal_alignment = (line_width - box_cursor); break;
+		case Style::TextAlign::Center: offset_horizontal_alignment = (line_width - content_width) * 0.5f; break;
+		case Style::TextAlign::Right: offset_horizontal_alignment = (line_width - content_width); break;
 		case Style::TextAlign::Left:    // Already left-aligned.
-		case Style::TextAlign::Justify: // Justification occurs at the text level.
+		case Style::TextAlign::Justify: // Justified: the line is filled.
 		case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
 		case Style::TextAlign::End: break;
 		}
 	}
 
 	// Position and size all inline-level boxes, place geometry boxes.
-	for (const Fragment& fragment : fragments)
+	for (int i = 0; i < (int)fragments.size(); i++)
 	{
+		const Fragment& fragment = fragments[i];
+
 		// Skip inline boxes which have not been closed (moved down to next line).
 		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
 			continue;
 
 		RMLUI_ASSERT(fragment.layout_width >= 0.f);
 
+		const bool justified_text = (fragment.type == FragmentType::TextRun && !justification.empty() && !justification[i].empty());
 		const PlacedFragment placed_fragment = {
 			offset_parent,
 			fragment.fragment_handle,
@@ -330,11 +353,159 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 			fragment.split_right,
 			collapsed_line,
 			line_position.y - offset_parent_position.y,
+			justified_text ? &justification[i] : nullptr,
 		};
 		fragment.box->Submit(placed_fragment);
 	}
 
 	is_closed = true;
+}
+
+float LineBox::TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset)
+{
+	out_justify_end_fragment = (int)fragments.size() - 1;
+	out_justify_end_offset = -1; // the whole fragment
+
+	float hang_width = 0.f;
+	for (int i = (int)fragments.size() - 1; i >= 0; i--)
+	{
+		Fragment& fragment = fragments[i];
+		if (fragment.type == FragmentType::InlineBox)
+			continue;
+		if (fragment.type != FragmentType::TextRun)
+			break;
+
+		InlineLevelBox_Text* text_box = rmlui_static_cast<InlineLevelBox_Text*>(fragment.box);
+		String& text = text_box->GetFragmentText(fragment.fragment_handle);
+
+		// The spaces before a final line feed (a forced break).
+		size_t end = text.size();
+		if (end > 0 && text[end - 1] == '\n')
+			end -= 1;
+		size_t spaces_begin = end;
+		while (spaces_begin > 0 && text[spaces_begin - 1] == ' ')
+			spaces_begin -= 1;
+
+		if (spaces_begin < end)
+		{
+			ElementText* element = text_box->GetTextElement();
+			const auto& computed = element->GetComputedValues();
+			const Style::WhiteSpaceCollapse collapse = computed.white_space_collapse();
+			const bool collapsible = (collapse == Style::WhiteSpaceCollapse::Collapse || collapse == Style::WhiteSpaceCollapse::PreserveBreaks);
+			const bool hanging = !collapsible && collapse != Style::WhiteSpaceCollapse::BreakSpaces && computed.text_wrap_mode() == Style::TextWrapMode::Wrap;
+			if (!collapsible && !hanging)
+				break; // 'pre', 'break-spaces': the spaces are content
+
+			const Character prior = (spaces_begin > 0
+					? StringUtilities::ToCharacter(StringUtilities::SeekBackwardUTF8(&text[spaces_begin - 1], text.data()), text.data() + spaces_begin)
+					: Character::Null);
+			const float width = (float)ElementUtilities::GetStringWidth(element, StringView(text.data() + spaces_begin, text.data() + end), prior);
+			if (collapsible)
+			{
+				text.erase(spaces_begin, end - spaces_begin);
+				ResizeFragment(i, -Math::Min(width, fragment.layout_width));
+			}
+			else
+			{
+				hang_width += width;
+			}
+			out_justify_end_fragment = i;
+			out_justify_end_offset = (int)spaces_begin;
+		}
+
+		// Continue into the fragments before only when this one is all white space.
+		if (spaces_begin > 0)
+			break;
+	}
+
+	return hang_width;
+}
+
+void LineBox::ResizeFragment(const int fragment_index, const float delta)
+{
+	if (delta == 0.f)
+		return;
+
+	fragments[fragment_index].layout_width += delta;
+	for (int i = fragment_index + 1; i < (int)fragments.size(); i++)
+		fragments[i].position.x += delta;
+	for (int i = 0; i < fragment_index; i++)
+	{
+		Fragment& fragment = fragments[i];
+		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index > fragment_index)
+			fragment.layout_width = Math::Max(fragment.layout_width + delta, 0.f);
+	}
+	box_cursor += delta;
+}
+
+bool LineBox::Justify(const float space, const bool rtl, const int justify_end_fragment, const int justify_end_offset,
+	Vector<Vector<JustificationSpacing>>& out_spacing)
+{
+	if (!(space > 0.f))
+		return false;
+
+	// The text runs and atomic inlines of the line, in order, up to the end of what is justified.
+	Vector<JustificationRun> runs;
+	Vector<int> run_fragment;
+	for (int i = 0; i < (int)fragments.size() && i <= justify_end_fragment; i++)
+	{
+		const Fragment& fragment = fragments[i];
+		if (fragment.type == FragmentType::TextRun)
+		{
+			InlineLevelBox_Text* text_box = rmlui_static_cast<InlineLevelBox_Text*>(fragment.box);
+			const String& text = text_box->GetFragmentText(fragment.fragment_handle);
+			const size_t end = (i == justify_end_fragment && justify_end_offset >= 0 ? Math::Min((size_t)justify_end_offset, text.size()) : text.size());
+			if (end == 0)
+				continue;
+			JustificationRun run;
+			run.text = StringView(text.data(), text.data() + end);
+			run.method = text_box->GetTextElement()->GetComputedValues().text_justify();
+			runs.push_back(std::move(run));
+			run_fragment.push_back(i);
+		}
+		else if (fragment.type == FragmentType::SizedBox)
+		{
+			JustificationRun run;
+			run.atomic = true;
+			run.method = fragment.box->GetElement()->GetComputedValues().text_justify();
+			runs.push_back(std::move(run));
+			run_fragment.push_back(i);
+		}
+	}
+
+	if (!JustifyRuns(runs, space, rtl))
+		return false;
+
+	// The space each fragment adds, the atomic inlines moved by the space before them.
+	const int num_fragments = (int)fragments.size();
+	Vector<float> added(num_fragments, 0.f);
+	out_spacing.resize(num_fragments);
+	for (int r = 0; r < (int)runs.size(); r++)
+	{
+		const int i = run_fragment[r];
+		added[i] = runs[r].GetTotal();
+		if (runs[r].atomic)
+			fragments[i].position.x += runs[r].before;
+		else
+			out_spacing[i] = std::move(runs[r].spacing);
+	}
+
+	// Every fragment moves by the space added before it; an inline box grows by the space added inside it.
+	Vector<float> added_before(num_fragments + 1, 0.f);
+	for (int i = 0; i < num_fragments; i++)
+		added_before[i + 1] = added_before[i] + added[i];
+	for (int i = 0; i < num_fragments; i++)
+	{
+		Fragment& fragment = fragments[i];
+		fragment.position.x += added_before[i];
+		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index > 0)
+			fragment.layout_width += added_before[fragment.children_end_index] - added_before[i + 1];
+		else if (fragment.type == FragmentType::TextRun)
+			fragment.layout_width += added[i];
+	}
+	justified_extent = box_cursor + added_before[num_fragments];
+
+	return true;
 }
 
 void LineBox::VerticallyAlignSubtree(const int subtree_root_index, const int children_end_index, float& max_ascent, float& max_descent)
@@ -392,7 +563,7 @@ bool LineBox::CanCollapseLine() const
 float LineBox::GetExtentRight() const
 {
 	RMLUI_ASSERT(is_closed);
-	return box_cursor + offset_horizontal_alignment;
+	return Math::Max(box_cursor, justified_extent) + offset_horizontal_alignment;
 }
 
 float LineBox::GetBaseline() const

@@ -17,6 +17,7 @@
 #include "../../../Include/RmlUi/Core/TextInputHandler.h"
 #include "../Clock.h"
 #include "../ElementStyle.h"
+#include "../TextJustification.h"
 #include "ElementTextSelection.h"
 #include <algorithm>
 #include <limits.h>
@@ -1121,7 +1122,16 @@ float WidgetTextInput::GetAlignmentSpecificTextOffset(const Line& line) const
 	const String& value = text_element->GetText();
 	StringView editable_line_string(value, line.value_offset, line.editable_length);
 
-	switch (parent->GetComputedValues().text_align())
+	// A justified line fills the line; one without justification opportunities is aligned to its start (p6-justify).
+	Style::TextAlign text_align = GetLineAlignment(line);
+	if (text_align == Style::TextAlign::Justify)
+	{
+		if (!line.justification.empty())
+			return 0;
+		text_align = Style::ResolveTextAlign(Style::TextAlign::Start, parent->GetComputedValues().direction());
+	}
+
+	switch (text_align)
 	{
 	case Style::TextAlign::Left: return 0;
 	case Style::TextAlign::Right:
@@ -1143,6 +1153,60 @@ float WidgetTextInput::GetAlignmentSpecificTextOffset(const Line& line) const
 	return 0;
 }
 
+Style::TextAlign WidgetTextInput::GetLineAlignment(const Line& line) const
+{
+	// The last line, and a line ended by a line feed, are aligned by 'text-align-last' (CSS Text 3 §7.2).
+	const auto& computed = parent->GetComputedValues();
+	const bool last_line = (line.value_offset + line.size >= (int)text_element->GetText().size() || line.editable_length < line.size);
+	return last_line ? computed.text_align_last() : computed.text_align();
+}
+
+void WidgetTextInput::JustifyLine(Line& line) const
+{
+	line.justification.clear();
+	if (GetLineAlignment(line) != Style::TextAlign::Justify)
+		return;
+
+	// The spaces at the end of a wrapped line hang: they are not justified, and leave the space they take.
+	const String& value = text_element->GetText();
+	int end = Math::Min(line.editable_length, (int)value.size() - line.value_offset);
+	while (end > 0 && value[line.value_offset + end - 1] == ' ')
+		end -= 1;
+	if (end <= 0)
+		return;
+
+	const StringView text(value, line.value_offset, end);
+	const float space = GetAvailableWidth() - (float)ElementUtilities::GetStringWidth(text_element, text);
+
+	const auto& computed = parent->GetComputedValues();
+	Vector<JustificationRun> runs(1);
+	runs[0].text = text;
+	runs[0].method = computed.text_justify();
+	if (JustifyRuns(runs, space, computed.direction() == Style::Direction::Rtl))
+		line.justification = std::move(runs[0].spacing);
+}
+
+float WidgetTextInput::GetLineStringWidth(const Line& line, int begin, int end, Character prior_character) const
+{
+	const String& value = text_element->GetText();
+	const float width =
+		(float)ElementUtilities::GetStringWidth(text_element, StringView(value, line.value_offset + begin, end - begin), prior_character);
+	if (line.justification.empty())
+		return width;
+	return width + GetJustificationBefore(line.justification, end) - GetJustificationBefore(line.justification, begin);
+}
+
+Vector<JustificationSpacing> WidgetTextInput::GetLineJustification(const Line& line, int begin, int end)
+{
+	Vector<JustificationSpacing> result;
+	for (const JustificationSpacing& spacing : line.justification)
+	{
+		if (spacing.offset >= begin && spacing.offset < end)
+			result.push_back(JustificationSpacing{spacing.offset - begin, spacing.before, spacing.after});
+	}
+	return result;
+}
+
 int WidgetTextInput::CalculateCharacterIndex(int line_index, float position)
 {
 	int prev_offset = 0;
@@ -1161,7 +1225,7 @@ int WidgetTextInput::CalculateCharacterIndex(int line_index, float position)
 		++it;
 		const int offset = (int)it.offset();
 
-		const float line_width = (float)ElementUtilities::GetStringWidth(text_element, StringView(p_begin, p_begin + offset));
+		const float line_width = GetLineStringWidth(line, 0, offset);
 		if (line_width > position)
 		{
 			if (position - prev_line_width < line_width - position)
@@ -1343,18 +1407,32 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 			}
 		}
 
+		// A justified line (p6-justify): its characters take the space it leaves.
+		JustifyLine(line);
+		const auto AddLineTo = [&line](ElementText* element, Vector2f position, StringView part, int part_begin) {
+			if (line.justification.empty())
+				element->AddLine(position, String(part));
+			else
+				element->AddLine(position, String(part), GetLineJustification(line, part_begin, part_begin + (int)part.size()));
+		};
+		const auto JustificationOf = [&line](int begin, int end) {
+			return line.justification.empty() ? 0.f : GetJustificationBefore(line.justification, end) - GetJustificationBefore(line.justification, begin);
+		};
+
 		// Now that we have the string of characters appearing on the new line, we split it into
 		// three parts; the unselected text appearing before any selected text on the line, the
 		// selected text on the line, and any unselected text after the selection.
 		StringView pre_selection, selection, post_selection;
 		GetLineSelection(pre_selection, selection, post_selection, line_content, line_begin);
+		const int selection_begin = (int)pre_selection.size();
+		const int post_selection_begin = selection_begin + (int)selection.size();
 
 		// The pre-selected text is placed, if there is any (if the selection starts on or before
 		// the beginning of this line, then this will be empty).
 		if (!pre_selection.empty())
 		{
-			const int width = ElementUtilities::GetStringWidth(text_element, pre_selection);
-			text_element->AddLine(line_position + Vector2f{GetAlignmentSpecificTextOffset(line), 0}, String(pre_selection));
+			const float width = (float)ElementUtilities::GetStringWidth(text_element, pre_selection) + JustificationOf(0, selection_begin);
+			AddLineTo(text_element, line_position + Vector2f{GetAlignmentSpecificTextOffset(line), 0}, pre_selection, 0);
 			line_position.x += width;
 		}
 
@@ -1377,14 +1455,15 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 		{
 			line_position.x += GetKerningBetween(pre_selection, selection);
 
-			const int selection_width = ElementUtilities::GetStringWidth(selected_text_element, selection);
+			const float selection_width =
+				(float)ElementUtilities::GetStringWidth(selected_text_element, selection) + JustificationOf(selection_begin, post_selection_begin);
 			const bool selection_contains_endline = (selection_begin_index + selection_length > line_begin + line.editable_length);
-			const Vector2f selection_size = {float(selection_width + (selection_contains_endline ? endline_font_width : 0)), line_height};
+			const Vector2f selection_size = {selection_width + float(selection_contains_endline ? endline_font_width : 0), line_height};
 			const Vector2f aligned_position = line_position + Vector2f{GetAlignmentSpecificTextOffset(line), 0};
 
 			MeshUtilities::GenerateQuad(selection_composition_mesh, aligned_position - Vector2f(0, top_to_baseline), selection_size,
 				selection_colour);
-			selected_text_element->AddLine(aligned_position, String(selection));
+			AddLineTo(selected_text_element, aligned_position, selection, selection_begin);
 
 			max_selection_right_edge = Math::Max(max_selection_right_edge, aligned_position.x + selection_size.x);
 			line_position.x += selection_width;
@@ -1395,7 +1474,7 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 		if (!post_selection.empty())
 		{
 			line_position.x += GetKerningBetween(selection, post_selection);
-			text_element->AddLine(line_position + Vector2f{GetAlignmentSpecificTextOffset(line), 0}, String(post_selection));
+			AddLineTo(text_element, line_position + Vector2f{GetAlignmentSpecificTextOffset(line), 0}, post_selection, post_selection_begin);
 		}
 
 		// We fetch the IME composition on the new line to highlight it.
@@ -1406,12 +1485,16 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 		if (!ime_composition.empty())
 		{
 			const bool composition_contains_endline = (ime_composition_end_index > line_begin + line.editable_length);
-			const int composition_width = ElementUtilities::GetStringWidth(text_element, ime_composition);
+			const int composition_begin = (int)ime_pre_composition.size();
+			const int composition_end = composition_begin + (int)ime_composition.size();
+			const float composition_width =
+				(float)ElementUtilities::GetStringWidth(text_element, ime_composition) + JustificationOf(composition_begin, composition_end);
 			const Vector2f composition_position = {
-				float(ElementUtilities::GetStringWidth(text_element, ime_pre_composition)) + GetAlignmentSpecificTextOffset(line),
+				float(ElementUtilities::GetStringWidth(text_element, ime_pre_composition)) + JustificationOf(0, composition_begin) +
+					GetAlignmentSpecificTextOffset(line),
 				line_position.y - top_to_baseline + line_height - COMPOSITION_UNDERLINE_WIDTH,
 			};
-			Vector2f line_size = {float(composition_width + (composition_contains_endline ? endline_font_width : 0)), COMPOSITION_UNDERLINE_WIDTH};
+			Vector2f line_size = {composition_width + float(composition_contains_endline ? endline_font_width : 0), COMPOSITION_UNDERLINE_WIDTH};
 
 			MeshUtilities::GenerateLine(selection_composition_mesh, composition_position, line_size,
 				parent->GetComputedValues().color().ToPremultiplied());
@@ -1483,11 +1566,15 @@ void WidgetTextInput::UpdateCursorPosition(bool update_ideal_cursor_position)
 	GetRelativeCursorIndices(cursor_line_index, cursor_character_index);
 
 	const auto& line = lines[cursor_line_index];
-	const int string_width_pre_cursor =
-		ElementUtilities::GetStringWidth(text_element, StringView(text_element->GetText(), line.value_offset, cursor_character_index));
+	const float string_width_pre_cursor = GetLineStringWidth(line, 0, cursor_character_index);
 
 	auto AlignmentOffsetForPlaceholder = [this]() {
-		switch (parent->GetComputedValues().text_align())
+		// (the placeholder is one last line: 'text-align-last'; 'justify' aligns it to its start, it has no opportunities)
+		const auto& computed = parent->GetComputedValues();
+		Style::TextAlign text_align = computed.text_align_last();
+		if (text_align == Style::TextAlign::Justify)
+			text_align = Style::ResolveTextAlign(Style::TextAlign::Start, computed.direction());
+		switch (text_align)
 		{
 		case Style::TextAlign::Left: return 0.f;
 		case Style::TextAlign::Justify: return 0.f;
@@ -1506,7 +1593,7 @@ void WidgetTextInput::UpdateCursorPosition(bool update_ideal_cursor_position)
 		alignment_offset = GetAlignmentSpecificTextOffset(line);
 
 	cursor_position = {
-		(float)string_width_pre_cursor + alignment_offset,
+		string_width_pre_cursor + alignment_offset,
 		(float)cursor_line_index * GetLineHeight(),
 	};
 

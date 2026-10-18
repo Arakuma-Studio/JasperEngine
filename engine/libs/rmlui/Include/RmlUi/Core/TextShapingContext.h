@@ -6,6 +6,17 @@
 namespace Rml {
 
 /*
+    The space a justified line adds around one character (p6-justify: 'text-align: justify', CSS Text 3 §7.3, as Chromium's
+    ShapeResult::ApplyExpansion places it). The character starting at the byte 'offset' of the string advances 'before' +
+    'after' further, and its glyphs are drawn 'before' to the right of where they would be.
+*/
+struct JustificationSpacing {
+	int offset = 0;
+	float before = 0.f;
+	float after = 0.f;
+};
+
+/*
     Data extracted from the properties of an element to help provide context for text shaping and spacing.
 */
 struct TextShapingContext {
@@ -14,6 +25,10 @@ struct TextShapingContext {
 	Style::FontKerning font_kerning = Style::FontKerning::Auto;
 	float letter_spacing = 0.0f; // Measured in pixels.
 	float word_spacing = 0.0f;   // Measured in pixels, added to the advance of each space: U+0020, U+00A0 and U+1361 (CSS Text 3 §8.1).
+	// The space of a justified line, by the byte offset of the character it follows (sorted by offset, at most one entry per
+	// character, only at the first code point of a grapheme cluster; empty when the string is not justified). A font engine
+	// applies it in GetStringWidth and GenerateString.
+	Span<const JustificationSpacing> justification = {};
 };
 
 } // namespace Rml

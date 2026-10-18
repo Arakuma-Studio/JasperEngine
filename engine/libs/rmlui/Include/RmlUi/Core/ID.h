@@ -366,6 +366,10 @@ enum class PropertyId : uint16_t {
 	GridColumnStart,
 	GridColumnEnd,
 
+	// Text (p6-justify)
+	TextAlignLast,
+	TextJustify,
+
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
 
