@@ -510,4 +510,96 @@ Desktop player (screenshot regions animate).
 
 ## 6 As implemented
 
-(Filled in when the package is built.)
+Built by `p6-stateful-fx` (branch `hui/p6-stateful-fx`, from `main` at `4958e5f7b`).
+
+### 6.1 Design as built (differences from sections 3-5)
+- **Passes at draw time, as 3.5.** A paint use ends the layer pass, runs its passes into the state
+  images and binds the layer again (`LOAD`); a filter use runs them inside `applyFilter` with the
+  content as the filter chain's primary. `EffectRenderer::advanceSimulation`
+  (`EffectSimulator.cpp`) does the format check (FX-0017), the culling (`clippedOut`: the area's
+  projected corners against the scissor and the context, paint uses), the admission (hard cap), the
+  wait for the pass variants, the view-loss restart, `@reseed`, allocation and resize, then the
+  pinned replay or the live clock of 3.6.
+- **Pass index.** `JFX_PASS_<NAME>` numbers the `@init` and `@step` lines as written (not "@init
+  first"); `JFX_PASSES` is the count (`JFX_PASS_COUNT` would collide with a pass named `count`).
+  The compiler also defines `JFX_STATEFUL` and annotates the 32-bit states unfilterable through a
+  generated include (`effects/__state_annotations__.glsl`).
+- **`@reseed <param>...`** (new directive): a change of these parameters' canonical values
+  restarts the simulation (`seed`, Gray-Scott's `preset`); other parameter changes act on the next
+  step (live) or replay (pinned), as 3.7.
+- **Box sizes** keep the aspect: the larger side is at most `max`, both scaled together.
+- **Scatter.** The placement texel is `(cx, cy, halfX, halfY)` in target texels; the fragment
+  function is `vec4 jfx_scatter(JfxStep s, JfxPlaced a)`. A single-image (additive) state reads an
+  empty black 1×1 image while its own pass writes it, so a scatter pass takes the target's size from
+  `s.size`.
+- **Accumulators** hold upstream's integer quanta (`floor(w × gain)`) summed by additive blending
+  into `rgba16f` box-sized targets (the area's CSS px; upstream a 1024² target), so the resolves
+  divide as upstream does; ParticleField's RGBW accumulator sums floats (no fixed-point factor).
+- **Agent sizes** (`agent_body`): upstream's texels of its 1024 reference over the area's height,
+  as upstream draws them over areas at least 410 px tall; smaller areas keep that 410 px size in CSS
+  px, so agents stay legible on cards (a pure CSS-px size crowded small areas).
+- **Element seed.** `EffectRuntime::seedOf` hashes the element's address in its document (up to
+  the document element). Phase 5 hashed the full address, whose last part is the context's root,
+  named after the context: the seed depended on which context drew the element, and the goldens of
+  seed-hashed simulations (`fog`'s start time) on the test order. Every phase-5 golden is unchanged.
+- **Pointer.** Live: the frame's movement is spread over its steps; press and release edges on the
+  first step. Pinned: the history at age `T − t` (the harness's synthetic arc); press edges are not
+  replayed (the effects ported here react to movement, not clicks).
+- **Inputs from scripts.** `UIElement::effectSplat` / `el:effectSplat{...}`, `effectReset`;
+  `EffectRuntime::splat` queues at most 8 a simulation (live) or logs them with the pinned time
+  (64 kept), as 3.8.
+- **Statistics and inspection** as 3.10; `inspect_ui` writes `state: {bytes, steps, time,
+  paused}` per stateful effect and `fx:<name>~` for a paused one; `ui-effects --json` and
+  `list_ui_effects` carry `state` (images, passes, rate, substeps, replay, reseed, warm-up).
+- **Golden invariants added**: I8, a stateful effect's `<name>.t0.png` at 0.25 s (inside the
+  harness's 0.5 s pointer arc) differs from t1; I9, t1 reached from t2 in the same document (a
+  replay) is t1's render byte for byte.
+
+### 6.2 The effects
+All 18 effects of 3.13 are built, MIT-attributed in `LICENSE.shaders-com.txt`, with catalogue
+entries and thumbnails; goldens: `.t0` and `.t1` for all, `.t2` where t1 and t2 differ (all but
+`chroma-flow`, `fluid-cursor-trail`, `pixel-throw`, `shatter` and `smoke-flow`, which draw only
+what the pointer's arc leaves, the same at 1.5 s and 4 s). Port notes are in each `.frag`'s
+header; the adaptations:
+
+| Effect | State (per instance) | Steps | Port notes |
+|---|---|---|---|
+| `fog` | vel, pd, dye 256² rgba16f | force, curl, vorticity, divergence, Jacobi ×6, project, advect, restore; `@warmup 50 0.1s` | toroidal; the random start time is a hash of `seed` and the element |
+| `fluid-smoke` | vel, pd, dye 256² | cone emitter, solve (Jacobi ×10), advect density+age | the stateless `smoke` stays |
+| `smoke-fill` | vel, pd, dye 256² | masked emitter and solve | the shape is the element's rounded box |
+| `smoke-flow` | ptr 1², vel, pd, dye 256² | tracker, puff ribbon (16 stamps), solve | tracker smoothing in `ptr` |
+| `ink-flow` | vel, pd, dye 256², cycle 1² | brush ribbon, solve, RGB dye | colour cycle in `cycle` |
+| `fluid-cursor-trail` | ptr 1², vel, pd, dye 256² | stroke ribbon, solve | CursorTrail's look (`lifetime`, colours) over SmokeFlow's fluid; upstream has no fluid CursorTrail |
+| `chroma-flow` | ptr 1², field 128² | advect + inject | upstream's CPU host grid as a pass |
+| `pixel-throw` | ptr 1², flow 128² | advect + inject | CPU host grid as a pass; B-spline taps |
+| `shatter` | shards 16×1 rgba32f | shove | CPU springs as a pass; the Voronoi field per fragment |
+| `pixel-sort` | luma, offset 512² r32f, tick 1² | key, swap ×5, count | parity and frame count in `tick` |
+| `reaction-diffusion` | rd 512² rgba32f, pattern 512² rgba16f | Gray-Scott × `speed`, publish | child drive = the content in filter form; `@reseed preset` |
+| `data-mosh` | state 768² rgba16f | macroblock hold/refresh | upstream `blend` = the universal `opacity` |
+| `time-trail` | history, display, prev-live 640² rgba16f | decay, stamp, keep | upstream's one kernel as three passes |
+| `boids` | agents, accel, place 64² rgba32f, agit 64² r32f, accum, trail (box) | spawn (init), steer, move, excite, place, splat (scatter), resolve | Jacobi update (upstream Gauss-Seidel); brute-force neighbours (4096 max) |
+| `magnetic-filings` | ptr 1², agents 128×96 rgba32f, agit, place, accum, field (box) | torque, place, splat, resolve | jittered-grid start |
+| `particles` | pos, vel, place 128² rgba32f, dplace 1024×128, dens 256×128 (32³ atlas), accum, field (box) | dplace, density (scatter), forces, move, place, splat (scatter), resolve | the default sphere container; trilinear density as 8 one-texel quads a particle |
+| `particle-field` | pos, vel, place 256² rgba32f, col 256² rgba16f, accum, field (box) | color, forces, move, place, splat (scatter), resolve | upstream's one integrator as three passes; float RGBW accumulation; field stored premultiplied |
+| `particle-flow` | vel, pd 256², agents, place 128² rgba32f, accum, trail (box) | force ribbon, solve, advect agents, place, splat (scatter), resolve | idle freeze not ported |
+
+### 6.3 Measured cost and memory
+glcore on llvmpipe, the remote test host (4 threads), `EffectPerfTest` Release:
+- **CostTable** (a 512×512 instance on the live clock, one step a capture, against the 1024×1024
+  fill; render + readback, process CPU; budget = ratio × 1.5): `boids` ×1.43, `chroma-flow` ×0.97,
+  `data-mosh` ×1.58, `fluid-cursor-trail` ×2.57, `fluid-smoke` ×2.57, `fog` ×2.47, `ink-flow`
+  ×2.68, `magnetic-filings` ×1.33, `particle-field` ×2.16, `particle-flow` ×3.38, `particles`
+  ×1.44, `pixel-sort` ×2.09, `pixel-throw` ×1.65, `reaction-diffusion` ×1.85, `shatter` ×1.82,
+  `smoke-fill` ×2.62, `smoke-flow` ×2.72, `time-trail` ×2.13 (the fill: 180-200 ms a capture).
+- **State memory per instance** (images × texels × bytes, pairs counted twice; box states at
+  512²): `fog`, `fluid-smoke`, `smoke-fill`, `smoke-flow`, `ink-flow`, `fluid-cursor-trail` 3.0 MB;
+  `chroma-flow`, `pixel-throw` 0.25 MB; `shatter` 512 B; `pixel-sort` 4.0 MB;
+  `reaction-diffusion` 12.0 MB; `data-mosh` 9.0 MB; `time-trail` 18.75 MB; `boids` 6.4 MB;
+  `magnetic-filings` 6.8 MB; `particles` 11.75 MB; `particle-field` 13.0 MB; `particle-flow` 9.0 MB.
+- **StatefulSteadyState** (six effects of 300×200 on the 1280×720 canvas, a step a frame): no
+  instance, state image, variant or pipeline created; 53 step passes and 1 scatter pass a frame as
+  the manifests list them; the engine's own CPU work 1.41 ms a frame against document B's 0.20 ms
+  (budget B + 4 ms), the backend (llvmpipe rendering on the thread) 322 ms; 47.5 MB of state.
+- Non-stateful pages: `GridSteadyStateAndBudgets` A 1.219 ms (budget 1.288), A2 3.528 ms (budget
+  4.575); the phase-5 rows of the cost table within their bounds (highest low ×3.17, medium ×9.32).
+
