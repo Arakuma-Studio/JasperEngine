@@ -373,7 +373,15 @@ namespace {
 
     // the stateful effects' cost budgets (3.10): their measured ratio against the fill (glcore,
     // llvmpipe, the remote test host) x 1.5
+    // (measured x1.43 boids, 0.97 chroma-flow, 1.58 data-mosh, 2.57 fluid-cursor-trail, 2.57
+    // fluid-smoke, 2.47 fog, 2.68 ink-flow, 1.33 magnetic-filings, 2.16 particle-field, 3.38
+    // particle-flow, 1.44 particles, 2.09 pixel-sort, 1.65 pixel-throw, 1.85 reaction-diffusion,
+    // 1.82 shatter, 2.62 smoke-fill, 2.72 smoke-flow, 2.13 time-trail)
     const std::map<std::string, double> kStatefulBudgets = {
+        {"boids", 2.2}, {"chroma-flow", 1.5}, {"data-mosh", 2.4}, {"fluid-cursor-trail", 3.9}, {"fluid-smoke", 3.9},
+        {"fog", 3.8}, {"ink-flow", 4.1}, {"magnetic-filings", 2.0}, {"particle-field", 3.3}, {"particle-flow", 5.1},
+        {"particles", 2.2}, {"pixel-sort", 3.2}, {"pixel-throw", 2.5}, {"reaction-diffusion", 2.8}, {"shatter", 2.8},
+        {"smoke-fill", 4.0}, {"smoke-flow", 4.1}, {"time-trail", 3.2},
     };
 
     std::string costFile(){
