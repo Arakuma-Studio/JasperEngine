@@ -2091,7 +2091,7 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   CPU clock is a system call, which cost more than many of the calls it timed and inflated the
   frame itself), less the measurement's own clock reads (calibrated, about 35 ns a scope);
   A ≤ 1.5 × B + 1 ms and A2 ≤ 3 × B + 4 ms with B measured the same way. The full frame is
-  printed, not gated. Measured on the idle remote test host (BRIEF.md, 173.249.49.126, load
+  printed, not gated. Measured on an idle 12-core test machine (load
   under 10), final tree: glcore engine's own work B 0.17-0.19 ms, C 0.63-0.74, A 1.05-1.28
   (budget 1.26-1.29: passes in 5 runs of 5, by 1 to 18 %), A2 2.54-2.90 (budget 4.52-4.57);
   glcore full frame (reported) B 0.76-0.77, C 12.0-12.5, A 15.2-15.8, A2 16.9-17.8. Vulkan full
@@ -2199,10 +2199,9 @@ the same goldens and phase 0's tolerance. The filter-form orientation golden (an
 
 Run on `hui/p5-accept`, branched from `html-ui` at `1b496f94b` (all six packages merged: p5-infra,
 p5-property, p5-fx-paint, p5-fx-light, p5-fx-filters, p5-tooling, with their follow-ups). Every
-build, suite, perf run, MCP run and export ran on the idle remote test host (BRIEF.md,
-`173.249.49.126`, 12 cores, nothing else running during the runs), in the worktree
-`/root/jasper/wt/p5-accept`: `JOBS=10`, one heavy job at a time, the MCP suite with `-j 4` and
-`LP_NUM_THREADS=2`, Android under `flock /root/jasper/android.lock`, lua-language-server 3.19.1
+build, suite, perf run, MCP run and export ran on an idle 12-core test machine (nothing
+else running during the runs): `JOBS=10`, one heavy job at a time, the MCP suite with `-j 4` and
+`LP_NUM_THREADS=2`, Android serialized with `flock`, lua-language-server 3.19.1
 and clangd installed, the reference renderer with playwright-core 1.63.0 and Chromium 153.0.8010.12
 (headless shell revision 1243). The local host was used for editing and git only. Final tree:
 `5174b7ca9` (code; later commits are documentation).
@@ -2327,7 +2326,7 @@ All on the remote host, final code unless said otherwise.
 - `JOBS=10 tools/build.sh htmlui-editor-tests`: 63 tests, 62 passed, 1 skipped
   (`GoogleFonts.LiveNetwork`, only with `HTMLUI_LIVE_NETWORK=1`).
 - `JOBS=10 tools/build.sh web`: exit 0, 1,117 steps, 0 warnings.
-- `flock /root/jasper/android.lock env JOBS=10 tools/build.sh android`: BUILD SUCCESSFUL, the APK,
+- `JOBS=10 tools/build.sh android`: BUILD SUCCESSFUL, the APK,
   0 warnings.
 - MCP suite (`LP_NUM_THREADS=2 ... run_tests.py -j 4`, 43 files): run 1, 487 passed, 0 failed, 5
   skipped, 61 min; run 2, 487 passed, 0 failed, 5 skipped, 62 min. Every `html_ui` test ran (LuaLS and clangd installed); `test_html_ui_examples.py` 56 (the examples' `assert_ui` at every manifest viewport), `test_generators.py` 2 (every generator `--check`), `test_html_ui_effects.py` 12, `test_protocol.py` 12, `test_ui_anchors.py` 7, `test_checks.py` 12, `test_autosync.py` 13, `test_stubs.py` 12, `test_html_ui_docs.py` 13 in each run. The 5 skips are the slow-build/slow-test gates, run on their own

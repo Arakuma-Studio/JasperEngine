@@ -40,19 +40,6 @@ additions only; append, don't reorder.
   `LP_NUM_THREADS=2` so llvmpipe does not start a thread per host core.
 - Vulkan on Linux: configure a second build with `GRAPHIC_BACKEND=vulkan` when your package
   touches rendering (see the phase spec for how).
-- **All builds and tests run on the remote test host, never on the local host** (the user's
-  order: local runs overloaded it and it had to be rebooted). Locally: only git, editing and
-  reading files; no `tools/build.sh`, no docker, no test runner, no editor binary.
-- Remote test host (idle, 12 cores, 47 GB, Docker): `root@173.249.49.126`, for every build and
-  test run (full test suites, slow MCP tests, perf gates, Android). Layout: bare repo
-  `/root/jasper/repo.git` (push your branch to `ssh://root@173.249.49.126/root/jasper/repo.git`),
-  worktrees under `/root/jasper/wt/<slug>` (`git --git-dir=/root/jasper/repo.git worktree add
-  /root/jasper/wt/<slug> <branch>`), shared `/root/jasper/shared/fixture-unity` (the MCP
-  `JASPER_FIXTURE`) and `/root/jasper/shared/.gradle-cache` (copy to the worktree's
-  `build/.cache/gradle`). Use `JOBS=10` there (leave 2 cores), one agent's heavy job at a
-  time, `flock /root/jasper/android.lock` for Android. Touch nothing else on that host (other
-  projects' containers and files are there). Results from it count like local ones; say which
-  host each result came from.
 - Windows, macOS and iOS cannot be built on this host. Keep code portable (no POSIX-only
   calls outside `engine/core/platform` style files, no compiler extensions), and wire CMake
   for those targets by reading the existing per-platform sections. Say in your report what
