@@ -796,53 +796,51 @@ async function adoptAnimations(page){
 }
 
 // <video> (phase 6): the frame of `seconds` on screen, as the engine's FixtureRunner seeks in its
-// frame-exact mode: currentTime set, `seeked`, the element at HAVE_CURRENT_DATA. (Not
-// requestVideoFrameCallback: the headless shell presents no frame until a screenshot asks for one.)
+// frame-exact mode: currentTime set, then the seek done (`seeking` false) and the element at
+// HAVE_CURRENT_DATA, polled from here (a context without JavaScript runs no page timers or
+// listeners).
+async function pollVideos(page, selector, done, what, label){
+    const deadline = Date.now() + 10000;
+    for (;;){
+        const state = await page.evaluate(([selector, done]) => [...document.querySelectorAll(selector)].map((v) => ({
+            name: v.id ? '#' + v.id : v.currentSrc, ready: v.readyState, seeking: v.seeking, error: v.error ? v.error.code : 0,
+            ok: v.error !== null || (done === 'seeked' ? !v.seeking && v.readyState >= 2 : v.readyState >= 2) })), [selector, done]);
+        const waiting = state.filter((v) => !v.ok);
+        if (!waiting.length)
+            return state;
+        if (Date.now() > deadline)
+            throw new Error(`${label}: ${what} for ${waiting.map((v) => `${v.name} (readyState ${v.ready}${v.seeking ? ', seeking' : ''})`).join(', ')}`);
+        await page.waitForTimeout(20);
+    }
+}
+
 async function seekVideo(page, label, selector, seconds){
-    const problem = await page.evaluate(async ([selector, seconds]) => {
+    const problem = await page.evaluate(([selector, seconds]) => {
         const video = document.querySelector(selector);
         if (!(video instanceof HTMLVideoElement))
             return `${selector} is not a <video>`;
-        const within = (promise, what) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(what), 10000))]);
-        if (video.readyState < 1){
-            const late = await within(new Promise((resolve) => video.addEventListener('loadedmetadata', () => resolve(null), { once: true })),
-                                      'no metadata after 10 s');
-            if (late)
-                return `${selector}: ${late}`;
-        }
-        const late = await within(new Promise((resolve) => {
-            video.addEventListener('seeked', () => resolve(null), { once: true });
-            video.currentTime = seconds;
-        }), `no seeked event 10 s after currentTime = ${seconds}`);
-        if (late)
-            return `${selector}: ${late}`;
-        const deadline = Date.now() + 10000;
-        while (video.readyState < 2 && Date.now() < deadline)
-            await new Promise((resolve) => setTimeout(resolve, 20));
-        return video.readyState < 2 ? `${selector}: no frame after the seek` : null;
+        video.currentTime = seconds;
+        return null;
     }, [selector, seconds]);
     if (problem)
         throw new Error(`${label}: ${problem}`);
+    const [state] = await pollVideos(page, selector, 'seeked', `no frame 10 s after currentTime = ${seconds}`, label);
+    if (state.error)
+        throw new Error(`${label}: ${selector} failed (MediaError ${state.error})`);
 }
 
 // every <video> that loads (not preload="none") has its frame, and every poster is decoded, before a capture
 async function waitForVideos(page, label){
-    const stuck = await page.evaluate(async () => {
-        const all = [...document.querySelectorAll('video')];
-        const videos = all.filter((v) => v.preload !== 'none' || v.currentTime > 0);
-        const deadline = Date.now() + 10000;
-        while (videos.some((v) => v.readyState < 2 && !v.error) && Date.now() < deadline)
-            await new Promise((resolve) => setTimeout(resolve, 20));
-        const posters = await Promise.all(all.filter((v) => v.poster).map(async (v) => {
-            const image = new Image();
-            image.src = v.poster;
-            try { await image.decode(); return null; } catch (e) { return (v.id ? '#' + v.id : v.poster) + ' (poster)'; }
-        }));
-        return videos.filter((v) => v.readyState < 2).map((v) => (v.id ? '#' + v.id : v.currentSrc) + (v.error ? ` (error ${v.error.code})` : ''))
-            .concat(posters.filter((p) => p));
-    });
-    if (stuck.length)
-        throw new Error(`${label}: no frame for ${stuck.join(', ')}`);
+    const loading = await page.evaluate(() => [...document.querySelectorAll('video')].some((v) => v.preload !== 'none' || v.currentTime > 0));
+    if (loading)
+        await pollVideos(page, 'video:not([preload="none"])', 'ready', 'no frame after 10 s', label);
+    const failed = await page.evaluate(async () => (await Promise.all([...document.querySelectorAll('video')].filter((v) => v.poster).map(async (v) => {
+        const image = new Image();
+        image.src = v.poster;
+        try { await image.decode(); return null; } catch (e) { return (v.id ? '#' + v.id : v.poster) + ' (poster)'; }
+    }))).filter((p) => p));
+    if (failed.length)
+        throw new Error(`${label}: no picture for ${failed.join(', ')}`);
 }
 
 async function advanceAnimations(page, seconds){
@@ -934,13 +932,16 @@ async function waitForFonts(page, label){
         throw new Error(`${label}: fonts failed to load: ${failed.join(', ')}`);
 }
 
-async function newFixtureContext(browser, viewport, blocked){
+// scripting: the page's JavaScript on. Off by default (fixtures have no scripts); on for the video
+// area, because Chromium shows a <video>'s native controls when scripting is disabled (HTML: the
+// user agent exposes a user interface then), whatever its `controls` attribute
+async function newFixtureContext(browser, viewport, blocked, scripting = false){
     const context = await browser.newContext({
         viewport: { width: viewport[0], height: viewport[1] },
         deviceScaleFactor: 1,
         colorScheme: 'light',
         reducedMotion: 'no-preference',
-        javaScriptEnabled: false,
+        javaScriptEnabled: scripting,
         locale: 'en-US',
         timezoneId: 'UTC',
     });
@@ -981,7 +982,7 @@ async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
 async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly, extraCss, blocked){
     const browser = await launchBrowser();
     try {
-        const context = await newFixtureContext(browser, sidecar.viewport, blocked);
+        const context = await newFixtureContext(browser, sidecar.viewport, blocked, area === 'video');
         const page = await context.newPage();
         await page.goto(pathToFileURL(path.join(P3_DIR, area, `${name}.html`)).href, { waitUntil: 'load' });
         await injectStyle(page, (await viewportScrolls(page) ? '' : ROOT_SCROLLBAR_CSS) + (sidecar.selfTest?.referenceCss ?? '') + extraCss);

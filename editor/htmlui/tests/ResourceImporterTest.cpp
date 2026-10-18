@@ -290,7 +290,7 @@ TEST(Videos, APlayableVideoIsSavedAsItIs){
     const ImportEntry* entry = result.entry();
     EXPECT_EQ(entry->kind, "video");
     EXPECT_EQ(entry->path.compare(0, 41, "htmlui-imports/videos/images.example.com/"), 0) << entry->path;
-    EXPECT_EQ(entry->path.substr(entry->path.size() - 10), "clip.webm") << entry->path;
+    EXPECT_EQ(entry->path.substr(entry->path.size() - 10), "-clip.webm") << entry->path;
     EXPECT_EQ(project.read("assets/" + entry->path), readFile(videoClip("testcard-noaudio.webm")));
     EXPECT_EQ(withCode(diagnostics, "HTMLUI-IMP-0008").size(), 1u) << dump(diagnostics);
     EXPECT_TRUE(withCode(diagnostics, "HTMLUI-IMP-0010").empty()) << dump(diagnostics);

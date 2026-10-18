@@ -73,7 +73,7 @@ namespace {
 
 }
 
-TEST(ExamplesCompat, ManifestListsTheNineExamplesAndBlank){
+TEST(ExamplesCompat, ManifestListsTheTenExamplesAndBlank){
     const nlohmann::json json = manifest();
     ASSERT_TRUE(json.is_object()) << "examples.json is missing or does not parse";
     ASSERT_TRUE(json["examples"].is_array());
@@ -132,5 +132,5 @@ TEST(ExamplesCompat, EveryExampleIsCleanAtEveryViewport){
             EXPECT_TRUE(fs::is_regular_file(fileOf(name + "/" + asset.get<std::string>()))) << asset;
         checked++;
     }
-    EXPECT_EQ(checked, 10);
+    EXPECT_EQ(checked, 11);   // ten examples (phase 6 added video_menu) and blank
 }
