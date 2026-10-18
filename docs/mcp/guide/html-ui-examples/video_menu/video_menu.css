@@ -160,8 +160,8 @@ body {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  min-height: 36px;
-  padding: 0 0.9rem;
+  min-height: 44px;   /* a touch target (assert_ui min_size) */
+  padding: 0 1rem;
   font: inherit;
   font-size: 0.85rem;
   color: var(--text);
