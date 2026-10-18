@@ -9,8 +9,9 @@
 #   python3 tools/htmlui/gen_video_fixtures.py --only testcard.webm [--only ...]
 #
 # The frames and the audio are made here, in Python (no other dependency), and only encoded by
-# FFmpeg. AV1 bitstreams differ between encoder versions, so --check verifies the content of the
-# committed files (sizes, frame counts, codecs, timestamps, the frame-index pattern of every frame,
+# FFmpeg (bit-exact muxing: the same FFmpeg build writes the same bytes; the committed clips were
+# made with FFmpeg 6.1.1, libaom 3.8, libopus 1.4 of Ubuntu 24.04). AV1 bitstreams differ between
+# encoder versions, so --check verifies the content of the committed files (sizes, frame counts, codecs, timestamps, the frame-index pattern of every frame,
 # the tone bursts) instead of comparing bytes with a new encode.
 #
 # The test card (320x180, 30 fps, 2 s, 60 frames; every 8-bit value below is an sRGB value
@@ -65,6 +66,8 @@ GRADIENT_Y = 164
 
 AV1_COLOR = ["-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv"]
 TO_709 = "scale=out_color_matrix=bt709:out_range=limited"
+# no random UIDs, dates or encoder strings: the same FFmpeg writes the same bytes
+BITEXACT = ["-fflags", "+bitexact", "-flags:v", "+bitexact", "-flags:a", "+bitexact"]
 
 
 def ffmpeg():
@@ -154,7 +157,7 @@ def encode_card(path, frames, seconds, width=W, height=H, pix_fmt="yuv420p", aud
         cmd += ["-vf", TO_709 + ",format=" + pix_fmt]
         if codec == "av1":
             cmd += ["-c:v", "libaom-av1", "-cpu-used", "8", "-threads", "1", "-row-mt", "0", "-tiles", "1x1", "-crf", "18", "-b:v", "0",
-                    "-g", str(FPS), "-keyint_min", str(FPS), "-force_key_frames", "expr:eq(mod(n,%d),0)" % FPS, "-lag-in-frames", "0"]
+                    "-g", str(FPS), "-keyint_min", str(FPS), "-lag-in-frames", "0"]
         else:
             cmd += ["-c:v", "libvpx-vp9", "-deadline", "good", "-cpu-used", "8", "-threads", "1", "-crf", "30", "-b:v", "0", "-g", str(FPS)]
         cmd += AV1_COLOR
@@ -162,7 +165,7 @@ def encode_card(path, frames, seconds, width=W, height=H, pix_fmt="yuv420p", aud
             cmd += ["-c:a", "libopus", "-b:a", "%dk" % (48 * audio_channels), "-frame_duration", "20", "-application", "audio"]
             if audio_channels > 2:
                 cmd += ["-mapping_family", "1"]
-        cmd += ["-t", str(seconds), "-f", "webm", path]
+        cmd += ["-t", str(seconds)] + BITEXACT + ["-f", "webm", path]
         run(cmd)
 
 
@@ -249,7 +252,7 @@ def encode_menu_loop(path):
     src = "color=c=black:s=640x360:r=30:d=4,format=rgb24,geq=r='%s':g='%s':b='%s'" % (expr_r, expr_g, expr_b)
     run([ffmpeg(), "-v", "error", "-nostdin", "-y", "-f", "lavfi", "-i", src, "-vf", TO_709 + ",format=yuv420p",
          "-c:v", "libaom-av1", "-cpu-used", "6", "-threads", "1", "-row-mt", "0", "-crf", "34", "-b:v", "0", "-g", "120",
-         "-lag-in-frames", "0"] + AV1_COLOR + ["-f", "webm", path])
+         "-lag-in-frames", "0"] + AV1_COLOR + BITEXACT + ["-f", "webm", path])
 
 
 # ---------------------------------------------------------------- the clips
@@ -348,6 +351,10 @@ def check():
                    name + ": audio is not Opus with %d channels" % channels)
         else:
             expect(not audio, name + ": has an audio track")
+        flags = run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_packets", "-show_entries", "packet=flags",
+                     "-of", "csv=p=0", path]).decode().split()
+        keys = [i for i, f in enumerate(flags) if f.startswith("K")]
+        expect(keys == list(range(0, frames, FPS)), name + ": keyframes at %s, expected every %d frames" % (keys, FPS))
         rgb = run([ffmpeg(), "-v", "error", "-i", path, "-map", "0:v:0", "-vf", "scale=in_color_matrix=bt709:in_range=limited",
                    "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
         count = len(rgb) // (3 * width * height)
