@@ -208,6 +208,7 @@ vec4 fluid_advect_vel(ivec2 cell, bool toroidal, float dt, float velFade){
                 mix(mix(v00.y, v10.y, t.sx), mix(v01.y, v11.y, t.sx), t.sy) / decay * m, 0.0, 0.0);
 }
 
+#ifndef FLUID_NO_DYE   // an effect without a dye state (particle-flow) defines it
 // ── the dye's advection: densityAge (x density, y age) with dissipation and ageing, or permanent ──
 vec4 fluid_advect_density_age(ivec2 cell, bool toroidal, float dt, bool dissipateAndAge, float dyeFade, float colorDecay){
     vec4 v = vel_fetch(cell);
@@ -236,6 +237,8 @@ vec4 fluid_advect_rgb(ivec2 cell, float dt, float dyeFade){
     float decay = 1.0 + dyeFade * dt;
     return vec4(max(c / decay, vec3(0.0)), 0.0);
 }
+
+#endif
 
 // ── the cone emitter of Smoke and SmokeFill (cone + cursorPush [+ masked]), in grid cells ──
 struct FluidEmitter {

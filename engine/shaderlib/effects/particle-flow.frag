@@ -72,6 +72,7 @@ JFX_STATE(place)
 JFX_STATE(accum)
 JFX_STATE(trail)
 
+#define FLUID_NO_DYE
 #include "effects/lib/fam_sim_fluid.glsl"
 
 const int MAX_PARTICLES = 16384;
