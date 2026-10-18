@@ -1281,7 +1281,6 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
             }
             return list;
         })
-        // phase 6: element:effectSplat{ x=, y=, radius=, dx=, dy=, color=, strength=, effect= } -> count
         .addFunction("effectSplat", [](UIElement* self, const luabridge::LuaRef& options) -> int {
             UIEffectSplat splat;
             if (!options.isTable()){
