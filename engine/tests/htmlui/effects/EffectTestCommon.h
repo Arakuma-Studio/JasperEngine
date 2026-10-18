@@ -137,6 +137,11 @@ namespace jasperengine::test::effects {
             FixtureRunner::Capture capture;
             if (!runner.capture(capture, true))
                 return false;
+            // phase 6: a pinned stateful effect's replay may span frames (the uniform budget)
+            for (int i = 0; i < 100 && htmlui::EffectRuntime::get().pendingReplays() > 0; i++){
+                if (!runner.capture(capture, true))
+                    return false;
+            }
             image = std::move(capture.image);
             return !image.empty();
         }

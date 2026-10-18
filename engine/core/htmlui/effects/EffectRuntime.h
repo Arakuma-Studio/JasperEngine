@@ -89,6 +89,20 @@ namespace jasperengine::htmlui {
         bool pinned = false;
         double pinnedTime = 0.0;
         uint64_t pinnedKey = 0;
+        // a pinned replay in progress: spread over frames by the frame's uniform budget (3.6), with
+        // the inputs it started with; the effect is not drawn until it ends
+        bool replaying = false;
+        bool replayWarmOnly = false;            // a live reset's @init and @warmup (no steps)
+        uint64_t replayKey = 0;
+        int64_t replayUnit = 0;                 // 0 @init, 1..W @warmup, W+1..W+N the steps
+        int64_t replayCount = 0;                // N
+        double replayStart = 0.0, replayT = 0.0;
+        std::vector<Rml::Vector4f> replayHistory;   // context px, z age s (newest first)
+        std::vector<std::pair<double, EffectSplatData>> replayLog;
+        Rml::Vector2f replayPointer{0.f, 0.f};
+        bool replayPointerValid = false, replayPointerDown = false;
+        Rml::Vector2f replayPrevious{0.f, 0.f};
+        bool replayPreviousKnown = false;
         // the pointer at the last step (area-local CSS px)
         Rml::Vector2f pointer{0.f, 0.f};
         bool pointerKnown = false;
@@ -316,6 +330,16 @@ namespace jasperengine::htmlui {
         void forgetSimulation(EffectSimulation* simulation);
         const EffectStatefulBudget& getStatefulBudget() const { return statefulBudget; }
         size_t simulationCount() const;
+        // the uniform data the simulations' passes applied this frame (bytes, 256-aligned blocks):
+        // sokol's per-frame uniform buffer (4 MB on Vulkan, Metal, WebGPU) drops draws once full,
+        // so a pinned replay stops for the frame past kSimulationUniformBudget and continues next
+        void addSimulationUniformBytes(size_t bytes) { frameUniformBytes += bytes; }
+        size_t simulationUniformBytes() const { return frameUniformBytes; }
+        static constexpr size_t kSimulationUniformBudget = 1536u * 1024u;
+        // pinned replays still running (a capture renders until none is)
+        size_t pendingReplays() const { return replaysInProgress; }
+        void replayStarted() { replaysInProgress++; }
+        void replayEnded() { if (replaysInProgress > 0) replaysInProgress--; }
         // a stateful diagnostic (HTMLUI-FX-0017/0018) to the Console, once per call
         void reportStateful(Rml::ElementDocument* document, const std::string& codeId, const std::string& message, bool error);
         // the stateful diagnostics reported so far (tests): code id and message
@@ -383,7 +407,9 @@ namespace jasperengine::htmlui {
         EffectStatefulBudget statefulBudget;
         // simulations stepped this frame / the frame before, by document
         std::unordered_map<EffectSimulation*, uint64_t> activeSimulations;
-        size_t simulationObjects = 0;   // EffectSimulation objects alive (0: the frame sweep has nothing to do)
+        size_t simulationObjects = 0;
+        size_t frameUniformBytes = 0;
+        size_t replaysInProgress = 0;   // EffectSimulation objects alive (0: the frame sweep has nothing to do)
         std::unordered_map<Rml::ElementDocument*, int> overBudgetDocuments;   // the frame it was reported (once while over)
         bool hardCapReported = false;
         std::vector<std::pair<std::string, std::string>> statefulReports;

@@ -10,7 +10,7 @@
 // @state      pd rgba16f 256x256 nearest
 // @state      dye rgba16f 256x256 linear
 // @init       seed dye
-// @warmup     50 0.05s
+// @warmup     50 0.1s
 // @reseed     seed
 // @step       force vel
 // @step       curl vel

@@ -105,6 +105,9 @@ namespace jasperengine::htmlui {
         bool allocateStates(EffectInstance& instance, EffectSimulation& simulation, bool resample);
         void clearImage(EffectStateImage& image);
         void runInitAndWarmup(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime);
+        void runInit(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime);
+        void runWarmStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, double resetTime,
+                         int w);
         struct StepInput;
         void runStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter, const StepInput& input,
                      bool initPasses);

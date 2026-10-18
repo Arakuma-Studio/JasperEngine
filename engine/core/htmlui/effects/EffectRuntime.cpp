@@ -103,6 +103,7 @@ void EffectRuntime::beginFrame(){
         return;
     frameKey = key;
     frame++;
+    frameUniformBytes = 0;
     frameTotals = EffectStats();
     frameTotals.liveInstances = live.size();
     sweepSimulations();
@@ -613,6 +614,10 @@ void EffectSimulation::releaseImages(){
     anchored = false;
     pinned = false;
     pointerKnown = false;
+    if (replaying){
+        replaying = false;
+        EffectRuntime::get().replayEnded();
+    }
 }
 
 EffectSimulation* EffectRuntime::simulationOf(EffectInstance& instance){

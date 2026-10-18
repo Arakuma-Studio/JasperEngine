@@ -89,6 +89,9 @@ namespace jasperengine{
         static void setEffectTime(std::optional<double> seconds);
         // the effect clock: the fixed time when one is set, else the UI clock
         static double getEffectTime();
+        // phase 6: pinned stateful effects whose replay is still running (they draw once it ends,
+        // a few frames later; screenshots wait for it)
+        static size_t getPendingEffectReplays();
     };
 
 }

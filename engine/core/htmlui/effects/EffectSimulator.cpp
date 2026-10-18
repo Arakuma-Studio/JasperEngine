@@ -448,9 +448,14 @@ bool EffectRenderer::runPass(EffectInstance& instance, EffectSimulation& simulat
         set4(step.splatVel[i], sp.velocity.x, sp.velocity.y, 0.f, 0.f);
         set4(step.splatColor[i], sp.color[0], sp.color[1], sp.color[2], sp.color[3]);
     }
+    // the uniform data applied (sokol aligns each block to 256 bytes in the frame's buffer)
+    size_t uniformBytes = 0;
+    auto applied = [&uniformBytes](size_t size){ uniformBytes += (size + 255u) & ~(size_t)255u; };
     // the frame block and the parameters: the draw's (the same block declarations)
-    if (program->frameSlot >= 0)
+    if (program->frameSlot >= 0){
         program->object.applyUniformBlock(program->frameSlot, sizeof(EffectFrameBlock), &instance.frame);
+        applied(sizeof(EffectFrameBlock));
+    }
     if (program->params.slot >= 0 && !instance.params.empty()){
         if (program->params.data.size() == instance.params.size() || program->params.data.size() == 0)
             program->object.applyUniformBlock(program->params.slot, (unsigned int)instance.params.size(), instance.params.data());
@@ -459,15 +464,25 @@ bool EffectRenderer::runPass(EffectInstance& instance, EffectSimulation& simulat
             std::memcpy(bytes.data(), instance.params.data(), std::min(bytes.size(), instance.params.size()));
             program->object.applyUniformBlock(program->params.slot, (unsigned int)bytes.size(), bytes.data());
         }
+        applied(std::max(program->params.data.size(), instance.params.size()));
     }
-    if (program->trailSlot >= 0)
+    if (program->trailSlot >= 0){
         program->object.applyUniformBlock(program->trailSlot, sizeof(instance.trail), instance.trail);
-    if (program->ripplesSlot >= 0)
+        applied(sizeof(instance.trail));
+    }
+    if (program->ripplesSlot >= 0){
         program->object.applyUniformBlock(program->ripplesSlot, sizeof(instance.ripples), instance.ripples);
-    if (program->stepSlot >= 0)
+        applied(sizeof(instance.ripples));
+    }
+    if (program->stepSlot >= 0){
         program->object.applyUniformBlock(program->stepSlot, sizeof(EffectStepBlock), &step);
-    if (scatter && program->scatterSlot >= 0)
+        applied(sizeof(EffectStepBlock));
+    }
+    if (scatter && program->scatterSlot >= 0){
         program->object.applyUniformBlock(program->scatterSlot, sizeof(EffectScatterBlock), &scatterBlock);
+        applied(sizeof(EffectScatterBlock));
+    }
+    runtime.addSimulationUniformBytes(uniformBytes);
     program->object.draw(0, vertices, 1);
     renderer.stats.drawCalls++;
 
@@ -505,8 +520,8 @@ void EffectRenderer::runStep(EffectInstance& instance, EffectSimulation& simulat
     }
 }
 
-void EffectRenderer::runInitAndWarmup(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
-                                      double resetTime){
+void EffectRenderer::runInit(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
+                             double resetTime){
     const EffectManifest& m = *instance.manifest;
     simulation.steps = 0;
     simulation.resetTime = resetTime;
@@ -516,16 +531,26 @@ void EffectRenderer::runInitAndWarmup(EffectInstance& instance, EffectSimulation
     init.dt = 0.f;
     init.stepNumber = 0;
     runStep(instance, simulation, drawProgram, filter, init, true);
-    for (int w = 0; w < m.warmupSteps; w++){
-        StepInput warm;
-        warm.warm = true;
-        warm.dt = m.warmupDt;
-        warm.time = resetTime - (double)(m.warmupSteps - 1 - w) * m.warmupDt;
-        warm.stepNumber = 0;
-        warm.stepInFrame = w;
-        warm.stepsInFrame = m.warmupSteps;
-        runStep(instance, simulation, drawProgram, filter, warm, false);
-    }
+}
+
+void EffectRenderer::runWarmStep(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
+                                 double resetTime, int w){
+    const EffectManifest& m = *instance.manifest;
+    StepInput warm;
+    warm.warm = true;
+    warm.dt = m.warmupDt;
+    warm.time = resetTime - (double)(m.warmupSteps - 1 - w) * m.warmupDt;
+    warm.stepNumber = 0;
+    warm.stepInFrame = w;
+    warm.stepsInFrame = m.warmupSteps;
+    runStep(instance, simulation, drawProgram, filter, warm, false);
+}
+
+void EffectRenderer::runInitAndWarmup(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
+                                      double resetTime){
+    runInit(instance, simulation, drawProgram, filter, resetTime);
+    for (int w = 0; w < instance.manifest->warmupSteps; w++)
+        runWarmStep(instance, simulation, drawProgram, filter, resetTime, w);
 }
 
 bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawProgram, RmlFilterContext* filter){
@@ -665,7 +690,15 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         key = fnvValue(key, pointerDown);
         key = fnvValue(key, instance.areaSize.x);
         key = fnvValue(key, instance.areaSize.y);
-        if (!simulation.pinned || simulation.pinnedKey != key || reset){
+        // the images were reset under a running replay (a resize, a reseed, a view loss), or a live
+        // warm-up was running: it restarts
+        if (simulation.replaying && (reset || simulation.replayWarmOnly)){
+            if (simulation.replayWarmOnly)
+                reset = true;
+            simulation.replaying = false;
+            runtime.replayEnded();
+        }
+        if (!simulation.replaying && (!simulation.pinned || simulation.pinnedKey != key || reset)){
             for (auto& images : simulation.states){
                 for (auto& image : images.image)
                     if (image)
@@ -673,24 +706,42 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
                 images.current = 0;
             }
             const double window = std::max(0.0, std::min(T, (double)m.replaySeconds));
-            const int64_t count = (int64_t)std::floor(window / h + 1e-6);
-            const double start = T - (double)count * h;
-            runInitAndWarmup(instance, simulation, drawProgram, filter, start);
+            simulation.replaying = true;
+            simulation.replayWarmOnly = false;
+            simulation.pinned = false;
+            simulation.replayKey = key;
+            simulation.replayUnit = 0;
+            simulation.replayCount = (int64_t)std::floor(window / h + 1e-6);
+            simulation.replayT = T;
+            simulation.replayStart = T - (double)simulation.replayCount * h;
+            simulation.replayHistory = history;
+            simulation.replayLog = simulation.log;
+            simulation.replayPointer = pointerLocal;
+            simulation.replayPointerValid = pointerValid;
+            simulation.replayPointerDown = pointerDown;
+            runtime.replayStarted();
+            simulation.replays++;
+            runtime.mutableStats().replays++;
+            runtime.mutableFrameStats().replays++;
+        }
+        if (simulation.replaying){
+            const double start = simulation.replayStart;
+            const double TR = simulation.replayT;
+            const std::vector<Rml::Vector4f>& hist = simulation.replayHistory;
             // the pointer along the replay: the history at age T - t (newest first)
             auto pointerAt = [&](double t, Rml::Vector2f& p) -> bool {
-                if (history.empty()){
-                    p = pointerLocal;
-                    return pointerValid;
+                if (hist.empty()){
+                    p = simulation.replayPointer;
+                    return simulation.replayPointerValid;
                 }
-                const float age = (float)std::max(0.0, T - t);
-                Rml::Vector2f a = Rml::Vector2f(history.front().x, history.front().y);
-                if (age <= history.front().z){
-                    p = toLocal(instance.element, a, instance.areaOrigin);
+                const float age = (float)std::max(0.0, TR - t);
+                if (age <= hist.front().z){
+                    p = toLocal(instance.element, Rml::Vector2f(hist.front().x, hist.front().y), instance.areaOrigin);
                     return true;
                 }
-                for (size_t i = 0; i + 1 < history.size(); i++){
-                    const Rml::Vector4f& n = history[i];
-                    const Rml::Vector4f& o = history[i + 1];
+                for (size_t i = 0; i + 1 < hist.size(); i++){
+                    const Rml::Vector4f& n = hist[i];
+                    const Rml::Vector4f& o = hist[i + 1];
                     if (age >= n.z && age <= o.z){
                         const float k = o.z > n.z ? (age - n.z) / (o.z - n.z) : 0.f;
                         const Rml::Vector2f c(n.x + (o.x - n.x) * k, n.y + (o.y - n.y) * k);
@@ -698,40 +749,64 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
                         return true;
                     }
                 }
-                p = toLocal(instance.element, Rml::Vector2f(history.back().x, history.back().y), instance.areaOrigin);
+                p = toLocal(instance.element, Rml::Vector2f(hist.back().x, hist.back().y), instance.areaOrigin);
                 return true;
             };
-            Rml::Vector2f previous(0.f, 0.f);
-            bool previousKnown = pointerAt(start, previous);
-            for (int64_t k = 0; k < count; k++){
-                StepInput input;
-                input.time = start + (double)(k + 1) * h;
-                input.dt = (float)h;
-                input.stepNumber = k + 1;
-                input.stepInFrame = (int)k;
-                input.stepsInFrame = (int)count;
-                input.known = pointerAt(input.time, input.pointer);
-                input.pointerPrev = previousKnown ? previous : input.pointer;
-                input.velocity = (input.known && previousKnown) ? (input.pointer - input.pointerPrev) * (float)(1.0 / h) : Rml::Vector2f(0.f, 0.f);
-                input.inside = input.known && insideArea(input.pointer);
-                input.down = pointerDown;
-                // the splats logged inside this step's interval (one at T lands on the last step)
-                const double from = input.time - h;
-                for (const auto& logged : simulation.log){
-                    if ((logged.first > from + 1e-9 && logged.first <= input.time + 1e-9) || (k + 1 == count && logged.first > input.time))
-                        input.splats.push_back(logged.second);
+            const int64_t warm = m.warmupSteps;
+            const int64_t count = simulation.replayCount;
+            // the units of the replay, until the frame's uniform budget is spent (one at least)
+            while (simulation.replayUnit <= warm + count){
+                const int64_t unit = simulation.replayUnit;
+                if (unit == 0){
+                    runInit(instance, simulation, drawProgram, filter, start);
+                    simulation.replayPreviousKnown = pointerAt(start, simulation.replayPrevious);
+                }else if (unit <= warm){
+                    runWarmStep(instance, simulation, drawProgram, filter, start, (int)(unit - 1));
+                }else{
+                    const int64_t k = unit - warm - 1;
+                    StepInput input;
+                    input.time = start + (double)(k + 1) * h;
+                    input.dt = (float)h;
+                    input.stepNumber = k + 1;
+                    input.stepInFrame = (int)k;
+                    input.stepsInFrame = (int)count;
+                    input.known = pointerAt(input.time, input.pointer);
+                    input.pointerPrev = simulation.replayPreviousKnown ? simulation.replayPrevious : input.pointer;
+                    input.velocity = (input.known && simulation.replayPreviousKnown) ? (input.pointer - input.pointerPrev) * (float)(1.0 / h)
+                                                                                      : Rml::Vector2f(0.f, 0.f);
+                    input.inside = input.known && insideArea(input.pointer);
+                    input.down = simulation.replayPointerDown;
+                    // the splats logged inside this step's interval (one at T lands on the last step)
+                    const double from = input.time - h;
+                    for (const auto& logged : simulation.replayLog){
+                        if ((logged.first > from + 1e-9 && logged.first <= input.time + 1e-9) || (k + 1 == count && logged.first > input.time))
+                            input.splats.push_back(logged.second);
+                    }
+                    runStep(instance, simulation, drawProgram, filter, input, false);
+                    simulation.steps = k + 1;
+                    simulation.replayPrevious = input.pointer;
+                    simulation.replayPreviousKnown = input.known;
                 }
-                runStep(instance, simulation, drawProgram, filter, input, false);
-                simulation.steps = k + 1;
-                previous = input.pointer;
-                previousKnown = input.known;
+                simulation.replayUnit++;
+                if (simulation.replayUnit <= warm + count && runtime.simulationUniformBytes() >= EffectRuntime::kSimulationUniformBudget)
+                    break;
             }
-            simulation.simTime = T;
+            if (simulation.replayUnit <= warm + count){
+                // not done: continued next frame, not drawn meanwhile
+                simulation.lastAdvanceFrame = frame;
+                simulation.lastTime = T;
+                simulation.paused = false;
+                runtime.requestRedraw(context);
+                return false;
+            }
+            simulation.replaying = false;
+            runtime.replayEnded();
+            simulation.steps = count;
+            simulation.simTime = TR;
             simulation.pinned = true;
-            simulation.pinnedKey = key;
-            simulation.replays++;
-            runtime.mutableStats().replays++;
-            runtime.mutableFrameStats().replays++;
+            simulation.pinnedKey = simulation.replayKey;
+            if (simulation.pinnedKey != key)
+                runtime.requestRedraw(context);   // the inputs moved on meanwhile: another replay next frame
         }
         simulation.lastAdvanceFrame = frame;
         simulation.lastTime = T;
@@ -750,8 +825,53 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         simulation.pinned = false;
         simulation.log.clear();
     }
+    if (simulation.replaying && !simulation.replayWarmOnly){
+        // a pinned replay was running: its images are partial, the simulation restarts
+        simulation.replaying = false;
+        runtime.replayEnded();
+        for (auto& images : simulation.states){
+            for (auto& image : images.image)
+                if (image)
+                    clearImage(*image);
+            images.current = 0;
+        }
+        reset = true;
+    }
     if (reset){
-        runInitAndWarmup(instance, simulation, drawProgram, filter, T);
+        if (simulation.replaying){
+            simulation.replaying = false;
+            runtime.replayEnded();
+        }
+        // @init, then the @warmup steps within the frame's uniform budget (the rest next frames,
+        // not drawn meanwhile)
+        simulation.replaying = true;
+        simulation.replayWarmOnly = true;
+        simulation.replayUnit = 0;
+        simulation.replayCount = 0;
+        simulation.replayStart = T;
+        runtime.replayStarted();
+    }
+    if (simulation.replaying){
+        const int64_t warm = m.warmupSteps;
+        while (simulation.replayUnit <= warm){
+            if (simulation.replayUnit == 0)
+                runInit(instance, simulation, drawProgram, filter, simulation.replayStart);
+            else
+                runWarmStep(instance, simulation, drawProgram, filter, simulation.replayStart, (int)(simulation.replayUnit - 1));
+            simulation.replayUnit++;
+            if (simulation.replayUnit <= warm && runtime.simulationUniformBytes() >= EffectRuntime::kSimulationUniformBudget)
+                break;
+        }
+        if (simulation.replayUnit <= warm){
+            simulation.lastAdvanceFrame = frame;
+            simulation.lastTime = T;
+            simulation.paused = false;
+            runtime.requestRedraw(context);
+            return false;
+        }
+        simulation.replaying = false;
+        simulation.replayWarmOnly = false;
+        runtime.replayEnded();
         simulation.anchored = false;
     }
     const bool resumed = simulation.lastAdvanceFrame == UINT64_MAX || simulation.lastAdvanceFrame + 1 != frame;
