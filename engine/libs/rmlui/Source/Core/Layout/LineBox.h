@@ -8,6 +8,7 @@ namespace Rml {
 class InlineBox;
 class InlineBoxRoot;
 class InlineLevelBox;
+struct LineClampEllipsis;
 
 /*
     Horizontally places fragments generated from inline-level boxes.
@@ -44,6 +45,15 @@ public:
 	/// @param[out] out_height_of_line Resulting height of line. This can be different from the element's computed line-height property.
 	/// @return The next line if any open fragments had to be split or wrapped down.
 	UniquePtr<LineBox> DetermineVerticalPositioning(const InlineBoxRoot* root_inline_box, bool split_all_open_boxes, float& out_height_of_line);
+
+	/// Makes room for the line-clamp ellipsis at the end of the line (fork, P6-L1), as Chromium's LineTruncator does: from
+	/// the line's end, the first text run or atomic inline that fits beside the ellipsis is followed by it, a text run cut
+	/// to the characters that fit, those after it are hidden (the first one of the line is kept and the ellipsis overflows).
+	/// The ellipsis is placed when the line is closed: after a text run it is drawn by that text, otherwise by the block
+	/// container. Call after the line is vertically positioned, before Close.
+	/// @param[in] ellipsis The block container's ellipsis (LineClamp::MakeEllipsis).
+	/// @param[in] rtl The block container's direction is right-to-left: the line ends on its left.
+	void TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl);
 
 	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes.
 	// @note The line must have been vertically positioned before closing.
@@ -111,6 +121,11 @@ private:
 		// For aligned subtree root.
 		float max_ascent = 0.f;
 		float max_descent = 0.f;
+
+		// Line clamping (fork, P6-L1): hidden by the ellipsis; a text run cut to fit it moves by 'clamp_shift' (on a
+		// right-to-left line, where its kept end stays in place).
+		bool clamp_hidden = false;
+		float clamp_shift = 0.f;
 	};
 	using FragmentList = Vector<Fragment>;
 
@@ -178,6 +193,11 @@ private:
 
 	// Content offset due to space distribution from 'text-align'. Available after close.
 	float offset_horizontal_alignment = 0.f;
+
+	// The line-clamp ellipsis of the line (fork, P6-L1), after the fragment 'clamp_ellipsis_fragment' (RootFragmentIndex:
+	// drawn by the block container), its baseline origin at 'position' (relative to the line, before 'text-align').
+	UniquePtr<LineClampEllipsis> clamp_ellipsis;
+	FragmentIndex clamp_ellipsis_fragment = RootFragmentIndex;
 	// The line box's height above baseline. Available after close.
 	float total_height_above_baseline = 0.f;
 };

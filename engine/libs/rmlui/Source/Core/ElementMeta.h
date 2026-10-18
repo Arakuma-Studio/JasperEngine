@@ -10,6 +10,7 @@
 #include "ElementEffects.h"
 #include "ElementStyle.h"
 #include "EventDispatcher.h"
+#include "LineClampEllipsis.h"
 #include "Pool.h"
 #include <optional>
 
@@ -31,6 +32,8 @@ struct ElementMeta {
 	std::optional<Rectanglef> containing_block_override;
 	// The pseudo-elements the element generates, by type: ::before, ::after, ::marker (phase 3, cascade: PseudoElements).
 	Element* pseudo_elements[3] = {nullptr, nullptr, nullptr};
+	// The line-clamp ellipsis the element draws as a block container (fork, phase 6, P6-L1; LineClampEllipsis.h).
+	UniquePtr<LineClampBlockEllipsis> line_clamp_ellipsis;
 };
 
 struct ElementMetaPool {

@@ -10,6 +10,7 @@ class FloatedBoxSpace;
 class LineBox;
 class InlineBox;
 class InlineContainer;
+struct LineClampContext;
 struct InlineBoxHandle {
 	InlineBox* inline_box;
 };
@@ -132,6 +133,9 @@ public:
 	Box& GetBox();
 	const Box& GetBox() const;
 
+	/// Line clamping (fork, P6-L1; LineClamp.h): the line-clamp context of our block formatting context, or null.
+	LineClampContext* GetLineClampContext() const { return line_clamp; }
+
 	// -- Inherited from LayoutBox --
 
 	/// True when inline content is open on the current line (white-space-only text then collapses to a space).
@@ -194,6 +198,11 @@ private:
 	// Positions a floating element within this block box.
 	void PlaceFloat(Element* element, float vertical_position, Vector2f visible_overflow_size);
 
+	// Line clamping (fork, P6-L1): notes a child box added past the clamp point (no baseline), and records our clamp
+	// position after a child; a block-level child without lines right after the clamp point is content after it.
+	void NoteLineClampChild();
+	void UpdateLineClampAfterChild(int lines_before, bool block_level_child);
+
 	// Debug dump layout tree.
 	String DebugDumpTree(int depth) const override;
 
@@ -249,6 +258,17 @@ private:
 	bool clearance = false;                      // We were moved below floats.
 	bool trailing_after_clearance = false;       // The pending margins follow an empty box with clearance: they stay inside us.
 	bool adjoining_floats = false;               // Floats were placed while our top margin was open (CSS 2.1 §9.5).
+
+	// Line clamping (fork, P6-L1; LineClamp.h). The context of our block formatting context (ours when we are a line-clamp
+	// container: then 'own_line_clamp'), and whether we are laid out again without clamping (nothing followed the clamp
+	// line). The context's count when we were opened, for our parent. Our clamp position: our cursor after our first child
+	// past the clamp point, where an automatic height ends (or negative). Our first child added past the clamp point.
+	LineClampContext* line_clamp = nullptr;
+	UniquePtr<LineClampContext> own_line_clamp;
+	bool ignore_line_clamp = false;
+	int lines_at_open = 0;
+	float clamp_cursor = -1.f;
+	int first_past_clamp_child = -1;
 };
 
 } // namespace Rml

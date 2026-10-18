@@ -3,6 +3,7 @@
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
 #include "InlineBox.h"
 #include "InlineLevelBox.h"
+#include "../LineClampEllipsis.h"
 #include "LayoutPools.h"
 #include <float.h>
 #include <numeric>
@@ -292,6 +293,123 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 	return new_line_box;
 }
 
+void LineBox::TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl)
+{
+	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
+
+	// Chromium's LineTruncator::TruncateLine, on the fragments of the line: text runs and atomic inlines (inline boxes are
+	// not ellipsized). Offsets are measured from the line's start: its left, or for a right-to-left line the right end of
+	// its content.
+	const float available_width = line_width;
+	const float content_width = box_cursor;
+	const auto is_item = [](const Fragment& fragment) { return fragment.type == FragmentType::TextRun || fragment.type == FragmentType::SizedBox; };
+
+	FragmentIndex first_item = RootFragmentIndex;
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const int index = (rtl ? (int)fragments.size() - 1 - i : i);
+		if (is_item(fragments[index]))
+		{
+			first_item = index;
+			break;
+		}
+	}
+	// Nothing but inline boxes: Chromium places no ellipsis (a line of nothing but a <br> has no line box here, see
+	// InlineContainer::AddBreak).
+	if (first_item == RootFragmentIndex)
+		return;
+
+	const auto item_extent = [](const Fragment& fragment, float& out_left, float& out_width) {
+		out_left = fragment.position.x;
+		out_width = fragment.layout_width;
+		if (fragment.type == FragmentType::SizedBox)
+		{
+			const InlineLevelBox_Atomic* atomic = static_cast<const InlineLevelBox_Atomic*>(fragment.box);
+			out_left += atomic->GetMarginLeft();
+			out_width = atomic->GetBorderWidth();
+		}
+	};
+	const auto hide = [](Fragment& fragment, bool first) {
+		if (first)
+			return;
+		if (fragment.type == FragmentType::SizedBox && !static_cast<const InlineLevelBox_Atomic*>(fragment.box)->CanBeHiddenByEllipsis())
+			return;
+		fragment.clamp_hidden = true;
+	};
+
+	FragmentIndex ellipsized = RootFragmentIndex;
+	float ellipsized_width = 0.f;
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const int index = (rtl ? i : (int)fragments.size() - 1 - i);
+		Fragment& fragment = fragments[index];
+		if (!is_item(fragment))
+			continue;
+		const bool first = (index == first_item);
+
+		float left = 0.f, width = 0.f;
+		item_extent(fragment, left, width);
+		const float offset = (rtl ? content_width - (left + width) : left);
+		float space = available_width - offset;
+		// Completely outside of the line: hidden (but the first one), the next one is tried.
+		if (space <= 0.f)
+		{
+			hide(fragment, first);
+			continue;
+		}
+
+		space -= ellipsis.width;
+		if (space >= width)
+		{
+			ellipsized = index;
+			ellipsized_width = width;
+			break;
+		}
+
+		// It does not fit with the ellipsis: a text run is cut, an atomic inline stays when it is the first one.
+		if (space <= 0.f && !first)
+		{
+			hide(fragment, first);
+			continue;
+		}
+		if (fragment.type == FragmentType::SizedBox)
+		{
+			if (first)
+			{
+				ellipsized = index;
+				ellipsized_width = width;
+				break;
+			}
+			hide(fragment, first);
+			continue;
+		}
+		float shift = 0.f;
+		const float kept_width = static_cast<InlineLevelBox_Text*>(fragment.box)
+									 ->TruncateForEllipsis(fragment.fragment_handle, width, space, rtl, first, shift);
+		if (kept_width >= 0.f)
+		{
+			fragment.clamp_shift = shift;
+			ellipsized = index;
+			ellipsized_width = kept_width;
+			break;
+		}
+		hide(fragment, first);
+	}
+
+	// No item to place it after (Chromium aborts: the hidden ones stay hidden).
+	if (ellipsized == RootFragmentIndex)
+		return;
+
+	const Fragment& fragment = fragments[ellipsized];
+	float left = 0.f, width = 0.f;
+	item_extent(fragment, left, width);
+	const float ellipsis_x = (rtl ? left + fragment.clamp_shift - ellipsis.width : left + ellipsized_width);
+
+	clamp_ellipsis = MakeUnique<LineClampEllipsis>(ellipsis);
+	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized : RootFragmentIndex);
+	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
+}
+
 void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
@@ -312,27 +430,50 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 		}
 	}
 
-	// Position and size all inline-level boxes, place geometry boxes.
-	for (const Fragment& fragment : fragments)
+	// The line-clamp ellipsis (fork, P6-L1): relative to the text run it follows, or drawn by the block container.
+	const Vector2f line_origin = line_position - offset_parent_position + Vector2f(offset_horizontal_alignment, 0.f);
+	if (clamp_ellipsis)
 	{
+		if (clamp_ellipsis_fragment != RootFragmentIndex)
+		{
+			const Fragment& fragment = fragments[clamp_ellipsis_fragment];
+			clamp_ellipsis->position -= fragment.position + Vector2f(fragment.clamp_shift, 0.f);
+		}
+		else
+		{
+			clamp_ellipsis->position += line_origin;
+			LineClampAccess::SetBlockEllipsis(offset_parent, clamp_ellipsis.get());
+			clamp_ellipsis.reset();
+		}
+	}
+
+	// Position and size all inline-level boxes, place geometry boxes.
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const Fragment& fragment = fragments[i];
+
 		// Skip inline boxes which have not been closed (moved down to next line).
 		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
 			continue;
 
 		RMLUI_ASSERT(fragment.layout_width >= 0.f);
 
-		const PlacedFragment placed_fragment = {
+		PlacedFragment placed_fragment = {
 			offset_parent,
 			fragment.fragment_handle,
-			line_position - offset_parent_position + fragment.position + Vector2f(offset_horizontal_alignment, 0.f),
+			line_origin + fragment.position + Vector2f(fragment.clamp_shift, 0.f),
 			fragment.layout_width,
 			fragment.split_left,
 			fragment.split_right,
 			collapsed_line,
 			line_position.y - offset_parent_position.y,
 		};
+		placed_fragment.clamp_hidden = fragment.clamp_hidden;
+		if (clamp_ellipsis && i == clamp_ellipsis_fragment)
+			placed_fragment.clamp_ellipsis = clamp_ellipsis.get();
 		fragment.box->Submit(placed_fragment);
 	}
+	clamp_ellipsis.reset();
 
 	is_closed = true;
 }

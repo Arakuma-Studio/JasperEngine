@@ -15,6 +15,7 @@
 #include "ComputeProperty.h"
 #include "ElementDefinition.h"
 #include "ElementStyle.h"
+#include "LineClampEllipsis.h"
 #include "Layout/LayoutDetails.h"
 #include "TextShadow.h"
 #include "TextUnicode.h"
@@ -275,8 +276,8 @@ void ElementText::OnRender()
 				break;
 			}
 		}
-		// Shadows draw outside the lines.
-		if (!shadows.empty())
+		// Shadows draw outside the lines, the line-clamp ellipsis after one.
+		if (!shadows.empty() || line_clamp_ellipsis)
 			render = true;
 	}
 
@@ -505,6 +506,8 @@ void ElementText::ClearLines()
 {
 	RMLUI_ZoneScoped;
 	lines.clear();
+	line_clamp_ellipsis.reset();
+	line_clamp_ellipsis_line = -1;
 	geometry_dirty = true;
 }
 
@@ -516,6 +519,13 @@ void ElementText::AddLine(Vector2f line_position, String line)
 	lines.emplace_back(std::move(line), line_position);
 
 	geometry_dirty = true;
+}
+
+void ElementText::AddLine(Vector2f line_position, String line, UniquePtr<LineClampEllipsis> ellipsis)
+{
+	AddLine(line_position, std::move(line));
+	line_clamp_ellipsis = std::move(ellipsis);
+	line_clamp_ellipsis_line = (line_clamp_ellipsis ? (int)lines.size() - 1 : -1);
 }
 
 void ElementText::SuppressAutoLayout()
@@ -670,7 +680,8 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	}
 
 	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_edge; };
-	if (text_overflow.enabled && std::any_of(lines.begin(), lines.end(), text_overflows_on_line))
+	const auto overflows = [&](const Line& line) { return &line - lines.data() != line_clamp_ellipsis_line && text_overflows_on_line(line); };
+	if (text_overflow.enabled && std::any_of(lines.begin(), lines.end(), overflows))
 	{
 		mesh_list.clear();
 
@@ -679,6 +690,13 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			Line& line = lines[i];
 			if (line.text.empty())
 				continue;
+			// The line a line-clamp ellipsis ends is not ellipsized again (Chromium: its line-clamp state wins).
+			if ((int)i == line_clamp_ellipsis_line)
+			{
+				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position,
+					colour, opacity, text_shaping_context, mesh_list);
+				continue;
+			}
 
 			String abbreviated_text;
 			String kept_text; // the line's text before the overflow text
@@ -711,6 +729,17 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 				font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, text_overflow.overflow_text,
 					line.position + Vector2f(kept_width, 0.f), text_overflow.colour.ToPremultiplied(opacity), opacity, text_shaping_context, mesh_list);
 		}
+	}
+
+	// The line-clamp ellipsis (fork, P6-L1), in its block container's font and colour, after its line's text.
+	if (line_clamp_ellipsis && line_clamp_ellipsis_line >= 0 && line_clamp_ellipsis_line < (int)lines.size())
+	{
+		const LineClampEllipsis& ellipsis = *line_clamp_ellipsis;
+		const TextShapingContext ellipsis_shaping_context{ellipsis.language, ellipsis.direction, ellipsis.font_kerning, ellipsis.letter_spacing,
+			ellipsis.word_spacing};
+		font_engine_interface->GenerateString(render_manager, ellipsis.font_face_handle, 0, ellipsis.text,
+			lines[line_clamp_ellipsis_line].position + ellipsis.position, ellipsis.colour.ToPremultiplied(opacity), opacity, ellipsis_shaping_context,
+			mesh_list);
 	}
 
 	// Apply the new geometry and textures. Reuse the old geometry if the mesh matches, which can be relatively common

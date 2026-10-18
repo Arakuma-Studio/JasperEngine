@@ -201,6 +201,31 @@ namespace TextUnicode {
 		return FindRange(word_character_ranges, code) != nullptr;
 	}
 
+	bool ContinuesCluster(Character c)
+	{
+		const char32_t code = static_cast<char32_t>(c);
+		if (code < 0x300)
+			return false;
+		const LineBreakClass line_break_class = GetLineBreakClass(code);
+		return line_break_class == LineBreakClass::CM || line_break_class == LineBreakClass::ZWJ || line_break_class == LineBreakClass::EM;
+	}
+
+	int FirstStrongDirection(StringView text)
+	{
+		const char* p = text.begin();
+		while (p < text.end())
+		{
+			const char32_t code = static_cast<char32_t>(DecodeUTF8(p, text.end()));
+			// Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan, Mandaic and their presentation forms; the RTL supplementary blocks
+			if ((code >= 0x0590 && code <= 0x08FF) || (code >= 0xFB1D && code <= 0xFDFF) || (code >= 0xFE70 && code <= 0xFEFF) ||
+				(code >= 0x10800 && code <= 0x10FFF) || (code >= 0x1E800 && code <= 0x1EFFF))
+				return -1;
+			if (IsWordCharacter(static_cast<Character>(code)) && GetLineBreakClass(code) != LineBreakClass::NU && !ContinuesCluster(static_cast<Character>(code)))
+				return 1;
+		}
+		return 0;
+	}
+
 	bool IsWordStart(Character before_previous, Character previous, Character c)
 	{
 		// A connector ('_') joins the characters around it into one word (UAX #29 WB13a/b).

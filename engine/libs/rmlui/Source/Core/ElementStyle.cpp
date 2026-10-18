@@ -1531,6 +1531,23 @@ PropertyIdSet ElementStyle::ComputeValues(Style::ComputedValues& values, const S
 	ComputeFontRelativeValues(values, font_unit_scope, values_are_default_initialized ? FontFaceHandle(0) : font_face_before, loop_font_face, dp_ratio,
 		vp_dimensions, font_size, document_font_size, property_storage, any_font_face_candidates);
 
+	// The legacy '-webkit-box' (fork, P6-L1), as Chromium's StyleAdjuster: with '-webkit-box-orient: vertical' and a
+	// '-webkit-line-clamp' the box is a line-clamp container, 'flow-root' (or 'inline-block'), that clamps its block
+	// formatting context after that many lines; otherwise a flex container (compat writes the legacy box properties as
+	// the flex ones).
+	values.line_clamp(0);
+	if (values.display() == Style::Display::WebkitBox || values.display() == Style::Display::WebkitInlineBox)
+	{
+		const bool block = (values.display() == Style::Display::WebkitBox);
+		if (values.box_orient() == Style::BoxOrient::Vertical && values.webkit_line_clamp() > 0)
+		{
+			values.display(block ? Style::Display::FlowRoot : Style::Display::InlineBlock);
+			values.line_clamp(values.webkit_line_clamp());
+		}
+		else
+			values.display(block ? Style::Display::Flex : Style::Display::InlineFlex);
+	}
+
 	// A button laid out as an inline box is an inline-block: HTML's button layout (an outer display type of 'inline'
 	// behaves as 'inline-block'), and Chromium's computed value (fork, P4-G10). Its other display types (fork, P4-G12):
 	// 'table' and 'list-item' are blocks (button layout: 'flow-root'; Chromium's theme computes 'block'), the internal
@@ -2201,6 +2218,14 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::GridRowEnd:
 	case PropertyId::GridColumnStart:
 	case PropertyId::GridColumnEnd:
+		break;
+
+	// -- Line clamp (fork, phase 6, P6-L1) --
+	case PropertyId::WebkitLineClamp:
+		values.webkit_line_clamp(p->unit == Unit::KEYWORD ? 0 : int(p->Get<float>()));
+		break;
+	case PropertyId::WebkitBoxOrient:
+		values.box_orient((BoxOrient)p->Get<int>());
 		break;
 
 	// Invalid properties

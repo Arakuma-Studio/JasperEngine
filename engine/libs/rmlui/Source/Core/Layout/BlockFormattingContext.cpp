@@ -84,6 +84,8 @@ static OuterDisplayType GetOuterDisplayType(Style::Display display)
 	case Style::Display::TableColumnGroup:
 	case Style::Display::TableCell:
 	case Style::Display::Contents: // Generates no box: replaced by its children (LayoutDetails::GetLayoutChildren).
+	case Style::Display::WebkitBox: // Never computed: resolved by ElementStyle::ComputeValues (fork, P6-L1).
+	case Style::Display::WebkitInlineBox:
 	case Style::Display::None: break;
 	}
 
@@ -129,8 +131,9 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
 	container->ResetScrollbars(box);
 
 	// Format the element's children. In rare cases, it is possible that we need three iterations: Once to enable the
-	// horizontal scrollbar, then to enable the vertical scrollbar, and finally to format with both scrollbars enabled.
-	for (int layout_iteration = 0; layout_iteration < 3; layout_iteration++)
+	// horizontal scrollbar, then to enable the vertical scrollbar, and finally to format with both scrollbars enabled. A
+	// line-clamp container whose content ends at its clamp line takes one more, without clamping (fork, P6-L1).
+	for (int layout_iteration = 0; layout_iteration < 4; layout_iteration++)
 	{
 		bool all_children_formatted = true;
 		if (rmlui_dynamic_cast<ElementText*>(element))

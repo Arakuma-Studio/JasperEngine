@@ -7,10 +7,12 @@
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../../../Include/RmlUi/Core/Property.h"
 #include "BlockContainer.h"
+#include "../LineClampEllipsis.h"
 #include "FloatedBoxSpace.h"
 #include "InlineLevelBox.h"
 #include "LayoutDetails.h"
 #include "LineBox.h"
+#include "LineClamp.h"
 
 namespace Rml {
 
@@ -26,6 +28,7 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 	element_line_height = computed.line_height().value;
 	wrap_content = (computed.text_wrap_mode() == Style::TextWrapMode::Wrap);
 	text_align = computed.text_align();
+	line_clamp = parent->GetLineClampContext();
 }
 
 InlineContainer::~InlineContainer() {}
@@ -104,7 +107,14 @@ void InlineContainer::AddBreak(float line_height)
 	if (GetOpenLineBox())
 		CloseOpenLineBox(true);
 	else
+	{
+		// (a line of nothing but the <br>: a line for line clamping, fork P6-L1)
+		if (line_clamp)
+			CountEmptyLineForLineClamp();
 		box_cursor += line_height;
+		if (line_clamp)
+			RecordLineClampHeight();
+	}
 }
 
 void InlineContainer::AddChainedBox(UniquePtr<LineBox> open_line_box)
@@ -154,6 +164,9 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<Line
 		if (height_of_line > line_box->GetLineMinimumHeight())
 			UpdateLineBoxPlacement(line_box, 0.f, height_of_line);
 
+		if (line_clamp)
+			CountLineForLineClamp(line_box);
+
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
 		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align);
@@ -161,6 +174,9 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<Line
 		// Move the cursor down, unless we should collapse the line.
 		if (!line_box->CanCollapseLine())
 			box_cursor = (line_box->GetPosition().y - position.y) + height_of_line;
+
+		if (line_clamp)
+			RecordLineClampHeight();
 
 		// If we have any pending floating elements for our parent, then this would be an ideal time to place them.
 		parent->PlaceQueuedFloats(position.y + box_cursor);
@@ -211,6 +227,59 @@ void InlineContainer::UpdateLineBoxPlacement(LineBox* line_box, float minimum_wi
 	line_box->SetLineBox(line_position, available_width, minimum_dimensions.y);
 }
 
+void InlineContainer::CountLineForLineClamp(LineBox* line_box)
+{
+	// Lines with content count (Chromium: not its empty line boxes).
+	if (line_box->CanCollapseLine())
+		return;
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line < 0)
+		first_past_clamp_line = (int)line_boxes.size() - 1;
+
+	if (line_clamp->lines_until_clamp == 1)
+	{
+		LineClampEllipsis ellipsis;
+		Element* block = parent->GetElement();
+		if (LineClamp::MakeEllipsis(block, ellipsis))
+			line_box->TruncateForLineClamp(ellipsis, block->GetComputedValues().direction() == Style::Direction::Rtl);
+	}
+	line_clamp->lines_until_clamp -= 1;
+}
+
+void InlineContainer::CountEmptyLineForLineClamp()
+{
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line < 0)
+		first_past_clamp_line = (int)line_boxes.size();
+
+	if (line_clamp->lines_until_clamp == 1)
+	{
+		// The ellipsis alone at the line's start (the <br> is the item it follows), on the baseline of the line's strut.
+		Element* block = parent->GetElement();
+		LineClampEllipsis ellipsis;
+		if (LineClamp::MakeEllipsis(block, ellipsis))
+		{
+			const bool rtl = (block->GetComputedValues().direction() == Style::Direction::Rtl);
+			const float line_width = box_size.x;
+			float alignment_offset = 0.f;
+			switch (text_align)
+			{
+			case Style::TextAlign::Center: alignment_offset = 0.5f * line_width; break;
+			case Style::TextAlign::Right: alignment_offset = line_width; break;
+			default: break;
+			}
+			const Vector2f line_top_left = position - parent->GetPosition() + Vector2f(0.f, box_cursor);
+			ellipsis.position = line_top_left + Vector2f(alignment_offset + (rtl ? -ellipsis.width : 0.f), root_inline_box.GetHeightAboveBaseline());
+			LineClampAccess::SetBlockEllipsis(block, &ellipsis);
+		}
+	}
+	line_clamp->lines_until_clamp -= 1;
+}
+
+void InlineContainer::RecordLineClampHeight()
+{
+	if (line_clamp->lines_until_clamp <= 0 && clamp_height < 0.f)
+		clamp_height = Math::Max(box_cursor, 0.f);
+}
+
 float InlineContainer::GetShrinkToFitWidth() const
 {
 	float content_width = 0.0f;
@@ -241,11 +310,14 @@ Vector2f InlineContainer::GetStaticPositionEstimate(bool inline_level_box) const
 // §9.4.2, Chromium): an inline-block whose content is an empty ::before has its baseline at its bottom margin edge (fork, P4-G11).
 bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
-	for (auto it = line_boxes.rbegin(); it != line_boxes.rend(); ++it)
+	// (the lines laid out past the line-clamp point give none: Chromium, fork P6-L1)
+	const int end = (first_past_clamp_line >= 0 ? first_past_clamp_line : (int)line_boxes.size());
+	for (int i = end - 1; i >= 0; i--)
 	{
-		if ((*it)->CanCollapseLine())
+		const LineBox& line_box = *line_boxes[i];
+		if (line_box.CanCollapseLine())
 			continue;
-		out_baseline = (*it)->GetPosition().y + (*it)->GetBaseline();
+		out_baseline = line_box.GetPosition().y + line_box.GetBaseline();
 		return true;
 	}
 	return false;
@@ -253,8 +325,10 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 
 bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	for (const auto& line_box : line_boxes)
+	const int end = (first_past_clamp_line >= 0 ? first_past_clamp_line : (int)line_boxes.size());
+	for (int i = 0; i < end; i++)
 	{
+		const auto& line_box = line_boxes[i];
 		if (line_box->CanCollapseLine())
 			continue;
 		out_baseline = line_box->GetPosition().y + line_box->GetBaseline();
