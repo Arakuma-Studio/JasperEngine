@@ -2979,7 +2979,172 @@
 		5649444544F646ADD0512F52 /* VideoTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 564944458505D549C503B49E /* VideoTypes.h */; };
 		56494445AF890AB0B5C4882C /* HtmlUIMediaLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */; };
 		56494445A3BD295BDFA4D3FB /* HtmlUIMediaLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */; };
+		56494445F004D5530DF823EC /* cpu_arm.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445C401ECB42D07F3DA /* cpu_arm.c */; };
+		56494445A23B67CE737BCDF5 /* cpu_x86.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944453E07859D6E2938BC /* cpu_x86.c */; };
+		564944459BAECB0047900DF5 /* aarch64_itx.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944453C455AC35734BACE /* aarch64_itx.S */; };
+		56494445DFF8865DDDBFF24E /* aarch64_looprestoration_common.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DFF570851D12FA03 /* aarch64_looprestoration_common.S */; };
+		56494445D2B890FF785F8660 /* aarch64_msac.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E045E4568C00280C /* aarch64_msac.S */; };
+		5649444513374C013F910647 /* aarch64_refmvs.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944456950A0CD00DF55E6 /* aarch64_refmvs.S */; };
+		56494445B8C97F211732E29C /* aarch64_cdef.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445BA5207143CF88AE8 /* aarch64_cdef.S */; };
+		56494445258C497986D5DED4 /* aarch64_filmgrain.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944458DE8482E2E82FA17 /* aarch64_filmgrain.S */; };
+		564944456149C7D13EDB0DC5 /* aarch64_ipred.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F0B8BE24211AB664 /* aarch64_ipred.S */; };
+		56494445246A0E0820BADBC6 /* aarch64_loopfilter.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944455A8E4519219A17A9 /* aarch64_loopfilter.S */; };
+		564944451F15EF106F69EF42 /* aarch64_looprestoration.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944450A3A8A2D3C5ADA4F /* aarch64_looprestoration.S */; };
+		56494445BB167A4266E24E37 /* aarch64_mc.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944451CB83BA385E4263D /* aarch64_mc.S */; };
+		56494445E2A4BDF778EEF21B /* aarch64_mc_dotprod.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A8D7D06707685F43 /* aarch64_mc_dotprod.S */; };
+		56494445CCC9FC40590308CD /* aarch64_cdef16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944457E935EB0B5C28F70 /* aarch64_cdef16.S */; };
+		56494445F7A47CDD6889B4ED /* aarch64_filmgrain16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445306B11FBE7DACE66 /* aarch64_filmgrain16.S */; };
+		5649444587BE015D0521F852 /* aarch64_ipred16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944450D432EC803B04CF4 /* aarch64_ipred16.S */; };
+		564944450FC06044D399400C /* aarch64_itx16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445B9635EB2BC13D0A3 /* aarch64_itx16.S */; };
+		56494445E6FB8A295AFE7B8F /* aarch64_loopfilter16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A44DDE2298EB737E /* aarch64_loopfilter16.S */; };
+		5649444589EA0E59C00CF5E6 /* aarch64_looprestoration16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944458777DC1579A11E23 /* aarch64_looprestoration16.S */; };
+		5649444532576C04D81910EA /* aarch64_mc16.S in Sources */ = {isa = PBXBuildFile; fileRef = 5649444550F569FCD500EC52 /* aarch64_mc16.S */; };
+		564944455B645C5E35BC007F /* aarch64_mc16_sve.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944455E4D58D03E68B749 /* aarch64_mc16_sve.S */; };
+		56494445C2CD706851AC98E0 /* cpuid.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444595A6F08AE9B1930F /* cpuid.asm */; };
+		5649444503DE5BAB60594F57 /* msac.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D736FD4FBBC57ADB /* msac.asm */; };
+		56494445F1829240B3243F56 /* pal.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D382560676CD39A6 /* pal.asm */; };
+		564944457203A2696BE07448 /* refmvs.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CE0866B78A585C6A /* refmvs.asm */; };
+		56494445C023F594F72A853A /* itx_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445524B1D1FCA9888F5 /* itx_avx512.asm */; };
+		5649444532F49B14820FF41F /* cdef_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CBD73404F55EBB88 /* cdef_avx2.asm */; };
+		56494445A7415024AED5D3F3 /* itx_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445249E5E3C2DD053E7 /* itx_avx2.asm */; };
+		564944454AB3D5CC9D6D4FB9 /* cdef_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459D2C552AD0D5261E /* cdef_sse.asm */; };
+		56494445D394D583D6E62BA2 /* itx_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944457342A733691D232F /* itx_sse.asm */; };
+		564944458FC6CB963299D429 /* cdef_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444564096CCD6912F0DF /* cdef_avx512.asm */; };
+		56494445835A17025E1855A3 /* filmgrain_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445303D09B000CCFC98 /* filmgrain_avx512.asm */; };
+		5649444535DFD25CD87E2B31 /* ipred_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445474E9C071D51310C /* ipred_avx512.asm */; };
+		56494445E509012585506A46 /* loopfilter_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445528D7AC9EA59CE3C /* loopfilter_avx512.asm */; };
+		564944454BCBE8327AEC9AFE /* looprestoration_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445FD0C31D788748E7C /* looprestoration_avx512.asm */; };
+		56494445BCCB7429EDC7D402 /* mc_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445ACF589ED1A9020F4 /* mc_avx512.asm */; };
+		56494445D2D8FB0D4054AB2F /* filmgrain_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DF7E3C9A334624D2 /* filmgrain_avx2.asm */; };
+		56494445511D09C6F02A322B /* ipred_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DD4D3CA141489EC4 /* ipred_avx2.asm */; };
+		564944456487D82DEEA2FF29 /* loopfilter_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444594100EBD43120942 /* loopfilter_avx2.asm */; };
+		564944457CCF58CC690DB77F /* looprestoration_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459AD322D0568B73E4 /* looprestoration_avx2.asm */; };
+		56494445875FC58883484779 /* mc_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F0737FFF0F037E44 /* mc_avx2.asm */; };
+		56494445D25CF078DE1A1947 /* filmgrain_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459504581174BF5AAA /* filmgrain_sse.asm */; };
+		56494445541920741A627170 /* ipred_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445AA64D7304A02CC68 /* ipred_sse.asm */; };
+		5649444590185F426D92E9DF /* loopfilter_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A4A67310174410A8 /* loopfilter_sse.asm */; };
+		5649444512C639F7CD593A12 /* looprestoration_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459F5042E63895F381 /* looprestoration_sse.asm */; };
+		56494445588081FE91A86712 /* mc_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944453A11C4157FDED295 /* mc_sse.asm */; };
+		56494445143158E9831787B8 /* cdef16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E8F1B272730A967A /* cdef16_avx512.asm */; };
+		56494445F9CCDF2F68472852 /* filmgrain16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CCAB514245FDF383 /* filmgrain16_avx512.asm */; };
+		56494445B88EE5187C1D9199 /* ipred16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445954E2AF782BB8E67 /* ipred16_avx512.asm */; };
+		564944459D93EE53FE55F626 /* itx16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944457B34E9BF6B2D1956 /* itx16_avx512.asm */; };
+		56494445D97152F9D08972A5 /* loopfilter16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445941223E7BBE2476B /* loopfilter16_avx512.asm */; };
+		5649444593D677E12981020C /* looprestoration16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444508AF96F77BF0E7A7 /* looprestoration16_avx512.asm */; };
+		564944450E196819138A893F /* mc16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CC7167F9E8AC3E96 /* mc16_avx512.asm */; };
+		5649444500D4E8A429B39B59 /* cdef16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444563B62AB4BDB28B5A /* cdef16_avx2.asm */; };
+		56494445796A6F07EC3EFC8C /* filmgrain16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944458341393596A21D74 /* filmgrain16_avx2.asm */; };
+		56494445D75ED2F990A31325 /* ipred16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944456689871443AE7B1C /* ipred16_avx2.asm */; };
+		56494445CA0E5222ACE7D2DC /* itx16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944450C1EC03127045ED7 /* itx16_avx2.asm */; };
+		56494445AFDAE43C6E936BCA /* loopfilter16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444534BCD46AD8D66D4B /* loopfilter16_avx2.asm */; };
+		56494445057B54D8E6652CF9 /* looprestoration16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445962F91F18FBA4A32 /* looprestoration16_avx2.asm */; };
+		56494445C3E3943030325A2F /* mc16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E89409EB00B70EDE /* mc16_avx2.asm */; };
+		56494445888425BC0562238D /* cdef16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445BC9C15642376095B /* cdef16_sse.asm */; };
+		56494445344FA61A892A7B71 /* filmgrain16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944450AE44C8143C88750 /* filmgrain16_sse.asm */; };
+		564944455E8592F93C49CC57 /* ipred16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F1AD7C0DA11FCB97 /* ipred16_sse.asm */; };
+		56494445160898000D69F66C /* itx16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D100792E4590A364 /* itx16_sse.asm */; };
+		56494445856D3A5B2AD1222A /* loopfilter16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */; };
+		56494445ACB041FAD7783AC3 /* looprestoration16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */; };
+		56494445C46D19D73B7A6585 /* mc16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944451D86439B773050CE /* mc16_sse.asm */; };
+		564944455E500A2BFA753A21 /* cpu_arm.c in Sources */ = {isa = PBXBuildFile; fileRef = 56494445C401ECB42D07F3DA /* cpu_arm.c */; };
+		56494445662CF7F2D15C3613 /* cpu_x86.c in Sources */ = {isa = PBXBuildFile; fileRef = 564944453E07859D6E2938BC /* cpu_x86.c */; };
+		564944451D939E5D6A382250 /* aarch64_itx.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944453C455AC35734BACE /* aarch64_itx.S */; };
+		56494445343D5B98C40093B4 /* aarch64_looprestoration_common.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DFF570851D12FA03 /* aarch64_looprestoration_common.S */; };
+		564944459F1CB94374F39A02 /* aarch64_msac.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E045E4568C00280C /* aarch64_msac.S */; };
+		56494445144B3CE82828826E /* aarch64_refmvs.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944456950A0CD00DF55E6 /* aarch64_refmvs.S */; };
+		5649444590F8112167683E11 /* aarch64_cdef.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445BA5207143CF88AE8 /* aarch64_cdef.S */; };
+		564944455D9B4ECD106B7DBF /* aarch64_filmgrain.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944458DE8482E2E82FA17 /* aarch64_filmgrain.S */; };
+		564944459C83F5AA6527B0A4 /* aarch64_ipred.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F0B8BE24211AB664 /* aarch64_ipred.S */; };
+		56494445EA6F168FF35093B7 /* aarch64_loopfilter.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944455A8E4519219A17A9 /* aarch64_loopfilter.S */; };
+		564944455727E2230481E449 /* aarch64_looprestoration.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944450A3A8A2D3C5ADA4F /* aarch64_looprestoration.S */; };
+		56494445FE5972D9D5FD8A85 /* aarch64_mc.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944451CB83BA385E4263D /* aarch64_mc.S */; };
+		5649444580CC5871EE0EAD55 /* aarch64_mc_dotprod.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A8D7D06707685F43 /* aarch64_mc_dotprod.S */; };
+		56494445B442C453992F701C /* aarch64_cdef16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944457E935EB0B5C28F70 /* aarch64_cdef16.S */; };
+		564944452800098CEACFA13C /* aarch64_filmgrain16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445306B11FBE7DACE66 /* aarch64_filmgrain16.S */; };
+		5649444543B31CA10CD55E7D /* aarch64_ipred16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944450D432EC803B04CF4 /* aarch64_ipred16.S */; };
+		56494445B0607C514F35031B /* aarch64_itx16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445B9635EB2BC13D0A3 /* aarch64_itx16.S */; };
+		56494445C5E981441E772346 /* aarch64_loopfilter16.S in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A44DDE2298EB737E /* aarch64_loopfilter16.S */; };
+		564944450638744407746189 /* aarch64_looprestoration16.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944458777DC1579A11E23 /* aarch64_looprestoration16.S */; };
+		56494445DD5339D94AB515AC /* aarch64_mc16.S in Sources */ = {isa = PBXBuildFile; fileRef = 5649444550F569FCD500EC52 /* aarch64_mc16.S */; };
+		56494445C7CAE217C85F7719 /* aarch64_mc16_sve.S in Sources */ = {isa = PBXBuildFile; fileRef = 564944455E4D58D03E68B749 /* aarch64_mc16_sve.S */; };
+		564944450139A45E43E16669 /* cpuid.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444595A6F08AE9B1930F /* cpuid.asm */; };
+		564944450170FC66B4588AD2 /* msac.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D736FD4FBBC57ADB /* msac.asm */; };
+		564944455A8FCD984A91D546 /* pal.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D382560676CD39A6 /* pal.asm */; };
+		564944459B3B71F37784B6E9 /* refmvs.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CE0866B78A585C6A /* refmvs.asm */; };
+		56494445BCDE20C2E99B61A9 /* itx_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445524B1D1FCA9888F5 /* itx_avx512.asm */; };
+		5649444505685C23728AAD68 /* cdef_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CBD73404F55EBB88 /* cdef_avx2.asm */; };
+		564944451F543CFD3D2C1747 /* itx_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445249E5E3C2DD053E7 /* itx_avx2.asm */; };
+		564944452862D360818F55EC /* cdef_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459D2C552AD0D5261E /* cdef_sse.asm */; };
+		564944456533E0643BB2A4C9 /* itx_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944457342A733691D232F /* itx_sse.asm */; };
+		56494445D410E4AC564349A8 /* cdef_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444564096CCD6912F0DF /* cdef_avx512.asm */; };
+		56494445DE260F5236E421F8 /* filmgrain_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445303D09B000CCFC98 /* filmgrain_avx512.asm */; };
+		564944455F2F5D0764B24A3B /* ipred_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445474E9C071D51310C /* ipred_avx512.asm */; };
+		56494445A1EEF4BE1E6E229B /* loopfilter_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445528D7AC9EA59CE3C /* loopfilter_avx512.asm */; };
+		56494445B6E303D1923C3CB7 /* looprestoration_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445FD0C31D788748E7C /* looprestoration_avx512.asm */; };
+		56494445FE3B1D6A292412D9 /* mc_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445ACF589ED1A9020F4 /* mc_avx512.asm */; };
+		56494445923AB22D43EF78D5 /* filmgrain_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DF7E3C9A334624D2 /* filmgrain_avx2.asm */; };
+		564944457A681C47772E3B2E /* ipred_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445DD4D3CA141489EC4 /* ipred_avx2.asm */; };
+		564944458A95008DB36DF49F /* loopfilter_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444594100EBD43120942 /* loopfilter_avx2.asm */; };
+		564944458D50495AC7FCF415 /* looprestoration_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459AD322D0568B73E4 /* looprestoration_avx2.asm */; };
+		56494445211CBC2FD499BDD7 /* mc_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F0737FFF0F037E44 /* mc_avx2.asm */; };
+		564944450FFB30181BCA682C /* filmgrain_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459504581174BF5AAA /* filmgrain_sse.asm */; };
+		56494445AB91027295D5245E /* ipred_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445AA64D7304A02CC68 /* ipred_sse.asm */; };
+		56494445D91657997E6026FD /* loopfilter_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445A4A67310174410A8 /* loopfilter_sse.asm */; };
+		56494445CE7E4E0373102430 /* looprestoration_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944459F5042E63895F381 /* looprestoration_sse.asm */; };
+		56494445279347A65B17316C /* mc_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944453A11C4157FDED295 /* mc_sse.asm */; };
+		564944450D9BE7E2EBF3E920 /* cdef16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E8F1B272730A967A /* cdef16_avx512.asm */; };
+		5649444560EC367CEB75FC50 /* filmgrain16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CCAB514245FDF383 /* filmgrain16_avx512.asm */; };
+		56494445D9DDF1B1171610C4 /* ipred16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445954E2AF782BB8E67 /* ipred16_avx512.asm */; };
+		56494445BF5BFE2C21B10BE3 /* itx16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944457B34E9BF6B2D1956 /* itx16_avx512.asm */; };
+		56494445554376E7B8C3B738 /* loopfilter16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445941223E7BBE2476B /* loopfilter16_avx512.asm */; };
+		564944456547E91F336FC1E9 /* looprestoration16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444508AF96F77BF0E7A7 /* looprestoration16_avx512.asm */; };
+		56494445211E034604E3DC4C /* mc16_avx512.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445CC7167F9E8AC3E96 /* mc16_avx512.asm */; };
+		56494445A427F8743780C5AC /* cdef16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444563B62AB4BDB28B5A /* cdef16_avx2.asm */; };
+		564944454B4D448BCB11251D /* filmgrain16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944458341393596A21D74 /* filmgrain16_avx2.asm */; };
+		56494445C75014AEC4ED8176 /* ipred16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944456689871443AE7B1C /* ipred16_avx2.asm */; };
+		564944456463400986E12592 /* itx16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944450C1EC03127045ED7 /* itx16_avx2.asm */; };
+		56494445655D021209572AB8 /* loopfilter16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444534BCD46AD8D66D4B /* loopfilter16_avx2.asm */; };
+		56494445464D68165ABD5033 /* looprestoration16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445962F91F18FBA4A32 /* looprestoration16_avx2.asm */; };
+		564944459288D76371622D9D /* mc16_avx2.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445E89409EB00B70EDE /* mc16_avx2.asm */; };
+		56494445A940D8CADB081037 /* cdef16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445BC9C15642376095B /* cdef16_sse.asm */; };
+		56494445602616D2D0428518 /* filmgrain16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944450AE44C8143C88750 /* filmgrain16_sse.asm */; };
+		5649444553C334A8EA466571 /* ipred16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445F1AD7C0DA11FCB97 /* ipred16_sse.asm */; };
+		564944454A62426A3F1C2546 /* itx16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445D100792E4590A364 /* itx16_sse.asm */; };
+		564944455DB009B63B74F936 /* loopfilter16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */; };
+		56494445772C1363CE27A8BD /* looprestoration16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */; };
+		56494445FFA36BAE684D5CC3 /* mc16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944451D86439B773050CE /* mc16_sse.asm */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXBuildRule section */
+		5649444531BF4D77179C6420 /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			filePatterns = "*.asm";
+			fileType = pattern.proxy;
+			inputFiles = (
+			);
+			isEditable = 1;
+			name = "dav1d NASM";
+			outputFiles = (
+				"$(DERIVED_FILE_DIR)/$(CURRENT_ARCH)/$(INPUT_FILE_BASE).nasm.o",
+			);
+			script = "NASM=$(command -v nasm || true)\nfor candidate in /opt/homebrew/bin/nasm /usr/local/bin/nasm; do\n  if [ -z \"$NASM\" ] && [ -x \"$candidate\" ]; then NASM=\"$candidate\"; fi\ndone\nif [ -z \"$NASM\" ]; then echo \"error: dav1d's x86-64 asm needs NASM 2.14 or newer (brew install nasm)\"; exit 1; fi\nmkdir -p \"$DERIVED_FILE_DIR/$CURRENT_ARCH\"\nexec \"$NASM\" -f macho64 -DDAV1D_NASM_PREFIX -I\"$SRCROOT/../../libs/dav1d/src/\" -I\"$SRCROOT/../../libs/dav1d/config/\" -o \"$DERIVED_FILE_DIR/$CURRENT_ARCH/$INPUT_FILE_BASE.nasm.o\" \"$INPUT_FILE_PATH\"\n";
+		};
+		564944456F480A3557A40ED4 /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			filePatterns = "*.asm";
+			fileType = pattern.proxy;
+			inputFiles = (
+			);
+			isEditable = 1;
+			name = "dav1d NASM";
+			outputFiles = (
+				"$(DERIVED_FILE_DIR)/$(CURRENT_ARCH)/$(INPUT_FILE_BASE).nasm.o",
+			);
+			script = "NASM=$(command -v nasm || true)\nfor candidate in /opt/homebrew/bin/nasm /usr/local/bin/nasm; do\n  if [ -z \"$NASM\" ] && [ -x \"$candidate\" ]; then NASM=\"$candidate\"; fi\ndone\nif [ -z \"$NASM\" ]; then echo \"error: dav1d's x86-64 asm needs NASM 2.14 or newer (brew install nasm)\"; exit 1; fi\nmkdir -p \"$DERIVED_FILE_DIR/$CURRENT_ARCH\"\nexec \"$NASM\" -f macho64 -DDAV1D_NASM_PREFIX -I\"$SRCROOT/../../libs/dav1d/src/\" -I\"$SRCROOT/../../libs/dav1d/config/\" -o \"$DERIVED_FILE_DIR/$CURRENT_ARCH/$INPUT_FILE_BASE.nasm.o\" \"$INPUT_FILE_PATH\"\n";
+		};
+/* End PBXBuildRule section */
 
 /* Begin PBXContainerItemProxy section */
 		7105CEA82AD62350007C91BA /* PBXContainerItemProxy */ = {
@@ -6119,6 +6284,73 @@
 		564944456115B9D95A2337FE /* VideoStream.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoStream.h; sourceTree = "<group>"; };
 		564944458505D549C503B49E /* VideoTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoTypes.h; sourceTree = "<group>"; };
 		564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIMediaLua.cpp; sourceTree = "<group>"; };
+		56494445C401ECB42D07F3DA /* cpu_arm.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = cpu_arm.c; sourceTree = "<group>"; };
+		564944453E07859D6E2938BC /* cpu_x86.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = cpu_x86.c; sourceTree = "<group>"; };
+		564944453C455AC35734BACE /* aarch64_itx.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_itx.S; sourceTree = "<group>"; };
+		56494445DFF570851D12FA03 /* aarch64_looprestoration_common.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_looprestoration_common.S; sourceTree = "<group>"; };
+		56494445E045E4568C00280C /* aarch64_msac.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_msac.S; sourceTree = "<group>"; };
+		564944456950A0CD00DF55E6 /* aarch64_refmvs.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_refmvs.S; sourceTree = "<group>"; };
+		56494445BA5207143CF88AE8 /* aarch64_cdef.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_cdef.S; sourceTree = "<group>"; };
+		564944458DE8482E2E82FA17 /* aarch64_filmgrain.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_filmgrain.S; sourceTree = "<group>"; };
+		56494445F0B8BE24211AB664 /* aarch64_ipred.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_ipred.S; sourceTree = "<group>"; };
+		564944455A8E4519219A17A9 /* aarch64_loopfilter.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_loopfilter.S; sourceTree = "<group>"; };
+		564944450A3A8A2D3C5ADA4F /* aarch64_looprestoration.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_looprestoration.S; sourceTree = "<group>"; };
+		564944451CB83BA385E4263D /* aarch64_mc.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_mc.S; sourceTree = "<group>"; };
+		56494445A8D7D06707685F43 /* aarch64_mc_dotprod.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_mc_dotprod.S; sourceTree = "<group>"; };
+		564944457E935EB0B5C28F70 /* aarch64_cdef16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_cdef16.S; sourceTree = "<group>"; };
+		56494445306B11FBE7DACE66 /* aarch64_filmgrain16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_filmgrain16.S; sourceTree = "<group>"; };
+		564944450D432EC803B04CF4 /* aarch64_ipred16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_ipred16.S; sourceTree = "<group>"; };
+		56494445B9635EB2BC13D0A3 /* aarch64_itx16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_itx16.S; sourceTree = "<group>"; };
+		56494445A44DDE2298EB737E /* aarch64_loopfilter16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_loopfilter16.S; sourceTree = "<group>"; };
+		564944458777DC1579A11E23 /* aarch64_looprestoration16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_looprestoration16.S; sourceTree = "<group>"; };
+		5649444550F569FCD500EC52 /* aarch64_mc16.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_mc16.S; sourceTree = "<group>"; };
+		564944455E4D58D03E68B749 /* aarch64_mc16_sve.S */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm; path = aarch64_mc16_sve.S; sourceTree = "<group>"; };
+		5649444595A6F08AE9B1930F /* cpuid.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cpuid.asm; sourceTree = "<group>"; };
+		56494445D736FD4FBBC57ADB /* msac.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = msac.asm; sourceTree = "<group>"; };
+		56494445D382560676CD39A6 /* pal.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = pal.asm; sourceTree = "<group>"; };
+		56494445CE0866B78A585C6A /* refmvs.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = refmvs.asm; sourceTree = "<group>"; };
+		56494445524B1D1FCA9888F5 /* itx_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx_avx512.asm; sourceTree = "<group>"; };
+		56494445CBD73404F55EBB88 /* cdef_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef_avx2.asm; sourceTree = "<group>"; };
+		56494445249E5E3C2DD053E7 /* itx_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx_avx2.asm; sourceTree = "<group>"; };
+		564944459D2C552AD0D5261E /* cdef_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef_sse.asm; sourceTree = "<group>"; };
+		564944457342A733691D232F /* itx_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx_sse.asm; sourceTree = "<group>"; };
+		5649444564096CCD6912F0DF /* cdef_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef_avx512.asm; sourceTree = "<group>"; };
+		56494445303D09B000CCFC98 /* filmgrain_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain_avx512.asm; sourceTree = "<group>"; };
+		56494445474E9C071D51310C /* ipred_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred_avx512.asm; sourceTree = "<group>"; };
+		56494445528D7AC9EA59CE3C /* loopfilter_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter_avx512.asm; sourceTree = "<group>"; };
+		56494445FD0C31D788748E7C /* looprestoration_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration_avx512.asm; sourceTree = "<group>"; };
+		56494445ACF589ED1A9020F4 /* mc_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc_avx512.asm; sourceTree = "<group>"; };
+		56494445DF7E3C9A334624D2 /* filmgrain_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain_avx2.asm; sourceTree = "<group>"; };
+		56494445DD4D3CA141489EC4 /* ipred_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred_avx2.asm; sourceTree = "<group>"; };
+		5649444594100EBD43120942 /* loopfilter_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter_avx2.asm; sourceTree = "<group>"; };
+		564944459AD322D0568B73E4 /* looprestoration_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration_avx2.asm; sourceTree = "<group>"; };
+		56494445F0737FFF0F037E44 /* mc_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc_avx2.asm; sourceTree = "<group>"; };
+		564944459504581174BF5AAA /* filmgrain_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain_sse.asm; sourceTree = "<group>"; };
+		56494445AA64D7304A02CC68 /* ipred_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred_sse.asm; sourceTree = "<group>"; };
+		56494445A4A67310174410A8 /* loopfilter_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter_sse.asm; sourceTree = "<group>"; };
+		564944459F5042E63895F381 /* looprestoration_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration_sse.asm; sourceTree = "<group>"; };
+		564944453A11C4157FDED295 /* mc_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc_sse.asm; sourceTree = "<group>"; };
+		56494445E8F1B272730A967A /* cdef16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef16_avx512.asm; sourceTree = "<group>"; };
+		56494445CCAB514245FDF383 /* filmgrain16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain16_avx512.asm; sourceTree = "<group>"; };
+		56494445954E2AF782BB8E67 /* ipred16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred16_avx512.asm; sourceTree = "<group>"; };
+		564944457B34E9BF6B2D1956 /* itx16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx16_avx512.asm; sourceTree = "<group>"; };
+		56494445941223E7BBE2476B /* loopfilter16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_avx512.asm; sourceTree = "<group>"; };
+		5649444508AF96F77BF0E7A7 /* looprestoration16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_avx512.asm; sourceTree = "<group>"; };
+		56494445CC7167F9E8AC3E96 /* mc16_avx512.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_avx512.asm; sourceTree = "<group>"; };
+		5649444563B62AB4BDB28B5A /* cdef16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef16_avx2.asm; sourceTree = "<group>"; };
+		564944458341393596A21D74 /* filmgrain16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain16_avx2.asm; sourceTree = "<group>"; };
+		564944456689871443AE7B1C /* ipred16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred16_avx2.asm; sourceTree = "<group>"; };
+		564944450C1EC03127045ED7 /* itx16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx16_avx2.asm; sourceTree = "<group>"; };
+		5649444534BCD46AD8D66D4B /* loopfilter16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_avx2.asm; sourceTree = "<group>"; };
+		56494445962F91F18FBA4A32 /* looprestoration16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_avx2.asm; sourceTree = "<group>"; };
+		56494445E89409EB00B70EDE /* mc16_avx2.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_avx2.asm; sourceTree = "<group>"; };
+		56494445BC9C15642376095B /* cdef16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = cdef16_sse.asm; sourceTree = "<group>"; };
+		564944450AE44C8143C88750 /* filmgrain16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = filmgrain16_sse.asm; sourceTree = "<group>"; };
+		56494445F1AD7C0DA11FCB97 /* ipred16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = ipred16_sse.asm; sourceTree = "<group>"; };
+		56494445D100792E4590A364 /* itx16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = itx16_sse.asm; sourceTree = "<group>"; };
+		56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_sse.asm; sourceTree = "<group>"; };
+		5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_sse.asm; sourceTree = "<group>"; };
+		564944451D86439B773050CE /* mc16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_sse.asm; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10485,6 +10717,7 @@
 			children = (
 				56494445505CBCF30695A95E /* bitdepth */,
 				56494445E7AECDD185E69743 /* src */,
+				5649444500CD3596647733F8 /* xcode */,
 			);
 			path = dav1d;
 			sourceTree = "<group>";
@@ -10550,6 +10783,7 @@
 				5649444549D1B32F2556D1A8 /* thread_task.c */,
 				564944451BB684233DFAF6D7 /* warpmv.c */,
 				564944458993DD4706E6085C /* wedge.c */,
+				564944454196B48E72DEF10E /* x86 */,
 			);
 			path = src;
 			sourceTree = "<group>";
@@ -10665,6 +10899,87 @@
 				56494445C8D4FDA69EDBFB57 /* mkvparser.cc */,
 			);
 			path = mkvparser;
+			sourceTree = "<group>";
+		};
+		5649444500CD3596647733F8 /* xcode */ = {
+			isa = PBXGroup;
+			children = (
+				56494445C401ECB42D07F3DA /* cpu_arm.c */,
+				564944453E07859D6E2938BC /* cpu_x86.c */,
+				564944453C455AC35734BACE /* aarch64_itx.S */,
+				56494445DFF570851D12FA03 /* aarch64_looprestoration_common.S */,
+				56494445E045E4568C00280C /* aarch64_msac.S */,
+				564944456950A0CD00DF55E6 /* aarch64_refmvs.S */,
+				56494445BA5207143CF88AE8 /* aarch64_cdef.S */,
+				564944458DE8482E2E82FA17 /* aarch64_filmgrain.S */,
+				56494445F0B8BE24211AB664 /* aarch64_ipred.S */,
+				564944455A8E4519219A17A9 /* aarch64_loopfilter.S */,
+				564944450A3A8A2D3C5ADA4F /* aarch64_looprestoration.S */,
+				564944451CB83BA385E4263D /* aarch64_mc.S */,
+				56494445A8D7D06707685F43 /* aarch64_mc_dotprod.S */,
+				564944457E935EB0B5C28F70 /* aarch64_cdef16.S */,
+				56494445306B11FBE7DACE66 /* aarch64_filmgrain16.S */,
+				564944450D432EC803B04CF4 /* aarch64_ipred16.S */,
+				56494445B9635EB2BC13D0A3 /* aarch64_itx16.S */,
+				56494445A44DDE2298EB737E /* aarch64_loopfilter16.S */,
+				564944458777DC1579A11E23 /* aarch64_looprestoration16.S */,
+				5649444550F569FCD500EC52 /* aarch64_mc16.S */,
+				564944455E4D58D03E68B749 /* aarch64_mc16_sve.S */,
+			);
+			path = xcode;
+			sourceTree = "<group>";
+		};
+		564944454196B48E72DEF10E /* x86 */ = {
+			isa = PBXGroup;
+			children = (
+				5649444595A6F08AE9B1930F /* cpuid.asm */,
+				56494445D736FD4FBBC57ADB /* msac.asm */,
+				56494445D382560676CD39A6 /* pal.asm */,
+				56494445CE0866B78A585C6A /* refmvs.asm */,
+				56494445524B1D1FCA9888F5 /* itx_avx512.asm */,
+				56494445CBD73404F55EBB88 /* cdef_avx2.asm */,
+				56494445249E5E3C2DD053E7 /* itx_avx2.asm */,
+				564944459D2C552AD0D5261E /* cdef_sse.asm */,
+				564944457342A733691D232F /* itx_sse.asm */,
+				5649444564096CCD6912F0DF /* cdef_avx512.asm */,
+				56494445303D09B000CCFC98 /* filmgrain_avx512.asm */,
+				56494445474E9C071D51310C /* ipred_avx512.asm */,
+				56494445528D7AC9EA59CE3C /* loopfilter_avx512.asm */,
+				56494445FD0C31D788748E7C /* looprestoration_avx512.asm */,
+				56494445ACF589ED1A9020F4 /* mc_avx512.asm */,
+				56494445DF7E3C9A334624D2 /* filmgrain_avx2.asm */,
+				56494445DD4D3CA141489EC4 /* ipred_avx2.asm */,
+				5649444594100EBD43120942 /* loopfilter_avx2.asm */,
+				564944459AD322D0568B73E4 /* looprestoration_avx2.asm */,
+				56494445F0737FFF0F037E44 /* mc_avx2.asm */,
+				564944459504581174BF5AAA /* filmgrain_sse.asm */,
+				56494445AA64D7304A02CC68 /* ipred_sse.asm */,
+				56494445A4A67310174410A8 /* loopfilter_sse.asm */,
+				564944459F5042E63895F381 /* looprestoration_sse.asm */,
+				564944453A11C4157FDED295 /* mc_sse.asm */,
+				56494445E8F1B272730A967A /* cdef16_avx512.asm */,
+				56494445CCAB514245FDF383 /* filmgrain16_avx512.asm */,
+				56494445954E2AF782BB8E67 /* ipred16_avx512.asm */,
+				564944457B34E9BF6B2D1956 /* itx16_avx512.asm */,
+				56494445941223E7BBE2476B /* loopfilter16_avx512.asm */,
+				5649444508AF96F77BF0E7A7 /* looprestoration16_avx512.asm */,
+				56494445CC7167F9E8AC3E96 /* mc16_avx512.asm */,
+				5649444563B62AB4BDB28B5A /* cdef16_avx2.asm */,
+				564944458341393596A21D74 /* filmgrain16_avx2.asm */,
+				564944456689871443AE7B1C /* ipred16_avx2.asm */,
+				564944450C1EC03127045ED7 /* itx16_avx2.asm */,
+				5649444534BCD46AD8D66D4B /* loopfilter16_avx2.asm */,
+				56494445962F91F18FBA4A32 /* looprestoration16_avx2.asm */,
+				56494445E89409EB00B70EDE /* mc16_avx2.asm */,
+				56494445BC9C15642376095B /* cdef16_sse.asm */,
+				564944450AE44C8143C88750 /* filmgrain16_sse.asm */,
+				56494445F1AD7C0DA11FCB97 /* ipred16_sse.asm */,
+				56494445D100792E4590A364 /* itx16_sse.asm */,
+				56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */,
+				5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */,
+				564944451D86439B773050CE /* mc16_sse.asm */,
+			);
+			path = x86;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -12058,6 +12373,7 @@
 				56494445E2787952FAC2C00D /* Frameworks */,
 			);
 			buildRules = (
+				5649444531BF4D77179C6420 /* PBXBuildRule */,
 			);
 			dependencies = (
 			);
@@ -12075,6 +12391,7 @@
 				56494445E41C0CB5C3E07F23 /* Frameworks */,
 			);
 			buildRules = (
+				564944456F480A3557A40ED4 /* PBXBuildRule */,
 			);
 			dependencies = (
 			);
@@ -14894,6 +15211,73 @@
 				56494445CA1005B4F222A67E /* mc_tmpl_8.c in Sources */,
 				56494445EB0A1F8BE8D84468 /* recon_tmpl_16.c in Sources */,
 				56494445C244D1AAA1C59952 /* recon_tmpl_8.c in Sources */,
+				56494445F004D5530DF823EC /* cpu_arm.c in Sources */,
+				56494445A23B67CE737BCDF5 /* cpu_x86.c in Sources */,
+				564944459BAECB0047900DF5 /* aarch64_itx.S in Sources */,
+				56494445DFF8865DDDBFF24E /* aarch64_looprestoration_common.S in Sources */,
+				56494445D2B890FF785F8660 /* aarch64_msac.S in Sources */,
+				5649444513374C013F910647 /* aarch64_refmvs.S in Sources */,
+				56494445B8C97F211732E29C /* aarch64_cdef.S in Sources */,
+				56494445258C497986D5DED4 /* aarch64_filmgrain.S in Sources */,
+				564944456149C7D13EDB0DC5 /* aarch64_ipred.S in Sources */,
+				56494445246A0E0820BADBC6 /* aarch64_loopfilter.S in Sources */,
+				564944451F15EF106F69EF42 /* aarch64_looprestoration.S in Sources */,
+				56494445BB167A4266E24E37 /* aarch64_mc.S in Sources */,
+				56494445E2A4BDF778EEF21B /* aarch64_mc_dotprod.S in Sources */,
+				56494445CCC9FC40590308CD /* aarch64_cdef16.S in Sources */,
+				56494445F7A47CDD6889B4ED /* aarch64_filmgrain16.S in Sources */,
+				5649444587BE015D0521F852 /* aarch64_ipred16.S in Sources */,
+				564944450FC06044D399400C /* aarch64_itx16.S in Sources */,
+				56494445E6FB8A295AFE7B8F /* aarch64_loopfilter16.S in Sources */,
+				5649444589EA0E59C00CF5E6 /* aarch64_looprestoration16.S in Sources */,
+				5649444532576C04D81910EA /* aarch64_mc16.S in Sources */,
+				564944455B645C5E35BC007F /* aarch64_mc16_sve.S in Sources */,
+				56494445C2CD706851AC98E0 /* cpuid.asm in Sources */,
+				5649444503DE5BAB60594F57 /* msac.asm in Sources */,
+				56494445F1829240B3243F56 /* pal.asm in Sources */,
+				564944457203A2696BE07448 /* refmvs.asm in Sources */,
+				56494445C023F594F72A853A /* itx_avx512.asm in Sources */,
+				5649444532F49B14820FF41F /* cdef_avx2.asm in Sources */,
+				56494445A7415024AED5D3F3 /* itx_avx2.asm in Sources */,
+				564944454AB3D5CC9D6D4FB9 /* cdef_sse.asm in Sources */,
+				56494445D394D583D6E62BA2 /* itx_sse.asm in Sources */,
+				564944458FC6CB963299D429 /* cdef_avx512.asm in Sources */,
+				56494445835A17025E1855A3 /* filmgrain_avx512.asm in Sources */,
+				5649444535DFD25CD87E2B31 /* ipred_avx512.asm in Sources */,
+				56494445E509012585506A46 /* loopfilter_avx512.asm in Sources */,
+				564944454BCBE8327AEC9AFE /* looprestoration_avx512.asm in Sources */,
+				56494445BCCB7429EDC7D402 /* mc_avx512.asm in Sources */,
+				56494445D2D8FB0D4054AB2F /* filmgrain_avx2.asm in Sources */,
+				56494445511D09C6F02A322B /* ipred_avx2.asm in Sources */,
+				564944456487D82DEEA2FF29 /* loopfilter_avx2.asm in Sources */,
+				564944457CCF58CC690DB77F /* looprestoration_avx2.asm in Sources */,
+				56494445875FC58883484779 /* mc_avx2.asm in Sources */,
+				56494445D25CF078DE1A1947 /* filmgrain_sse.asm in Sources */,
+				56494445541920741A627170 /* ipred_sse.asm in Sources */,
+				5649444590185F426D92E9DF /* loopfilter_sse.asm in Sources */,
+				5649444512C639F7CD593A12 /* looprestoration_sse.asm in Sources */,
+				56494445588081FE91A86712 /* mc_sse.asm in Sources */,
+				56494445143158E9831787B8 /* cdef16_avx512.asm in Sources */,
+				56494445F9CCDF2F68472852 /* filmgrain16_avx512.asm in Sources */,
+				56494445B88EE5187C1D9199 /* ipred16_avx512.asm in Sources */,
+				564944459D93EE53FE55F626 /* itx16_avx512.asm in Sources */,
+				56494445D97152F9D08972A5 /* loopfilter16_avx512.asm in Sources */,
+				5649444593D677E12981020C /* looprestoration16_avx512.asm in Sources */,
+				564944450E196819138A893F /* mc16_avx512.asm in Sources */,
+				5649444500D4E8A429B39B59 /* cdef16_avx2.asm in Sources */,
+				56494445796A6F07EC3EFC8C /* filmgrain16_avx2.asm in Sources */,
+				56494445D75ED2F990A31325 /* ipred16_avx2.asm in Sources */,
+				56494445CA0E5222ACE7D2DC /* itx16_avx2.asm in Sources */,
+				56494445AFDAE43C6E936BCA /* loopfilter16_avx2.asm in Sources */,
+				56494445057B54D8E6652CF9 /* looprestoration16_avx2.asm in Sources */,
+				56494445C3E3943030325A2F /* mc16_avx2.asm in Sources */,
+				56494445888425BC0562238D /* cdef16_sse.asm in Sources */,
+				56494445344FA61A892A7B71 /* filmgrain16_sse.asm in Sources */,
+				564944455E8592F93C49CC57 /* ipred16_sse.asm in Sources */,
+				56494445160898000D69F66C /* itx16_sse.asm in Sources */,
+				56494445856D3A5B2AD1222A /* loopfilter16_sse.asm in Sources */,
+				56494445ACB041FAD7783AC3 /* looprestoration16_sse.asm in Sources */,
+				56494445C46D19D73B7A6585 /* mc16_sse.asm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14952,6 +15336,73 @@
 				564944458F022CA7A9DCA42D /* mc_tmpl_8.c in Sources */,
 				56494445EF531CA429EEE9F4 /* recon_tmpl_16.c in Sources */,
 				56494445D2D15FE9B3711536 /* recon_tmpl_8.c in Sources */,
+				564944455E500A2BFA753A21 /* cpu_arm.c in Sources */,
+				56494445662CF7F2D15C3613 /* cpu_x86.c in Sources */,
+				564944451D939E5D6A382250 /* aarch64_itx.S in Sources */,
+				56494445343D5B98C40093B4 /* aarch64_looprestoration_common.S in Sources */,
+				564944459F1CB94374F39A02 /* aarch64_msac.S in Sources */,
+				56494445144B3CE82828826E /* aarch64_refmvs.S in Sources */,
+				5649444590F8112167683E11 /* aarch64_cdef.S in Sources */,
+				564944455D9B4ECD106B7DBF /* aarch64_filmgrain.S in Sources */,
+				564944459C83F5AA6527B0A4 /* aarch64_ipred.S in Sources */,
+				56494445EA6F168FF35093B7 /* aarch64_loopfilter.S in Sources */,
+				564944455727E2230481E449 /* aarch64_looprestoration.S in Sources */,
+				56494445FE5972D9D5FD8A85 /* aarch64_mc.S in Sources */,
+				5649444580CC5871EE0EAD55 /* aarch64_mc_dotprod.S in Sources */,
+				56494445B442C453992F701C /* aarch64_cdef16.S in Sources */,
+				564944452800098CEACFA13C /* aarch64_filmgrain16.S in Sources */,
+				5649444543B31CA10CD55E7D /* aarch64_ipred16.S in Sources */,
+				56494445B0607C514F35031B /* aarch64_itx16.S in Sources */,
+				56494445C5E981441E772346 /* aarch64_loopfilter16.S in Sources */,
+				564944450638744407746189 /* aarch64_looprestoration16.S in Sources */,
+				56494445DD5339D94AB515AC /* aarch64_mc16.S in Sources */,
+				56494445C7CAE217C85F7719 /* aarch64_mc16_sve.S in Sources */,
+				564944450139A45E43E16669 /* cpuid.asm in Sources */,
+				564944450170FC66B4588AD2 /* msac.asm in Sources */,
+				564944455A8FCD984A91D546 /* pal.asm in Sources */,
+				564944459B3B71F37784B6E9 /* refmvs.asm in Sources */,
+				56494445BCDE20C2E99B61A9 /* itx_avx512.asm in Sources */,
+				5649444505685C23728AAD68 /* cdef_avx2.asm in Sources */,
+				564944451F543CFD3D2C1747 /* itx_avx2.asm in Sources */,
+				564944452862D360818F55EC /* cdef_sse.asm in Sources */,
+				564944456533E0643BB2A4C9 /* itx_sse.asm in Sources */,
+				56494445D410E4AC564349A8 /* cdef_avx512.asm in Sources */,
+				56494445DE260F5236E421F8 /* filmgrain_avx512.asm in Sources */,
+				564944455F2F5D0764B24A3B /* ipred_avx512.asm in Sources */,
+				56494445A1EEF4BE1E6E229B /* loopfilter_avx512.asm in Sources */,
+				56494445B6E303D1923C3CB7 /* looprestoration_avx512.asm in Sources */,
+				56494445FE3B1D6A292412D9 /* mc_avx512.asm in Sources */,
+				56494445923AB22D43EF78D5 /* filmgrain_avx2.asm in Sources */,
+				564944457A681C47772E3B2E /* ipred_avx2.asm in Sources */,
+				564944458A95008DB36DF49F /* loopfilter_avx2.asm in Sources */,
+				564944458D50495AC7FCF415 /* looprestoration_avx2.asm in Sources */,
+				56494445211CBC2FD499BDD7 /* mc_avx2.asm in Sources */,
+				564944450FFB30181BCA682C /* filmgrain_sse.asm in Sources */,
+				56494445AB91027295D5245E /* ipred_sse.asm in Sources */,
+				56494445D91657997E6026FD /* loopfilter_sse.asm in Sources */,
+				56494445CE7E4E0373102430 /* looprestoration_sse.asm in Sources */,
+				56494445279347A65B17316C /* mc_sse.asm in Sources */,
+				564944450D9BE7E2EBF3E920 /* cdef16_avx512.asm in Sources */,
+				5649444560EC367CEB75FC50 /* filmgrain16_avx512.asm in Sources */,
+				56494445D9DDF1B1171610C4 /* ipred16_avx512.asm in Sources */,
+				56494445BF5BFE2C21B10BE3 /* itx16_avx512.asm in Sources */,
+				56494445554376E7B8C3B738 /* loopfilter16_avx512.asm in Sources */,
+				564944456547E91F336FC1E9 /* looprestoration16_avx512.asm in Sources */,
+				56494445211E034604E3DC4C /* mc16_avx512.asm in Sources */,
+				56494445A427F8743780C5AC /* cdef16_avx2.asm in Sources */,
+				564944454B4D448BCB11251D /* filmgrain16_avx2.asm in Sources */,
+				56494445C75014AEC4ED8176 /* ipred16_avx2.asm in Sources */,
+				564944456463400986E12592 /* itx16_avx2.asm in Sources */,
+				56494445655D021209572AB8 /* loopfilter16_avx2.asm in Sources */,
+				56494445464D68165ABD5033 /* looprestoration16_avx2.asm in Sources */,
+				564944459288D76371622D9D /* mc16_avx2.asm in Sources */,
+				56494445A940D8CADB081037 /* cdef16_sse.asm in Sources */,
+				56494445602616D2D0428518 /* filmgrain16_sse.asm in Sources */,
+				5649444553C334A8EA466571 /* ipred16_sse.asm in Sources */,
+				564944454A62426A3F1C2546 /* itx16_sse.asm in Sources */,
+				564944455DB009B63B74F936 /* loopfilter16_sse.asm in Sources */,
+				56494445772C1363CE27A8BD /* looprestoration16_sse.asm in Sources */,
+				56494445FFA36BAE684D5CC3 /* mc16_sse.asm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17430,10 +17881,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=arm64]" = "*.asm";
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = "*.S";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"DAV1D_API=",
+					DAV1D_ASM,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
@@ -17456,10 +17910,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=arm64]" = "*.asm";
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = "*.S";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"DAV1D_API=",
+					DAV1D_ASM,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
@@ -17485,10 +17942,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=arm64]" = "*.asm";
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = "*.S";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"DAV1D_API=",
+					DAV1D_ASM,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
@@ -17511,10 +17971,13 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=arm64]" = "*.asm";
+				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = "*.S";
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
 					"DAV1D_API=",
+					DAV1D_ASM,
 				);
 				GCC_INLINES_ARE_PRIVATE_EXTERN = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;

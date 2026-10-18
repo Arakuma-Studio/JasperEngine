@@ -15,6 +15,13 @@
 
 using namespace jasperengine;
 
+// dav1d's CPU dispatch (src/cpu.h, not in the public header): the feature mask and the features
+// it detected
+extern "C" {
+    void dav1d_set_cpu_flags_mask(unsigned mask);
+    extern unsigned dav1d_cpu_flags;
+}
+
 namespace {
 
     std::atomic<int> forcedThreads{0};
@@ -168,6 +175,14 @@ Av1Decoder::~Av1Decoder(){
 
 void Av1Decoder::setThreadCountForTesting(int count){
     forcedThreads = std::max(count, 0);
+}
+
+void Av1Decoder::setCpuFlagsMaskForTesting(unsigned mask){
+    dav1d_set_cpu_flags_mask(mask);
+}
+
+unsigned Av1Decoder::getCpuFlags(){
+    return dav1d_cpu_flags;
 }
 
 size_t Av1Decoder::getLivePictureBytes(){
