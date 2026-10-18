@@ -299,6 +299,23 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // what its draws read of the scene (phase 3) in their current variants, and the cost
+    const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
+    if (!sceneInputs.empty()) {
+        uint32_t reads = 0;
+        bool error = false;
+        for (const Json& entry : sceneInputs) {
+            for (const char* key : {"reads", "extra_pass_reads"}) {
+                if (!entry.contains(key)) continue;
+                for (const Json& name : entry[key]) reads |= name == "scenedepth" ? ShaderRequire_SceneDepth : ShaderRequire_SceneColor;
+            }
+            error = error || entry.contains("error");
+        }
+        data["scene_inputs"] = sceneInputs;
+        data["scene_inputs_cost"] = Catalog::getSceneInputsCost(reads);
+        text += ". Reads the scene " + Catalog::getSceneInputsLabel(reads) + " (" + Catalog::getSceneInputsCost(reads, true) + ")" +
+                (error ? "; ERROR: a reader draws in the opaque queue (scene_inputs[].error, .fix)" : "");
+    }
     if (elided) data["note"] = std::to_string(elided) + " large custom value(s) elided; name them in properties to read them.";
     call->ok(text, data);
 }
@@ -818,11 +835,11 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "get_entity";
         tool.title = "Get Entity";
         tool.description =
-            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, "
-            "world transform, prefab} and its components. detail: summary (names), values ({component: "
-            "{property: value}}), full (+ type, default, enum options, prefab-overridden flag), yaml "
-            "(scene-file encoding). Filter with components and properties (globs, e.g. \"submeshes[0].*\"); "
-            "big custom values are elided unless named.";
+            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world "
+            "transform, prefab} and its components. detail: summary (names), values ({component: {property: "
+            "value}}), full (+ type, default, enum options, prefab-overridden flag), yaml (scene-file encoding). "
+            "Filter by components and properties (globs, e.g. \"submeshes[0].*\"); big custom values are elided "
+            "unless named.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -843,12 +860,11 @@ void registerComponentTools(McpRegistry& registry) {
         tool.description =
             "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
             "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
-            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path "
-            "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path "
-            "(links it); GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties "
-            "a .prefab path; custom values (colliders, frames, scripts...) as get_entity returns them. Lists: "
-            "{component, property, insert: value, index?} / {component, property, remove: index}. Paths may "
-            "index (\"submeshes[0].material.baseColorFactor\", \"scripts[0].speed\").";
+            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path (texture "
+            "{\"camera\": <entity>} = render texture); material: fields object or a .material path (links it); "
+            "GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties a .prefab path; "
+            "custom values (colliders, frames, scripts...) as get_entity returns them. Lists: {component, property, "
+            "insert: value, index?} / {..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -864,8 +880,8 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "set_transform";
         tool.title = "Set Transform";
         tool.description =
-            "Move/rotate/scale GameObjects. relative=true adds position, applies rotation on top and multiplies scale. "
-            "Returns the new local values.";
+            "Move/rotate/scale GameObjects. relative=true adds position, applies rotation on top and multiplies "
+            "scale.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -884,8 +900,8 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "add_component";
         tool.title = "Add Component";
         tool.description =
-            "Add components to GameObjects, optionally with initial values (shapes as in set_properties); ones that "
-            "already have it are skipped. Names: list_component_types. Colliders: use edit_colliders.";
+            "Add components to GameObjects, optionally with initial values (as set_properties); ones having it are "
+            "skipped. Names: list_component_types. Colliders: edit_colliders.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -975,9 +991,8 @@ void registerComponentTools(McpRegistry& registry) {
         tool.description =
             "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
             "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
-            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
-            "Omitted values take defaults, not current ones. Not for model, sprite, tilemap, polygon or "
-            "terrain meshes. Returns {entity, local_size, local_center}.";
+            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. Omitted "
+            "values take defaults, not current ones. Not for model, sprite, tilemap, polygon or terrain meshes.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

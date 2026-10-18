@@ -122,6 +122,19 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        // the fixed pipeline types' straight blends (RenderState::blend), alpha as ALPHA
+        case BlendMode::ADDITIVE:
+            blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
+        case BlendMode::MULTIPLY:
+            blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ZERO;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            break;
         case BlendMode::ADDITIVE_PREMULTIPLIED:
             blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
             blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
@@ -167,7 +180,11 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
 
     desc.color_count = 1;
     if (!state.target.swapchain){
-        desc.colors[0].pixel_format = (state.target.color == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+        switch (state.target.color){
+        case ColorFormat::RED: desc.colors[0].pixel_format = SG_PIXELFORMAT_R8; break;
+        case ColorFormat::SRGB8A8: desc.colors[0].pixel_format = SG_PIXELFORMAT_SRGB8A8; break;
+        default: desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8; break;
+        }
         switch (state.target.depth){
         case DepthStencilFormat::NONE: desc.depth.pixel_format = SG_PIXELFORMAT_NONE; break;
         case DepthStencilFormat::DEPTH: desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH; break;

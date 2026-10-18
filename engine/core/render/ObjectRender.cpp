@@ -54,12 +54,20 @@ void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, T
     backend.addTexture(slot, stage, texture);
 }
 
+void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf){
+    backend.addTexture(slot, stage, texture, samplerOf);
+}
+
 void ObjectRender::setBlendState(const BlendState& state){
     backend.setBlendState(state);
 }
 
+bool ObjectRender::endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples){
+    return backend.endLoad(pipelines, state, msaaSamples);
+}
+
 bool ObjectRender::endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling){
-    return backend.endLoad(pipelines, enableFaceCulling, enableDepthWrite, cullingMode, windingOrder, prepassFaceCulling);
+    return backend.endLoad(pipelines, RenderState(enableFaceCulling, enableDepthWrite, cullingMode, windingOrder, prepassFaceCulling));
 }
 
 bool ObjectRender::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
@@ -93,4 +101,8 @@ void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsi
 void ObjectRender::destroy(){
     backend.destroy();
 
+}
+
+int ObjectRender::getLivePipelineCount(){
+    return SokolObject::getLivePipelineCount();
 }

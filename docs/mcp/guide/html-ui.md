@@ -1330,6 +1330,14 @@ the changed files. A reload is not an edit: the scene stays saved. C++:
 so a change reloads once), `reloadDocument(entity, preserveState)`, `getLoadCount(entity)`,
 `getDocumentFiles(entity)`, `getDocumentMessages(entity)`.
 
+### The UI tools' shared rules
+
+`inspect_ui`, `assert_ui`, `set_ui_effect_time` and `send_input`'s `target` share these rules:
+`entity` is the GameObject with the UI Document (omitted: the scene's only one, else the only
+one of the open scenes, or of the running ones in play); a `ref` they return works as a selector
+again; boxes are `[x, y, width, height]` in canvas px (CSS px), origin top left; they wait up to
+5 s for a document to load and report why one did not.
+
 ### `inspect_ui`
 
 Read-only, edit mode and play. Returns:

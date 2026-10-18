@@ -12,6 +12,7 @@
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
+#include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/compat/CompatApi.h"
@@ -1805,9 +1806,9 @@ bool editor::Exporter::copyAssets() {
 }
 
 bool editor::Exporter::copyCustomShaderSources() {
-    if (!project->isRuntimeShadersEnabled()) {
-        return true;
-    }
+    // Without runtime compilation a game still reads the manifests of its forks (parameter
+    // defaults, textures, render state) from their entry points: those ship, includes do not
+    const bool runtimeShaders = project->isRuntimeShadersEnabled();
 
     setProgress("Copying shader sources...", 0.38f);
 
@@ -1829,6 +1830,7 @@ bool editor::Exporter::copyCustomShaderSources() {
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
         if (ext != ".vert" && ext != ".frag" && ext != ".glsl") continue;
+        if (!runtimeShaders && ext == ".glsl") continue;
 
         const fs::path destination = assetsDst / relPath;
         fs::create_directories(destination.parent_path(), ec);
@@ -2212,6 +2214,12 @@ bool editor::Exporter::copyEngine() {
         // The Xcode workspace builds the engine from its own file list, with no step to
         // embed the shader library, so it reads the one written here. CMake builds embed
         // shaderlib/ themselves and prefer theirs.
+        // the library shader manifests, which every build embeds
+        {
+            const auto& manifests = ShaderManifests::getLibraryManifestSources();
+            const std::map<std::string, std::string> sorted(manifests.begin(), manifests.end());
+            FileUtils::writeIfChanged(dst / "shaderlib_manifests.h", ShaderHeaderBuilder::buildShaderLibHeader(sorted, "shaderlib_manifests"));
+        }
         if (project->isRuntimeShadersEnabled()) {
             const auto& library = ShaderVariantCompiler::getLibrarySources();
             const std::map<std::string, std::string> sorted(library.begin(), library.end());
@@ -3475,7 +3483,7 @@ std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint32_t pro
 
     std::string props;
     for (int i = 0; i < propCount; i++) {
-        if (properties & (1 << i)) {
+        if (properties & (1u << i)) {
             if (!props.empty()) props += ", ";
             props += ShaderPool::getShaderPropertyName(type, i, true);
         }

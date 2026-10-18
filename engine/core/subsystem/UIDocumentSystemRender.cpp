@@ -81,7 +81,8 @@ void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){
         screen->composite(colorPipeline, flipY);
 }
 
-void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY){
+void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
+                                     int msaaSamples){
     (void)cameraTransform;
     HtmlUIContext* screen = getContext();
     if (!screen)
@@ -89,7 +90,7 @@ void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraT
 
     // a 3D camera has no canvas: the document fills the viewport
     if (camera.type == CameraType::CAMERA_PERSPECTIVE){
-        screen->composite(colorPipeline, flipY);
+        screen->composite(colorPipeline, flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity(), msaaSamples);
         return;
     }
 
@@ -117,5 +118,5 @@ void UIDocumentSystem::drawComposite(CameraComponent& camera, Transform& cameraT
     // both column-major
     Rml::Matrix4f matrix;
     std::memcpy(matrix.data(), (const float*)clipFromQuad, sizeof(float) * 16);
-    screen->composite(colorPipeline, matrix);
+    screen->composite(colorPipeline, matrix, msaaSamples);
 }

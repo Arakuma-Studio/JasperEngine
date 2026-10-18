@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "shader/ShaderManifest.h"
 
 #include "Log.h"
 #include "util/Color.h"
@@ -378,4 +379,98 @@ bool Text::removeShaderUniform(const std::string& name){
 
     ui.needUpdateShaderUniforms = true;
     return true;
+}
+
+Vector4 Text::getShaderParam(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+}
+
+void Text::setShaderTexture(const std::string& name, const std::string& path){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // which textures it has is resolved at load
+    if (ShaderLibraryValues::setTexture(ui.shaderTextures, name, path))
+        ui.needReload = true;
+}
+
+std::string Text::getShaderTexture(const std::string& name) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::getTexture(ui.shaderTextures, name);
+}
+
+void Text::setShaderFeature(const std::string& define, bool enabled){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    // features are compiled in: another shader variant
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+        ui.needReload = true;
+}
+
+bool Text::isShaderFeatureEnabled(const std::string& define) const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+}
+
+void Text::setBlendMode(MaterialBlendMode blendMode){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.blendMode != blendMode){
+        ui.blendMode = blendMode;
+        ui.needReload = true;
+    }
+}
+
+MaterialBlendMode Text::getBlendMode() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.blendMode;
+}
+
+void Text::setDepthWrite(MaterialDepthWrite depthWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.depthWrite != depthWrite){
+        ui.depthWrite = depthWrite;
+        ui.needReload = true;
+    }
+}
+
+MaterialDepthWrite Text::getDepthWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.depthWrite;
+}
+
+void Text::setStencil(const MaterialStencil& stencil){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.stencil != stencil){
+        ui.stencil = stencil;
+        ui.needReload = true;
+    }
+}
+
+MaterialStencil Text::getStencil() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.stencil;
+}
+
+void Text::setColorWrite(int colorWrite){
+    UIComponent& ui = getComponent<UIComponent>();
+
+    if (ui.colorWrite != colorWrite){
+        ui.colorWrite = colorWrite;
+        ui.needReload = true;
+    }
+}
+
+int Text::getColorWrite() const{
+    UIComponent& ui = getComponent<UIComponent>();
+
+    return ui.colorWrite;
 }

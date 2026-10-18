@@ -15,6 +15,8 @@ MeshPolygon::MeshPolygon(Scene* scene): Mesh(scene){
 
     MeshComponent& mesh = getComponent<MeshComponent>();
     mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLE_STRIP;
+    // its one submesh exists from the start, so a script can set its material right away
+    mesh.numSubmeshes = 1;
 }
 
 MeshPolygon::MeshPolygon(Scene* scene, Entity entity): Mesh(scene, entity){

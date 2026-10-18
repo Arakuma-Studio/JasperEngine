@@ -11,8 +11,10 @@
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
 # SKIP_ENGINE=1 builds only the editor for linux. JOBS caps build parallelism and, with
-# CPUS (default: JOBS), the CPUs the container may use (docker --cpus), which also caps
-# what ignores JOBS: the Android gradle/ninja build and the test binaries.
+# CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the container may use (docker --cpus),
+# which also caps what ignores JOBS: the Android gradle/ninja build and the test binaries.
+# DOCKER_CPUS is the same cap under the name tools/smoke-test.sh passes (e.g. DOCKER_CPUS=4
+# on a shared host).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan).
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
@@ -89,7 +91,7 @@ mkdir -p "$ROOT/$OUT" "$ROOT/$CACHE/home" "$MAIN/$CACHE/ccache"
 TTY_FLAGS=()
 [[ -t 0 && -t 1 ]] && TTY_FLAGS=(-it)
 CPU_FLAGS=()
-CPUS="${CPUS:-${JOBS:-}}"
+CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
@@ -98,7 +100,8 @@ ENV_FLAGS=()
 [[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")
 
 run() {
-    docker run --rm "${TTY_FLAGS[@]}" "${CPU_FLAGS[@]}" \
+    # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
+    docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         --user "$(id -u):$(id -g)" \
         -v "$ROOT:/src" -w /src \
         -v "$MAIN/.git:$MAIN/.git:ro" \
@@ -106,7 +109,7 @@ run() {
         -e HOME="/src/$CACHE/home" \
         -e CCACHE_DIR=/ccache \
         -e GRADLE_USER_HOME="/src/$CACHE/gradle" \
-        "${ENV_FLAGS[@]}" \
+        ${ENV_FLAGS[@]+"${ENV_FLAGS[@]}"} \
         "$IMAGE_ID" "$@"
 }
 

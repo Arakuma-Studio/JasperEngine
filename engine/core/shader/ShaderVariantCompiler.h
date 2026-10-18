@@ -17,15 +17,22 @@
 
 namespace jasperengine {
 
-    // The sources of a forked (custom) shader: its two entry points and every project
-    // file their #include graph reaches. An include resolves against the entry point's
-    // directory, then the project root, then the engine shader library.
+    // The sources of a custom shader: its two entry points and every project file their
+    // #include graph reaches. An include resolves against the entry point's directory, then
+    // the project root, then the engine shader library. A library shader ("library:<name>")
+    // has its entry points in the engine library and no project file.
     struct JASPERENGINE_API CustomShaderSources {
         bool valid = false;
         std::string error;
-        std::string vertFile;                       // project-relative entry points
+        bool library = false;                       // an engine library shader
+        std::string vertFile;                       // project-relative entry points (library paths for a library shader)
         std::string fragFile;
         std::map<std::string, std::string> files;   // project files, by include key / path
+        std::vector<std::string> defines;           // the reference's "#A,B" feature suffix, each #defined to 1
+        // a library shader or a fork with a manifest: on the library vertex path
+        // (includes/surface_vs.glsl), so a pixel-lit mesh variant also gets the world position
+        // and normal varyings (SURFACE_POSITION, SURFACE_NORMALS) its lights need
+        bool manifest = false;
         // Unambiguous description of the resolved graph (origin and content of every
         // file, in resolution order): equal signatures compile to the same shader.
         std::string signature;
@@ -60,8 +67,14 @@ namespace jasperengine {
         static std::string toHex(uint64_t value);
 
         // A customShader value (a project-relative base path, "shaders/myMesh", or two
-        // explicit entry points joined by '|') as its two entry points
+        // explicit entry points joined by '|') as its two entry points. A "#..." feature
+        // suffix is ignored. Not for library references (see resolveCustomShaderSources).
         static void getCustomShaderPaths(const std::string& customShader, std::string& vertFile, std::string& fragFile);
+        // The engine library entry points of "library:<name>" as a shaderType (DEPTH: its
+        // depth program): <name>.vert/.frag, the shared surface.vert for a mesh shader
+        // without a .vert, <name>_depth.vert/.frag or the shared surface_depth ones.
+        // False (and an error) for an unknown shader.
+        static bool getLibraryShaderPaths(const std::string& reference, ShaderType shaderType, std::string& vertFile, std::string& fragFile, std::string* error = nullptr);
         // directory includes resolve against first: the vertex entry point's
         static std::string getCustomShaderIncludeRoot(const std::string& customShader);
         // the paths quoted by every '#include "..."' of a GLSL source, in order
@@ -70,8 +83,11 @@ namespace jasperengine {
         static bool isSafeRelativePath(const std::string& path);
 
         // Reads a fork's entry points and the project files its includes reach through
-        // readProjectFile (project-relative paths). Never throws.
-        static CustomShaderSources resolveCustomShaderSources(const std::string& customShader, const FileReader& readProjectFile);
+        // readProjectFile (project-relative paths), or finds a library shader's in the
+        // engine library, as the shaderType the variant is (a library shader's DEPTH
+        // variant is its depth program). The "#A,B" suffix becomes defines. Never throws.
+        static CustomShaderSources resolveCustomShaderSources(const std::string& customShader, const FileReader& readProjectFile,
+                                                              ShaderType shaderType = ShaderType::MESH);
 
         // Compiles one variant for a backend. customSources is required for a key with a
         // custom shader id and ignored otherwise. On failure returns false and fills
@@ -80,6 +96,11 @@ namespace jasperengine {
         static bool compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
                             ShaderData& out, std::string* error = nullptr, std::string* log = nullptr,
                             const ProgressFn& progress = {}, const std::function<bool()>& cancelled = {});
+
+        // The engine's per-stage resource budget a compiled variant must fit on every backend
+        // (shadercompiler.h: 8 uniform blocks, 16 textures, 16 samplers, 16 texture-sampler
+        // pairs; GLES3 has 16 fragment texture units). Empty when it fits, else what is over.
+        static std::string checkResourceBudget(const ShaderData& data);
     };
 
 }

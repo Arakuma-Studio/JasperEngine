@@ -198,9 +198,14 @@ namespace jasperengine {
         bool endFrame();
         // the document target as a quad inside the current (camera) pass: the quad spans clip
         // space (phase 0, flipped on Y for offscreen GL passes), or clipFromQuad maps its
-        // corners (-1,1) top-left .. (1,-1) bottom-right (a world-space canvas)
+        // corners (-1,1) top-left .. (1,-1) bottom-right (a world-space canvas).
+        // compositePipeline is PIP_DEFAULT_NODEPTH (swapchain) or PIP_RTT_NODEPTH (offscreen),
+        // or PIP_MSAA_NODEPTH for the post-processed camera's multisampled scene target
+        // (shader library phase 4 MSAA) of msaaSamples samples, drawn through the pipeline
+        // cache since its sample count is the scene's
         bool drawComposite(TextureRender& source, PipelineType compositePipeline, bool flipY);
-        bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad);
+        bool drawComposite(TextureRender& source, PipelineType compositePipeline, const Rml::Matrix4f& clipFromQuad,
+                           int msaaSamples = 1);
         // A straight-alpha copy of layer 0 (HTMLUI_POST Unp) into dst, a 1-sample RGBA8 colour
         // framebuffer of any size (render-to-texture documents). Outside a frame
         bool drawUnpremultiplied(RmlRenderTarget& target, FramebufferRender& dst, int width, int height);
@@ -447,6 +452,9 @@ namespace jasperengine {
         BufferRender compositeVertexBuffer;
         BufferRender compositeIndexBuffer;
         ObjectRender compositeObject;
+        // the composite into a multisampled camera target (PIP_MSAA_NODEPTH): the same
+        // bindings on the dynamic path
+        ObjectRender compositeMsaaObject;
         TextureRender placeholderWhite;
         // phase 5: handles with bit 0 set (CompileShader/CompileFilter "jfx")
         std::unique_ptr<htmlui::EffectRenderer> effects;

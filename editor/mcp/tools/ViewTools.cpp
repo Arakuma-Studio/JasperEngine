@@ -763,6 +763,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"hide_container_guides", &SceneDisplaySettings::hideContainerGuides},
         {"hide_selection_outline", &SceneDisplaySettings::hideSelectionOutline},
         {"disable_fog", &SceneDisplaySettings::disableFog},
+        {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
     };
     return flags;
 }
@@ -901,6 +902,8 @@ void setSceneCameraTool(const CallPtr& call) {
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
+            // a view preference, kept per scene in the workspace file (as the Gizmos menu does)
+            p->saveWorkspaceFile();
         }
         s->needUpdateRender = true;
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}, {"changed", changed}};
@@ -1108,9 +1111,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
-            "camera. scene: the Scene view with gizmos (aim with set_scene_camera / frame_entity). editor: the "
-            "whole window. Returns canvas_rect_in_image (image -> send_input coords); warns on a flat image.";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. "
+            "scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. "
+            "canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
@@ -1129,9 +1132,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "set_scene_camera";
         tool.title = "Set Scene View Camera";
         tool.description =
-            "Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, target, orbit (rotate "
-            "by yaw/pitch degrees around the target), distance; 2D/UI: center, zoom. No arguments: just reads. "
-            "Returns {position, target, distance|zoom}.";
+            "Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, target, orbit (yaw/pitch "
+            "degrees around the target), distance; 2D/UI: center, zoom. No arguments: reads.";
         tool.inputSchema = object({
             {"scene", viewScene},
             {"position", vec3("")},
@@ -1140,7 +1142,7 @@ void registerViewTools(McpRegistry& registry) {
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
-            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false}.")},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });
@@ -1154,7 +1156,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Frame GameObjects";
         tool.description =
-            "Frame GameObjects in the Scene view like pressing F (runtime-spawned too); none given: the selection. "
+            "Frame GameObjects in the Scene view like pressing F (runtime-spawned too; none given: the selection). "
             "Changes neither scene nor selection.";
         tool.inputSchema = object({
             {"scene", viewScene},
@@ -1190,8 +1192,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "configure_game_view";
         tool.title = "Configure Game View";
         tool.description =
-            "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). "
-            "aspect project = the canvas size (a project setting); the game renders at render_size.";
+            "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
+            "project = the canvas size (a project setting); the game renders at render_size.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("Zoom.", 1, 5)},

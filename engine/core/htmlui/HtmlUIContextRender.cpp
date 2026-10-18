@@ -158,7 +158,7 @@ void HtmlUIContext::composite(PipelineType colorPipeline, bool flipY){
     composite(colorPipeline, flipY ? Rml::Matrix4f::Scale(1.0f, -1.0f, 1.0f) : Rml::Matrix4f::Identity());
 }
 
-void HtmlUIContext::composite(PipelineType colorPipeline, const Rml::Matrix4f& clipFromQuad){
+void HtmlUIContext::composite(PipelineType colorPipeline, const Rml::Matrix4f& clipFromQuad, int msaaSamples){
     FramebufferRender* layer = renderTarget ? renderTarget->getComposited() : nullptr;
     if (!hasContent || !renderer || !layer)
         return;
@@ -167,8 +167,10 @@ void HtmlUIContext::composite(PipelineType colorPipeline, const Rml::Matrix4f& c
     PipelineType compositePipeline = PIP_RTT_NODEPTH;
     if (colorPipeline == PIP_DEFAULT || colorPipeline == PIP_DEFAULT_NODEPTH)
         compositePipeline = PIP_DEFAULT_NODEPTH;
+    else if (colorPipeline == PIP_MSAA || colorPipeline == PIP_MSAA_NODEPTH)
+        compositePipeline = PIP_MSAA_NODEPTH;
 
-    renderer->drawComposite(layer->getColorTexture(), compositePipeline, clipFromQuad);
+    renderer->drawComposite(layer->getColorTexture(), compositePipeline, clipFromQuad, msaaSamples);
 }
 
 void HtmlUIContext::releaseGpuResources(){

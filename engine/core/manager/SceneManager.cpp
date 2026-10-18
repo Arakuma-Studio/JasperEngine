@@ -21,6 +21,7 @@ std::vector<SceneManager::SceneEntry> SceneManager::entries;
 uint32_t SceneManager::currentId = 0;
 std::optional<uint32_t> SceneManager::pendingId;
 std::map<uint32_t, Scene*> SceneManager::scenePtrs;
+bool SceneManager::factoryRunning = false;
 
 uint32_t SceneManager::loadingSceneId = 0;
 float SceneManager::loadingDelay = 0.0f;
@@ -124,7 +125,10 @@ void SceneManager::runFactory(uint32_t id) {
     }
 
     currentId = id;
+    const bool nested = factoryRunning;
+    factoryRunning = true;
     loadFactory();
+    factoryRunning = nested;
 
     if (loadingSceneShown) {
         raiseLoadingScene();
@@ -137,8 +141,10 @@ bool SceneManager::loadScene(uint32_t id) {
         return false;
     }
 
-    // input callbacks run between frames, but still inside the scenes being replaced
-    if (Engine::isFrameRunning() || Engine::getMainScene()) {
+    // input callbacks run between frames, but still inside the scenes being replaced; a
+    // script's init asking from inside a load factory (the first scene's, before any frame and
+    // before it is the main scene) would have the scene it runs in deleted under it
+    if (Engine::isFrameRunning() || Engine::getMainScene() || factoryRunning) {
         if (pendingId && *pendingId != id) {
             Log::warn("SceneManager: scene %u replaces pending scene %u", id, *pendingId);
         }

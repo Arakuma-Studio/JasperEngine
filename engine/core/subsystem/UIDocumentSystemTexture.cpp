@@ -151,6 +151,7 @@ namespace {
     void clearTarget(Framebuffer& target){
         CameraRender pass;
         pass.setColorActions(LoadAction::CLEAR, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        pass.setLabel("html ui texture");
         pass.startRenderPass(&target.getRender());
         pass.endRenderPass();
     }

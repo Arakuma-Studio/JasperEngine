@@ -531,6 +531,7 @@ std::string editor::Stream::attributeTypeToString(AttributeType type) {
         case AttributeType::TERRAINNODESIZE: return "terrainnodesize";
         case AttributeType::TERRAINNODERANGE: return "terrainnoderange";
         case AttributeType::TERRAINNODERESOLUTION: return "terrainnoderesolution";
+        case AttributeType::SMOOTHNORMAL: return "smoothnormal";
         default: return "position"; // Default
     }
 }
@@ -572,6 +573,7 @@ AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
     if (str == "terrainnodesize") return AttributeType::TERRAINNODESIZE;
     if (str == "terrainnoderange") return AttributeType::TERRAINNODERANGE;
     if (str == "terrainnoderesolution") return AttributeType::TERRAINNODERESOLUTION;
+    if (str == "smoothnormal") return AttributeType::SMOOTHNORMAL;
     return AttributeType::POSITION; // Default
 }
 
@@ -746,6 +748,328 @@ MaterialAlphaMode editor::Stream::stringToMaterialAlphaMode(const std::string& s
     if (str == "MASK") return MaterialAlphaMode::MASK;
     if (str == "BLEND") return MaterialAlphaMode::BLEND;
     return MaterialAlphaMode::AUTO;
+}
+
+std::string editor::Stream::materialBlendModeToString(MaterialBlendMode mode) {
+    switch (mode) {
+        case MaterialBlendMode::AUTO: return "AUTO";
+        case MaterialBlendMode::NONE: return "NONE";
+        case MaterialBlendMode::ALPHA: return "ALPHA";
+        case MaterialBlendMode::PREMULTIPLIED: return "PREMULTIPLIED";
+        case MaterialBlendMode::ADDITIVE: return "ADDITIVE";
+        case MaterialBlendMode::MULTIPLY: return "MULTIPLY";
+    }
+    return "AUTO";
+}
+
+MaterialBlendMode editor::Stream::stringToMaterialBlendMode(const std::string& str) {
+    if (str == "NONE" || str == "OPAQUE") return MaterialBlendMode::NONE;
+    if (str == "ALPHA") return MaterialBlendMode::ALPHA;
+    if (str == "PREMULTIPLIED") return MaterialBlendMode::PREMULTIPLIED;
+    if (str == "ADDITIVE") return MaterialBlendMode::ADDITIVE;
+    if (str == "MULTIPLY") return MaterialBlendMode::MULTIPLY;
+    return MaterialBlendMode::AUTO;
+}
+
+std::string editor::Stream::materialCullModeToString(MaterialCullMode mode) {
+    switch (mode) {
+        case MaterialCullMode::AUTO: return "AUTO";
+        case MaterialCullMode::BACK: return "BACK";
+        case MaterialCullMode::FRONT: return "FRONT";
+        case MaterialCullMode::OFF: return "OFF";
+    }
+    return "AUTO";
+}
+
+MaterialCullMode editor::Stream::stringToMaterialCullMode(const std::string& str) {
+    if (str == "BACK") return MaterialCullMode::BACK;
+    if (str == "FRONT") return MaterialCullMode::FRONT;
+    if (str == "OFF") return MaterialCullMode::OFF;
+    return MaterialCullMode::AUTO;
+}
+
+std::string editor::Stream::materialDepthWriteToString(MaterialDepthWrite mode) {
+    switch (mode) {
+        case MaterialDepthWrite::AUTO: return "AUTO";
+        case MaterialDepthWrite::ENABLED: return "ENABLED";
+        case MaterialDepthWrite::DISABLED: return "DISABLED";
+    }
+    return "AUTO";
+}
+
+MaterialDepthWrite editor::Stream::stringToMaterialDepthWrite(const std::string& str) {
+    if (str == "ENABLED") return MaterialDepthWrite::ENABLED;
+    if (str == "DISABLED") return MaterialDepthWrite::DISABLED;
+    return MaterialDepthWrite::AUTO;
+}
+
+std::string editor::Stream::materialDepthTestToString(MaterialDepthTest mode) {
+    switch (mode) {
+        case MaterialDepthTest::AUTO: return "AUTO";
+        case MaterialDepthTest::LESS: return "LESS";
+        case MaterialDepthTest::LESS_EQUAL: return "LESS_EQUAL";
+        case MaterialDepthTest::EQUAL: return "EQUAL";
+        case MaterialDepthTest::GREATER_EQUAL: return "GREATER_EQUAL";
+        case MaterialDepthTest::GREATER: return "GREATER";
+        case MaterialDepthTest::NOT_EQUAL: return "NOT_EQUAL";
+        case MaterialDepthTest::ALWAYS: return "ALWAYS";
+    }
+    return "AUTO";
+}
+
+MaterialDepthTest editor::Stream::stringToMaterialDepthTest(const std::string& str) {
+    if (str == "LESS") return MaterialDepthTest::LESS;
+    if (str == "LESS_EQUAL") return MaterialDepthTest::LESS_EQUAL;
+    if (str == "EQUAL") return MaterialDepthTest::EQUAL;
+    if (str == "GREATER_EQUAL") return MaterialDepthTest::GREATER_EQUAL;
+    if (str == "GREATER") return MaterialDepthTest::GREATER;
+    if (str == "NOT_EQUAL") return MaterialDepthTest::NOT_EQUAL;
+    if (str == "ALWAYS") return MaterialDepthTest::ALWAYS;
+    return MaterialDepthTest::AUTO;
+}
+
+std::string editor::Stream::materialLightingToString(MaterialLighting mode) {
+    switch (mode) {
+        case MaterialLighting::AUTO: return "AUTO";
+        case MaterialLighting::PIXEL: return "PIXEL";
+        case MaterialLighting::VERTEX: return "VERTEX";
+        case MaterialLighting::MIXED: return "MIXED";
+        case MaterialLighting::NONE: return "NONE";
+    }
+    return "AUTO";
+}
+
+MaterialLighting editor::Stream::stringToMaterialLighting(const std::string& str) {
+    if (str == "PIXEL") return MaterialLighting::PIXEL;
+    if (str == "VERTEX") return MaterialLighting::VERTEX;
+    if (str == "MIXED") return MaterialLighting::MIXED;
+    if (str == "NONE") return MaterialLighting::NONE;
+    return MaterialLighting::AUTO;
+}
+
+std::string editor::Stream::lightShadingToString(LightShading shading) {
+    switch (shading) {
+        case LightShading::BOTH: return "BOTH";
+        case LightShading::PIXEL: return "PIXEL";
+        case LightShading::VERTEX: return "VERTEX";
+    }
+    return "BOTH";
+}
+
+LightShading editor::Stream::stringToLightShading(const std::string& str) {
+    if (str == "PIXEL") return LightShading::PIXEL;
+    if (str == "VERTEX") return LightShading::VERTEX;
+    return LightShading::BOTH;
+}
+
+void editor::Stream::encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
+        const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite, bool embedData) {
+    // written only away from their defaults, like the material's
+    if (!textures.empty()) {
+        YAML::Node texturesNode = encodeShaderTextures(textures, embedData);
+        if (texturesNode.size() > 0) node["shaderTextures"] = texturesNode;
+    }
+    if (!features.empty()) node["shaderFeatures"] = encodeShaderFeatures(features);
+    if (blendMode && *blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(*blendMode);
+    if (depthWrite && *depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(*depthWrite);
+}
+
+void editor::Stream::decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
+        std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite) {
+    // not merged: an absent key is the default
+    textures = decodeShaderTextures(node["shaderTextures"]);
+    features = decodeShaderFeatures(node["shaderFeatures"]);
+    if (blendMode) *blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
+    if (depthWrite) *depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
+}
+
+std::string editor::Stream::materialStencilCompareToString(MaterialStencilCompare compare) {
+    switch (compare) {
+        case MaterialStencilCompare::AUTO: return "AUTO";
+        case MaterialStencilCompare::DISABLED: return "DISABLED";
+        case MaterialStencilCompare::NEVER: return "NEVER";
+        case MaterialStencilCompare::LESS: return "LESS";
+        case MaterialStencilCompare::EQUAL: return "EQUAL";
+        case MaterialStencilCompare::LESS_EQUAL: return "LESS_EQUAL";
+        case MaterialStencilCompare::GREATER: return "GREATER";
+        case MaterialStencilCompare::NOT_EQUAL: return "NOT_EQUAL";
+        case MaterialStencilCompare::GREATER_EQUAL: return "GREATER_EQUAL";
+        case MaterialStencilCompare::ALWAYS: return "ALWAYS";
+    }
+    return "AUTO";
+}
+
+MaterialStencilCompare editor::Stream::stringToMaterialStencilCompare(const std::string& str) {
+    if (str == "DISABLED") return MaterialStencilCompare::DISABLED;
+    if (str == "NEVER") return MaterialStencilCompare::NEVER;
+    if (str == "LESS") return MaterialStencilCompare::LESS;
+    if (str == "EQUAL") return MaterialStencilCompare::EQUAL;
+    if (str == "LESS_EQUAL") return MaterialStencilCompare::LESS_EQUAL;
+    if (str == "GREATER") return MaterialStencilCompare::GREATER;
+    if (str == "NOT_EQUAL") return MaterialStencilCompare::NOT_EQUAL;
+    if (str == "GREATER_EQUAL") return MaterialStencilCompare::GREATER_EQUAL;
+    if (str == "ALWAYS") return MaterialStencilCompare::ALWAYS;
+    return MaterialStencilCompare::AUTO;
+}
+
+std::string editor::Stream::materialStencilOpToString(MaterialStencilOp op) {
+    switch (op) {
+        case MaterialStencilOp::KEEP: return "KEEP";
+        case MaterialStencilOp::ZERO: return "ZERO";
+        case MaterialStencilOp::REPLACE: return "REPLACE";
+        case MaterialStencilOp::INCR_CLAMP: return "INCR_CLAMP";
+        case MaterialStencilOp::DECR_CLAMP: return "DECR_CLAMP";
+        case MaterialStencilOp::INVERT: return "INVERT";
+        case MaterialStencilOp::INCR_WRAP: return "INCR_WRAP";
+        case MaterialStencilOp::DECR_WRAP: return "DECR_WRAP";
+    }
+    return "KEEP";
+}
+
+MaterialStencilOp editor::Stream::stringToMaterialStencilOp(const std::string& str) {
+    if (str == "ZERO") return MaterialStencilOp::ZERO;
+    if (str == "REPLACE") return MaterialStencilOp::REPLACE;
+    if (str == "INCR_CLAMP") return MaterialStencilOp::INCR_CLAMP;
+    if (str == "DECR_CLAMP") return MaterialStencilOp::DECR_CLAMP;
+    if (str == "INVERT") return MaterialStencilOp::INVERT;
+    if (str == "INCR_WRAP") return MaterialStencilOp::INCR_WRAP;
+    if (str == "DECR_WRAP") return MaterialStencilOp::DECR_WRAP;
+    return MaterialStencilOp::KEEP;
+}
+
+std::string editor::Stream::materialPassOrderToString(MaterialPassOrder order) {
+    return order == MaterialPassOrder::BEFORE ? "BEFORE" : "AFTER";
+}
+
+MaterialPassOrder editor::Stream::stringToMaterialPassOrder(const std::string& str) {
+    return str == "BEFORE" ? MaterialPassOrder::BEFORE : MaterialPassOrder::AFTER;
+}
+
+std::string editor::Stream::colorWriteToString(int colorWrite) {
+    return ShaderManifest::getColorWriteName(colorWrite);
+}
+
+int editor::Stream::stringToColorWrite(const std::string& str) {
+    std::string lower = str;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (lower == "auto") return -1;
+    return ShaderManifest::parseColorWrite(lower); // -1 (AUTO) for anything unreadable
+}
+
+YAML::Node editor::Stream::encodeStencil(const MaterialStencil& stencil) {
+    const MaterialStencil defaults;
+    YAML::Node node(YAML::NodeType::Map);
+    node["compare"] = materialStencilCompareToString(stencil.compare);
+    if (stencil.ref != defaults.ref) node["ref"] = YamlNumbers::integerText(stencil.ref);
+    if (stencil.readMask != defaults.readMask) node["readMask"] = YamlNumbers::integerText(stencil.readMask);
+    if (stencil.writeMask != defaults.writeMask) node["writeMask"] = YamlNumbers::integerText(stencil.writeMask);
+    if (stencil.pass != defaults.pass) node["pass"] = materialStencilOpToString(stencil.pass);
+    if (stencil.fail != defaults.fail) node["fail"] = materialStencilOpToString(stencil.fail);
+    if (stencil.depthFail != defaults.depthFail) node["depthFail"] = materialStencilOpToString(stencil.depthFail);
+    return node;
+}
+
+MaterialStencil editor::Stream::decodeStencil(const YAML::Node& node) {
+    // not merged: encodeStencil omits the defaults
+    MaterialStencil stencil;
+    if (!node || !node.IsMap()) return stencil;
+    if (node["compare"]) stencil.compare = stringToMaterialStencilCompare(node["compare"].as<std::string>());
+    if (node["ref"]) stencil.ref = YamlNumbers::as<int>(node["ref"]);
+    if (node["readMask"]) stencil.readMask = YamlNumbers::as<int>(node["readMask"]);
+    if (node["writeMask"]) stencil.writeMask = YamlNumbers::as<int>(node["writeMask"]);
+    if (node["pass"]) stencil.pass = stringToMaterialStencilOp(node["pass"].as<std::string>());
+    if (node["fail"]) stencil.fail = stringToMaterialStencilOp(node["fail"].as<std::string>());
+    if (node["depthFail"]) stencil.depthFail = stringToMaterialStencilOp(node["depthFail"].as<std::string>());
+    return stencil;
+}
+
+void editor::Stream::encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite) {
+    if (stencil != MaterialStencil()) node["stencil"] = encodeStencil(stencil);
+    if (colorWrite >= 0) node["colorWrite"] = colorWriteToString(colorWrite);
+}
+
+void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite) {
+    // an absent key is the default (AUTO)
+    stencil = decodeStencil(node["stencil"]);
+    colorWrite = node["colorWrite"] ? stringToColorWrite(node["colorWrite"].as<std::string>()) : -1;
+}
+
+YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool embedTextureData) {
+    YAML::Node node(YAML::NodeType::Map);
+    if (!pass.shader.empty()) node["shader"] = pass.shader;
+    if (!pass.shaderParams.empty()) node["shaderParams"] = encodeShaderUniforms(pass.shaderParams);
+    if (!pass.shaderTextures.empty()) {
+        YAML::Node textures = encodeShaderTextures(pass.shaderTextures, embedTextureData);
+        if (textures.size() > 0) node["shaderTextures"] = textures;
+    }
+    if (!pass.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(pass.shaderFeatures);
+    if (pass.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(pass.blendMode);
+    if (pass.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(pass.cullMode);
+    if (pass.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(pass.depthWrite);
+    if (pass.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(pass.depthTest);
+    if (pass.depthOffsetFactor != 0.0f) node["depthOffsetFactor"] = YamlNumbers::text(finiteOr(pass.depthOffsetFactor));
+    if (pass.depthOffsetUnits != 0.0f) node["depthOffsetUnits"] = YamlNumbers::text(finiteOr(pass.depthOffsetUnits));
+    encodeStencilAndColorWrite(node, pass.stencil, pass.colorWrite);
+    if (pass.order != MaterialPassOrder::AFTER) node["order"] = materialPassOrderToString(pass.order);
+    return node;
+}
+
+MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
+    // not merged: encodeMaterialPass omits the defaults
+    MaterialPass pass;
+    if (!node || !node.IsMap()) return pass;
+    pass.shader = node["shader"] ? node["shader"].as<std::string>() : std::string();
+    pass.shaderParams = decodeShaderUniforms(node["shaderParams"]);
+    pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
+    pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    if (node["blendMode"]) pass.blendMode = stringToMaterialBlendMode(node["blendMode"].as<std::string>());
+    if (node["cullMode"]) pass.cullMode = stringToMaterialCullMode(node["cullMode"].as<std::string>());
+    if (node["depthWrite"]) pass.depthWrite = stringToMaterialDepthWrite(node["depthWrite"].as<std::string>());
+    if (node["depthTest"]) pass.depthTest = stringToMaterialDepthTest(node["depthTest"].as<std::string>());
+    pass.depthOffsetFactor = decodeFinite(node["depthOffsetFactor"], 0.0f);
+    pass.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
+    decodeStencilAndColorWrite(node, pass.stencil, pass.colorWrite);
+    if (node["order"]) pass.order = stringToMaterialPassOrder(node["order"].as<std::string>());
+    return pass;
+}
+
+YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData) {
+    YAML::Node node(YAML::NodeType::Map);
+    for (const auto& [uniform, texture] : textures) {
+        // an empty one binds the manifest default, like no entry
+        if (texture.empty() && !CameraTextureLink::isCameraTexture(texture)) continue;
+        node[uniform] = encodeTexture(texture, embedData);
+    }
+    return node;
+}
+
+std::vector<std::pair<std::string, Texture>> editor::Stream::decodeShaderTextures(const YAML::Node& node) {
+    std::vector<std::pair<std::string, Texture>> textures;
+    if (node && node.IsMap()) {
+        for (const auto& entry : node) {
+            textures.push_back({entry.first.as<std::string>(), decodeTexture(entry.second)});
+        }
+    }
+    return textures;
+}
+
+YAML::Node editor::Stream::encodeShaderFeatures(const std::vector<std::string>& features) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    for (const std::string& feature : features) {
+        node.push_back(feature);
+    }
+    return node;
+}
+
+std::vector<std::string> editor::Stream::decodeShaderFeatures(const YAML::Node& node) {
+    std::vector<std::string> features;
+    if (node && node.IsSequence()) {
+        for (const auto& entry : node) {
+            if (entry.IsScalar()) features.push_back(entry.as<std::string>());
+        }
+    }
+    return features;
 }
 
 std::string editor::Stream::scriptPropertyTypeToString(ScriptPropertyType type) {
@@ -1023,6 +1347,19 @@ static ShadowQuality stringToShadowQuality(const std::string& str) {
     if (str == "medium") return ShadowQuality::MEDIUM;
     if (str == "high") return ShadowQuality::HIGH;
     return ShadowQuality::LOW; // Default
+}
+
+static std::string sceneColorScaleToString(SceneColorScale scale) {
+    switch (scale) {
+        case SceneColorScale::FULL: return "full";
+        case SceneColorScale::HALF: return "half";
+    }
+    return "half";
+}
+
+static SceneColorScale stringToSceneColorScale(const std::string& str) {
+    if (str == "full") return SceneColorScale::FULL;
+    return SceneColorScale::HALF; // Default
 }
 
 std::string editor::Stream::lightStateToString(LightState state) {
@@ -1823,6 +2160,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["hideSelectionOutline"] = ds.hideSelectionOutline;
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
+    if (ds.showPostProcessing)
+        sceneNode["showPostProcessing"] = ds.showPostProcessing;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -1848,6 +2187,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["hideSelectionOutline"]) ds.hideSelectionOutline = YamlNumbers::as<bool>(node["hideSelectionOutline"]);
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
+    ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
@@ -2981,9 +3321,14 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
+    // written only when not the default (half), so scenes saved before it existed re-save unchanged
+    if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
+        sceneNode["sceneColorScale"] = sceneColorScaleToString(scene->getSceneColorScale());
     sceneNode["lightState"] = lightStateToString(scene->getLightState());
     sceneNode["globalIlluminationIntensity"] = scene->getGlobalIlluminationIntensity();
     sceneNode["globalIlluminationColor"] = encodeVector3(scene->getGlobalIlluminationColor());
+    if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
+        sceneNode["maxLightsPerObject"] = scene->getMaxLightsPerObject();
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
@@ -3022,10 +3367,83 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         passNode["enabled"] = pass.enabled;
         if (!pass.uniforms.empty())
             passNode["uniforms"] = encodeShaderUniforms(pass.uniforms);
+        // (phase 4) written only when set, so a chain saved before them re-saves unchanged
+        if (!pass.textures.empty()) {
+            YAML::Node textures = encodeShaderTextures(pass.textures, false);
+            if (textures.size() > 0) passNode["textures"] = textures;
+        }
+        if (pass.scale != 1.0f)
+            passNode["scale"] = pass.scale;
         sceneNode["postProcess"].push_back(passNode);
     }
 
+    // the engine's post-processing: only the fields away from their defaults, and no key at all
+    // while everything is default, so scenes saved before it existed re-save unchanged
+    const YAML::Node postProcessingNode = encodePostProcessing(scene->getPostProcessing());
+    if (postProcessingNode.size() > 0)
+        sceneNode["postProcessing"] = postProcessingNode;
+
     return sceneNode;
+}
+
+YAML::Node editor::Stream::encodePostProcessing(const PostProcessingSettings& settings) {
+    YAML::Node node(YAML::NodeType::Map);
+    static const PostProcessingSettings defaults;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const void* value = settings.getFieldRef(field);
+        const void* def = defaults.getFieldRef(field);
+        switch (field.type) {
+            case FieldType::Bool:
+                if (*(const bool*)value != *(const bool*)def) node[field.name] = *(const bool*)value;
+                break;
+            case FieldType::Int:
+                if (*(const int*)value != *(const int*)def) node[field.name] = *(const int*)value;
+                break;
+            case FieldType::Float:
+                if (*(const float*)value != *(const float*)def) node[field.name] = *(const float*)value;
+                break;
+            case FieldType::Vector3:
+                if (*(const Vector3*)value != *(const Vector3*)def) node[field.name] = encodeVector3(*(const Vector3*)value);
+                break;
+            case FieldType::String:
+                if (*(const std::string*)value != *(const std::string*)def) node[field.name] = *(const std::string*)value;
+                break;
+            case FieldType::Enum: {
+                const int v = *(const int*)value;
+                if (v != *(const int*)def) node[field.name] = std::string(field.enumNames[v]);
+                break;
+            }
+        }
+    }
+    return node;
+}
+
+PostProcessingSettings editor::Stream::decodePostProcessing(const YAML::Node& node) {
+    PostProcessingSettings settings;
+    if (!node || !node.IsMap()) return settings;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const YAML::Node value = node[field.name];
+        if (!value) continue;
+        void* ref = field.ref(settings);
+        switch (field.type) {
+            case FieldType::Bool: *(bool*)ref = YamlNumbers::as<bool>(value); break;
+            case FieldType::Int: *(int*)ref = YamlNumbers::as<int>(value); break;
+            case FieldType::Float: *(float*)ref = decodeFinite(value, *(float*)ref); break;
+            case FieldType::Vector3: *(Vector3*)ref = decodeVector3(value); break;
+            case FieldType::String: *(std::string*)ref = value.as<std::string>(); break;
+            case FieldType::Enum: {
+                const std::string name = value.as<std::string>();
+                for (int i = 0; field.enumNames[i]; i++) {
+                    if (name == field.enumNames[i]) *(int*)ref = i;
+                }
+                break;
+            }
+        }
+    }
+    settings.clamp();
+    return settings;
 }
 
 Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
@@ -3049,6 +3467,8 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     if (node["depthPrepassEnabled"]) {
         scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }
+    // absent = the default (half): it is only written when it differs
+    scene->setSceneColorScale(node["sceneColorScale"] ? stringToSceneColorScale(node["sceneColorScale"].as<std::string>()) : SceneSettings().sceneColorScale);
 
     if (node["lightState"]) {
         scene->setLightState(stringToLightState(node["lightState"].as<std::string>()));
@@ -3064,6 +3484,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     } else if (node["globalIlluminationColor"]) {
         scene->setGlobalIllumination(decodeVector3(node["globalIlluminationColor"]));
     }
+
+    // absent key restores the engine default so decoding into a reused scene (play restore) is exact
+    scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(
@@ -3147,10 +3570,15 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
             pass.shader = passNode["shader"] ? passNode["shader"].as<std::string>() : "";
             pass.enabled = passNode["enabled"] ? YamlNumbers::as<bool>(passNode["enabled"]) : true;
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
+            pass.textures = decodeShaderTextures(passNode["textures"]);
+            pass.scale = decodeFinite(passNode["scale"], 1.0f);
             postProcess.push_back(pass);
         }
     }
     scene->setPostProcessPasses(postProcess);
+
+    // absent key (or field) restores the defaults so decoding into a reused scene (play restore) is exact
+    scene->setPostProcessing(decodePostProcessing(node["postProcessing"]));
 
     return scene;
 }
@@ -3630,6 +4058,28 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode material name
     node["name"] = material.name;
 
+    // Shader library: written only away from their defaults, so a material without them is
+    // stored exactly as before they existed
+    if (!material.shader.empty()) node["shader"] = material.shader;
+    if (!material.shaderParams.empty()) node["shaderParams"] = encodeShaderUniforms(material.shaderParams);
+    if (!material.shaderTextures.empty()) {
+        YAML::Node textures = encodeShaderTextures(material.shaderTextures, embedTextureData);
+        if (textures.size() > 0) node["shaderTextures"] = textures;
+    }
+    if (!material.shaderFeatures.empty()) node["shaderFeatures"] = encodeShaderFeatures(material.shaderFeatures);
+    if (material.blendMode != MaterialBlendMode::AUTO) node["blendMode"] = materialBlendModeToString(material.blendMode);
+    if (material.cullMode != MaterialCullMode::AUTO) node["cullMode"] = materialCullModeToString(material.cullMode);
+    if (material.depthWrite != MaterialDepthWrite::AUTO) node["depthWrite"] = materialDepthWriteToString(material.depthWrite);
+    if (material.depthTest != MaterialDepthTest::AUTO) node["depthTest"] = materialDepthTestToString(material.depthTest);
+    if (material.depthOffsetFactor != 0.0f) node["depthOffsetFactor"] = YamlNumbers::text(finiteOr(material.depthOffsetFactor));
+    if (material.depthOffsetUnits != 0.0f) node["depthOffsetUnits"] = YamlNumbers::text(finiteOr(material.depthOffsetUnits));
+    if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
+    if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
+
+    // Phase 2, the same way: stencil, colour write and the extra pass when set
+    encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
+    if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
+
     return node;
 }
 
@@ -3667,6 +4117,22 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     if (node["normalTexCoord"]) material.normalTexCoord = YamlNumbers::as<int>(node["normalTexCoord"]);
 
     if (node["name"]) material.name = node["name"].as<std::string>();
+
+    // Not merged: encodeMaterial omits these at their defaults, so an absent key is the default
+    material.shader = node["shader"] ? node["shader"].as<std::string>() : std::string();
+    material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
+    material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
+    material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
+    material.blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
+    material.cullMode = node["cullMode"] ? stringToMaterialCullMode(node["cullMode"].as<std::string>()) : MaterialCullMode::AUTO;
+    material.depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
+    material.depthTest = node["depthTest"] ? stringToMaterialDepthTest(node["depthTest"].as<std::string>()) : MaterialDepthTest::AUTO;
+    material.depthOffsetFactor = decodeFinite(node["depthOffsetFactor"], 0.0f);
+    material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
+    material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
+    material.lighting = node["lighting"] ? stringToMaterialLighting(node["lighting"].as<std::string>()) : MaterialLighting::AUTO;
+    decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
+    material.extraPass = decodeMaterialPass(node["extraPass"]);
 
     return material;
 }
@@ -4929,6 +5395,8 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
         node["customShader"] = ui.customShader;
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
+    encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
+    encodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
     return node;
 }
@@ -4964,6 +5432,8 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     ui.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
+    decodeStencilAndColorWrite(node, ui.stencil, ui.colorWrite);
 
     if (node["enabled"]) ui.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -5846,6 +6316,8 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     node["mapResolution"] = light.mapResolution;
     node["shadowCameraNearFar"] = encodeVector2(light.shadowCameraNearFar);
     node["numShadowCascades"] = light.numShadowCascades;
+    if (light.shading != LightShading::BOTH)
+        node["shading"] = lightShadingToString(light.shading);
 
     return node;
 }
@@ -5874,6 +6346,8 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["mapResolution"]) light.mapResolution = YamlNumbers::as<unsigned int>(node["mapResolution"]);
     if (node["shadowCameraNearFar"]) light.shadowCameraNearFar = decodeVector2(node["shadowCameraNearFar"]);
     if (node["numShadowCascades"]) light.numShadowCascades = YamlNumbers::as<unsigned int>(node["numShadowCascades"]);
+    // omitted at its default, so an absent key is the default
+    light.shading = node["shading"] ? stringToLightShading(node["shading"].as<std::string>()) : LightShading::BOTH;
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -6360,6 +6834,7 @@ YAML::Node editor::Stream::encodeSkyboxComponent(const SkyboxComponent& sky) {
         node["customShader"] = sky.customShader;
     if (!sky.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(sky.shaderUniforms);
+    encodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, true);
 
     return node;
 }
@@ -6395,6 +6870,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
     if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     sky.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr);
 
     return sky;
 }
@@ -7947,6 +8423,8 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
         node["customShader"] = points.customShader;
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
+    encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
+    encodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
     return node;
 }
@@ -7987,6 +8465,8 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     if (node["customShader"]) points.customShader = node["customShader"].as<std::string>();
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     points.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
+    decodeStencilAndColorWrite(node, points.stencil, points.colorWrite);
 
     // Reset runtime fields
     points.renderPoints.clear();
@@ -8024,6 +8504,8 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
         node["customShader"] = lines.customShader;
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
+    encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
+    encodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
     return node;
 }
@@ -8053,6 +8535,8 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
     if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     lines.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
+    decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
     lines.loaded = false;
     lines.loadCalled = false;

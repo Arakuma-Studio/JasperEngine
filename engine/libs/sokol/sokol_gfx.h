@@ -7014,7 +7014,12 @@ typedef struct {
 #define _SG_VK_MAX_UB_DESCRIPTORSET_SLOTS (2 * SG_MAX_UNIFORMBLOCK_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_ENTRIES (SG_MAX_VIEW_BINDSLOTS + SG_MAX_SAMPLER_BINDSLOTS)
 #define _SG_VK_MAX_VIEW_SMP_DESCRIPTORSET_SLOTS (128)
-#define _SG_VK_MAX_DESCRIPTOR_DATA_SIZE (320) // JasperEngine: was 256; lavapipe before Mesa 24 (Ubuntu 22.04, the Docker test image) needs 280 bytes
+// JasperEngine: was 256. Mesa's lavapipe before Mesa 24 (Ubuntu 22.04, the Docker test image:
+// the HTML UI tests, tools/smoke-test.sh SMOKE_BACKEND=vulkan) needs 280-byte descriptors, so
+// 320 by default; still overridable (-D_SG_VK_MAX_DESCRIPTOR_DATA_SIZE=...), GPU drivers need far less
+#ifndef _SG_VK_MAX_DESCRIPTOR_DATA_SIZE
+#define _SG_VK_MAX_DESCRIPTOR_DATA_SIZE (320)
+#endif
 
 typedef enum {
     _SG_VK_MEMTYPE_STORAGE_BUFFER,
@@ -11694,7 +11699,12 @@ _SOKOL_PRIVATE void _sg_gl_end_render_pass(const _sg_attachments_ptrs_t* atts) {
                 invalidate_atts[att_index++] = (GLenum)(GL_COLOR_ATTACHMENT0 + i);
             }
         }
-        if (!atts->ds_view) {
+        // JasperEngine fix: upstream (and this copy) tested !atts->ds_view, so a pass WITH a
+        // depth-stencil attachment never invalidated it, whatever its store action, and a pass
+        // without one invalidated attachments that do not exist (ignored by GL). Invalidate the
+        // depth and stencil a pass has when it does not store them, as the other backends'
+        // DONTCARE does; an attachment the framebuffer lacks (depth-only) is ignored by GL.
+        if (atts->ds_view) {
             if (_sg.gl.depth_store_action == SG_STOREACTION_DONTCARE) {
                 invalidate_atts[att_index++] = GL_DEPTH_ATTACHMENT;
             }

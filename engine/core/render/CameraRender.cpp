@@ -23,6 +23,14 @@ void CameraRender::setClearDepth(float clearDepth){
     backend.setClearDepth(clearDepth);
 }
 
+void CameraRender::setLabel(const char* label){
+    backend.setLabel(label);
+}
+
+void CameraRender::setMultisample(FramebufferRender* msaa){
+    backend.setMultisample(msaa);
+}
+
 void CameraRender::setLoadActionLoad(){
     backend.setLoadActionLoad();
 }
@@ -45,6 +53,14 @@ void CameraRender::startRenderPass(int width, int height){
 
 void CameraRender::startRenderPass(){
     backend.startRenderPass();
+}
+
+void CameraRender::startSplitRenderPass(FramebufferRender* framebuffer){
+    backend.startSplitRenderPass(framebuffer);
+}
+
+void CameraRender::resumeRenderPass(FramebufferRender* framebuffer){
+    backend.resumeRenderPass(framebuffer);
 }
 
 void CameraRender::applyViewport(Rect rect){

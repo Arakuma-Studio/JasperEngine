@@ -405,6 +405,38 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createDynamicColorTexture(const std::string& label, int width, int height){
+    if (width <= 0 || height <= 0){
+        Log::error("Dynamic texture '%s': invalid size %i x %i", label.c_str(), width, height);
+        return false;
+    }
+
+    sg_image_desc imageDesc = {};
+    imageDesc.usage.dynamic_update = true;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_LINEAR;
+    samplerDesc.mag_filter = SG_FILTER_LINEAR;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    // updated whole (the LUT strip), so the size check holds
+    streamBytes = (size_t)width * (size_t)height * 4;
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::updateTexture(const void* data, size_t size){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
@@ -532,16 +564,26 @@ bool SokolTexture::createFramebufferTexture(
     img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
 
     if (depth){
+        // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth
+        // to sample), Metal Depth32Float_Stencil8, Vulkan D32_SFLOAT_S8_UINT; sokol samples
+        // its depth aspect. DEPTH: a 32-bit float depth (shadow maps)
         img_desc.pixel_format = depthStencil ? SG_PIXELFORMAT_DEPTH_STENCIL : SG_PIXELFORMAT_DEPTH;
         img_desc.label = depthStencil ? "framebuffer-depth-stencil-image" : "framebuffer-depth-image";
     } else {
-        img_desc.pixel_format = (colorFormat == ColorFormat::RED) ? SG_PIXELFORMAT_R8 : SG_PIXELFORMAT_RGBA8;
+        if (colorFormat == ColorFormat::RED){
+            img_desc.pixel_format = SG_PIXELFORMAT_R8;
+        }else if (colorFormat == ColorFormat::SRGB8A8){
+            img_desc.pixel_format = SG_PIXELFORMAT_SRGB8A8;
+        }else{
+            img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+        }
         img_desc.label = (img_desc.sample_count > 1) ? "framebuffer-msaa-color-image" : (resolve ? "framebuffer-resolve-image" : "framebuffer-color-image");
     }
 
-    // multisampled and depth-stencil attachments are only rendered to (an MSAA image is
-    // sampled through its resolve image)
-    const bool sampled = img_desc.sample_count == 1 && !(depth && depthStencil);
+    // multisampled attachments are only rendered to (an MSAA image is sampled through its
+    // resolve image); every single-sampled attachment, depth-stencil included, gets a view
+    // (sokol samples a depth-stencil image's depth aspect)
+    const bool sampled = img_desc.sample_count == 1;
 
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(img_desc);
@@ -637,6 +679,18 @@ const void* SokolTexture::getVulkanImageHandler() const{
     }
 
     return nullptr;
+}
+
+int SokolTexture::getWidth() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_width(image);
+}
+
+int SokolTexture::getHeight() const{
+    if (image.id == SG_INVALID_ID || !sg_isvalid())
+        return 0;
+    return sg_query_image_height(image);
 }
 
 uint32_t SokolTexture::getViewId() const{

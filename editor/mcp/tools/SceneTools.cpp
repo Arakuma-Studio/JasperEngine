@@ -12,6 +12,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 
+#include "PostProcessingPresets.h"
 #include "Project.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -21,11 +22,15 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/SetMainCameraCmd.h"
+#include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
 #include "util/Util.h"
+#include "shader/ShaderManifest.h"
 #include "window/ProjectWindow.h"
 #include "window/SceneWindow.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <memory>
 
@@ -580,12 +585,17 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, LightState, Filter, PostProcess };
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
+                         PostProcessing, PostProcessingField };
 
 struct SceneSetting {
-    const char* name;
+    std::string name;
     SettingKind kind;
-    const char* help;
+    std::string help;
+    // listed by get_scene_settings without names (the post-processing fields are in
+    // post_processing; each is still readable and settable by its own name)
+    bool listed = true;
+    const PostProcessingSettings::Field* field = nullptr;
 };
 
 const std::vector<SceneSetting>& sceneSettings() {
@@ -594,6 +604,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"light_state", SettingKind::LightState, "scene lighting: off, on, auto (on when a light exists)"},
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
+        {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
         {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
@@ -603,6 +614,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
+        {"scene_color_scale", SettingKind::SceneColorScale,
+         "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},
         {"ssao_enabled", SettingKind::Bool, "screen-space ambient occlusion"},
         {"ssao_radius", SettingKind::Float, "SSAO radius"},
         {"ssao_intensity", SettingKind::Float, "SSAO intensity"},
@@ -619,15 +632,141 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"fixed_resolution_width", SettingKind::Int, "fixed resolution width (>= 1)"},
         {"fixed_resolution_height", SettingKind::Int, "fixed resolution height (>= 1)"},
         {"fixed_resolution_filter", SettingKind::Filter, "fixed resolution upscale filter: nearest, linear"},
-        {"default_mesh_shader", SettingKind::String, "forked shader base path for meshes (\"\" built-in)"},
-        {"default_ui_shader", SettingKind::String, "forked shader base path for UI (\"\" built-in)"},
-        {"default_sky_shader", SettingKind::String, "forked shader base path for the sky (\"\" built-in)"},
-        {"default_points_shader", SettingKind::String, "forked shader base path for points (\"\" built-in)"},
-        {"default_lines_shader", SettingKind::String, "forked shader base path for lines (\"\" built-in)"},
+        {"default_mesh_shader", SettingKind::String, "library:<name> or forked shader base path for meshes (\"\" built-in)"},
+        {"default_ui_shader", SettingKind::String, "library:<name> or forked shader base path for UI (\"\" built-in)"},
+        {"default_sky_shader", SettingKind::String, "library:<name> or forked shader base path for the sky (\"\" built-in)"},
+        {"default_points_shader", SettingKind::String, "library:<name> or forked shader base path for points (\"\" built-in)"},
+        {"default_lines_shader", SettingKind::String, "library:<name> or forked shader base path for lines (\"\" built-in)"},
         {"post_process", SettingKind::PostProcess,
-         "post-process passes in order: [{shader: fork base path, enabled: bool, uniforms: {name: [x,y,z,w]}}]"}
+         "post-process passes in order: [{shader: \"library:<name>\" (list_shaders type=\"postprocess\") or a fork base path, "
+         "enabled: bool, uniforms: {name: [x,y,z,w]}, textures: {uniform: image path}, scale: 0.1..1 (output resolution)}]"},
+        {"post_processing", SettingKind::PostProcessing,
+         "the engine's post-processing of the main camera: {field: value} of the fields away from their defaults; "
+         "setting an object changes the fields it names, null resets all. Each field is also the setting "
+         "post_processing.<field>"}
     };
-    return settings;
+    static const std::vector<SceneSetting> all = [](){
+        std::vector<SceneSetting> list = settings;
+        for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+            SceneSetting setting{std::string("post_processing.") + field.snakeName, SettingKind::PostProcessingField, field.help, false, &field};
+            list.push_back(setting);
+        }
+        return list;
+    }();
+    return all;
+}
+
+// one post-processing field as JSON (enums by name; the LUT image project-relative, as every asset
+// path of MCP, when project is given: it is stored relative to the assets directory)
+Json postProcessingFieldToJson(const PostProcessingSettings& settings, const PostProcessingSettings::Field& field,
+                               Project* project = nullptr) {
+    using FT = PostProcessingSettings::FieldType;
+    const void* ref = settings.getFieldRef(field);
+    switch (field.type) {
+        case FT::Bool: return *(const bool*)ref;
+        case FT::Int: return *(const int*)ref;
+        case FT::Float: return McpValues::number(*(const float*)ref);
+        case FT::Vector3: return McpValues::toJson(*(const Vector3*)ref);
+        case FT::String: return McpValues::assetPathToJson(project, *(const std::string*)ref);
+        case FT::Enum: return std::string(field.enumNames[*(const int*)ref]);
+    }
+    return nullptr;
+}
+
+// the fields away from their defaults, by snake name
+Json postProcessingToJson(const PostProcessingSettings& settings, Project* project = nullptr) {
+    static const PostProcessingSettings defaults;
+    Json object = Json::object();
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        Json value = postProcessingFieldToJson(settings, field, project);
+        if (value != postProcessingFieldToJson(defaults, field)) object[field.snakeName] = value;
+    }
+    return object;
+}
+
+std::string enumNamesText(const PostProcessingSettings::Field& field) {
+    std::string text;
+    for (int i = 0; field.enumNames[i]; i++) text += std::string(i ? ", " : "") + field.enumNames[i];
+    return text;
+}
+
+// parses `value` into the field of `settings`; false with `error`
+bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings::Field& field, const Json& value,
+                                 PostProcessingSettings& settings, std::string& error) {
+    using FT = PostProcessingSettings::FieldType;
+    const std::string name = std::string("post_processing.") + field.snakeName;
+    void* ref = field.ref(settings);
+    auto range = [&]() {
+        return " (" + Json(McpValues::number(field.minValue)).dump() + " to " + Json(McpValues::number(field.maxValue)).dump() + ")";
+    };
+    switch (field.type) {
+        case FT::Bool:
+            if (!value.is_boolean()) { error = name + " must be true or false."; return false; }
+            *(bool*)ref = value.get<bool>();
+            return true;
+        case FT::Int: {
+            if (!value.is_number_integer()) { error = name + " must be an integer."; return false; }
+            const int v = value.get<int>();
+            if (std::string(field.name) == "lutSize" && v != 16 && v != 32) { error = name + " must be 16 or 32."; return false; }
+            if (std::string(field.name) == "msaaSamples" && v != 1 && v != 2 && v != 4) { error = name + " must be 1, 2 or 4."; return false; }
+            *(int*)ref = v;
+            return true;
+        }
+        case FT::Float: {
+            if (!value.is_number()) { error = name + " must be a number" + range() + "."; return false; }
+            const float v = value.get<float>();
+            if (!(v >= field.minValue && v <= field.maxValue)) { error = name + " must be a number" + range() + "."; return false; }
+            *(float*)ref = v;
+            return true;
+        }
+        case FT::Vector3: {
+            Vector3 v = *(Vector3*)ref;
+            if (!McpValues::parseVector3(value, v)) { error = name + " must be [x,y,z] (or \"#RRGGBB\")" + range() + "."; return false; }
+            // refused outside the range, as the other number fields (the setter would clamp it silently)
+            for (float c : {v.x, v.y, v.z}) {
+                if (!(c >= field.minValue && c <= field.maxValue)) {
+                    error = name + " components must be numbers" + range() + ".";
+                    return false;
+                }
+            }
+            *(Vector3*)ref = v;
+            return true;
+        }
+        case FT::String: {
+            if (!value.is_string()) { error = name + " must be a project image path (\"\" none)."; return false; }
+            const std::string path = value.get<std::string>();
+            if (!path.empty() && !fs::exists(project->getProjectPath() / path)) {
+                error = name + ": no file \"" + path + "\" in the project.";
+                return false;
+            }
+            // stored relative to the assets directory, as the engine loads it (and the inspector stores it)
+            std::string stored;
+            if (!McpValues::assetPathFromJson(project, path, stored, error)) {
+                error = name + ": " + error;
+                return false;
+            }
+            *(std::string*)ref = stored;
+            return true;
+        }
+        case FT::Enum: {
+            // by name (any case) or by its int (the index in the names), as every MCP enum
+            int count = 0;
+            while (field.enumNames[count]) count++;
+            if (value.is_number_integer()) {
+                const long long index = value.get<long long>();
+                if (index >= 0 && index < count) { *(int*)ref = (int)index; return true; }
+            } else if (value.is_string()) {
+                std::string text = value.get<std::string>();
+                std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+                for (int i = 0; i < count; i++) {
+                    if (text == field.enumNames[i]) { *(int*)ref = i; return true; }
+                }
+            }
+            error = name + " must be one of: " + enumNamesText(field) + " (or its index 0 to " + std::to_string(count - 1) + ").";
+            return false;
+        }
+    }
+    return false;
 }
 
 const SceneSetting* findSetting(const std::string& name) {
@@ -640,10 +779,11 @@ const SceneSetting* findSetting(const std::string& name) {
 std::string settingNamesText() {
     std::string text;
     for (const SceneSetting& setting : sceneSettings()) {
+        if (!setting.listed) continue;
         if (!text.empty()) text += ", ";
         text += setting.name;
     }
-    return text;
+    return text + ", post_processing.<field> (the fields of post_processing)";
 }
 
 const char* kindName(SettingKind kind) {
@@ -656,9 +796,12 @@ const char* kindName(SettingKind kind) {
         case SettingKind::Vector4: return "vector4";
         case SettingKind::String: return "string";
         case SettingKind::ShadowQuality:
+        case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
+        case SettingKind::PostProcessing: return "post_processing";
+        case SettingKind::PostProcessingField: return "post_processing_field";
     }
     return "unknown";
 }
@@ -666,27 +809,46 @@ const char* kindName(SettingKind kind) {
 const McpValues::EnumOptions* settingOptions(SettingKind kind) {
     switch (kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
+        case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
 }
 
-Json postProcessToJson(const std::vector<PostProcessPass>& passes) {
+Json postProcessToJson(const std::vector<PostProcessPass>& passes, Project* project = nullptr) {
     Json list = Json::array();
     for (const PostProcessPass& pass : passes) {
-        list.push_back({{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}});
+        Json item = {{"shader", pass.shader}, {"enabled", pass.enabled}, {"uniforms", McpValues::shaderUniformsToJson(pass.uniforms)}};
+        // (phase 4) only when set: the pass's textures by uniform and its scale. A texture is
+        // written as the shader textures of a material are (a project-relative path, or
+        // {path, filters, wraps} / {cube} when it has them), so a read-modify-write of the
+        // chain keeps its sampler settings and cube maps
+        Json textures = McpValues::shaderTexturesToJson(project, nullptr, pass.textures);
+        if (!textures.empty()) item["textures"] = textures;
+        if (pass.scale != 1.0f) item["scale"] = pass.scale;
+        list.push_back(item);
     }
     return list;
 }
+
+template<typename T>
+Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults);
+
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults, Project* project);
 
 template<typename T>
 Json readSetting(Scene* scene, const SceneSetting& setting, bool defaults) {
     return defaults ? Json(Catalog::getScenePropertyDefault<T>(setting.name)) : Json(Catalog::getSceneProperty<T>(scene, setting.name));
 }
 
-Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false) {
+Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = false, Project* project = nullptr) {
     switch (setting.kind) {
+        case SettingKind::PostProcessing:
+            return postProcessingToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), project);
+        case SettingKind::PostProcessingField:
+            return postProcessingFieldToJson(defaults || !scene ? PostProcessingSettings() : scene->getPostProcessing(), *setting.field,
+                                             project);
         case SettingKind::Bool: return readSetting<bool>(scene, setting, defaults);
         case SettingKind::Int: return readSetting<int>(scene, setting, defaults);
         case SettingKind::Float:
@@ -706,6 +868,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowQuality>(setting.name)
                                                         : Catalog::getSceneProperty<ShadowQuality>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::SceneColorScale:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<SceneColorScale>(setting.name)
+                                                        : Catalog::getSceneProperty<SceneColorScale>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::LightState:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
                                                         : Catalog::getSceneProperty<LightState>(scene, setting.name)),
@@ -716,15 +882,43 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
                                          *settingOptions(setting.kind));
         case SettingKind::PostProcess:
             return postProcessToJson(defaults ? Catalog::getScenePropertyDefault<std::vector<PostProcessPass>>(setting.name)
-                                              : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name));
+                                              : Catalog::getSceneProperty<std::vector<PostProcessPass>>(scene, setting.name), project);
     }
     return nullptr;
 }
 
 bool shaderBaseExists(Project* project, const std::string& base) {
     if (base.empty()) return true;
-    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+    Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
     return fs::exists(project->getProjectPath() / paths.vert) && fs::exists(project->getProjectPath() / paths.frag);
+}
+
+// A post_processing or post_processing.<field> value applied to `settings` (every one of a call
+// edits the same struct, so they compose in one command); false with `error`
+bool applyPostProcessingSetting(Project* project, const SceneSetting& setting, const Json& value,
+                                PostProcessingSettings& settings, std::string& error) {
+    if (setting.kind == SettingKind::PostProcessingField)
+        return postProcessingFieldFromJson(project, *setting.field, value, settings, error);
+    if (value.is_null()) {
+        settings = PostProcessingSettings();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = setting.name + " must be an object {field: value} (null resets every field).";
+        return false;
+    }
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        const PostProcessingSettings::Field* field = PostProcessingSettings::findField(it.key());
+        if (!field) {
+            std::string names;
+            for (const PostProcessingSettings::Field& f : PostProcessingSettings::getFields())
+                names += std::string(names.empty() ? "" : ", ") + f.snakeName;
+            error = setting.name + ": unknown field \"" + it.key() + "\". Fields: " + names + ".";
+            return false;
+        }
+        if (!postProcessingFieldFromJson(project, *field, it.value(), settings, error)) return false;
+    }
+    return true;
 }
 
 // The ScenePropertyCmd setting `value`, null with `error`
@@ -742,6 +936,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::Int:
             if (!value.is_number_integer()) return expect("an integer");
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
+            if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
@@ -749,8 +944,19 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
             const std::string base = value.get<std::string>();
-            if (!shaderBaseExists(project, base)) {
-                return expect("the base path of a forked shader whose .vert/.frag exist (fork the shader first), or \"\"");
+            if (ShaderReference::isLibrary(base)) {
+                // a library shader of the type this default is for
+                const ShaderType type = name == "default_ui_shader" ? ShaderType::UI : name == "default_sky_shader" ? ShaderType::SKYBOX
+                                      : name == "default_points_shader" ? ShaderType::POINTS
+                                      : name == "default_lines_shader" ? ShaderType::LINES : ShaderType::MESH;
+                std::string why;
+                if (!McpValues::checkShaderReference(project, base, type, why)) {
+                    error = name + ": " + why;
+                    return nullptr;
+                }
+            } else if (!shaderBaseExists(project, base)) {
+                return expect("\"library:<name>\" (list_shaders), the base path of a forked shader whose .vert/.frag exist "
+                              "(fork the shader first), or \"\"");
             }
             return new ScenePropertyCmd<std::string>(project, id, name, base);
         }
@@ -770,6 +976,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<Vector4>(project, id, name, v);
         }
         case SettingKind::ShadowQuality:
+        case SettingKind::SceneColorScale:
         case SettingKind::LightState:
         case SettingKind::Filter: {
             int parsed = 0;
@@ -779,30 +986,73 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
                 return nullptr;
             }
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
+            if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
+        case SettingKind::PostProcessing:
+        case SettingKind::PostProcessingField:
+            break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
         case SettingKind::PostProcess: {
-            if (!value.is_array()) return expect("an array of {shader, enabled, uniforms}");
+            if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;
             for (size_t i = 0; i < value.size(); i++) {
                 const Json& item = value[i];
                 const std::string where = name + "[" + std::to_string(i) + "]";
                 if (!item.is_object()) {
-                    error = where + " must be {shader, enabled, uniforms}.";
+                    error = where + " must be {shader, enabled, uniforms, textures, scale}.";
                     return nullptr;
+                }
+                // a misspelt key would otherwise be dropped without a word
+                for (auto key = item.begin(); key != item.end(); ++key) {
+                    static const std::set<std::string> known = {"shader", "enabled", "uniforms", "textures", "scale"};
+                    if (!known.count(key.key())) {
+                        error = where + ": unknown key \"" + key.key() + "\". A pass is {shader, enabled, uniforms, textures, scale}.";
+                        return nullptr;
+                    }
                 }
                 PostProcessPass pass;
                 pass.shader = item.value("shader", std::string());
-                if (!shaderBaseExists(project, pass.shader)) {
+                const bool library = ShaderReference::isLibrary(pass.shader);
+                std::shared_ptr<const ShaderManifest> manifest = library ? ShaderManifests::get(pass.shader) : nullptr;
+                if (library) {
+                    // a library post-process shader (@shader postprocess, list_shaders)
+                    std::string why;
+                    if (!McpValues::checkShaderReference(project, pass.shader, ShaderType::POSTPROCESS, why)) {
+                        error = where + ".shader: " + why;
+                        return nullptr;
+                    }
+                } else if (!shaderBaseExists(project, pass.shader)) {
                     error = where + ".shader \"" + pass.shader + "\": no forked shader there (fork the post-process shader first).";
+                    return nullptr;
+                }
+                if (item.contains("enabled") && !item["enabled"].is_boolean()) {
+                    error = where + ".enabled must be true or false.";
                     return nullptr;
                 }
                 pass.enabled = item.value("enabled", true);
                 std::string why;
-                if (item.contains("uniforms") && !McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why)) {
+                // a library shader's uniforms are its manifest's parameters (@property): unknown
+                // members are refused and colours may be "#RRGGBB" (sRGB, stored linear), as a
+                // material's shaderParams; a fork's are any member of its u_fs_postParams
+                const bool uniformsOk = !item.contains("uniforms") ||
+                    (library ? McpValues::shaderParamsFromJson(manifest.get(), true, item["uniforms"], pass.uniforms, why)
+                             : McpValues::shaderUniformsFromJson(item["uniforms"], pass.uniforms, why));
+                if (!uniformsOk) {
                     error = where + ".uniforms: " + why;
                     return nullptr;
+                }
+                if (item.contains("textures") &&
+                        !McpValues::shaderTexturesFromJson(project, scene, manifest.get(), library, item["textures"], pass.textures, why)) {
+                    error = where + ".textures: " + why;
+                    return nullptr;
+                }
+                if (item.contains("scale")) {
+                    if (!item["scale"].is_number() || item["scale"].get<double>() < 0.1 || item["scale"].get<double>() > 1.0) {
+                        error = where + ".scale must be a number from 0.1 to 1 (the pass's resolution, a fraction of the chain's).";
+                        return nullptr;
+                    }
+                    pass.scale = item["scale"].get<float>();
                 }
                 passes.push_back(pass);
             }
@@ -832,24 +1082,47 @@ void getSceneSettingsTool(const CallPtr& call) {
             wanted.push_back(setting);
         }
     } else {
-        for (const SceneSetting& setting : sceneSettings()) wanted.push_back(&setting);
+        for (const SceneSetting& setting : sceneSettings()) {
+            if (setting.listed) wanted.push_back(&setting);
+        }
     }
     const bool detail = args.value("detail", false);
     Json values = Json::object();
     Json schemaOut = Json::object();
     std::string text = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\" settings:";
     for (const SceneSetting* setting : wanted) {
-        Json value = settingValue(scene->scene, *setting);
+        Json value = settingValue(scene->scene, *setting, false, call->ctx().project());
         text += "\n" + std::string(setting->name) + " = " + value.dump();
         values[setting->name] = value;
         if (detail) {
             Json entry = {{"type", kindName(setting->kind)}, {"default", settingValue(nullptr, *setting, true)}, {"help", setting->help}};
             if (const McpValues::EnumOptions* options = settingOptions(setting->kind)) entry["options"] = McpValues::enumNames(*options);
+            if (setting->field) {
+                using FT = PostProcessingSettings::FieldType;
+                entry["field_type"] = setting->field->type == FT::Bool ? "bool" : setting->field->type == FT::Int ? "int"
+                                    : setting->field->type == FT::Float ? "float" : setting->field->type == FT::Vector3 ? "vector3"
+                                    : setting->field->type == FT::Enum ? "enum" : "string";
+                if (setting->field->type == FT::Enum) {
+                    Json names = Json::array();
+                    for (int i = 0; setting->field->enumNames[i]; i++) names.push_back(setting->field->enumNames[i]);
+                    entry["options"] = names;
+                } else if (setting->field->type == FT::Float || setting->field->type == FT::Int || setting->field->type == FT::Vector3) {
+                    entry["min"] = McpValues::number(setting->field->minValue);
+                    entry["max"] = McpValues::number(setting->field->maxValue);
+                }
+            }
             schemaOut[setting->name] = entry;
         }
     }
     Json data = {{"scene_id", scene->id}, {"settings", values}};
     if (detail) data["schema"] = schemaOut;
+    if (!args.contains("names") || !args["names"].is_array() || args["names"].empty()) {
+        // not a setting: what the last frame made for the draws reading the scene (phase 3), the
+        // inspector's Scene Color > In Use row
+        const uint32_t inUse = Catalog::getSceneInputsInUse(scene->scene);
+        data["scene_inputs_in_use"] = McpValues::sceneInputsToJson(inUse);
+        if (inUse) text += "\n(last frame: scene " + Catalog::getSceneInputsLabel(inUse) + " made for the shaders reading it)";
+    }
     call->ok(text, data);
 }
 
@@ -867,6 +1140,8 @@ void setSceneSettingsTool(const CallPtr& call) {
         return;
     }
     auto* multi = new MultiPropertyCmd();
+    PostProcessingSettings postProcessing = scene->scene->getPostProcessing();
+    bool postProcessingSet = false;
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
         const SceneSetting* setting = findSetting(it.key());
         if (!setting) {
@@ -876,6 +1151,23 @@ void setSceneSettingsTool(const CallPtr& call) {
             return;
         }
         std::string error;
+        if (setting->kind == SettingKind::PostProcessing || setting->kind == SettingKind::PostProcessingField) {
+            // as apply_post_processing_preset and the inspector (which has no Post-processing
+            // section there): a UI scene's camera is never post-processed
+            if (scene->sceneType == SceneType::SCENE_UI) {
+                delete multi;
+                call->fail("\"" + scene->name + "\" is a UI scene: UI scenes are never post-processed (set " + it.key() +
+                           " on the 2D or 3D scene whose main camera draws the game).");
+                return;
+            }
+            if (!applyPostProcessingSetting(project, *setting, it.value(), postProcessing, error)) {
+                delete multi;
+                call->fail(error);
+                return;
+            }
+            postProcessingSet = true;
+            continue;
+        }
         Command* cmd = buildSettingCommand(project, scene, *setting, it.value(), error);
         if (!cmd) {
             delete multi;
@@ -883,6 +1175,9 @@ void setSceneSettingsTool(const CallPtr& call) {
             return;
         }
         multi->addCommand(std::unique_ptr<Command>(cmd));
+    }
+    if (postProcessingSet) {
+        multi->addCommand(std::unique_ptr<Command>(new ScenePropertyCmd<PostProcessingSettings>(project, scene->id, "post_processing", postProcessing)));
     }
     const uint32_t id = scene->id;
     std::string error;
@@ -893,10 +1188,130 @@ void setSceneSettingsTool(const CallPtr& call) {
     SceneProject* updated = project->getScene(id);
     Json values = Json::object();
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
-        values[it.key()] = settingValue(updated->scene, *findSetting(it.key()));
+        values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
     call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step).",
              Json{{"scene_id", id}, {"settings", values}});
+}
+
+// ------------------------------------------------------------------ post-processing presets
+
+// the cost estimate of PostProcessingPresets (the inspector's Estimated cost readout)
+Json postProcessingCostToJson(const PostProcessingCost& cost) {
+    auto side = [](const PostProcessingCostSide& side) {
+        Json list = Json::array();
+        for (const PostProcessingCostPass& pass : side.passes) {
+            list.push_back({{"label", pass.label}, {"count", pass.count}, {"screens", McpValues::number(pass.area)},
+                            {"full_resolution", pass.fullResolution}});
+        }
+        return Json{{"passes", side.passCount}, {"full_resolution_passes", side.fullResolutionPasses},
+                    {"screens", McpValues::number(side.fullscreen)}, {"pass_list", list}};
+    };
+    return Json{{"estimate", true},
+                {"engine", side(cost.engine)},
+                {"unity_urp", side(cost.urp)},
+                {"tiers", {{"in_shader", cost.inShader}, {"uber_pass", cost.uber}, {"bloom_chain", cost.chain}}},
+                {"scene_shading", McpValues::number(cost.sceneShading)},
+                {"notes", cost.notes}};
+}
+
+PostProcessingCost sceneCost(Scene* scene, const PostProcessingSettings& settings) {
+    return estimatePostProcessingCost(settings, scene->getPostProcessPasses(), Catalog::getSceneProperty<bool>(scene, "fixed_resolution_enabled"));
+}
+
+std::string costText(const PostProcessingCost& cost) {
+    char text[200];
+    std::snprintf(text, sizeof(text), "%d passes, %d at full resolution, %.2f screens shaded (Unity URP: %d, %d, %.2f)",
+                  cost.engine.passCount, cost.engine.fullResolutionPasses, cost.engine.fullscreen,
+                  cost.urp.passCount, cost.urp.fullResolutionPasses, cost.urp.fullscreen);
+    return text;
+}
+
+std::string postPresetIdsText() {
+    std::string ids;
+    for (const PostProcessingPreset& preset : getPostProcessingPresets()) ids += (ids.empty() ? "" : ", ") + preset.id;
+    return ids;
+}
+
+// what the running game's renderer applies (play mode only)
+Json appliedPostProcessingJson(SceneProject* scene) {
+    if (scene->playState != ScenePlayState::PLAYING && scene->playState != ScenePlayState::PAUSED) return nullptr;
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    if (!render) return nullptr;
+    const PostProcessingTiers& tiers = render->getActivePostProcessingTiers();
+    Json features = Json::array();
+    const int count = ShaderPool::getShaderPropertyCount(ShaderType::BLIT);
+    for (int bit = 0; bit < count && bit < 32; bit++) {
+        if (tiers.uberFeatures & (1u << bit)) features.push_back(ShaderPool::getShaderPropertyName(ShaderType::BLIT, bit, false));
+    }
+    return Json{{"in_shader", tiers.tailColor}, {"uber_pass", tiers.uber}, {"uber_features", features},
+                {"render_scale", McpValues::number(tiers.renderScale)}};
+}
+
+void listPostProcessingPresetsTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    Json presets = Json::array();
+    std::string text = std::to_string(getPostProcessingPresets().size()) + " post-processing preset(s); "
+                       "apply_post_processing_preset applies one (estimated cost after the scene, alone):";
+    for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
+        const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
+        presets.push_back({{"id", preset.id}, {"name", preset.name}, {"description", preset.description},
+                           {"settings", postProcessingToJson(preset.settings, project)},
+                           {"cost", {{"passes", cost.engine.passCount}, {"screens", McpValues::number(cost.engine.fullscreen)},
+                                     {"unity_urp_passes", cost.urp.passCount},
+                                     {"unity_urp_screens", McpValues::number(cost.urp.fullscreen)}}}});
+        text += "\n" + preset.id + " (" + preset.name + "): " + preset.description + " [" + costText(cost) + "]";
+    }
+    const PostProcessingSettings settings = scene->scene->getPostProcessing();
+    const PostProcessingPreset* matched = matchPostProcessingPreset(settings);
+    const PostProcessingCost cost = sceneCost(scene->scene, settings);
+    Json current = {{"scene_id", scene->id}, {"preset", matched ? Json(matched->id) : Json(nullptr)},
+                    {"settings", postProcessingToJson(settings, project)}, {"cost", postProcessingCostToJson(cost)}};
+    text += "\nScene \"" + scene->name + "\": " + (matched ? "preset " + matched->id : std::string("custom settings")) +
+            ", estimated " + costText(cost) + ".";
+    Json applied = appliedPostProcessingJson(scene);
+    if (!applied.is_null()) current["applied"] = applied;
+    call->ok(text, Json{{"presets", presets}, {"current", current}});
+}
+
+void applyPostProcessingPresetTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const std::string id = call->args().value("preset", std::string());
+    const PostProcessingPreset* preset = findPostProcessingPreset(id);
+    if (!preset) {
+        call->fail("No post-processing preset \"" + id + "\". The presets: " + postPresetIdsText() + " (list_post_processing_presets).");
+        return;
+    }
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    if (scene->sceneType == SceneType::SCENE_UI) {
+        call->fail("\"" + scene->name + "\" is a UI scene: UI scenes are never post-processed (set it on the 2D or 3D scene "
+                   "whose main camera draws the game).");
+        return;
+    }
+    const uint32_t sceneId = scene->id;
+    std::string error;
+    if (!runSceneCommand(sceneId, new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", preset->settings), error)) {
+        call->fail(error);
+        return;
+    }
+    SceneProject* updated = project->getScene(sceneId);
+    const PostProcessingCost cost = sceneCost(updated->scene, updated->scene->getPostProcessing());
+    call->ok("Applied the " + preset->name + " post-processing preset to \"" + updated->name + "\" (one undo step): estimated " +
+             costText(cost) + ".",
+             Json{{"scene_id", sceneId}, {"preset", preset->id},
+                  {"settings", postProcessingToJson(updated->scene->getPostProcessing(), project)},
+                  {"cost", postProcessingCostToJson(cost)}});
 }
 
 } // namespace
@@ -908,9 +1323,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "list_scenes";
         tool.title = "List Scenes";
         tool.description =
-            "Project scenes and open Prefab Mode stages: {scenes: [{id, name, path (\"\" = unsaved), type, "
-            "opened, modified, selected, start_scene, entity_count, main_camera, child_scenes}], "
-            "selected_scene_id}.";
+            "Project scenes and open Prefab Mode stages: id, name, path (\"\" = unsaved), type, opened, modified, "
+            "selected, start_scene, entity_count, main_camera, child_scenes; selected_scene_id.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -923,7 +1337,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Create Scene";
         tool.description =
             "File > New Scene (3D: with sun and sky); adds it to the project and selects it. With path it is saved "
-            "at once, else untitled until save_scene with path. Returns {scene}.";
+            "at once, else untitled until save_scene with path.";
         tool.inputSchema = object({
             {"name", string("Default: the file name or \"New Scene\".")},
             {"type", withDefault(stringEnum("", {"3D", "2D", "UI"}), "3D")},
@@ -978,7 +1392,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "save_scene";
         tool.title = "Save Scene";
         tool.description =
-            "Saves a scene and its modified child scenes. Untitled scenes need path; path on a saved scene = Save As. "
+            "Save a scene and its modified child scenes. Untitled scenes need path; path on a saved scene = Save As. "
             "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1007,8 +1421,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "delete_scene";
         tool.title = "Delete Scene";
         tool.description =
-            "Removes a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves "
-            "the file to .trash. Not the last scene.";
+            "Remove a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves the "
+            "file to .trash. Not the last scene.";
         tool.inputSchema = object({
             {"scene", sceneRef("A saved project scene.")},
             {"delete_file", withDefault(boolean(""), false)}
@@ -1023,8 +1437,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_child_scene";
         tool.title = "Set Child Scene";
         tool.description =
-            "Attaches (attached=false: detaches) `child` as an additive child scene of `scene`. start_active: active "
-            "when the parent starts; loaded_inline: shown inside the parent in the editor (not undoable).";
+            "Attach (attached=false: detach) `child` as an additive child scene of `scene`. start_active: active "
+            "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
             {"child", sceneRef("Child scene.")},
@@ -1042,8 +1456,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_main_camera";
         tool.title = "Set Main Camera";
         tool.description =
-            "Sets the scene's main camera (the game renders through it) to a GameObject with a Camera; entity: null "
-            "= the default camera.";
+            "Set the scene's main camera (the game renders through it) to a GameObject with a Camera; entity null = "
+            "the default camera.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"entity", nullableEntityRef()}}, {"entity"});
         tool.annotations.idempotent = true;
         tool.handler = setMainCameraTool;
@@ -1055,7 +1469,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Get Scene Settings";
         tool.description =
             "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process). detail=true adds type, default, options, help.";
+            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
+            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
+            "scene-reading shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},
@@ -1071,11 +1487,42 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Sets scene settings: {name: value}, names and shapes from get_scene_settings. post_process replaces the "
-            "pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}].";
+            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces the pass "
+            "list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
+            "post_processing {field: value} sets the fields named (null resets all), like post_processing.<field>; "
+            "one undo step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "list_post_processing_presets";
+        tool.title = "List Post-processing Presets";
+        tool.description =
+            "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
+            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
+            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = listPostProcessingPresetsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "apply_post_processing_preset";
+        tool.title = "Apply Post-processing Preset";
+        tool.description =
+            "Replace the scene's post_processing with a preset (list_post_processing_presets) in one undo step; "
+            "fine-tune with set_scene_settings post_processing.<field>.";
+        tool.inputSchema = object({
+            {"preset", string("Preset id or name, e.g. \"mobile\".")},
+            {"scene", sceneRef()}
+        }, {"preset"});
+        tool.annotations.idempotent = true;
+        tool.handler = applyPostProcessingPresetTool;
         registry.addTool(std::move(tool));
     }
 }

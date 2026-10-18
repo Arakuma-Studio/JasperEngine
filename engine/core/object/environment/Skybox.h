@@ -58,6 +58,15 @@ namespace jasperengine{
         void setShaderUniform(const std::string& name, float value);
         Vector4 getShaderUniform(const std::string& name) const;
         bool removeShaderUniform(const std::string& name);
+
+        // shader library: a @property value (set with setShaderUniform), else the manifest
+        // default; the @texture uniforms by path ("" removes one: its default binds); the
+        // enabled @feature and chosen @keywords defines
+        Vector4 getShaderParam(const std::string& name) const;
+        void setShaderTexture(const std::string& name, const std::string& path);
+        std::string getShaderTexture(const std::string& name) const;
+        void setShaderFeature(const std::string& define, bool enabled);
+        bool isShaderFeatureEnabled(const std::string& define) const;
     };
 }
 

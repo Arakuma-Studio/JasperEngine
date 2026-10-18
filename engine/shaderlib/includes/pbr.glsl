@@ -72,9 +72,12 @@ vec4 getBaseColor(){
             return texture(sampler2D(u_occlusionTexture, u_occlusion_smp), getOcclusionUV());
         }
 
-        vec4 getEmissiveTexture(){
-            return texture(sampler2D(u_emissiveTexture, u_emissive_smp), getEmissiveUV());
-        }
+        // (mesh.frag leaves the texture out of a painted terrain with the post-processing colour)
+        #ifndef NO_EMISSIVE_TEXTURE
+            vec4 getEmissiveTexture(){
+                return texture(sampler2D(u_emissiveTexture, u_emissive_smp), getEmissiveUV());
+            }
+        #endif
     #endif
 #endif
 
@@ -108,8 +111,9 @@ NormalInfo getNormalInfo(){
         #endif
     #endif
 
-    // Compute pertubed normals:
-    #ifdef HAS_NORMAL_MAP
+    // Compute pertubed normals (a normal map needs a UV set to sample it by: a terrain
+    // without blend maps or textures has none)
+    #if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
         n = texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()).rgb * 2.0 - vec3(1.0);
         n *= vec3(normalScale, normalScale, 1.0);
         n = mat3(t, b, ng) * normalize(n);

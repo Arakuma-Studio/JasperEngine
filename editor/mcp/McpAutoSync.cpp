@@ -696,14 +696,15 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         return;
     }
     // Compile the forks those files belong to, so their errors come with this call
-    w4::checkShadersAsync(call, forks, [run, report, shaderFiles](Json results) mutable {
+    Project* project = ctx.project();
+    w4::checkShadersAsync(call, forks, [run, report, shaderFiles, project](Json results) mutable {
         Json& problems = report["problems"];
         // shared by the results: a UI effect's forms (phase 5) report the same error once
         std::set<std::string> seen;
         for (const Json& result : results) {
             if (result.value("ok", false)) continue;
             const std::string base = result.value("shader", std::string());
-            const Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(base);
+            const Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
             // Name the changed file of the fork (else its fragment shader)
             std::string path = paths.frag.empty() ? base : paths.frag;
             for (const std::string& file : shaderFiles) {
@@ -714,10 +715,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             }
             const Json errors = result.value("errors", Json::array());
             size_t added = 0;
+            // errors with a place, reported here or by an earlier result (a UI effect's other form)
+            size_t placed = 0;
             for (const Json& error : errors) {
                 if (error.value("severity", std::string("error")) != "error") continue;
                 const std::string message = shortMessage(error.value("message", std::string()), 300);
                 if (message.find("compilation terminated") != std::string::npos) continue;
+                placed++;
                 // glslang names the file (an include, or the stage file) when it can
                 const std::string source = error.value("source", std::string());
                 const bool namesFile = source.find('.') != std::string::npos || source.find('/') != std::string::npos;
@@ -731,7 +735,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
                 problems.push_back(problem);
                 if (++added >= 10) break;
             }
-            if (added == 0) {
+            // no file:line at all: the log (not when every error was already reported)
+            if (placed == 0) {
                 problems.push_back({{"path", path}, {"message", "Shader " + base + " does not compile: " +
                                                                     shortMessage(result.value("log", std::string("unknown error")), 400)}});
             }

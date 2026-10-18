@@ -15,6 +15,8 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <iterator>
+#include <sstream>
 #include <system_error>
 #include <chrono>
 #include <unordered_set>
@@ -54,6 +56,8 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
+#include "shader/ShaderManifest.h"
+#include "shader/ShaderVariantCompiler.h"
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "ObjectManager.h"
@@ -502,6 +506,14 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             submeshChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
             submeshChanged |= visitTexturePaths(material.occlusionTexture, transform);
             submeshChanged |= visitTexturePaths(material.normalTexture, transform);
+            for (auto& shaderTexture : material.shaderTextures) {
+                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+            }
+            if (MaterialPass* pass = material.extraPass.editIfSet()) {
+                for (auto& shaderTexture : pass->shaderTextures) {
+                    submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
+                }
+            }
 
             if (submeshChanged) {
                 mesh.submeshes[s].needUpdateTexture = true;
@@ -509,6 +521,22 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
             }
         }
     });
+
+    // shader library textures of the components without a material
+    auto visitShaderTextures = [&](std::vector<std::pair<std::string, Texture>>& textures, bool& needReload) {
+        bool texturesChanged = false;
+        for (auto& shaderTexture : textures) {
+            texturesChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        if (texturesChanged) {
+            needReload = true;
+            changed = true;
+        }
+    };
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
+    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
         if (visitTexturePaths(ui.texture, transform)) {
@@ -676,8 +704,28 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             addTexture(material.metallicRoughnessTexture, false);
             addTexture(material.occlusionTexture, false);
             addTexture(material.normalTexture, false);
+            for (const auto& shaderTexture : material.shaderTextures) {
+                addTexture(shaderTexture.second, false);
+            }
+            for (const auto& shaderTexture : material.extraPass->shaderTextures) {
+                addTexture(shaderTexture.second, false);
+            }
         }
     }
+
+    // shader library textures of the components without a material
+    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
+        for (const auto& shaderTexture : ui.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
+        for (const auto& shaderTexture : points.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) {
+        for (const auto& shaderTexture : lines.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
+        for (const auto& shaderTexture : sky.shaderTextures) addTexture(shaderTexture.second, false);
+    });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
         addTexture(ui.texture, true);
@@ -1195,10 +1243,41 @@ void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deleted
     }
 }
 
+// the images the scene's settings name: its post-process passes' textures and the
+// post-processing LUT strip (phase 4)
+static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(std::string&)>& transform) {
+    std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
+    bool passesChanged = false;
+    for (PostProcessPass& pass : passes) {
+        for (auto& texture : pass.textures) {
+            passesChanged |= visitTexturePaths(texture.second, transform);
+        }
+    }
+    if (passesChanged) {
+        scene->setPostProcessPasses(passes);
+    }
+
+    // the LUT is a plain path (assets-relative), read by the renderer when it changes
+    PostProcessingSettings postProcessing = scene->getPostProcessing();
+    bool lutChanged = false;
+    if (!postProcessing.lutTexture.empty()) {
+        std::string lut = postProcessing.lutTexture;
+        if (transform(lut) && lut != postProcessing.lutTexture) {
+            postProcessing.lutTexture = lut;
+            scene->setPostProcessing(postProcessing);
+            lutChanged = true;
+        }
+    }
+    return passesChanged || lutChanged;
+}
+
 void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
     for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene || !visitAssetPathsInRegistry(sceneProject.scene, transform)) {
+        if (!sceneProject.scene)
+            continue;
+        const bool settingsChanged = visitSceneSettingsAssetPaths(sceneProject.scene, transform);
+        if (!visitAssetPathsInRegistry(sceneProject.scene, transform) && !settingsChanged) {
             continue;
         }
 
@@ -1288,6 +1367,19 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
         applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
         applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
+        // a submesh material's own shader and its extra pass's (mesh reload)
+        auto meshes = registry->getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); ++i) {
+            MeshComponent& mesh = meshes->getComponentFromIndex(i);
+            bool meshChanged = false;
+            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
+                meshChanged |= applyToMaterialShaders(mesh.submeshes[s].material, transform);
+            }
+            if (meshChanged) {
+                Catalog::updateEntity(registry, meshes->getEntity(i), UpdateFlags_Mesh_Reload);
+                changed = true;
+            }
+        }
         return changed;
     };
 
@@ -1326,6 +1418,40 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
             savePrefabToDisk(prefabPath);
         }
     }
+
+    // .material files (their linked submeshes were remapped above as well)
+    visitMaterialFiles([&](Material& material) {
+        return applyToMaterialShaders(material, transform);
+    });
+}
+
+// The fork references of a material (its shader and its extra pass's); library references
+// and empty ones name no file
+bool editor::Project::applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform) {
+    bool changed = false;
+    MaterialPass* pass = material.extraPass.editIfSet();
+    for (std::string* shader : {&material.shader, pass ? &pass->shader : nullptr}) {
+        if (!shader || shader->empty() || ShaderReference::isLibrary(*shader)) {
+            continue;
+        }
+        changed |= transform(*shader);
+    }
+    return changed;
+}
+
+// The project-relative files a fork path can name (findShaderFile): itself, and under the
+// assets directory; whether they exist or not (a rename or delete has already happened)
+std::vector<std::string> editor::Project::shaderFileCandidates(const std::string& relative) const {
+    std::vector<std::string> candidates;
+    if (relative.empty()) {
+        return candidates;
+    }
+    candidates.push_back(relative);
+    const fs::path assetsRelative = normalizeToProjectRelative(getAssetsPath());
+    if (!assetsRelative.empty() && assetsRelative != "." && *assetsRelative.begin() != "..") {
+        candidates.push_back((assetsRelative / relative).lexically_normal().generic_string());
+    }
+    return candidates;
 }
 
 void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
@@ -1343,19 +1469,27 @@ void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, 
     // customShader resolves to a .vert and a .frag entry point; remap each path against the
     // rename and rebuild the value. A single-file rename of a shared-base pair naturally
     // becomes the separate-file form; a directory rename remaps both via child match.
+    // (an assets-relative entry point is matched at its project-relative path too, see
+    // findShaderFile; the remapped value is project-relative)
     applyCustomShaderPathChange([&](std::string& customShader) -> bool {
         Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
         std::string newVert = paths.vert;
         std::string newFrag = paths.frag;
         bool changed = false;
         std::string updated;
-        if (remapRelativeString(oldRelative, newRelative, paths.vert, updated)) {
-            newVert = updated;
-            changed = true;
+        for (const std::string& candidate : shaderFileCandidates(paths.vert)) {
+            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
+                newVert = updated;
+                changed = true;
+                break;
+            }
         }
-        if (remapRelativeString(oldRelative, newRelative, paths.frag, updated)) {
-            newFrag = updated;
-            changed = true;
+        for (const std::string& candidate : shaderFileCandidates(paths.frag)) {
+            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
+                newFrag = updated;
+                changed = true;
+                break;
+            }
         }
         if (changed) {
             customShader = Util::makeCustomShader(newVert, newFrag);
@@ -1379,9 +1513,13 @@ void editor::Project::cleanupShaderFilePath(const std::filesystem::path& deleted
     // deleted path against each resolved entry point (handles shared-base and separate forms).
     applyCustomShaderPathChange([&](std::string& customShader) -> bool {
         Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        if (matchesRelativeString(deletedRelative, paths.vert) || matchesRelativeString(deletedRelative, paths.frag)) {
-            customShader.clear();
-            return true;
+        for (const std::string& entry : {paths.vert, paths.frag}) {
+            for (const std::string& candidate : shaderFileCandidates(entry)) {
+                if (matchesRelativeString(deletedRelative, candidate)) {
+                    customShader.clear();
+                    return true;
+                }
+            }
         }
         return false;
     });
@@ -1543,8 +1681,11 @@ void editor::Project::refreshLinkedMaterials(bool force) {
 
         const Material& updatedMaterial = changedIt->second.updatedMaterial;
         if (mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
+            // a new shader, features or render state reload the mesh, parameters its uniforms
+            const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(mesh->submeshes[keySubmeshIndex].material, updatedMaterial);
             mesh->submeshes[keySubmeshIndex].material = updatedMaterial;
             mesh->submeshes[keySubmeshIndex].needUpdateTexture = true;
+            Catalog::updateEntity(sceneProject->scene, keyEntity, updateFlags);
             sceneProject->needUpdateRender = true;
             sceneProject->isModified = true;
         }
@@ -1964,6 +2105,58 @@ std::filesystem::path editor::Project::normalizeToLuaRelative(const std::filesys
     return normalizeAgainstRoot(getLuaPath(), path);
 }
 
+std::filesystem::path editor::Project::findShaderFile(const std::filesystem::path& projectRoot, const std::filesystem::path& assetsRoot,
+                                                      const std::string& relative){
+    if (!ShaderVariantCompiler::isSafeRelativePath(relative)){
+        return {};
+    }
+    std::error_code ec;
+    for (const std::filesystem::path& root : {projectRoot, assetsRoot}){
+        if (root.empty()){
+            continue;
+        }
+        const std::filesystem::path file = (root / relative).lexically_normal();
+        if (std::filesystem::is_regular_file(file, ec)){
+            return file;
+        }
+    }
+    return {};
+}
+
+std::string editor::Project::resolveShaderFile(const std::string& relative) const{
+    const std::filesystem::path file = findShaderFile(projectPath, getAssetsPath(), relative);
+    if (file.empty()){
+        return relative;
+    }
+    return normalizeToProjectRelative(file).generic_string();
+}
+
+editor::Util::CustomShaderPaths editor::Project::resolveCustomShaderFiles(const std::string& customShader) const{
+    Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
+    if (!paths.vert.empty()){
+        paths.vert = resolveShaderFile(paths.vert);
+    }
+    if (!paths.frag.empty()){
+        paths.frag = resolveShaderFile(paths.frag);
+    }
+    return paths;
+}
+
+bool editor::Project::readShaderFile(const std::string& relative, std::string& content) const{
+    const std::filesystem::path file = findShaderFile(projectPath, getAssetsPath(), relative);
+    if (file.empty()){
+        return false;
+    }
+    std::ifstream stream(file, std::ios::binary);
+    if (!stream){
+        return false;
+    }
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    content = buffer.str();
+    return true;
+}
+
 // Only a directory without project files can be moved as a whole: those are referenced
 // from the project root and would need their own remap.
 static bool holdsOnlyAssets(const std::filesystem::path& directory){
@@ -1986,6 +2179,25 @@ static bool holdsOnlyAssets(const std::filesystem::path& directory){
 }
 
 bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform){
+    return visitMaterialFiles([&](Material& material) {
+        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
+        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
+        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
+        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
+        materialChanged |= visitTexturePaths(material.normalTexture, transform);
+        for (auto& shaderTexture : material.shaderTextures){
+            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        }
+        if (MaterialPass* pass = material.extraPass.editIfSet()){
+            for (auto& shaderTexture : pass->shaderTextures){
+                materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+            }
+        }
+        return materialChanged;
+    });
+}
+
+bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& visit){
     if (projectPath.empty()){
         return false;
     }
@@ -2015,13 +2227,7 @@ bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(st
             continue;
         }
 
-        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
-        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
-        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
-        materialChanged |= visitTexturePaths(material.normalTexture, transform);
-
-        if (!materialChanged){
+        if (!visit(material)){
             continue;
         }
 
@@ -2824,8 +3030,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // resolve the effective custom shader (component > scene default > built-in) from the
     // strings rather than the cached customShaderId, which lags a reload frame after a
     // scene-default change and is zeroed by the build-fail fallback
-    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type) -> uint16_t {
-        return ShaderPool::registerCustomShader(customShader.empty() ? scene->getDefaultCustomShader(type) : customShader);
+    auto effectiveShaderId = [&](const std::string& customShader, ShaderType type, const std::vector<std::string>& features,
+                                 MaterialBlendMode blendMode) -> uint16_t {
+        return ShaderPool::registerCustomShader(RenderSystem::getComponentShaderReference(
+            customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
     // the runtime falls back to the built-in variant when a custom shader fails to build,
@@ -2853,9 +3061,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         if (signature.test(scene->getComponentId<MeshComponent>())) {
             const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             if (mesh.loaded) {
-                uint16_t customShaderId = effectiveShaderId(mesh.customShader, ShaderType::MESH);
-                uint16_t customDepthShaderId = ShaderPool::registerCustomShader(mesh.customDepthShader);
+                const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
                 for (unsigned int s = 0; s < mesh.numSubmeshes; ++s) {
+                    // each submesh's shader (its material's, the mesh's, the scene's) and features
+                    uint16_t customShaderId = ShaderPool::registerCustomShader(
+                        RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
+                    uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
+                        RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
                     // meshes after a probe was added. Derive the required IBL
@@ -2901,6 +3113,14 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     if (mesh.submeshes[s].gbufferShader) {
                         keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, mesh.submeshes[s].gbufferShaderProperties));
                     }
+                    // the extra pass as loaded: its variant and the reference it was loaded with (the
+                    // build-fail state does not matter; the material may name another pass by now
+                    // if the mesh has not reloaded yet)
+                    if (mesh.submeshes[s].extraPass && mesh.submeshes[s].extraPass->customShaderId != 0 &&
+                            RenderSystem::hasExtraPass(mesh.submeshes[s], false)) {
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, mesh.submeshes[s].extraPass->shaderProperties,
+                            mesh.submeshes[s].extraPass->customShaderId));
+                    }
                 }
             }
         }
@@ -2908,28 +3128,28 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         if (signature.test(scene->getComponentId<UIComponent>())) {
             const UIComponent& ui = scene->getComponent<UIComponent>(entity);
             if (ui.loaded) {
-                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI));
+                insertKeys(ShaderType::UI, ui.shaderProperties, effectiveShaderId(ui.customShader, ShaderType::UI, ui.shaderFeatures, ui.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<PointsComponent>())) {
             const PointsComponent& pts = scene->getComponent<PointsComponent>(entity);
             if (pts.loaded) {
-                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS));
+                insertKeys(ShaderType::POINTS, pts.shaderProperties, effectiveShaderId(pts.customShader, ShaderType::POINTS, pts.shaderFeatures, pts.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>())) {
             const LineRendererComponent& ln = scene->getComponent<LineRendererComponent>(entity);
             if (ln.loaded) {
-                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES));
+                insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES, ln.shaderFeatures, ln.blendMode));
             }
         }
 
         if (signature.test(scene->getComponentId<SkyboxComponent>())) {
             const SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
             if (sky.loaded) {
-                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX));
+                insertKeys(ShaderType::SKYBOX, 0, effectiveShaderId(sky.customShader, ShaderType::SKYBOX, sky.shaderFeatures, MaterialBlendMode::AUTO));
             }
         }
     }
@@ -3032,7 +3252,54 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         prefabContents.push_back(std::move(content));
     }
 
-    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath());
+    const bool scriptsPost = scriptsSetPostProcessing();
+    ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+}
+
+bool editor::Project::scriptsMention(const char* text) const {
+    for (const fs::path& script : findProjectFiles([](const std::string& path) { return Util::isScriptFile(path); })) {
+        std::ifstream file(getProjectPath() / script, std::ios::binary);
+        if (!file) {
+            continue;
+        }
+        const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        if (content.find(text) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool editor::Project::scriptsSetLightCapacity() const {
+    // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
+    // light capacity tier of the lit variants changes at runtime
+    return scriptsMention("axLightsPerObject");
+}
+
+bool editor::Project::scriptsSetPostProcessing() const {
+    // scene.postProcessing (Lua) or Scene::setPostProcessing (C++): the post-processing colour's
+    // variant bit can change at runtime
+    return scriptsMention("ostProcessing");
+}
+
+std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
+    std::vector<std::string> named;
+    std::vector<std::string> contents;
+    for (const fs::path& script : findProjectFiles([](const std::string& path) { return Util::isScriptFile(path); })) {
+        std::ifstream file(getProjectPath() / script, std::ios::binary);
+        if (file)
+            contents.emplace_back((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    }
+    for (const std::string& field : ShaderVariantCollector::getScriptableEffectFields()) {
+        for (const std::string& content : contents) {
+            if (content.find(field) != std::string::npos) {
+                named.push_back(field);
+                break;
+            }
+        }
+    }
+    return named;
 }
 
 void editor::Project::buildStandaloneShaderCache() {
@@ -3054,6 +3321,8 @@ void editor::Project::invalidateCustomShaders() {
     // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
     editor::ShaderBuilder::invalidateCustomShaders();
     ShaderPool::destroyCustomShaders();
+    // fork manifests are read again from the edited files
+    ShaderManifests::clearForks();
 
     for (auto& sceneProject : getScenes()) {
         if (!sceneProject.scene)
@@ -3077,8 +3346,17 @@ void editor::Project::invalidateCustomShaders() {
         };
 
         for (Entity entity : sceneProject.entities) {
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity))
-                flagReload(mesh->needReload, sceneMesh || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                // a material or its extra pass can name a fork too (library shaders do not change)
+                bool materialFork = false;
+                for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+                    const std::string& shader = mesh->submeshes[s].material.shader;
+                    const std::string& pass = mesh->submeshes[s].material.extraPass->shader;
+                    materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
+                    materialFork = materialFork || (!pass.empty() && !ShaderReference::isLibrary(pass));
+                }
+                flagReload(mesh->needReload, sceneMesh || materialFork || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+            }
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
                 flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
@@ -3284,8 +3562,10 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                         materialFileLinks[MaterialLinkKey{targetScene->id, entity, submeshIndex}].lastWriteTime = fs::last_write_time(materialPath, ec);
 
                         if (material != fileMaterial) {
+                            const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(material, fileMaterial);
                             material = fileMaterial;
                             mesh->submeshes[submeshIndex].needUpdateTexture = true;
+                            Catalog::updateEntity(targetScene->scene, entity, updateFlags);
                             targetScene->needUpdateRender = true;
                         }
                     } catch (const std::exception& e) {
@@ -5169,6 +5449,13 @@ bool editor::Project::loadProject(const std::filesystem::path path, bool updateL
 
         resetConfigs();
         projectPath = path;
+
+        // shader manifests of forks are read from this project's files
+        // (the project root, else the assets directory: findShaderFile, read when asked, so
+        // the assets directory loaded with the project and any later change apply)
+        ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
+            return readShaderFile(relativePath, content);
+        });
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it

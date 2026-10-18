@@ -11,10 +11,12 @@
 #include "shader/ShaderUniforms.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
+#include "shader/ShaderManifest.h"
 #include "yaml-cpp/yaml.h"
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -91,10 +93,17 @@ namespace jasperengine::editor::mcp {
         // a composite for values that need more (a model file loads, a material links, a
         // render texture turns its camera's renderToTexture on). Null with `error` set when
         // the value doesn't fit. Custom properties go through buildChanges.
+        // shaderReference: the shader the property's shader-library values are for when a
+        // change of the same call sets another one; null reads the current one.
+        // editedKeys: for a shaderParams / shaderUniforms / shaderTextures collection, the
+        // entries this edit names (only those are checked against the shader's manifest);
+        // null checks every entry of `value`.
         static Command* buildPropertyCommand(Project* project, uint32_t sceneId, Entity entity, ComponentType component,
                                              const std::string& propertyName, const PropertyData& property,
                                              const Json& value, std::string& error,
-                                             std::function<void()> onChanged = nullptr);
+                                             std::function<void()> onChanged = nullptr,
+                                             const std::string* shaderReference = nullptr,
+                                             const std::set<std::string>* editedKeys = nullptr);
 
         // One edit of set_properties / create_entity / add_component
         struct Change {
@@ -170,6 +179,87 @@ namespace jasperengine::editor::mcp {
         // writes also take a number or 1-3 numbers per uniform (the rest 0)
         static Json shaderUniformsToJson(const ShaderUniformValues& values);
         static bool shaderUniformsFromJson(const Json& value, ShaderUniformValues& out, std::string& error);
+
+        // ---- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
+        //   shader          "" (built-in), "library:<name>" (list_shaders) or a fork base path
+        //   shaderParams    {member: number | [x,y(,z(,w))] | "#RRGGBB[AA]"}: values as stored
+        //                   (colours linear); a hex string is sRGB, converted to linear. A
+        //                   member left out takes the manifest default. (Components keep theirs
+        //                   in shaderUniforms, same shape.)
+        //   shaderTextures  {uniform: <texture> (see Texture) | null}: null / left out binds
+        //                   the manifest default
+        //   shaderFeatures  [define, ...] as stored ("!F" turns a default-on feature off, a
+        //                   @keywords choice is "<GROUP>_<VALUE>"); writes also take
+        //                   {define: true|false}, applied to the current list
+        // Entry paths "submeshes[N].material.shaderParams.<member>",
+        // ".shaderTextures.<uniform>", and a component's "shaderUniforms.<member>" /
+        // "shaderTextures.<uniform>" read one value (the manifest default when unset) and
+        // write it (null removes it).
+
+        // The manifest of a shader reference (null: built-in, unknown, no manifest)
+        static std::shared_ptr<const ShaderManifest> findManifest(const std::string& reference);
+        // A shader reference a property may take for a shader of `type`: "" , an existing
+        // library shader of that type, or a fork whose files exist. False with `error`.
+        static bool checkShaderReference(Project* project, const std::string& reference, ShaderType type, std::string& error);
+        // The library shaders, "library:a, library:b"
+        static std::string libraryShaderNamesText();
+        // A manifest as list_shaders gives it
+        static Json manifestToJson(const std::string& reference, const ShaderManifest& manifest, bool detail = true);
+        // ShaderRequire_SceneDepth / _SceneColor bits as names: [], ["scenedepth"], ["scenecolor"] or both
+        static Json sceneInputsToJson(uint32_t inputs);
+        // What an entity's mesh submeshes (their shaders and extra passes) and points read of
+        // the scene in their current variants (get_entity, get_shader_uniforms): one entry per
+        // reader, {component, submesh, reads, extra_pass_reads, error, fix}; empty when none
+        static Json entitySceneInputsToJson(Scene* scene, Entity entity);
+
+        static Json shaderParamsToJson(const ShaderUniformValues& values);
+        // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex
+        // strings and, for a library shader, refuses members it does not declare (an unknown
+        // library shader refuses them all). checkedKeys: only those members are checked against
+        // the manifest; the others are values already stored (kept from a previous shader).
+        static bool shaderParamsFromJson(const ShaderManifest* manifest, bool library, const Json& value, ShaderUniformValues& out,
+                                         std::string& error, const std::set<std::string>* checkedKeys = nullptr);
+        // one parameter: a number, 1-4 numbers or (colour kinds) "#RRGGBB[AA]" sRGB
+        static bool shaderParamFromJson(const ShaderManifestProperty* property, const std::string& member, const Json& value, Vector4& out, std::string& error);
+        static Json shaderTexturesToJson(Project* project, SceneProject* scene, const std::vector<std::pair<std::string, Texture>>& textures);
+        // image paths only (a camera's render texture is refused); checkedKeys as above
+        static bool shaderTexturesFromJson(Project* project, SceneProject* scene, const ShaderManifest* manifest, bool library, const Json& value,
+                                           std::vector<std::pair<std::string, Texture>>& out, std::string& error,
+                                           const std::set<std::string>* checkedKeys = nullptr);
+        static Json shaderFeaturesToJson(const std::vector<std::string>& features);
+        // a list replaces `inout`; an object {define: bool} edits it (ShaderLibraryValues::setFeature)
+        static bool shaderFeaturesFromJson(const std::string& shader, const ShaderManifest* manifest, bool library, const Json& value,
+                                           std::vector<std::string>& inout, std::string& error);
+        // The shader-library keys of a material (shader, shaderParams, shaderTextures,
+        // shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor,
+        // depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass) added to
+        // `out`; all = false leaves out the ones at their defaults
+        static void materialShaderLibraryToJson(Project* project, SceneProject* scene, const Material& material, Json& out, bool all);
+        // Applies those keys of `value` to `out` ("shader" first: the others follow its
+        // manifest). False with `error`.
+        static bool materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
+        static bool isMaterialShaderLibraryKey(const std::string& key);
+
+        // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        //   stencil     {compare, ref, readMask, writeMask, pass, fail, depthFail}: compare
+        //               "auto" takes the shader's @state stencil rule, "disabled" turns stencil
+        //               off, any other test makes the whole block explicit; ref and masks
+        //               0..255; ops keep, zero, replace, incr_clamp, decr_clamp, invert,
+        //               incr_wrap, decr_wrap (the manifest's names are accepted too). Writes
+        //               merge the keys given; null resets it (auto).
+        //   colorWrite  "auto" (-1), "none" (0) or channels of "rgba" ("rgb", "a"...); writes
+        //               also take a mask -1..15 (r 1, g 2, b 4, a 8)
+        //   extraPass   {shader, shaderParams, shaderTextures, shaderFeatures, blendMode,
+        //               cullMode, depthWrite, depthTest, depthOffsetFactor, depthOffsetUnits,
+        //               stencil, colorWrite, order ("after" | "before")}: one more draw of the
+        //               submesh with its own (mesh) shader, values checked against that
+        //               shader's manifest like the material's; writes merge, null removes it
+        static Json stencilToJson(const MaterialStencil& stencil);
+        static bool stencilFromJson(const Json& value, MaterialStencil& inout, std::string& error);
+        static Json colorWriteToJson(int colorWrite);
+        static bool colorWriteFromJson(const Json& value, int& out, std::string& error);
+        static Json materialPassToJson(Project* project, SceneProject* scene, const MaterialPass& pass, bool all);
+        static bool materialPassFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPass& inout, std::string& error);
 
         // Asset references: stored (assets-relative) <-> project-relative
         static std::string assetPathToJson(Project* project, const std::string& stored);

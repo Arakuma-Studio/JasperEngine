@@ -5,6 +5,9 @@
 
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
+#include "Log.h"
+
+#include <string>
 
 using namespace jasperengine;
 
@@ -51,6 +54,29 @@ size_t SystemRender::getPipelineCacheSize(){
 
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
+}
+
+namespace{
+    struct FrameStatsRequest{
+        uint64_t frame;
+        uint32_t view;
+    };
+
+    void printFrameStats(void* data){
+        FrameStatsRequest* request = static_cast<FrameStatsRequest*>(data);
+        const std::string line = SokolSystem::getFrameStatsLine();
+        if (!line.empty()){
+            if (request->view == SystemRender::FRAME_STATS_FRAME)
+                Log::print("Frame stats (frame %llu): %s", (unsigned long long)request->frame, line.c_str());
+            else
+                Log::print("Frame stats (frame %llu, view %u): %s", (unsigned long long)request->frame, request->view, line.c_str());
+        }
+        delete request;
+    }
+}
+
+void SystemRender::logFrameStats(uint64_t frame, uint32_t view){
+    addQueueCommand(&printFrameStats, new FrameStatsRequest{frame, view});
 }
 
 void SystemRender::scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer){

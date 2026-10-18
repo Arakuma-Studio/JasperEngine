@@ -5,8 +5,29 @@
 
 #include "Configs.h"
 #include "PreviewEnvironment.h"
+#include "pool/TexturePool.h"
+#include "shader/ShaderManifest.h"
+#include "util/CameraTextureLink.h"
 
 using namespace jasperengine;
+
+namespace {
+
+    // the colour write a preview draws with: alpha added to a mask that writes colour but not
+    // alpha (explicit, else the shader's @state colorwrite with these features)
+    int previewColorWrite(int colorWrite, const std::string& shader, const std::vector<std::string>& features){
+        int mask = colorWrite;
+        if (mask < 0 && !shader.empty()){
+            std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+            if (manifest && manifest->present)
+                mask = manifest->resolveState(manifest->resolveFeatures(features)).colorWrite;
+        }
+        if (mask < 0 || (mask & MATERIAL_COLOR_WRITE_RGB) == 0 || (mask & MATERIAL_COLOR_WRITE_A) != 0)
+            return colorWrite;
+        return mask | MATERIAL_COLOR_WRITE_A;
+    }
+
+}
 
 editor::MaterialRender::MaterialRender(){
     scene = new Scene(EntityPool::System);
@@ -52,12 +73,54 @@ editor::MaterialRender::~MaterialRender(){
     delete scene;
 }
 
-void editor::MaterialRender::applyMaterial(const Material& material){
-    sphere->setMaterial(material);
+void editor::MaterialRender::applyMaterial(const Material& material, const std::string& meshShader){
+    this->material = material;
+    // the material's shader, its parameters, textures, features and render state are the
+    // sphere's (Mesh::setMaterial reloads what the variant depends on)
+    Material drawn = material;
+    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader,
+                                         material.shaderFeatures);
+    if (MaterialPass* pass = drawn.extraPass.editIfSet(); pass && !pass->shader.empty())
+        pass->colorWrite = previewColorWrite(pass->colorWrite, pass->shader, pass->shaderFeatures);
+    sphere->setCustomShader(meshShader);
+    sphere->setMaterial(drawn);
 }
 
-const Material editor::MaterialRender::getMaterial(){
-    return sphere->getMaterial();
+const Material& editor::MaterialRender::getMaterial() const{
+    return material;
+}
+
+std::string editor::MaterialRender::getMeshShader() const{
+    return sphere->getCustomShader();
+}
+
+bool editor::MaterialRender::isPending() const{
+    const MeshComponent& mesh = sphere->getComponent<MeshComponent>();
+    if (!mesh.loaded || mesh.needReload || !mesh.loadCalled)
+        return true;
+
+    auto texturePending = [](const Texture& texture) {
+        if (texture.isFramebuffer() || texture.empty() || CameraTextureLink::isCameraTexture(texture))
+            return false; // framebuffer textures never enter the pool
+        const std::string id = texture.getId();
+        return !id.empty() && !TexturePool::get(id);
+    };
+    const Material& material = mesh.submeshes[0].material;
+    for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture, &material.metallicRoughnessTexture,
+                                   &material.occlusionTexture, &material.normalTexture}) {
+        if (texturePending(*texture))
+            return true;
+    }
+    for (const auto& shaderTexture : material.shaderTextures) {
+        if (texturePending(shaderTexture.second))
+            return true;
+    }
+    // the extra pass draws on the sphere too (outlines, silhouettes): its own textures
+    for (const auto& shaderTexture : material.extraPass->shaderTextures) {
+        if (texturePending(shaderTexture.second))
+            return true;
+    }
+    return false;
 }
 
 void editor::MaterialRender::setReceiveIBL(bool value){

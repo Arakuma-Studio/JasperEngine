@@ -38,9 +38,23 @@ namespace jasperengine{
         FramebufferRender& operator=(const FramebufferRender& rhs);
         virtual ~FramebufferRender();
 
+        // The depth attachment is depth-stencil (what colour passes that draw meshes use, and
+        // the PIP_RTT pipelines expect) unless shadowMap: shadow atlases stay depth only
         bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
+        // stencil chooses the attachment: depth-stencil, or depth only for targets drawn
+        // only by depth-format pipelines (PIP_DEPTH, PIP_GBUFFER)
+        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, bool stencil);
+        // any depth attachment, or none (FramebufferDepth::NONE: drawn only by PIP_EFFECT pipelines)
+        bool createFramebuffer(TextureType textureType, int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap, FramebufferDepth depth,
+                               ColorFormat colorFormat = ColorFormat::RGBA);
+        // a multisampled colour + depth-stencil target, resolved into another target's colour
+        // at the end of each pass drawing into it (CameraRender::setMultisample)
+        bool createMultisampleFramebuffer(int width, int height, int samples);
+        int getMsaaSamples() const;
+        // the highest sample count up to requested the device has for such a target (1: none)
+        static int getMaxMsaaSamples(int requested);
         bool createDepthOnlyFramebuffer(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, bool shadowMap);
-        bool createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats);
+        bool createFramebufferMRT(int width, int height, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV, int numColor, const ColorFormat* formats, bool stencil = true);
         // With sampleCount > 1 the colour attachment is multisampled and every pass resolves
         // it into getColorTexture() (the 1-sample resolve image). A shared depth-stencil stays
         // owned by its framebuffer, which must outlive this one

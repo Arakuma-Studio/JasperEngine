@@ -4087,7 +4087,7 @@ void registerWorldTools(McpRegistry& registry) {
     };
     const Json createSpec = object({
         {"name", string("")},
-        {"parent", entityRef("Parent (default: scene root).")},
+        {"parent", entityRef("Default: scene root.")},
         {"position", vec3("Local.")}
     });
     const Json numberItem = Json{{"type", "number"}};
@@ -4096,14 +4096,14 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- terrain
     add("sculpt_terrain", "Sculpt / Paint Terrain",
-        "Terrain-window brush strokes (same code as a mouse drag): the brush moves along each stroke's points, "
-        "holding seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
+        "Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding "
+        "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
         "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
         "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
         "Returns heights after each stroke. Whole maps: set_terrain_maps.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Terrain (default: the only one).")},
+            {"entity", entityRef("Default: the only terrain.")},
             {"space", withDefault(stringEnum("local: terrain-centred.", {"world", "local"}), "world")},
             {"map_resolution", integer("New maps.", 2, 4096)},
             {"strokes", Json{{"type", "array"}, {"minItems", 1},
@@ -4135,14 +4135,13 @@ void registerWorldTools(McpRegistry& registry) {
         sculptTerrainTool, false, false);
 
     add("set_terrain_maps", "Set Terrain Maps",
-        "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a whole "
-        "16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image "
-        "path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer "
-        "(pbr: its own normal/roughness/metallic/occlusion). Images under the assets dir. Returns the paths "
-        "and terrain info.",
+        "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
+        "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
+        "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
+        "normal/roughness/metallic/occlusion). Images under the assets dir.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Terrain (default: the only one).")},
+            {"entity", entityRef("Default: the only terrain.")},
             {"heightmap", {{"type", {"string", "object"}}, {"properties", {
                 {"generate", withDefault(stringEnum("", {"middle", "flat", "random_noise", "fractal_noise"}), "middle")},
                 {"base_height", number("0-1.", 0, 1)},
@@ -4164,11 +4163,11 @@ void registerWorldTools(McpRegistry& registry) {
         setTerrainMapsTool, false, false);
 
     add("sample_terrain", "Sample Terrain",
-        "Terrain size, max_height, maps, layers and heights. points: each one's position, world height, 0-1 height and "
-        "normal; else an N x N grid of world heights with min/max/mean (rows -z to +z, columns -x to +x).",
+        "Terrain size, max_height, maps, layers and heights. points: each one's position, world height, 0-1 "
+        "height, normal; else an N x N grid of world heights, min/max/mean (rows -z to +z, columns -x to +x).",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Terrain (default: the only one).")},
+            {"entity", entityRef("Default: the only terrain.")},
             {"points", array(array(numberItem, ""), "[x, z] points.")},
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
             {"grid", integer("Default 9 without points.", 0, 65)}
@@ -4177,13 +4176,13 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
-        "Add/update/remove the colliders of a Rigidbody 2D / Rigidbody, creating the body if missing (no edits "
-        "= list). Order: clear, remove (old indices), update [{index, ...}], add. 2D shapes: box (size, "
-        "center), circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain "
-        "(4-16, loop), in pixels before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), "
-        "tapered_capsule, convex_hull/mesh, heightfield (terrains). New shapes fit what the GameObject draws "
-        "unless fit: false. Other fields: density, friction, restitution (3D: per body), sensor, *_events, category_bits, "
-        "mask_bits, center, rotation. Returns the colliders.",
+        "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
+        "list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), circle "
+        "(radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, loop), px "
+        "before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
+        "convex_hull/mesh, heightfield. New shapes fit what the GameObject draws unless fit: false. Also "
+        "density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, "
+        "rotation. Returns the colliders.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4198,10 +4197,10 @@ void registerWorldTools(McpRegistry& registry) {
         editCollidersTool, false, false);
 
     add("set_joint", "Create / Edit Joint",
-        "Create a joint GameObject between two bodies, or edit one (joint). 2D types: distance, revolute, "
-        "prismatic, mouse, wheel, weld, motor. 3D: fixed, distance, point, hinge, cone, prismatic, "
-        "swing_twist, six_dof, path, gear, rack_and_pinion, pulley. Anchors turn auto_anchors off. Both bodies "
-        "need Rigidbodies of that dimension; built on play.",
+        "Create a joint GameObject between two bodies, or edit one (joint). 2D: distance, revolute, prismatic, "
+        "mouse, wheel, weld, motor. 3D: fixed, distance, point, hinge, cone, prismatic, swing_twist, six_dof, "
+        "path, gear, rack_and_pinion, pulley. Anchors turn auto_anchors off. Both bodies need Rigidbodies of "
+        "that dimension; built on play.",
         object({
             {"scene", sceneRef()},
             {"joint", entityRef("Joint to edit.")},
@@ -4225,12 +4224,11 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- tilemap
     add("edit_tilemap", "Edit Tilemap",
-        "Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops in order. Cells are "
-        "(col, row) of cell_size (default: first rect's) from origin; row 0 is the bottom. ops: paint {grid, "
-        "legend, at, blank}: grid = multi-line string or lines, TOP line = highest row, bottom line at row "
-        "at[1]; legend maps a char to a rect name/index (null erases); '.' and ' ' are empty (blank: "
-        "skip|erase). fill {tile, from, to} (inclusive), erase {from, to}, set {cells: [[col, row, tile]]}, "
-        "clear. Returns rects, counts, grid lines.",
+        "Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops in order. Cells (col, "
+        "row) of cell_size (default: first rect's) from origin; row 0 = bottom. paint {grid, legend, at, blank}: "
+        "grid = multi-line string or lines, TOP line = highest row, bottom line at row at[1]; legend: char -> "
+        "rect name/index (null erases); '.' and ' ' are empty (blank: skip|erase). fill {tile, from, to} "
+        "(inclusive), erase {from, to}, set {cells: [[col, row, tile]]}, clear.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4260,8 +4258,8 @@ void registerWorldTools(McpRegistry& registry) {
         editTilemapTool, false, false);
 
     add("get_tilemap", "Get Tilemap",
-        "A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/row ranges and an ASCII view "
-        "(grid.lines, top = highest row; grid.legend). Off-grid tiles are only counted.",
+        "A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/row ranges, an ASCII "
+        "view (grid.lines, top = highest row; grid.legend). Off-grid tiles are only counted.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4276,8 +4274,8 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
         "Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or "
-        "frames lists pixel rects (top-left origin). The sprite shows frame (sized to it with resize); pivot "
-        "center suits characters. create instead of entity makes one. Animate: set_sprite_animation; scripts: "
+        "frames lists pixel rects (top-left origin). It shows frame (sized to it with resize); pivot center "
+        "suits characters. create instead of entity makes one. Animate: set_sprite_animation; scripts: "
         "Sprite:setFrame(index or name).",
         object({
             {"scene", sceneRef()},
@@ -4299,9 +4297,9 @@ void registerWorldTools(McpRegistry& registry) {
         setSpriteFramesTool, false, false);
 
     add("set_sprite_animation", "Set Sprite Animation",
-        "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, "
-        "default all); timing by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on "
-        "play. Make several (Idle, Run) and switch them in scripts.",
+        "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or "
+        "names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) "
+        "starts it on play; make several (Idle, Run) and switch them in scripts.",
         object({
             {"scene", sceneRef()},
             {"sprite", entityRef("Sprite with frames.")},
@@ -4318,12 +4316,11 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- animation
     add("edit_animation", "Edit Animation",
         "Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: "
-        "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; turns > 180 degrees "
-        "need middle keys) or morph weights; ease to the next key: linear, step, "
-        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; a track for the same target+channel is "
-        "replaced or merged. tweens add tween actions (from: current). add_actions adds existing actions "
-        "(tweens, sprite animations, particles, animations); set_frames / remove_actions use indices from "
-        "before the call. Returns get_animation's shape.",
+        "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs "
+        "middle keys) or morph weights; ease to the next key: linear, step, "
+        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
+        "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
+        "indices from before the call.",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef("Animation to edit.")},
@@ -4360,7 +4357,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     add("get_animation", "Get Animation",
         "An Animation's timeline: loop, duration, autoplay, target and actions (index, kind, GameObject, target, "
-        "start_time, duration, lane, keys or tween values). Given another GameObject, lists the animations targeting it "
+        "start_time, duration, lane, keys or tween values). For another GameObject: the animations targeting it "
         "or its children (model clips too).",
         object({
             {"scene", sceneRef()},
@@ -4370,8 +4367,8 @@ void registerWorldTools(McpRegistry& registry) {
         getAnimationTool, true, true);
 
     add("preview_animation", "Preview Animation",
-        "Edit-mode preview (Animation window controls): play, pause, seek (time), stop (restores the authored state; "
-        "always stop when done). Selects the animation. wait_ms lets it play first. Returns the target's transform.",
+        "Edit-mode preview (Animation window controls): play, pause, seek (time), stop (restores the authored "
+        "state; always stop when done). Selects the animation; wait_ms lets it play first.",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef()},
@@ -4384,22 +4381,22 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
-        "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: "
-        "pixels, y DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins "
-        "to the parent (screen for roots) and position becomes an offset; stretch + margins [l,t,r,b] fills "
-        "it. Colors are linear. Put HUDs/menus in a UI scene (child scene): pointer input needs its UI camera "
-        "and layout groups stack bottom-up elsewhere. Returns the tree with ids and paths.",
+        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text = "
+        "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
+        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: px, y "
+        "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
+        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. "
+        "HUDs/menus go in a UI scene (child scene): pointer input needs its UI camera; layout groups stack "
+        "bottom-up elsewhere.",
         object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Parent (default: scene root).")},
+            {"parent", entityRef("Default: scene root.")},
             {"root", anyObject("")}
         }, {"root"}),
         createUiTool, false, false);
 
     add("set_rect_layout", "Set UI Layout",
-        "Lay out existing UI elements (RectTransform) with create_ui's layout rules. Returns the resolved layouts.",
+        "Lay out existing UI elements (RectTransform) with create_ui's layout rules.",
         object({
             {"scene", sceneRef()},
             {"items", array(object({
@@ -4412,16 +4409,16 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- particles
     add("create_particles", "Create / Configure Particles",
-        "Create a particle effect (Points GameObject + Particle System child) from a preset, or reconfigure "
-        "one (entity). 3D presets are in meters; 2D ones are scaled by scale (px per unit). emitter {shape: "
+        "Create a particle effect (Points GameObject + Particle System child) from a preset, or reconfigure one "
+        "(entity). 3D presets in meters; 2D ones scaled by scale (px per unit). emitter {shape: "
         "box|sphere|hemisphere|circle|cone, min, max, radius, inner_radius, cone_angle, cone_height}; "
         "velocity/acceleration/color: value or {min, max}; gradient = color over life; bursts [{time, count}]. "
-        "Runs only in play (autoplay). emitter_entity: draw with an existing Points/Mesh.",
+        "Runs in play (autoplay). emitter_entity: draw with an existing Points/Mesh.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Effect to reconfigure.")},
             {"name", string("")},
-            {"parent", entityRef("Parent (default: scene root).")},
+            {"parent", entityRef("Default: scene root.")},
             {"position", vec3("Local.")},
             {"emitter_entity", entityRef()},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
@@ -4447,7 +4444,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- models
     add("get_model_info", "Get Model Info",
-        "What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (GameObjects: tracks, length, loop), "
+        "What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (tracks, length, loop), "
         "morph targets, skeleton.",
         object({
             {"scene", sceneRef()},
@@ -4457,8 +4454,8 @@ void registerWorldTools(McpRegistry& registry) {
         getModelInfoTool, true, true);
 
     add("set_model", "Load / Clear Model",
-        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it. create instead of entity makes one. "
-        "Waits for the load; returns get_model_info's summary.",
+        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it; create instead of entity "
+        "makes one. Waits for the load; returns get_model_info's summary.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4472,9 +4469,9 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- shape points
     add("set_shape_points", "Set Shape Points",
-        "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), circle or "
-        "rect. Polygon order outline converts a convex outline to the triangle strip; strip uses points as is. Line "
-        "renderers: polyline (closed joins ends) or lines.",
+        "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), "
+        "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip uses "
+        "points as is. Line renderers: polyline (closed joins ends) or lines.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

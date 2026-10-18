@@ -177,11 +177,13 @@ async def test_scene_view_shows_document(ed: Editor):
 async def test_shaders_cross_compile(ed: Editor):
     """Every HTML UI variant for every graphics API generate_shaders accepts."""
     await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiRender")
-    # ShaderKey: type << 32 | properties; HTMLUI = 15, HTMLUI_GRADIENT = 16, HTMLUI_POST = 17
-    keys = [(15 << 32) | 0, (15 << 32) | 1, (16 << 32) | 0] + [(17 << 32) | (1 << bit) for bit in range(6)]
+    # by spec, not by ShaderKey number (the ShaderType values of the HTML UI's types moved by one
+    # when origin/main's BLOOM came before them)
+    posts = ("Pas", "Cmx", "Msk", "Shd", "Blr", "Unp")
+    specs = ["htmlui", "htmlui:Tex", "htmluigradient"] + [f"htmluipost:{name}" for name in posts]
     out = ed.scratch.root / "htmlui-shaders"
     r = await ed.call("generate_shaders", output_dir=str(out), backends="all", format="binary",
-                      shaders=[hex(k) for k in keys], timeout_seconds=900)
+                      shaders=specs, timeout_seconds=900)
     ed.check_eq(r["status"], "succeeded", f"generate_shaders: {r}")
     files = [p.name for p in out.rglob("*") if p.is_file()]
     # every variant for GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 (macOS, iOS) and SPIR-V

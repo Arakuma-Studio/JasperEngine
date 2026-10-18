@@ -397,8 +397,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Batch";
         tool.description =
-            "Run tool calls in order in one round-trip. Returns {results: [{ok, text, structured}], succeeded, failed}; "
-            "check failed (the batch itself doesn't fail). undo_group: one undo step per scene; undo/redo or Play "
+            "Run tool calls in order in one round-trip: results [{ok, text, structured}], succeeded, failed (the "
+            "batch itself doesn't fail: check failed). undo_group: one undo step per scene; undo/redo or Play "
             "start/stop inside prevent it. Not nestable.";
         tool.inputSchema = object({
             {"calls", Json{
@@ -422,8 +422,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = "get_job";
         tool.title = "Get Job";
         tool.description =
-            "Status of a long operation (build, compile, play startup): {status, progress 0-1|null, message, log tail, "
-            "result when done}. Without job_id: running and recent jobs.";
+            "Status of a long operation (build, compile, play startup): status, progress 0-1|null, message, log "
+            "tail, result when done. Without job_id: running and recent jobs.";
         tool.inputSchema = object({
             {"job_id", string("Omit to list jobs.")},
             {"log_lines", withDefault(integer("", 0, 200), 40)}
@@ -469,8 +469,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = "editor_status";
         tool.title = "Editor Status";
         tool.description =
-            "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, "
-            "prefab stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
+            "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab "
+            "stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -484,8 +484,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
-            "Click a button of the open editor dialog (see editor_status; edit tools are refused meanwhile). The "
-            "message says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.";
+            "Click a button of the open editor dialog (editor_status; edit tools are refused meanwhile). The message "
+            "says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.";
         tool.inputSchema = object({
             {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
         }, {"choice"});

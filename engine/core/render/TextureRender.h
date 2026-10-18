@@ -48,6 +48,9 @@ namespace jasperengine {
         // filter. updateTexture then takes exactly width * height * 4 (or 1) bytes, rows top first
         bool createDynamicTexture(const std::string& label, int width, int height,
                                   ColorFormat format, TextureFilter filter);
+        // RGBA8, linear, clamped, rewritten whole by updateTexture (width * height * 4 bytes)
+        // at most once a frame (the post-processing colour LUTs)
+        bool createDynamicColorTexture(const std::string& label, int width, int height);
         // at most once per frame (sokol); the next draw that samples the texture sees the data
         void updateTexture(const void* data, size_t size);
 
@@ -60,9 +63,20 @@ namespace jasperengine {
         const void* getVulkanImageHandler() const;
 
         uint32_t getViewId() const;
+        // the size of the image (0 when there is none)
+        int getWidth() const;
+        int getHeight() const;
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();
+
+        // whether the image it was made from has transparent texels (TextureData::isTransparent),
+        // for a Texture that found it in TexturePool and so never loaded the image itself
+        void setTransparent(bool transparent);
+        bool isTransparent() const;
+
+    private:
+        bool transparent = false;
     };
 }
 

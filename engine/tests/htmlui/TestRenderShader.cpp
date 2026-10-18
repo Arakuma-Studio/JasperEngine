@@ -118,8 +118,12 @@ TEST(HtmlUIShaderTest, ShaderPoolNames){
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::HTMLUI, 1));
     EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), ShaderType::HTMLUI);
 
-    // appended after POSTPROCESS: the stored enum values of every earlier type are unchanged
-    EXPECT_EQ((int)ShaderType::HTMLUI, (int)ShaderType::POSTPROCESS + 1);
+    // appended: the stored enum values of every earlier type are unchanged. Since the merge of
+    // origin/main the shader library's BLOOM (published first) comes between POSTPROCESS and
+    // the HTML UI's types
+    EXPECT_EQ((int)ShaderType::BLOOM, (int)ShaderType::POSTPROCESS + 1);
+    EXPECT_EQ((int)ShaderType::HTMLUI, (int)ShaderType::BLOOM + 1);
+    EXPECT_EQ((int)ShaderType::UI_EFFECT, (int)ShaderType::HTMLUI_POST + 1);
 }
 
 namespace {

@@ -22,7 +22,8 @@ namespace jasperengine::editor {
         // shaderlib.h, the engine shader library the runtime shader compiler builds from,
         // in the format engine/libs/shadercompiler/embed_shaderlib.cmake writes for
         // CMake builds (the Xcode workspace has no generation step)
-        static std::string buildShaderLibHeader(const std::map<std::string, std::string>& sources);
+        // (with MANIFESTS=ON: namespaceName "shaderlib_manifests", sources the manifest lines)
+        static std::string buildShaderLibHeader(const std::map<std::string, std::string>& sources, const std::string& namespaceName = "shaderlib");
 
     private:
         static std::string buildShaderHeader(const std::string& suffix, std::vector<HeaderShader> shaders);

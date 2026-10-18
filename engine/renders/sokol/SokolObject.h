@@ -39,16 +39,9 @@ namespace jasperengine{
         sg_buffer loadIndexBuffer;
         size_t loadIndexOffset;
 
-        sg_pipeline pip;
-        sg_pipeline depth_pip;
-        sg_pipeline shadow_depth_pip;
-        sg_pipeline rtt_pip;
-        sg_pipeline rtt_invert_pip;
-        sg_pipeline gbuffer_pip;
-        sg_pipeline nodepth_pip;
-        sg_pipeline rtt_nodepth_pip;
-        sg_pipeline zprepass_pip;
-        sg_pipeline zprepass_rtt_pip;
+        // the pipeline types (PipelineType), by bit index
+        static constexpr int PIPELINE_TYPES = 15;
+        sg_pipeline pipelines[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
 
@@ -63,17 +56,14 @@ namespace jasperengine{
         sg_pipeline lastDynamicPipeline;
         uint32_t lastDynamicGeneration;
 
-        // the face state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
-        bool loadFaceCulling;
-        bool loadDepthWrite;
-        CullingMode loadCullingMode;
-        WindingOrder loadWindingOrder;
-        bool loadPrepassFaceCulling;
+        // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
+        RenderState loadState;
+        // the sample count of the PIP_MSAA* pipelines (endLoad's)
+        int msaaSamples;
 
 #ifdef JASPERENGINE_EDITOR
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
         // created on the first draw that asks for one and destroyed with the others
-        static constexpr int PIPELINE_TYPES = 10;
         sg_pipeline noCullPipelines[PIPELINE_TYPES];
         // types whose pipeline already culls nothing, by bit index
         uint16_t noCullSame;
@@ -92,14 +82,23 @@ namespace jasperengine{
         sg_primitive_type getPrimitiveType(PrimitiveType primitiveType);
         static sg_cull_mode getCullMode(CullingMode cullingMode);
         static sg_face_winding getFaceWinding(WindingOrder windingOrder);
+        static sg_compare_func getCompareFunc(DepthCompare compare);
         static sg_blend_factor getBlendFactor(BlendFactor factor);
         static sg_blend_op getBlendOp(BlendOperation operation);
+        // the colour blending of the load state into a colour target (then a BlendState set
+        // with setBlendState replaces it)
+        void applyBlend(sg_color_target_state& target, bool offscreen) const;
+        // the stencil state and colour write mask of the load state, for a colour pipeline
+        // (a swapchain target never takes alpha writes)
+        void applyStencilAndColorMask(sg_pipeline_desc& desc, bool offscreen) const;
         // the description endLoad creates the pipeline of one type from
         sg_pipeline_desc makePipelineDesc(PipelineType pipType) const;
         sg_pipeline& pipelineOf(PipelineType pipType);
         void resetPipelines();
 
     public:
+        // pipelines made by every object and not destroyed yet (diagnostics)
+        static int getLivePipelineCount();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);
@@ -117,9 +116,9 @@ namespace jasperengine{
         void resetIndexBuffer();
         void addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
+        void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
         void setBlendState(const BlendState& state);
-        // prepassFaceCulling applies to the PIP_ZPREPASS pipelines, which must cull like the color pass
-        bool endLoad(uint16_t pipelines, bool enableFaceCulling, bool enableDepthWrite, CullingMode cullingMode, WindingOrder windingOrder, bool prepassFaceCulling = true);
+        bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
 

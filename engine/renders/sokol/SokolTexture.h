@@ -57,6 +57,9 @@ namespace jasperengine{
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureFilter filter);
+        // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
+        // (the post-processing colour LUTs)
+        bool createDynamicColorTexture(const std::string& label, int width, int height);
         void updateTexture(const void* data, size_t size);
 
         void destroyTexture();
@@ -68,6 +71,8 @@ namespace jasperengine{
         const void* getVulkanImageHandler() const;
 
         uint32_t getViewId() const;
+        int getWidth() const;
+        int getHeight() const;
         static bool isViewValid(uint32_t viewId);
 
         bool isCreated();

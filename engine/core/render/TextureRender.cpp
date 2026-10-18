@@ -59,12 +59,26 @@ bool TextureRender::createDynamicTexture(const std::string& label, int width, in
         backend.createDynamicTexture(label, width, height, format, filter);
 }
 
+bool TextureRender::createDynamicColorTexture(const std::string& label, int width, int height){
+    return Engine::isViewLoaded() && !isCreated() &&
+        backend.createDynamicColorTexture(label, width, height);
+}
+
 void TextureRender::updateTexture(const void* data, size_t size){
     backend.updateTexture(data, size);
 }
 
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
+    transparent = false;
+}
+
+void TextureRender::setTransparent(bool transparent){
+    this->transparent = transparent;
+}
+
+bool TextureRender::isTransparent() const{
+    return transparent;
 }
 
 uint32_t TextureRender::getGLHandler() const{
@@ -89,6 +103,14 @@ const void* TextureRender::getVulkanImageHandler() const{
 
 uint32_t TextureRender::getViewId() const{
     return backend.getViewId();
+}
+
+int TextureRender::getWidth() const{
+    return backend.getWidth();
+}
+
+int TextureRender::getHeight() const{
+    return backend.getHeight();
 }
 
 bool TextureRender::isViewValid(uint32_t viewId){

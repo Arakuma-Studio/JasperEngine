@@ -574,6 +574,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpShaderValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
@@ -619,6 +620,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
+    ${EDITOR_DIR}/material/MaterialChange.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -637,8 +639,15 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
+    ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
+    ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
+
+    ${EDITOR_DIR}/material/MaterialPresets.cpp
+    ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
+    ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
