@@ -1225,7 +1225,8 @@ int WidgetTextInput::CalculateCharacterIndex(int line_index, float position)
 		++it;
 		const int offset = (int)it.offset();
 
-		const float line_width = GetLineStringWidth(line, 0, offset);
+		const float line_width = (line.justification.empty() ? (float)ElementUtilities::GetStringWidth(text_element, StringView(p_begin, p_begin + offset))
+															  : GetLineStringWidth(line, 0, offset));
 		if (line_width > position)
 		{
 			if (position - prev_line_width < line_width - position)
