@@ -298,7 +298,7 @@ feature; what the merge decided:
   moved to bit 38. The phase-0 `BlendStateTest` describes the pipeline types as the render
   state model builds them.
 - Interfaces changed: `CONTRACTS.md` (rows citing "the merge of origin/main").
-- Verified on the remote test host (BRIEF.md) on the merged tree: the HTML UI suites (glcore and
+- Verified on an idle 12-core test machine on the merged tree: the HTML UI suites (glcore and
   Vulkan 3,145 tests, 0 failed, the 73 Taffy exclusions skipped; perf gates; RmlUi 426 cases;
   editor tests; web; Android), three full MCP runs and the slow ones, every generator and
   reference check, and the library's checks (`shaders --library all --backend all`, its fixtures
