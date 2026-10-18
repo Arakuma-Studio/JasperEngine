@@ -801,7 +801,8 @@ async def video_menu_before(ed: Editor, n: str, first: bool) -> None:
     m = await video_state(ed, n)
     check(not m["paused"] and m["loop"] and m["muted"] and m["readyState"] == 4, f"the background video plays: {m}")
     check((m["videoWidth"], m["videoHeight"]) == (640, 360) and abs(m["duration"] - 4.0) < 1e-3, f"menu-loop.webm: {m}")
-    check(0 < m["currentTime"] <= 1.5 and m["frame"] == int(m["currentTime"] * 30 + 1e-6), f"frame-exact on the UI clock: {m}")
+    # reloaded when play is held, then 90 frames of 1/60 s: 1.5 s, frame 45 (frame-exact)
+    check(abs(m["currentTime"] - 1.5) < 1e-9 and m["frame"] == 45, f"frame-exact on the UI clock: {m}")
     await hover(ed, n, "#play", frames_after=20)
 
 
