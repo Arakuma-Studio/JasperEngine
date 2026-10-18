@@ -5,7 +5,7 @@
 // (auto-enumerated: a new effect is tested by adding its .frag) is rendered in its fixture with
 // the effect clock fixed, compared with golden/effects/<name>.t1.png (t = 1.5 s) and, when it
 // is animated, <name>.t2.png (t = 4 s), and checked against the invariants I1-I7; a stateful
-// effect (phase 6) also against <name>.t0.png (t = 0.5 s: its early state) and I8-I9.
+// effect (phase 6) also against <name>.t0.png (t = 0.25 s: its early state) and I8-I9.
 
 #include "EffectTestCommon.h"
 
@@ -24,7 +24,7 @@ namespace {
 
     constexpr double kT1 = 1.5;
     constexpr double kT2 = 4.0;
-    constexpr double kT0 = 0.5;   // stateful effects: the simulation's early state
+    constexpr double kT0 = 0.25;   // stateful effects: the simulation's early state (within the harness's 0.5 s pointer arc)
 
     // paint effects that also get a gradient-text golden (<name>.text): the filter form through
     // -jfx-text-fill (the wave-2 packages add theirs: aurora, conic-spin, gradient-pan, plasma,
