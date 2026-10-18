@@ -329,6 +329,9 @@ namespace {
         std::string themed;
         if (hc::forms::themedComputedValue(element, id, themed))
             return themed;
+        // a line-clamp container computes to flow-root or inline-block, as Chromium's getComputedStyle (fork, P6-L1)
+        if (id == Rml::PropertyId::Display && element->GetComputedValues().line_clamp() > 0)
+            return element->GetComputedValues().display() == Rml::Style::Display::InlineBlock ? "inline-block" : "flow-root";
         const Rml::Property* found = element->GetProperty(id);
         if (!found)
             return std::string();

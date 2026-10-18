@@ -540,6 +540,38 @@ void jasperengine::htmlui::compat::rewriteOverflowWrap(DeclContext& context){
 
 void jasperengine::htmlui::compat::rewriteLineClamp(DeclContext& context){
     ValueList w = words(context.value);
+    if (context.fork(ForkFeature::LineClamp)){
+        // The fork's '-webkit-line-clamp' (P6-L1), Chromium 153's: none, or an integer from 1 (a var() is the fork's).
+        if (w.size() == 1 && isVar(w[0])){
+            context.emit("-webkit-line-clamp", text(w[0]));
+            return;
+        }
+        const bool none = (w.size() == 1 && isIdent(w[0], "none"));
+        const bool count = (w.size() == 1 && w[0].isToken(TokenType::Number) && w[0].token.number >= 1 &&
+                            w[0].token.number == std::floor(w[0].token.number) && w[0].token.number <= 16777216);
+        if (!none && !count){
+            unsupportedValue(context, "use none or a whole number of lines from 1");
+            return;
+        }
+        context.emit("-webkit-line-clamp", none ? std::string("none") : formatNumber(w[0].token.number));
+        if (none || !context.rule)
+            return;
+        // Chromium clamps a 'display: -webkit-box' with a vertical '-webkit-box-orient' only: say so when the rule
+        // itself shows the clamp has no effect (another rule may still declare what is missing).
+        const std::optional<ValueList> display = ruleValue(context.session, *context.rule, "display");
+        const std::optional<ValueList> orient = ruleValue(context.session, *context.rule, "-webkit-box-orient");
+        const std::string displayKeyword = (display && display->size() == 1 ? identOf((*display)[0]) : std::string());
+        const std::string orientKeyword = (orient && orient->size() == 1 ? identOf((*orient)[0]) : std::string());
+        const char* pattern = "display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden";
+        if (!displayKeyword.empty() && displayKeyword != "-webkit-box" && displayKeyword != "-webkit-inline-box"){
+            context.reportAs(Severity::Info, codes::IgnoredProperty, "'" + context.sourceText() + "' has no effect on 'display: " + displayKeyword +
+                             "' (as in Chromium: it clamps a display: -webkit-box only)", std::string("use ") + pattern);
+        }else if (!displayKeyword.empty() && (orientKeyword.empty() || orientKeyword == "horizontal" || orientKeyword == "inline-axis")){
+            context.reportAs(Severity::Info, codes::IgnoredProperty, "'" + context.sourceText() + "' has no effect without '-webkit-box-orient: vertical'"
+                             " (as in Chromium: the box is a horizontal flex container)", std::string("use ") + pattern);
+        }
+        return;
+    }
     if (w.size() == 1 && isIdent(w[0], "none"))
         return;
     if (w.size() != 1 || !w[0].isToken(TokenType::Number) || w[0].token.number < 1){

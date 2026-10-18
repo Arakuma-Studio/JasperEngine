@@ -145,12 +145,19 @@ void jasperengine::htmlui::compat::rewriteFlex(DeclContext& context){
         context.emit(property, value);
     };
     if (n == "-webkit-box-orient"){
-        if (k == "horizontal" || k == "inline-axis")
-            legacy("flex-direction", "row");
-        else if (k == "vertical" || k == "block-axis")
-            legacy("flex-direction", "column");
-        else
+        const bool horizontal = (k == "horizontal" || k == "inline-axis"), vertical = (k == "vertical" || k == "block-axis");
+        if (!horizontal && !vertical){
             unsupportedValue(context);
+            return;
+        }
+        if (context.fork(ForkFeature::LineClamp)){
+            // The fork's -webkit-box reads it (a line-clamp container when vertical, P6-L1); the flex direction is the
+            // legacy flexbox's, without a note: the fork's -webkit-box is that flex container
+            context.emit("flex-direction", vertical ? "column" : "row");
+            context.emit("-webkit-box-orient", vertical ? "vertical" : "horizontal");
+            return;
+        }
+        legacy("flex-direction", vertical ? "column" : "row");
         return;
     }
     if (n == "-webkit-box-direction"){

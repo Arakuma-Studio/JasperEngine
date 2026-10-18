@@ -51,6 +51,7 @@ namespace {
         true,    // ColorFunctions (phase 3, p3-values: CSS Color 4 functions parsed at runtime, a var() inside them too, FORK.md P3-V2)
         true,    // TextFillFilter (phase 5, p5-infra: -jfx-text-fill applies before filter, FORK.md P5-1)
         true,    // RegisteredProperties (phase 5, p5-property: registered custom properties, @property; FORK.md P5-4)
+        true,    // LineClamp (phase 6, p6-line-clamp: Chromium 153's legacy -webkit-line-clamp with its ellipsis; FORK.md P6-L1)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -65,6 +66,7 @@ namespace {
         "RelativeFontWeight", "ColorFunctions",
         "TextFillFilter",
         "RegisteredProperties",
+        "LineClamp",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -251,7 +253,7 @@ body { display: block; width: 64px; height: 64px; }
         if (!context)
             return false;
         bool result = false;
-        const char* rml = R"(<rml><head><style>body { display: block; width: 64px; } #p { display: block; width: var(--htmlui-probe); height: 1px; }</style></head>
+        const char* rml = R"(<rml><head><style>body { display: block; width: 64px; font-family: sans-serif; font-size: 10px; } #p { display: block; width: var(--htmlui-probe); height: 1px; }</style></head>
 <body><div id="p"/></body></rml>)";
         if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(rml, "[htmlui-compat-fork-probe-property]")){
             document->Show();
@@ -261,6 +263,36 @@ body { display: block; width: 64px; height: 64px; }
                 context->Update();
                 const Rml::Property* value = element->GetProperty(name);
                 result = std::fabs(element->GetClientWidth() - 3.0f) < 0.01f && value && value->unit == Rml::Unit::PX;
+            }
+            document->Close();
+        }
+        Rml::RemoveContext(contextName);
+        return result;
+    }
+
+    // LineClamp: a 'display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2' box of three lines (an
+    // inline-block 7px tall on each, no font needed) is two lines tall, and computes to flow-root
+    std::optional<bool> probeLineClamp(){
+        if (!parses("-webkit-line-clamp", "2") || !parses("-webkit-box-orient", "vertical") || !parses("display", "-webkit-box"))
+            return false;
+        const Rml::String contextName = "htmlui-compat-fork-probe-line-clamp";
+        Rml::Context* context = Rml::CreateContext(contextName, Rml::Vector2i(64, 64), &nullRenderInterface());
+        if (!context)
+            return std::nullopt;
+        std::optional<bool> result;
+        const char* rml = R"(<rml><head><style>body { display: block; width: 64px; line-height: 0; }
+#c { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; width: 10px; }
+#u { display: block; width: 10px; }
+span { display: inline-block; width: 10px; height: 7px; }</style></head>
+<body><div id="c"><span/><span/><span/></div><div id="u"><span/><span/><span/></div></body></rml>)";
+        if (Rml::ElementDocument* document = context->LoadDocumentFromMemory(rml, "[htmlui-compat-fork-probe-line-clamp]")){
+            document->Show();
+            context->Update();
+            Rml::Element* clamped = document->GetElementById("c");
+            Rml::Element* unclamped = document->GetElementById("u");
+            if (clamped && unclamped){
+                result = std::fabs(clamped->GetClientHeight() - 14.0f) < 0.5f && std::fabs(unclamped->GetClientHeight() - 21.0f) < 0.5f &&
+                         clamped->GetComputedValues().display() == Rml::Style::Display::FlowRoot;
             }
             document->Close();
         }
@@ -407,6 +439,8 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return probeTextFill();
         case ForkFeature::RegisteredProperties:
             return probeRegisteredProperties();
+        case ForkFeature::LineClamp:
+            return probeLineClamp();
         case ForkFeature::SelectorsLevel4:
             return loadsCleanly("input:enabled, [lang=\"en\" i], li:nth-child(2 of .x), :read-write, :default, :target { color: #f00; }", capture);
         case ForkFeature::None:

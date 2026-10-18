@@ -15,6 +15,7 @@
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
 #include "htmlui/effects/EffectInstancers.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
@@ -727,6 +728,9 @@ std::string UIElement::getStyle(const std::string& property) const{
     std::string themed;
     if (htmlui::compat::forms::themedComputedValue(element, Rml::StyleSheetSpecification::GetPropertyId(property), themed))
         return themed;
+    // a line-clamp container computes to flow-root or inline-block, as Chromium's getComputedStyle (fork, P6-L1)
+    if (property == "display" && element->GetComputedValues().line_clamp() > 0)
+        return element->GetComputedValues().display() == Rml::Style::Display::InlineBlock ? "inline-block" : "flow-root";
     const Rml::Property* value = element->GetProperty(property);
     return value ? value->ToString() : std::string();
 }

@@ -1550,6 +1550,14 @@ namespace {
                 if (onlyListItem && origin == RuleOrigin::UserAgent)
                     return done;
             }
+            // (Chromium 153 drops the standard 'line-clamp' as well: beside the '-webkit-line-clamp' it implements, it is for
+            // other browsers, Info)
+            if (name == "line-clamp"){
+                for (const Declaration& other : block){
+                    if (equalsNoCase(other.name, "-webkit-line-clamp"))
+                        severity = Severity::Info;
+                }
+            }
             session.sink->reportAs(severity, codes::UnsupportedProperty, d.ref, "'" + name + "' is not supported; dropped", suggestion,
                                    std::string(), name);
             return done;

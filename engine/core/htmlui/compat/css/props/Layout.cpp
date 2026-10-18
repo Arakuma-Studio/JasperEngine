@@ -208,8 +208,9 @@ void jasperengine::htmlui::compat::rewriteDisplay(DeclContext& context){
                          "' is drawn as a wrapping flex container until the fork has Grid", "lay the items out with flex");
         return;
     }
-    if ((keyword == "-webkit-box" || keyword == "-webkit-inline-box") && ruleDeclares(context, {"-webkit-line-clamp", "line-clamp"})){
-        // the line-clamp pattern: a block cut at n lines
+    if ((keyword == "-webkit-box" || keyword == "-webkit-inline-box") && !context.fork(ForkFeature::LineClamp) &&
+        ruleDeclares(context, {"-webkit-line-clamp", "line-clamp"})){
+        // the line-clamp pattern: a block cut at n lines (with LineClamp the fork's -webkit-box clamps: the value is native)
         context.emit("display", "block");
         return;
     }

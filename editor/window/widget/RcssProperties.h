@@ -14,6 +14,8 @@ namespace jasperengine::editor {
         "-jfx-text-fill",
         "-rmlui-direction",
         "-rmlui-language",
+        "-webkit-box-orient",
+        "-webkit-line-clamp",
         "accent-color",
         "align-content",
         "align-items",
