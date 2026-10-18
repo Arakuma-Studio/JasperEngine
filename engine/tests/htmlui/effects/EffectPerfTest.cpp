@@ -28,7 +28,14 @@
 //   then 8 of the effect, the least of at least 3 rounds for both (the process's CPU time: the GL
 //   driver's threads draw). Written to build/linux/htmlui-effects-cost.json
 //   (htmlui-effects-cost-vulkan.json on Vulkan) and printed; the ratio is at most 6 for a `low`
-//   effect and 24 for a `medium` one (3.14's classes x 1.5); `high` is unbounded.
+//   effect and 24 for a `medium` one (3.14's classes x 1.5); `high` is unbounded. A `stateful`
+//   effect (phase 6, 3.10) is a 512 x 512 instance on the live clock, one step a capture (the
+//   clock 1/60 s further before each): its passes and its draw, gated at its measured ratio x 1.5
+//   (kStatefulBudgets).
+// - StatefulSteadyState (phase 6, 4.4): six stateful effects (two fluids, an agent swarm, a grid,
+//   two filter feedbacks) on the 1280 x 720 canvas, a step a frame: in the steady state no
+//   instance, state image, variant or pipeline is created, the passes run as the manifests list
+//   them, and the engine's own work is within kStatefulFrameBudget of document B's.
 //
 // The timings are gated like the compat performance tests (PerfFixtures.h): the least of up to 5
 // measurements is compared, since a loaded host only ever adds time to one.
@@ -52,6 +59,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <time.h>
@@ -296,6 +304,12 @@ namespace {
         run.delta.paintDraws = after.paintDraws - before.paintDraws;
         run.delta.filterPasses = after.filterPasses - before.filterPasses;
         run.delta.prepassPasses = after.prepassPasses - before.prepassPasses;
+        run.delta.stateImagesCreated = after.stateImagesCreated - before.stateImagesCreated;
+        run.delta.stepPasses = after.stepPasses - before.stepPasses;
+        run.delta.scatterPasses = after.scatterPasses - before.scatterPasses;
+        run.delta.stepsRun = after.stepsRun - before.stepsRun;
+        run.delta.replays = after.replays - before.replays;
+        run.delta.stateBytes = after.stateBytes;
         return run;
     }
 
@@ -307,6 +321,60 @@ namespace {
         }
         return true;
     }
+
+    // StatefulSteadyState's document: six stateful effects of 300 x 200 (two fluids, an agent swarm,
+    // a grid, two filter feedbacks over coloured content)
+    const char* const kStatefulPaints[] = {"fluid-smoke", "ink-flow", "boids", "reaction-diffusion"};
+    const char* const kStatefulFilters[] = {"time-trail", "data-mosh"};
+
+    std::string statefulDocument(){
+        std::string css = "html, body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }\n"
+                          ".s { position: absolute; width: 300px; height: 200px; }\n"
+                          ".s div { position: absolute; width: 50%; height: 50%; }\n"
+                          ".a { left: 0; top: 0; background-color: #e74c3c; } .b { left: 50%; top: 50%; background-color: #3498db; }\n";
+        std::string body;
+        int i = 0;
+        for (const char* name : kStatefulPaints){
+            const std::string id = "s" + std::to_string(i);
+            css += "#" + id + " { left: " + std::to_string(20 + (i % 3) * 420) + "px; top: " + std::to_string(40 + (i / 3) * 340) +
+                   "px; background-image: effect(" + name + "); }\n";
+            body += "<div class=\"s\" id=\"" + id + "\"></div>";
+            i++;
+        }
+        for (const char* name : kStatefulFilters){
+            const std::string id = "s" + std::to_string(i);
+            css += "#" + id + " { left: " + std::to_string(20 + (i % 3) * 420) + "px; top: " + std::to_string(40 + (i / 3) * 340) +
+                   "px; filter: effect(" + name + "); }\n";
+            body += "<div class=\"s\" id=\"" + id + "\"><div class=\"a\"></div><div class=\"b\"></div></div>";
+            i++;
+        }
+        return "<!DOCTYPE html><html><head><style>" + css + "</style></head><body>" + body + "</body></html>";
+    }
+
+    // the passes a step of an effect runs at its defaults: (fullscreen, scatter)
+    std::pair<uint64_t, uint64_t> passesPerStep(const EffectManifest& m){
+        uint64_t full = 0, scatter = 0;
+        for (const EffectPassDef& pass : m.passes){
+            if (pass.init)
+                continue;
+            int repeat = pass.repeat;
+            if (!pass.repeatParam.empty()){
+                const EffectParamDef* param = m.findParam(pass.repeatParam);
+                repeat = param ? std::atoi(param->defaultText.c_str()) : 1;
+            }
+            repeat = std::clamp(repeat, 1, 64);
+            (pass.scatterState >= 0 ? scatter : full) += (uint64_t)repeat;
+        }
+        return {full, scatter};
+    }
+
+    // the engine's own work of StatefulSteadyState's frame at most this above document B's (ms)
+    constexpr double kStatefulFrameBudget = 4.0;
+
+    // the stateful effects' cost budgets (3.10): their measured ratio against the fill (glcore,
+    // llvmpipe, the remote test host) x 1.5
+    const std::map<std::string, double> kStatefulBudgets = {
+    };
 
     std::string costFile(){
         // build/linux/htmlui-tests-<backend>/tests/htmlui -> build/linux
@@ -321,8 +389,10 @@ namespace {
     // the cost table's document: #fx fills 1024 x 1024 (a filter over a test-card-like content,
     // a backdrop over content behind it)
     std::string costDocument(const EffectManifest* m){
+        // a stateful effect: a 512 x 512 instance (3.10)
+        const std::string side = m && m->stateful() ? "512px" : "1024px";
         std::string css = "html, body { margin: 0; width: 1024px; height: 1024px; background-color: #101218; }\n"
-                          "#fx, #under { position: absolute; left: 0; top: 0; width: 1024px; height: 1024px; }\n"
+                          "#fx, #under { position: absolute; left: 0; top: 0; width: " + side + "; height: " + side + "; }\n"
                           "#under div, #fx div { position: absolute; width: 50%; height: 50%; }\n"
                           ".a { left: 0; top: 0; background-color: #e74c3c; } .b { left: 50%; top: 0; background-color: #f1c40f; }\n"
                           ".c { left: 0; top: 50%; background-color: #2ecc71; } .d { left: 50%; top: 50%; background-color: #3498db; }\n";
@@ -354,10 +424,13 @@ namespace {
         double ratio() const{ return fillMs > 0.0 ? effectMs / fillMs : 0.0; }
     };
 
-    double batchMs(EffectScene& scene, int captures){
+    // live: the UI clock 1/60 s further before each capture (a stateful effect steps once a capture)
+    double batchMs(EffectScene& scene, int captures, bool live = false){
         TestImage image;
         const double start = processCpuMs();
         for (int i = 0; i < captures; i++){
+            if (live)
+                HtmlUIClock::setFixedTime(HtmlUIClock::now() + 1.0 / 60.0);
             if (!scene.capture(image))
                 return -1.0;
         }
@@ -372,9 +445,10 @@ namespace {
             setTestPointer(scene, *m);
         if (!fill.capture(image) || !scene.capture(image))
             return cost;
+        const bool live = m && m->stateful();
         for (int round = 0; round < 6; round++){
             const double f = batchMs(fill, 8);
-            const double e = batchMs(scene, 8);
+            const double e = batchMs(scene, 8, live);
             if (f <= 0.0 || e <= 0.0)
                 return Cost();
             cost.fillMs = cost.fillMs < 0.0 ? f : std::min(cost.fillMs, f);
@@ -495,6 +569,72 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
+TEST(EffectPerfTest, StatefulSteadyState){
+    Grid grid;
+    if (!grid.gpu || !grid.r.isValid())
+        GTEST_SKIP() << "no GPU";
+    uint64_t fullPerFrame = 0, scatterPerFrame = 0;
+    std::vector<std::string> names(std::begin(kStatefulPaints), std::end(kStatefulPaints));
+    names.insert(names.end(), std::begin(kStatefulFilters), std::end(kStatefulFilters));
+    for (const std::string& name : names){
+        const EffectManifest* m = EffectRegistry::get().find(name);
+        ASSERT_NE(m, nullptr) << name;
+        ASSERT_TRUE(m->stateful()) << name;
+        ASSERT_TRUE(warmUpEffect(*m)) << name;
+        const auto passes = passesPerStep(*m);
+        fullPerFrame += passes.first;
+        scatterPerFrame += passes.second;
+    }
+    HtmlUIClock::setFixedTime(10.0);
+#if defined(SOKOL_VULKAN)
+    const bool gateEngine = false;
+#else
+    const bool gateEngine = true;
+#endif
+    RenderBackendTime::setEnabled(true);
+    struct BackendOff {
+        ~BackendOff(){ RenderBackendTime::setEnabled(false); }
+    } backendOff;
+    auto least = [&](const char* what, double target, const std::function<void(const PerfRun&)>& check){
+        double best = -1.0;
+        for (int attempt = 0; attempt < 5; attempt++){
+            const PerfRun r = measure(grid);
+            printRun(what, r);
+            if (check)
+                check(r);
+            const double gate = gateEngine ? r.engineMs : r.medianMs;
+            best = best < 0.0 ? gate : std::min(best, gate);
+            if (target > 0.0 && best <= target)
+                break;
+        }
+        return best;
+    };
+    ASSERT_TRUE(grid.load(gridDocument(false, false))) << "document B";
+    const double b = least("B", 0.0, {});
+    ASSERT_TRUE(grid.load(statefulDocument())) << "the stateful document";
+    const double budget = b + kStatefulFrameBudget;
+    const double s = least("S (six stateful effects)", budget, [&](const PerfRun& run){
+        // a step a frame (the clock moves 1/60 s a frame): every pass of every effect, nothing created
+        EXPECT_EQ(run.delta.instancesCreated, 0u) << "no effect instance is created in the steady state";
+        EXPECT_EQ(run.delta.compileCalls, 0u) << "no variant is compiled in the steady state";
+        EXPECT_EQ(run.delta.pipelinesCreated, 0u) << "no pipeline is created in the steady state";
+        EXPECT_EQ(run.delta.stateImagesCreated, 0u) << "no state image is created in the steady state";
+        EXPECT_EQ(run.delta.replays, 0u) << "the live clock replays nothing";
+        EXPECT_EQ(run.delta.stepsRun, 6u * 120u) << "one step per simulation per frame";
+        EXPECT_EQ(run.delta.stepPasses, fullPerFrame * 120u) << "the manifests' passes, once a step";
+        EXPECT_EQ(run.delta.scatterPasses, scatterPerFrame * 120u) << "the manifests' scatter passes, once a step";
+        EXPECT_EQ(run.delta.paintDraws, 4u * 120u) << "one draw per paint use per frame";
+        EXPECT_EQ(run.delta.filterPasses, 2u * 120u) << "one pass per filter per frame";
+    });
+    std::printf("[ effects  ] stateful steady state (%s): B %.3f ms, S %.3f ms (budget %.3f); %llu step passes and %llu scatter passes "
+                "a frame, %.2f MB of state\n", gateEngine ? "the engine's own work" : "the frame", b, s, budget,
+                (unsigned long long)fullPerFrame, (unsigned long long)scatterPerFrame,
+                (double)EffectRuntime::get().stats().stateBytes / (1024.0 * 1024.0));
+    EXPECT_LE(s, budget) << "the stateful document (4.4)";
+    HtmlUIClock::setFixedTime(0.0);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
+}
+
 TEST(EffectPerfTest, CostTable){
     EffectScene fill(1024, 1024, 4);
     EffectScene scene(1024, 1024, 4);
@@ -520,8 +660,20 @@ TEST(EffectPerfTest, CostTable){
             ADD_FAILURE() << m->name << ": " << error;
             continue;
         }
-        const double bound = m->cost == EffectCost::Low ? 6.0 : m->cost == EffectCost::Medium ? 24.0 : 0.0;
+        double bound = m->cost == EffectCost::Low ? 6.0 : m->cost == EffectCost::Medium ? 24.0 : 0.0;
+        if (m->stateful()){
+            const auto budget = kStatefulBudgets.find(m->name);
+            if (budget == kStatefulBudgets.end())
+                ADD_FAILURE() << m->name << " (stateful) has no budget in kStatefulBudgets";
+            else
+                bound = budget->second;
+            // the live clock: one step a capture
+            EffectClock::setFixedTime(std::nullopt);
+        }
         const Cost cost = interleavedCost(fill, scene, m, bound);
+        const uint64_t stateBytes = EffectRuntime::get().stats().stateBytes;
+        if (m->stateful())
+            clock.set(1.5);
         if (cost.effectMs <= 0.0){
             ADD_FAILURE() << m->name << " does not render";
             continue;
@@ -532,12 +684,21 @@ TEST(EffectPerfTest, CostTable){
             highestLow = std::max(highestLow, ratio);
         else if (m->cost == EffectCost::Medium)
             highestMedium = std::max(highestMedium, ratio);
-        std::printf("[ effects  ]   %-24s %-6s %-6s %8.3f ms  fill %7.3f ms  x%.2f%s\n", m->name.c_str(), effectKindName(m->kind),
-                    effectCostName(m->cost), cost.effectMs, cost.fillMs, ratio,
-                    bound > 0.0 ? (" (bound " + std::to_string((int)bound) + ")").c_str() : "");
-        effects.push_back({{"name", m->name}, {"kind", effectKindName(m->kind)}, {"cost", effectCostName(m->cost)}, {"builtin", m->builtin},
-                           {"ms", cost.effectMs}, {"fill_ms", cost.fillMs}, {"ratio", ratio},
-                           {"bound", bound > 0.0 ? nlohmann::json(bound) : nlohmann::json(nullptr)}});
+        char state[64] = "", limit[32] = "";
+        if (m->stateful())
+            std::snprintf(state, sizeof(state), "  state %.2f MB", (double)stateBytes / (1024.0 * 1024.0));
+        if (bound > 0.0)
+            std::snprintf(limit, sizeof(limit), " (bound %.1f)", bound);
+        std::printf("[ effects  ]   %-24s %-6s %-8s %8.3f ms  fill %7.3f ms  x%.2f%s%s\n", m->name.c_str(), effectKindName(m->kind),
+                    effectCostName(m->cost), cost.effectMs, cost.fillMs, ratio, limit, state);
+        nlohmann::json row = {{"name", m->name}, {"kind", effectKindName(m->kind)}, {"cost", effectCostName(m->cost)}, {"builtin", m->builtin},
+                              {"ms", cost.effectMs}, {"fill_ms", cost.fillMs}, {"ratio", ratio},
+                              {"bound", bound > 0.0 ? nlohmann::json(bound) : nlohmann::json(nullptr)}};
+        if (m->stateful()){
+            row["size"] = 512;
+            row["state_bytes"] = stateBytes;
+        }
+        effects.push_back(row);
         if (bound > 0.0)
             EXPECT_LE(ratio, bound) << m->name << " (" << effectCostName(m->cost) << ") costs " << ratio << " x the fill";
     }

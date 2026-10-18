@@ -67,7 +67,10 @@ namespace {
                "html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #000; }\n"
                ".p { position: absolute; top: 20px; width: 160px; height: 80px; background-image: effect(sim-probe); }\n"
                ".p.seeded { background-image: effect(sim-probe, seed 5); }\n"
-               ".p.wide { width: 240px; }\n" +
+               ".p.wide { width: 240px; }\n"
+               ".p.fast { background-image: effect(sim-probe, time-scale 2); }\n"
+               ".p.frozen { background-image: effect(sim-probe, time-scale 0); }\n"
+               ".p.plain { background-image: effect(stripes); }\n" +
                extraCss +
                "</style></head><body>" + elements + "</body></html>";
     }
@@ -370,6 +373,82 @@ TEST_F(EffectStateful, PausesWhenNotDrawnAndResumesWithoutCatchingUp){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }
 
+TEST_F(EffectStateful, PausesWhenInvisibleOrClipped){
+    const double h = 1.0 / 60.0;
+    ASSERT_TRUE(load(document(probes(1) +
+                              "<div id=\"clip\" style=\"position: absolute; left: 10px; top: 130px; width: 120px; height: 90px; overflow: hidden\">"
+                              "<div class=\"p\" id=\"p1\" style=\"left: 0px; top: 0px\"></div></div>")));
+    at(10.0);
+    capture();
+    at(10.0 + h);
+    capture();
+    ASSERT_EQ(info("p0").steps, 1);
+    ASSERT_EQ(info("p1").steps, 1);
+    // visibility: hidden, and moved outside its overflow: hidden parent
+    scene->element("p0")->SetProperty("visibility", "hidden");
+    scene->element("p1")->SetProperty("left", "200px");
+    at(10.0 + 2.0 * h);
+    capture();
+    at(11.0);
+    capture();
+    EXPECT_EQ(info("p0").steps, 1) << "a visibility: hidden simulation stepped";
+    EXPECT_EQ(info("p1").steps, 1) << "a simulation clipped away by its parent stepped";
+    EXPECT_TRUE(info("p0").paused);
+    EXPECT_TRUE(info("p1").paused);
+    scene->element("p0")->SetProperty("visibility", "visible");
+    scene->element("p1")->SetProperty("left", "0px");
+    at(12.0);
+    capture();
+    at(12.0 + h);
+    capture();
+    EXPECT_EQ(info("p0").steps, 2);
+    EXPECT_EQ(info("p1").steps, 2);
+}
+
+TEST_F(EffectStateful, TimeScaleScalesTheSteps){
+    const double h = 1.0 / 60.0;
+    ASSERT_TRUE(load(document(probes(3))));
+    scene->element("p1")->SetClass("fast", true);
+    scene->element("p2")->SetClass("frozen", true);
+    at(10.0);
+    capture();
+    at(10.0 + h);
+    capture();
+    at(10.0 + 2.0 * h);
+    capture();
+    EXPECT_EQ(info("p0").steps, 2);
+    EXPECT_EQ(info("p1").steps, 4) << "time-scale 2 doubles the steps";
+    EXPECT_EQ(info("p2").steps, 0) << "time-scale 0 freezes the simulation";
+}
+
+TEST_F(EffectStateful, HundredEffectSwitchesOnOneElement){
+    const EffectManifest* stripes = EffectRegistry::get().find("stripes");
+    ASSERT_NE(stripes, nullptr);
+    ASSERT_TRUE(warmUpEffect(*stripes));
+    EffectStatePool& pool = EffectStatePool::get();
+    ASSERT_TRUE(load(document(probes(1))));
+    scene->element("p0")->SetClass("plain", true);
+    at(10.0);
+    capture();
+    const size_t liveBefore = pool.liveImages();
+    uint64_t created = 0;
+    for (int i = 0; i < 100; i++){
+        scene->element("p0")->SetClass("plain", false);
+        at(10.0 + i * 0.1);
+        capture();
+        ASSERT_TRUE(info("p0").exists) << "switch " << i;
+        scene->element("p0")->SetClass("plain", true);
+        capture();
+        capture();
+        EXPECT_EQ(EffectRuntime::get().simulationCount(), 0u) << "switch " << i << ": the simulation outlives its effect";
+        EXPECT_EQ(pool.liveImages(), liveBefore) << "switch " << i;
+        if (i == 0)
+            created = pool.createdImages();
+    }
+    EXPECT_EQ(pool.createdImages(), created) << "the switches made images after the first";
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
+}
+
 TEST_F(EffectStateful, ResizeResamplesLiveAndReplaysPinned){
     const double h = 1.0 / 60.0;
     ASSERT_TRUE(load(document(probes(1))));
@@ -448,19 +527,27 @@ TEST_F(EffectStateful, SplatsResetsAndReseeds){
     at(10.0 + 3.0 * h);
     image = capture();
     EXPECT_NEAR(counted(image, "p0").second, 3, 1) << "a splat is taken once";
+    // at most 8 queued a step (the oldest dropped): 12 splats of 1 add 8
+    splat.strength = 1.f;
+    for (int i = 0; i < 12; i++)
+        runtime.splat(scene->element("p0"), splat);
+    at(10.0 + 4.0 * h);
+    image = capture();
+    EXPECT_NEAR(counted(image, "p0").second, 11, 1);
+    splat.strength = 3.f;
     // a reset: the next frame starts again from @init
     EXPECT_EQ(runtime.resetSimulations(scene->element("p0")), 1);
-    at(10.0 + 4.0 * h);
+    at(10.0 + 5.0 * h);
     image = capture();
     EXPECT_EQ(info("p0").steps, 0);
     EXPECT_NEAR(counted(image, "p0").second, 0, 1);
     EXPECT_GT(info("p1").steps, 0);
     // a @reseed parameter changed: restarted too
-    at(10.0 + 5.0 * h);
-    capture();
-    ASSERT_EQ(info("p1").steps, 5);
-    scene->element("p1")->SetClass("seeded", true);
     at(10.0 + 6.0 * h);
+    capture();
+    ASSERT_EQ(info("p1").steps, 6);
+    scene->element("p1")->SetClass("seeded", true);
+    at(10.0 + 7.0 * h);
     image = capture();
     EXPECT_EQ(info("p1").steps, 0) << "a @reseed parameter's change did not restart";
     // pinned: a splat is logged with its time and replayed
