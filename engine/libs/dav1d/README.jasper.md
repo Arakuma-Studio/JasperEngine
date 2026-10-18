@@ -18,7 +18,10 @@ two headers above, `src/ext`).
   (`BITDEPTH=8`, `16`), hidden visibility, `DAV1D_API` empty.
 - `config/config.h`: one configuration for every platform, chosen by the preprocessor
   (`HAVE_ASM 0`, `CONFIG_LOG 1`, both bit depths). `config/vcs_version.h`: the version string.
-- The Xcode targets `dav1d-ios`/`dav1d-macos` (`tools/htmlui/xcode_add_video_libs.py`).
+- The Xcode targets `dav1d-ios`/`dav1d-macos` (`tools/htmlui/xcode_add_video_libs.py`). Xcode
+  compiles a file once per target, so the script writes `bitdepth/<template>_<8|16>.c`, one
+  wrapper per template and depth (`#define BITDEPTH`, `#include "src/<template>.c"`); CMake does
+  not use them (its OBJECT libraries compile the templates twice).
 
 ## Updating
 Copy the same file set from the new tag, compare `src/meson.build`'s `libdav1d_sources`,
