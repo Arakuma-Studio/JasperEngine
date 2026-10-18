@@ -956,8 +956,37 @@ Xcode sync `--check`s; `run-rmlui-tests.sh` (unchanged fork); `htmlui-editor-tes
   most 10 (19 with the rounded, scaled fixture) per channel, and the engine reproduces the clip's
   colours exactly (bar (191, 191, 0); Chromium (191, 191, 9)).
 
-### 7.4 Runs (test host, Docker build images, `JOBS=4`, `flock lock-c`)
-RUNS_PLACEHOLDER
+### 7.4 Runs
+The test host (173.249.49.126, `JOBS=4`, `flock lock-c`) until its Docker service stopped with a
+reboot (October 18, 16:47); after that the same steps in the same build images on the agent host
+(`flock /tmp/htmlui-heavy.lock`, `JOBS=2`), the BRIEF's fallback. `main` had no new commit since the
+branch point (4958e5f7b), so there was nothing to merge.
+- Linux editor + engine: built from scratch (agent host) with no warning in phase-6 code (the one
+  warning of the log is `Matrix3.cpp`'s, from `main`); the `nm -D` check passes (no `dav1d_`,
+  `opus_`, `mkvparser::` export).
+- `htmlui-tests` glcore, full suite (test host): 3144 passed, 73 skipped (Taffy RTL, as on `main`),
+  1 failed: `EffectPerfTest.GridSteadyStateAndBudgets` (A 1.325 ms against 1.277, load average 15
+  from other agents' jobs); rerun alone (agent host): passed, A 0.327 ms (budget 1.107), A2 1.103 ms
+  (budget 4.215). Vulkan, full suite (test host): 3145 passed, 73 skipped, 0 failed. After the last
+  test additions: `Video*:Av1*:Opus*:ExamplesCompat*` 74 passed on glcore, and with the video parity
+  fixtures 77 passed on Vulkan (agent host).
+- Browser parity, `*BrowserParity*` (test host): every fixture passes on glcore and Vulkan, the
+  three video ones with the 7.3 overrides; `render-reference.mjs --fixtures all --check`: 500
+  references the same.
+- `run-rmlui-tests.sh --docker`: 426 test cases, 19721 assertions, all passed.
+- `htmlui-editor-tests`: 72 passed, 1 skipped (`GoogleFonts.LiveNetwork`, as on `main`).
+- MCP, the whole suite (`-j 2`, `LP_NUM_THREADS=2`, agent host, the final editor): 583 passed,
+  0 failed, 6 skipped (the slow tests, run next), the LuaLS check of the examples included.
+- Slow tests (`JASPER_SLOW_BUILD=1`, `JASPER_SLOW_TESTS=1`): `test_html_ui_video_export.py`,
+  `test_html_ui_export.py`, `test_html_ui_effects_export.py` 17 passed (test host: the Desktop
+  player shows the test card playing); `test_build.py`, `test_playctl.py`, `test_play.py` 31 passed
+  (agent host).
+- Web: `tools/build.sh web` built; a web export of a document with an autoplaying looping video
+  (source export for `web`, `emcmake` in the web build image) loaded in Chromium headless shows the
+  test card playing (frames 18 and 42 in two screenshots 0.7 s apart). Android: `tools/build.sh
+  android` built the APK (four ABIs).
+- Generators: `gen_tool_docs.py` and `gen_html_ui_support.py` regenerated (`TOOLS.md`, the matrix),
+  `gen_video_fixtures.py --check`, the Xcode `--check`s (compat, effects, rmlui, lexbor, video libs).
 
 ### 7.5 Not verified
 - Windows, macOS and iOS were not built (no such host): the code uses the standard library,
