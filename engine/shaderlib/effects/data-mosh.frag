@@ -12,7 +12,6 @@
 // @param      block-size number 48 30 150 -- Macroblock size (state texels of the 768 grid)
 // @param      drift number 0.35 0 1 -- How fast corrupted areas drag their pixels
 // @param      churn number 0.4 0 1 -- How often each block re-rolls its fate
-// @param      blend number 1 0 1 -- Blend between the live content and the moshed stream
 // @param      speed number 1 0 4 -- Simulation speed (0 freezes the decay)
 // @param      seed number 0 0 100 -- Random seed of the corruption layout
 
@@ -23,6 +22,7 @@
 // previous pixels along its motion vector with generation loss, on per-block clocks (no global
 // heartbeat). The sim's own clock is the sum of its speed-scaled steps (dt clamped to 0.05 s).
 // The live content is read bilinearly at the state texel (upstream reads its RTT texels).
+// Upstream's `blend` (live content vs. the moshed stream) is the universal `opacity` of a filter.
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_color.glsl"
@@ -35,7 +35,6 @@ uniform u_fs_effectParams {
     float blockSize;
     float drift;
     float churn;
-    float blend;
     float speed;
     float seed;
 } params;
@@ -50,9 +49,8 @@ const float QUANT_AMOUNT = 0.12;
 const float ENERGY_DECAY = 0.9985;
 
 vec4 jfx_filter(JfxContext c){
-    vec4 live = jfx_premultiply(jfx_src(c.px));
-    vec4 moshed = state_sample(c.uv);
-    return jfx_unpremultiply(mix(live, moshed, params.blend));
+    // the moshed stream (the universal opacity mixes it with the live content, upstream's blend)
+    return jfx_unpremultiply(state_sample(c.uv));
 }
 
 #ifdef JFX_STEP_FORM

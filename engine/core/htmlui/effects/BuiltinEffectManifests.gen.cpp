@@ -234,7 +234,6 @@ namespace {
          "// @param      block-size number 48 30 150 -- Macroblock size (state texels of the 768 grid)\n"
          "// @param      drift number 0.35 0 1 -- How fast corrupted areas drag their pixels\n"
          "// @param      churn number 0.4 0 1 -- How often each block re-rolls its fate\n"
-         "// @param      blend number 1 0 1 -- Blend between the live content and the moshed stream\n"
          "// @param      speed number 1 0 4 -- Simulation speed (0 freezes the decay)\n"
          "// @param      seed number 0 0 100 -- Random seed of the corruption layout\n"
          "#include \"effects/lib/main_filter.glsl\"\n"
