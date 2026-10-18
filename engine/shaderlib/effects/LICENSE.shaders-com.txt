@@ -7,7 +7,9 @@ to GLSL, under the MIT license below:
   angular-blur          shaders.com AngularBlur
   aurora                shaders.com Aurora
   block-dissolve        shaders.com BlockDissolve
+  boids                 shaders.com Boids
   bulge                 shaders.com Bulge (+ original `follow-pointer`)
+  chroma-flow           shaders.com ChromaFlow
   chromatic-aberration  shaders.com ChromaticAberration
   color-wheel           shaders.com ColorWheel
   conic-spin            shaders.com ConicGradient (adapted: speed in turns/s)
@@ -15,6 +17,7 @@ to GLSL, under the MIT license below:
   curl-noise            shaders.com CurlNoise
   cursor-ripples        shaders.com CursorRipples (adapted: analytic ripple events replace the wave grid, CursorRipples/index.ts:12-26)
   cursor-trail          shaders.com CursorTrail (adapted: CPU trail buffer replaces the fluid grid)
+  data-mosh             shaders.com DataMosh
   diamond-gradient      shaders.com DiamondGradient
   diamond-wipe          shaders.com DiamondWipe
   dither                shaders.com Dither (adapted: Floyd–Steinberg omitted, it needs sequential error diffusion)
@@ -25,7 +28,10 @@ to GLSL, under the MIT license below:
   film-grain            shaders.com FilmGrain
   flow-field            shaders.com FlowField
   flowing-gradient      shaders.com FlowingGradient
+  fluid-cursor-trail    shaders.com CursorTrail + SmokeFlow (adapted: CursorTrail's look over SmokeFlow's fluid)
+  fluid-smoke           shaders.com Smoke
   fluted-glass          shaders.com FlutedGlass
+  fog                   shaders.com Fog
   fractal-noise         shaders.com FractalNoise
   glass-tiles           shaders.com GlassTiles
   glitch                shaders.com Glitch
@@ -38,28 +44,39 @@ to GLSL, under the MIT license below:
   hex-grid              shaders.com HexGrid
   hologram              shaders.com Hologram (adapted: applied to the element's content instead of a shape)
   holographic           shaders.com Holographic (adapted: shape = element box; tilt follows the pointer)
+  ink-flow              shaders.com InkFlow
   iris-wipe             shaders.com IrisWipe
   light-edge            shaders.com LightEdge (adapted: shape = element rounded box, sizes in px)
   light-leak            shaders.com LightLeak
   linear-wipe           shaders.com LinearWipe
   liquid-glass          shaders.com Glass (adapted: shape = element rounded box, thickness in px)
+  magnetic-filings      shaders.com MagneticFilings
   marble                shaders.com Marble
   mesh-gradient         shaders.com MeshGradient
   motion-blur           shaders.com LinearBlur
   multi-point-gradient  shaders.com MultiPointGradient
   neon-border           shaders.com Neon (adapted: tube along the border, sizes in px)
   noise-dissolve        shaders.com NoiseDissolve (+ original burn edge)
+  particle-field        shaders.com ParticleField
+  particle-flow         shaders.com ParticleFlow
+  particles             shaders.com Particles (adapted: the default sphere container, centred, scale 1)
   perlin-noise          shaders.com PerlinNoise
+  pixel-sort            shaders.com PixelSort
+  pixel-throw           shaders.com PixelThrow
   pixelate              shaders.com Pixelate (adapted: cell size in px)
   plasma                shaders.com Plasma
   posterize             shaders.com Posterize
   progressive-blur      shaders.com ProgressiveBlur
   radial-pulse          shaders.com RadialGradient (adapted: speed moves rings outward)
   radial-wipe           shaders.com RadialWipe
+  reaction-diffusion    shaders.com ReactionDiffusion
   ripple-rings          shaders.com Ripples
   ripple-wipe           shaders.com RippleWipe
+  shatter               shaders.com Shatter
   simplex-noise         shaders.com SimplexNoise
   sine-wave             shaders.com SineWave
+  smoke-fill            shaders.com SmokeFill (adapted: the shape is the element's rounded box)
+  smoke-flow            shaders.com SmokeFlow
   sparkle               shaders.com Sparkle
   strands               shaders.com Strands
   stripes               shaders.com Stripes
@@ -67,6 +84,7 @@ to GLSL, under the MIT license below:
   swirl                 shaders.com Swirl (adapted: source `blend` renamed `balance`)
   thin-film             shaders.com ThinFilm (adapted: rim along the element edges)
   tilt-shift            shaders.com TiltShift
+  time-trail            shaders.com TimeTrail
   twirl                 shaders.com Twirl
   venetian-blinds       shaders.com VenetianBlinds
   vhs                   shaders.com VHS

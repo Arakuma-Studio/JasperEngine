@@ -4,7 +4,8 @@
 // The golden driver of the effects (phase-5 spec 5.2, 5.3): every effect EffectRegistry lists
 // (auto-enumerated: a new effect is tested by adding its .frag) is rendered in its fixture with
 // the effect clock fixed, compared with golden/effects/<name>.t1.png (t = 1.5 s) and, when it
-// is animated, <name>.t2.png (t = 4 s), and checked against the invariants I1-I7.
+// is animated, <name>.t2.png (t = 4 s), and checked against the invariants I1-I7; a stateful
+// effect (phase 6) also against <name>.t0.png (t = 0.5 s: its early state) and I8-I9.
 
 #include "EffectTestCommon.h"
 
@@ -23,6 +24,7 @@ namespace {
 
     constexpr double kT1 = 1.5;
     constexpr double kT2 = 4.0;
+    constexpr double kT0 = 0.5;   // stateful effects: the simulation's early state
 
     // paint effects that also get a gradient-text golden (<name>.text): the filter form through
     // -jfx-text-fill (the wave-2 packages add theirs: aurora, conic-spin, gradient-pan, plasma,
@@ -106,6 +108,22 @@ TEST_P(EffectGoldenTest, GoldensAndInvariants){
         EXPECT_TRUE(second.passed) << second.message;
     }else{
         EXPECT_FALSE(animated) << m->name << ": renders differently at t1 and t2 but has no .t2 golden (I3)";
+    }
+
+    if (m->stateful()){
+        // I8: a stateful effect's early state (t0) has a golden and differs from t1: it evolves
+        TestImage t0;
+        ASSERT_TRUE(render(scene, *m, fixture, declaration, kT0, t0, &error)) << error;
+        const CompareResult early = compareWithGolden("effects/" + m->name + ".t0", t0.rgba, t0.width, t0.height);
+        EXPECT_TRUE(early.passed) << early.message;
+        EXPECT_GT(maxDifference(t0, t1), 1) << m->name << ": its simulation draws the same at t0 and t1 (I8)";
+        // I9: the pinned clock's state depends on the time only: t1 reached from t2 in the same
+        // document (a replay) is t1's render byte for byte
+        TestImage back;
+        ASSERT_TRUE(render(scene, *m, fixture, declaration, kT2, back, &error)) << error;
+        EffectClock::setFixedTime(kT1);
+        ASSERT_TRUE(scene.capture(back));
+        EXPECT_EQ(maxDifference(t1, back), 0) << m->name << ": t1 replayed after t2 differs from t1 (I9)";
     }
 
     // I1: opacity 0 is the render without the effect
