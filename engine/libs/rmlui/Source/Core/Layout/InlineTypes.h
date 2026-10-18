@@ -27,7 +27,6 @@ struct FragmentConstructor {
 	float layout_width = 0.f;
 	LayoutFragmentHandle fragment_handle = {}; // Handle to enable the inline-level box to reference any fragment-specific data.
 	LayoutOverflowHandle overflow_handle = {}; // Overflow handle is non-zero when there is another fragment to be layed out.
-	bool forced_break = false;                 // The text run ends at a preserved line feed: its line is ended by a forced break.
 };
 
 struct PlacedFragment {

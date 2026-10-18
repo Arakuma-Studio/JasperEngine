@@ -55,15 +55,20 @@ public:
 		String text;
 		Vector2f position;
 		int width;
-		// The space a justified line adds around the characters (p6-justify; empty when the line is not justified),
-		// included in 'width'.
-		Vector<JustificationSpacing> justification;
+		// A justified line (p6-justify): its index among the element's justified lines (GetJustification), -1 otherwise.
+		int justification_index = -1;
 	};
 
 	using LineList = Vector<Line>;
 
 	// Returns the current list of lines.
 	const LineList& GetLines() const { return lines; }
+	/// Returns the space a justified line adds around its characters (p6-justify), included in its width; empty when the
+	/// line is not justified.
+	Span<const JustificationSpacing> GetJustification(const Line& line) const
+	{
+		return line.justification_index < 0 ? Span<const JustificationSpacing>() : Span<const JustificationSpacing>(justifications[line.justification_index]);
+	}
 
 protected:
 	void OnRender() override;
@@ -87,6 +92,8 @@ private:
 	String text;
 
 	LineList lines;
+	// The spacing of the justified lines (Line::justification_index).
+	Vector<Vector<JustificationSpacing>> justifications;
 
 	struct TexturedGeometry {
 		Geometry geometry;

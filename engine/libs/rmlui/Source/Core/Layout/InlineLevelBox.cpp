@@ -171,13 +171,10 @@ FragmentConstructor InlineLevelBox_Text::CreateFragment(InlineLayoutMode mode, f
 	if (overflow)
 		out_overflow_handle = line_begin + line_length;
 
-	// A line that ends at a preserved line feed is ended by a forced break ('text-align-last' aligns it).
-	const bool forced_break = (overflow && line_contents.back() == '\n');
-
 	LayoutFragmentHandle fragment_handle = (LayoutFragmentHandle)fragments.size();
 	fragments.push_back(std::move(line_contents));
 
-	return FragmentConstructor{FragmentType::TextRun, line_width, fragment_handle, out_overflow_handle, forced_break};
+	return FragmentConstructor{FragmentType::TextRun, line_width, fragment_handle, out_overflow_handle};
 }
 
 void InlineLevelBox_Text::Submit(const PlacedFragment& placed_fragment)

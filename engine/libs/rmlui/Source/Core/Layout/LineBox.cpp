@@ -82,7 +82,7 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 
 		box_cursor = box_placement_cursor + constructor.layout_width;
 		open_spacing_left = 0.f;
-		ends_with_forced_break = constructor.forced_break;
+		last_text_run = (constructor.type == FragmentType::TextRun ? fragment_index : -1);
 
 		if (constructor.overflow_handle)
 		{
@@ -298,16 +298,106 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 	return new_line_box;
 }
 
+#if defined(_MSC_VER)
+	#define RMLUI_LINEBOX_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+	#define RMLUI_LINEBOX_NOINLINE __attribute__((noinline))
+#else
+	#define RMLUI_LINEBOX_NOINLINE
+#endif
+
+char LineBox::GetLastTextCharacter() const
+{
+	if (last_text_run < 0)
+		return '\0';
+	const Fragment& fragment = fragments[last_text_run];
+	const String& text = rmlui_static_cast<InlineLevelBox_Text*>(fragment.box)->GetFragmentText(fragment.fragment_handle);
+	return text.empty() ? '\0' : text.back();
+}
+
+bool LineBox::EndsWithForcedBreak() const
+{
+	return GetLastTextCharacter() == '\n';
+}
+
 void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
 
-	// White space at the end of the line: removed or hanging, it is not aligned (CSS Text 3 §4.1.3, as Chromium).
-	int justify_end_fragment = -1, justify_end_offset = 0;
-	const float hang_width = TrimTrailingWhiteSpace(justify_end_fragment, justify_end_offset);
-	const float content_width = box_cursor - hang_width;
+	// White space at the end of the line, and justification (p6-justify), out of line.
+	const char last_character = GetLastTextCharacter();
+	if (text_align == Style::TextAlign::Justify || last_character == ' ' || last_character == '\n')
+	{
+		CloseTrimmedOrJustified(offset_parent, offset_parent_position, text_align, rtl);
+		return;
+	}
 
+	// Horizontal alignment using available space on our line.
+	if (box_cursor < line_width)
+		offset_horizontal_alignment = GetAlignmentOffset(text_align, box_cursor);
+
+	SubmitFragments(offset_parent, offset_parent_position, nullptr);
+}
+
+float LineBox::GetAlignmentOffset(Style::TextAlign text_align, float content_width) const
+{
+	switch (text_align)
+	{
+	case Style::TextAlign::Center: return (line_width - content_width) * 0.5f;
+	case Style::TextAlign::Right: return (line_width - content_width);
+	case Style::TextAlign::Left:    // Already left-aligned.
+	case Style::TextAlign::Justify: // Justified: the line is filled.
+	case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
+	case Style::TextAlign::End: break;
+	}
+	return 0.f;
+}
+
+void LineBox::SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification)
+{
 	const bool collapsed_line = CanCollapseLine();
+
+	// Position and size all inline-level boxes, place geometry boxes.
+	for (const Fragment& fragment : fragments)
+	{
+		// Skip inline boxes which have not been closed (moved down to next line).
+		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
+			continue;
+
+		RMLUI_ASSERT(fragment.layout_width >= 0.f);
+
+		const Vector<JustificationSpacing>* fragment_justification = nullptr;
+		if (justification && fragment.type == FragmentType::TextRun)
+		{
+			const Vector<JustificationSpacing>& spacing = (*justification)[&fragment - fragments.data()];
+			if (!spacing.empty())
+				fragment_justification = &spacing;
+		}
+		const PlacedFragment placed_fragment = {
+			offset_parent,
+			fragment.fragment_handle,
+			line_position - offset_parent_position + fragment.position + Vector2f(offset_horizontal_alignment, 0.f),
+			fragment.layout_width,
+			fragment.split_left,
+			fragment.split_right,
+			collapsed_line,
+			line_position.y - offset_parent_position.y,
+			fragment_justification,
+		};
+		fragment.box->Submit(placed_fragment);
+	}
+
+	is_closed = true;
+}
+
+RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align,
+	bool rtl)
+{
+	// White space at the end of the line: removed or hanging, it is not aligned (CSS Text 3 §4.1.3, as Chromium).
+	int justify_end_fragment = (int)fragments.size() - 1, justify_end_offset = -1;
+	const char last_character = GetLastTextCharacter();
+	const float hang_width = (last_character == ' ' || last_character == '\n' ? TrimTrailingWhiteSpace(justify_end_fragment, justify_end_offset) : 0.f);
+	const float content_width = box_cursor - hang_width;
 
 	// Justification (p6-justify): the space the line leaves is shared by its opportunities; a line that overflows, or has
 	// none, is aligned to its start (Chromium's InlineLayoutAlgorithm::ApplyTextAlign).
@@ -318,47 +408,10 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 			text_align = (rtl ? Style::TextAlign::Right : Style::TextAlign::Left);
 	}
 
-	// Horizontal alignment using available space on our line.
 	if (content_width < line_width)
-	{
-		switch (text_align)
-		{
-		case Style::TextAlign::Center: offset_horizontal_alignment = (line_width - content_width) * 0.5f; break;
-		case Style::TextAlign::Right: offset_horizontal_alignment = (line_width - content_width); break;
-		case Style::TextAlign::Left:    // Already left-aligned.
-		case Style::TextAlign::Justify: // Justified: the line is filled.
-		case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
-		case Style::TextAlign::End: break;
-		}
-	}
+		offset_horizontal_alignment = GetAlignmentOffset(text_align, content_width);
 
-	// Position and size all inline-level boxes, place geometry boxes.
-	for (int i = 0; i < (int)fragments.size(); i++)
-	{
-		const Fragment& fragment = fragments[i];
-
-		// Skip inline boxes which have not been closed (moved down to next line).
-		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
-			continue;
-
-		RMLUI_ASSERT(fragment.layout_width >= 0.f);
-
-		const bool justified_text = (fragment.type == FragmentType::TextRun && !justification.empty() && !justification[i].empty());
-		const PlacedFragment placed_fragment = {
-			offset_parent,
-			fragment.fragment_handle,
-			line_position - offset_parent_position + fragment.position + Vector2f(offset_horizontal_alignment, 0.f),
-			fragment.layout_width,
-			fragment.split_left,
-			fragment.split_right,
-			collapsed_line,
-			line_position.y - offset_parent_position.y,
-			justified_text ? &justification[i] : nullptr,
-		};
-		fragment.box->Submit(placed_fragment);
-	}
-
-	is_closed = true;
+	SubmitFragments(offset_parent, offset_parent_position, justification.empty() ? nullptr : &justification);
 }
 
 float LineBox::TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset)

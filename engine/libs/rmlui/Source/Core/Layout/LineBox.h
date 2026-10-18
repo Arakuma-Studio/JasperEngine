@@ -64,7 +64,7 @@ public:
 	bool IsClosed() const { return is_closed; }
 	bool HasContent() const { return has_content; }
 	// The last fragment placed is text that ends at a preserved line feed: the line ends with a forced break.
-	bool EndsWithForcedBreak() const { return ends_with_forced_break; }
+	bool EndsWithForcedBreak() const;
 
 	// Returns true if this line should be collapsed, such that it takes up no height in the inline container.
 	bool CanCollapseLine() const;
@@ -126,6 +126,15 @@ private:
 
 	// Splits the line, returning a new line if there are any open fragments.
 	UniquePtr<LineBox> SplitLine(bool split_all_open_boxes);
+
+	// The last character of the line's text when its last content is text ('\0' otherwise).
+	char GetLastTextCharacter() const;
+	// The closing of a line with white space at its end or justified (p6-justify), out of the common path.
+	void CloseTrimmedOrJustified(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl);
+	// The offset that aligns content of the given width.
+	float GetAlignmentOffset(Style::TextAlign text_align, float content_width) const;
+	// Positions and submits the fragments, with the spacing of the justified text runs (by fragment index).
+	void SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification);
 
 	// Removes the collapsible white space at the end of the line from its text and the boxes around it (CSS Text 3
 	// §4.1.3). Returns the width of the preserved spaces that hang at its end ('pre-wrap'); 'out_justify_end' is where the
@@ -190,7 +199,8 @@ private:
 	FragmentIndex open_fragments_leaf = RootFragmentIndex;
 
 	bool has_content = false;
-	bool ends_with_forced_break = false;
+	// The last text run or atomic inline placed, when it is a text run (its index), else -1.
+	FragmentIndex last_text_run = -1;
 	bool is_vertically_positioned = false;
 	bool is_closed = false;
 

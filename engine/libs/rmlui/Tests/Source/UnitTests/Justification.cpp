@@ -49,10 +49,10 @@ Vector<ElementText*> TextsOf(ElementDocument* document, const String& id)
 }
 
 // The total space a line's justification adds.
-float AddedSpace(const ElementText::Line& line)
+float AddedSpace(const ElementText* text, const ElementText::Line& line)
 {
 	float sum = 0.f;
-	for (const JustificationSpacing& spacing : line.justification)
+	for (const JustificationSpacing& spacing : text->GetJustification(line))
 		sum += spacing.before + spacing.after;
 	return sum;
 }
@@ -291,13 +291,13 @@ TEST_CASE("Justification.lines")
 		Vector<ElementText*> texts = TextsOf(document, "para");
 		REQUIRE(texts.size() == 3);
 		REQUIRE(texts[0]->GetLines().size() == 1);
-		CHECK(AddedSpace(texts[0]->GetLines()[0]) == doctest::Approx(3.4f));
+		CHECK(AddedSpace(texts[0], texts[0]->GetLines()[0]) == doctest::Approx(3.4f));
 		CHECK(texts[0]->GetLines()[0].width == 33);
 		REQUIRE(texts[1]->GetLines().size() == 1);
-		CHECK(texts[1]->GetLines()[0].justification.size() == 4);
-		CHECK(AddedSpace(texts[1]->GetLines()[0]) == doctest::Approx(4.f * 3.4f));
+		CHECK(texts[1]->GetJustification(texts[1]->GetLines()[0]).size() == 4);
+		CHECK(AddedSpace(texts[1], texts[1]->GetLines()[0]) == doctest::Approx(4.f * 3.4f));
 		REQUIRE(texts[2]->GetLines().size() == 1);
-		CHECK(texts[2]->GetLines()[0].justification.empty());
+		CHECK(texts[2]->GetJustification(texts[2]->GetLines()[0]).empty());
 	}
 
 	document->Close();
@@ -352,22 +352,22 @@ TEST_CASE("Justification.textarea")
 
 	// the widget's text elements: the first line is justified (17px over five spaces), the line ended by a line feed and the
 	// last line are not
-	Vector<const ElementText::Line*> lines;
+	Vector<std::pair<const ElementText*, const ElementText::Line*>> lines;
 	std::function<void(Element*)> collect = [&](Element* element) {
 		if (auto text = rmlui_dynamic_cast<ElementText*>(element))
 		{
 			for (const ElementText::Line& line : text->GetLines())
-				lines.push_back(&line);
+				lines.emplace_back(text, &line);
 		}
 		for (int i = 0; i < element->GetNumChildren(true); i++)
 			collect(element->GetChild(i));
 	};
 	collect(Get(document, "area"));
 	REQUIRE(lines.size() >= 3);
-	CHECK(lines[0]->text == "XX XXX X XXXX XX XXX ");
-	CHECK(AddedSpace(*lines[0]) == doctest::Approx(17.f));
-	CHECK(lines[1]->justification.empty());
-	CHECK(lines[2]->justification.empty());
+	CHECK(lines[0].second->text == "XX XXX X XXXX XX XXX ");
+	CHECK(AddedSpace(lines[0].first, *lines[0].second) == doctest::Approx(17.f));
+	CHECK(lines[1].first->GetJustification(*lines[1].second).empty());
+	CHECK(lines[2].first->GetJustification(*lines[2].second).empty());
 
 	// a selection splits the line: each part is drawn where the justified line has it
 	auto area = rmlui_dynamic_cast<ElementFormControlTextArea*>(Get(document, "area"));
@@ -379,8 +379,9 @@ TEST_CASE("Justification.textarea")
 	lines.clear();
 	collect(area);
 	bool found = false;
-	for (const ElementText::Line* line : lines)
+	for (const auto& entry : lines)
 	{
+		const ElementText::Line* line = entry.second;
 		if (line->text == "XXX")
 		{
 			found = true;
@@ -389,7 +390,7 @@ TEST_CASE("Justification.textarea")
 		if (line->text == " X XXXX XX XXX ")
 		{
 			CHECK(line->position.x == doctest::Approx(63.4f));
-			CHECK(AddedSpace(*line) == doctest::Approx(4.f * 3.4f));
+			CHECK(AddedSpace(entry.first, *line) == doctest::Approx(4.f * 3.4f));
 		}
 	}
 	CHECK(found);
