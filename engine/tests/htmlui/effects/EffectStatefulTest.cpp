@@ -125,7 +125,7 @@ namespace {
             EffectRegistry::get().clearProjectEffects();
         }
 
-        // the live clock: the UI clock at `t` (the effect clock follows it)
+        // the live clock: the UI clock at `t` (the effect clock follows it; a load sets it to 0)
         void at(double t){
             HtmlUIClock::setFixedTime(t);
         }
@@ -226,7 +226,7 @@ TEST(EffectStatefulManifest, ReportsEveryMistake){
     // the checks
     EXPECT_TRUE(has(diagnosticsOf(probeManifest("// @state      vel rgba32f 64x64 linear\n", "// @step       move vel\n")), "nearest"));
     EXPECT_TRUE(has(diagnosticsOf(probeManifest(kStates, "// @step       move vel\n")), "dye"));   // never written
-    EXPECT_TRUE(has(diagnosticsOf(probeManifest(kStates, "// @init       spawn vel\n// @step       carry dye\n")), "@step"))
+    EXPECT_TRUE(has(diagnosticsOf(probeManifest(kStates, "// @init       spawn vel\n// @init       fill dye\n")), "@step"))
         << "no @step pass";
     EXPECT_TRUE(has(diagnosticsOf(probeManifest(kStates, "// @step       move vel scatter vel\n// @step       carry dye\n")), "scatter"));
     EXPECT_TRUE(has(diagnosticsOf(probeManifest(kStates, kPasses, "stateful", "// @reseed     nothing\n")), "nothing"));
@@ -275,8 +275,8 @@ TEST(EffectStatefulManifest, PassFormsAndShaderKeys){
 
 TEST_F(EffectStateful, AllocatesItsImagesFromThePoolAndReusesThem){
     EffectStatePool& pool = EffectStatePool::get();
-    at(10.0);
     ASSERT_TRUE(load(document(probes(2))));
+    at(10.0);
     capture();
     // count: 1 x 1 rgba32f, ping-pong; field: box*0.25 of 160 x 80 = 40 x 20 rgba16f, ping-pong
     const size_t expected = 2 * 16 + 2 * 40 * 20 * 8;
@@ -299,8 +299,8 @@ TEST_F(EffectStateful, AllocatesItsImagesFromThePoolAndReusesThem){
 }
 
 TEST_F(EffectStateful, FixedStepAndSubstepCap){
-    at(10.0);
     ASSERT_TRUE(load(document(probes(1))));
+    at(10.0);
     capture();
     EXPECT_EQ(info("p0").steps, 0) << "the first frame starts the simulation; it steps from the next";
     const double h = 1.0 / 60.0;
@@ -332,8 +332,8 @@ TEST_F(EffectStateful, FixedStepAndSubstepCap){
 
 TEST_F(EffectStateful, PausesWhenNotDrawnAndResumesWithoutCatchingUp){
     const double h = 1.0 / 60.0;
-    at(10.0);
     ASSERT_TRUE(load(document(probes(2))));
+    at(10.0);
     capture();
     at(10.0 + h);
     capture();
@@ -372,8 +372,8 @@ TEST_F(EffectStateful, PausesWhenNotDrawnAndResumesWithoutCatchingUp){
 
 TEST_F(EffectStateful, ResizeResamplesLiveAndReplaysPinned){
     const double h = 1.0 / 60.0;
-    at(10.0);
     ASSERT_TRUE(load(document(probes(1))));
+    at(10.0);
     capture();
     at(10.0 + 5.0 * h);
     capture();
@@ -431,8 +431,8 @@ TEST_F(EffectStateful, PinnedClockReplaysByteIdentically){
 TEST_F(EffectStateful, SplatsResetsAndReseeds){
     const double h = 1.0 / 60.0;
     EffectRuntime& runtime = EffectRuntime::get();
-    at(10.0);
     ASSERT_TRUE(load(document(probes(2))));
+    at(10.0);
     capture();
     at(10.0 + h);
     capture();
@@ -480,8 +480,8 @@ TEST_F(EffectStateful, SplatsResetsAndReseeds){
 TEST_F(EffectStateful, HundredCyclesLeaveNoImagesBehind){
     EffectStatePool& pool = EffectStatePool::get();
     EffectRuntime& runtime = EffectRuntime::get();
-    at(10.0);
     ASSERT_TRUE(load(document("<div></div>")));
+    at(10.0);
     capture();
     const size_t liveBefore = pool.liveImages();
     uint64_t createdAfterFirst = 0;
@@ -509,8 +509,8 @@ TEST_F(EffectStateful, BudgetsAndHardCap){
     EffectStatefulBudget budget;
     budget.perDocument = 2;
     runtime.setStatefulBudget(budget);
-    at(10.0);
     ASSERT_TRUE(load(document(probes(3))));
+    at(10.0);
     capture();
     // over the soft budget: a warning, every simulation runs
     EXPECT_EQ(countDiagnostics("HTMLUI-FX-0018"), 1u);
@@ -536,8 +536,8 @@ TEST_F(EffectStateful, BudgetsAndHardCap){
 
 TEST_F(EffectStateful, UnsupportedFormatIsReported){
     EffectStatePool::setUnsupportedFormatsForTesting(1u << (unsigned)EffectStateFormat::RGBA32F);
-    at(10.0);
     ASSERT_TRUE(load(document(probes(1))));
+    at(10.0);
     TestImage image = capture();
     EXPECT_FALSE(info("p0").exists);
     EXPECT_EQ(countDiagnostics("HTMLUI-FX-0017"), 1u);
