@@ -1042,10 +1042,11 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// -- Line clamp (fork, phase 6, P6-L1) --
 	// Chromium 153's legacy line clamping: '-webkit-line-clamp: none | <integer [1,inf]>' and '-webkit-box-orient' (Chromium's
-	// keywords and the aliases it parses), which make a 'display: -webkit-box' a line-clamp container (ComputeValues).
+	// computed keywords: compat writes its aliases inline-axis and block-axis as them), which make a 'display: -webkit-box' a
+	// line-clamp container (ComputeValues).
 	RegisterProperty(PropertyId::WebkitLineClamp, "-webkit-line-clamp", "none", false, true).AddParser("keyword", "none").AddParser("positive_integer");
 	RegisterProperty(PropertyId::WebkitBoxOrient, "-webkit-box-orient", "horizontal", false, true)
-		.AddParser("keyword", "horizontal, vertical, inline-axis=0, block-axis=1");
+		.AddParser("keyword", "horizontal, vertical");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --

@@ -137,8 +137,8 @@ TEST_CASE("LineClamp.parsing")
 	CHECK_FALSE(parses("-webkit-line-clamp", "2.5"));
 	CHECK_FALSE(parses("-webkit-line-clamp", "2px"));
 	CHECK_FALSE(parses("-webkit-line-clamp", "auto"));
-	// its keywords and the aliases Chromium parses
-	for (const char* value : {"horizontal", "vertical", "inline-axis", "block-axis"})
+	// its computed keywords (compat writes the aliases inline-axis and block-axis as them)
+	for (const char* value : {"horizontal", "vertical"})
 		CHECK(parses("-webkit-box-orient", value));
 	CHECK_FALSE(parses("-webkit-box-orient", "diagonal"));
 	CHECK(parses("display", "-webkit-box"));
@@ -157,7 +157,7 @@ TEST_CASE("LineClamp.computed_display")
 	FixedAdvanceFontScope scope;
 	ElementDocument* document = scope.Load("",
 		"<div id='clamped' style='display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3'>x</div>"
-		"<div id='block-axis' style='display: -webkit-box; -webkit-box-orient: block-axis; -webkit-line-clamp: 1'>x</div>"
+		"<div id='block-axis' style='display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1'>x</div>"
 		"<span id='inline' style='display: -webkit-inline-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2'>x</span>"
 		"<div id='horizontal' style='display: -webkit-box; -webkit-box-orient: horizontal; -webkit-line-clamp: 2'>x</div>"
 		"<div id='no-clamp' style='display: -webkit-box; -webkit-box-orient: vertical'>x</div>"
