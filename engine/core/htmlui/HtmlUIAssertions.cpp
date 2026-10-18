@@ -146,7 +146,7 @@ namespace {
                 float leading = begin > 0 ? (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data(), content.data() + begin)) : 0.0f;
                 float width = (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data() + begin, content.data() + end));
                 // a justified line: the space the layout added around its characters
-                for (const Rml::JustificationSpacing& spacing : line.justification){
+                for (const Rml::JustificationSpacing& spacing : text->GetJustification(line)){
                     const float added = spacing.before + spacing.after;
                     if (spacing.offset < (int)begin)
                         leading += added;
