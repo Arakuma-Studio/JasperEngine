@@ -168,6 +168,196 @@ namespace {
 
 }
 
+namespace {
+
+    bool numberOf(const std::string& word, float& out){
+        if (word.empty())
+            return false;
+        char* end = nullptr;
+        out = std::strtof(word.c_str(), &end);
+        return end && *end == '\0' && std::isfinite(out);
+    }
+
+    bool integerOf(const std::string& word, int& out){
+        if (word.empty())
+            return false;
+        char* end = nullptr;
+        const long value = std::strtol(word.c_str(), &end, 10);
+        if (!end || *end != '\0')
+            return false;
+        out = (int)value;
+        return true;
+    }
+
+    // "0.1", "0.1s", "100ms"
+    bool secondsOf(const std::string& word, float& out){
+        std::string t = trim(word);
+        float scale = 1.f;
+        if (t.size() > 2 && t.compare(t.size() - 2, 2, "ms") == 0){
+            t.resize(t.size() - 2);
+            scale = 0.001f;
+        }else if (t.size() > 1 && t.back() == 's'){
+            t.pop_back();
+        }
+        if (!numberOf(t, out))
+            return false;
+        out *= scale;
+        return true;
+    }
+
+    bool isPassName(const std::string& name){
+        return isEffectName(name);
+    }
+
+    template<typename ErrorFn>
+    void parseState(const std::string& rest, int line, EffectManifest& out, ErrorFn& error){
+        std::vector<std::string> words;
+        wordsOf(rest, words);
+        const char* grammar = "@state is '<name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] "
+                              "[clear|resample]'";
+        if (words.size() < 3){
+            error(line, grammar, "@state vel rgba16f 256x256");
+            return;
+        }
+        EffectStateDef st;
+        st.line = line;
+        st.name = words[0];
+        if (!isEffectName(st.name)){
+            error(line, "'" + st.name + "' is not a state name: lower case letters, digits and '-', starting with a letter");
+            return;
+        }
+        if (words[1] == "rgba8") st.format = EffectStateFormat::RGBA8;
+        else if (words[1] == "rgba16f") st.format = EffectStateFormat::RGBA16F;
+        else if (words[1] == "rgba32f") st.format = EffectStateFormat::RGBA32F;
+        else if (words[1] == "r32f") st.format = EffectStateFormat::R32F;
+        else{
+            error(line, "unknown state format '" + words[1] + "'", "rgba8, rgba16f, rgba32f or r32f");
+            return;
+        }
+        // 32-bit float images are not filterable everywhere: nearest by default
+        st.linear = st.format == EffectStateFormat::RGBA8 || st.format == EffectStateFormat::RGBA16F;
+        const std::string& size = words[2];
+        size_t next = 3;
+        if (size.rfind("box", 0) == 0){
+            st.fixedSize = false;
+            if (size.size() > 3){
+                float scale = 0.f;
+                if (size[3] != '*' || !numberOf(size.substr(4), scale) || scale <= 0.f || scale > 4.f){
+                    error(line, "a box size is 'box' or 'box*<scale>' with a scale above 0 and at most 4", "box*0.5");
+                    return;
+                }
+                st.boxScale = scale;
+            }
+            if (next < words.size() && words[next] == "max"){
+                int max = 0;
+                if (next + 1 >= words.size() || !integerOf(words[next + 1], max) || max < 1 || max > 4096){
+                    error(line, "'max' takes the largest side in texels, 1 to 4096", "box max 1024");
+                    return;
+                }
+                st.boxMax = max;
+                next += 2;
+            }
+        }else{
+            const size_t x = size.find('x');
+            int w = 0, h = 0;
+            if (x == std::string::npos || !integerOf(size.substr(0, x), w) || !integerOf(size.substr(x + 1), h) || w < 1 || h < 1 ||
+                w > 4096 || h > 4096){
+                error(line, "a state size is '<w>x<h>' (1 to 4096 each) or 'box[*<scale>]'", "256x256");
+                return;
+            }
+            st.fixedSize = true;
+            st.width = w;
+            st.height = h;
+        }
+        for (; next < words.size(); next++){
+            const std::string& w = words[next];
+            if (w == "linear") st.linear = true;
+            else if (w == "nearest") st.linear = false;
+            else if (w == "clamp") st.repeat = false;
+            else if (w == "repeat") st.repeat = true;
+            else if (w == "clear") st.resample = false;
+            else if (w == "resample") st.resample = true;
+            else{
+                error(line, "unexpected '" + w + "' in @state " + st.name, grammar);
+                return;
+            }
+        }
+        for (const EffectStateDef& other : out.states){
+            if (other.name == st.name){
+                error(line, "state '" + st.name + "' is declared twice");
+                return;
+            }
+        }
+        out.states.push_back(st);
+    }
+
+    template<typename ErrorFn>
+    void parsePass(const std::string& rest, int line, bool init, EffectManifest& out, std::vector<std::pair<size_t, std::string>>& pendingScatter,
+                   ErrorFn& error){
+        std::vector<std::string> words;
+        wordsOf(rest, words);
+        const char* grammar = init ? "@init is '<pass> <state>'" : "@step is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'";
+        if (words.size() < 2){
+            error(line, grammar);
+            return;
+        }
+        EffectPassDef pass;
+        pass.line = line;
+        pass.init = init;
+        pass.name = words[0];
+        if (!isPassName(pass.name)){
+            error(line, "'" + pass.name + "' is not a pass name: lower case letters, digits and '-', starting with a letter");
+            return;
+        }
+        pass.state = out.stateIndex(words[1]);
+        if (pass.state < 0){
+            error(line, "pass '" + pass.name + "' writes '" + words[1] + "', which is not a @state declared before it",
+                  "declare it first: // @state " + words[1] + " rgba16f box");
+            return;
+        }
+        for (size_t i = 2; i < words.size(); i++){
+            const std::string& w = words[i];
+            if (init){
+                error(line, "unexpected '" + w + "' in @init " + pass.name, grammar);
+                return;
+            }
+            if (w.size() > 1 && w[0] == 'x'){
+                int count = 0;
+                if (integerOf(w.substr(1), count)){
+                    if (count < 1 || count > 64){
+                        error(line, "a pass repeats 1 to 64 times", "x10");
+                        return;
+                    }
+                    pass.repeat = count;
+                }else{
+                    pass.repeatParam = w.substr(1);
+                }
+            }else if (w == "add"){
+                pass.additive = true;
+            }else if (w == "scatter"){
+                if (i + 1 >= words.size()){
+                    error(line, "scatter names its placement state", "scatter place");
+                    return;
+                }
+                pendingScatter.push_back({out.passes.size(), words[++i]});
+                // a scatter pass blends its quads
+                pass.additive = true;
+            }else{
+                error(line, "unexpected '" + w + "' in @step " + pass.name, grammar);
+                return;
+            }
+        }
+        for (const EffectPassDef& other : out.passes){
+            if (other.name == pass.name){
+                error(line, "pass '" + pass.name + "' is declared twice");
+                return;
+            }
+        }
+        out.passes.push_back(pass);
+    }
+
+}
+
 const EffectParamDef* EffectManifest::findParam(const std::string& paramName) const{
     for (const EffectParamDef& def : params){
         if (def.name == paramName)
@@ -186,6 +376,48 @@ int EffectManifest::paramIndex(const std::string& paramName) const{
 
 std::string EffectManifest::customShaderName() const{
     return builtin ? "@effects/" + name : sourcePath;
+}
+
+bool EffectManifest::hasScatter() const{
+    for (const EffectPassDef& pass : passes){
+        if (pass.scatterState >= 0)
+            return true;
+    }
+    return false;
+}
+
+int EffectManifest::stateIndex(const std::string& stateName) const{
+    for (size_t i = 0; i < states.size(); i++){
+        if (states[i].name == stateName)
+            return (int)i;
+    }
+    return -1;
+}
+
+uint64_t EffectManifest::stateSignature() const{
+    uint64_t h = 14695981039346656037ull;
+    auto add = [&h](const std::string& text){
+        for (unsigned char c : text){
+            h ^= c;
+            h *= 1099511628211ull;
+        }
+        h ^= 0xff;
+        h *= 1099511628211ull;
+    };
+    for (const EffectStateDef& st : states){
+        add(st.name);
+        add(std::to_string((int)st.format) + ":" + std::to_string(st.fixedSize) + ":" + std::to_string(st.width) + "x" +
+            std::to_string(st.height) + ":" + std::to_string(st.boxScale) + ":" + std::to_string(st.boxMax) + ":" +
+            std::to_string(st.linear) + std::to_string(st.repeat) + std::to_string(st.resample));
+    }
+    for (const EffectPassDef& pass : passes){
+        add(pass.name);
+        add(std::to_string(pass.init) + ":" + std::to_string(pass.state) + ":" + std::to_string(pass.repeat) + ":" + pass.repeatParam + ":" +
+            std::to_string(pass.additive) + ":" + std::to_string(pass.scatterState));
+    }
+    add(std::to_string(warmupSteps) + ":" + std::to_string(warmupDt) + ":" + std::to_string(rateHz) + ":" + std::to_string(maxSubsteps) + ":" +
+        std::to_string(replaySeconds));
+    return h;
 }
 
 EffectDiagnostic jasperengine::htmlui::makeEffectDiagnostic(hc::DiagCode code, std::string message, std::string suggestion,
@@ -233,8 +465,36 @@ const char* jasperengine::htmlui::effectCostName(EffectCost cost){
         case EffectCost::Low: return "low";
         case EffectCost::Medium: return "medium";
         case EffectCost::High: return "high";
+        case EffectCost::Stateful: return "stateful";
     }
     return "low";
+}
+
+const char* jasperengine::htmlui::effectStateFormatName(EffectStateFormat format){
+    switch (format){
+        case EffectStateFormat::RGBA8: return "rgba8";
+        case EffectStateFormat::RGBA16F: return "rgba16f";
+        case EffectStateFormat::RGBA32F: return "rgba32f";
+        case EffectStateFormat::R32F: return "r32f";
+    }
+    return "rgba16f";
+}
+
+int jasperengine::htmlui::effectStateFormatBytes(EffectStateFormat format){
+    switch (format){
+        case EffectStateFormat::RGBA8: return 4;
+        case EffectStateFormat::RGBA16F: return 8;
+        case EffectStateFormat::RGBA32F: return 16;
+        case EffectStateFormat::R32F: return 4;
+    }
+    return 8;
+}
+
+std::string jasperengine::htmlui::effectPassMacro(const std::string& passName){
+    std::string out = "JFX_PASS_";
+    for (char c : passName)
+        out += c == '-' ? '_' : (char)std::toupper((unsigned char)c);
+    return out;
 }
 
 const char* jasperengine::htmlui::effectPointerName(EffectPointer pointer){
@@ -372,6 +632,8 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
     }
     bool kindSet = false;
     bool any = false;
+    // scatter placement states named before they are declared: resolved after the block
+    std::vector<std::pair<size_t, std::string>> pendingScatter;
     for (size_t i = (size_t)version + 1; i < lines.size(); i++){
         std::string name, rest;
         if (!directiveOf(lines[i], name, rest))
@@ -401,7 +663,8 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
             if (rest == "low") out.cost = EffectCost::Low;
             else if (rest == "medium") out.cost = EffectCost::Medium;
             else if (rest == "high") out.cost = EffectCost::High;
-            else error(line, "@cost is low, medium or high, not '" + rest + "'");
+            else if (rest == "stateful") out.cost = EffectCost::Stateful;
+            else error(line, "@cost is low, medium, high or stateful, not '" + rest + "'");
         }else if (name == "backdrop"){
             if (rest == "yes") out.backdrop = true;
             else if (rest == "no") out.backdrop = false;
@@ -512,11 +775,67 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
                 continue;
             }
             out.params.push_back(def);
+        }else if (name == "state"){
+            parseState(rest, line, out, error);
+        }else if (name == "init" || name == "step"){
+            parsePass(rest, line, name == "init", out, pendingScatter, error);
+        }else if (name == "warmup"){
+            std::vector<std::string> words;
+            wordsOf(rest, words);
+            float dt = 0.f;
+            int steps = 0;
+            if (words.size() != 2 || !integerOf(words[0], steps) || steps < 1 || steps > 600 || !secondsOf(words[1], dt) || dt <= 0.f || dt > 1.f){
+                error(line, "@warmup is '<steps> <dt>': 1 to 600 steps of 0 to 1 s", "@warmup 50 0.1s");
+                continue;
+            }
+            out.warmupSteps = steps;
+            out.warmupDt = dt;
+        }else if (name == "rate"){
+            std::vector<std::string> words;
+            wordsOf(rest, words);
+            float hz = 0.f;
+            int max = out.maxSubsteps;
+            bool ok = !words.empty() && numberOf(words[0], hz) && hz >= 1.f && hz <= 240.f;
+            if (ok && words.size() == 3)
+                ok = words[1] == "max" && integerOf(words[2], max) && max >= 1 && max <= 16;
+            else if (ok && words.size() != 1)
+                ok = false;
+            if (!ok){
+                error(line, "@rate is '<hz> [max <substeps>]': 1 to 240 Hz, 1 to 16 substeps", "@rate 60 max 4");
+                continue;
+            }
+            out.rateHz = hz;
+            out.maxSubsteps = max;
+        }else if (name == "replay"){
+            float seconds = 0.f;
+            if (!secondsOf(rest, seconds) || seconds < 0.f || seconds > 30.f){
+                error(line, "@replay is the pinned clock's history window, 0 to 30 s", "@replay 2s");
+                continue;
+            }
+            out.replaySeconds = seconds;
         }else{
             error(line, "unknown manifest directive '@" + name + "'",
                   "@effect, @kind, @category, @summary, @source, @cost, @backdrop, @time, @pointer, @prepass, @margin, @geometry, "
-                  "@suggest-for, @param");
+                  "@suggest-for, @param, @state, @init, @step, @warmup, @rate, @replay");
         }
+    }
+    for (const auto& pending : pendingScatter){
+        EffectPassDef& pass = out.passes[pending.first];
+        pass.scatterState = out.stateIndex(pending.second);
+        if (pass.scatterState < 0)
+            error(pass.line, "@step " + pass.name + " scatters '" + pending.second + "', which is not a @state");
+    }
+    // a state is one image when every pass writing it is additive (an accumulator)
+    for (size_t i = 0; i < out.states.size(); i++){
+        bool written = false, allAdditive = true;
+        for (const EffectPassDef& pass : out.passes){
+            if (pass.state != (int)i)
+                continue;
+            written = true;
+            if (!pass.additive)
+                allAdditive = false;
+        }
+        out.states[i].single = written && allAdditive;
     }
     if (!any || out.name.empty()){
         error(version + 2, "the manifest starts with '// @effect <name>' right after #version 450");
@@ -630,6 +949,60 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
     if (m.boundsGeometry)
         checkScaled(m.boundsExtent, "@geometry");
 
+    // phase 6: the state and its passes
+    if (m.stateful() != (m.cost == EffectCost::Stateful))
+        error(m.line, m.stateful() ? "an effect with @state is '@cost stateful'" : "'@cost stateful' is for effects with @state",
+              m.stateful() ? "// @cost       stateful" : "low, medium or high");
+    if (m.states.size() > 8)
+        error(m.states[8].line, "an effect has at most 8 states");
+    if (m.passes.size() > 32)
+        error(m.passes[32].line, "an effect has at most 32 passes");
+    if (m.stateful()){
+        bool hasStep = false;
+        for (const EffectPassDef& pass : m.passes)
+            hasStep = hasStep || !pass.init;
+        if (!hasStep)
+            error(m.line, "an effect with @state has at least one @step pass");
+    }else if (!m.passes.empty() || m.warmupSteps > 0){
+        error(m.line, "@init, @step and @warmup need a @state");
+    }
+    bool hasInit = false;
+    for (const EffectPassDef& pass : m.passes)
+        hasInit = hasInit || pass.init;
+    if (m.warmupSteps > 0 && !hasInit)
+        error(m.line, "@warmup runs after the @init passes: the effect has none");
+    for (const EffectStateDef& st : m.states){
+        const bool full = st.format == EffectStateFormat::RGBA32F || st.format == EffectStateFormat::R32F;
+        if (full && st.linear)
+            error(st.line, "state '" + st.name + "' is " + effectStateFormatName(st.format) +
+                  ": 32-bit float images are not filterable on GLES3/WebGL2, sample them 'nearest'", "nearest");
+        bool written = false;
+        for (const EffectPassDef& pass : m.passes)
+            written = written || pass.state == m.stateIndex(st.name);
+        if (!written)
+            error(st.line, "no pass writes state '" + st.name + "'");
+    }
+    for (size_t i = 0; i < m.passes.size(); i++){
+        const EffectPassDef& pass = m.passes[i];
+        if (!pass.repeatParam.empty()){
+            const EffectParamDef* def = m.findParam(pass.repeatParam);
+            if (!def)
+                error(pass.line, "pass '" + pass.name + "' repeats by '" + pass.repeatParam + "', which is not a parameter");
+            else if (def->type != EffectParamType::Number && def->type != EffectParamType::Integer)
+                error(def->line, "pass '" + pass.name + "' repeats by '" + pass.repeatParam + "', which is not a number or an integer");
+        }
+        if (pass.scatterState >= 0){
+            if (pass.scatterState == pass.state)
+                error(pass.line, "pass '" + pass.name + "' scatters the state it writes");
+            bool placed = false;
+            for (size_t j = 0; j < i; j++)
+                placed = placed || m.passes[j].state == pass.scatterState;
+            if (!placed)
+                error(pass.line, "pass '" + pass.name + "' scatters '" + m.states[(size_t)pass.scatterState].name +
+                      "', which no earlier pass writes");
+        }
+    }
+
     // the main include matches the kind, exactly once
     const std::string paintMain = "#include \"effects/lib/main_paint.glsl\"";
     const std::string filterMain = "#include \"effects/lib/main_filter.glsl\"";
@@ -650,6 +1023,20 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
         error(mainLine, std::string("a ") + effectKindName(m.kind) + " effect ends with exactly one " + (paint ? paintMain : filterMain),
               paint ? paintMain : filterMain);
     }
+    // a stateful effect's step forms: main_step.glsl after its main include
+    const std::string stepMain = "#include \"effects/lib/main_step.glsl\"";
+    int stepCount = 0, stepLine = 0;
+    for (size_t i = 0; i < lines.size(); i++){
+        if (trim(lines[i]) == stepMain){
+            stepCount++;
+            stepLine = (int)i + 1;
+        }
+    }
+    if (m.stateful() && (stepCount != 1 || stepLine < mainLine))
+        error(stepCount ? stepLine : mainLine, "a stateful effect ends with " + stepMain + " (after its " + (paint ? paintMain : filterMain) + ")",
+              stepMain);
+    if (!m.stateful() && stepCount)
+        error(stepLine, stepMain + " is for effects with @state");
     return diags.size() == diagsBefore;
 }
 

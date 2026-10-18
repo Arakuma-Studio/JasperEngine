@@ -322,7 +322,17 @@ namespace {
          ".frag. The effect draws nothing until it compiles."},
         {codes::EffectCost, I, false, "effect-cost", "Many expensive effects",
          "The document uses more than four high-cost effects; each costs a lot per pixel. Keep high-cost effects to a couple of "
-         "elements or a quarter of the screen (the guide's performance section)."},
+         "elements or a quarter of the screen (the guide's performance section). Stateful effects count too: more than four "
+         "in one document is reported."},
+        {codes::EffectStateUnsupported, E, false, "effect-state-unsupported", "Effect state format not supported",
+         "A stateful effect keeps its simulation in float images (rgba16f, rgba32f, r32f) this device cannot render to (or "
+         "blend into): GLES3 and WebGL2 need EXT_color_buffer_float (EXT_color_buffer_half_float for rgba16f). The effect is "
+         "not drawn (a filter leaves the content); use a stateless effect as the fallback for such devices."},
+        {codes::EffectStatefulBudget, W, true, "effect-stateful-budget", "Too many stateful effects",
+         "More stateful simulations are active than the budget (8 per document, 32 in all, 64 MB of state per document): each "
+         "runs its passes every frame. A warning while over the soft budget; an error when the hard cap (64 simulations) "
+         "refuses a new one, which then draws nothing. Hide the elements whose simulations should stop: a simulation that is "
+         "not drawn does not step."},
     };
 
     char toLower(char c){

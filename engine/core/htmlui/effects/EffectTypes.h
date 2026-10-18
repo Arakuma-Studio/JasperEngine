@@ -22,7 +22,8 @@ namespace jasperengine::htmlui {
     // backdrop-filter it recolours the content inside its alpha). filter: processes pixels.
     enum class EffectKind : uint8_t { Paint, Filter };
     enum class EffectParamType : uint8_t { Number, Integer, Percentage, Length, Angle, Time, Color, Position, Enum, Boolean, Palette };
-    enum class EffectCost : uint8_t { Low, Medium, High };
+    // stateful: an effect with @state (phase 6), measured per frame of its passes plus its draw
+    enum class EffectCost : uint8_t { Low, Medium, High, Stateful };
     enum class EffectPointer : uint8_t { None, Position, Trail, Ripples };
 
     // "size*0.5 + 2px": a length of the effect from one of its parameters (CSS px); param empty =
@@ -45,6 +46,36 @@ namespace jasperengine::htmlui {
         int line = 0;                // manifest line
     };
 
+    // Persistent per-element state (phase 6, docs/html-ui/phase-6-stateful-effects.md 3.2-3.3)
+    enum class EffectStateFormat : uint8_t { RGBA8, RGBA16F, RGBA32F, R32F };
+
+    // @state <name> <format> <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
+    struct EffectStateDef {
+        std::string name;
+        EffectStateFormat format = EffectStateFormat::RGBA16F;
+        bool fixedSize = false;      // <w>x<h>
+        int width = 1, height = 1;   // fixed size
+        float boxScale = 1.f;        // box: the area's CSS px x scale
+        int boxMax = 1024;           // box: each side at most this
+        bool linear = true;          // the sampler's filter
+        bool repeat = false;         // the sampler's wrap
+        bool resample = true;        // box states on a resize: redrawn into the new size (false: restart)
+        bool single = false;         // one image (every pass writing it is additive), else a ping-pong pair
+        int line = 0;
+    };
+
+    // @init <pass> <state> | @step <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    struct EffectPassDef {
+        std::string name;            // JFX_PASS_<NAME> = its index in EffectManifest::passes
+        bool init = false;           // @init: once after allocation and every reset
+        int state = -1;              // the target, an index in EffectManifest::states
+        int repeat = 1;              // x<count>
+        std::string repeatParam;     // x<param> (rounded, clamped to [1, 64])
+        bool additive = false;       // add: blended ONE, ONE into the cleared target
+        int scatterState = -1;       // scatter <state>: one quad per texel of that placement state
+        int line = 0;
+    };
+
     struct EffectManifest {
         std::string name, summary, source, category;
         EffectKind kind = EffectKind::Paint;
@@ -60,6 +91,14 @@ namespace jasperengine::htmlui {
         EffectScaledParam boundsExtent;
         std::vector<std::string> suggestFor;
         std::vector<EffectParamDef> params;
+        // phase 6: persistent state and its passes (declaration order); empty for a stateless effect
+        std::vector<EffectStateDef> states;
+        std::vector<EffectPassDef> passes;
+        int warmupSteps = 0;                   // @warmup <steps> <dt>
+        float warmupDt = 0.f;
+        float rateHz = 60.f;                   // @rate <hz> [max <substeps>]
+        int maxSubsteps = 4;
+        float replaySeconds = 2.f;             // @replay <seconds>
         bool builtin = true;
         // builtin: "effects/<name>.frag" (the library); project: the asset-relative .frag
         std::string sourcePath;
@@ -69,6 +108,12 @@ namespace jasperengine::htmlui {
         int paramIndex(const std::string& paramName) const;
         // the shader's custom name: "@effects/<name>" (builtin) or the .frag path (project)
         std::string customShaderName() const;
+        // phase 6
+        bool stateful() const { return !states.empty(); }
+        bool hasScatter() const;
+        int stateIndex(const std::string& stateName) const;
+        // a hash of the states and passes: a simulation restarts when it changes (hot reload)
+        uint64_t stateSignature() const;
     };
 
     // Phase 2's diagnostic (code, severity, message, suggestion, file, line, column). The
@@ -85,6 +130,10 @@ namespace jasperengine::htmlui {
     JASPERENGINE_API const char* effectParamTypeName(EffectParamType type);  // "number", "length", ...
     JASPERENGINE_API const char* effectCostName(EffectCost cost);            // "low", "medium", "high"
     JASPERENGINE_API const char* effectPointerName(EffectPointer pointer);   // "none", "position", ...
+    JASPERENGINE_API const char* effectStateFormatName(EffectStateFormat format);   // "rgba8", "rgba16f", "rgba32f", "r32f"
+    JASPERENGINE_API int effectStateFormatBytes(EffectStateFormat format);         // bytes per texel
+    // JFX_PASS_<NAME>: the pass name upper case, '-' as '_'
+    JASPERENGINE_API std::string effectPassMacro(const std::string& passName);
     // kebab-case -> camelCase ("ray-density" -> "rayDensity")
     JASPERENGINE_API std::string effectUniformName(const std::string& kebab);
     // the CSS image and filter functions an effect may not be named after

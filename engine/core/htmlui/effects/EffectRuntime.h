@@ -48,6 +48,69 @@ namespace jasperengine::htmlui {
         static std::optional<double> getFixedTime();
     };
 
+    struct EffectStateImage;   // EffectSimulator.h: a pooled state image
+
+    // an injection into a simulation (UIElement::effectSplat): area-local CSS px, px/s, linear RGBA
+    struct EffectSplatData {
+        Rml::Vector2f position{0.f, 0.f};
+        float radius = 24.f;
+        float strength = 1.f;
+        Rml::Vector2f velocity{0.f, 0.f};
+        float color[4] = {1.f, 1.f, 1.f, 1.f};
+    };
+
+    // One element's simulation of a stateful effect (phase 6, docs/html-ui/phase-6-stateful-effects.md
+    // 3.1, 3.6-3.8): its state images, its clock and its inputs. Owned by the element's effect state,
+    // so it survives re-instancing; its images return to the pool when it is destroyed.
+    struct JASPERENGINE_INTERNAL EffectSimulation {
+        struct Images {
+            std::shared_ptr<EffectStateImage> image[2];   // [1] empty for a single-image state
+            int current = 0;                              // the image passes read and the draw samples
+            int width = 0, height = 0;
+        };
+        const EffectManifest* manifest = nullptr;
+        uint64_t signature = 0;                 // manifest->stateSignature() when allocated
+        std::vector<Images> states;             // manifest order
+        uint64_t poolGeneration = 0;            // EffectStatePool's when allocated (a view loss drops them)
+        bool allocated = false;
+        bool refused = false;                   // the hard cap or an unsupported format: not simulated
+        Rml::Vector2f areaSize{0.f, 0.f};       // the area the images were sized for
+        size_t bytes = 0;
+        // the clock (3.6)
+        int64_t steps = 0;                      // since the reset
+        double epoch = 0.0;                     // the clock value of step 0 (live)
+        bool anchored = false;
+        double lastTime = 0.0;                  // the clock value last advanced at
+        double resetTime = 0.0;                 // the clock value of the reset (warm-up ends there)
+        double simTime = 0.0;                   // the end of the last step
+        uint64_t lastAdvanceFrame = UINT64_MAX;
+        bool paused = false;
+        // the pinned clock's replay key
+        bool pinned = false;
+        double pinnedTime = 0.0;
+        uint64_t pinnedKey = 0;
+        // the pointer at the last step (area-local CSS px)
+        Rml::Vector2f pointer{0.f, 0.f};
+        bool pointerKnown = false;
+        bool pointerDown = false;
+        uint64_t pressSeen = 0;
+        // splats: consumed by the next step (live); logged with their time (pinned, replayed)
+        std::vector<EffectSplatData> pending;
+        std::vector<std::pair<double, EffectSplatData>> log;
+        uint64_t inputGeneration = 0;
+        // statistics
+        uint64_t stepsRun = 0;
+        uint64_t replays = 0;
+        Rml::ElementDocument* document = nullptr;
+
+        EffectSimulation() = default;
+        EffectSimulation(const EffectSimulation&) = delete;
+        EffectSimulation& operator=(const EffectSimulation&) = delete;
+        ~EffectSimulation();
+        // the images back to the pool; the clock and the inputs reset
+        void releaseImages();
+    };
+
     // per (Element, effect name, ordinal); survives re-instancing
     struct EffectElementState {
         double lastClock = -1.0;
@@ -74,6 +137,11 @@ namespace jasperengine::htmlui {
         float moveSinceRipple = 0.f;
         bool rippleTracking = false;            // the pointer was inside last frame (trigger move)
         uint64_t lastPressSeen = 0;
+        // phase 6: the simulation of a stateful effect, and the live instances using this state
+        // (the runtime releases the images of a simulation nothing uses any more)
+        std::shared_ptr<EffectSimulation> simulation;
+        int liveInstances = 0;
+        uint64_t orphanFrame = UINT64_MAX;      // the frame liveInstances went to 0
     };
 
     // u_fs_effectFrame, member for member: 14 x vec4 = 224 bytes
@@ -147,6 +215,33 @@ namespace jasperengine::htmlui {
         uint64_t prepassPasses = 0;
         uint64_t pipelinesCreated = 0;
         uint64_t reinstances = 0;        // decorators and filters instanced again (var(), transitions)
+        // phase 6 (stateful effects)
+        uint64_t statefulActive = 0;     // simulations stepped this frame or the one before (frame stats: this frame)
+        uint64_t stateImages = 0;        // live state images (current)
+        uint64_t stateBytes = 0;         // their bytes (current)
+        uint64_t stateImagesCreated = 0; // pool misses
+        uint64_t statePoolBytes = 0;     // pooled, unused (current)
+        uint64_t stepPasses = 0;         // fullscreen step passes
+        uint64_t scatterPasses = 0;
+        uint64_t stepsRun = 0;
+        uint64_t replays = 0;            // pinned-clock replays
+    };
+
+    // the soft and hard limits of stateful simulations (3.10)
+    struct EffectStatefulBudget {
+        int perDocument = 8;
+        int global = 32;
+        size_t bytesPerDocument = 64u * 1024u * 1024u;
+        int hardCap = 64;
+    };
+
+    // what getEffects / inspect_ui report of a simulation
+    struct EffectSimulationInfo {
+        bool exists = false;
+        size_t bytes = 0;
+        int64_t steps = 0;
+        double time = 0.0;
+        bool paused = false;
     };
 
     class JASPERENGINE_INTERNAL EffectRuntime : public Rml::Plugin {
@@ -199,6 +294,31 @@ namespace jasperengine::htmlui {
 
         // the per-element seed: FNV-1a of the element's address string, in [0, 1)
         static float seedOf(Rml::Element* element);
+
+        // --- phase 6: stateful effects ---
+        // the instance's simulation (created on first use; nullptr for a stateless effect)
+        EffectSimulation* simulationOf(EffectInstance& instance);
+        // a splat queued on the element's simulations (of the named effect, or all); how many took it
+        int splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName = std::string());
+        // restarts the element's simulations (of the named effect, or all); how many
+        int resetSimulations(Rml::Element* element, const std::string& effectName = std::string());
+        EffectSimulationInfo simulationInfo(Rml::Element* element, const std::string& effectName, int ordinal) const;
+        // the pointer of a context (context px, valid) and its press count, for the per-step pointer
+        bool pointerOf(Rml::Context* context, Rml::Vector2f& position, bool& down, uint64_t& pressCount) const;
+        // the recorded pointer history of an instance's state (context px, z age s), newest first
+        void pointerHistory(const EffectInstance& instance, std::vector<Rml::Vector4f>& out) const;
+        // budgets (3.10): a simulation asks to step this frame; false when the hard cap refuses it
+        bool admitSimulation(EffectSimulation& simulation);
+        void setStatefulBudget(const EffectStatefulBudget& budget) { statefulBudget = budget; }
+        // a destroyed simulation leaves the active set
+        void forgetSimulation(EffectSimulation* simulation);
+        const EffectStatefulBudget& getStatefulBudget() const { return statefulBudget; }
+        size_t simulationCount() const;
+        // a stateful diagnostic (HTMLUI-FX-0017/0018) to the Console, once per call
+        void reportStateful(Rml::ElementDocument* document, const std::string& codeId, const std::string& message, bool error);
+        // the stateful diagnostics reported so far (tests): code id and message
+        const std::vector<std::pair<std::string, std::string>>& statefulDiagnostics() const { return statefulReports; }
+        void clearStatefulDiagnostics();
 
         // Rml::Plugin
         int GetEventClasses() override;
@@ -255,6 +375,15 @@ namespace jasperengine::htmlui {
         EffectStats totals;
         EffectStats frameTotals;
         uint64_t filterCompiles = 0;
+
+        // phase 6
+        void sweepSimulations();                // at a frame start: orphans released, budgets checked
+        EffectStatefulBudget statefulBudget;
+        // simulations stepped this frame / the frame before, by document
+        std::unordered_map<EffectSimulation*, uint64_t> activeSimulations;
+        std::unordered_map<Rml::ElementDocument*, int> overBudgetDocuments;   // the frame it was reported (once while over)
+        bool hardCapReported = false;
+        std::vector<std::pair<std::string, std::string>> statefulReports;
     };
 
 }

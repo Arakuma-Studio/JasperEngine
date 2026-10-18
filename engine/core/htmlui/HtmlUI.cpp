@@ -10,6 +10,7 @@
 #include "vector/UILottieElement.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "effects/EffectRegistry.h"
+#include "effects/EffectSimulator.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -54,6 +55,8 @@ namespace {
         for (HtmlUIContext* context : contexts){
             context->releaseGpuResources();
         }
+        // phase 6: the stateful effects' images (their simulations restart when drawn next)
+        htmlui::EffectStatePool::get().destroyAll();
 
         Rml::ReleaseFontResources();
     }

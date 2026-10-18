@@ -1847,6 +1847,9 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */; };
+		434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
+		434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
 		434F4D505B1F49763171CF59 /* EffectValue.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503752E7417C733B6D /* EffectValue.h */; };
 		434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5076BA00E1D61AA319 /* EffectValue.cpp */; };
 		434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5076BA00E1D61AA319 /* EffectValue.cpp */; };
@@ -4918,6 +4921,8 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectSimulator.h; sourceTree = "<group>"; };
+		434F4D50A333501C6FB22061 /* EffectSimulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSimulator.cpp; sourceTree = "<group>"; };
 		434F4D503752E7417C733B6D /* EffectValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectValue.h; sourceTree = "<group>"; };
 		434F4D5076BA00E1D61AA319 /* EffectValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectValue.cpp; sourceTree = "<group>"; };
 		434F4D50577C374643F5FC29 /* EffectTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectTypes.h; sourceTree = "<group>"; };
@@ -8810,6 +8815,8 @@
 				434F4D50577C374643F5FC29 /* EffectTypes.h */,
 				434F4D5076BA00E1D61AA319 /* EffectValue.cpp */,
 				434F4D503752E7417C733B6D /* EffectValue.h */,
+				434F4D50A333501C6FB22061 /* EffectSimulator.cpp */,
+				434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */,
 			);
 			path = effects;
 			sourceTree = "<group>";
@@ -10160,6 +10167,7 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */,
 				434F4D505B1F49763171CF59 /* EffectValue.h in Headers */,
 				434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */,
 				434F4D50E87BF4E2065C1065 /* EffectSyntax.h in Headers */,
@@ -11953,6 +11961,7 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */,
 				434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */,
 				434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */,
 				434F4D50F57F3CE131954601 /* EffectRuntime.cpp in Sources */,
@@ -12308,6 +12317,7 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */,
 				434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */,
 				434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */,
 				434F4D502AFB0B7186F6D699 /* EffectRuntime.cpp in Sources */,

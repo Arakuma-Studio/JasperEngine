@@ -29,6 +29,13 @@ namespace jasperengine::htmlui {
     //   // @geometry   fill | bounds <scaled>                      (paint kind; default fill)
     //   // @suggest-for <word> [<word> ...]
     //   // @param      <name> <type> <default> [<min> <max>] [<opt>|<opt>|...] -- <description>
+    //   phase 6 (stateful effects, docs/html-ui/phase-6-stateful-effects.md 3.2; @cost stateful):
+    //   // @state      <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
+    //   // @init       <pass> <state>
+    //   // @step       <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    //   // @warmup     <steps> <dt>
+    //   // @rate       <hz> [max <substeps>]
+    //   // @replay     <seconds>
     //   <scaled> := <param>[*<number>][+<number>px] | <number>px
     //
     // A default with spaces is double-quoted; ranges carry units. Diagnostics are

@@ -183,6 +183,9 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
         switch (state.target.color){
         case ColorFormat::RED: desc.colors[0].pixel_format = SG_PIXELFORMAT_R8; break;
         case ColorFormat::SRGB8A8: desc.colors[0].pixel_format = SG_PIXELFORMAT_SRGB8A8; break;
+        case ColorFormat::RGBA16F: desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA16F; break;
+        case ColorFormat::RGBA32F: desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA32F; break;
+        case ColorFormat::R32F: desc.colors[0].pixel_format = SG_PIXELFORMAT_R32F; break;
         default: desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8; break;
         }
         switch (state.target.depth){

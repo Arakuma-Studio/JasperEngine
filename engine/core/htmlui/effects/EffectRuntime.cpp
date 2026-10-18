@@ -5,8 +5,10 @@
 // re-instancing, the clock, the pointer, and the frame block.
 
 #include "EffectRuntime.h"
+#include "EffectSimulator.h"
 
 #include "HtmlUIClock.h"
+#include "Log.h"
 #include "render/SystemRender.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -103,6 +105,7 @@ void EffectRuntime::beginFrame(){
     frame++;
     frameTotals = EffectStats();
     frameTotals.liveInstances = live.size();
+    sweepSimulations();
 }
 
 void EffectRuntime::countReinstance(){
@@ -229,6 +232,8 @@ EffectInstance* EffectRuntime::acquire(Rml::Element* element, const EffectManife
     }else{
         instance = std::make_unique<EffectInstance>();
     }
+    state->liveInstances++;
+    state->orphanFrame = UINT64_MAX;
     instance->alive = true;
     instance->context = element ? element->GetContext() : nullptr;
     instance->manifest = &manifest;
@@ -262,6 +267,12 @@ void EffectRuntime::release(EffectInstance* instance){
         return;
     std::unique_ptr<EffectInstance> owned = std::move(it->second);
     live.erase(it);
+    // the simulation of a state nothing uses any more is released at a later frame start (a
+    // re-instance releases and acquires within one update)
+    if (owned->state && --owned->state->liveInstances <= 0){
+        owned->state->liveInstances = 0;
+        owned->state->orphanFrame = frame;
+    }
     // its references (state, snapshot, shader) go now; the memory waits for the next acquire
     *owned = EffectInstance();
     released.push_back(std::move(owned));
@@ -305,12 +316,16 @@ void EffectRuntime::OnContextDestroy(Rml::Context* context){
         redrawContext = nullptr;
 }
 
-void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* /*document*/){
-    // the elements' destruction purges their states
+void EffectRuntime::OnDocumentUnload(Rml::ElementDocument* document){
+    // the elements' destruction purges their states (and simulations)
+    overBudgetDocuments.erase(document);
 }
 
 void EffectRuntime::OnShutdown(){
     elements.clear();
+    activeSimulations.clear();
+    overBudgetDocuments.clear();
+    EffectStatePool::get().destroyAll();
     pointers.clear();
     pointerCacheValid = false;
     redrawContext = nullptr;
@@ -408,7 +423,8 @@ void EffectRuntime::integrate(EffectInstance& instance, EffectElementState& stat
     }
 
     // the trail: one sample a frame while moving (1 px or more), aged by dt, 4 s at most
-    if (m.pointer == EffectPointer::Trail && !(pointer && pointer->testTrail)){
+    // (a stateful effect records it too: the pinned clock's replay reads the pointer history, phase 6 3.8)
+    if ((m.pointer == EffectPointer::Trail || m.stateful()) && !(pointer && pointer->testTrail)){
         int kept = 0;
         for (int i = 0; i < state.trailCount; i++){
             Rml::Vector4f s = state.trail[i];
@@ -563,4 +579,251 @@ void EffectRuntime::prepare(EffectInstance& instance){
             set4(instance.ripples[i], 0.f, 0.f, 0.f, 0.f);
         instance.ripplesUsed = count;
     }
+}
+
+// --- phase 6: stateful effects (docs/html-ui/phase-6-stateful-effects.md) ---
+
+EffectSimulation::~EffectSimulation(){
+    releaseImages();
+    EffectRuntime::get().forgetSimulation(this);
+}
+
+void EffectSimulation::releaseImages(){
+    EffectStatePool& pool = EffectStatePool::get();
+    for (Images& images : states){
+        for (auto& image : images.image){
+            if (image)
+                pool.release(std::move(image));
+            image.reset();
+        }
+    }
+    states.clear();
+    allocated = false;
+    bytes = 0;
+    steps = 0;
+    anchored = false;
+    pinned = false;
+    pointerKnown = false;
+}
+
+EffectSimulation* EffectRuntime::simulationOf(EffectInstance& instance){
+    if (!instance.manifest || !instance.manifest->stateful() || !instance.state)
+        return nullptr;
+    EffectElementState& state = *instance.state;
+    // a manifest that changed (a project effect's hot reload) restarts the simulation
+    if (state.simulation && (state.simulation->manifest != instance.manifest || state.simulation->signature != instance.manifest->stateSignature()))
+        state.simulation.reset();
+    if (!state.simulation){
+        state.simulation = std::make_shared<EffectSimulation>();
+        state.simulation->manifest = instance.manifest;
+        state.simulation->signature = instance.manifest->stateSignature();
+    }
+    if (instance.element)
+        state.simulation->document = instance.element->GetOwnerDocument();
+    return state.simulation.get();
+}
+
+void EffectRuntime::forgetSimulation(EffectSimulation* simulation){
+    activeSimulations.erase(simulation);
+}
+
+int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    int taken = 0;
+    const bool pinnedClock = EffectClock::isFixed();
+    for (auto& entry : it->second.states){
+        EffectElementState& state = *entry.second;
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        EffectSimulation* simulation = state.simulation.get();
+        if (!simulation || state.liveInstances <= 0)
+            continue;
+        if (pinnedClock){
+            // logged with the pinned time: the replay applies it at its last step
+            simulation->log.push_back({*EffectClock::getFixedTime(), splat});
+            while (simulation->log.size() > 64)
+                simulation->log.erase(simulation->log.begin());
+        }else{
+            simulation->pending.push_back(splat);
+            while (simulation->pending.size() > 8)
+                simulation->pending.erase(simulation->pending.begin());
+        }
+        simulation->inputGeneration++;
+        taken++;
+    }
+    if (taken > 0)
+        element->GetContext() ? element->GetContext()->RequestNextUpdate(0) : (void)0;
+    return taken;
+}
+
+int EffectRuntime::resetSimulations(Rml::Element* element, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    int count = 0;
+    for (auto& entry : it->second.states){
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        if (entry.second->simulation){
+            entry.second->simulation->releaseImages();
+            entry.second->simulation->log.clear();
+            entry.second->simulation->pending.clear();
+            entry.second->simulation->inputGeneration++;
+            count++;
+        }
+    }
+    return count;
+}
+
+EffectSimulationInfo EffectRuntime::simulationInfo(Rml::Element* element, const std::string& effectName, int ordinal) const{
+    EffectSimulationInfo info;
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return info;
+    const std::string key = effectName + "#" + std::to_string(ordinal);
+    for (const auto& entry : it->second.states){
+        if (entry.first != key || !entry.second->simulation)
+            continue;
+        const EffectSimulation& sim = *entry.second->simulation;
+        info.exists = sim.allocated;
+        info.bytes = sim.bytes;
+        info.steps = sim.steps;
+        info.time = sim.simTime;
+        info.paused = sim.paused || (sim.allocated && sim.lastAdvanceFrame + 1 < frame);
+        break;
+    }
+    return info;
+}
+
+bool EffectRuntime::pointerOf(Rml::Context* context, Rml::Vector2f& position, bool& down, uint64_t& pressCount) const{
+    auto it = pointers.find(context);
+    if (it == pointers.end() || !it->second.valid)
+        return false;
+    position = it->second.position;
+    down = it->second.down;
+    pressCount = it->second.pressCount;
+    return true;
+}
+
+void EffectRuntime::pointerHistory(const EffectInstance& instance, std::vector<Rml::Vector4f>& out) const{
+    out.clear();
+    Rml::Context* context = instance.context ? instance.context : (instance.element ? instance.element->GetContext() : nullptr);
+    auto it = pointers.find(context);
+    if (it != pointers.end() && it->second.testTrail){
+        for (const Rml::Vector4f& sample : it->second.trail)
+            out.push_back(sample);
+        return;
+    }
+    if (!instance.state)
+        return;
+    for (int i = 0; i < instance.state->trailCount && i < 32; i++)
+        out.push_back(instance.state->trail[i]);
+}
+
+size_t EffectRuntime::simulationCount() const{
+    size_t count = 0;
+    for (const auto& entry : elements){
+        for (const auto& state : entry.second.states){
+            if (state.second->simulation && state.second->simulation->allocated)
+                count++;
+        }
+    }
+    return count;
+}
+
+bool EffectRuntime::admitSimulation(EffectSimulation& simulation){
+    if (!simulation.allocated && simulationCount() >= (size_t)statefulBudget.hardCap){
+        if (!simulation.refused){
+            simulation.refused = true;
+            reportStateful(simulation.document, "HTMLUI-FX-0018",
+                           "the process already runs " + std::to_string(statefulBudget.hardCap) + " stateful simulations (the hard cap): '" +
+                           (simulation.manifest ? simulation.manifest->name : std::string()) + "' is not simulated until one ends", true);
+        }
+        return false;
+    }
+    simulation.refused = false;
+    activeSimulations[&simulation] = frame;
+    return true;
+}
+
+void EffectRuntime::clearStatefulDiagnostics(){
+    statefulReports.clear();
+    overBudgetDocuments.clear();
+    hardCapReported = false;
+}
+
+void EffectRuntime::reportStateful(Rml::ElementDocument* document, const std::string& codeId, const std::string& message, bool error){
+    std::string where = document ? document->GetSourceURL() : std::string();
+    const std::string text = (where.empty() ? std::string() : where + ": ") + message + " [" + codeId + "]";
+    statefulReports.push_back({codeId, text});
+    if (error)
+        Log::error("[HTML UI] %s", text.c_str());
+    else
+        Log::warn("[HTML UI] %s", text.c_str());
+}
+
+void EffectRuntime::sweepSimulations(){
+    // the simulations of states no live instance uses (the effect changed or was removed): their
+    // images go back to the pool; the CPU state stays in the element's LRU
+    size_t images = 0, bytes = 0;
+    for (auto& entry : elements){
+        for (auto& state : entry.second.states){
+            EffectElementState& st = *state.second;
+            if (!st.simulation)
+                continue;
+            if (st.liveInstances <= 0 && st.orphanFrame != UINT64_MAX && frame > st.orphanFrame + 1){
+                st.simulation.reset();
+                continue;
+            }
+            if (st.simulation->allocated){
+                for (const auto& image : st.simulation->states)
+                    images += image.image[1] ? 2 : 1;
+                bytes += st.simulation->bytes;
+            }
+        }
+    }
+    // active: stepped this frame or the one before (the map keeps the frame of the last step)
+    std::unordered_map<Rml::ElementDocument*, std::pair<int, size_t>> perDocument;
+    size_t active = 0;
+    for (auto it = activeSimulations.begin(); it != activeSimulations.end();){
+        if (it->second + 2 < frame){
+            it = activeSimulations.erase(it);
+            continue;
+        }
+        active++;
+        auto& counts = perDocument[it->first->document];
+        counts.first++;
+        counts.second += it->first->bytes;
+        ++it;
+    }
+    totals.statefulActive = active;
+    totals.stateImages = images;
+    totals.stateBytes = bytes;
+    totals.statePoolBytes = EffectStatePool::get().pooledBytes();
+    frameTotals.stateImages = images;
+    frameTotals.stateBytes = bytes;
+    frameTotals.statePoolBytes = totals.statePoolBytes;
+    // soft budgets: one warning per document while it is over
+    for (const auto& doc : perDocument){
+        const bool over = doc.second.first > statefulBudget.perDocument || doc.second.second > statefulBudget.bytesPerDocument ||
+                          (int)active > statefulBudget.global;
+        if (!over){
+            overBudgetDocuments.erase(doc.first);
+            continue;
+        }
+        if (overBudgetDocuments.count(doc.first))
+            continue;
+        overBudgetDocuments[doc.first] = (int)frame;
+        reportStateful(doc.first, "HTMLUI-FX-0018",
+                       std::to_string(doc.second.first) + " stateful simulations active in this document (" +
+                       std::to_string(doc.second.second / (1024 * 1024)) + " MB of state), " + std::to_string(active) +
+                       " in all: over the budget of " + std::to_string(statefulBudget.perDocument) + " per document, " +
+                       std::to_string(statefulBudget.global) + " in all and " +
+                       std::to_string(statefulBudget.bytesPerDocument / (1024 * 1024)) + " MB per document", false);
+    }
+    EffectStatePool::get().beginFrame();
 }

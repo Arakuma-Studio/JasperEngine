@@ -34,6 +34,15 @@ uniform u_fs_effectFrame {
     uniform sampler u_effectSource_smp;
     uniform texture2D u_effectBlurred;
     uniform sampler u_effectBlurred_smp;
+#endif
+#if defined(JFX_STEP_FORM)
+    // phase 6, a stateful effect's step and scatter forms: main_step.glsl sets these for the
+    // target texel (its position in the area), so jfx_context() and the draw-form code of the
+    // effect work there too
+    vec2 v_texcoord = vec2(0.0);
+    vec2 v_uv = vec2(0.0);
+    vec4 v_color = vec4(1.0);
+#elif defined(JFX_FILTER_FORM)
     in vec2 v_texcoord;
 #else
     in vec2 v_uv;
