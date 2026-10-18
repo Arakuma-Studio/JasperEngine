@@ -97,7 +97,8 @@ namespace {
          "// @param      intensity number 1 0.5 1.5 -- Strength of the liquid\n"
          "// @param      radius number 3 0 5 -- Radius of the liquid under the pointer\n"
          "// @param      momentum number 30 10 60 -- How long colours keep flowing in their direction\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/chromatic-aberration.frag",
          "#version 450\n"
          "// @effect     chromatic-aberration\n"
@@ -218,6 +219,26 @@ namespace {
          "// @param      softness number 0 0 1 -- Edge softness (0 is a crisp paint edge)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the ramp\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/data-mosh.frag",
+         "#version 450\n"
+         "// @effect     data-mosh\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Corrupted-codec smearing: macroblocks lock and drag their pixels in liquid trails\n"
+         "// @source     shaders.com DataMosh\n"
+         "// @cost       stateful\n"
+         "// @state      state rgba16f 768x768 linear\n"
+         "// @step       decode state\n"
+         "// @suggest-for datamosh codec-glitch\n"
+         "// @param      intensity number 0.7 0 1 -- How much of the image locks and smears (the share of corrupted blocks)\n"
+         "// @param      block-size number 48 30 150 -- Macroblock size (state texels of the 768 grid)\n"
+         "// @param      drift number 0.35 0 1 -- How fast corrupted areas drag their pixels\n"
+         "// @param      churn number 0.4 0 1 -- How often each block re-rolls its fate\n"
+         "// @param      blend number 1 0 1 -- Blend between the live content and the moshed stream\n"
+         "// @param      speed number 1 0 4 -- Simulation speed (0 freezes the decay)\n"
+         "// @param      seed number 0 0 100 -- Random seed of the corruption layout\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/diamond-gradient.frag",
          "#version 450\n"
          "// @effect     diamond-gradient\n"
@@ -432,7 +453,8 @@ namespace {
          "// @param      momentum number 12 0 50 -- How much of the pointer's velocity the paint carries\n"
          "// @param      swirl number 10 0 60 -- Swirl detail of the flow (vorticity confinement)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the ramp\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/fluid-smoke.frag",
          "#version 450\n"
          "// @effect     fluid-smoke\n"
@@ -469,7 +491,8 @@ namespace {
          "// @param      mouse-influence number 0.1 0 2 -- Strength of the pointer's push\n"
          "// @param      mouse-radius number 0.1 0.02 0.5 -- Radius of the pointer's push (share of the area)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the colour ramp\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/fluted-glass.frag",
          "#version 450\n"
          "// @effect     fluted-glass\n"
@@ -531,7 +554,8 @@ namespace {
          "// @param      mouse-influence number 0.1 0 2 -- Strength of the pointer's push\n"
          "// @param      mouse-radius number 0.1 0.02 0.5 -- Radius of the pointer's push (share of the area)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the two-colour mix\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/fractal-noise.frag",
          "#version 450\n"
          "// @effect     fractal-noise\n"
@@ -861,7 +885,8 @@ namespace {
          "// @param      curl number 0 0 60 -- Swirl: vorticity confinement that spins the ink into eddies\n"
          "// @param      decay number 0.5 0.05 4 -- How fast the ink fades\n"
          "// @param      momentum number 0.6 0 1 -- How long the fluid keeps flowing after a stroke\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/iris-wipe.frag",
          "#version 450\n"
          "// @effect     iris-wipe\n"
@@ -1116,6 +1141,53 @@ namespace {
          "// @param      seed number 0 0 100 -- Random seed (slides the pattern)\n"
          "// @param      speed number 1 0 5 -- Animation speed\n"
          "#include \"effects/lib/main_paint.glsl\"\n"},
+        {"effects/pixel-sort.frag",
+         "#version 450\n"
+         "// @effect     pixel-sort\n"
+         "// @kind       filter\n"
+         "// @category   interactive\n"
+         "// @summary    Pixels sort by brightness around the pointer and keep their place, melting back slowly\n"
+         "// @source     shaders.com PixelSort\n"
+         "// @cost       stateful\n"
+         "// @pointer    position\n"
+         "// @state      luma r32f 512x512 nearest\n"
+         "// @state      offset r32f 512x512 nearest\n"
+         "// @state      tick rgba32f 1x1 nearest\n"
+         "// @step       key luma\n"
+         "// @step       swap offset x5\n"
+         "// @step       count tick\n"
+         "// @suggest-for sort-pixels glitch-sort\n"
+         "// @param      radius number 0.4 0.03 0.6 -- Size of the pointer's sorting brush (share of the area)\n"
+         "// @param      falloff number 1 0 1 -- Softness of the brush edge (0 a hard circle)\n"
+         "// @param      strength number 0.1 0 1 -- How fast pixels sort (more compare-swap passes a step)\n"
+         "// @param      decay number 0.1 0 1 -- How quickly sorted pixels melt back (0 keeps them)\n"
+         "// @param      axis enum vertical horizontal|vertical -- Axis the pixels are sorted along\n"
+         "// @param      direction enum descending ascending|descending -- Sort order by brightness (ascending: dark to light)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
+        {"effects/pixel-throw.frag",
+         "#version 450\n"
+         "// @effect     pixel-throw\n"
+         "// @kind       filter\n"
+         "// @category   interactive\n"
+         "// @summary    Pixels thrown along the pointer's path like a fluid, then settling back with friction\n"
+         "// @source     shaders.com PixelThrow\n"
+         "// @cost       stateful\n"
+         "// @pointer    trail\n"
+         "// @state      ptr rgba32f 1x1 nearest\n"
+         "// @state      flow rgba16f 128x128 linear\n"
+         "// @step       track ptr\n"
+         "// @step       throw flow\n"
+         "// @suggest-for pixel-fling smear-pixels\n"
+         "// @param      throw-key enum luminance luminance|darkness|red|green|blue -- Which pixel value decides how far a pixel is thrown\n"
+         "// @param      strength number 0.25 0 1 -- How far pixels can be thrown\n"
+         "// @param      key-influence number 0.8 0 1 -- How much the key modulates the distance (0 all pixels alike)\n"
+         "// @param      radius number 0.2 0.02 0.6 -- Size of the pointer's throw brush (share of the area)\n"
+         "// @param      friction number 0.3 0 1 -- How quickly thrown pixels settle back (0 float almost forever)\n"
+         "// @param      momentum number 0.5 0 1 -- How much the thrown flow keeps drifting after the pointer passes\n"
+         "// @param      edges enum stretch stretch|transparent|mirror|wrap -- How pixels thrown beyond the edges are handled\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/pixelate.frag",
          "#version 450\n"
          "// @effect     pixelate\n"
@@ -1208,6 +1280,44 @@ namespace {
          "// @param      feather number 0.1 0 1 -- Softness of the sweeping edge\n"
          "// @param      invert boolean false -- Swap the ends: the content appears as progress goes from 0% to 100%\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/reaction-diffusion.frag",
+         "#version 450\n"
+         "// @effect     reaction-diffusion\n"
+         "// @kind       paint\n"
+         "// @category   interactive\n"
+         "// @summary    A living Gray-Scott reaction-diffusion pattern that blooms where the pointer drags\n"
+         "// @source     shaders.com ReactionDiffusion\n"
+         "// @cost       stateful\n"
+         "// @pointer    trail\n"
+         "// @state      rd rgba32f 512x512 nearest\n"
+         "// @state      pattern rgba16f 512x512 linear\n"
+         "// @init       seed rd\n"
+         "// @step       react rd xspeed\n"
+         "// @step       publish pattern\n"
+         "// @reseed     preset\n"
+         "// @suggest-for gray-scott turing-pattern coral\n"
+         "// @param      preset enum coral coral|mitosis|spots|maze|worms|fingerprints|holes|solitons|bubbles|waves|flowers|custom -- Named Gray-Scott regime (custom uses feed and kill)\n"
+         "// @param      feed number 0.0545 0.01 0.1 -- Feed rate of chemical U (preset custom)\n"
+         "// @param      kill number 0.062 0.03 0.07 -- Kill rate of chemical V (preset custom)\n"
+         "// @param      diffusion-ratio number 0.5 0.2 0.9 -- Ratio of the two diffusion rates (lower is more filament-like)\n"
+         "// @param      feature-size number 3 1 6 -- Size of the pattern's features\n"
+         "// @param      speed integer 6 1 16 -- Simulation iterations a step\n"
+         "// @param      brush-size number 0.04 0.01 0.3 -- Radius of the pointer's brush (share of the field)\n"
+         "// @param      brush-strength number 0.6 0 1 -- How much reagent the moving pointer injects\n"
+         "// @param      color-a color transparent -- Background (empty regions)\n"
+         "// @param      color-c color #38bdf8 -- Colour of the cell walls (mid values)\n"
+         "// @param      color-b color #e2f5ff -- Colour of the cell interiors (high values)\n"
+         "// @param      contrast number 0.5 0 1 -- Sharpness of the cell walls\n"
+         "// @param      threshold number 0.28 0.05 0.6 -- Pattern level the colours are centred on\n"
+         "// @param      color-space enum oklch linear|oklch|oklab|hsl|hsv|lch -- Colour space of the ramp\n"
+         "// @param      relief number 0.4 0 1 -- Shades the pattern as a raised surface (0 flat)\n"
+         "// @param      light-angle angle 135deg 0deg 360deg -- Direction the surface light comes from\n"
+         "// @param      child-influence number 0.6 0 1 -- In filter form: how strongly the content's brightness biases the pattern\n"
+         "// @param      child-contrast number 0.5 0 1 -- In filter form: contrast of the content's brightness\n"
+         "// @param      child-threshold number 0.5 0 1 -- In filter form: the content brightness that reads as neutral\n"
+         "// @param      child-invert boolean false -- In filter form: swap which tones grow the pattern\n"
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/ripple-rings.frag",
          "#version 450\n"
          "// @effect     ripple-rings\n"
@@ -1256,6 +1366,30 @@ namespace {
          "// @param      speed number 0 -100 100 -- Scroll speed of the lines, CSS px per second (down when positive)\n"
          "// @param      flicker number 0 0 1 -- Brightness flicker of the whole screen\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/shatter.frag",
+         "#version 450\n"
+         "// @effect     shatter\n"
+         "// @kind       filter\n"
+         "// @category   interactive\n"
+         "// @summary    Broken glass: the pointer shoves shards apart, cracks open and bend the content\n"
+         "// @source     shaders.com Shatter\n"
+         "// @cost       stateful\n"
+         "// @pointer    trail\n"
+         "// @state      shards rgba32f 16x1 nearest\n"
+         "// @step       shove shards\n"
+         "// @reseed     seed\n"
+         "// @suggest-for broken-glass cracked-glass\n"
+         "// @param      crack-width number 1 0.5 5 -- Thickness of the crack lines\n"
+         "// @param      intensity number 4 0 20 -- How much the shards shift\n"
+         "// @param      radius number 0.4 0.1 1 -- Reach of the pointer's shove (share of the area)\n"
+         "// @param      decay number 1 0.1 10 -- How fast shards return to rest (seconds)\n"
+         "// @param      seed number 2 0 50 -- Random seed of the shard pattern\n"
+         "// @param      chromatic-split number 1 0 5 -- RGB separation in the cracks\n"
+         "// @param      refraction-strength number 5 0 10 -- How much the cracks bend the content\n"
+         "// @param      shard-lighting number 0.1 0 0.5 -- Light on tilted shards\n"
+         "// @param      edges enum mirror stretch|transparent|mirror|wrap -- How content pushed beyond the edges is handled\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/sheen.frag",
          "#version 450\n"
          "// @effect     sheen\n"
@@ -1362,7 +1496,8 @@ namespace {
          "// @param      mouse-influence number 0.1 0 2 -- Strength of the pointer's push\n"
          "// @param      mouse-radius number 0.1 0.02 0.5 -- Radius of the pointer's push (share of the area)\n"
          "// @param      color-space enum linear linear|oklch|oklab|hsl|hsv|lch -- Colour space of the colour ramp\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/smoke-flow.frag",
          "#version 450\n"
          "// @effect     smoke-flow\n"
@@ -1396,7 +1531,8 @@ namespace {
          "// @param      gravity number 2 -5 5 -- Vertical drift (negative floats up, positive sinks)\n"
          "// @param      color-decay number 0.5 0 3 -- How quickly the smoke shifts from the fresh to the aged colour\n"
          "// @param      color-space enum oklab linear|oklch|oklab|hsl|hsv|lch -- Colour space of the colour ramp\n"
-         "#include \"effects/lib/main_paint.glsl\"\n"},
+         "#include \"effects/lib/main_paint.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/smoke.frag",
          "#version 450\n"
          "// @effect     smoke\n"
@@ -1592,6 +1728,35 @@ namespace {
          "// @param      angle angle 0deg 0deg 360deg -- Rotation of the sharp band (0deg horizontal)\n"
          "// @param      center position \"50% 50%\" -- Point the sharp band runs through\n"
          "#include \"effects/lib/main_filter.glsl\"\n"},
+        {"effects/time-trail.frag",
+         "#version 450\n"
+         "// @effect     time-trail\n"
+         "// @kind       filter\n"
+         "// @category   stylize\n"
+         "// @summary    Whatever moves sheds a smooth, decaying long-exposure ghost trail\n"
+         "// @source     shaders.com TimeTrail\n"
+         "// @cost       stateful\n"
+         "// @state      history rgba16f 640x640 linear\n"
+         "// @state      display rgba16f 640x640 linear\n"
+         "// @state      prev-live rgba16f 640x640 nearest\n"
+         "// @step       decay display\n"
+         "// @step       stamp history\n"
+         "// @step       keep prev-live\n"
+         "// @suggest-for echo-trail motion-trail ghost-trail\n"
+         "// @param      trail-source enum motion motion|alpha -- What sheds the trail: what changes between frames, or the content's coverage\n"
+         "// @param      motion-threshold number 0.06 0.01 0.5 -- How much a pixel must change to shed a trail (motion)\n"
+         "// @param      trail-length time 0.6s 0.05s 4s -- How long the trail lingers (the fade's time constant)\n"
+         "// @param      diffusion number 1 0 1 -- How much the trail smears and softens as it fades\n"
+         "// @param      drift-x number 0 -1 1 -- Sideways drift of the trail per second\n"
+         "// @param      drift-y number 0 -1 1 -- Vertical drift of the trail per second\n"
+         "// @param      zoom number 1 0.9 1.1 -- Per-frame zoom of the trail around the centre (above 1 an outward tunnel)\n"
+         "// @param      trail-opacity number 1 0 1 -- Strength of the trail\n"
+         "// @param      tint-mode enum none none|color|rainbow -- Colour the trail: one tint, or a hue that cycles as it ages\n"
+         "// @param      tint color #33aaff -- The tint of tint-mode color\n"
+         "// @param      trail-blend enum normal normal|add|screen|multiply|overlay|soft-light|hard-light|darken|lighten|color-dodge|color-burn|linear-burn|difference|exclusion|hue|saturation|color|luminosity -- How the trail combines with the frame\n"
+         "// @param      speed number 1 0 4 -- Simulation speed (0 freezes the trail)\n"
+         "#include \"effects/lib/main_filter.glsl\"\n"
+         "#include \"effects/lib/main_step.glsl\"\n"},
         {"effects/twirl.frag",
          "#version 450\n"
          "// @effect     twirl\n"
