@@ -15,6 +15,7 @@ set(DAV1D_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 # would be handed them too
 set_property(DIRECTORY PROPERTY COMPILE_DEFINITIONS "")
 set_property(DIRECTORY PROPERTY COMPILE_OPTIONS "")
+set_property(DIRECTORY PROPERTY INCLUDE_DIRECTORIES "")
 
 option(JASPERENGINE_DAV1D_ASM "dav1d's asm (x86-64 NASM, aarch64/armv7 NEON); off: C only" ON)
 
@@ -178,6 +179,9 @@ if(JASPERENGINE_DAV1D_ASM AND NOT EMSCRIPTEN)
         check_language(ASM_NASM)
         if(CMAKE_ASM_NASM_COMPILER)
             enable_language(ASM_NASM)
+            # CMake writes "-MD <file>"; NASM before 2.16 reads "-MD" alone and the file as a second
+            # input: the dependency file through -MF, which every NASM 2.x reads
+            set(CMAKE_DEPFILE_FLAGS_ASM_NASM "-MD -MF <DEP_FILE> -MT <DEP_TARGET>")
             execute_process(COMMAND "${CMAKE_ASM_NASM_COMPILER}" -v OUTPUT_VARIABLE DAV1D_NASM_VERSION ERROR_QUIET)
             string(REGEX MATCH "version ([0-9]+\\.[0-9]+)" DAV1D_NASM_VERSION "${DAV1D_NASM_VERSION}")
             if(CMAKE_MATCH_1 VERSION_LESS 2.14)
