@@ -408,6 +408,24 @@ void LineBox::TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl)
 	clamp_ellipsis = MakeUnique<LineClampEllipsis>(ellipsis);
 	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized : RootFragmentIndex);
 	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
+
+	// Chromium appends the ellipsis to the line's items: an inline box still open at the line's end (it goes on on the
+	// next line) spans it, its fragment covers the ellipsis too (getBoundingClientRect, backgrounds).
+	const float ellipsis_left = ellipsis_x, ellipsis_right = ellipsis_x + ellipsis.width;
+	for (Fragment& open : fragments)
+	{
+		if (open.type != FragmentType::InlineBox || !open.split_right || open.children_end_index == 0)
+			continue;
+		const float content_left = open.position.x + (open.split_left ? 0.f : open.box->GetSpacingLeft());
+		const float content_right = content_left + open.layout_width;
+		if (ellipsis_right > content_right)
+			open.layout_width += ellipsis_right - content_right;
+		if (ellipsis_left < content_left)
+		{
+			open.position.x -= content_left - ellipsis_left;
+			open.layout_width += content_left - ellipsis_left;
+		}
+	}
 }
 
 void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl)

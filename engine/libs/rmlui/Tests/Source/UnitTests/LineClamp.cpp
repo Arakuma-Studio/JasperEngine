@@ -368,8 +368,11 @@ TEST_CASE("LineClamp.inline_content")
 	{
 		Clamped clamped(scope, "", "<div class='c' id='c'><span id='s'>XXX XXX XXX</span> XXX XXX</div>");
 		CHECK(HeightOf(clamped.document, "c") == 20.f);
-		// its boxes span the three lines (getBoundingClientRect: 30px tall)
+		// its boxes span the three lines (getBoundingClientRect: 30px tall); the one open at the clamp line's end covers the
+		// ellipsis (Chromium appends the ellipsis to the line: 40px wide)
 		CHECK(clamped.Get("s")->GetNumBoxes() == 3);
+		Vector2f offset;
+		CHECK(clamped.Get("s")->GetBox(1, offset).GetSize(BoxArea::Border).x == 40.f);
 		CHECK(clamped.EllipsisOf("s").x == 30.f);
 	}
 	SUBCASE("an atomic inline that fits: the ellipsis after it, drawn by the block")
