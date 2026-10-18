@@ -68,7 +68,7 @@ namespace {
                ".p { position: absolute; top: 20px; width: 160px; height: 80px; background-image: effect(sim-probe); }\n"
                ".p.seeded { background-image: effect(sim-probe, seed 5); }\n"
                ".p.wide { width: 240px; }\n"
-               ".p.away { left: -500px; }\n" + extraCss +
+               extraCss +
                "</style></head><body>" + elements + "</body></html>";
     }
 
@@ -339,7 +339,7 @@ TEST_F(EffectStateful, PausesWhenNotDrawnAndResumesWithoutCatchingUp){
     capture();
     ASSERT_EQ(info("p0").steps, 1);
     // moved out of the context: culled, paused
-    scene->element("p0")->SetClass("away", true);
+    scene->element("p0")->SetProperty("left", "-500px");
     at(10.0 + 2.0 * h);
     capture();
     at(12.0);
@@ -358,7 +358,7 @@ TEST_F(EffectStateful, PausesWhenNotDrawnAndResumesWithoutCatchingUp){
     EXPECT_EQ(info("p1").steps, p1Steps);
     EXPECT_TRUE(info("p1").paused);
     // back: the first frame anchors the clock again (no catch-up), then one step a 1/60 s
-    scene->element("p0")->SetClass("away", false);
+    scene->element("p0")->SetProperty("left", "10px");
     at(20.0);
     capture();
     EXPECT_EQ(info("p0").steps, 1) << "the time away was caught up";
