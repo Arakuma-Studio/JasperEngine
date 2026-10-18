@@ -180,6 +180,9 @@ def placeholder_asset(path: Path) -> None:
                         'fill="currentColor"/></svg>\n')
     elif ext in (".json", ".lottie"):
         shutil.copy(FIXTURES / "p1" / "lottie" / "shapes.json", path)
+    elif ext in (".webm", ".mkv"):
+        # a <video> (phase 6): the AV1 test card
+        shutil.copy(FIXTURES / "video" / "testcard.webm", path)
     elif ext in (".ttf", ".otf"):
         shutil.copy(REPO / "libs" / "imgui" / "misc" / "fonts" / "Karla-Regular.ttf", path)
     elif ext == ".frag":

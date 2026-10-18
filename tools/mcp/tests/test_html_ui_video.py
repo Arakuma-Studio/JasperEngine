@@ -261,7 +261,15 @@ async def test_loop_wraps(ed: Editor):
 
 
 async def test_unsupported_source(ed: Editor):
-    """An MP4 source: MEDIA_ERR_SRC_NOT_SUPPORTED on the element, HTMLUI-HTML-0027 from check --ui."""
+    """An MP4 source: HTMLUI-HTML-0027 from check --ui; MEDIA_ERR_SRC_NOT_SUPPORTED on the element."""
+    try:
+        await check_reports_the_mp4(ed)
+        await other_video_fails(ed)
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+
+
+async def check_reports_the_mp4(ed: Editor):
     shutil.copy(CLIPS / "testcard-vp9.webm", ed.project / "assets/ui/video/clip.mp4")
     await ed.call("write_file", path=BAD, content=BAD_HTML)
     await ed.call("sync_files")
@@ -282,12 +290,13 @@ async def test_unsupported_source(ed: Editor):
         data = json.loads(proc.stdout)
     except json.JSONDecodeError:
         raise AssertionError(f"check --format json: {proc.stdout[-1500:]} {proc.stderr[-1500:]}")
-    codes = [f["code"] for f in data["findings"]]
-    ed.check("HTMLUI-HTML-0027" in codes, f"check --ui reports the MP4: {data['findings']}")
-    finding = next(f for f in data["findings"] if f["code"] == "HTMLUI-HTML-0027")
-    ed.check("clip.mp4" in finding["message"], f"names the file: {finding}")
+    named = [f for f in data["findings"] if f["code"] == "HTMLUI-HTML-0027" and "clip.mp4" in f["message"]]
+    ed.check(named and named[0]["line"] == 4, f"check --ui names the MP4 source, at its line: {data['findings']}")
+    # and, as an error, that the <video> has nothing it can play
+    ed.check(any(f["code"] == "HTMLUI-HTML-0027" and f["severity"] == "error" for f in data["findings"]), f"{data['findings']}")
 
-    # the same page in the played scene: the element reports the error
+
+async def other_video_fails(ed: Editor):
     await lua(ed, f"""
         local doc = UIDocument(scene, entity('Video'))
         local holder = doc:createElement('div')
@@ -298,7 +307,6 @@ async def test_unsupported_source(ed: Editor):
     m = await media(ed, "#other")
     ed.check(m.get("error") and m["error"]["code"] == 4, f"MEDIA_ERR_SRC_NOT_SUPPORTED: {m}")
     ed.check_eq((m["networkState"], m["readyState"]), (3, 0), "NETWORK_NO_SOURCE, HAVE_NOTHING")
-    await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
 
 async def test_import_converts_an_mp4(ed: Editor):

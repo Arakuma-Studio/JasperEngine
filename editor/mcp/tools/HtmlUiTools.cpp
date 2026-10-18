@@ -1593,6 +1593,7 @@ std::string mimeOf(const std::string& path) {
     if (ext == ".lua") return "text/x-lua";
     if (ext == ".svg") return "image/svg+xml";
     if (ext == ".json") return "application/json";
+    if (ext == ".webm") return "video/webm";   // phase 6: video_menu's background (a blob)
     return "text/plain";
 }
 
@@ -1884,7 +1885,14 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tmpl.read = [](const std::string& uri, const std::map<std::string, std::string>& vars) {
             const std::string path = vars.count("path") ? vars.at("path") : std::string();
             if (const HtmlUiExamples::File* file = HtmlUiExamples::find(path)) {
-                return resourceText(uri, mimeOf(path), std::string(file->data));
+                const std::string mime = mimeOf(path);
+                if (mime.rfind("video/", 0) == 0) {
+                    ResourceResult result;
+                    result.contents.push_back({uri, mime, {}, Base64::encode(reinterpret_cast<const unsigned char*>(file->data.data()),
+                                                                             file->data.size())});
+                    return result;
+                }
+                return resourceText(uri, mime, std::string(file->data));
             }
             std::string names;
             for (const std::string& n : HtmlUiExamples::names()) names += (names.empty() ? "" : ", ") + n;
