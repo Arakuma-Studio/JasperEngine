@@ -51,9 +51,10 @@ public:
 	/// to the characters that fit, those after it are hidden (the first one of the line is kept and the ellipsis overflows).
 	/// The ellipsis is placed when the line is closed: after a text run it is drawn by that text, otherwise by the block
 	/// container. Call after the line is vertically positioned, before Close.
-	/// @param[in] ellipsis The block container's ellipsis (LineClamp::MakeEllipsis).
+	/// @param[in,out] ellipsis The block container's ellipsis (LineClamp::MakeEllipsis); the line places it (its position) and
+	/// refers to it until it is closed.
 	/// @param[in] rtl The block container's direction is right-to-left: the line ends on its left.
-	void TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl);
+	void TruncateForLineClamp(LineClampEllipsis& ellipsis, bool rtl);
 
 	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes. A line
 	// of a right-to-left block whose content overflows it is aligned to its right, its start (fork, P6-L1).
@@ -197,7 +198,7 @@ private:
 
 	// The line-clamp ellipsis of the line (fork, P6-L1), after the fragment 'clamp_ellipsis_fragment' (RootFragmentIndex:
 	// drawn by the block container), its baseline origin at 'position' (relative to the line, before 'text-align').
-	UniquePtr<LineClampEllipsis> clamp_ellipsis;
+	LineClampEllipsis* clamp_ellipsis = nullptr;
 	FragmentIndex clamp_ellipsis_fragment = RootFragmentIndex;
 	// The line box's height above baseline. Available after close.
 	float total_height_above_baseline = 0.f;

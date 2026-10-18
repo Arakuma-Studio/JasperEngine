@@ -14,6 +14,7 @@ namespace Rml {
 
 void LineClampAccess::SetBlockEllipsis(Element* block, const LineClampEllipsis* ellipsis)
 {
+	block->draws_line_clamp_ellipsis = (ellipsis != nullptr);
 	if (!ellipsis)
 	{
 		block->meta->line_clamp_ellipsis.reset();
@@ -21,11 +22,6 @@ void LineClampAccess::SetBlockEllipsis(Element* block, const LineClampEllipsis* 
 	}
 	block->meta->line_clamp_ellipsis = MakeUnique<LineClampBlockEllipsis>();
 	block->meta->line_clamp_ellipsis->ellipsis = *ellipsis;
-}
-
-bool LineClampAccess::HasBlockEllipsis(const Element* block)
-{
-	return block->meta->line_clamp_ellipsis != nullptr;
 }
 
 void LineClampAccess::SetHidden(Element* element, bool hidden)

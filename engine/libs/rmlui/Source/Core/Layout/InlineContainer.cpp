@@ -238,10 +238,9 @@ void InlineContainer::CountLineForLineClamp(LineBox* line_box)
 
 	if (line_clamp->lines_until_clamp == 1)
 	{
-		LineClampEllipsis ellipsis;
-		Element* block = parent->GetElement();
-		if (LineClamp::MakeEllipsis(block, ellipsis))
-			line_box->TruncateForLineClamp(ellipsis, rtl);
+		clamp_ellipsis = MakeUnique<LineClampEllipsis>();
+		if (LineClamp::MakeEllipsis(parent->GetElement(), *clamp_ellipsis))
+			line_box->TruncateForLineClamp(*clamp_ellipsis, rtl);
 	}
 	line_clamp->lines_until_clamp -= 1;
 }
@@ -311,13 +310,11 @@ Vector2f InlineContainer::GetStaticPositionEstimate(bool inline_level_box) const
 bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
 	// (the lines laid out past the line-clamp point give none: Chromium, fork P6-L1)
-	const int end = (first_past_clamp_line >= 0 ? first_past_clamp_line : (int)line_boxes.size());
-	for (int i = end - 1; i >= 0; i--)
+	for (auto it = line_boxes.rbegin() + (first_past_clamp_line >= 0 ? (int)line_boxes.size() - first_past_clamp_line : 0); it != line_boxes.rend(); ++it)
 	{
-		const LineBox& line_box = *line_boxes[i];
-		if (line_box.CanCollapseLine())
+		if ((*it)->CanCollapseLine())
 			continue;
-		out_baseline = line_box.GetPosition().y + line_box.GetBaseline();
+		out_baseline = (*it)->GetPosition().y + (*it)->GetBaseline();
 		return true;
 	}
 	return false;
@@ -325,10 +322,10 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 
 bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	const int end = (first_past_clamp_line >= 0 ? first_past_clamp_line : (int)line_boxes.size());
-	for (int i = 0; i < end; i++)
+	const auto end = (first_past_clamp_line >= 0 ? line_boxes.begin() + first_past_clamp_line : line_boxes.end());
+	for (auto it = line_boxes.begin(); it != end; ++it)
 	{
-		const auto& line_box = line_boxes[i];
+		const auto& line_box = *it;
 		if (line_box->CanCollapseLine())
 			continue;
 		out_baseline = line_box->GetPosition().y + line_box->GetBaseline();

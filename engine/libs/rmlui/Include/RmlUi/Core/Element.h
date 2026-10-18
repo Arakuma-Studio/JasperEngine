@@ -830,6 +830,8 @@ private:
 	// An atomic inline the line-clamp ellipsis truncated (fork, phase 6, P6-L1): neither it nor its descendants are painted
 	// or hit (not in the stacking context), as Chromium's LineTruncator hides it; set by the line that places it.
 	bool line_clamp_hidden : 1;
+	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
+	bool draws_line_clamp_ellipsis : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;

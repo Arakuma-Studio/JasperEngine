@@ -111,7 +111,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -276,7 +276,7 @@ void Element::Render()
 			OnRender();
 		}
 		// The line-clamp ellipsis this block container draws itself (fork, P6-L1: after an atomic inline, or alone on a line).
-		if (meta->line_clamp_ellipsis)
+		if (draws_line_clamp_ellipsis)
 			LineClamp::RenderBlockEllipsis(this, *meta->line_clamp_ellipsis);
 	}
 
@@ -2542,8 +2542,8 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 
 	// -- Line clamp (fork, P6-L1) --
 	// The ellipsis a block container draws is placed by its lines: a box of another kind has none.
-	if (changed_properties.Contains(PropertyId::Display) && meta->line_clamp_ellipsis)
-		meta->line_clamp_ellipsis.reset();
+	if (changed_properties.Contains(PropertyId::Display) && draws_line_clamp_ellipsis)
+		LineClampAccess::SetBlockEllipsis(this, nullptr);
 }
 
 void Element::OnPseudoClassChange(const String& /*pseudo_class*/, bool /*activate*/) {}

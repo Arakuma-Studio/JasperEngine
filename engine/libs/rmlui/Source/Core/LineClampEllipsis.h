@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../Include/RmlUi/Core/Element.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/StyleTypes.h"
 #include "../../Include/RmlUi/Core/Texture.h"
@@ -51,7 +52,7 @@ class LineClampAccess {
 public:
 	/// The ellipsis a block container draws itself; null removes it.
 	static void SetBlockEllipsis(Element* block, const LineClampEllipsis* ellipsis);
-	static bool HasBlockEllipsis(const Element* block);
+	static bool HasBlockEllipsis(const Element* block) { return block->draws_line_clamp_ellipsis; }
 	/// Hides an atomic inline the ellipsis truncates, with its subtree (Element::SetBox shows it again).
 	static void SetHidden(Element* element, bool hidden);
 };

@@ -29,9 +29,9 @@ BlockContainer::BlockContainer(ContainerBox* _parent_container, FloatedBoxSpace*
 		// A line-clamp container clamps its block formatting context (fork, P6-L1).
 		if (const int lines = element->GetComputedValues().line_clamp())
 		{
-			own_line_clamp = MakeUnique<LineClampContext>();
-			own_line_clamp->lines_until_clamp = lines;
-			line_clamp = own_line_clamp.get();
+			own_line_clamp.lines_until_clamp = lines;
+			owns_line_clamp = true;
+			line_clamp = &own_line_clamp;
 		}
 	}
 	// Our lines place a new ellipsis, if any (fork, P6-L1).
@@ -53,13 +53,17 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 
 	// A line-clamp container whose count ends at exactly 0 has nothing after its clamp line: it is laid out again without
 	// clamping, so it shows no ellipsis (fork, P6-L1; Chromium's ShouldRelayoutWithNoForcedTruncate).
-	if (own_line_clamp && clamp_cursor >= 0.f && own_line_clamp->lines_until_clamp == 0)
-	{
-		ignore_line_clamp = true;
-		return false;
-	}
 	// Clamped inside us: our automatic height ends at our clamp position, without the margins after it (fork, P6-L1).
-	const bool clamped = (clamp_cursor >= 0.f);
+	bool clamped = false;
+	if (line_clamp)
+	{
+		if (owns_line_clamp && clamp_cursor >= 0.f && line_clamp->lines_until_clamp == 0)
+		{
+			ignore_line_clamp = true;
+			return false;
+		}
+		clamped = (clamp_cursor >= 0.f);
+	}
 
 	// Our bottom margin collapses with our last in-flow child's if nothing separates them (CSS 2.1 §8.3.1): we are not the
 	// root of a block formatting context, our height is 'auto' and we have no bottom border or padding.
@@ -797,15 +801,15 @@ void BlockContainer::ResetContents()
 	content_alignment_offset = 0;
 	trailing_after_clearance = false;
 	// Line clamping (fork, P6-L1): counted again, or not at all once the container is laid out without clamping.
-	if (own_line_clamp)
+	if (owns_line_clamp)
 	{
 		if (ignore_line_clamp)
 		{
-			own_line_clamp.reset();
+			owns_line_clamp = false;
 			line_clamp = nullptr;
 		}
 		else
-			own_line_clamp->lines_until_clamp = element->GetComputedValues().line_clamp();
+			own_line_clamp.lines_until_clamp = element->GetComputedValues().line_clamp();
 	}
 	clamp_cursor = -1.f;
 	first_past_clamp_child = -1;
@@ -963,10 +967,10 @@ bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
 	// The baseline of our first child that itself has a baseline (not those laid out past the line-clamp point: Chromium,
 	// fork P6-L1).
-	const int end = (first_past_clamp_child >= 0 ? first_past_clamp_child : (int)child_boxes.size());
-	for (int i = 0; i < end; i++)
+	const auto end = (first_past_clamp_child >= 0 ? child_boxes.begin() + first_past_clamp_child : child_boxes.end());
+	for (auto it = child_boxes.begin(); it != end; ++it)
 	{
-		const auto& child_box = child_boxes[i];
+		const auto& child_box = *it;
 		if (GetChildBaseline(*child_box, false, out_baseline))
 		{
 			out_baseline += content_alignment_offset;

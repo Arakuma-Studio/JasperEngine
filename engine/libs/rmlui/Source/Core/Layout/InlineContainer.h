@@ -10,6 +10,7 @@ namespace Rml {
 class BlockContainer;
 class LineBox;
 struct LineClampContext;
+struct LineClampEllipsis;
 
 /**
     A container for inline-level boxes.
@@ -121,6 +122,8 @@ private:
 	LineClampContext* line_clamp = nullptr;
 	float clamp_height = -1.f;
 	int first_past_clamp_line = -1;
+	// The ellipsis of our clamp line, which the line places and its fragments copy when it is closed.
+	UniquePtr<LineClampEllipsis> clamp_ellipsis;
 };
 
 } // namespace Rml

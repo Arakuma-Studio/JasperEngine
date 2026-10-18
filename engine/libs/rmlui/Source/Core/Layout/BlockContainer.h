@@ -3,6 +3,7 @@
 #include "../../../Include/RmlUi/Core/Math.h"
 #include "../../../Include/RmlUi/Core/Types.h"
 #include "ContainerBox.h"
+#include "LineClamp.h"
 
 namespace Rml {
 
@@ -10,7 +11,6 @@ class FloatedBoxSpace;
 class LineBox;
 class InlineBox;
 class InlineContainer;
-struct LineClampContext;
 struct InlineBoxHandle {
 	InlineBox* inline_box;
 };
@@ -260,11 +260,12 @@ private:
 	bool adjoining_floats = false;               // Floats were placed while our top margin was open (CSS 2.1 §9.5).
 
 	// Line clamping (fork, P6-L1; LineClamp.h). The context of our block formatting context (ours when we are a line-clamp
-	// container: then 'own_line_clamp'), and whether we are laid out again without clamping (nothing followed the clamp
+	// container: then 'own_line_clamp', 'owns_line_clamp'), and whether we are laid out again without clamping (nothing followed the clamp
 	// line). The context's count when we were opened, for our parent. Our clamp position: our cursor after our first child
 	// past the clamp point, where an automatic height ends (or negative). Our first child added past the clamp point.
 	LineClampContext* line_clamp = nullptr;
-	UniquePtr<LineClampContext> own_line_clamp;
+	LineClampContext own_line_clamp;
+	bool owns_line_clamp = false;
 	bool ignore_line_clamp = false;
 	int lines_at_open = 0;
 	float clamp_cursor = -1.f;
