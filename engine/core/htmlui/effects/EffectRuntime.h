@@ -383,6 +383,7 @@ namespace jasperengine::htmlui {
         EffectStatefulBudget statefulBudget;
         // simulations stepped this frame / the frame before, by document
         std::unordered_map<EffectSimulation*, uint64_t> activeSimulations;
+        size_t simulationObjects = 0;   // EffectSimulation objects alive (0: the frame sweep has nothing to do)
         std::unordered_map<Rml::ElementDocument*, int> overBudgetDocuments;   // the frame it was reported (once while over)
         bool hardCapReported = false;
         std::vector<std::pair<std::string, std::string>> statefulReports;

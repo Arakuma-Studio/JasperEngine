@@ -624,6 +624,7 @@ EffectSimulation* EffectRuntime::simulationOf(EffectInstance& instance){
         state.simulation.reset();
     if (!state.simulation){
         state.simulation = std::make_shared<EffectSimulation>();
+        simulationObjects++;
         state.simulation->manifest = instance.manifest;
         state.simulation->signature = instance.manifest->stateSignature();
     }
@@ -634,6 +635,8 @@ EffectSimulation* EffectRuntime::simulationOf(EffectInstance& instance){
 
 void EffectRuntime::forgetSimulation(EffectSimulation* simulation){
     activeSimulations.erase(simulation);
+    if (simulationObjects > 0)
+        simulationObjects--;
 }
 
 int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName){
@@ -779,6 +782,23 @@ void EffectRuntime::sweepSimulations(){
     // the simulations of states no live instance uses (the effect changed or was removed): their
     // images go back to the pool; the CPU state stays in the element's LRU
     size_t images = 0, bytes = 0;
+    EffectStatePool& pool = EffectStatePool::get();
+    if (simulationObjects == 0 && activeSimulations.empty()){
+        // no stateful effect: nothing to walk (a page of stateless effects pays nothing here)
+        totals.statefulActive = 0;
+        totals.stateImages = 0;
+        totals.stateBytes = 0;
+        frameTotals.stateImages = 0;
+        frameTotals.stateBytes = 0;
+        if (pool.pooledImages() == 0){
+            totals.statePoolBytes = frameTotals.statePoolBytes = 0;
+            return;
+        }
+        totals.statePoolBytes = pool.pooledBytes();
+        frameTotals.statePoolBytes = totals.statePoolBytes;
+        pool.beginFrame();
+        return;
+    }
     for (auto& entry : elements){
         for (auto& state : entry.second.states){
             EffectElementState& st = *state.second;
