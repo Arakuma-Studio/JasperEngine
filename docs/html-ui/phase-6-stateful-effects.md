@@ -95,6 +95,7 @@ simulation (`element:effectSplat{...}`). The editor, `check`, the exporter, the 
 // @warmup  <steps> <dt-seconds>                            (silent steps after @init; default none)
 // @rate    <hz> [max <substeps>]                           (default 60 Hz, max 4)
 // @replay  <seconds>                                       (pinned-clock history window; default 2)
+// @reseed  <param> [<param>...]                            (a change of these restarts the simulation)
 // @cost    stateful                                        (required with @state; forbidden without)
 ```
 - **Formats.** `rgba8` (unsigned normalised), `rgba16f` (half float, filterable everywhere),
@@ -103,14 +104,16 @@ simulation (`element:effectSplat{...}`). The editor, `check`, the exporter, the 
   be `nearest` (manifest error otherwise), and the compiler annotates their texture and sampler as
   unfilterable (`@image_sample_type`, `@sampler_type`, phase 0's annotation mechanism).
 - **Sizes.** `<w>x<h>` is fixed (the upstream grids: `256x256` fluids, `512x512` Gray-Scott, agent
-  tables). `box` follows the effect area: CSS px × scale, rounded, each side clamped to
-  [1, `max`] (default `max 1024`). An empty area (0 px on a side) allocates nothing and draws
+  tables). `box` follows the effect area: CSS px × scale, rounded, the larger side at
+  most `max` (default `max 1024`; both sides scaled down together, the aspect kept), each side at
+  least 1. An empty area (0 px on a side) allocates nothing and draws
   nothing.
 - **Filter and wrap** apply to the state's sampler (default `linear clamp`).
 - **Resize policy** (`box` states, 3.7): `resample` (default: the old image is redrawn into the new
   size with its filter) or `clear` (the simulation restarts from `@init`).
 - **Passes.** A pass name is `[a-z][a-z0-9-]*`, unique; the compiler defines
-  `JFX_PASS_<NAME>` (upper case, `-` as `_`) = its index (in declaration order, `@init` first).
+  `JFX_PASS_<NAME>` (upper case, `-` as `_`) = its index (the `@init` and `@step` lines in
+  declaration order, as written), and `JFX_PASSES` = their count.
   `x<count>` repeats a step pass (1 to 64); `x<param>` repeats it by an integer or number
   parameter's value, rounded and clamped to [1, 64] (Gray-Scott's `speed`). `add` blends the pass
   additively into a cleared target (accumulators). `scatter <state>` draws one quad per texel of
@@ -149,10 +152,11 @@ Example (the fluid family, 3.13):
   (`trim(frames)`; tests call `trim(0)`). `releaseGpuResources` (view loss) destroys everything.
 - **Memory** is reported per instance (`stateBytes`: the images' texels × bytes per texel,
   counting pairs twice) in `EffectStats`, `UIElement::getEffects` and `inspect_ui`.
-- **Capabilities.** At allocation the formats are checked with `SystemRender::isRenderableFormat`
-  (sokol `sg_query_pixelformat(...).render`, `.blend` for `add` targets). An unsupported format
-  gives `HTMLUI-FX-0017 effect-state-unsupported` once per (document, effect) and the effect draws
-  nothing (paint) or leaves the content (filter).
+- **Capabilities.** At allocation the formats are checked against `RenderFeatures`
+  (`render<Format>`, `blend<Format>` for `add` targets; sokol `sg_query_pixelformat`), through
+  `EffectStatePool::supports`. An unsupported format gives `HTMLUI-FX-0017
+  effect-state-unsupported` once per simulation and the effect draws nothing (paint) or leaves the
+  content (filter).
 
 ### 3.4 Forms, variants and passes
 Phase 5 had one variant per effect per draw form (paint, `Flt`). A stateful effect adds a step
@@ -167,7 +171,7 @@ variant per draw form it is used in, and a scatter variant when it has `scatter`
 - `Stp`/`Sct` combine with `Flt`: the step variant of a filter-form use is `Flt|Stp`, so steps of a
   filter use can read the element's content (`jfx_src`, 3.9). A paint use needs paint + `Stp`
   (+ `Sct`); a filter use `Flt` + `Flt|Stp` (+ `Flt|Sct`). Shader strings: `uieffect_fx_fog_Stp`,
-  `uieffect_fx_time_trail_Flt_Stp`; specs `uieffect/fog:Stp`, `uieffect/time-trail:Flt,Stp`.
+  `uieffect_fx_time_trail_FltStp`; specs `uieffect/fog:Stp`, `uieffect/time-trail:Flt,Stp`.
   `uieffect/all` adds every built-in effect's step and scatter variants.
 - One step variant runs every pass of the effect: the pass index is a uniform
   (`step.info.x`), compared with the `JFX_PASS_*` constants in the effect's
@@ -180,8 +184,8 @@ variant per draw form it is used in, and a scatter variant when it has `scatter`
 - **Scatter pass**: `draw(0, 6 × W × H)` of the placement image (W × H texels); vertex `v` reads
   texel `v / 6` of the placement state with `texelFetch` in the vertex stage: `xy` the centre in
   target texels, `zw` the half extents (a non-positive `z` skips the quad). The fragment runs
-  `vec4 jfx_scatter(JfxScatter s)` with the agent index, its placement and the offset from its
-  centre; the pass blends additively (`add` is implied). This is the classic GPGPU particle
+  `vec4 jfx_scatter(JfxStep s, JfxPlaced a)` with the step context and the agent (`a.index`,
+  `a.cell` its placement texel, `a.place`, `a.offset` from its centre); the pass blends additively (`add` is implied). This is the classic GPGPU particle
   pipeline without instancing (the effect pipeline has no instance buffers): it needs vertex
   texture fetch, which GLES3 guarantees (16 units).
 - **Binding.** Every pass and the draw bind each state's current image as `u_state_<name>` (with
@@ -203,7 +207,7 @@ variant per draw form it is used in, and a scatter variant when it has `scatter`
 - **Culling and pausing.** RmlUi draws elements whatever their position (`Element::Render` has no
   viewport test). Before the passes, the area's corners are projected with the draw's transform; if
   their bounds miss the current scissor and target, the instance is **clipped out**: no passes, no
-  draw. Elements with `display: none`, `visibility: hidden`, `opacity: 0`, off-screen, scrolled or
+  draw. Elements with `display: none`, `visibility: hidden`, off-screen, scrolled or
   clipped out, or in a document that is hidden, are not drawn and therefore do not step. A paused
   simulation keeps its images and step count; when it is drawn again it continues from where it
   stopped, without catching up the time it missed (3.6).
@@ -298,7 +302,7 @@ uniform u_fs_effectStep {             // step and scatter forms only
     vec4 splatPos[8]; // xy CSS px, z radius px, w strength
     vec4 splatVel[8]; // xy px/s
     vec4 splatColor[8]; // linear RGBA
-} step;
+} jstep;
 struct JfxStep {
     int pass, iteration; ivec2 cell; vec2 uv; vec2 size;   // the target texel, its uv, the target size
     float dt, time, steps; bool warm; JfxContext c;       // c: the area context at this texel (uv = s.uv)
@@ -307,6 +311,7 @@ struct JfxStep {
 };
 JfxStep jfx_step_context();
 JfxSplat jfx_splat(int i);           // {vec2 pos; float radius; float strength; vec2 vel; vec4 color}
+JfxPlaced jfx_placed();              // scatter form: {int index; ivec2 cell; vec4 place; vec2 offset}
 ```
 - `main_step.glsl` (included last by a stateful effect, after its `main_paint`/`main_filter`
   include, which it disables in the step forms) writes `jfx_step(s)` (step form) or

@@ -58,7 +58,6 @@ Every effect also takes the universal parameters: `opacity` (percentage, default
 | [`fog`](#fog) | paint | interactive | stateful | A seamless fluid fog that drifts and churns in two colours; the pointer pushes it |
 | [`ink-flow`](#ink-flow) | paint | interactive | stateful | Drag to paint swirling ribbons of ink through a fluid; eddies keep evolving after |
 | [`magnetic-filings`](#magnetic-filings) | paint | interactive | stateful | Iron filings that swing to align with a magnetic field around the pointer |
-| [`particle-field`](#particle-field) | filter | interactive | stateful | Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home |
 | [`particle-flow`](#particle-flow) | paint | interactive | stateful | Dust carried by a fluid the pointer stirs, riding the eddies it leaves behind |
 | [`particles`](#particles) | paint | interactive | stateful | A 3D swarm that settles evenly into a sphere, scattering from the pointer and drifting back |
 | [`pixel-sort`](#pixel-sort) | filter | interactive | stateful | Pixels sort by brightness around the pointer and keep their place, melting back slowly |
@@ -87,6 +86,7 @@ Every effect also takes the universal parameters: `opacity` (percentage, default
 | [`halftone`](#halftone) | filter | stylize | medium | Printed halftone dots: one screen by brightness, or four CMYK ink plates |
 | [`hologram`](#hologram) | filter | stylize | medium | The content as a flickering sci-fi projection: tinted glow, lit edges, scanlines and static |
 | [`outline`](#outline) | filter | stylize | medium | A coloured stroke around the content's shape (text, icons, images with alpha) |
+| [`particle-field`](#particle-field) | filter | stylize | stateful | Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home |
 | [`pixelate`](#pixelate) | filter | stylize | low | Big square or round pixels of the content |
 | [`scanlines`](#scanlines) | filter | stylize | low | Horizontal scanlines over the content, optionally scrolling and flickering |
 | [`time-trail`](#time-trail) | filter | stylize | stateful | Whatever moves sheds a smooth, decaying long-exposure ghost trail |
@@ -1407,41 +1407,6 @@ Also found as: `iron-filings`, `magnet`, `compass`.
 .card { background: #101218; background-image: effect(magnetic-filings, count 8000); border-radius: 12px; }
 ```
 
-### `particle-field`
-
-![particle-field](img/effects/particle-field.png)
-
-Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home.
-
-Kind: filter; cost: stateful; backdrop: no; pointer: trail; source: shaders.com ParticleField.
-
-Stateful (a simulation per element, phase 6): state `pos` rgba32f 256x256 x2, `vel` rgba32f 256x256 x2, `col` rgba16f 256x256 x2, `place` rgba32f 256x256 x2, `accum` rgba16f box, `field` rgba16f box x2 (7.0 MB plus the area-sized images); 6 passes a step at 60 Hz.
-
-Also found as: `relief`, `particle-relief`, `exploded-particles`.
-
-| Param | Type | Default | Range or options | Description |
-|---|---|---|---|---|
-| `count` | integer | `15000` | 1000 to 40000 | Number of particles: how finely the content is sampled into the field |
-| `depth-source` | enum | `luminance` | `luminance` \| `luminance-inverted` \| `red` \| `green` \| `blue` \| `saturation` \| `alpha` | Which channel of the content drives each particle's depth |
-| `depth` | number | `0.7` | 0 to 2 | Depth of the relief: how far bright and dark areas rise and sink |
-| `particle-shape` | enum | `dot` | `dot` \| `square` \| `glow` | What each particle is drawn as |
-| `particle-size` | number | `0.75` | 0.3 to 3 | Size of each particle relative to the grid spacing |
-| `depth-shading` | number | `0.6` | 0 to 1 | How much far particles dim into the distance |
-| `wobble` | number | `0.35` | 0 to 1 | Gentle idle drift that keeps the field breathing on a still picture |
-| `zoom` | number | `1` | 0.3 to 2.5 | Camera distance: dolly the field closer or further away |
-| `rotation-x` | angle | `0deg` | -180deg to 180deg | Camera orbit around the horizontal axis |
-| `rotation-y` | angle | `0deg` | -180deg to 180deg | Camera orbit around the vertical axis |
-| `rotation-z` | angle | `0deg` | -180deg to 180deg | Camera roll around the view axis |
-| `offset-x` | number | `0` | -1 to 1 | Shift the field horizontally (in widths) |
-| `offset-y` | number | `0` | -1 to 1 | Shift the field vertically (in heights) |
-| `cursor-mode` | enum | `push` | `none` \| `push` \| `pull` | How the pointer disturbs the field: push throws particles away and toward you, pull gathers them |
-| `cursor-strength` | number | `0.8` | 0 to 2 | How hard the pointer throws particles before they spring back |
-| `cursor-radius` | number | `0.2` | 0.05 to 1 | Reach of the pointer's field (share of the height) |
-
-```css
-.card { filter: effect(particle-field, count 15000); }
-```
-
 ### `particle-flow`
 
 ![particle-flow](img/effects/particle-flow.png)
@@ -2160,6 +2125,41 @@ Also found as: `stroke`, `text-stroke`.
 
 ```css
 .card { filter: effect(outline, width 2px); }
+```
+
+### `particle-field`
+
+![particle-field](img/effects/particle-field.png)
+
+Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home.
+
+Kind: filter; cost: stateful; backdrop: no; pointer: trail; source: shaders.com ParticleField.
+
+Stateful (a simulation per element, phase 6): state `pos` rgba32f 256x256 x2, `vel` rgba32f 256x256 x2, `col` rgba16f 256x256 x2, `place` rgba32f 256x256 x2, `accum` rgba16f box, `field` rgba16f box x2 (7.0 MB plus the area-sized images); 6 passes a step at 60 Hz.
+
+Also found as: `relief`, `particle-relief`, `exploded-particles`.
+
+| Param | Type | Default | Range or options | Description |
+|---|---|---|---|---|
+| `count` | integer | `15000` | 1000 to 40000 | Number of particles: how finely the content is sampled into the field |
+| `depth-source` | enum | `luminance` | `luminance` \| `luminance-inverted` \| `red` \| `green` \| `blue` \| `saturation` \| `alpha` | Which channel of the content drives each particle's depth |
+| `depth` | number | `0.7` | 0 to 2 | Depth of the relief: how far bright and dark areas rise and sink |
+| `particle-shape` | enum | `dot` | `dot` \| `square` \| `glow` | What each particle is drawn as |
+| `particle-size` | number | `0.75` | 0.3 to 3 | Size of each particle relative to the grid spacing |
+| `depth-shading` | number | `0.6` | 0 to 1 | How much far particles dim into the distance |
+| `wobble` | number | `0.35` | 0 to 1 | Gentle idle drift that keeps the field breathing on a still picture |
+| `zoom` | number | `1` | 0.3 to 2.5 | Camera distance: dolly the field closer or further away |
+| `rotation-x` | angle | `0deg` | -180deg to 180deg | Camera orbit around the horizontal axis |
+| `rotation-y` | angle | `0deg` | -180deg to 180deg | Camera orbit around the vertical axis |
+| `rotation-z` | angle | `0deg` | -180deg to 180deg | Camera roll around the view axis |
+| `offset-x` | number | `0` | -1 to 1 | Shift the field horizontally (in widths) |
+| `offset-y` | number | `0` | -1 to 1 | Shift the field vertically (in heights) |
+| `cursor-mode` | enum | `push` | `none` \| `push` \| `pull` | How the pointer disturbs the field: push throws particles away and toward you, pull gathers them |
+| `cursor-strength` | number | `0.8` | 0 to 2 | How hard the pointer throws particles before they spring back |
+| `cursor-radius` | number | `0.2` | 0.05 to 1 | Reach of the pointer's field (share of the height) |
+
+```css
+.card { filter: effect(particle-field, count 15000); }
 ```
 
 ### `pixelate`

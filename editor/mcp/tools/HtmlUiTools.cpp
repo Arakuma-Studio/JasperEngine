@@ -726,7 +726,8 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
         const bool problem = f == "overflow-x" || f == "overflow-y" || f == "clipped";
         line += " " + std::string(problem ? "!" : "") + f;
     }
-    for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name;
+    // phase 6: a paused simulation is marked "~"
+    for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name + (effect.stateful && effect.paused ? "~" : "");
     if (styles && !styles->empty()) {
         line += " {";
         for (size_t i = 0; i < styles->size(); i++) line += (i ? "; " : "") + (*styles)[i].property + ": " + (*styles)[i].value;

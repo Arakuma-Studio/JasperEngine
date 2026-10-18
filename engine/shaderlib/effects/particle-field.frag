@@ -1,7 +1,7 @@
 #version 450
 // @effect     particle-field
 // @kind       filter
-// @category   interactive
+// @category   stylize
 // @summary    Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home
 // @source     shaders.com ParticleField
 // @cost       stateful

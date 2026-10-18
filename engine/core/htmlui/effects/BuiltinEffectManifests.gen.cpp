@@ -1202,7 +1202,7 @@ namespace {
          "#version 450\n"
          "// @effect     particle-field\n"
          "// @kind       filter\n"
-         "// @category   interactive\n"
+         "// @category   stylize\n"
          "// @summary    Breaks the content into a breathing 3D relief of particles the pointer throws; they spring home\n"
          "// @source     shaders.com ParticleField\n"
          "// @cost       stateful\n"
