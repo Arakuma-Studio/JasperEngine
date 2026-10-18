@@ -1203,7 +1203,7 @@ namespace {
          "// @effect     particle-field\n"
          "// @kind       filter\n"
          "// @category   interactive\n"
-         "// @summary    Explodes the content into a breathing 3D relief of particles the pointer throws and that spring back home\n"
+         "// @summary    Explodes the content into a breathing 3D relief of particles the pointer throws and springs home\n"
          "// @source     shaders.com ParticleField\n"
          "// @cost       stateful\n"
          "// @pointer    trail\n"
