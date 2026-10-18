@@ -78,8 +78,8 @@ Parity stops at:
   design). Remote fonts and images are imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
-- **Small differences without a diagnostic**, also listed there: whole-pixel font sizes, no
-  `text-align: justify`, table column sizing, no built-in monospace or serif face.
+- **Small differences without a diagnostic**, also listed there: whole-pixel font sizes,
+  table column sizing, no built-in monospace or serif face.
 
 Everything else that is not drawn exactly like Chrome is reported where you wrote it, with a
 code and a fix ("The loop in detail"). Zero warnings means nothing you wrote was dropped or
@@ -412,7 +412,9 @@ Native or exactly rewritten, as in Chrome:
   `@starting-style` for elements that appear. They run on the UI clock ("Animation").
 - **Text**: `font` shorthand, `font-weight` (a weight the font lacks is synthesized),
   `font-style`, `line-height` (`normal` = the font's spacing), `letter-spacing`,
-  `word-spacing`, `text-align`, `text-transform` (Unicode), all six `white-space` values,
+  `word-spacing`, `text-align` (also `justify`, filled as Chrome fills a line: over the spaces,
+  around CJK characters, with `text-justify` `auto`/`inter-word`/`inter-character`/`none`), `text-align-last`,
+  `text-transform` (Unicode), all six `white-space` values,
   `overflow-wrap`, `word-break`, `text-overflow: ellipsis` (one line: `white-space: nowrap;
   overflow: hidden`), `text-decoration` with color, style, thickness and offset, `text-shadow`
   (several, blurred: a glow), `-webkit-text-stroke` (drawn outside the glyphs), soft hyphens
@@ -462,6 +464,8 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **`@counter-style`** (info `HTMLUI-AT-0001`): use a built-in list style (`decimal`,
   `lower-roman`, `disc`, ...) or a string.
 - **`zoom`** (`HTMLUI-CSS-0002`): `transform: scale()`.
+- **`text-align: justify-all`** (`HTMLUI-CSS-0004`): dropped, as Chrome drops it (it does not
+  parse the value): write `text-align: justify; text-align-last: justify`.
 - **SVG filters** (`filter: url(#f)`: `HTMLUI-CSS-0004`): the CSS filter functions.
 - **`border-collapse: collapse`** (`HTMLUI-CSS-0006`): removes the spacing but keeps each
   cell's borders: put borders on one side of each cell.
@@ -479,7 +483,7 @@ Differences **without a diagnostic** (the engine cannot tell when they matter):
 - Font sizes are whole pixels (`13.333px` draws at 13px) and every run of text is a whole
   number of pixels wide: text can be a pixel or two narrower or wider than in Chrome. Leave a
   few pixels of slack in fixed-width buttons (`assert_ui text_fits` measures it).
-- `text-align: justify` aligns left, `text-wrap: balance`/`pretty` wrap greedily, `hyphens:
+- `text-wrap: balance`/`pretty` wrap greedily, `hyphens:
   auto` does not hyphenate (put `&shy;` where a word may break), `text-decoration-style: wavy`
   draws solid (all infos). A text decoration is one set of lines per text: an element inside an
   underlined one that declares its own `text-decoration` replaces the underline instead of
