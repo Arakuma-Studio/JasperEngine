@@ -564,7 +564,7 @@ header; the adaptations:
 
 | Effect | State (per instance) | Steps | Port notes |
 |---|---|---|---|
-| `fog` | vel, pd, dye 256² rgba16f | force, curl, vorticity, divergence, Jacobi ×6, project, advect, restore; `@warmup 50 0.1s` | toroidal; the random start time is a hash of `seed` and the element |
+| `fog` | vel, pd, dye 256² rgba16f | seed (init), force, curl, vorticity, divergence, Jacobi ×10, project, advect velocity and dye, restore; `@warmup 50 0.1s` | toroidal; the random start time is a hash of `seed` and the element |
 | `fluid-smoke` | vel, pd, dye 256² | cone emitter, solve (Jacobi ×10), advect density+age | the stateless `smoke` stays |
 | `smoke-fill` | vel, pd, dye 256² | masked emitter and solve | the shape is the element's rounded box |
 | `smoke-flow` | ptr 1², vel, pd, dye 256² | tracker, puff ribbon (16 stamps), solve | tracker smoothing in `ptr` |
@@ -574,7 +574,7 @@ header; the adaptations:
 | `pixel-throw` | ptr 1², flow 128² | advect + inject | CPU host grid as a pass; B-spline taps |
 | `shatter` | shards 16×1 rgba32f | shove | CPU springs as a pass; the Voronoi field per fragment |
 | `pixel-sort` | luma, offset 512² r32f, tick 1² | key, swap ×5, count | parity and frame count in `tick` |
-| `reaction-diffusion` | rd 512² rgba32f, pattern 512² rgba16f | Gray-Scott × `speed`, publish | child drive = the content in filter form; `@reseed preset` |
+| `reaction-diffusion` | rd 512² rgba32f, pattern 512² rgba16f | seed (init), react × `speed`, publish | child drive = the content in filter form; `@reseed preset` |
 | `data-mosh` | state 768² rgba16f | macroblock hold/refresh | upstream `blend` = the universal `opacity` |
 | `time-trail` | history, display, prev-live 640² rgba16f | decay, stamp, keep | upstream's one kernel as three passes |
 | `boids` | agents, accel, place 64² rgba32f, agit 64² r32f, accum, trail (box) | spawn (init), steer, move, excite, place, splat (scatter), resolve | Jacobi update (upstream Gauss-Seidel); brute-force neighbours (4096 max) |
