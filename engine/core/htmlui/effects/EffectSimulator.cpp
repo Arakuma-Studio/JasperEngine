@@ -566,7 +566,7 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
     const uint64_t frame = runtime.getFrame();
     // drawn again this frame (a context rendered twice): stepped once
     if (simulation.lastAdvanceFrame == frame)
-        return simulation.allocated;
+        return simulation.allocated && !simulation.replaying;
     // the device's formats (3.3)
     for (const EffectStateDef& st : m.states){
         bool blend = false;
