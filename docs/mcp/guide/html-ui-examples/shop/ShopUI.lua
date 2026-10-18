@@ -11,14 +11,14 @@ local ShopUI = {
 
 -- Pictures are relative to the document
 local WARES = {
-    { id = "sword", name = "Ember Blade", kind = "weapons", rarity = "Epic", stats = "+12 attack, burns", price = 450, icon = "assets/items/sword.svg" },
-    { id = "axe", name = "Woodcutter's Axe", kind = "weapons", rarity = "Common", stats = "+6 attack", price = 120, icon = "assets/items/axe.svg" },
-    { id = "wand", name = "Arcane Wand", kind = "weapons", rarity = "Epic", stats = "3 arcane bolts", price = 980, icon = "assets/items/wand.svg" },
-    { id = "shield", name = "Tower Shield", kind = "armor", rarity = "Rare", stats = "Blocks 40% damage", price = 300, icon = "assets/items/shield.svg" },
-    { id = "helmet", name = "Iron Helm", kind = "armor", rarity = "Common", stats = "+4 armor", price = 160, icon = "assets/items/helmet.svg" },
-    { id = "crown", name = "Crown of Ages", kind = "armor", rarity = "Epic", stats = "+20% experience", price = 1500, icon = "assets/items/crown.svg" },
-    { id = "potion", name = "Health Potion", kind = "potions", rarity = "Common", stats = "Restores 50 health", price = 35, icon = "assets/items/potion.svg" },
-    { id = "apple", name = "Golden Apple", kind = "potions", rarity = "Rare", stats = "Full stamina", price = 60, icon = "assets/items/apple.svg" },
+    { id = "sword", name = "Ember Blade", kind = "weapons", rarity = "Epic", stats = "+12 attack. Burns the target for three seconds, and the flames spread to nearby foes.", price = 450, icon = "assets/items/sword.svg" },
+    { id = "axe", name = "Woodcutter's Axe", kind = "weapons", rarity = "Common", stats = "+6 attack. Fells a tree in one swing and never dulls.", price = 120, icon = "assets/items/axe.svg" },
+    { id = "wand", name = "Arcane Wand", kind = "weapons", rarity = "Epic", stats = "Fires three arcane bolts that seek the nearest enemy and pierce its ward.", price = 980, icon = "assets/items/wand.svg" },
+    { id = "shield", name = "Tower Shield", kind = "armor", rarity = "Rare", stats = "Blocks 40% of the damage from the front; slows you while raised.", price = 300, icon = "assets/items/shield.svg" },
+    { id = "helmet", name = "Iron Helm", kind = "armor", rarity = "Common", stats = "+4 armor.", price = 160, icon = "assets/items/helmet.svg" },
+    { id = "crown", name = "Crown of Ages", kind = "armor", rarity = "Epic", stats = "+20% experience from every fight, and the old kingdom's merchants lower their prices.", price = 1500, icon = "assets/items/crown.svg" },
+    { id = "potion", name = "Health Potion", kind = "potions", rarity = "Common", stats = "Restores 50 health.", price = 35, icon = "assets/items/potion.svg" },
+    { id = "apple", name = "Golden Apple", kind = "potions", rarity = "Rare", stats = "Restores all stamina and keeps hunger away for a day.", price = 60, icon = "assets/items/apple.svg" },
 }
 
 ---@param doc UIDocument

@@ -210,6 +210,11 @@ body {
 .stats {
   font-size: 0.8rem;
   color: var(--muted);
+  /* two lines at most, the second ending with an ellipsis */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .buy-row {
