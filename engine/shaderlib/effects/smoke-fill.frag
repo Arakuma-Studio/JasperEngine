@@ -18,6 +18,7 @@
 // @step       project vel
 // @step       advect-vel vel
 // @step       advect-dye dye
+// @replay     1s
 // @suggest-for contained-smoke
 // @param      colors palette "#8cf3ff #04a0d6" -- Colours of the smoke from fresh to aged
 // @param      emit-from position "50% 50%" -- The emission source inside the box

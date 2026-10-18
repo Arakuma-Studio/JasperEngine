@@ -24,6 +24,7 @@
 // @step       place place
 // @step       splat accum scatter place
 // @step       resolve trail
+// @replay     0.25s
 // @suggest-for dust-flow fluid-particles
 // @param      count integer 6000 1000 16000 -- Number of drifting particles
 // @param      force number 1 0 3 -- How hard the pointer's motion pushes the fluid

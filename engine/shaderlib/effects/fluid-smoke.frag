@@ -18,6 +18,7 @@
 // @step       project vel
 // @step       advect-vel vel
 // @step       advect-dye dye
+// @replay     1s
 // @suggest-for smoke-simulation fluid
 // @param      colors palette "#fc83f9 #c21c79" -- Colours of the smoke from fresh to aged
 // @param      emit-from position "50% 100%" -- The emission source
