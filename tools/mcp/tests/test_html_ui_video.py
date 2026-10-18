@@ -231,7 +231,8 @@ async def test_keyboard(ed: Editor):
 
 
 async def test_loop_wraps(ed: Editor):
-    """loop: from 1.9 s, 12 frames (0.2 s) later it is at 0.1 s, playing, without `ended`."""
+    """loop: from 1.9 s, 12 frames (0.2 s) later it is 0.2 s past the start again, playing; the wrap
+    is a seek (`seeking`, `seeked`), not an `ended`."""
     await lua(ed, f"""
         local v = {video_lua()}
         _G.videoEvents = {{}}
@@ -249,10 +250,11 @@ async def test_loop_wraps(ed: Editor):
     t0 = await current_time(ed)
     await wait(ed, 12)
     t1 = await current_time(ed)
-    expected = (t0 + 0.2) % 2.0
-    ed.check(t0 + 0.2 > 2.0 and abs(t1 - expected) < 1e-6, f"wrapped: {t0} + 0.2 s -> {t1} (expected {expected})")
+    duration = (await media(ed))["duration"]
+    expected = (t0 + 0.2) % duration
+    ed.check(t0 + 0.2 > duration and abs(t1 - expected) < 1e-6, f"wrapped: {t0} + 0.2 s -> {t1} (expected {expected})")
     events, paused = await lua(ed, f"return table.concat(_G.videoEvents, ','), {video_lua()}.paused")
-    ed.check_eq((events, paused), ("seeked", False), "looping: no ended, no pause")
+    ed.check_eq((events, paused), ("seeked,seeked", False), "the seek, then the wrap's seeked; no ended, no pause")
     m = await media(ed)
     ed.check_eq(m["frame"], frame_of(m["currentTime"]), f"the frame after the wrap: {m}")
     await lua(ed, f"{video_lua()}:pause()")
@@ -320,7 +322,7 @@ async def test_import_converts_an_mp4(ed: Editor):
         ed.check_eq(sorted(streams), ["av1", "opus"], "AV1 video and Opus audio")
     # it plays: a document with it, played one second
     await ed.call("write_file", path="assets/ui/intro.html",
-                  content='<html><body style="margin: 0"><video id="i" src="video/intro.webm" autoplay muted></video></body></html>')
+                  content='<html><body style="margin: 0"><video id="i" src="video/intro.webm" autoplay muted loop></video></body></html>')
     made = await ed.call("create_scene", name="HtmlUiVideoIntro", type="UI")
     ent = await ed.call("create_entity", scene=made["scene"]["id"], type="empty", name="Intro")
     await ed.call("add_component", scene=made["scene"]["id"], entity=ent["entity_id"], component="UIDocument",
@@ -328,11 +330,14 @@ async def test_import_converts_an_mp4(ed: Editor):
     await ed.call("save_scene", scene=made["scene"]["id"], path="scenes/HtmlUiVideoIntro")
     await ed.call("play", action="start", scene=made["scene"]["id"], fixed_fps=60, auto_pause=True)
     try:
-        await wait(ed, 60)
-        tree = await ed.call("inspect_ui", entity="Intro", selector="#i", depth=0)
-        m = tree["elements"][0]["media"]
+        await wait(ed, 3)
+        first = (await ed.call("inspect_ui", entity="Intro", selector="#i", depth=0))["elements"][0]["media"]
+        await wait(ed, 12)
+        m = (await ed.call("inspect_ui", entity="Intro", selector="#i", depth=0))["elements"][0]["media"]
         ed.check_eq((m["videoWidth"], m["videoHeight"], m["readyState"]), (160, 90, 4), f"the converted clip plays: {m}")
-        ed.check(m.get("error") is None and not m["paused"] and m["currentTime"] > 0.5, f"playing: {m}")
+        ed.check(m.get("error") is None and not m["paused"], f"playing: {m}")
+        moved = (m["currentTime"] - first["currentTime"]) % m["duration"]
+        ed.check(abs(moved - 0.2) < 1e-6, f"12 frames of 1/60 s: {first['currentTime']} -> {m['currentTime']}")
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 

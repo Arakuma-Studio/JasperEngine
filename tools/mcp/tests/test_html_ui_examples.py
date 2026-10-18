@@ -823,7 +823,7 @@ async def video_menu_after(ed: Editor, n: str) -> None:
     # 3 s on: past the 4 s end, the loop wraps (no ended, no pause)
     await ed.call("wait", frames=180)
     m = await video_state(ed, n)
-    check(not m["paused"] and not m["ended"] and abs(m["currentTime"] - (t0 + 3.0) % 4.0) < 1e-6,
+    check(not m["paused"] and not m["ended"] and abs(m["currentTime"] - (t0 + 3.0) % m["duration"]) < 1e-6,
           f"looped: {t0} + 3 s -> {m['currentTime']}")
     await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "enter"}], frames_after=10)
     check(await focused(ed, n) == "play" and "video_menu: play" in await console_messages(ed), "Down focuses Play, Enter presses it")
