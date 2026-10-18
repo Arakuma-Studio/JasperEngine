@@ -386,6 +386,12 @@ async def test_stateful_effects(ed: Editor):
         ed.check(abs(state["time"] - 1.5) < 1e-6, f"{selector}: the simulation time is the pinned time: {state}")
     plain = await ed.call("inspect_ui", scene=S["scene"], entity=S["entity"], selector=".hero", depth=0)
     ed.check("state" not in plain["elements"][0]["effects"][0], "a stateless effect has no state")
+    # list_ui_effects names a simulation's images and passes
+    raw = await ed.call_raw("list_ui_effects", {"name": "fog"})
+    fog = raw.value["effects"][0]
+    ed.check_eq((fog["cost"], [st["name"] for st in fog["state"]["states"]]), ("stateful", ["vel", "pd", "dye"]), f"fog's state: {fog}")
+    ed.check(fog["state"]["passes"] and fog["state"]["rate"] == 60, f"fog's passes and rate: {fog['state']}")
+    ed.check("state: vel rgba16f 256x256" in raw.text, raw.text)
     # the live clock moves the fog
     await ed.call("set_ui_effect_time", time=None)
     await asyncio.sleep(0.6)
