@@ -1530,7 +1530,8 @@ shop.onChange("gold", [](const UIValue& value){ });
 Effects are GPU shaders you use from CSS like images and filters: `effect(<name>, <param>
 <value>, ...)` in `background-image`, `mask-image`, `filter` and `backdrop-filter`. The engine
 ships a library of them (gradients, noise, patterns, light, glass, blurs, stylize, colour,
-distortion, transitions, pointer effects); every effect, its parameters and a thumbnail are in
+distortion, transitions, pointer effects, and simulations: fluids, particles, feedback trails);
+every effect, its parameters and a thumbnail are in
 the catalogue `jasper://docs/html-ui-effects` (`jasperengine-editor ui-effects` lists them).
 A project can add its own (Writing an effect, below).
 
@@ -1696,6 +1697,57 @@ A paint effect in `backdrop-filter` recolours what is behind
 than a `filter` does; blurring ones (prepass effects such as `frosted-glass`) are the costliest per
 pixel: use them on panels, not full screen.
 
+### Stateful effects (simulations)
+
+Effects of cost class `stateful` keep state from frame to frame: smoke and ink that the pointer
+stirs (`fluid-smoke`, `smoke-flow`, `smoke-fill`, `fog`, `ink-flow`, `fluid-cursor-trail`,
+`chroma-flow`), particles and flocks (`boids`, `particles`, `particle-flow`, `magnetic-filings`,
+`particle-field`), pattern growth (`reaction-diffusion`) and feedback on the content
+(`time-trail`, `data-mosh`, `pixel-sort`, `pixel-throw`, `shatter`). They are used like any other
+effect:
+
+```css
+/* rising smoke behind a title; the pointer stirs it */
+.intro { background: #0b0d14; background-image: effect(fluid-smoke, colors #b8d4ff #4466aa, speed 24); border-radius: 12px; }
+/* a flock that scatters from the pointer */
+.lobby { background: #070910; background-image: effect(boids, count 600, cursor-mode repel); }
+/* a growing Turing pattern */
+.loading { background-image: effect(reaction-diffusion, preset coral); }
+/* whatever moves in the panel leaves a ghost trail */
+.feed { filter: effect(time-trail, trail-length 0.8s); }
+```
+
+- **Each element has its own simulation**, kept in GPU images (`inspect_ui` and `getEffects`
+  report their size). It starts when the element is first drawn and steps at a fixed 60 Hz,
+  whatever the frame rate (at most 4 steps a frame: a long frame slows it down instead of
+  stalling). `time-scale` scales the steps, `0` freezes it.
+- **It pauses** while the element is not drawn (`display: none`, `visibility: hidden`, scrolled
+  or clipped out of view) and resumes where it was, without catching up. Removing the element,
+  or changing it to another effect, ends it; a change of a parameter that seeds it (`seed`,
+  `preset`: marked in the catalogue) restarts it. A resize keeps it going.
+- **Pinned time** (`setEffectTime`, `set_ui_effect_time`): the state at a pinned time is computed
+  from scratch (the last 2 s simulated, with the pointer's recent path), so two captures at the
+  same time are identical whatever happened before.
+- **Input from scripts**: `el:effectSplat{ x = 120, y = 80, dx = 300, dy = 0, radius = 30,
+  color = "#ff8a00" }` pushes dye and velocity into the element's simulations at their next step
+  (x, y and radius in the element's CSS px, dx and dy px/s; `effect = "ink-flow"` targets one);
+  `el:effectReset()` restarts them. Both return how many simulations took it.
+
+```lua
+local pond = doc:querySelector(".pond")   -- .pond { background-image: effect(ink-flow) }
+pond:addEventListener("click", function(e)
+  local box = pond:getBoundingClientRect()
+  pond:effectSplat{ x = e.clientX - box.left, y = e.clientY - box.top, dy = -400, radius = 40, color = "#33aaff" }
+end)
+for _, fx in ipairs(pond:getEffects()) do print(fx.name, fx.stateful, fx.steps, fx.stateBytes) end
+```
+
+- **Cost**: they are the costliest effects (a fluid runs about 20 passes a step): use two or three
+  on screen, prefer the fixed-grid ones (fluids, `reaction-diffusion`, `time-trail`) on large
+  elements, lower `count` for the particle effects on mobile, and hide an element whose
+  simulation should stop (covering it is not enough). A document with more than 8 running at once,
+  or 64 MB of their images, gets `HTMLUI-FX-0018`.
+
 ### Writing an effect
 
 A project effect is one fragment file with a manifest, declared in CSS with `@effect`. Its
@@ -1766,6 +1818,18 @@ vec4 jfx_paint(JfxContext c){
   `effects/lib/jfx_noise.glsl` (value, Perlin, simplex, Worley, fbm, curl, domain warp),
   `effects/lib/jfx_hash.glsl`, `effects/lib/jfx_sdf.glsl` (shapes), `effects/lib/jfx_geom.glsl`,
   `effects/lib/jfx_blend.glsl`, `effects/lib/jfx_tone.glsl`.
+- **Stateful effects** declare their images and passes in the manifest (`@cost stateful`):
+  `// @state <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>] [linear|nearest]`,
+  `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>]
+  [add] [scatter <placement>]` (each step, in order), optional `@warmup <steps> <dt>`,
+  `@rate <hz> max <substeps>`, `@replay <s>` and `@reseed <param>`. Declare each image with
+  `JFX_STATE(<name>)` (from `effects/lib/jfx_state.glsl`: `<name>_fetch(ivec2)`,
+  `<name>_sample(uv)`, `<name>_size()`), define `vec4 jfx_step(JfxStep s)` (it writes texel
+  `s.cell` of pass `s.pass`, compared with `JFX_PASS_<NAME>`, inside `#ifdef JFX_STEP_FORM`),
+  read the images in `jfx_paint`/`jfx_filter`, and end with
+  `#include "effects/lib/main_step.glsl"` after the main include. The built-in simulations in
+  `engine/shaderlib/effects` (`fluid-smoke.frag`, `reaction-diffusion.frag`, `boids.frag`) are
+  the examples; `jasper://docs/html-ui-effects` lists their images.
 - Saving the `.frag` reloads the documents that declared it. `check --ui` reports the CSS
   side, `jasperengine-editor check` compiles the effect and reports `file:line` errors, and
   `jasperengine-editor ui-effects --validate --project <dir>` checks the manifest against the
@@ -1779,11 +1843,13 @@ vec4 jfx_paint(JfxContext c){
   declares one with `@effect`).
 - **What an element draws**: `inspect_ui` lists each element's effects under `effects` (the
   property, the layer index, the form and every parameter's value as the engine reads it,
-  universal ones included) and marks them `fx:<name>` in the outline. `inspect_ui {file}` and
+  universal ones included; a stateful effect adds `state`: its images' bytes, its steps, its
+  simulation time and whether it is paused) and marks them `fx:<name>` in the outline. `inspect_ui {file}` and
   `jasperengine-editor check --ui` report the codes of "Effect diagnostics" with `line:col`.
 - **Stable images**: effects animate with time, so two screenshots differ. `set_ui_effect_time
   {time: 1.5}` pins the effect clock in the edit and play views (renders are then identical, the
-  pointer aside); `{time: null}` makes it live again. Scripts do the same with
+  pointer aside; a stateful effect's state is recomputed for the pinned time); `{time: null}`
+  makes it live again. In play, `eval_lua` drives a simulation with `el:effectSplat{...}`. Scripts do the same with
   `UIDocument.setEffectTime(1.5)` and `UIDocument.setEffectTime(nil)`.
 - **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
   returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is
@@ -1813,6 +1879,7 @@ vec4 jfx_paint(JfxContext c){
   `tilt-shift`, `progressive-blur`, `glow`) and the 32-tap streaks (`motion-blur`,
   `zoom-blur`, `angular-blur`). Keep them on panels, not full screen.
 - Prefer time-driven parameters (`speed`) to animating a parameter every frame on many elements.
+- Stateful effects (simulations): two or three on screen; see "Stateful effects" above.
 
 ### Effect diagnostics
 
@@ -1833,7 +1900,9 @@ vec4 jfx_paint(JfxContext c){
 | `HTMLUI-FX-0013` | error | the `@effect` file is missing |
 | `HTMLUI-FX-0014` | error | the effect's manifest is invalid (reported at the `.frag` line) |
 | `HTMLUI-FX-0015` | error | the project effect does not compile (reported at the `.frag` line) |
-| `HTMLUI-FX-0016` | info | more than four high-cost effects in one document |
+| `HTMLUI-FX-0016` | info | more than four high-cost effects (or four stateful ones) in one document |
+| `HTMLUI-FX-0017` | error | a stateful effect's images use a format the device cannot render (or blend) to; it is not drawn |
+| `HTMLUI-FX-0018` | warning, error | more than 8 stateful effects running in a document, 32 in the game or 64 MB of their images (warning); past 64 simulations no more start (error) |
 
 ### Effects in a browser
 

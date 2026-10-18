@@ -56,7 +56,7 @@ namespace jasperengine::htmlui {
         bool fixedSize = false;      // <w>x<h>
         int width = 1, height = 1;   // fixed size
         float boxScale = 1.f;        // box: the area's CSS px x scale
-        int boxMax = 1024;           // box: each side at most this
+        int boxMax = 1024;           // box: the larger side at most this (the aspect kept)
         bool linear = true;          // the sampler's filter
         bool repeat = false;         // the sampler's wrap
         bool resample = true;        // box states on a resize: redrawn into the new size (false: restart)
