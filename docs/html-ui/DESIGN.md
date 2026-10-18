@@ -298,6 +298,13 @@ feature; what the merge decided:
   moved to bit 38. The phase-0 `BlendStateTest` describes the pipeline types as the render
   state model builds them.
 - Interfaces changed: `CONTRACTS.md` (rows citing "the merge of origin/main").
+- Verified on the remote test host (BRIEF.md) on the merged tree: the HTML UI suites (glcore and
+  Vulkan 3,145 tests, 0 failed, the 73 Taffy exclusions skipped; perf gates; RmlUi 426 cases;
+  editor tests; web; Android), three full MCP runs and the slow ones, every generator and
+  reference check, and the library's checks (`shaders --library all --backend all`, its fixtures
+  on GL, GLES3 and Vulkan, `shader-library-export/check.py` on GL and Vulkan, exports on every
+  backend); a UI Document added to the library's post-processing fixture draws in the editor
+  and in exported games under MSAA, render scale, bloom, CRT and the presets. No golden changed.
 
 ## Research facts (verified in code, October 2026)
 
