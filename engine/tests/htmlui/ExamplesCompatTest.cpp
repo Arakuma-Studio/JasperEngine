@@ -81,7 +81,7 @@ TEST(ExamplesCompat, ManifestListsTheNineExamplesAndBlank){
     for (const nlohmann::json& entry : json["examples"])
         names.push_back(entry.value("name", ""));
     EXPECT_EQ(names, (std::vector<std::string>{"main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop",
-                                               "toasts", "loading", "blank"}));
+                                               "toasts", "loading", "video_menu", "blank"}));
 }
 
 TEST(ExamplesCompat, EveryExampleIsCleanAtEveryViewport){

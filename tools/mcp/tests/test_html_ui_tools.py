@@ -1150,8 +1150,8 @@ async def test_examples_resources(ed: Editor):
     got = await ed.session.read_resource("jasper://examples/html-ui")
     index = got.contents[0].text
     examples = [e for e in MANIFEST["examples"] if e["example"]]
-    ed.check_eq(len(examples), 9, "nine examples")
-    ed.check(index.startswith("# HTML/CSS UI examples\n\n9 complete"), index[:200])
+    ed.check_eq(len(examples), 10, "ten examples (phase 6 added video_menu)")
+    ed.check(index.startswith("# HTML/CSS UI examples\n\n10 complete"), index[:200])
     for e in MANIFEST["examples"]:
         ed.check(f"## {e['name']}: {e['title']}" in index, f"{e['name']} in the index")
         section = index.split(f"## {e['name']}: ", 1)[1].split("\n## ", 1)[0]

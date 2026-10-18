@@ -1,0 +1,210 @@
+/* Video menu. Design tokens first: change the look here. */
+:root {
+  --accent: #f59e0b;
+  --text: #fff7ed;
+  --muted: rgba(255, 237, 213, 0.7);
+  --button: rgba(12, 10, 24, 0.62);
+  --button-hover: rgba(245, 158, 11, 0.22);
+  --line: rgba(255, 237, 213, 0.18);
+  --radius: 12px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+}
+
+body {
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+  /* under the video, and the whole background when it cannot play */
+  background: linear-gradient(150deg, #1c1033 0%, #0d1b2a 60%, #07131f 100%);
+}
+
+/* ---- The video: fixed behind everything, cropped to fill (cover) ---- */
+.backdrop-video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+}
+
+/* the error fallback (VideoMenuUI.lua): the gradient alone */
+.no-video .backdrop-video {
+  opacity: 0;
+}
+
+/* darker on the left, where the menu is, so its text stays readable over any frame */
+.scrim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(5, 4, 12, 0.82) 0%, rgba(5, 4, 12, 0.5) 45%, rgba(5, 4, 12, 0.05) 100%),
+    linear-gradient(0deg, rgba(5, 4, 12, 0.7) 0%, transparent 35%);
+}
+
+/* ---- Layout ---- */
+.screen {
+  position: relative;
+  min-height: 100vh;
+  padding: clamp(2rem, 6vh, 4.5rem) clamp(2rem, 8vw, 7.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(1.5rem, 5vh, 3rem);
+}
+
+.eyebrow {
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.4em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.title {
+  margin-top: 0.4rem;
+  font-size: clamp(2.75rem, 7vw, 5rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-shadow: 0 6px 30px rgba(0, 0, 0, 0.55);
+}
+
+/* ---- Menu ---- */
+.menu {
+  width: min(340px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.menu-button {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 1.25rem;
+  font: inherit;
+  font-size: 1.125rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: left;
+  color: var(--text);
+  background-color: var(--button);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 220ms var(--ease-out);
+}
+
+.menu-button svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--accent);
+}
+
+.menu-button:hover,
+.menu-button:focus-visible {
+  background-color: var(--button-hover);
+  border-color: rgba(251, 191, 36, 0.6);
+  transform: translateX(6px);
+}
+
+.menu-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.menu-button:active {
+  background-color: rgba(245, 158, 11, 0.34);
+}
+
+.menu-button.primary {
+  background-color: rgba(180, 83, 9, 0.78);
+  border-color: rgba(251, 191, 36, 0.55);
+}
+
+.menu-button.primary svg {
+  color: #ffffff;
+}
+
+/* ---- Footer: the motion toggle and the version ---- */
+.footer {
+  position: fixed;
+  left: clamp(2rem, 8vw, 7.5rem);
+  right: 1.5rem;
+  bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.motion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  padding: 0 0.9rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background-color: var(--button);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.motion svg {
+  width: 16px;
+  height: 16px;
+}
+
+.motion:hover,
+.motion:focus-visible {
+  background-color: var(--button-hover);
+}
+
+.motion:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.version {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* ---- Portrait and narrow screens: the menu centred, the scrim from the bottom ---- */
+@media (max-width: 800px) {
+  .screen {
+    align-items: center;
+    text-align: center;
+  }
+
+  .scrim {
+    background: linear-gradient(0deg, rgba(5, 4, 12, 0.85) 0%, rgba(5, 4, 12, 0.55) 60%, rgba(5, 4, 12, 0.2) 100%);
+  }
+
+  .footer {
+    left: 1.5rem;
+  }
+}
