@@ -796,31 +796,50 @@ async function adoptAnimations(page){
 }
 
 // <video> (phase 6): the frame of `seconds` on screen, as the engine's FixtureRunner seeks in its
-// frame-exact mode: currentTime set, `seeked`, then one presented frame (requestVideoFrameCallback)
+// frame-exact mode: currentTime set, `seeked`, the element at HAVE_CURRENT_DATA. (Not
+// requestVideoFrameCallback: the headless shell presents no frame until a screenshot asks for one.)
 async function seekVideo(page, label, selector, seconds){
     const problem = await page.evaluate(async ([selector, seconds]) => {
         const video = document.querySelector(selector);
         if (!(video instanceof HTMLVideoElement))
             return `${selector} is not a <video>`;
-        if (video.readyState < 1)
-            await new Promise((resolve) => video.addEventListener('loadedmetadata', resolve, { once: true }));
-        const presented = new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
-        await new Promise((resolve) => { video.addEventListener('seeked', resolve, { once: true }); video.currentTime = seconds; });
-        await presented;
-        return null;
+        const within = (promise, what) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(what), 10000))]);
+        if (video.readyState < 1){
+            const late = await within(new Promise((resolve) => video.addEventListener('loadedmetadata', () => resolve(null), { once: true })),
+                                      'no metadata after 10 s');
+            if (late)
+                return `${selector}: ${late}`;
+        }
+        const late = await within(new Promise((resolve) => {
+            video.addEventListener('seeked', () => resolve(null), { once: true });
+            video.currentTime = seconds;
+        }), `no seeked event 10 s after currentTime = ${seconds}`);
+        if (late)
+            return `${selector}: ${late}`;
+        const deadline = Date.now() + 10000;
+        while (video.readyState < 2 && Date.now() < deadline)
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        return video.readyState < 2 ? `${selector}: no frame after the seek` : null;
     }, [selector, seconds]);
     if (problem)
         throw new Error(`${label}: ${problem}`);
 }
 
-// every <video> that loads (not preload="none") has its frame before a capture
+// every <video> that loads (not preload="none") has its frame, and every poster is decoded, before a capture
 async function waitForVideos(page, label){
     const stuck = await page.evaluate(async () => {
-        const videos = [...document.querySelectorAll('video')].filter((v) => v.preload !== 'none' || v.currentTime > 0);
+        const all = [...document.querySelectorAll('video')];
+        const videos = all.filter((v) => v.preload !== 'none' || v.currentTime > 0);
         const deadline = Date.now() + 10000;
         while (videos.some((v) => v.readyState < 2 && !v.error) && Date.now() < deadline)
             await new Promise((resolve) => setTimeout(resolve, 20));
-        return videos.filter((v) => v.readyState < 2).map((v) => (v.id ? '#' + v.id : v.currentSrc) + (v.error ? ` (error ${v.error.code})` : ''));
+        const posters = await Promise.all(all.filter((v) => v.poster).map(async (v) => {
+            const image = new Image();
+            image.src = v.poster;
+            try { await image.decode(); return null; } catch (e) { return (v.id ? '#' + v.id : v.poster) + ' (poster)'; }
+        }));
+        return videos.filter((v) => v.readyState < 2).map((v) => (v.id ? '#' + v.id : v.currentSrc) + (v.error ? ` (error ${v.error.code})` : ''))
+            .concat(posters.filter((p) => p));
     });
     if (stuck.length)
         throw new Error(`${label}: no frame for ${stuck.join(', ')}`);

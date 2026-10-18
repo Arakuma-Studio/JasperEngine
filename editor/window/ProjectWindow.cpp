@@ -49,6 +49,8 @@
 #include "thread/ResourceProgress.h"
 #include "util/EntityPayload.h"
 #include "util/ProjectUtils.h"
+#include "htmlui/VideoImporter.h"
+#include "EditorHost.h"
 
 #include "imgui_internal.h"
 
@@ -2524,11 +2526,17 @@ void editor::ProjectWindow::pasteFiles(const fs::path& targetDirectory) {
 
 void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& sourcePaths) {
     std::vector<std::string> validPaths;
+    std::vector<fs::path> videos;
 
     for (const auto& sourcePath : sourcePaths) {
         fs::path source = fs::path(sourcePath).lexically_normal();
 
         std::error_code ec;
+        // a video the engine does not play is converted (FFmpeg), not copied (phase 6)
+        if (fs::is_regular_file(source, ec) && htmlui::VideoImporter::isVideoFile(source) && !htmlui::VideoImporter::isPlayable(source)) {
+            videos.push_back(source);
+            continue;
+        }
         if (fs::is_directory(source, ec) && !ec) {
             // copying a directory into itself would recurse forever
             fs::path relative = currentPath.lexically_normal().lexically_relative(source);
@@ -2541,12 +2549,47 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
         validPaths.push_back(sourcePath);
     }
 
+    if (!videos.empty()) {
+        importVideos(videos, currentPath);
+    }
+
     if (validPaths.empty()) {
         return;
     }
 
     project->getProjectCommandHistory()->addCommand(new CopyFileCmd(project, validPaths, currentPath.string(), true));
     scanDirectory(currentPath);
+}
+
+// Converting a video takes seconds to minutes: a worker runs FFmpeg (htmlui/VideoImporter, as
+// import_files does) and reports each file in the Console; the folder is listed again on the
+// main thread when a file is written. An existing output is not replaced.
+void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
+    for (const fs::path& video : videos)
+        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", video.filename().u8string().c_str());
+    std::thread([videos, targetDir]() {
+        for (const fs::path& video : videos) {
+            const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);
+            if (result.ok) {
+                Out::info("%s", result.message.c_str());
+            } else if (result.diagnostics.empty()) {
+                Out::error("Video import: %s", result.message.c_str());
+            }
+            for (const jasperengine::htmlui::compat::Diagnostic& d : result.diagnostics) {
+                const std::string line = d.message + " (fix: " + d.suggestion + ") [" + d.code.id() + "]";
+                if (d.severity == jasperengine::htmlui::compat::Severity::Error)
+                    Out::error("%s", line.c_str());
+                else
+                    Out::warning("%s", line.c_str());
+            }
+            if (!result.output.empty()) {
+                editor::getEditorHost().enqueueMainThreadTask([]() {
+                    if (ProjectWindow* window = Backend::getApp().getProjectWindow())
+                        window->refreshCurrentDirectory();
+                });
+            }
+        }
+    }).detach();
 }
 
 void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate) {

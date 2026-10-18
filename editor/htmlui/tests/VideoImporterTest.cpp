@@ -45,6 +45,7 @@ namespace {
                 setenv("JASPER_FFMPEG", saved.c_str(), 1);
             else
                 unsetenv("JASPER_FFMPEG");
+            VideoImporter::setFfmpegPath("");
             std::error_code ec;
             fs::remove_all(root, ec);
         }
@@ -112,6 +113,25 @@ TEST_F(VideoImporterTest, ConvertsWithFfmpeg){
     EXPECT_FALSE(again.ok);
     EXPECT_NE(again.message.find("already exists"), std::string::npos);
     EXPECT_TRUE(VideoImporter::importFile(input(), root / "out", true).ok);
+}
+
+TEST_F(VideoImporterTest, LookupOrder){
+    // the editor setting (Preferences > External Tools > FFmpeg) when JASPER_FFMPEG is not set
+    const std::string fake = fakeFfmpeg("libsvtav1", false).string();
+    unsetenv("JASPER_FFMPEG");
+    VideoImporter::setFfmpegPath(fake);
+    EXPECT_EQ(VideoImporter::findFfmpeg(), fake);
+    // a path being edited, without changing the set one
+    const std::string missing = (root / "not-there").string();
+    std::string why;
+    const std::string withMissing = VideoImporter::findFfmpeg(&why, &missing);
+    EXPECT_NE(withMissing, fake);
+    if (withMissing.empty())
+        EXPECT_NE(why.find("not-there"), std::string::npos) << why;
+    EXPECT_EQ(VideoImporter::findFfmpeg(), fake);
+    // JASPER_FFMPEG wins over the setting, also when it names nothing
+    setenv("JASPER_FFMPEG", "", 1);
+    EXPECT_EQ(VideoImporter::findFfmpeg(), "");
 }
 
 TEST_F(VideoImporterTest, EncoderPreference){

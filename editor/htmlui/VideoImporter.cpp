@@ -10,7 +10,9 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <fstream>
 #include <mutex>
+#include <random>
 #include <system_error>
 
 namespace fs = std::filesystem;
@@ -83,7 +85,7 @@ void VideoImporter::setFfmpegPath(const std::string& path){
     ffmpegOverride = path;
 }
 
-std::string VideoImporter::findFfmpeg(std::string* why){
+std::string VideoImporter::findFfmpeg(std::string* why, const std::string* overridePath){
     if (const char* env = std::getenv("JASPER_FFMPEG")){
         // set: it is the one (an empty or wrong value means "none", for tests and locked-down setups)
         if (isExecutable(env))
@@ -92,11 +94,15 @@ std::string VideoImporter::findFfmpeg(std::string* why){
             *why = std::string("JASPER_FFMPEG is '") + env + "', which is not an executable";
         return std::string();
     }
-    {
+    std::string configured;
+    if (overridePath){
+        configured = *overridePath;
+    }else{
         std::lock_guard<std::mutex> lock(ffmpegMutex);
-        if (isExecutable(ffmpegOverride))
-            return ffmpegOverride;
+        configured = ffmpegOverride;
     }
+    if (isExecutable(configured))
+        return configured;
     ShellEnv::bootstrapPath();
 #ifdef _WIN32
     const std::string found = ShellEnv::findExecutable("ffmpeg.exe");
@@ -104,7 +110,8 @@ std::string VideoImporter::findFfmpeg(std::string* why){
     const std::string found = ShellEnv::findExecutable("ffmpeg");
 #endif
     if (found.empty() && why)
-        *why = "no ffmpeg on PATH (and JASPER_FFMPEG is not set)";
+        *why = configured.empty() ? "no ffmpeg on PATH (and JASPER_FFMPEG is not set)"
+                                  : "the FFmpeg setting '" + configured + "' is not a file, and there is no ffmpeg on PATH";
     return found;
 }
 
@@ -233,5 +240,77 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     char seconds[32];
     std::snprintf(seconds, sizeof(seconds), "%.1f", result.seconds);
     result.message = name + " converted to " + pathString(output.filename()) + " (AV1 " + result.encoder + " + Opus, " + seconds + " s)";
+    return result;
+}
+
+// ---------------------------------------------------------------- downloaded videos
+
+RemoteVideoImporter::RemoteVideoImporter(RemoteImporter& importer): importer(importer) {}
+
+ImportedResource RemoteVideoImporter::run(const std::string& url, const std::string& body, const SniffedContent& sniffed, const ImportLocation& at){
+    ImportedResource result;
+    result.url = url;
+    std::string host, path, query;
+    splitUrl(url, host, path, query);
+    std::string name = safeFileName(urlBaseName(url));
+    if (name.empty())
+        name = "video";
+    const std::string stem = "videos/" + safeFileName(host) + "/" + urlHash(url, 12) + "-" + name;
+
+    // FFmpeg reads and writes files: a scratch directory of this import (removed below)
+    std::error_code ec;
+    const fs::path scratch = fs::temp_directory_path(ec) / ("jasper-video-import-" + urlHash(url, 12) + "-" +
+                                                          std::to_string(std::random_device{}()));
+    fs::create_directories(scratch / "out", ec);
+    const fs::path downloaded = scratch / (name + "." + sniffed.extension());
+    {
+        std::ofstream out(downloaded, std::ios::binary);
+        out.write(body.data(), (std::streamsize)body.size());
+    }
+    importer.progress("[HTML UI] " + url + ": " + sniffed.name() + (VideoImporter::isPlayable(downloaded) ? "" : ", converting with FFmpeg"));
+    const VideoImportResult converted = VideoImporter::importFile(downloaded, scratch / "out", true);
+
+    std::string local, content;
+    if (converted.ok){
+        // played as it is (copied) or converted: the .webm
+        local = importer.importPath(stem + ".webm");
+        std::ifstream in(converted.output, std::ios::binary);
+        content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }else if (converted.copied){
+        // no FFmpeg (or no AV1 encoder): the original, which the engine will not play
+        local = importer.importPath(stem + "." + sniffed.extension());
+        content = body;
+    }
+    // the messages name the saved file (asset-relative), not the scratch copy
+    auto inProject = [&](std::string text){
+        const std::string from = pathString(downloaded), to = local.empty() ? importer.importPath(stem + "." + sniffed.extension()) : local;
+        for (size_t pos = text.find(from); pos != std::string::npos; pos = text.find(from, pos + to.size()))
+            text.replace(pos, from.size(), to);
+        const std::string outDir = pathString(scratch / "out") + "/";
+        const std::string toDir = to.substr(0, to.find_last_of('/') + 1);
+        for (size_t pos = text.find(outDir); pos != std::string::npos; pos = text.find(outDir, pos + toDir.size()))
+            text.replace(pos, outDir.size(), toDir);
+        return text;
+    };
+    fs::remove_all(scratch, ec);
+    for (const jasperengine::htmlui::compat::Diagnostic& d : converted.diagnostics)
+        importer.report(d.code, at, url, inProject(d.message), inProject(d.suggestion));
+    if (local.empty()){
+        result.error = inProject(converted.message);
+        return result;
+    }
+
+    ImportStaging staging;
+    staging.add(local, std::move(content));
+    jasperengine::htmlui::compat::ImportEntry entry;
+    entry.url = url;
+    entry.kind = "video";
+    entry.path = local;
+    entry.files = {local};
+    entry.licenseName = "unknown";
+    entry.source = host;
+    if (!importer.finish(staging, {entry}, result))
+        return result;
+    importer.report(hc::codes::LicenseNote, at, url, "the license of the video '" + url + "' is unknown: verify that the game may ship it");
     return result;
 }

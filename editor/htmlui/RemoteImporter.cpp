@@ -9,6 +9,7 @@
 #include "ImportManifestWriter.h"
 #include "LottieImporter.h"
 #include "StylesheetImporter.h"
+#include "VideoImporter.h"
 
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/Hash.h"
@@ -560,11 +561,14 @@ ImportedResource RemoteImporter::import(const std::string& url, const std::strin
     }
     if (sniffed.isImage())
         return ImageImporter(*this).run(url, finalUrl, body, sniffed, at);
+    // phase 6: copied when the engine plays it, else converted by the editor's FFmpeg
+    if (sniffed.isVideo())
+        return RemoteVideoImporter(*this).run(url, body, sniffed, at);
 
     const std::string what = response.contentType.empty() ? std::string(sniffed.name()) : response.contentType;
     result.error = "unsupported content (" + what + ")";
     report(compat::codes::UnsupportedContent, at, url,
-           "'" + url + "' returned " + what + ", which is not an image, SVG, font, stylesheet or Lottie animation; nothing imported",
-           "link the file itself (an image, .ttf, .css, .json or .lottie URL)");
+           "'" + url + "' returned " + what + ", which is not an image, SVG, font, stylesheet, Lottie animation or video; nothing imported",
+           "link the file itself (an image, .ttf, .css, .json, .lottie or video URL)");
     return result;
 }

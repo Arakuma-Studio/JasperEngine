@@ -31,6 +31,10 @@ namespace jasperengine::editor {
 
         std::string m_emsdkOverride;
         EmsdkInfo m_emsdkInfo;
+        // the video importer's ffmpeg (phase 6): the override and what the lookup finds with it
+        std::string m_ffmpegOverride;
+        std::string m_ffmpegStatus;
+        bool m_ffmpegUsable = false;
         bool m_editorVSyncEnabled = true;
         bool m_htmlUiAutoImport = true;
         bool m_htmlUiVerboseDiagnostics = false;
@@ -44,6 +48,7 @@ namespace jasperengine::editor {
         LocalBuildSettings projectBuildSettings() const;
         void refreshCMakeStatus();
         void refreshEmsdkStatus();
+        void refreshFfmpegStatus();
         void drawSettings();
         void drawGeneralSettings();
         void drawCodeEditorSettings();
@@ -51,6 +56,7 @@ namespace jasperengine::editor {
         // Row drawers for the External Tools table.
         void drawCMakeSettings();
         void drawWebSettings();
+        void drawVideoImportSettings();
         void drawAdvancedSettings();
         bool applySettings();
 

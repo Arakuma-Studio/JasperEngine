@@ -94,7 +94,7 @@ namespace jasperengine::editor::htmlui {
         explicit RemoteImporter(ImportTarget target);
 
         // kindHint: RemoteReference::kind ("google-fonts-css", "stylesheet", "font", "image",
-        // "lottie", "svg") or "" (detected)
+        // "lottie", "svg", "video") or "" (detected)
         ImportedResource import(const std::string& url, const std::string& kindHint = {}, const ImportLocation& at = {});
 
         const ImportTarget& target() const { return importTarget; }

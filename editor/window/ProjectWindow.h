@@ -322,6 +322,8 @@ namespace jasperengine::editor {
         void cleanupThumbnails();
 
         void refreshCurrentDirectory();
+        // videos the engine does not play, converted into targetDir by FFmpeg on a worker (phase 6)
+        static void importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir);
         fs::path getCurrentPath() const { return currentPath; }
         void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
 

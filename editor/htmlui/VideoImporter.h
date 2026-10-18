@@ -9,6 +9,9 @@
 // separate program (never linked, never shipped). Without FFmpeg, or without an AV1 encoder in it,
 // the original is copied and the result says what to run (HTMLUI-IMP-0010).
 
+#include "ContentSniffer.h"
+#include "RemoteImporter.h"
+
 #include "htmlui/compat/Diagnostics.h"
 
 #include <filesystem>
@@ -38,9 +41,11 @@ namespace jasperengine::editor::htmlui {
         // the engine plays it as it is (the probe: AV1/Opus WebM or Matroska)
         static bool isPlayable(const std::filesystem::path& path);
 
-        // FFmpeg: JASPER_FFMPEG, then the editor's override (setFfmpegPath), then PATH; "" = none.
-        // why says where it looked when none is found.
-        static std::string findFfmpeg(std::string* why = nullptr);
+        // FFmpeg: JASPER_FFMPEG, then the editor's override (setFfmpegPath: Preferences > External
+        // Tools > FFmpeg), then PATH; "" = none. why says where it looked when none is found.
+        // overridePath: look up with that override instead of the set one (the Preferences
+        // window's status of a path being edited)
+        static std::string findFfmpeg(std::string* why = nullptr, const std::string* overridePath = nullptr);
         static void setFfmpegPath(const std::string& path);
         // its AV1 encoders, in the order they are preferred (libsvtav1, libaom-av1, librav1e)
         static std::vector<std::string> av1Encoders(const std::string& ffmpeg);
@@ -56,6 +61,21 @@ namespace jasperengine::editor::htmlui {
         // Blocks while FFmpeg runs (call it off the main thread); onLine gets FFmpeg's output.
         static VideoImportResult importFile(const std::filesystem::path& input, const std::filesystem::path& targetDir, bool overwrite,
                                             const std::function<void(const std::string&)>& onLine = {});
+    };
+
+    // A downloaded video (RemoteImporter: import_files URLs and a document's remote <video src>,
+    // <source src>): saved as videos/<host>/<sha1-12>-<basename>.webm under the import root when it
+    // plays as it is or FFmpeg converts it (the manifest maps the URL to that file, kind "video");
+    // without FFmpeg the original is saved with its own extension and HTMLUI-IMP-0010, a failed
+    // conversion saves nothing (HTMLUI-IMP-0011). License unknown: HTMLUI-IMP-0008.
+    class RemoteVideoImporter {
+    public:
+        explicit RemoteVideoImporter(RemoteImporter& importer);
+
+        ImportedResource run(const std::string& url, const std::string& body, const SniffedContent& sniffed, const ImportLocation& at);
+
+    private:
+        RemoteImporter& importer;
     };
 
 }
