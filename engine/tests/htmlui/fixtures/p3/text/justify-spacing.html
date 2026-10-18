@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify with letter-spacing and word-spacing</title>
+<style>
+  /* letter-spacing (after every letter, the last one of a line too) and word-spacing are part of the widths the free
+     space is shared from; the justification adds to them. Whole-pixel shares of Ahem squares: the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 16px; color: #203040; }
+  .p { position: absolute; left: 10px; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="ls" style="top: 10px; width: 260px; letter-spacing: 2px">XX <span id="ls1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX <span id="ls2">XXXX</span> X</div>
+<div class="p" id="ws" style="top: 70px; width: 260px; word-spacing: 4px">XX <span id="ws1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX <span id="ws2">XXXX</span> X</div>
+<div class="p" id="both" style="top: 130px; width: 260px; letter-spacing: 1px; word-spacing: -2px">XX <span id="b1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX <span id="b2">XXXX</span> X</div>
+<div class="p" id="em" style="top: 190px; width: 240px; font-size: 20px; line-height: 24px; word-spacing: 0.5em">XX <span id="em1">XX</span> X XXX XX X XXX</div>
+</body>
+</html>

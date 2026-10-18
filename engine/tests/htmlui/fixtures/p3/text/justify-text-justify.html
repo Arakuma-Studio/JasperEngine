@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-justify values</title>
+<style>
+  /* text-justify: auto and inter-word share the free space over the spaces and no-break spaces; none does not justify
+     (the line stays at its start); inter-character (and distribute, which computes to it) after every character but the
+     last, an inline-block taking none but moving the next character; a span's own text-justify applies to its text.
+     The shares are fractional: the boxes are the oracle. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; width: 217px; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+  .ib { display: inline-block; width: 23px; height: 6px; background: #30a050; }
+</style>
+</head>
+<body>
+<div class="p" id="auto" style="left: 10px; top: 10px">XX <span id="a1">XXX</span> X&nbsp;XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="iw" style="left: 240px; top: 10px; text-justify: inter-word">XX <span id="w1">XXX</span> X&nbsp;XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="none" style="left: 10px; top: 50px; text-justify: none">XX <span id="n1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="ic" style="left: 240px; top: 50px; text-justify: inter-character">XX <span id="c1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="dist" style="left: 10px; top: 90px; text-justify: distribute">XX <span id="d1">XXX</span> X XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="icb" style="left: 240px; top: 90px; text-justify: inter-character">XX <span id="b1" class="ib"></span> <span id="b2">XXX</span><span id="b3" class="ib"></span>X XXXXXXXXXXXXXXX</div>
+<div class="p" id="mixed" style="left: 10px; top: 130px">XX <span id="x1" style="text-justify: none">X X <span id="x2">X</span></span> XX <span id="x3" style="text-justify: inter-character">XXXX</span> XXXXXXXXXX</div>
+<div class="p" id="ib" style="left: 240px; top: 130px">XX <span id="i1" class="ib"></span> XXX<span id="i2" class="ib"></span>X XXXXXXXXXX XXX</div>
+</body>
+</html>

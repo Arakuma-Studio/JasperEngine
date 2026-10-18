@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify of CJK text</title>
+<style>
+  /* With text-justify: auto, Chromium justifies before and after each ideograph, kana and CJK symbol (not before the first
+     of a line, not twice between two, not after the last), and after spaces; inter-word leaves CJK text unjustified,
+     inter-character spaces every character. The CJK characters have no glyph in Ahem: both sides draw its .notdef box,
+     one em wide; the shares are fractional, so the spans' boxes are the oracle. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; left: 10px; width: 217px; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="han" style="top: 10px">漢字漢字<span id="h1">漢字</span>漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字<span id="h2">漢字</span>漢字漢字</div>
+<div class="p" id="mix" style="top: 50px">XX漢字X XX<span id="m1">字</span> X漢XX XXXX XX <span id="m2">XX</span> XXX XXXXX XX X XXX</div>
+<div class="p" id="kana" style="top: 90px">ひらがなと<span id="k1">カタカナ</span>、句読点。ひらがなとカタカナ、<span id="k2">句読点</span>。ひらがなとカタカナ</div>
+<div class="p" id="span" style="top: 130px">XX<span id="s1">漢字</span>XX XXXXXXXXXXXXXXXXXXXXXX</div>
+<div class="p" id="iw" style="top: 160px; text-justify: inter-word">漢字漢字漢字漢字漢字<span id="iw1">漢字</span> 漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字漢字</div>
+<div class="p" id="ic" style="top: 200px; text-justify: inter-character">漢字 漢字<span id="ic1">XX</span>漢字漢字漢字漢字漢字漢字 漢字漢字漢字漢字漢字</div>
+</body>
+</html>

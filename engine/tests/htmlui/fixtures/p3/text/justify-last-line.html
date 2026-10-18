@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align-last and the last lines of justified text</title>
+<style>
+  /* The last line of a block and a line ended by <br> take 'text-align-last': 'auto' is the 'text-align', 'start' for
+     'justify'; start/end follow the direction; 'justify' fills them too; 'text-align-last' also aligns the last line
+     of text that is not justified. 'justify-all' is not parsed by Chromium: the declaration is dropped. The right-to-left
+     paragraphs hold one text each (inline boxes of a right-to-left line are laid out left to right, phase-3 spec 2.2). Whole-pixel
+     shares and offsets of Ahem squares: the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; width: 154px; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="auto" style="left: 10px; top: 10px">XX XXX X XXXX X <span id="a1">XX</span> X XX</div>
+<div class="p" id="start" style="left: 174px; top: 10px; text-align-last: start">XX XXX X XXXX X <span id="st1">XX</span> X XX</div>
+<div class="p" id="end" style="left: 338px; top: 10px; text-align-last: end">XX XXX X XXXX X <span id="e1">XX</span> X XX</div>
+<div class="p" id="left" style="left: 10px; top: 60px; text-align-last: left">XX XXX X XXXX X <span id="l1">XX</span> X XX</div>
+<div class="p" id="right" style="left: 174px; top: 60px; text-align-last: right">XX XXX X XXXX X <span id="r1">XX</span> X XX</div>
+<div class="p" id="center" style="left: 338px; top: 60px; text-align-last: center">XX XXX X XXXX X <span id="c1">XX</span> X XX</div>
+<div class="p" id="justify" style="left: 10px; top: 110px; text-align-last: justify">XX XXX X XXXX X <span id="j1">XX</span> X XX</div>
+<div class="p" id="br" style="left: 174px; top: 110px">XX <span id="br1">X</span><br>XX XXX X XXXX X <span id="br2">XX</span> X XX</div>
+<div class="p" id="brj" style="left: 338px; top: 110px; text-align-last: justify">XX <span id="brj1">X</span> X<br>XX XXX X XXXX X <span id="brj2">XX</span> X XX</div>
+<div class="p" id="rtl" style="left: 10px; top: 175px; direction: rtl">XX XXX X XXXX X XX X XX</div>
+<div class="p" id="rtlend" style="left: 174px; top: 175px; direction: rtl; text-align-last: end">XX XXX X XXXX X XX X XX</div>
+<div class="p" id="centered" style="left: 338px; top: 175px; text-align: center; text-align-last: right">XX XXX X XXXX X <span id="ce1">XX</span> X XX</div>
+<div class="p" id="all" style="left: 10px; top: 225px; text-align: right; text-align: justify-all">XX XXX X XXXX X <span id="all1">XX</span> X XX</div>
+<div class="p" id="inherit" style="left: 174px; top: 225px; text-align-last: center"><div id="child" style="text-align: right">XX XXX X XXXX X <span id="in1">XX</span> X XX</div></div>
+</body>
+</html>

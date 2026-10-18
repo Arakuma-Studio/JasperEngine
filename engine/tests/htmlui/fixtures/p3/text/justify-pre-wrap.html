@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify with preserved white space</title>
+<style>
+  /* pre-wrap: each preserved space is an opportunity, the spaces at the end of a wrapped line hang (not justified, not
+     aligned); a preserved line feed ends a last line. pre: every line is a last line ('text-align-last: justify' fills
+     them, trailing spaces included). break-spaces: the spaces at a line end take room. pre-line: the spaces before a line
+     feed collapse. Ahem advances are exact, the shares fractional: the spans' boxes are the oracle. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; width: 217px; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="pw" style="left: 10px; top: 10px; white-space: pre-wrap">XX  XXX <span id="pw1">X</span>    XXXXXXXX  XXXXXXXXXX XX X  XX
+XX X <span id="pw2">XX</span> XXX X XXXX XX X  XXXXX</div>
+<div class="p" id="pwr" style="left: 240px; top: 10px; white-space: pre-wrap; text-align: right"><span id="pwr1">XX</span>  XXX X    XXXXXXXX  XXXXXXXXXX XX</div>
+<div class="p" id="pre" style="left: 10px; top: 80px; white-space: pre; text-align-last: justify">XX <span id="pr1">X</span>  XXX
+XXX <span id="pr2">X</span>
+<span id="pr3">XXXX</span>  </div>
+<div class="p" id="bs" style="left: 240px; top: 80px; white-space: break-spaces">XX <span id="bs1">XXX</span> XXXXXXXXXXX    XXXX X XXXXXX XX</div>
+<div class="p" id="pl" style="left: 10px; top: 140px; white-space: pre-line">XX X <span id="pl1">XXX</span>   
+XX   XXX X XXXX <span id="pl2">XX</span> XXXX XXXXX XX</div>
+<div class="p" id="nw" style="left: 240px; top: 140px; white-space: nowrap">XX X <span id="nw1">XXX</span> XX</div>
+</body>
+</html>

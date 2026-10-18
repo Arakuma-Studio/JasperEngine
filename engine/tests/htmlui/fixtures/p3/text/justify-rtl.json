@@ -1,0 +1,4 @@
+{
+ "comment": "text-align: justify of right-to-left paragraphs (Latin words, Hebrew, the last line at the right or with text-align-last: end) and Hebrew in a left-to-right paragraph; Hebrew is Ahem's .notdef box on both sides; whole-pixel shares, so the image is compared.",
+ "viewport": [240, 180]
+}
