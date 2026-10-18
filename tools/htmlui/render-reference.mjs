@@ -40,7 +40,7 @@
 //
 // - p3 fixtures: engine/tests/htmlui/fixtures/p3/<area>/<name>.html with a <name>.json sidecar
 //   {viewport: [w, h], steps: [...], boxes, tolerance, samples, comment}; the steps (hover, focus, press,
-//   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture) run in order, every
+//   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture, seekVideo) run in order, every
 //   capture step (or one at the end when there is none) writes golden/browser/<area>/<name>[.<suffix>].png
 //   and the boxes of every element with an id into <name>.boxes.json; with "noText": true the steps run a
 //   second time in a fresh browser with the text made transparent (NO_TEXT_CSS, as page mode's no-text render)
@@ -641,7 +641,8 @@ function sha(buffer){
 
 // ===== fixture mode: the references of the phase-3 browser-parity tests (spec 5.2, 5.3) ========
 
-const STEP_KINDS = ['hover', 'focus', 'press', 'release', 'addClass', 'removeClass', 'setStyle', 'setAttr', 'scroll', 'advance', 'capture'];
+const STEP_KINDS = ['hover', 'focus', 'press', 'release', 'addClass', 'removeClass', 'setStyle', 'setAttr', 'scroll', 'advance', 'capture',
+                    'seekVideo'];
 
 function listAreas(){
     if (!fs.existsSync(P3_DIR))
@@ -759,6 +760,8 @@ function loadSidecar(area, name){
             bad('["#id", x, y]');
         if (kind === 'advance' && !(Number.isFinite(value) && value >= 0))
             bad('seconds >= 0');
+        if (kind === 'seekVideo' && !(Array.isArray(value) && value.length === 2 && target(value[0]) && Number.isFinite(value[1]) && value[1] >= 0))
+            bad('["#id", seconds]');
         if (kind === 'capture' && !(typeof value === 'string' && /^[\w-]*$/.test(value)))
             bad('a file-name suffix ([A-Za-z0-9_-]*)');
     });
@@ -790,6 +793,37 @@ async function adoptAnimations(page){
             state.animations.push({ animation, local: 0 });
         }
     });
+}
+
+// <video> (phase 6): the frame of `seconds` on screen, as the engine's FixtureRunner seeks in its
+// frame-exact mode: currentTime set, `seeked`, then one presented frame (requestVideoFrameCallback)
+async function seekVideo(page, label, selector, seconds){
+    const problem = await page.evaluate(async ([selector, seconds]) => {
+        const video = document.querySelector(selector);
+        if (!(video instanceof HTMLVideoElement))
+            return `${selector} is not a <video>`;
+        if (video.readyState < 1)
+            await new Promise((resolve) => video.addEventListener('loadedmetadata', resolve, { once: true }));
+        const presented = new Promise((resolve) => video.requestVideoFrameCallback(() => resolve()));
+        await new Promise((resolve) => { video.addEventListener('seeked', resolve, { once: true }); video.currentTime = seconds; });
+        await presented;
+        return null;
+    }, [selector, seconds]);
+    if (problem)
+        throw new Error(`${label}: ${problem}`);
+}
+
+// every <video> that loads (not preload="none") has its frame before a capture
+async function waitForVideos(page, label){
+    const stuck = await page.evaluate(async () => {
+        const videos = [...document.querySelectorAll('video')].filter((v) => v.preload !== 'none' || v.currentTime > 0);
+        const deadline = Date.now() + 10000;
+        while (videos.some((v) => v.readyState < 2 && !v.error) && Date.now() < deadline)
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        return videos.filter((v) => v.readyState < 2).map((v) => (v.id ? '#' + v.id : v.currentSrc) + (v.error ? ` (error ${v.error.code})` : ''));
+    });
+    if (stuck.length)
+        throw new Error(`${label}: no frame for ${stuck.join(', ')}`);
 }
 
 async function advanceAnimations(page, seconds){
@@ -937,6 +971,7 @@ async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly
 
         const captures = [];
         const capture = async (suffix) => {
+            await waitForVideos(page, label);
             await page.waitForTimeout(SETTLE_MS);
             // a step may use a face (or an image) the page did not draw before: loaded, and none failed
             await waitForFonts(page, label);
@@ -972,6 +1007,8 @@ async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly
                 await page.mouse.up();
             }else if (kind === 'advance'){
                 await advanceAnimations(page, value);
+            }else if (kind === 'seekVideo'){
+                await seekVideo(page, label, value[0], value[1]);
             }else if (kind === 'capture'){
                 await capture(value);
             }else{

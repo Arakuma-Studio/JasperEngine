@@ -1,0 +1,6 @@
+{
+ "comment": "A paused video seeked to 0.5 s (frame 15), letterboxed by object-fit contain over a coloured box. Boxes exact (box 0); the colour difference of the YUV conversion is measured in the phase-6 record.",
+ "viewport": [360, 280],
+ "steps": [{"seekVideo": ["#v", 0.5]}],
+ "tolerance": {"box": 0}
+}

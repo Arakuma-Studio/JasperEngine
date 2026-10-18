@@ -1,0 +1,6 @@
+{
+ "comment": "A paused video seeked to 1.4 s (frame 42), object-fit cover with object-position, rounded content. Boxes exact (box 0). The YUV->RGB difference between Chromium's video path and the engine's Yuv pass is measured in docs/html-ui/phase-6-video.md (phase record).",
+ "viewport": [360, 260],
+ "steps": [{"seekVideo": ["#v", 1.4]}],
+ "tolerance": {"box": 0}
+}

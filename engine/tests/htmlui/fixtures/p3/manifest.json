@@ -13,6 +13,7 @@
   "animation": {"owner": "p3-animation", "spec": "3.13", "content": "transitions and animations"},
   "grid": {"owner": "p3-grid", "spec": "3.14", "content": "CSS Grid"},
   "integration": {"owner": "p3-integration", "spec": "4 (wave 2)", "content": "cross-feature fixtures and sample pages"},
+  "video": {"owner": "p6-video", "spec": "phase 6 5.3", "content": "<video>: paused frames after a seek (object-fit, object-position, rounded content) and the poster; the frames are bit-exact AV1 on both sides, the difference is the YUV->RGB conversion"},
   "property": {"owner": "p5-property", "spec": "phase 5 3.11", "content": "registered custom properties (@property): transitions and keyframes of typed custom properties, inherited and non-inherited lookups, invalid values at computed-value time, @starting-style, allow-discrete, the unregistered fallback"}
  },
  "defaults": {

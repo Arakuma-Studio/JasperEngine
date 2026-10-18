@@ -323,7 +323,7 @@ bool jasperengine::test::isPhase3Package(const std::string& name){
     // (and the phase-5 package whose fixtures are an area of this tree: property, p5-property)
     static const std::set<std::string> packages = {"p3-base", "p3-testkit", "p3-values", "p3-cascade", "p3-paint",
                                                     "p3-text", "p3-layout", "p3-animation", "p3-grid", "p3-integration",
-                                                    "p5-property"};
+                                                    "p5-property", "p6-video"};
     return packages.count(name) > 0;
 }
 
