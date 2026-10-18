@@ -1628,6 +1628,8 @@
 		48544D4C00000000000001D3 /* URL.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D1 /* URL.cpp */; };
 		48544D4C00000000000001D5 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
 		48544D4C00000000000001D6 /* Variant.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000001D4 /* Variant.cpp */; };
+		524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
+		524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */; };
 		524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */; };
 		524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */; };
 		524D4C552958E4ECFBAF4FBD /* ElementStyleRegistered.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */; };
@@ -4807,6 +4809,7 @@
 		48544D4C00000000000001CE /* TypeConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TypeConverter.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D1 /* URL.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URL.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000001D4 /* Variant.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Variant.cpp; sourceTree = "<group>"; };
+		524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextJustification.cpp; sourceTree = "<group>"; };
 		524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PropertyIdSet.cpp; sourceTree = "<group>"; };
 		524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ElementStyleRegistered.cpp; sourceTree = "<group>"; };
 		524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WillChange.cpp; sourceTree = "<group>"; };
@@ -9042,6 +9045,7 @@
 				524D4C55AD44CE0A21B29DE1 /* WillChange.cpp */,
 				524D4C55BB63A5202A5B3A36 /* ElementStyleRegistered.cpp */,
 				524D4C559EFCFA10D282503B /* PropertyIdSet.cpp */,
+				524D4C557D0A034BDBCAD8B7 /* TextJustification.cpp */,
 			);
 			name = Core;
 			path = Source/Core;
@@ -13034,6 +13038,7 @@
 				48544D4C00000000000001CF /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D2 /* URL.cpp in Sources */,
 				48544D4C00000000000001D5 /* Variant.cpp in Sources */,
+				524D4C551FF1B7571B423E99 /* TextJustification.cpp in Sources */,
 				524D4C55280D970116FCD657 /* PropertyIdSet.cpp in Sources */,
 				524D4C552958E4ECFBAF4FBD /* ElementStyleRegistered.cpp in Sources */,
 				524D4C55977FE4A6E8958740 /* WillChange.cpp in Sources */,
@@ -13286,6 +13291,7 @@
 				48544D4C00000000000001D0 /* TypeConverter.cpp in Sources */,
 				48544D4C00000000000001D3 /* URL.cpp in Sources */,
 				48544D4C00000000000001D6 /* Variant.cpp in Sources */,
+				524D4C555F4819C5AB209F97 /* TextJustification.cpp in Sources */,
 				524D4C55D86EF33DDCE0322D /* PropertyIdSet.cpp in Sources */,
 				524D4C5543296A2EB89D57EC /* ElementStyleRegistered.cpp in Sources */,
 				524D4C55B334F014CA1586CE /* WillChange.cpp in Sources */,

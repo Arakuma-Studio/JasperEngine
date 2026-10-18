@@ -26,6 +26,11 @@ namespace jasperengine {
         float wordSpacing = 0.0f;     // pixels added after each space: U+0020, U+00A0, U+1361 (CSS Text 3 §8.1)
         int baseDirection = 0;        // 0 auto (SBLevelDefaultLTR, today's behavior), 1 LTR, 2 RTL
         std::string language;         // BCP 47; empty: guessed by HarfBuzz from the script, as STBText does
+        // a justified line (RmlUi's TextShapingContext::justification): per codepoint of the shaped
+        // vector (empty: none), the space added to its cluster's advance and the part of it its
+        // glyphs move right by (the space before it)
+        std::vector<float> justifyAdvance;
+        std::vector<float> justifyOffset;
     };
 
     // HarfBuzz + SheenBidi shaping over a fallback chain (moved out of STBText): bidi runs

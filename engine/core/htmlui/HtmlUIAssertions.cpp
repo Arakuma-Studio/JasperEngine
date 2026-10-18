@@ -108,8 +108,8 @@ namespace {
 
     // The line boxes of an element's direct text: each line's text measured as the font engine
     // lays it out (the widths RmlUi keeps are only filled when it draws), from the baseline
-    // RmlUi places it at, as tall as the line height. Collapsible white space at the ends of a
-    // line hangs and is left out.
+    // RmlUi places it at, as tall as the line height, with the space a justified line adds.
+    // Collapsible white space at the ends of a line hangs and is left out.
     std::vector<InspectRect> textLines(Rml::Element* element){
         std::vector<InspectRect> lines;
         if (isLeaf(element))
@@ -143,8 +143,16 @@ namespace {
                     end--;
                 if (begin == end)
                     continue;
-                const float leading = begin > 0 ? (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data(), content.data() + begin)) : 0.0f;
-                const float width = (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data() + begin, content.data() + end));
+                float leading = begin > 0 ? (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data(), content.data() + begin)) : 0.0f;
+                float width = (float)Rml::ElementUtilities::GetStringWidth(text, Rml::StringView(content.data() + begin, content.data() + end));
+                // a justified line: the space the layout added around its characters
+                for (const Rml::JustificationSpacing& spacing : line.justification){
+                    const float added = spacing.before + spacing.after;
+                    if (spacing.offset < (int)begin)
+                        leading += added;
+                    else if (spacing.offset < (int)end)
+                        width += added;
+                }
                 const float baseline = origin.y + line.position.y;
                 lines.push_back(InspectRect{origin.x + line.position.x + leading, baseline - top, width, lineHeight});
             }
