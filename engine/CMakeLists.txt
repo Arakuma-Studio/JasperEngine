@@ -853,6 +853,13 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/media/Av1Decoder.cpp
+    core/htmlui/media/OpusAudioDecoder.cpp
+    core/htmlui/media/VideoAudio.cpp
+    core/htmlui/media/VideoDemuxer.cpp
+    core/htmlui/media/VideoFormats.cpp
+    core/htmlui/media/VideoPlayback.cpp
+    core/htmlui/media/VideoStream.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
     core/htmlui/effects/BuiltinEffectManifests.gen.cpp

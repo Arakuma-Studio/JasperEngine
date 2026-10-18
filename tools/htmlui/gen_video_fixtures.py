@@ -33,7 +33,7 @@
 #   testcard-51.webm       AV1 + Opus 5.1 (six channels, multistream), 0.5 s
 #   odd-size.webm          AV1 97x55 (odd sizes, chroma rounding), 0.5 s
 #   testcard-vp9.webm      VP9 (the unsupported-codec path), 0.5 s
-#   corrupt.webm           testcard-noaudio.webm with the OBU header of frame 40 made invalid
+#   corrupt.webm           testcard-noaudio.webm with the first OBU size of frame 40 made too large
 #   poster.png             a 320x180 poster (teal and magenta squares)
 # and docs/mcp/guide/html-ui-examples/video_menu/assets/menu-loop.webm: 640x360, 30 fps, 4 s,
 # no audio, a seamless loop of drifting colour bands (sin waves with a 4 s period).
@@ -213,8 +213,9 @@ def make_corrupt(source, path, frame=40):
     video = [offset for offset, track in simple_blocks(bytes(data)) if track == 1]
     if len(video) <= frame:
         sys.exit("gen_video_fixtures: %s has %d video blocks" % (source, len(video)))
-    # the first OBU header of the frame: forbidden bit set, reserved OBU type 0 -> invalid stream
-    data[video[frame]] = 0x80
+    # the size field of the frame's first OBU (after its one-byte header) says 2^28 - 1 bytes:
+    # more than the block holds, which every decoder rejects (dav1d: "OBU size exceeds data")
+    data[video[frame] + 1:video[frame] + 5] = b"\xff\xff\xff\x7f"
     with open(path, "wb") as f:
         f.write(data)
 
@@ -383,9 +384,10 @@ def check():
     if os.path.exists(corrupt) and os.path.exists(clean):
         a, b = open(clean, "rb").read(), open(corrupt, "rb").read()
         diff = [i for i in range(min(len(a), len(b))) if a[i] != b[i]]
-        expect(len(a) == len(b) and len(diff) == 1 and b[diff[0]] == 0x80, "corrupt.webm: not testcard-noaudio.webm with one OBU header byte changed")
         blocks = [o for o, t in simple_blocks(a) if t == 1]
-        expect(diff and len(blocks) > 40 and diff[0] == blocks[40], "corrupt.webm: the changed byte is not frame 40's first byte")
+        expect(len(a) == len(b) and len(blocks) > 40 and diff and diff[0] >= blocks[40] + 1 and diff[-1] <= blocks[40] + 4 and
+               b[blocks[40] + 1:blocks[40] + 5] == b"\xff\xff\xff\x7f",
+               "corrupt.webm: not testcard-noaudio.webm with frame 40's first OBU size set to 2^28 - 1")
     else:
         problems.append("corrupt.webm: missing")
     poster = os.path.join(FIXTURES, "poster.png")
