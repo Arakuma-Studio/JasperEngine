@@ -23,7 +23,7 @@
 // @suggest-for fluid-trail ink-trail
 // @param      colors palette "#00aaff #ff00aa" -- Colours of the trail from fresh to old
 // @param      radius number 0.5 0.5 2 -- Radius of the stroke (1 is a tenth of the area)
-// @param      length time 0.5s 0.1s 2s -- How long the trail lasts
+// @param      lifetime time 0.5s 0.1s 2s -- How long the trail lasts (source: length)
 // @param      shrink number 1 0 1 -- How much the stroke thins as it fades (0 none)
 // @param      softness number 0 0 1 -- Edge softness (0 is a crisp paint edge)
 // @param      momentum number 12 0 50 -- How much of the pointer's velocity the paint carries
@@ -36,7 +36,7 @@
 // free-slip Stable-Fluids solve (shaders/SmokeFlow/index.ts, gpu/scaffolds/fluids.ts), with
 // CursorTrail's parameters and look. The puff radius is radius x 0.1 of the area (CursorTrail's
 // drawRadius) times the pen-pressure width of the smoothed speed (sqrt(speed / 1.5), at least
-// 0.2); the age runs from 0 to 1 over `length`, the density fades to 1/255 over it
+// 0.2); the age runs from 0 to 1 over `lifetime` (CursorTrail's length), the density fades to 1/255 over it
 // (decayFadeSeconds), and the colour ramp reads the age. `shrink` thins the coverage with age,
 // `softness` widens the coverage edge.
 
@@ -49,7 +49,7 @@ uniform u_fs_effectParams {
     vec4 colorsStops[2];
     float colorsCount;
     float radius;
-    float length;
+    float lifetime;
     float shrink;
     float softness;
     float momentum;
@@ -128,7 +128,7 @@ vec4 trail_splat(JfxStep s, bool velocityPass){
 
 vec4 jfx_step(JfxStep s){
     ivec2 cell = s.cell;
-    float lengthS = max(params.length, 0.05);
+    float lengthS = max(params.lifetime, 0.05);
     if (s.pass == JFX_PASS_TRACK){
         vec2 velocity = trail_delta(s) / max(s.dt, 0.001);
         return vec4(ptr_fetch(ivec2(0)).xy * (1.0 - 0.2) + velocity * 0.2, 0.0, 0.0);
@@ -149,7 +149,7 @@ vec4 jfx_step(JfxStep s){
         return fluid_project(cell, false, 0.0);
     if (s.pass == JFX_PASS_ADVECT_VEL)
         return fluid_advect_vel(cell, false, s.dt, 0.2);
-    // the density fades to 1/255 over `length` (decayFadeSeconds(255, rate)), the age runs 0..1
+    // the density fades to 1/255 over the lifetime (decayFadeSeconds(255, rate)), the age runs 0..1
     // over it (colorDecay x 0.4 per second is 1 / length)
     float dyeFade = log(255.0) / lengthS;
     return fluid_advect_density_age(cell, false, s.dt, true, dyeFade, 1.0 / (0.4 * lengthS));

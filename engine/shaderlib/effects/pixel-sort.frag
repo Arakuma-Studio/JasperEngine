@@ -31,6 +31,7 @@
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_color.glsl"
+#include "effects/lib/jfx_hash.glsl"
 #include "effects/lib/jfx_sample.glsl"
 #include "effects/lib/jfx_state.glsl"
 
