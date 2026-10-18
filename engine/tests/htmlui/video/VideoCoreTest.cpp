@@ -238,6 +238,21 @@ TEST(VideoDemuxer, RejectsWhatItCannotPlay){
 
 // ---------------------------------------------------------------- AV1
 
+// A WebM whose headers are whole but that has no frame (the test card cut before its first
+// Cluster): not playable, MEDIA_ERR_SRC_NOT_SUPPORTED, no crash
+TEST(VideoDemuxer, AFileWithoutFramesIsRejected){
+    std::ifstream in(videoFixture("testcard-noaudio.webm"), std::ios::binary);
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    const uint8_t clusterId[] = {0x1F, 0x43, 0xB6, 0x75};
+    const auto cluster = std::search(bytes.begin(), bytes.end(), std::begin(clusterId), std::end(clusterId));
+    ASSERT_NE(cluster, bytes.end());
+    const std::vector<uint8_t> headers(bytes.begin(), cluster);
+    VideoDemuxer demuxer;
+    EXPECT_FALSE(demuxer.openMemory(headers.data(), headers.size(), "no-frames.webm"));
+    EXPECT_EQ(demuxer.getError().code, MediaErrorCode::SRC_NOT_SUPPORTED);
+    EXPECT_NE(demuxer.getError().message.find("no-frames.webm"), std::string::npos) << demuxer.getError().message;
+}
+
 TEST(Av1Decoder, EveryFrameShowsItsIndex){
     const std::vector<VideoFrame> frames = decodeAll("testcard-noaudio.webm");
     ASSERT_EQ((int)frames.size(), CARD_FRAMES);

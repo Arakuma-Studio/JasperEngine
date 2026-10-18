@@ -590,3 +590,35 @@ TEST_F(VideoElementTest, HundredLoadUnloadCyclesLeakNothing){
     EXPECT_LE(images.size(), imageCount + 1);
     EXPECT_EQ(renderer->getVideoConversionCount() > 0, true);
 }
+
+// 100 `src` swaps on one element (the load algorithm each time: the old stream, its pictures and
+// its conversion jobs released): one stream at the end, the renderer's textures and images as
+// after the first load, the decoder's pictures as for that first load (same clip, same frame)
+TEST_F(VideoElementTest, HundredSrcSwapsLeakNothing){
+    RmlRenderer* renderer = runner->renderer();
+    ASSERT_NE(renderer, nullptr);
+    std::string error;
+    ASSERT_TRUE(runner->load("fixtures/video/pages/autoplay.html", &error)) << error;
+    runner->frameAt(0.0, true);
+    runner->frameAt(0.1, true);
+    const size_t textures = renderer->getLiveTextureCount();
+    std::vector<uint32_t> buffers, images;
+    renderer->getGpuHandles(buffers, images);
+    const size_t imageCount = images.size();
+    const size_t pictures = Av1Decoder::getLivePictureBytes();
+    EXPECT_EQ(VideoStream::getLiveCount(), 1);
+    UIVideoElement* v = video();
+    for (int swap = 1; swap <= 100; swap++){
+        v->SetAttribute("src", swap % 2 ? "../testcard-noaudio.webm" : "../testcard.webm");
+        runner->frameAt(0.1, true);
+        runner->frameAt(0.1, true);
+        ASSERT_EQ(VideoStream::getLiveCount(), 1) << "swap " << swap;
+    }
+    // back on the first clip (swap 100), at the same time
+    EXPECT_TRUE(v->getCurrentSrc().find("testcard.webm") != std::string::npos) << v->getCurrentSrc();
+    EXPECT_EQ(UIVideoElement::getLiveCount(), 1);
+    renderer->getGpuHandles(buffers, images);
+    EXPECT_EQ(renderer->getLiveTextureCount(), textures);
+    EXPECT_EQ(images.size(), imageCount);
+    EXPECT_LE(Av1Decoder::getLivePictureBytes(), pictures) << "no picture of an earlier stream is kept";
+}
