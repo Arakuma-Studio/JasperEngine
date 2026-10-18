@@ -231,12 +231,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `controls` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `controls` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `controls` | `video` | emulated | the engine's control bar (UA sheet; pointer, keyboard, gamepad) |  |
-| `controlslist` | `video` | ignored | dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0028) |  |
+| `controlslist` | `video` | ignored | dropped with an info (HTMLUI-HTML-0028) |  |
 | `count` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `count` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `count` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `crossorigin` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
-| `crossorigin` | `video` | ignored | local files only; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0028) |  |
+| `crossorigin` | `video` | ignored | local files only; dropped with an info (HTMLUI-HTML-0028) |  |
 | `data-*` | `*` | native | kept |  |
 | `data-htmlui-*` | `*` | rewritten | reserved name; renamed (Warning) |  |
 | `data-lucide` | `*` | rewritten | Lucide icon expansion |  |
@@ -247,8 +247,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `direction` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `disabled` | `*` | native | kept |  |
 | `disabled` | `fieldset` | rewritten | as browsers disable them (Info) |  |
-| `disablepictureinpicture` | `video` | ignored | no picture-in-picture; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0028) |  |
-| `disableremoteplayback` | `video` | ignored | no remote playback; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0028) |  |
+| `disablepictureinpicture` | `video` | ignored | no picture-in-picture; dropped with an info (HTMLUI-HTML-0028) |  |
+| `disableremoteplayback` | `video` | ignored | no remote playback; dropped with an info (HTMLUI-HTML-0028) |  |
 | `draggable` | `*` | rewritten | presentational hint (Info) |  |
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -317,7 +317,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `part` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `pattern` | `*` | unsupported | no constraint validation (Info) (HTMLUI-HTML-0004) | validate the value from Lua |
 | `placeholder` | `*` | native | kept |  |
-| `playsinline` | `video` | ignored | always inline; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0028) |  |
+| `playsinline` | `video` | ignored | always inline; dropped with an info (HTMLUI-HTML-0028) |  |
 | `popover` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
 | `popovertarget` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
 | `popovertargetaction` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
