@@ -6,7 +6,7 @@
   `docs/html-ui/phase-6-video.md`): the WebM/Matroska parser only.
 
 ## Vendored (byte for byte from the tag)
-`LICENSE.TXT`, `PATENTS.TXT`, `AUTHORS.TXT`, `README.libwebm`, `mkvparser/mkvparser.{h,cc}`.
+`LICENSE.TXT`, `PATENTS.TXT`, `AUTHORS.TXT`, `README.libwebm`, `mkvparser/mkvparser.{h,cc}`, `common/webmids.h`.
 Not vendored: the muxer, `mkvreader` (the engine reads through `FileData`), WebVTT, `webm_parser`,
 the tools, tests and build files.
 
