@@ -113,7 +113,7 @@ ivec2 swarm_atlas(int x, int y, int z){
 
 float swarm_dens_at(int cx, int cy, int cz){
     int g = int(DGRID);
-    return dens_fetch(swarm_atlas(clamp(cx, 0, g - 1), clamp(cy, 0, g - 1), clamp(cz, 0, g - 1))).x * (1.0 / 64.0);
+    return dens_fetch(swarm_atlas(clamp(cx, 0, g - 1), clamp(cy, 0, g - 1), clamp(cz, 0, g - 1))).x;
 }
 
 // the particle's position in fractional grid cells, its base corner and fraction
@@ -186,7 +186,9 @@ vec3 swarm_force(vec3 p, vec3 v, float seed, JfxStep s){
         F += vec3(mxy, 0.0);
     }
     F += vec3(0.0, -(params.gravity * 1.2), 0.0);
-    vec3 rnd = jfx_hash33(p * 193.0 + vec3(s.time * 31.7, s.time * 27.3, seed * 997.0)) - vec3(0.5);
+    // (upstream hashes the position and the time; a hash of the particle's seed and the step keeps
+    // the backends' rounding of the position out of the random numbers)
+    vec3 rnd = jfx_hash33(vec3(seed * 997.0, s.steps * 0.6180339, seed * 31.0)) - vec3(0.5);
     F += rnd * (params.agitation * 5.0);
     // the injected splats push the swarm away from them (or pull with a negative strength)
     vec2 size = max(s.c.size, vec2(1.0));
@@ -283,7 +285,8 @@ vec4 jfx_step(JfxStep s){
 
 vec4 jfx_scatter(JfxStep s, JfxPlaced a){
     if (s.pass == JFX_PASS_DENSITY){
-        // the corner's trilinear weight in 6-bit fixed point
+        // the corner's trilinear weight (summed as floats: upstream's 6-bit fixed point rounds, and
+        // a rounding that flips between backends would steer the swarm apart)
         ivec2 agentCell = ivec2(a.cell.x / 8, a.cell.y);
         int k = a.cell.x % 8;
         ivec3 base;
@@ -292,7 +295,7 @@ vec4 jfx_scatter(JfxStep s, JfxPlaced a){
         float wx = mix(1.0 - f.x, f.x, float(k & 1));
         float wy = mix(1.0 - f.y, f.y, float((k >> 1) & 1));
         float wz = mix(1.0 - f.z, f.z, float(k >> 2));
-        return vec4(floor(wx * wy * wz * 64.0 + 0.5), 0.0, 0.0, 0.0);
+        return vec4(wx * wy * wz, 0.0, 0.0, 0.0);
     }
     // the volume splat: the softness-blended profile, its speed-weighted copy
     vec4 p4 = pos_fetch(a.cell);
