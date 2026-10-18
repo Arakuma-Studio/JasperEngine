@@ -55,9 +55,10 @@ public:
 	/// @param[in] rtl The block container's direction is right-to-left: the line ends on its left.
 	void TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl);
 
-	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes.
+	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes. A line
+	// of a right-to-left block whose content overflows it is aligned to its right, its start (fork, P6-L1).
 	// @note The line must have been vertically positioned before closing.
-	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align);
+	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl = false);
 
 	float GetBoxCursor() const { return box_cursor; }
 	Vector2f GetPosition() const { return line_position; }

@@ -410,7 +410,7 @@ void LineBox::TruncateForLineClamp(const LineClampEllipsis& ellipsis, bool rtl)
 	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
 }
 
-void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align)
+void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
 
@@ -429,6 +429,10 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 		case Style::TextAlign::End: break;
 		}
 	}
+	// Content too long for the line is start-aligned (CSS Text 3 §7.1): a right-to-left line overflows on its left, as in
+	// Chromium (fork, P6-L1: the clamped lines of RTL blocks).
+	else if (rtl && box_cursor > line_width)
+		offset_horizontal_alignment = line_width - box_cursor;
 
 	// The line-clamp ellipsis (fork, P6-L1): relative to the text run it follows, or drawn by the block container.
 	const Vector2f line_origin = line_position - offset_parent_position + Vector2f(offset_horizontal_alignment, 0.f);

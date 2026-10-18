@@ -102,6 +102,8 @@ private:
 	bool wrap_content = false;
 	// The element's text-align property.
 	Style::TextAlign text_align = {};
+	// The element's direction is right-to-left (fork, P6-L1: overflowing lines and the line-clamp ellipsis).
+	bool rtl = false;
 
 	// The vertical position of the currently open line, or otherwise the next one to be placed, relative to the top of this box.
 	float box_cursor = 0;

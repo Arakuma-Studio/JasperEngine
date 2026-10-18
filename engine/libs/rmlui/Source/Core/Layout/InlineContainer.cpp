@@ -28,6 +28,7 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 	element_line_height = computed.line_height().value;
 	wrap_content = (computed.text_wrap_mode() == Style::TextWrapMode::Wrap);
 	text_align = computed.text_align();
+	rtl = (computed.direction() == Style::Direction::Rtl);
 	line_clamp = parent->GetLineClampContext();
 }
 
@@ -169,7 +170,7 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<Line
 
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
-		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align);
+		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align, rtl);
 
 		// Move the cursor down, unless we should collapse the line.
 		if (!line_box->CanCollapseLine())
@@ -240,7 +241,7 @@ void InlineContainer::CountLineForLineClamp(LineBox* line_box)
 		LineClampEllipsis ellipsis;
 		Element* block = parent->GetElement();
 		if (LineClamp::MakeEllipsis(block, ellipsis))
-			line_box->TruncateForLineClamp(ellipsis, block->GetComputedValues().direction() == Style::Direction::Rtl);
+			line_box->TruncateForLineClamp(ellipsis, rtl);
 	}
 	line_clamp->lines_until_clamp -= 1;
 }
@@ -257,7 +258,6 @@ void InlineContainer::CountEmptyLineForLineClamp()
 		LineClampEllipsis ellipsis;
 		if (LineClamp::MakeEllipsis(block, ellipsis))
 		{
-			const bool rtl = (block->GetComputedValues().direction() == Style::Direction::Rtl);
 			const float line_width = box_size.x;
 			float alignment_offset = 0.f;
 			switch (text_align)

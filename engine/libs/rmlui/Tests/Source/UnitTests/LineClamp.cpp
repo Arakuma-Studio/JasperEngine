@@ -335,6 +335,22 @@ TEST_CASE("LineClamp.text")
 			REQUIRE(text->GetLines().size() == 3);
 			CHECK(text->GetAbsoluteOffset().x + text->GetLines()[1].position.x == 15.f);
 		}
+		{
+			// a line too long for the box is start-aligned: it overflows on its left; its visual left is cut
+			Clamped clamped(scope, "", "<div class='c' id='c' style='-rmlui-direction: rtl'>XX XpXpXX XXX</div>");
+			CHECK(LinesOf(clamped.Get("c")) == StringList{"XX", "XpXX", "XXX"});
+			CHECK(clamped.EllipsisOf("c").x == 5.f);
+			ElementText* text = TextOf(clamped.Get("c"));
+			CHECK(text->GetAbsoluteOffset().x + text->GetLines()[1].position.x == 15.f);
+			CHECK(text->GetAbsoluteOffset().x + text->GetLines()[2].position.x == 25.f);
+		}
+		{
+			// right-to-left text (Hebrew letters are 10px wide here too): its logical end is on the left, cut there
+			const String alef = "\xd7\x90", bet = "\xd7\x91";
+			Clamped clamped(scope, "", "<div class='c' id='c' style='-rmlui-direction: rtl'>" + alef + alef + alef + " " + alef + bet + alef + bet +
+				alef + " " + alef + "</div>");
+			CHECK(LinesOf(clamped.Get("c")) == StringList{alef + alef + alef, alef + bet + alef + bet, alef});
+		}
 	}
 }
 
