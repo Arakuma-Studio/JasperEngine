@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <thread>
@@ -503,7 +504,9 @@ TEST(VideoStream, InlineModeGivesTheSameFrames){
 }
 
 TEST(VideoStream, RealTimeNeverBlocks){
-    VideoStream::setDecodeDelayForTesting(40);
+    // the decoder needs 200 ms a frame (5 fps) against the clock's 30 frames a second: it is behind
+    // from the second frame on, whatever the machine's load (a slower machine only widens the gap)
+    VideoStream::setDecodeDelayForTesting(200);
     {
         VideoStream stream(videoFixture("testcard-noaudio.webm"), true, false);
         ASSERT_EQ(stream.waitOpen(), VideoStream::State::READY);
@@ -512,7 +515,7 @@ TEST(VideoStream, RealTimeNeverBlocks){
         bool late = false;
         const auto start = std::chrono::steady_clock::now();
         for (int step = 0; step < 60; step++){
-            // the clock runs at 60 fps; the decoder needs 40 ms a frame (25 fps): it falls behind
+            // the clock runs at 60 fps
             const double t = step / 60.0;
             VideoFrame frame;
             const auto before = std::chrono::steady_clock::now();
@@ -530,7 +533,8 @@ TEST(VideoStream, RealTimeNeverBlocks){
         }
         (void)start;
         EXPECT_GT(newest, 0);
-        EXPECT_TRUE(late || stream.getStats().framesDropped > 0 || stream.getStats().seeks > 0);
+        // behind: an older frame was shown late, or the decoder skipped ahead to a keyframe
+        EXPECT_TRUE(late || stream.getStats().seeks > 0);
     }
     VideoStream::setDecodeDelayForTesting(0);
 }
@@ -617,6 +621,66 @@ TEST(VideoStream, HundredOpenCloseCyclesLeakNothing){
     }
     EXPECT_EQ(VideoStream::getLiveCount(), streams);
     EXPECT_EQ(Av1Decoder::getLivePictureBytes(), pictures);
+}
+
+// The cost and memory of a played clip (the phase record's numbers): the test card (320x180), the
+// video_menu example's loop (640x360) and any clips listed in JASPER_VIDEO_MEASURE (paths separated
+// by ':', e.g. 720p and 1080p encodes made for a measurement). Each is played frame by frame on the
+// worker in frame-exact mode; the decoder's time per frame, its picture pool and the queue are
+// recorded. The queue never holds more than QUEUE_FRAMES packed frames, and everything is freed.
+TEST(VideoStream, CostAndMemoryPerResolution){
+    std::vector<std::string> clips = {videoFixture("testcard-noaudio.webm"),
+                                      std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/../../../docs/mcp/guide/html-ui-examples/video_menu/assets/menu-loop.webm"};
+    if (const char* extra = std::getenv("JASPER_VIDEO_MEASURE")){
+        std::string list = extra;
+        for (size_t at = 0; at <= list.size();){
+            const size_t end = std::min(list.find(':', at), list.size());
+            if (end > at)
+                clips.push_back(list.substr(at, end - at));
+            at = end + 1;
+        }
+    }
+    const size_t livePictures = Av1Decoder::getLivePictureBytes();
+    for (const std::string& clip : clips){
+        size_t peakPictures = 0, peakQueue = 0, frameBytes = 0;
+        double msPerFrame = 0.0;
+        int width = 0, height = 0, threads = 0, frames = 0;
+        {
+            VideoStream stream(clip, true, false);
+            ASSERT_EQ(stream.waitOpen(), VideoStream::State::READY) << clip << ": " << stream.getError().message;
+            const VideoStream::Info& info = stream.getInfo();
+            width = info.width;
+            height = info.height;
+            threads = info.decoderThreads;
+            frames = info.frameCount;
+            const double fps = info.frameCount / info.duration;
+            int64_t shown = -1;
+            for (int i = 0; i < info.frameCount; i++){
+                VideoFrame frame;
+                ASSERT_EQ(stream.acquireFrame(0, (i + 0.5) / fps, true, shown, frame), VideoStream::FrameResult::NEW) << clip << " frame " << i;
+                shown = frame.sequence;
+                frameBytes = frame.bytes();
+                const VideoStream::Stats stats = stream.getStats();
+                peakPictures = std::max(peakPictures, stats.pictureBytes);
+                peakQueue = std::max(peakQueue, stats.queueBytes);
+            }
+            const VideoStream::Stats stats = stream.getStats();
+            EXPECT_EQ(stats.seeks, 0u) << clip << ": played in order";
+            EXPECT_EQ(stats.framesDropped, 0u) << clip;
+            msPerFrame = stats.framesDecoded ? stats.decodeNs / 1e6 / (double)stats.framesDecoded : 0.0;
+        }
+        // 4:2:0 8-bit packed: 1.5 bytes a pixel
+        EXPECT_EQ(frameBytes, (size_t)width * height + 2 * (size_t)((width + 1) / 2) * ((height + 1) / 2)) << clip;
+        EXPECT_LE(peakQueue, VideoStream::QUEUE_FRAMES * frameBytes) << clip;
+        EXPECT_GT(peakPictures, 0u) << clip;
+        const std::string name = clip.substr(clip.find_last_of('/') + 1);
+        std::printf("[measure] %s %dx%d, %d frames, %d decoder thread(s): %.2f ms/frame, pictures %.2f MiB, queue %.2f MiB, frame %.2f MiB\n",
+                    name.c_str(), width, height, frames, threads, msPerFrame, peakPictures / 1048576.0, peakQueue / 1048576.0,
+                    frameBytes / 1048576.0);
+        ::testing::Test::RecordProperty(name + "_ms_per_frame", std::to_string(msPerFrame));
+        ::testing::Test::RecordProperty(name + "_picture_bytes", std::to_string(peakPictures));
+    }
+    EXPECT_EQ(Av1Decoder::getLivePictureBytes(), livePictures);
 }
 
 // ---------------------------------------------------------------- playback state machine

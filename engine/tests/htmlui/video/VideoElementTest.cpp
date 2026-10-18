@@ -533,9 +533,12 @@ TEST_F(VideoElementTest, RealTimeModeNeverBlocks){
     UIVideoElement* v = video();
     runner->frameAt(0.0);
     runner->frameAt(0.0);
-    // release the clock: real time, a decoder slower than the clock
+    // release the clock: real time, a decoder far slower than the clock (400 ms a frame against
+    // 33 ms: over the 40 updates of 1/60 s the clock asks for 20 frames, the decoder has at most
+    // its queue and two more, whatever the machine's load: the shown frame falls more than the
+    // 0.25 s stall limit behind)
     HtmlUIClock::setFixedTime(std::nullopt);
-    VideoStream::setDecodeDelayForTesting(60);
+    VideoStream::setDecodeDelayForTesting(400);
     Rml::Context* context = runner->context();
     double slowest = 0.0;
     for (int i = 0; i < 40; i++){
@@ -547,9 +550,10 @@ TEST_F(VideoElementTest, RealTimeModeNeverBlocks){
     }
     EXPECT_FALSE(v->isFrameExact());
     EXPECT_LT(slowest, 0.03) << "an update waited for the decoder";
-    // the clock waited for the decoder at least once (waiting), or frames were dropped
-    const VideoStream::Stats stats = v->getStreamStats();
-    EXPECT_TRUE(logs["v"].count("waiting") > 0 || stats.framesDropped > 0 || stats.seeks > 0);
+    // the clock waited for the decoder (a browser buffering): `waiting`, and the time stopped short
+    // of the 40 updates' 0.667 s
+    EXPECT_GE(logs["v"].count("waiting"), 1u);
+    EXPECT_LT(v->getCurrentTime(), 40.0 / 60.0 - 0.1);
 }
 
 TEST_F(VideoElementTest, HundredLoadUnloadCyclesLeakNothing){
