@@ -263,13 +263,15 @@ private:
 	// container: then 'own_line_clamp', 'owns_line_clamp'), and whether we are laid out again without clamping (nothing followed the clamp
 	// line). The context's count when we were opened, for our parent. Our clamp position: our cursor after our first child
 	// past the clamp point, where an automatic height ends (or negative). Our first child added past the clamp point.
+	// (zero-initialized, as a block box without line clamping leaves them)
 	LineClampContext* line_clamp = nullptr;
 	LineClampContext own_line_clamp;
+	int lines_at_open = 0;
+	int first_past_clamp_child = 0; // its index + 1, 0 for none
+	float clamp_cursor = 0.f;       // when 'clamped_here'
+	bool clamped_here = false;
 	bool owns_line_clamp = false;
 	bool ignore_line_clamp = false;
-	int lines_at_open = 0;
-	float clamp_cursor = -1.f;
-	int first_past_clamp_child = -1;
 };
 
 } // namespace Rml

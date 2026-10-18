@@ -59,7 +59,7 @@ public:
 
 	/// Line clamping (fork, P6-L1): the height of this container's lines up to and including the first one closed past
 	/// the clamp point (the clamp line, or the first line when it starts past it), or a negative value.
-	float GetLineClampHeight() const { return clamp_height; }
+	float GetLineClampHeight() const { return has_clamp_height ? clamp_height : -1.f; }
 
 	// -- Inherited from LayoutBox --
 
@@ -120,8 +120,9 @@ private:
 	// of our lines up to the clamp point (GetLineClampHeight); the first line laid out past the clamp point (it and those
 	// after it give no baseline, as in Chromium).
 	LineClampContext* line_clamp = nullptr;
-	float clamp_height = -1.f;
-	int first_past_clamp_line = -1;
+	float clamp_height = 0.f;
+	bool has_clamp_height = false;
+	int first_past_clamp_line = 0; // its index + 1, 0 for none
 	// The ellipsis of our clamp line, which the line places and its fragments copy when it is closed.
 	UniquePtr<LineClampEllipsis> clamp_ellipsis;
 };

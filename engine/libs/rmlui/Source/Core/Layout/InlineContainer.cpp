@@ -233,8 +233,8 @@ void InlineContainer::CountLineForLineClamp(LineBox* line_box)
 	// Lines with content count (Chromium: not its empty line boxes).
 	if (line_box->CanCollapseLine())
 		return;
-	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line < 0)
-		first_past_clamp_line = (int)line_boxes.size() - 1;
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line == 0)
+		first_past_clamp_line = (int)line_boxes.size();
 
 	if (line_clamp->lines_until_clamp == 1)
 	{
@@ -247,8 +247,8 @@ void InlineContainer::CountLineForLineClamp(LineBox* line_box)
 
 void InlineContainer::CountEmptyLineForLineClamp()
 {
-	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line < 0)
-		first_past_clamp_line = (int)line_boxes.size();
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line == 0)
+		first_past_clamp_line = (int)line_boxes.size() + 1;
 
 	if (line_clamp->lines_until_clamp == 1)
 	{
@@ -275,8 +275,11 @@ void InlineContainer::CountEmptyLineForLineClamp()
 
 void InlineContainer::RecordLineClampHeight()
 {
-	if (line_clamp->lines_until_clamp <= 0 && clamp_height < 0.f)
+	if (line_clamp->lines_until_clamp <= 0 && !has_clamp_height)
+	{
 		clamp_height = Math::Max(box_cursor, 0.f);
+		has_clamp_height = true;
+	}
 }
 
 float InlineContainer::GetShrinkToFitWidth() const
@@ -310,7 +313,7 @@ Vector2f InlineContainer::GetStaticPositionEstimate(bool inline_level_box) const
 bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
 	// (the lines laid out past the line-clamp point give none: Chromium, fork P6-L1)
-	for (auto it = line_boxes.rbegin() + (first_past_clamp_line >= 0 ? (int)line_boxes.size() - first_past_clamp_line : 0); it != line_boxes.rend(); ++it)
+	for (auto it = line_boxes.rbegin() + (first_past_clamp_line != 0 ? (int)line_boxes.size() - (first_past_clamp_line - 1) : 0); it != line_boxes.rend(); ++it)
 	{
 		if ((*it)->CanCollapseLine())
 			continue;
@@ -322,7 +325,7 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 
 bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	const auto end = (first_past_clamp_line >= 0 ? line_boxes.begin() + first_past_clamp_line : line_boxes.end());
+	const auto end = (first_past_clamp_line != 0 ? line_boxes.begin() + (first_past_clamp_line - 1) : line_boxes.end());
 	for (auto it = line_boxes.begin(); it != end; ++it)
 	{
 		const auto& line_box = *it;

@@ -57,12 +57,12 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	bool clamped = false;
 	if (line_clamp)
 	{
-		if (owns_line_clamp && clamp_cursor >= 0.f && line_clamp->lines_until_clamp == 0)
+		if (owns_line_clamp && clamped_here && line_clamp->lines_until_clamp == 0)
 		{
 			ignore_line_clamp = true;
 			return false;
 		}
-		clamped = (clamp_cursor >= 0.f);
+		clamped = clamped_here;
 	}
 
 	// Our bottom margin collapses with our last in-flow child's if nothing separates them (CSS 2.1 §8.3.1): we are not the
@@ -811,8 +811,9 @@ void BlockContainer::ResetContents()
 		else
 			own_line_clamp.lines_until_clamp = element->GetComputedValues().line_clamp();
 	}
-	clamp_cursor = -1.f;
-	first_past_clamp_child = -1;
+	clamp_cursor = 0.f;
+	clamped_here = false;
+	first_past_clamp_child = 0;
 	if (LineClampAccess::HasBlockEllipsis(element))
 		LineClampAccess::SetBlockEllipsis(element, nullptr);
 	trailing_margin_set = CollapsibleMarginSet();
@@ -891,8 +892,11 @@ bool BlockContainer::CloseOpenInlineContainer()
 			return false;
 
 		// Our clamp position: after its line at the clamp point (fork, P6-L1).
-		if (line_clamp && clamp_cursor < 0.f && inline_container->GetLineClampHeight() >= 0.f)
+		if (line_clamp && !clamped_here && inline_container->GetLineClampHeight() >= 0.f)
+		{
 			clamp_cursor = child_position.y - (position.y + box.GetPosition().y) + inline_container->GetLineClampHeight();
+			clamped_here = true;
+		}
 	}
 
 	return true;
@@ -900,8 +904,8 @@ bool BlockContainer::CloseOpenInlineContainer()
 
 void BlockContainer::NoteLineClampChild()
 {
-	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_child < 0)
-		first_past_clamp_child = (int)child_boxes.size();
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_child == 0)
+		first_past_clamp_child = (int)child_boxes.size() + 1;
 }
 
 void BlockContainer::UpdateLineClampAfterChild(int lines_before, bool block_level_child)
@@ -910,8 +914,11 @@ void BlockContainer::UpdateLineClampAfterChild(int lines_before, bool block_leve
 	// content after it (no relayout without clamping); past the clamp point we record our clamp position.
 	if (block_level_child && lines_before == 0 && line_clamp->lines_until_clamp == 0)
 		line_clamp->lines_until_clamp = -1;
-	if (line_clamp->lines_until_clamp <= 0 && clamp_cursor < 0.f)
+	if (line_clamp->lines_until_clamp <= 0 && !clamped_here)
+	{
 		clamp_cursor = box_cursor;
+		clamped_here = true;
+	}
 }
 
 void BlockContainer::EnsureEmptyInterruptedLineBox()
@@ -967,7 +974,7 @@ bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
 	// The baseline of our first child that itself has a baseline (not those laid out past the line-clamp point: Chromium,
 	// fork P6-L1).
-	const auto end = (first_past_clamp_child >= 0 ? child_boxes.begin() + first_past_clamp_child : child_boxes.end());
+	const auto end = (first_past_clamp_child != 0 ? child_boxes.begin() + (first_past_clamp_child - 1) : child_boxes.end());
 	for (auto it = child_boxes.begin(); it != end; ++it)
 	{
 		const auto& child_box = *it;
@@ -986,7 +993,7 @@ bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 bool BlockContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
 	// Return the baseline of our last child that itself has a baseline.
-	const int end = (first_past_clamp_child >= 0 ? first_past_clamp_child : (int)child_boxes.size());
+	const int end = (first_past_clamp_child != 0 ? first_past_clamp_child - 1 : (int)child_boxes.size());
 	for (int i = end - 1; i >= 0; i--)
 	{
 		if (GetChildBaseline(*child_boxes[i], true, out_baseline))

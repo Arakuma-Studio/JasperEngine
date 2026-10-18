@@ -118,21 +118,22 @@ private:
 		bool split_left = false;
 		bool split_right = false;
 		bool has_content = false;
+		// Line clamping (fork, P6-L1): hidden by the ellipsis.
+		bool clamp_hidden = false;
 		FragmentIndex children_end_index = 0; // One-past-last-child of this box, as index into fragment list.
 
 		// For aligned subtree root.
 		float max_ascent = 0.f;
 		float max_descent = 0.f;
 
-		// Line clamping (fork, P6-L1): hidden by the ellipsis; a text run cut to fit it moves by 'clamp_shift' (on a
-		// right-to-left line, where its kept end stays in place).
-		bool clamp_hidden = false;
-		float clamp_shift = 0.f;
 	};
 	using FragmentList = Vector<Fragment>;
 
 	// Place an open fragment.
 	void CloseFragment(Fragment& open_fragment, float right_inner_edge_position);
+
+	// Close() of a line made room for the line-clamp ellipsis in (fork, P6-L1).
+	void SubmitClampedFragments(Element* offset_parent, Vector2f offset_parent_position, bool collapsed_line);
 
 	// Splits the line, returning a new line if there are any open fragments.
 	UniquePtr<LineBox> SplitLine(bool split_all_open_boxes);
@@ -196,10 +197,12 @@ private:
 	// Content offset due to space distribution from 'text-align'. Available after close.
 	float offset_horizontal_alignment = 0.f;
 
-	// The line-clamp ellipsis of the line (fork, P6-L1), after the fragment 'clamp_ellipsis_fragment' (RootFragmentIndex:
-	// drawn by the block container), its baseline origin at 'position' (relative to the line, before 'text-align').
+	// The line-clamp ellipsis of the line (fork, P6-L1), after the fragment 'clamp_ellipsis_fragment' - 1 (0: drawn by the
+	// block container), its baseline origin at 'position' (relative to the line, before 'text-align').
 	LineClampEllipsis* clamp_ellipsis = nullptr;
-	FragmentIndex clamp_ellipsis_fragment = RootFragmentIndex;
+	FragmentIndex clamp_ellipsis_fragment = 0;
+	// The line was made room for an ellipsis in: its fragments are submitted with their clamp state.
+	bool clamp_truncated = false;
 	// The line box's height above baseline. Available after close.
 	float total_height_above_baseline = 0.f;
 };

@@ -296,6 +296,7 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 void LineBox::TruncateForLineClamp(LineClampEllipsis& ellipsis, bool rtl)
 {
 	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
+	clamp_truncated = true;
 
 	// Chromium's LineTruncator::TruncateLine, on the fragments of the line: text runs and atomic inlines (inline boxes are
 	// not ellipsized). Offsets are measured from the line's start: its left, or for a right-to-left line the right end of
@@ -388,7 +389,8 @@ void LineBox::TruncateForLineClamp(LineClampEllipsis& ellipsis, bool rtl)
 									 ->TruncateForEllipsis(fragment.fragment_handle, width, space, rtl, first, shift);
 		if (kept_width >= 0.f)
 		{
-			fragment.clamp_shift = shift;
+			// (on a right-to-left line the kept end stays where it was)
+			fragment.position.x += shift;
 			ellipsized = index;
 			ellipsized_width = kept_width;
 			break;
@@ -403,10 +405,10 @@ void LineBox::TruncateForLineClamp(LineClampEllipsis& ellipsis, bool rtl)
 	const Fragment& fragment = fragments[ellipsized];
 	float left = 0.f, width = 0.f;
 	item_extent(fragment, left, width);
-	const float ellipsis_x = (rtl ? left + fragment.clamp_shift - ellipsis.width : left + ellipsized_width);
+	const float ellipsis_x = (rtl ? left - ellipsis.width : left + ellipsized_width);
 
 	clamp_ellipsis = &ellipsis;
-	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized : RootFragmentIndex);
+	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized + 1 : 0);
 	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
 
 	// Chromium appends the ellipsis to the line's items: an inline box still open at the line's end (it goes on on the
@@ -452,15 +454,44 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 	else if (rtl && box_cursor > line_width)
 		offset_horizontal_alignment = line_width - box_cursor;
 
+	// Position and size all inline-level boxes, place geometry boxes.
+	if (!clamp_truncated)
+	{
+		for (const Fragment& fragment : fragments)
+		{
+			// Skip inline boxes which have not been closed (moved down to next line).
+			if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
+				continue;
+
+			RMLUI_ASSERT(fragment.layout_width >= 0.f);
+
+			const PlacedFragment placed_fragment = {
+				offset_parent,
+				fragment.fragment_handle,
+				line_position - offset_parent_position + fragment.position + Vector2f(offset_horizontal_alignment, 0.f),
+				fragment.layout_width,
+				fragment.split_left,
+				fragment.split_right,
+				collapsed_line,
+				line_position.y - offset_parent_position.y,
+			};
+			fragment.box->Submit(placed_fragment);
+		}
+	}
+	else
+		SubmitClampedFragments(offset_parent, offset_parent_position, collapsed_line);
+
+	is_closed = true;
+}
+
+void LineBox::SubmitClampedFragments(Element* offset_parent, Vector2f offset_parent_position, bool collapsed_line)
+{
 	// The line-clamp ellipsis (fork, P6-L1): relative to the text run it follows, or drawn by the block container.
 	const Vector2f line_origin = line_position - offset_parent_position + Vector2f(offset_horizontal_alignment, 0.f);
 	if (clamp_ellipsis)
 	{
-		if (clamp_ellipsis_fragment != RootFragmentIndex)
-		{
-			const Fragment& fragment = fragments[clamp_ellipsis_fragment];
-			clamp_ellipsis->position -= fragment.position + Vector2f(fragment.clamp_shift, 0.f);
-		}
+		if (clamp_ellipsis_fragment != 0)
+			clamp_ellipsis->position -= fragments[clamp_ellipsis_fragment - 1].position;
 		else
 		{
 			clamp_ellipsis->position += line_origin;
@@ -469,12 +500,9 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 		}
 	}
 
-	// Position and size all inline-level boxes, place geometry boxes.
 	for (int i = 0; i < (int)fragments.size(); i++)
 	{
 		const Fragment& fragment = fragments[i];
-
-		// Skip inline boxes which have not been closed (moved down to next line).
 		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
 			continue;
 
@@ -483,7 +511,7 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 		PlacedFragment placed_fragment = {
 			offset_parent,
 			fragment.fragment_handle,
-			line_origin + fragment.position + Vector2f(fragment.clamp_shift, 0.f),
+			line_origin + fragment.position,
 			fragment.layout_width,
 			fragment.split_left,
 			fragment.split_right,
@@ -491,13 +519,11 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 			line_position.y - offset_parent_position.y,
 		};
 		placed_fragment.clamp_hidden = fragment.clamp_hidden;
-		if (clamp_ellipsis && i == clamp_ellipsis_fragment)
+		if (clamp_ellipsis && i == clamp_ellipsis_fragment - 1)
 			placed_fragment.clamp_ellipsis = clamp_ellipsis;
 		fragment.box->Submit(placed_fragment);
 	}
 	clamp_ellipsis = nullptr;
-
-	is_closed = true;
 }
 
 void LineBox::VerticallyAlignSubtree(const int subtree_root_index, const int children_end_index, float& max_ascent, float& max_descent)
