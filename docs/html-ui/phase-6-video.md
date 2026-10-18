@@ -938,8 +938,11 @@ Xcode sync `--check`s; `run-rmlui-tests.sh` (unchanged fork); `htmlui-editor-tes
   3.72, 11.7, 24.5. The engine picks 1 thread up to 360p, 2 to 720p, 4 above.
 - **Memory** (`VideoStream.CostAndMemoryPerResolution`, the decoder's picture pool by the
   counting allocator, peak over a play-through; the queue holds at most 4 packed frames, 1.5 bytes
-  a pixel): 320x180: pictures 1.27 MiB, queue 0.25 MiB; 640x360: pictures 3.17 MiB. MEMORY_720_1080
-  Per element add the RGBA8 target (4 bytes a pixel), the R8 planes (1.5 bytes a pixel) and 0.5 s
+  a pixel): 320x180 (1 decoder thread): pictures 1.27 MiB, a frame 0.08 MiB; 640x360 (1 thread):
+  pictures 3.17 MiB, a frame 0.33 MiB; 1280x720 (2 threads, the 3.1.3 Mandelbrot clip): pictures
+  12.66 MiB, a frame 1.32 MiB (the queue at most 5.3 MiB); 1920x1080 (4 threads): pictures 28.48 MiB,
+  a frame 2.97 MiB (the queue at most 11.9 MiB). (The test also prints the decoder's time per frame;
+  the runs here were on loaded hosts, 2-4x the 3.1.4 figures, so those are the reference.) Per element add the RGBA8 target (4 bytes a pixel), the R8 planes (1.5 bytes a pixel) and 0.5 s
   of audio (192 KiB stereo); `inspect_ui` reports the total (`memoryBytes`: 6.1 MiB for the
   640x360 `video_menu` background, 2.0 MiB for the 320x180 card with audio).
 - **A/V sync** (3.7): within 10 ms on the fixture clock, 25 ms (controller) and 29 ms (element)
