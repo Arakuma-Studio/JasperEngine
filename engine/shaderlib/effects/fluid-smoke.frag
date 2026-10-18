@@ -5,7 +5,7 @@
 // @summary    Fluid smoke rising from a source, swirling with vorticity; the pointer pushes it
 // @source     shaders.com Smoke
 // @cost       stateful
-// @pointer    position
+// @pointer    trail
 // @state      vel rgba16f 256x256 nearest
 // @state      pd rgba16f 256x256 nearest
 // @state      dye rgba16f 256x256 linear

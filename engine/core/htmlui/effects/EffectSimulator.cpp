@@ -576,7 +576,26 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         simulation.states.clear();
         simulation.allocated = false;
     }
+    // a change of a @reseed parameter restarts the simulation
+    std::string reseedKey;
+    if (instance.snapshot){
+        for (const std::string& param : m.reseedParams){
+            const int index = m.paramIndex(param);
+            if (index >= 0 && (size_t)index < instance.snapshot->canonical.size())
+                reseedKey += instance.snapshot->canonical[(size_t)index].second + ";";
+        }
+    }
     bool reset = false;
+    if (simulation.allocated && reseedKey != simulation.reseedKey){
+        for (auto& images : simulation.states){
+            for (auto& image : images.image)
+                if (image)
+                    clearImage(*image);
+            images.current = 0;
+        }
+        reset = true;
+    }
+    simulation.reseedKey = reseedKey;
     if (!simulation.allocated){
         if (!allocateStates(instance, simulation, false))
             return false;

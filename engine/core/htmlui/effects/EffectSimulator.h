@@ -23,7 +23,7 @@ namespace jasperengine::htmlui {
     ColorFormat colorFormatOf(EffectStateFormat format);
 
     // One state image: a 1-sample colour render target without depth
-    struct JASPERENGINE_INTERNAL EffectStateImage {
+    struct EffectStateImage {
         Framebuffer framebuffer;
         EffectStateFormat format = EffectStateFormat::RGBA16F;
         int width = 0, height = 0;

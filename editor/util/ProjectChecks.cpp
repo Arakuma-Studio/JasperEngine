@@ -1186,10 +1186,16 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::uiEffectUse
     fx::EffectManifest manifest;
     std::vector<fx::EffectDiagnostic> diags;
     const int type = static_cast<int>(ShaderType::UI_EFFECT);
-    if (fx::EffectManifestParser::parse(source, relativeFile, false, manifest, diags) && manifest.kind == fx::EffectKind::Paint) {
-        return {{base, type, 0}, {base, type, 1}};
+    std::vector<ShaderUse> uses;
+    const bool parsed = fx::EffectManifestParser::parse(source, relativeFile, false, manifest, diags);
+    for (uint32_t drawForm = (parsed && manifest.kind == fx::EffectKind::Paint) ? 0u : 1u; drawForm <= 1u; drawForm++) {
+        uses.push_back({base, type, drawForm});
+        // phase 6: a stateful effect's step (and scatter) forms
+        if (parsed)
+            for (uint32_t form : fx::EffectManifestParser::passForms(manifest, drawForm))
+                uses.push_back({base, type, form});
     }
-    return {{base, type, 1}};
+    return uses;
 }
 
 std::vector<std::string> editor::ProjectChecks::uiEffectFiles(Project* project) {
@@ -1420,7 +1426,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         if (effect) {
             // the parameter block the shader declares is the manifest's
             std::vector<std::string> mismatches;
-            if (!fx::EffectManifestParser::checkReflection(manifest, data, mismatches)) {
+            if (!fx::EffectManifestParser::checkReflection(manifest, data, mismatches, use.properties)) {
                 check.ok = false;
                 const std::string rel = projectRelative(project->getProjectPath(), uiEffectFile(project, use.base));
                 for (const std::string& mismatch : mismatches) {
@@ -1542,7 +1548,7 @@ Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
     Json item = {{"shader", check.use.base}, {"type", shaderTypeName(check.use.shaderType)}, {"ok", check.ok}};
     if (isUiEffectUse(check.use)) {
         item["effect"] = ShaderPool::getUiEffectName(check.use.base);
-        item["form"] = (check.use.properties & 1u) ? "filter" : "paint";
+        item["form"] = std::string((check.use.properties & 1u) ? "filter" : "paint") + ((check.use.properties & 4u) ? "-scatter" : (check.use.properties & 2u) ? "-step" : "");
     }
     if (!check.ok) {
         item["errors"] = check.errors;

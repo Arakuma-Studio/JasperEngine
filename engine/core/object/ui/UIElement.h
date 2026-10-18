@@ -38,6 +38,26 @@ namespace jasperengine{
         std::string name;
         std::string form;
         std::vector<std::pair<std::string, std::string>> params;
+        // phase 6: a stateful effect's simulation (docs/html-ui/phase-6-stateful-effects.md 3.10):
+        // its state images' bytes, steps since its reset, its simulation time (s), and whether it
+        // is paused (not drawn last frame)
+        bool stateful = false;
+        size_t stateBytes = 0;
+        int64_t steps = 0;
+        double simTime = 0.0;
+        bool paused = false;
+    };
+
+    // An injection into an element's stateful effects (phase 6, UIElement::effectSplat): x, y and
+    // radius in the effect area's CSS px, a velocity (dx, dy) in px/s, a CSS colour, a strength;
+    // effect names one effect ("" every stateful effect of the element)
+    struct UIEffectSplat {
+        float x = 0.f, y = 0.f;
+        float radius = 24.f;
+        float dx = 0.f, dy = 0.f;
+        std::string color = "#ffffff";
+        float strength = 1.f;
+        std::string effect;
     };
 
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
@@ -150,6 +170,10 @@ namespace jasperengine{
         // --- phase 5 (p5-infra): the UI effects the element uses (CSS effect()), in property order ---
 
         std::vector<UIEffectInfo> getEffects() const;
+        // --- phase 6: stateful effects. A splat queued on the element's simulations (consumed by
+        // their next step); the number that took it. effectReset restarts them ("" all); how many
+        int effectSplat(const UIEffectSplat& splat);
+        int effectReset(const std::string& effect = std::string());
 
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 

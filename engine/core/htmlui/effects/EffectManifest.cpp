@@ -417,6 +417,8 @@ uint64_t EffectManifest::stateSignature() const{
     }
     add(std::to_string(warmupSteps) + ":" + std::to_string(warmupDt) + ":" + std::to_string(rateHz) + ":" + std::to_string(maxSubsteps) + ":" +
         std::to_string(replaySeconds));
+    for (const std::string& param : reseedParams)
+        add(param);
     return h;
 }
 
@@ -806,6 +808,20 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
             }
             out.rateHz = hz;
             out.maxSubsteps = max;
+        }else if (name == "reseed"){
+            std::string item;
+            for (char c : rest + ","){
+                if (c == ','){
+                    const std::string param = trim(item);
+                    if (!param.empty())
+                        out.reseedParams.push_back(param);
+                    item.clear();
+                }else{
+                    item += c;
+                }
+            }
+            if (out.reseedParams.empty())
+                error(line, "@reseed lists the parameters whose change restarts the simulation", "@reseed seed");
         }else if (name == "replay"){
             float seconds = 0.f;
             if (!secondsOf(rest, seconds) || seconds < 0.f || seconds > 30.f){
@@ -816,7 +832,7 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
         }else{
             error(line, "unknown manifest directive '@" + name + "'",
                   "@effect, @kind, @category, @summary, @source, @cost, @backdrop, @time, @pointer, @prepass, @margin, @geometry, "
-                  "@suggest-for, @param, @state, @init, @step, @warmup, @rate, @replay");
+                  "@suggest-for, @param, @state, @init, @step, @warmup, @rate, @replay, @reseed");
         }
     }
     for (const auto& pending : pendingScatter){
@@ -966,6 +982,12 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
     }else if (!m.passes.empty() || m.warmupSteps > 0){
         error(m.line, "@init, @step and @warmup need a @state");
     }
+    for (const std::string& param : m.reseedParams){
+        if (!m.stateful())
+            error(m.line, "@reseed is for effects with @state");
+        else if (!m.findParam(param))
+            error(m.line, "@reseed names '" + param + "', which is not a parameter");
+    }
     bool hasInit = false;
     for (const EffectPassDef& pass : m.passes)
         hasInit = hasInit || pass.init;
@@ -1040,11 +1062,29 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
     return diags.size() == diagsBefore;
 }
 
-bool EffectManifestParser::checkReflection(const EffectManifest& m, ShaderData& shader, std::vector<std::string>& problems){
+std::vector<uint32_t> EffectManifestParser::passForms(const EffectManifest& m, uint32_t drawForm){
+    std::vector<uint32_t> forms;
+    if (!m.stateful())
+        return forms;
+    forms.push_back(drawForm | 2u);
+    if (m.hasScatter())
+        forms.push_back(drawForm | 4u);
+    return forms;
+}
+
+bool EffectManifestParser::checkReflection(const EffectManifest& m, ShaderData& shader, std::vector<std::string>& problems, uint32_t properties){
     const size_t before = problems.size();
+    const bool passForm = (properties & 6u) != 0;
     unsigned int frameSize = 0;
-    if (!shader.getUniformBlockMembers("u_fs_effectFrame", frameSize))
+    unsigned int stepSize = 0;
+    if (passForm){
+        // a step or scatter form: the step block (the frame block only when the passes read it)
+        if (!shader.getUniformBlockMembers("u_fs_effectStep", stepSize))
+            problems.push_back("the step variant has no u_fs_effectStep block (does the effect include effects/lib/main_step.glsl last, "
+                               "and does jfx_step read its JfxStep?)");
+    }else if (!shader.getUniformBlockMembers("u_fs_effectFrame", frameSize)){
         problems.push_back("the variant has no u_fs_effectFrame block (does the effect include effects/lib/jfx_common.glsl?)");
+    }
     unsigned int paramsSize = 0;
     const std::vector<ShaderUniform>* members = shader.getUniformBlockMembers("u_fs_effectParams", paramsSize);
     struct Expected { std::string name; ShaderUniformType type; unsigned int count; bool seen; };
@@ -1062,7 +1102,7 @@ bool EffectManifestParser::checkReflection(const EffectManifest& m, ShaderData& 
         }
     }
     if (!members){
-        if (!expected.empty())
+        if (!expected.empty() && !passForm)
             problems.push_back("the variant has no u_fs_effectParams block, but the manifest declares parameters (the effect reads none of them?)");
         return problems.size() == before;
     }

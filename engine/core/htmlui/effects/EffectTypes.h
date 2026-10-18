@@ -99,6 +99,7 @@ namespace jasperengine::htmlui {
         float rateHz = 60.f;                   // @rate <hz> [max <substeps>]
         int maxSubsteps = 4;
         float replaySeconds = 2.f;             // @replay <seconds>
+        std::vector<std::string> reseedParams; // @reseed <param>[, <param>]: a change restarts the simulation
         bool builtin = true;
         // builtin: "effects/<name>.frag" (the library); project: the asset-relative .frag
         std::string sourcePath;

@@ -62,7 +62,7 @@ namespace jasperengine::htmlui {
     // One element's simulation of a stateful effect (phase 6, docs/html-ui/phase-6-stateful-effects.md
     // 3.1, 3.6-3.8): its state images, its clock and its inputs. Owned by the element's effect state,
     // so it survives re-instancing; its images return to the pool when it is destroyed.
-    struct JASPERENGINE_INTERNAL EffectSimulation {
+    struct EffectSimulation {
         struct Images {
             std::shared_ptr<EffectStateImage> image[2];   // [1] empty for a single-image state
             int current = 0;                              // the image passes read and the draw samples
@@ -98,6 +98,7 @@ namespace jasperengine::htmlui {
         std::vector<EffectSplatData> pending;
         std::vector<std::pair<double, EffectSplatData>> log;
         uint64_t inputGeneration = 0;
+        std::string reseedKey;                  // the @reseed parameters' values when it started
         // statistics
         uint64_t stepsRun = 0;
         uint64_t replays = 0;

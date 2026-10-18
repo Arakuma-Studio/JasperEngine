@@ -153,7 +153,8 @@ TEST(EffectShaderBuildTest, EveryVariantEveryBackend){
             if (!m)
                 continue;   // the internal bright pass
             std::vector<std::string> problems;
-            EXPECT_TRUE(EffectManifestParser::checkReflection(*m, data, problems)) << name << ": " << (problems.empty() ? "" : problems[0]);
+            EXPECT_TRUE(EffectManifestParser::checkReflection(*m, data, problems, ShaderPool::getPropertiesFromKey(key))) << name << ": "
+                << (problems.empty() ? "" : problems[0]);
         }
     }
 }
