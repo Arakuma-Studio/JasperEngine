@@ -1572,7 +1572,7 @@ A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_p
 
 Hints: open-world
 
-Copy files/folders from absolute local paths into a project folder (created if missing), like dropping them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts ["Inter:400,700"] (Google Fonts -> .ttf + @font-face css), icons ["lucide:play"] (.svg), from_document (import every remote URL a .html/.css uses and rewrite it).
+Copy files/folders from absolute local paths into a project folder (created if missing), like dropping them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts ["Inter:400,700"] (Google Fonts -> .ttf + @font-face css), icons ["lucide:play"] (.svg), from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -2282,7 +2282,7 @@ Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo 
 | `scene` | integer or string |  |  |
 | `script` | boolean |  | Attach the template's Lua (default: examples yes, blank no). |
 | `sort_order` | integer (-32768..32767) |  |  |
-| `template` | `"main_menu"` \| `"pause_menu"` \| `"hud"` \| `"inventory"` \| `"settings"` \| `"dialogue"` \| `"shop"` \| `"toasts"` \| `"loading"` \| `"blank"` |  | Default: `"blank"`. |
+| `template` | `"main_menu"` \| `"pause_menu"` \| `"hud"` \| `"inventory"` \| `"settings"` \| `"dialogue"` \| `"shop"` \| `"toasts"` \| `"loading"` \| `"video_menu"` \| `"blank"` |  | Default: `"blank"`. |
 
 
 ### `inspect_ui`

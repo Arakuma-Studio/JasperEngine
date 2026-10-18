@@ -139,7 +139,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `selectedcontent` | unsupported | dropped (Info) (HTMLUI-HTML-0002) | show the selected option text from Lua |
 | `slot` | ignored | no shadow DOM: children rendered (HTMLUI-HTML-0002) |  |
 | `small` | native | UA inline styles |  |
-| `source` | rewritten | used to choose the img source at load; removed |  |
+| `source` | rewritten | picture: chooses the img source at load (removed); video: kept, tried in order at run time |  |
 | `span` | native | UA inline styles |  |
 | `strike` | native | UA inline styles |  |
 | `strong` | native | UA inline styles |  |
@@ -164,7 +164,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `u` | native | UA inline styles |  |
 | `ul` | native | UA display and spacing |  |
 | `var` | native | UA inline styles |  |
-| `video` | unsupported | placeholder div.htmlui-unsupported (Warning) (HTMLUI-HTML-0002) | render a texture through UIDocument render-to-texture, or use Lottie |
+| `video` | emulated | UIVideoElement: AV1 + Opus WebM on every platform (other formats HTMLUI-HTML-0027); controls, poster, preload, the HTMLMediaElement API in Lua |  |
 | `wbr` | rewritten | replaced by U+200B |  |
 | `xmp` | native | UA display and spacing |  |
 
@@ -199,7 +199,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 
 `*` = every element; `data-*`, `aria-*` and `on*` are patterns.
 
-### Attributes: a-i
+### Attributes: a-h
 
 | Attribute | Element | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -213,6 +213,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `autoplay` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `autoplay` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `autoplay` | `video` | native | starts once it can play; no autoplay policy (sound allowed) |  |
 | `background` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `background` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `background` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
@@ -229,10 +230,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `controls` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `controls` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `controls` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `controls` | `video` | emulated | the engine's control bar (UA sheet; pointer, keyboard, gamepad) |  |
+| `controlslist` | `video` | ignored | dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0004) |  |
 | `count` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `count` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `count` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `crossorigin` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
+| `crossorigin` | `video` | ignored | local files only; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0004) |  |
 | `data-*` | `*` | native | kept |  |
 | `data-htmlui-*` | `*` | rewritten | reserved name; renamed (Warning) |  |
 | `data-lucide` | `*` | rewritten | Lucide icon expansion |  |
@@ -243,6 +247,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `direction` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `disabled` | `*` | native | kept |  |
 | `disabled` | `fieldset` | rewritten | as browsers disable them (Info) |  |
+| `disablepictureinpicture` | `video` | ignored | no picture-in-picture; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0004) |  |
+| `disableremoteplayback` | `video` | ignored | no remote playback; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0004) |  |
 | `draggable` | `*` | rewritten | presentational hint (Info) |  |
 | `enctype` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `enterkeyhint` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -264,6 +270,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `hover` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `hover` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `href` | `*` | native | kept |  |
+
+### Attributes: i-r
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `id` | `*` | native | kept; id="htmlui-root" is reserved and renamed (Warning) |  |
 | `id` | `html` | rewritten | the root id is reserved; selectors on the author id are rewritten |  |
 | `inputmode` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -275,16 +286,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `itemprop` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemscope` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `itemtype` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
-
-### Attributes: l-s
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `lang` | `*` | rewritten | kept, plus a presentational hint |  |
 | `loading` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `loop` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `loop` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `loop` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `loop` | `video` | native | seamless (seeking, seeked at the wrap) |  |
 | `low` | `meter` | unsupported | dropped (Info) (HTMLUI-HTML-0004) | color the progress fill with a class |
 | `marker` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `marker` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -300,6 +307,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `mode` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `mode` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `multiple` | `*` | native | kept |  |
+| `muted` | `video` | native | the initial muted state (defaultMuted) |  |
 | `name` | `*` | native | kept |  |
 | `nonce` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `novalidate` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
@@ -309,9 +317,12 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `part` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `pattern` | `*` | unsupported | no constraint validation (Info) (HTMLUI-HTML-0004) | validate the value from Lua |
 | `placeholder` | `*` | native | kept |  |
+| `playsinline` | `video` | ignored | always inline; dropped (Info HTMLUI-HTML-0028) (HTMLUI-HTML-0004) |  |
 | `popover` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
 | `popovertarget` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
 | `popovertargetaction` | `*` | unsupported | popovers are not supported; dropped (Warning) (HTMLUI-HTML-0004) | toggle a positioned element's display from Lua |
+| `poster` | `video` | native | shown until playback starts or a seek; fitted by object-fit |  |
+| `preload` | `video` | native | none defers the load; metadata and auto decode the first frame |  |
 | `readonly` | `*` | native | kept |  |
 | `referrerpolicy` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `renderer` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -322,6 +333,11 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `role` | `*` | native | kept |  |
 | `rows` | `*` | native | kept |  |
 | `rowspan` | `*` | native | kept |  |
+
+### Attributes: s-w
+
+| Attribute | Element | Support | Notes | Instead |
+|---|---|---|---|---|
 | `segment` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `dotlottie-wc` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `segment` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -339,6 +355,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `src` | `dotlottie-player` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `dotlottie-wc` | rewritten | mapped to the <lottie> attribute |  |
 | `src` | `lottie-player` | rewritten | mapped to the <lottie> attribute |  |
+| `src` | `source` | native | video: a candidate, tried in order at run time |  |
+| `src` | `video` | native | WebM with AV1 video and Opus audio (other formats HTMLUI-HTML-0027) |  |
 | `srcset` | `img` | rewritten | candidate chosen at load by the dp ratio (Info) |  |
 | `srcset` | `source` | rewritten | resolved at load to choose the img source |  |
 | `start` | `ol` | native | read by the list marker emulation |  |
@@ -347,11 +365,6 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `state-machine-id` | `lottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `step` | `*` | native | kept |  |
 | `style` | `*` | rewritten | rewritten by the CSS stage, positions preserved |  |
-
-### Attributes: t-w
-
-| Attribute | Element | Support | Notes | Instead |
-|---|---|---|---|---|
 | `tabindex` | `*` | rewritten | -1 -> tab-index: none; focus: auto; 0 -> tab-index: auto; positive order ignored |  |
 | `target` | `form` | unsupported | no submission: the submit event carries the values (Info) (HTMLUI-HTML-0004) | handle the submit event in Lua |
 | `theme-id` | `dotlottie-player` | ignored | no <lottie> equivalent; dropped (Info) (HTMLUI-HTML-0004) |  |
@@ -360,6 +373,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `title` | `*` | unsupported | no tooltips; dropped (Info) (HTMLUI-HTML-0004) | show a tooltip element from Lua on hover |
 | `translate` | `*` | ignored | no effect in a game UI; dropped (Info) (HTMLUI-HTML-0004) |  |
 | `type` | `*` | native | kept |  |
+| `type` | `source` | native | video: skipped when canPlayType gives "" (video/webm with AV1, Opus plays) |  |
 | `valign` | `*` | rewritten | legacy presentational attribute |  |
 | `value` | `*` | native | kept |  |
 | `value` | `li` | native | read by the list marker emulation |  |
@@ -2252,6 +2266,8 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-HTML-0024` | warning | **Unsupported image format** (`unsupported-image-format`): The engine cannot decode this image format (WebP, AVIF, ...). Convert the image to PNG or JPEG (or SVG). |
 | `HTMLUI-HTML-0025` | info | **Dialog not modal** (`dialog-not-modal`): Dialogs open and close, but showModal() has no backdrop and does not trap the focus. Add a backdrop element styled in CSS if needed. |
 | `HTMLUI-HTML-0026` | warning | **Self-closing tag** (`self-closing-tag`): In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>. |
+| `HTMLUI-HTML-0027` | by case (warning) | **Unsupported media format** (`unsupported-media-format`): A <video> (or <source>) names a file the engine cannot play: the engine plays WebM with AV1 video and Opus audio on every platform (MP4, MOV, Ogg, H.264, HEVC, VP8, VP9 and Theora are not decoded). The source is skipped, and the video shows its poster or nothing. Convert the file: MCP import_files and the Project window convert videos with a user-installed FFmpeg (SVT-AV1 or libaom, libopus). Error when no source of the <video> can be played. |
+| `HTMLUI-HTML-0028` | info | **Media attribute ignored** (`media-attribute-ignored`): A <video> attribute or content without an engine equivalent was dropped: playsinline (videos always play inline), crossorigin, controlslist, disablepictureinpicture, disableremoteplayback, x-webkit-airplay, mediagroup, and the fallback content inside <video> (browsers that play video never show it either). |
 
 ### IMP
 
@@ -2266,6 +2282,8 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-IMP-0007` | warning | **WOFF only** (`woff-only`): The remote font is only available as WOFF/WOFF2, which the engine cannot read. Provide a TTF or OTF version. |
 | `HTMLUI-IMP-0008` | info | **License note** (`license-note`): The license of an imported resource was recorded, or it is unknown and must be verified before shipping. |
 | `HTMLUI-IMP-0009` | warning | **Manifest file missing** (`manifest-file-missing`): An import manifest entry points to a file that does not exist; re-import the resource (load the document in the editor, jasperengine-editor import-ui, or MCP import_files from_document). |
+| `HTMLUI-IMP-0010` | warning | **Video not converted** (`video-not-converted`): The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine never links or ships it. |
+| `HTMLUI-IMP-0011` | error | **Video conversion failed** (`video-conversion-failed`): FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the message has FFmpeg's last lines. The original is not imported. |
 
 ### SEL
 
