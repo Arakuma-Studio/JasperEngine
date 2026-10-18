@@ -883,5 +883,85 @@ Xcode sync `--check`s; `run-rmlui-tests.sh` (unchanged fork); `htmlui-editor-tes
 9. MCP, export and slow tests pass; docs, matrix, CONTRACTS, FORK, DESIGN updated.
 
 ## 7 Phase record
-*(filled at the end of `p6-video`: what was built, deviations from this spec, measurements, runs, and
-what could not be verified.)*
+
+### 7.1 Built (p6-video)
+- **Libraries** (3.2): dav1d 1.5.4 (C only, both bit depths), libopus 1.6.1 (the decoder's 66
+  sources), libwebm 1.0.0.32 (`mkvparser`), built by the engine's CMake (`engine/libs/*/CMakeLists.txt`,
+  `README.jasper.md` each), kept out of the shared engine (`--exclude-libs`, `hidden-symbols.map`,
+  `tools/build.sh`'s `nm -D` check), in `NOTICE.md`. Xcode: `tools/htmlui/xcode_add_video_libs.py`
+  (targets `dav1d-*`, `opus-*`, `webm-*` for iOS and macOS, the media sources, the Lua binding;
+  dav1d's bit-depth templates through generated wrappers `engine/libs/dav1d/bitdepth/*.c`).
+- **Media core** (`engine/core/htmlui/media/`, 3.3, 3.6, 3.7): `VideoFormats`, `VideoDemuxer`,
+  `Av1Decoder` (counting picture pool), `OpusAudioDecoder`, `VideoStream` (worker, or inline
+  without threads), `VideoPlayback`, `VideoAudioRing`/`VideoAudioSync`, `VideoColorConvert`.
+- **Element** `UIVideoElement` (the `video` instancer) with `UIVideoControls`; the renderer's
+  `Yuv` post variant, `queueVideoConversion`/`runVideoConversions` and the context registry;
+  `HtmlUITexture::planes`.
+- **Compat** (3.4.1, 3.13): `<video>` kept (no placeholder), `<source>` kept for video, the four
+  diagnostic codes, video URLs in CSS images (`HTMLUI-CSS-0004`), the UA sheet's section 9b and
+  the control icons, support rows (the matrix shows `video` emulated).
+- **API** (3.9): the `UIElement` media methods and the Lua properties and constants
+  (`HtmlUIMediaLua.cpp`); `inspect_ui`'s `media` block.
+- **Editor** (3.12): `VideoImporter` (copy, FFmpeg conversion, HDR tone mapping, HTMLUI-IMP-0010/0011),
+  `import_files` (local files and URLs: `RemoteVideoImporter`, the sniffer's video types), videos
+  dropped on the Project window, Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`),
+  `HtmlUIDependencies` kind `VIDEO`; example files served as blobs when binary.
+- **Example** `video_menu` (a title screen over a looping video, a motion toggle from Lua).
+- **Docs**: the guide's "Video" section and the rows that said "no `<video>`", CONTRACTS section 14,
+  FORK "Phase 6 (video)" (no patch), DESIGN deviation 24 and the names table, the regenerated
+  support matrix and `TOOLS.md`.
+
+### 7.2 Deviations from this spec (as implemented)
+1. `object-fit` defaults to `contain` (the UA sheet, as HTML's rendering section and Chromium),
+   not `fill` (3.4.4 corrected).
+2. C++ `duration` is `getMediaDuration()` (NaN before the metadata); `getDuration()` stays the
+   Lottie-shared float (0 then). The Lua binding is `HtmlUIMediaLua.cpp`, not `HtmlUIClassesLua.cpp`.
+3. `import_files` converts on its worker and waits (the call's 10-minute limit): no MCP job with
+   progress and cancel. A changed video reloads its documents; `currentTime` is not kept.
+4. No shader cache version bump (a new variant is a new cache entry).
+5. The test card draws its frame index as 8 blocks of 32 px (16x16 in 5.1 was too small for the
+   2x and 0.625x readings of the MCP and golden tests).
+6. `render-reference.mjs`'s `seekVideo` polls `seeking`/`readyState` from Node instead of waiting
+   for `seeked` and `requestVideoFrameCallback`: the fixture context runs without JavaScript (no
+   page timers or listeners) and the headless shell presents no frame before a screenshot. The
+   video area runs with scripting on, because Chromium shows native controls on a `<video>` when
+   scripting is disabled.
+7. Browser parity: the boxes are exact; the image metric is overridden by the measured values
+   (7.3) and explained in the sidecars.
+8. 5.6: the export tests use the test card (its bars are checkable in a screenshot) rather than
+   the `video_menu` document; the web export is verified by a scripted path (7.4), since the MCP
+   web export needs an emsdk on the host and the test host has it only in the build image.
+
+### 7.3 Measurements
+- **Decode cost** (C build, the 3.1.4 table measured on the test host's EPYC, one core, ms per
+  frame): 2.09 (256x256), 5.63 (640x360), 19.4 (1280x720), 42.0 (1920x1080); with 4 threads 1.68,
+  3.72, 11.7, 24.5. The engine picks 1 thread up to 360p, 2 to 720p, 4 above.
+- **Memory** (`VideoStream.CostAndMemoryPerResolution`, the decoder's picture pool by the
+  counting allocator, peak over a play-through; the queue holds at most 4 packed frames, 1.5 bytes
+  a pixel): 320x180: pictures 1.27 MiB, queue 0.25 MiB; 640x360: pictures 3.17 MiB. MEMORY_720_1080
+  Per element add the RGBA8 target (4 bytes a pixel), the R8 planes (1.5 bytes a pixel) and 0.5 s
+  of audio (192 KiB stereo); `inspect_ui` reports the total (`memoryBytes`: 6.1 MiB for the
+  640x360 `video_menu` background, 2.0 MiB for the 320x180 card with audio).
+- **A/V sync** (3.7): within 10 ms on the fixture clock, 25 ms (controller) and 29 ms (element)
+  with a mixer 3 % fast or slow, no resync; placement after a seek within about 1 ms.
+- **Browser parity** (5.3, Chromium 153 headless shell, glcore and Vulkan identical): the poster
+  fixture matches at the default metric (0 bad pixels); `seeked-contain` 1.126 % bad (1135
+  pixels, one cluster along the colour bars), `seeked-cover-radius` 0.924 % (865, largest cluster
+  301). Every pixel over the threshold lies within 2 px of a colour edge: Chromium's software
+  compositor converts with libyuv (point-sampled chroma, a one-pixel edge), the `Yuv` pass filters
+  the chroma bilinearly (as Chromium's GPU compositor does). Away from edges the difference is at
+  most 10 (19 with the rounded, scaled fixture) per channel, and the engine reproduces the clip's
+  colours exactly (bar (191, 191, 0); Chromium (191, 191, 9)).
+
+### 7.4 Runs (test host, Docker build images, `JOBS=4`, `flock lock-c`)
+RUNS_PLACEHOLDER
+
+### 7.5 Not verified
+- Windows, macOS and iOS were not built (no such host): the code uses the standard library,
+  `FileData`, SoLoud and sokol; the Xcode project is generated and `--check`ed; CMake's Windows
+  branches (dav1d's `win32/thread.c`, MSVC atomics, `_wfopen` in the importer) are untested.
+- Android was compiled (all four ABIs), not run. The Web build was compiled, exported and played
+  in Chromium headless (WebGL2 on SwiftShader), but without pthreads only (the inline decoder).
+- Audio was tested with the test consumer only: no host had an audio output device.
+- dav1d's asm (3.3x faster) is not enabled (the first follow-up).
+
