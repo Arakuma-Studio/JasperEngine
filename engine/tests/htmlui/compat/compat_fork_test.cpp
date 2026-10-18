@@ -90,7 +90,8 @@ TEST(ForkFeatures, PresentFeatures){
                                       .with(ForkFeature::RelativeFontWeight, true)
                                       .with(ForkFeature::ColorFunctions, true)
                                       .with(ForkFeature::TextFillFilter, true)   // phase 5, p5-infra: -jfx-text-fill (P5-1)
-                                      .with(ForkFeature::RegisteredProperties, true);   // phase 5, p5-property
+                                      .with(ForkFeature::RegisteredProperties, true)    // phase 5, p5-property
+                                      .with(ForkFeature::LineClamp, true);   // phase 6, p6-line-clamp (P6-L1)
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

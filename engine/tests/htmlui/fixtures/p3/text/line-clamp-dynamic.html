@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line clamp changed by a script</title>
+<style>
+  /* -webkit-line-clamp set from the element's style (a script's, through the element API) to 3, to none (the box is then the legacy flex container: all its lines), back to 1; the width changed on another box moves its ellipsis; a class turns the clamp off on a third. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+  .c.open { -webkit-line-clamp: unset; }
+</style>
+</head>
+<body>
+<div class="c" id="count" style="left: 10px; top: 10px">XpX XXX XpX XXX XpX</div>
+<div class="c" id="width" style="left: 75px; top: 10px">XpX XXX XpX XXX XpX</div>
+<div class="c" id="toggle" style="left: 160px; top: 10px">XpX XXX XpX XXX XpX</div>
+</body>
+</html>

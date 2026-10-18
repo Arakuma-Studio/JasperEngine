@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the legacy line clamp at several counts and widths</title>
+<style>
+  /* display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: N; overflow: hidden at N = 1..4 and widths 35..125px: N lines tall, the last one ending with the ellipsis (Ahem's U+2026 is a full square) after the characters that fit beside it; fewer lines or exactly N lines show none; padding and borders lie outside the lines; text-align offsets the uncut line (a right-aligned ellipsis ends outside, clipped); 'p' (Ahem's descender) shows which characters are kept. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+</style>
+</head>
+<body>
+<div class="c" id="n1" style="left: 10px; top: 10px; -webkit-line-clamp: 1">XpX XX XXXX XpX</div>
+<div class="c" id="n2" style="left: 75px; top: 10px">XpX XX XXXX XpX</div>
+<div class="c" id="n3" style="left: 140px; top: 10px; -webkit-line-clamp: 3">XpX XX XXXX XpX XX</div>
+<div class="c" id="n4" style="left: 205px; top: 10px; -webkit-line-clamp: 4">XpX XX XXXX XpX XX XpXX</div>
+<div class="c" id="w35" style="left: 10px; top: 60px; width: 35px">XX XpX XXX XX</div>
+<div class="c" id="w85" style="left: 55px; top: 60px; width: 85px">XXXX XpXp XXX XX XX</div>
+<div class="c" id="w125" style="left: 150px; top: 60px; width: 125px">XXX XXXX XX XXX XX XpXpX XX</div>
+<div class="c" id="cut" style="left: 285px; top: 60px">XXXXX XpXpX XXX</div>
+<div class="c" id="chars" style="left: 285px; top: 90px">XX XX XX Xp XX XX</div>
+<div class="c" id="fewer" style="left: 10px; top: 110px; -webkit-line-clamp: 4">XXX XpX</div>
+<div class="c" id="exact" style="left: 75px; top: 110px; -webkit-line-clamp: 3">XXX XpX XXX</div>
+<div class="c" id="edges" style="left: 140px; top: 110px; padding: 3px 5px 4px; border: 2px solid #4060a0">XpX XXX XXX XXX</div>
+<div class="c" id="center" style="left: 220px; top: 110px; width: 56px; text-align: center">XpX XXX XpX</div>
+<div class="c" id="right" style="left: 285px; top: 110px; text-align: right">XpX XXX XpX</div>
+<div class="c" id="tall" style="left: 10px; top: 160px; height: 40px">XpX XXX XpX XXX XpX</div>
+<div class="c" id="max" style="left: 75px; top: 160px; max-height: 15px">XpX XXX XpX XXX</div>
+<div class="c" id="min" style="left: 140px; top: 160px; min-height: 35px">XpX XXX XpX XXX</div>
+<div id="line" style="position: absolute; left: 210px; top: 160px; width: 140px; background: #f0e0d0">Xp<span class="c" id="inline" style="position: static; display: -webkit-inline-box">XpX XXX XpX</span>X</div>
+<div class="c" id="none" style="left: 285px; top: 190px; -webkit-line-clamp: none">XpX XX</div>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>line clamp from a script</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; font-size: 14px; line-height: 20px; }
+    .desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 120px; }
+    .desc.open { -webkit-line-clamp: none; }
+  </style>
+</head>
+<body>
+  <p class="desc" id="desc">A sword forged in dragonfire that deals extra fire damage, ignites the enemies it strikes on critical hits and glows in the dark.</p>
+  <p id="plain" style="width: 120px">A sword forged in dragonfire that deals extra fire damage, ignites the enemies it strikes on critical hits and glows in the dark.</p>
+</body>
+</html>

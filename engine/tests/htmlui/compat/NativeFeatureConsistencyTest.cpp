@@ -253,6 +253,10 @@ namespace {
         {ForkFeature::RegisteredProperties, SampleKind::Sheet,
          "@property --sample-len { syntax: '<length>'; inherits: false; initial-value: 4px; } .sample { width: var(--sample-len); }",
          "--sample-len:4px", "HTMLUI-AT-0010"},
+        // p6-line-clamp (P6-L1): the fork's legacy line clamping (phase 2: a max-height cut, the legacy box a flex container)
+        {ForkFeature::LineClamp, SampleKind::Declaration, "-webkit-line-clamp: 3", "max-height:3.6em", ""},
+        {ForkFeature::LineClamp, SampleKind::Declaration, "display: -webkit-box", "display:flex", ""},
+        {ForkFeature::LineClamp, SampleKind::Declaration, "display: -webkit-inline-box", "display:inline-flex", ""},
     };
 
     // lower case, no white space, no trailing ';'

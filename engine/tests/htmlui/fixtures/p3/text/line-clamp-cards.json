@@ -1,0 +1,9 @@
+{
+ "comment": "Item cards as a game UI writes them: a grid of cards whose descriptions are clamped to two lines (one of them shorter, unclamped; one clamped to three), the price row after the description; a flex row of a clamped flex item stretched taller than its two lines (the lines after them show), a flex-grown one and a fixed one; a clamped grid item that spans two columns. Text-heavy (the boxes are the oracle): the glyph rasterization differs from Chromium's; the page without its text is gated at the strict metric (noText).",
+ "viewport": [
+  460,
+  330
+ ],
+ "boxes": true,
+ "noText": true
+}

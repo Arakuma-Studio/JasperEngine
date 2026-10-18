@@ -1,0 +1,146 @@
+{
+ "fixture": "text/line-clamp-transition.html",
+ "viewport": [
+  210,
+  110
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "quarter": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 70,
+    "h": 20
+   },
+   {
+    "id": "max",
+    "tag": "div",
+    "x": 135,
+    "y": 10,
+    "w": 55,
+    "h": 13.75
+   },
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 55,
+    "h": 20
+   },
+   {
+    "id": "instant",
+    "tag": "div",
+    "x": 75,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   }
+  ],
+  "half": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 85,
+    "h": 20
+   },
+   {
+    "id": "max",
+    "tag": "div",
+    "x": 135,
+    "y": 10,
+    "w": 55,
+    "h": 22.5
+   },
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   },
+   {
+    "id": "instant",
+    "tag": "div",
+    "x": 75,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   }
+  ],
+  "three-quarters": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 100,
+    "h": 20
+   },
+   {
+    "id": "max",
+    "tag": "div",
+    "x": 135,
+    "y": 10,
+    "w": 55,
+    "h": 30
+   },
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   },
+   {
+    "id": "instant",
+    "tag": "div",
+    "x": 75,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   }
+  ],
+  "end": [
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 115,
+    "h": 20
+   },
+   {
+    "id": "max",
+    "tag": "div",
+    "x": 135,
+    "y": 10,
+    "w": 55,
+    "h": 30
+   },
+   {
+    "id": "discrete",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   },
+   {
+    "id": "instant",
+    "tag": "div",
+    "x": 75,
+    "y": 60,
+    "w": 55,
+    "h": 40
+   }
+  ]
+ }
+}

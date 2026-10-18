@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line clamp counts the lines of nested blocks</title>
+<style>
+  /* Chromium clamps in the block flow: the lines of nested blocks (with margins, borders) count, the ellipsis ends the line the count reaches N at, the clamped height ends there without the margins after it, and the blocks after the clamp point (with overflow: visible, painted) are as tall as their first line; a block with its own formatting context, an inline-block or a float keeps its lines out of the count; an empty block after the clamp line keeps the ellipsis; floats below the clamped height are not enclosed. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+  .p { margin: 3px 0; background: #d0d8f0; }
+  .q { background: #f0e0c0; }
+</style>
+</head>
+<body>
+<div class="c" id="n1" style="left: 10px; top: 10px; -webkit-line-clamp: 1"><div class="q" id="n1a">XpX XX</div><div id="n1b">XXX XX</div></div>
+<div class="c" id="n2" style="left: 75px; top: 10px"><div class="q" id="n2a">XpX XX</div><div id="n2b">XXX XX</div></div>
+<div class="c" id="n3" style="left: 140px; top: 10px; -webkit-line-clamp: 3"><div class="q" id="n3a">XpX XX</div><div id="n3b">XXX XpXX XX</div><div class="q" id="n3c">XX</div></div>
+<div class="c" id="margins" style="left: 205px; top: 10px"><div class="p" id="m1">XpX XXX</div><div class="p" id="m2">XXX XX</div><div class="p" id="m3">XX</div></div>
+<div class="c" id="deep" style="left: 270px; top: 10px; -webkit-line-clamp: 3"><div id="d1" style="border-top: 2px solid #4060a0">XX<div id="d2" style="padding-bottom: 4px">XpX XXX<div id="d3">XXX</div></div></div></div>
+<div class="c" id="after" style="left: 10px; top: 70px; overflow: visible"><div class="q" id="a1">XpX XX</div><div id="a2">XX XXX XX</div><div class="q" id="a3">XpX X</div></div>
+<div class="c" id="fc" style="left: 75px; top: 70px">XXX<div id="fc-d" style="display: flow-root; background: #f0e0c0">XpX XXX XX</div>XX XX</div>
+<div class="c" id="empty" style="left: 140px; top: 70px"><div class="q" id="e1">XpX XXX</div><div id="e2"></div></div>
+<div class="c" id="definite" style="left: 205px; top: 70px; overflow: visible"><div id="f1">XX XpX</div><div class="q" id="f2" style="height: 15px">XX</div><div id="f3">XX XX</div></div>
+<div class="c" id="float" style="left: 270px; top: 70px"><div id="fl" style="float: left; width: 15px; height: 35px; background: #c03030"></div>XX XX XpX XX XX</div>
+</body>
+</html>

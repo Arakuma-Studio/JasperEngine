@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: inline content on the clamped line</title>
+<style>
+  /* The ellipsis is in the block's colour, after the text of a span (over its right padding and border), after an inline-block that fits beside it (which hides one that does not, and keeps one that starts the line), on a line of nothing but a <br>, at the end of pre lines; nowrap keeps one line (no clamp ellipsis, text-overflow ellipsizes it); text-overflow ellipsizes the other lines of the box. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+  .ib { display: inline-block; width: 20px; height: 10px; background: #c03030; }
+  .red { color: #c03030; }
+</style>
+</head>
+<body>
+<div class="c" id="span" style="left: 10px; top: 10px">XXX <span id="span-s" style="padding: 0 4px; border-right: 3px solid #30a030; background: #f0c080">XpX</span> XXX</div>
+<div class="c" id="colour" style="left: 75px; top: 10px">XXX <span class="red" id="colour-s">XpX XXX</span></div>
+<div class="c" id="split" style="left: 140px; top: 10px"><span class="red" id="split-s">XXX XpX XXX</span> XXX</div>
+<div class="c" id="ib-fits" style="left: 205px; top: 10px">XXX XX<span class="ib" id="ib-fits-b"></span> XXX</div>
+<div class="c" id="ib-hidden" style="left: 270px; top: 10px">XXX XXX<span class="ib" id="ib-hidden-b"></span> XXX</div>
+<div class="c" id="ib-first" style="left: 10px; top: 50px; width: 25px">XX <span class="ib" id="ib-first-b" style="width: 30px"></span> XXX</div>
+<div class="c" id="ib-lines" style="left: 75px; top: 50px">XXX <span id="ib-lines-b" style="display: inline-block; width: 30px; background: #f0c080">XXX XpX</span> XXX XX</div>
+<div class="c" id="br" style="left: 140px; top: 50px">XpX<br>XXX<br>XXX</div>
+<div class="c" id="br-empty" style="left: 205px; top: 50px">XpX<br><br>XXX</div>
+<div class="c" id="pre" style="left: 270px; top: 50px; white-space: pre">X
+XpX XXX
+XXX</div>
+<div class="c" id="nowrap" style="left: 10px; top: 90px; white-space: nowrap; -webkit-line-clamp: 1">XXXXpXXXXX</div>
+<div class="c" id="nowrap-to" style="left: 75px; top: 90px; white-space: nowrap; -webkit-line-clamp: 1; text-overflow: ellipsis">XXXXpXXXXX</div>
+<div class="c" id="to" style="left: 140px; top: 90px; text-overflow: ellipsis">XXXXXXXpXX XXX XXX</div>
+<div class="c" id="long" style="left: 205px; top: 90px">XXXXXXXpXX XXX XXX</div>
+<div class="c" id="empty-after" style="left: 270px; top: 90px">XXX XpX<div id="empty-after-d"></div></div>
+<div class="c" id="span-after" style="left: 10px; top: 120px">XXX XpX<span id="span-after-s"></span></div>
+<div class="c" id="visible" style="left: 75px; top: 120px; overflow: visible">XpX XXX XpX XXX</div>
+</body>
+</html>

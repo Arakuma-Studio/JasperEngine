@@ -1,0 +1,114 @@
+{
+ "fixture": "text/line-clamp-dynamic.html",
+ "viewport": [
+  230,
+  70
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "two": [
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 55,
+    "h": 20
+   },
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 75,
+    "y": 10,
+    "w": 55,
+    "h": 20
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 160,
+    "y": 10,
+    "w": 55,
+    "h": 20
+   }
+  ],
+  "three": [
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 55,
+    "h": 30
+   },
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 75,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 160,
+    "y": 10,
+    "w": 55,
+    "h": 50
+   }
+  ],
+  "none": [
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 55,
+    "h": 50
+   },
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 75,
+    "y": 10,
+    "w": 35,
+    "h": 20
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 160,
+    "y": 10,
+    "w": 55,
+    "h": 20
+   }
+  ],
+  "one": [
+   {
+    "id": "count",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 55,
+    "h": 10
+   },
+   {
+    "id": "width",
+    "tag": "div",
+    "x": 75,
+    "y": 10,
+    "w": 35,
+    "h": 20
+   },
+   {
+    "id": "toggle",
+    "tag": "div",
+    "x": 160,
+    "y": 10,
+    "w": 55,
+    "h": 20
+   }
+  ]
+ }
+}

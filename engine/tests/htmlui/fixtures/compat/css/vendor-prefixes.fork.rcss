@@ -9,8 +9,9 @@ transform: scale(2);
 border-radius: 3px;
 }
 #htmlui-root .box {
-display: flex;
+display: -webkit-box;
 flex-direction: column;
+-webkit-box-orient: vertical;
 justify-content: center;
 align-items: center;
 }
@@ -25,7 +26,7 @@ align-items: center;
 flex: 1 0 auto;
 }
 #htmlui-root .inline {
-display: inline-flex;
+display: -webkit-inline-box;
 }
 #htmlui-root .grad {
 background-color: transparent;

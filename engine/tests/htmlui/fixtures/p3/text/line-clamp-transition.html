@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: transitions of a clamped box</title>
+<style>
+  /* A clamped box whose width transitions (its lines wrap again at each width, the ellipsis moves), one whose max-height transitions over its clamped height, and -webkit-line-clamp itself: discrete, it changes at once, or at half the duration with transition-behavior: allow-discrete. Captured at 0.25, 0.5, 0.75 and 1 s. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+  #width { transition: width 1s linear; }
+  #width.on { width: 115px; }
+  #max { transition: max-height 1s linear; max-height: 5px; -webkit-line-clamp: 3; }
+  #max.on { max-height: 40px; }
+  #discrete { transition: -webkit-line-clamp 1s linear allow-discrete; }
+  #discrete.on, #instant.on { -webkit-line-clamp: 4; }
+  #instant { transition: -webkit-line-clamp 1s linear; }
+</style>
+</head>
+<body>
+<div class="c" id="width" style="left: 10px; top: 10px">XpX XXX XpX XX XXX XpX XX</div>
+<div class="c" id="max" style="left: 135px; top: 10px">XpX XXX XpX XXX XpX</div>
+<div class="c" id="discrete" style="left: 10px; top: 60px">XpX XXX XpX XXX XpX</div>
+<div class="c" id="instant" style="left: 75px; top: 60px">XpX XXX XpX XXX XpX</div>
+</body>
+</html>
