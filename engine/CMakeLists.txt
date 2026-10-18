@@ -855,7 +855,10 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/UILottieElement.cpp
     core/htmlui/media/Av1Decoder.cpp
     core/htmlui/media/OpusAudioDecoder.cpp
+    core/htmlui/media/UIVideoControls.cpp
+    core/htmlui/media/UIVideoElement.cpp
     core/htmlui/media/VideoAudio.cpp
+    core/htmlui/media/VideoColorConvert.cpp
     core/htmlui/media/VideoDemuxer.cpp
     core/htmlui/media/VideoFormats.cpp
     core/htmlui/media/VideoPlayback.cpp

@@ -13,6 +13,8 @@
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/SupportTables.h"
 #include "htmlui/compat/UrlResolver.h"
+#include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/media/VideoFormats.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -145,6 +147,96 @@ namespace {
             element.removeAttr("src");   // the fallback of §3.13.6: nothing is drawn
         }else{
             src->value = emitted;
+        }
+    }
+
+    // a <video> or <source> URL the engine can play (or one it cannot check here: remote, missing,
+    // which the resolver reported); reports why not (phase 6, HTMLUI-HTML-0027)
+    bool checkVideoUrl(TransformContext& context, const ResolvedUrl& resolved, const std::string& value, const std::string& type, SourceRef where){
+        using jasperengine::VideoFormats;
+        using jasperengine::VideoProbe;
+        if (!type.empty() && VideoFormats::canPlayType(type) == VideoFormats::CanPlay::NO){
+            context.sink.report(codes::UnsupportedMediaFormat, where,
+                                "type \"" + type + "\" of '" + value + "' is not played: the engine plays video/webm (AV1 video, Opus audio)",
+                                VideoFormats::conversionHint(), "", value);
+            return false;
+        }
+        if (VideoFormats::isRejectedExtension(resolved.assetPath.empty() ? value : resolved.assetPath)){
+            context.sink.report(codes::UnsupportedMediaFormat, where,
+                                "'" + value + "' is in a format the engine does not play (it plays WebM with AV1 video and Opus audio)",
+                                VideoFormats::conversionHint(), "", value);
+            return false;
+        }
+        if (!resolved.local() || resolved.assetPath.empty() || !resolved.exists || VirtualFiles::isVirtual(resolved.assetPath))
+            return resolved.exists;
+        // the header only (a file read through the document's file access is read whole)
+        VideoProbe probe;
+        if (context.fileAccess.read){
+            std::string bytes;
+            if (!readAssetFile(context.fileAccess, resolved.assetPath, bytes))
+                return false;
+            probe = VideoFormats::probeMemory(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(), resolved.assetPath);
+        }else{
+            probe = VideoFormats::probeFile(resolved.assetPath);
+        }
+        if (!probe.playable){
+            context.sink.report(codes::UnsupportedMediaFormat, where, "'" + value + "': " + probe.error.message, VideoFormats::conversionHint(), "", value);
+            return false;
+        }
+        if (!probe.audioPlayable){
+            context.sink.report(codes::UnsupportedMediaFormat, where,
+                                "'" + value + "': its " + VideoFormats::codecName(probe.audioCodec) + " audio is not played (the engine plays Opus)",
+                                VideoFormats::conversionHint(), "", value);
+        }
+        return true;
+    }
+
+    // <video> (phase 6): src, poster and the src of its <source> children resolved as other URLs,
+    // and their formats checked; an Error when none can be played
+    void resolveVideo(TransformContext& context, HtmlNode& video){
+        if (HtmlAttr* poster = video.findAttr("poster")){
+            const std::string value = trim(poster->value);
+            if (value.empty()){
+                video.removeAttr("poster");
+            }else{
+                const std::string emitted = context.resolveUrl(value, "image", poster->valueRef.valid() ? poster->valueRef : video.ref);
+                if (emitted.empty())
+                    video.removeAttr("poster");
+                else
+                    poster->value = emitted;
+            }
+        }
+        bool any = false, playable = false;
+        auto resolve = [&](HtmlNode& element, const std::string& type){
+            HtmlAttr* src = element.findAttr("src");
+            if (!src)
+                return;
+            const std::string value = trim(src->value);
+            if (value.empty())
+                return;
+            any = true;
+            const SourceRef where = src->valueRef.valid() ? src->valueRef : element.ref;
+            ResolvedUrl resolved;
+            const std::string emitted = context.resolveUrl(value, "video", where, &resolved);
+            if (checkVideoUrl(context, resolved, value, type, where))
+                playable = true;
+            if (emitted.empty())
+                element.removeAttr("src");
+            else
+                element.findAttr("src")->value = emitted;
+        };
+        if (video.hasAttr("src")){
+            resolve(video, "");
+        }else{
+            for (std::unique_ptr<HtmlNode>& child : video.children){
+                if (child->is("source"))
+                    resolve(*child, trim(child->attr("type")));
+            }
+        }
+        if (any && !playable){
+            context.sink.reportAs(Severity::Error, codes::UnsupportedMediaFormat, video.ref,
+                                  "no source of this <video> can be played: it shows its poster or nothing",
+                                  jasperengine::VideoFormats::conversionHint(), "", "video");
         }
     }
 
@@ -308,6 +400,8 @@ namespace {
                 resolveSource(context, element, "svg");
             else if (element.tag == "lottie")
                 resolveSource(context, element, "lottie");
+            else if (element.tag == "video")
+                resolveVideo(context, element);
             else if (element.tag == "a")
                 checkLink(context, element);
         }

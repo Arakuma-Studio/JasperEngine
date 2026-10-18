@@ -64,6 +64,8 @@ namespace jasperengine {
         // false with error (and errorCode) set. headersOnly: no cluster is read (probe); the
         // index stays empty and the duration is the segment's (0 when it has none)
         bool open(const std::string& path, bool headersOnly = false);
+        // the same over bytes in memory (copied); `name` is used in messages
+        bool openMemory(const uint8_t* data, size_t size, const std::string& name, bool headersOnly = false);
         void close();
 
         const MediaError& getError() const;
@@ -101,6 +103,7 @@ namespace jasperengine {
     private:
         class Reader;
         bool fail(MediaErrorCode code, const std::string& message);
+        bool openReader(FileData* file, bool headersOnly);
         bool buildIndex();
 
         std::unique_ptr<Reader> reader;

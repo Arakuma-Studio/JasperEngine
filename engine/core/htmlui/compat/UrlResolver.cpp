@@ -115,6 +115,8 @@ namespace {
             return "the animation stays empty";
         if (kind == "svg")
             return "the element stays empty";
+        if (kind == "video")
+            return "the video shows its poster or nothing";
         return "it is not loaded";
     }
 

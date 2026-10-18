@@ -3,6 +3,7 @@
 
 #include "VideoDemuxer.h"
 
+#include "io/Data.h"
 #include "io/File.h"
 #include "io/FileData.h"
 
@@ -186,6 +187,27 @@ bool VideoDemuxer::open(const std::string& filePath, bool headersOnly){
         delete file;
         return fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + filePath + "' could not be read");
     }
+    return openReader(file, headersOnly);
+}
+
+bool VideoDemuxer::openMemory(const uint8_t* data, size_t size, const std::string& name, bool headersOnly){
+    close();
+    error = MediaError();
+    path = name;
+    docType.clear();
+    videoCodecId.clear();
+    audioCodecId.clear();
+    videoTrack = VideoTrackInfo();
+    audioTrack = AudioTrackInfo();
+    if (!data || size == 0)
+        return fail(MediaErrorCode::SRC_NOT_SUPPORTED, "'" + name + "' is empty");
+    Data* memory = new Data();
+    memory->open(const_cast<unsigned char*>(data), (unsigned int)size, true, true);
+    return openReader(memory, headersOnly);
+}
+
+bool VideoDemuxer::openReader(FileData* file, bool headersOnly){
+    const std::string& filePath = path;
     reader = std::make_unique<Reader>(file);
 
     long long position = 0;

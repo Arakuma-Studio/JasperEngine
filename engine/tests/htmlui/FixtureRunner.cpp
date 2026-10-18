@@ -18,6 +18,7 @@
 #include "HtmlUIClock.h"
 #include "object/ui/UIElement.h"
 #include "object/ui/UIElementInternal.h"
+#include "media/UIVideoElement.h"
 
 #include "json.hpp"
 
@@ -124,7 +125,7 @@ bool jasperengine::test::loadSidecar(const std::string& path, FixtureSidecar& si
             {"release", FixtureStep::Kind::Release}, {"addClass", FixtureStep::Kind::AddClass},
             {"removeClass", FixtureStep::Kind::RemoveClass}, {"setStyle", FixtureStep::Kind::SetStyle},
             {"setAttr", FixtureStep::Kind::SetAttr}, {"scroll", FixtureStep::Kind::Scroll}, {"advance", FixtureStep::Kind::Advance},
-            {"capture", FixtureStep::Kind::Capture}};
+            {"capture", FixtureStep::Kind::Capture}, {"seekVideo", FixtureStep::Kind::SeekVideo}};
         size_t index = 0;
         for (const nlohmann::json& item : json.value("steps", nlohmann::json::array())){
             index++;
@@ -194,6 +195,12 @@ bool jasperengine::test::loadSidecar(const std::string& path, FixtureSidecar& si
                 if (!v.is_string())
                     return fail(error, where + ": a file-name suffix");
                 step.suffix = v.get<std::string>();
+                break;
+            case FixtureStep::Kind::SeekVideo:
+                if (!v.is_array() || v.size() != 2 || targetId(v[0]).empty() || !v[1].is_number() || v[1].get<double>() < 0.0)
+                    return fail(error, where + ": [\"#id\", seconds]");
+                step.id = targetId(v[0]);
+                step.seconds = v[1].get<double>();
                 break;
             }
             sidecar.steps.push_back(std::move(step));
@@ -463,6 +470,10 @@ Rml::Context* FixtureRunner::context() const{
     return state->render ? state->render->context : nullptr;
 }
 
+RmlRenderer* FixtureRunner::renderer() const{
+    return state->render ? &state->render->renderer : nullptr;
+}
+
 Rml::ElementDocument* FixtureRunner::document() const{
     return state->document;
 }
@@ -495,12 +506,22 @@ void FixtureRunner::frame(bool draw, bool* drawn){
     Rml::SetGeometryPixelSize(1.0f);
     hc::updateRuntime(r.context);
     r.context->Update();
+    // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
+    r.renderer.runVideoConversions();
     if (begun)
         r.context->Render();
     const bool result = draw && r.renderer.endFrame();
     SystemRender::commit();
     if (drawn)
         *drawn = result;
+}
+
+void FixtureRunner::frameAt(double seconds, bool draw){
+    if (!valid())
+        return;
+    state->time = std::max(state->time, seconds);
+    HtmlUIClock::setFixedTime(state->time);
+    frame(draw);
 }
 
 bool FixtureRunner::load(const std::string& assetPath, std::string* error){
@@ -639,6 +660,19 @@ bool FixtureRunner::step(const FixtureStep& step, std::string* error){
     }
     case Kind::Capture:
         return true;
+    case Kind::SeekVideo:{
+        // the UI clock is fixed: the element decodes the frame at once (frame-exact mode), and the
+        // frames after the seek upload and convert it
+        UIVideoElement* video = rmlui_dynamic_cast<UIVideoElement*>(element(step.id, error));
+        if (!video)
+            return fail(error, "#" + step.id + " is not a <video>");
+        video->setCurrentTime(step.seconds);
+        for (int i = 0; i < 4 && video->isSeeking(); i++)
+            frame(false);
+        if (video->isSeeking())
+            return fail(error, "#" + step.id + " did not finish seeking to " + std::to_string(step.seconds));
+        break;
+    }
     }
     // the change is styled and laid out (transitions start) at the step's time
     frame(false);

@@ -105,6 +105,10 @@ namespace jasperengine {
         // the audio of media position `frames` (sample frames from the start of iteration 0)
         // follows: the ring is refilled from there (seeks, loops, a large drift)
         void syncAudio(int64_t frames);
+        // a sync the worker has not done yet (the ring still holds what was before it)
+        bool isAudioSyncPending() const;
+        // waits until it is done (frame-exact mode: decisions on the new positions only)
+        void waitAudioSync();
         std::shared_ptr<VideoAudioRing> getAudioRing() const;
 
         // inline mode: up to `steps` units of work (opening, one frame, one audio packet); returns

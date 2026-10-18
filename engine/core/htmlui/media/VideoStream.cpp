@@ -255,6 +255,7 @@ void VideoStream::handleAudioSync(std::unique_lock<std::mutex>& lock){
     const int64_t target = std::max<int64_t>(pendingAudioSync, 0);
     pendingAudioSync = -1;
     audioGeneration++;
+    frameReady.notify_all();   // waitAudioSync
     if (!ring || !audioDecoder)
         return;
     ring->reset(target);
@@ -615,6 +616,22 @@ void VideoStream::syncAudio(int64_t frames){
     pendingAudioSync = std::max<int64_t>(frames, 0);
     audioGeneration++;
     workerWake.notify_all();
+}
+
+bool VideoStream::isAudioSyncPending() const{
+    std::lock_guard<std::mutex> lock(mutex);
+    return pendingAudioSync >= 0;
+}
+
+void VideoStream::waitAudioSync(){
+    if (!threaded){
+        while (isAudioSyncPending() && state == State::READY)
+            step();
+        return;
+    }
+    std::unique_lock<std::mutex> lock(mutex);
+    workerWake.notify_all();
+    frameReady.wait_for(lock, WAIT_LIMIT, [this]{ return pendingAudioSync < 0 || quit || state != State::READY; });
 }
 
 std::shared_ptr<VideoAudioRing> VideoStream::getAudioRing() const{

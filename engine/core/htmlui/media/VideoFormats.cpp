@@ -124,10 +124,28 @@ bool VideoFormats::isVideoPath(const std::string& path){
     return isPlayableExtension(path) || isRejectedExtension(path);
 }
 
+namespace {
+
+    VideoProbe probeWith(VideoDemuxer& demuxer, bool opened);
+
+}
+
 VideoProbe VideoFormats::probeFile(const std::string& path){
-    VideoProbe probe;
     VideoDemuxer demuxer;
     const bool opened = demuxer.open(path, true);
+    return probeWith(demuxer, opened);
+}
+
+VideoProbe VideoFormats::probeMemory(const uint8_t* data, size_t size, const std::string& name){
+    VideoDemuxer demuxer;
+    const bool opened = demuxer.openMemory(data, size, name, true);
+    return probeWith(demuxer, opened);
+}
+
+namespace {
+
+VideoProbe probeWith(VideoDemuxer& demuxer, bool opened){
+    VideoProbe probe;
     probe.container = demuxer.getDocType();
     probe.videoCodec = demuxer.getVideoCodecId();
     probe.audioCodec = demuxer.getAudioCodecId();
@@ -146,6 +164,8 @@ VideoProbe VideoFormats::probeFile(const std::string& path){
         probe.audioChannels = demuxer.getAudioTrack().channels;
     probe.duration = demuxer.getDuration();
     return probe;
+}
+
 }
 
 std::string VideoFormats::codecName(const std::string& id){

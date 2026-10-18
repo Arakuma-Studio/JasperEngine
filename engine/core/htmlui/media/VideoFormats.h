@@ -7,6 +7,8 @@
 #include "Export.h"
 #include "VideoTypes.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace jasperengine {
@@ -44,6 +46,8 @@ namespace jasperengine {
 
         // header-only probe through FileData (asset paths, absolute paths, the resource pack)
         static VideoProbe probeFile(const std::string& path);
+        // the same over a file's bytes
+        static VideoProbe probeMemory(const uint8_t* data, size_t size, const std::string& name);
 
         // "V_VP9" -> "VP9", "A_VORBIS" -> "Vorbis", "V_MPEG4/ISO/AVC" -> "H.264", ...
         static std::string codecName(const std::string& matroskaCodecId);

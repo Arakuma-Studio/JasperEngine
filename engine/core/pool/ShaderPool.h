@@ -20,8 +20,9 @@ namespace jasperengine{
     using ShaderBuilderFn = std::function<ShaderBuildResult(ShaderKey)>;
 
     // the exclusive variants of ShaderType::HTMLUI_POST, in property-bit order
-    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY };
-    static const int HTMLUI_POST_VARIANT_COUNT = 6;
+    // YUV: <video> frames (phase 6), appended
+    enum class HtmlUIPostVariant { PASSTHROUGH, COLOR_MATRIX, BLEND_MASK, DROP_SHADOW, BLUR, UNPREMULTIPLY, YUV };
+    static const int HTMLUI_POST_VARIANT_COUNT = 7;
 
     class JASPERENGINE_API ShaderPool{
     private:
@@ -203,7 +204,7 @@ namespace jasperengine{
         // HTMLUI_POST: one property bit per (exclusive) variant
         static uint32_t getHtmlUIPostProperties(HtmlUIPostVariant variant);
         // every built-in variant an HTML UI document draws with (export and Build Settings
-        // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the six HTMLUI_POST
+        // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
         static std::vector<std::pair<ShaderType, uint32_t>> getHtmlUIVariants();
         static uint32_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
         static uint32_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
