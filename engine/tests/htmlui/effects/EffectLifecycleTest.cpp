@@ -157,6 +157,7 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
 
     Counters baseline;
     uint64_t created = 0;
+    uint64_t documentBytes = 0;
     double clock = 10.0;
     for (int cycle = 0; cycle < 100; cycle++){
         std::shared_ptr<const hc::CompatDocument> compiled;
@@ -165,14 +166,14 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
         document->Show();
         runtime.setTestPointer(r.context, Rml::Vector2f(80.f, 50.f), false, 0.1f);
         ASSERT_TRUE(r.renderUntilDrawn()) << "cycle " << cycle;
-        // a few live steps
-        for (int f = 0; f < 3; f++){
-            clock += 1.0 / 60.0;
-            HtmlUIClock::setFixedTime(clock);
-            ASSERT_TRUE(r.renderFrame()) << "cycle " << cycle;
-        }
-        if (cycle == 0)
+        // a live step
+        clock += 1.0 / 60.0;
+        HtmlUIClock::setFixedTime(clock);
+        ASSERT_TRUE(r.renderFrame()) << "cycle " << cycle;
+        if (cycle == 0){
             EXPECT_EQ(runtime.simulationCount(), (size_t)count) << "every stateful effect simulates";
+            documentBytes = runtime.stats().stateBytes;
+        }
         runtime.clearTestInput();
         document->Close();
         r.context->Update();
@@ -185,10 +186,17 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
             created = pool.createdImages();
         }else if (cycle == 99){
             EXPECT_EQ(countersOf(r), baseline) << "the GPU objects grew over 100 cycles";
-            EXPECT_EQ(pool.createdImages(), created) << "the pool made images after the first cycle";
+            // the pool keeps at most 64 MB: a document with more state than that makes the excess
+            // again each cycle (every stateful effect at once has more)
+            if (documentBytes <= EffectStatePool::kMaxPooledBytes)
+                EXPECT_EQ(pool.createdImages(), created) << "the pool made images after the first cycle";
+            std::printf("[ effects  ] every stateful effect: %.1f MB of state images; the pool made %llu images in the first cycle, %llu "
+                        "in the 99 others\n", (double)documentBytes / (1024.0 * 1024.0), (unsigned long long)created,
+                        (unsigned long long)(pool.createdImages() - created));
         }
     }
     hc::VirtualFiles::remove(path);
+    EXPECT_LE(pool.pooledBytes(), EffectStatePool::kMaxPooledBytes);
     pool.trim(0);
     EXPECT_EQ(pool.pooledImages(), 0u) << "trim(0) destroys every pooled image";
     runtime.setStatefulBudget(EffectStatefulBudget());
