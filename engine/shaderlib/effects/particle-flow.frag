@@ -32,7 +32,7 @@
 // @param      ambient number 0.15 0 1 -- A gentle breeze that keeps the dust drifting (0: only the pointer)
 // @param      speed number 1 0.2 3 -- How strongly the fluid carries the particles
 // @param      shape enum streak arrow|streak|dot|square|glow -- How a particle is drawn
-// @param      size number 1.2 0.3 3 -- Size of a particle (1 is 1.3 px)
+// @param      size number 1.2 0.3 3 -- Size of a particle
 // @param      trails number 0 0 1 -- How long the motion trails persist
 // @param      color-a color #8ec5ff -- Colour of slowly drifting particles
 // @param      color-b color #ffd98e -- Colour particles flash toward in fast jets
@@ -43,7 +43,7 @@
 // advect2d, std/sim/agentRender.ts): a dye-less 256 x 256 Stable-Fluids field stirred by the
 // pointer's impulse ribbon and a curl-noise breeze, particles easing toward its velocity with a weak
 // R2 home spring, drawn as velocity-oriented comets coloured by local speed into the trail canvas.
-// Upstream's idle freeze is not ported (3.2, Out). Accumulators the area's size, sizes in CSS px.
+// Upstream's idle freeze is not ported (3.2, Out). Accumulators the area's size; sizes upstream's (agent_body).
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_color.glsl"
@@ -105,7 +105,7 @@ float flow_count(){
 }
 
 float flow_body(JfxStep s){
-    return clamp(params.size, 0.3, 3.0) * 1.3 / max(s.c.size.y, 1.0);
+    return agent_body(clamp(params.size, 0.3, 3.0) * 1.3, s.c.size.y);
 }
 
 vec4 jfx_step(JfxStep s){

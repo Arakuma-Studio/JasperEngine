@@ -16,6 +16,8 @@
 #include "htmlui/compat/css/CssRewriter.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
 #include "htmlui/effects/EffectInstancers.h"
+#include "htmlui/effects/EffectRegistry.h"
+#include "htmlui/effects/EffectRuntime.h"
 #include "object/ui/UIElementInternal.h"
 #include "subsystem/UIDocumentSystem.h"
 
@@ -1220,6 +1222,7 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         }
     }
     out.flags = flagsOf(doc, element);
+    std::map<std::string, int> ordinals;
     for (EffectUse& use : collectEffectUses(element)){
         InspectEffect effect;
         effect.property = use.property;
@@ -1227,6 +1230,16 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         effect.name = use.name;
         effect.form = use.filterForm ? "filter" : "paint";
         effect.params = std::move(use.params);
+        // phase 6: the n-th use of a stateful effect's name is its n-th simulation
+        const EffectManifest* manifest = EffectRegistry::get().find(use.name);
+        if (manifest && manifest->stateful()){
+            const EffectSimulationInfo sim = EffectRuntime::get().simulationInfo(element, use.name, ordinals[use.name]++);
+            effect.stateful = true;
+            effect.stateBytes = sim.bytes;
+            effect.steps = sim.steps;
+            effect.simTime = sim.time;
+            effect.paused = sim.paused;
+        }
         out.effects.push_back(std::move(effect));
     }
     return out;

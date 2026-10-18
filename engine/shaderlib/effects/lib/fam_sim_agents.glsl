@@ -17,6 +17,13 @@
 const float AGENT_GAIN_HARD = 637.0;
 const float AGENT_GAIN_SOFT = 255.0;
 
+// an agent's body half width in world units (the area's height is 1) from upstream's size in
+// texels of its 1024 reference: as upstream draws it over an area at least 410 px tall (a smaller
+// area shows agents at that 410 px size in CSS px, so they stay legible)
+float agent_body(float texels, float areaHeight){
+    return texels * max(areaHeight, 410.0) / (1024.0 * max(areaHeight, 1.0));
+}
+
 // the agent index of a table texel, and back
 int agent_index(ivec2 cell, int width){
     return cell.y * width + cell.x;

@@ -696,8 +696,12 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
         for (const hui::InspectEffect& effect : e.effects) {
             Json params = Json::object();
             for (const auto& [name, value] : effect.params) params[name] = value;
-            effects.push_back({{"property", effect.property}, {"index", effect.index}, {"name", effect.name}, {"form", effect.form},
-                               {"params", params}});
+            Json entry = {{"property", effect.property}, {"index", effect.index}, {"name", effect.name}, {"form", effect.form},
+                          {"params", params}};
+            // phase 6: a stateful effect's simulation
+            if (effect.stateful)
+                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused}};
+            effects.push_back(std::move(entry));
         }
         out["effects"] = effects;
     }

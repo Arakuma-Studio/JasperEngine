@@ -8,6 +8,8 @@
 // <name>_fetch(ivec2(x, y)) reads and what a pass writes at gl_FragCoord (x + 0.5, y + 0.5);
 // <name>_sample(uv) reads uv (0..1, y down: row 0 at the top of the effect area) with the
 // state's filter. A pass reads every state's current image and writes its target's other one.
+// A state every writer of which is additive (add, scatter) has one image: the pass writing it
+// reads it as an empty 1 x 1 black image (its size is s.size there).
 #ifndef JFX_STATE_GLSL
 #define JFX_STATE_GLSL
 

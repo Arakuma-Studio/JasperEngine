@@ -24,7 +24,7 @@
 // @param      count integer 2000 100 4000 -- Number of flocking agents
 // @param      speed number 2 0.2 5 -- Cruising speed of the flock
 // @param      seed number 0 0 100 -- Re-rolls the flock's starting formation
-// @param      size number 1.5 0.5 3 -- Size of each agent (1 is 2 px)
+// @param      size number 1.5 0.5 3 -- Size of each agent
 // @param      trails number 0 0 1 -- How long the motion trails persist (0 crisp agents)
 // @param      separation number 1.7 0 3 -- How strongly agents steer away from crowding
 // @param      alignment number 1.5 0 3 -- How strongly agents match their neighbours' heading
@@ -45,8 +45,8 @@
 // the accumulators and resolved through the rest->excited ramp into the persistent trail canvas.
 // Upstream updates the flock in place (Gauss-Seidel); every agent reads the last step's table here
 // (the steering is a pass of its own, so the integration and the envelope read it once). The
-// accumulators are the area's size (CSS px, upstream a 1024 x 1024 target) and an agent's size is
-// in CSS px (upstream's texels of its 1024 reference).
+// accumulators are the area's size (CSS px, upstream a 1024 x 1024 target); an agent's size is
+// upstream's over areas at least 410 px tall, and that size in CSS px below (agent_body).
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_color.glsl"
@@ -116,8 +116,8 @@ BoidsFrame boids_frame(JfxStep s){
     f.cursorRadius = 0.22;
     f.cursorRadiusSq = f.cursorRadius * f.cursorRadius;
     f.cursorForce = params.cursorStrength * f.maxSpeed * 12.0;
-    // the body's half width in world units: `size` x 2 CSS px
-    f.bodyR = clamp(params.size, 0.5, 3.0) * 2.0 / size.y;
+    // the body's half width: `size` x 2 texels of upstream's 1024 reference (agent_body)
+    f.bodyR = agent_body(clamp(params.size, 0.5, 3.0) * 2.0, size.y);
     f.margin = 0.07;
     f.turnForce = f.maxSpeed * 2.2;
     return f;

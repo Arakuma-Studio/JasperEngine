@@ -107,7 +107,9 @@ struct FieldFrame {
     bool snap;
 };
 
-FieldFrame field_frame(JfxStep s){
+// outSize: the accumulators (a pass writing them reads its own target size: the image it
+// writes is not bound for reading)
+FieldFrame field_frame(JfxStep s, vec2 outSize){
     FieldFrame f;
     vec2 size = max(s.c.size, vec2(1.0));
     f.dt = min(max(s.dt, 0.001), 0.033);
@@ -117,9 +119,8 @@ FieldFrame field_frame(JfxStep s){
     float count = clamp(floor(params.count + 0.5), 500.0, 40000.0);
     f.gridW = clamp(floor(sqrt(count * f.aspect) + 0.5), 8.0, GRID_DIM_MAX);
     f.gridH = clamp(floor(count / f.gridW + 0.5), 8.0, GRID_DIM_MAX);
-    vec2 out_ = vec2(accum_size());
-    f.outW = out_.x;
-    f.outH = out_.y;
+    f.outW = outSize.x;
+    f.outH = outSize.y;
     f.spacing = min(f.outW / f.gridW, f.outH / f.gridH);
     // cameraRowsYDown(rx, ry, rz)
     float cx = cos(params.rotationX), sx = sin(params.rotationX);
@@ -217,7 +218,7 @@ bool field_project(ivec2 cell, FieldFrame f, float time, out vec2 t, out float d
 }
 
 vec4 jfx_step(JfxStep s){
-    FieldFrame f = field_frame(s);
+    FieldFrame f = field_frame(s, vec2(accum_size()));
     ivec2 cell = s.cell;
     if (s.pass == JFX_PASS_COLOR){
         // the content at the home uv (bilinear, straight colour)
@@ -278,7 +279,7 @@ vec4 jfx_step(JfxStep s){
 
 vec4 jfx_scatter(JfxStep s, JfxPlaced a){
     // the depth-weighted colour coverage: (r, g, b, w) x weight
-    FieldFrame f = field_frame(s);
+    FieldFrame f = field_frame(s, s.size);
     vec2 t;
     float dotR, cw, extR;
     if (!field_project(a.cell, f, s.time, t, dotR, cw, extR))

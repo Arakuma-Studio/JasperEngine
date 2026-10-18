@@ -88,10 +88,16 @@ namespace {
         return p - areaOrigin;
     }
 
-    int stateSide(const EffectStateDef& st, float areaSide, bool width){
+    // a box state's side: the area (CSS px) times the scale, the larger side at most `max` (the
+    // aspect kept)
+    int stateSide(const EffectStateDef& st, Rml::Vector2f area, bool width){
         if (st.fixedSize)
             return width ? st.width : st.height;
-        const int side = (int)std::lround(areaSide * st.boxScale);
+        float scale = st.boxScale;
+        const float largest = std::max(area.x, area.y) * scale;
+        if (largest > (float)st.boxMax)
+            scale *= (float)st.boxMax / largest;
+        const int side = (int)std::lround((width ? area.x : area.y) * scale);
         return std::clamp(side, 1, st.boxMax);
     }
 
@@ -326,8 +332,8 @@ bool EffectRenderer::allocateStates(EffectInstance& instance, EffectSimulation& 
     for (size_t i = 0; i < m.states.size(); i++){
         const EffectStateDef& st = m.states[i];
         EffectSimulation::Images& images = next[i];
-        images.width = stateSide(st, instance.areaSize.x, true);
-        images.height = stateSide(st, instance.areaSize.y, false);
+        images.width = stateSide(st, instance.areaSize, true);
+        images.height = stateSide(st, instance.areaSize, false);
         const bool keep = resample && i < simulation.states.size() && simulation.states[i].width == images.width &&
                           simulation.states[i].height == images.height;
         if (keep){
@@ -607,8 +613,8 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             const EffectStateDef& st = m.states[i];
             if (st.fixedSize)
                 continue;
-            if (stateSide(st, instance.areaSize.x, true) != simulation.states[i].width ||
-                stateSide(st, instance.areaSize.y, false) != simulation.states[i].height){
+            if (stateSide(st, instance.areaSize, true) != simulation.states[i].width ||
+                stateSide(st, instance.areaSize, false) != simulation.states[i].height){
                 resized = true;
                 restart = restart || !st.resample;
             }

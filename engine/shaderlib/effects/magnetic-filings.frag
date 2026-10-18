@@ -27,7 +27,7 @@
 // @param      reach number 0.6 0.1 1 -- How far the magnet's influence spreads (share of the height)
 // @param      rest-orientation enum random random|horizontal|vertical -- Which way filings point where the field cannot reach them
 // @param      shape enum dot arrow|streak|dot|square|glow -- How a filing is drawn
-// @param      size number 1 0.5 3 -- Size of a filing (1 is 1.7 px)
+// @param      size number 1 0.5 3 -- Size of a filing
 // @param      color-a color #be1ef9 -- Colour of filings at rest
 // @param      color-b color #6326ff -- Colour filings flash toward as they swing
 // @param      color-space enum oklab linear|oklch|oklab|hsl|hsv|lch -- Colour space of the rest-to-excited ramp
@@ -38,7 +38,7 @@
 // std/sim/agentRender.ts): nematic directors on a jittered grid that align with the cursor's
 // dipole (its axis the smoothed motion, in the 1x1 state `ptr`) or radial field, with angular drag,
 // the |omega| envelope and a gentle pull and spring home; angle-oriented shapes splatted and
-// resolved through the rest->excited ramp. Accumulators the area's size, sizes in CSS px.
+// resolved through the rest->excited ramp. Accumulators the area's size; sizes upstream's (agent_body).
 
 #include "effects/lib/jfx_common.glsl"
 #include "effects/lib/jfx_color.glsl"
@@ -108,7 +108,7 @@ FilingsFrame filings_frame(JfxStep s){
     f.cursor = vec2(s.pointer.x / size.x * f.aspect, s.pointer.y / size.y);
     f.axis = ptr_fetch(ivec2(0)).xy;
     f.damping = DAMP_MIN + clamp(params.response, 0.0, 1.0) * DAMP_SPAN;
-    f.bodyR = clamp(params.size, 0.5, 3.0) * 1.7 / size.y;
+    f.bodyR = agent_body(clamp(params.size, 0.5, 3.0) * 1.7, size.y);
     return f;
 }
 
