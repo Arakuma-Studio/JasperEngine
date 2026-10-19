@@ -36,10 +36,15 @@ namespace Rml {
     class ElementDocument;
 }
 
+namespace jasperengine {
+    class RmlRenderer;
+}
+
 namespace jasperengine::test {
 
     struct FixtureStep {
-        enum class Kind { Hover, Focus, Press, Release, AddClass, RemoveClass, SetStyle, SetAttr, Scroll, Advance, Capture };
+        // SeekVideo (phase 6): a <video>'s currentTime set (`seconds`), the frame shown before the next step
+        enum class Kind { Hover, Focus, Press, Release, AddClass, RemoveClass, SetStyle, SetAttr, Scroll, Advance, Capture, SeekVideo };
         Kind kind = Kind::Capture;
         std::string id;              // the target element's id ("#id" in the sidecar); release: "" = where the pointer is
         std::string name;            // class, property or attribute name
@@ -47,7 +52,7 @@ namespace jasperengine::test {
         bool remove = false;         // setAttr with null, setStyle with ""
         bool keyboard = false;       // focus: by Tab navigation (:focus-visible), else by a click
         float x = 0.0f, y = 0.0f;    // scroll
-        double seconds = 0.0;        // advance
+        double seconds = 0.0;        // advance, seekVideo
         std::string suffix;          // capture: <name>.<suffix>.png ("" = <name>.png)
     };
 
@@ -165,12 +170,15 @@ namespace jasperengine::test {
         bool step(const FixtureStep& step, std::string* error = nullptr);
 
         double time() const;        // the fixture's clock (seconds of `advance`)
+        // one frame at `seconds` of the fixture's clock (later than time(); the clock stays there), drawn or not
+        void frameAt(double seconds, bool draw = false);
         bool capture(Capture& capture, bool image = true, bool noText = false);
         std::vector<compat::LayoutBox> idBoxes() const;
         // #test-root and every element under it (Taffy fixtures)
         bool taffyBoxes(std::vector<TaffyBox>& boxes, std::string* error = nullptr) const;
 
         Rml::Context* context() const;
+        RmlRenderer* renderer() const;   // the context's (leak counts of the <video> tests)
         Rml::ElementDocument* document() const;
         std::shared_ptr<const htmlui::compat::CompatDocument> compiled() const;
         std::string diagnosticsText() const;

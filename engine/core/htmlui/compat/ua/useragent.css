@@ -102,7 +102,7 @@ caption {
     display: block;
 }
 
-img, svg, lottie, input, button, select, textarea, progress, meter {
+img, svg, lottie, video, input, button, select, textarea, progress, meter {
     display: inline-block;
 }
 
@@ -883,7 +883,8 @@ input, select, button, textarea, progress {
 
 /* `*` does not reach the parts widgets build (as in CSS; fork patch P2-12): they are named */
 selectvalue, selectarrow, selectbox, slidertrack, sliderbar, sliderprogress, sliderarrowdec,
-sliderarrowinc, scrollbarvertical, scrollbarhorizontal, scrollbarcorner, fill, selection {
+sliderarrowinc, scrollbarvertical, scrollbarhorizontal, scrollbarcorner, fill, selection,
+videocontrols, videobutton, videotime, videotimeline, videotrack, videoprogress, videothumb {
     --html-box-shadow: 0 0 0 0 #0000;
     --html-outline-shadow: 0 0 0 0 #0000;
     --html-bg-layers: linear-gradient(#0000, #0000);
@@ -903,6 +904,117 @@ sliderarrowinc, scrollbarvertical, scrollbarhorizontal, scrollbarcorner, fill, s
 .htmlui-unsupported[data-html-tag="audio"] {
     width: 300px;
     height: 54px;
+}
+
+/* 9b. <video> (phase 6): the replaced element (HTML's rendering: object-fit contain) and the
+   default controls, the parts UIVideoControls builds (docs/html-ui/phase-6-video.md 3.10) ------ */
+
+video {
+    object-fit: contain;
+}
+
+video[controls] {
+    tab-index: auto;
+}
+
+video source {
+    display: none;
+}
+
+videocontrols {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 40px;
+    box-sizing: border-box;
+    padding: 0 6px;
+    background-image: linear-gradient(to bottom, rgb(0 0 0 / 0%), rgb(0 0 0 / 60%));
+    color: #ffffff;
+    font-family: system-ui;
+    font-size: 13px;
+    font-weight: normal;
+    line-height: normal;
+    text-align: left;
+    opacity: 0;
+    transition: opacity 0.25s;
+}
+
+videocontrols.htmlui-shown {
+    opacity: 1;
+}
+
+videobutton {
+    display: block;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    background-color: currentcolor;
+    mask-image: url("/@htmlui/ua/video-play.svg");
+    mask-size: 24px 24px;
+    mask-position: 50% 50%;
+    mask-repeat: no-repeat;
+    cursor: pointer;
+}
+
+videocontrols.htmlui-playing videobutton.htmlui-video-play {
+    mask-image: url("/@htmlui/ua/video-pause.svg");
+}
+
+videobutton.htmlui-video-mute {
+    mask-image: url("/@htmlui/ua/video-volume.svg");
+}
+
+videocontrols.htmlui-muted videobutton.htmlui-video-mute {
+    mask-image: url("/@htmlui/ua/video-muted.svg");
+}
+
+videotime {
+    display: block;
+    flex: none;
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
+videotimeline {
+    display: block;
+    flex: 1;
+    position: relative;
+    height: 24px;
+    margin: 0 8px;
+    cursor: pointer;
+    drag: drag;
+}
+
+videotrack {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 10px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: rgb(255 255 255 / 30%);
+}
+
+videoprogress {
+    display: block;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background-color: #ffffff;
+    transform-origin: 0 50%;
+    transform: scaleX(0);
+}
+
+videothumb {
+    display: block;
+    position: absolute;
+    left: -6px;
+    top: 6px;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    background-color: #ffffff;
 }
 
 /* 10. Text selection in inputs ------------------------------------------------------------- */

@@ -249,9 +249,83 @@ TEST(Images, Sniffing){
     EXPECT_EQ(sniffContent("BMxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "image/bmp", "").type, Type::Bmp);
     EXPECT_EQ(sniffContent(std::string("\0\1\0\0", 4), "", "").type, Type::TrueType);
     EXPECT_EQ(sniffContent("wOF2", "", "").type, Type::Woff2);
+    EXPECT_EQ(sniffContent(std::string("\x1A\x45\xDF\xA3\x9F\x42\x86\x81", 8), "", "").type, Type::WebM);
+    EXPECT_EQ(sniffContent(std::string("\0\0\0\x18" "ftypmp42", 12), "", "").type, Type::Mp4);
+    EXPECT_EQ(sniffContent(std::string("\0\0\0\x14" "ftypqt  ", 12), "", "").type, Type::QuickTime);
+    EXPECT_EQ(sniffContent("OggS\0\2", "", "").type, Type::Ogg);
+    EXPECT_TRUE(sniffContent(std::string("\0\0\0\x18" "ftypisom", 12), "", "").isVideo());
+    EXPECT_FALSE(sniffContent(std::string("\0\0\0\x1C" "ftypavif", 12), "", "").isVideo());
+    EXPECT_EQ(sniffContent(std::string("\0\0\0\x18" "ftypmp42", 12), "", "").extension(), "mp4");
     EXPECT_EQ(urlExtension("https://h.com/a/b.PNG?x=1#y"), "png");
     EXPECT_EQ(urlExtension("https://h.com/a.b/c"), "");
     EXPECT_EQ(urlBaseName("https://h.com/a/photo%20one.jpg?w=1"), "photo one");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Videos (phase 6)
+// ---------------------------------------------------------------------------------------------
+
+namespace {
+
+    fs::path videoClip(const std::string& name){
+        return sourceDir() / "engine/tests/htmlui/fixtures/video" / name;
+    }
+
+    // a stand-in ffmpeg (as VideoImporterTest's): lists libsvtav1, "converts" by copying the AV1 card
+    fs::path fakeFfmpeg(const fs::path& dir){
+        const fs::path script = dir / "ffmpeg";
+        writeFile(script, "#!/bin/sh\ncase \"$*\" in *-encoders*) printf ' V....D libsvtav1 the encoder\\n'; exit 0;; esac\n"
+                          "for last; do :; done\ncp '" + videoClip("testcard.webm").string() + "' \"$last\"\n");
+        fs::permissions(script, fs::perms::owner_all);
+        return script;
+    }
+
+}
+
+TEST(Videos, APlayableVideoIsSavedAsItIs){
+    TempProject project;
+    std::vector<compat::Diagnostic> diagnostics;
+    const ImportedResource result = importOne(project, "https://images.example.com/clip.webm", &diagnostics);
+    ASSERT_TRUE(result.ok) << result.error << dump(diagnostics);
+    const ImportEntry* entry = result.entry();
+    EXPECT_EQ(entry->kind, "video");
+    EXPECT_EQ(entry->path.compare(0, 41, "htmlui-imports/videos/images.example.com/"), 0) << entry->path;
+    EXPECT_EQ(entry->path.substr(entry->path.size() - 10), "-clip.webm") << entry->path;
+    EXPECT_EQ(project.read("assets/" + entry->path), readFile(videoClip("testcard-noaudio.webm")));
+    EXPECT_EQ(withCode(diagnostics, "HTMLUI-IMP-0008").size(), 1u) << dump(diagnostics);
+    EXPECT_TRUE(withCode(diagnostics, "HTMLUI-IMP-0010").empty()) << dump(diagnostics);
+}
+
+TEST(Videos, OthersAreConvertedByFfmpeg){
+    TempProject project;
+    const fs::path tools = makeTempDir("p6video-ffmpeg");
+    ScopedEnv ffmpeg("JASPER_FFMPEG", fakeFfmpeg(tools).string().c_str());
+    std::vector<compat::Diagnostic> diagnostics;
+    const ImportedResource result = importOne(project, "https://images.example.com/trailer", &diagnostics);
+    ASSERT_TRUE(result.ok) << result.error << dump(diagnostics);
+    const ImportEntry* entry = result.entry();
+    EXPECT_EQ(entry->kind, "video");
+    EXPECT_EQ(entry->path.substr(entry->path.size() - 13), "-trailer.webm") << entry->path;
+    EXPECT_EQ(project.read("assets/" + entry->path), readFile(videoClip("testcard.webm"))) << "the converted file";
+    EXPECT_TRUE(withCode(diagnostics, "HTMLUI-IMP-0010").empty() && withCode(diagnostics, "HTMLUI-IMP-0011").empty()) << dump(diagnostics);
+    std::error_code ec;
+    fs::remove_all(tools, ec);
+}
+
+TEST(Videos, WithoutFfmpegTheOriginalIsSavedAndDiagnosed){
+    TempProject project;
+    ScopedEnv ffmpeg("JASPER_FFMPEG", "");
+    std::vector<compat::Diagnostic> diagnostics;
+    const ImportedResource result = importOne(project, "https://images.example.com/trailer", &diagnostics);
+    ASSERT_TRUE(result.ok) << result.error << dump(diagnostics);
+    const ImportEntry* entry = result.entry();
+    // the VP9 clip is WebM: saved with that extension, unconverted
+    EXPECT_EQ(project.read("assets/" + entry->path), readFile(videoClip("testcard-vp9.webm")));
+    const auto notConverted = withCode(diagnostics, "HTMLUI-IMP-0010");
+    ASSERT_EQ(notConverted.size(), 1u) << dump(diagnostics);
+    // the command to run names the saved file, not a scratch copy
+    EXPECT_NE(notConverted[0].suggestion.find(entry->path), std::string::npos) << notConverted[0].suggestion;
+    EXPECT_EQ(notConverted[0].suggestion.find("jasper-video-import"), std::string::npos) << notConverted[0].suggestion;
 }
 
 // ---------------------------------------------------------------------------------------------

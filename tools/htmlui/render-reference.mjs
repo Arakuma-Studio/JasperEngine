@@ -40,7 +40,7 @@
 //
 // - p3 fixtures: engine/tests/htmlui/fixtures/p3/<area>/<name>.html with a <name>.json sidecar
 //   {viewport: [w, h], steps: [...], boxes, tolerance, samples, comment}; the steps (hover, focus, press,
-//   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture) run in order, every
+//   release, addClass, removeClass, setStyle, setAttr, scroll, advance, capture, seekVideo) run in order, every
 //   capture step (or one at the end when there is none) writes golden/browser/<area>/<name>[.<suffix>].png
 //   and the boxes of every element with an id into <name>.boxes.json; with "noText": true the steps run a
 //   second time in a fresh browser with the text made transparent (NO_TEXT_CSS, as page mode's no-text render)
@@ -641,7 +641,8 @@ function sha(buffer){
 
 // ===== fixture mode: the references of the phase-3 browser-parity tests (spec 5.2, 5.3) ========
 
-const STEP_KINDS = ['hover', 'focus', 'press', 'release', 'addClass', 'removeClass', 'setStyle', 'setAttr', 'scroll', 'advance', 'capture'];
+const STEP_KINDS = ['hover', 'focus', 'press', 'release', 'addClass', 'removeClass', 'setStyle', 'setAttr', 'scroll', 'advance', 'capture',
+                    'seekVideo'];
 
 function listAreas(){
     if (!fs.existsSync(P3_DIR))
@@ -759,6 +760,8 @@ function loadSidecar(area, name){
             bad('["#id", x, y]');
         if (kind === 'advance' && !(Number.isFinite(value) && value >= 0))
             bad('seconds >= 0');
+        if (kind === 'seekVideo' && !(Array.isArray(value) && value.length === 2 && target(value[0]) && Number.isFinite(value[1]) && value[1] >= 0))
+            bad('["#id", seconds]');
         if (kind === 'capture' && !(typeof value === 'string' && /^[\w-]*$/.test(value)))
             bad('a file-name suffix ([A-Za-z0-9_-]*)');
     });
@@ -790,6 +793,54 @@ async function adoptAnimations(page){
             state.animations.push({ animation, local: 0 });
         }
     });
+}
+
+// <video> (phase 6): the frame of `seconds` on screen, as the engine's FixtureRunner seeks in its
+// frame-exact mode: currentTime set, then the seek done (`seeking` false) and the element at
+// HAVE_CURRENT_DATA, polled from here (a context without JavaScript runs no page timers or
+// listeners).
+async function pollVideos(page, selector, done, what, label){
+    const deadline = Date.now() + 10000;
+    for (;;){
+        const state = await page.evaluate(([selector, done]) => [...document.querySelectorAll(selector)].map((v) => ({
+            name: v.id ? '#' + v.id : v.currentSrc, ready: v.readyState, seeking: v.seeking, error: v.error ? v.error.code : 0,
+            ok: v.error !== null || (done === 'seeked' ? !v.seeking && v.readyState >= 2 : v.readyState >= 2) })), [selector, done]);
+        const waiting = state.filter((v) => !v.ok);
+        if (!waiting.length)
+            return state;
+        if (Date.now() > deadline)
+            throw new Error(`${label}: ${what} for ${waiting.map((v) => `${v.name} (readyState ${v.ready}${v.seeking ? ', seeking' : ''})`).join(', ')}`);
+        await page.waitForTimeout(20);
+    }
+}
+
+async function seekVideo(page, label, selector, seconds){
+    const problem = await page.evaluate(([selector, seconds]) => {
+        const video = document.querySelector(selector);
+        if (!(video instanceof HTMLVideoElement))
+            return `${selector} is not a <video>`;
+        video.currentTime = seconds;
+        return null;
+    }, [selector, seconds]);
+    if (problem)
+        throw new Error(`${label}: ${problem}`);
+    const [state] = await pollVideos(page, selector, 'seeked', `no frame 10 s after currentTime = ${seconds}`, label);
+    if (state.error)
+        throw new Error(`${label}: ${selector} failed (MediaError ${state.error})`);
+}
+
+// every <video> that loads (not preload="none") has its frame, and every poster is decoded, before a capture
+async function waitForVideos(page, label){
+    const loading = await page.evaluate(() => [...document.querySelectorAll('video')].some((v) => v.preload !== 'none' || v.currentTime > 0));
+    if (loading)
+        await pollVideos(page, 'video:not([preload="none"])', 'ready', 'no frame after 10 s', label);
+    const failed = await page.evaluate(async () => (await Promise.all([...document.querySelectorAll('video')].filter((v) => v.poster).map(async (v) => {
+        const image = new Image();
+        image.src = v.poster;
+        try { await image.decode(); return null; } catch (e) { return (v.id ? '#' + v.id : v.poster) + ' (poster)'; }
+    }))).filter((p) => p));
+    if (failed.length)
+        throw new Error(`${label}: no picture for ${failed.join(', ')}`);
 }
 
 async function advanceAnimations(page, seconds){
@@ -881,13 +932,16 @@ async function waitForFonts(page, label){
         throw new Error(`${label}: fonts failed to load: ${failed.join(', ')}`);
 }
 
-async function newFixtureContext(browser, viewport, blocked){
+// scripting: the page's JavaScript on. Off by default (fixtures have no scripts); on for the video
+// area, because Chromium shows a <video>'s native controls when scripting is disabled (HTML: the
+// user agent exposes a user interface then), whatever its `controls` attribute
+async function newFixtureContext(browser, viewport, blocked, scripting = false){
     const context = await browser.newContext({
         viewport: { width: viewport[0], height: viewport[1] },
         deviceScaleFactor: 1,
         colorScheme: 'light',
         reducedMotion: 'no-preference',
-        javaScriptEnabled: false,
+        javaScriptEnabled: scripting,
         locale: 'en-US',
         timezoneId: 'UTC',
     });
@@ -928,7 +982,7 @@ async function renderP3Fixture(launchBrowser, { area, name }, boxesOnly){
 async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly, extraCss, blocked){
     const browser = await launchBrowser();
     try {
-        const context = await newFixtureContext(browser, sidecar.viewport, blocked);
+        const context = await newFixtureContext(browser, sidecar.viewport, blocked, area === 'video');
         const page = await context.newPage();
         await page.goto(pathToFileURL(path.join(P3_DIR, area, `${name}.html`)).href, { waitUntil: 'load' });
         await injectStyle(page, (await viewportScrolls(page) ? '' : ROOT_SCROLLBAR_CSS) + (sidecar.selfTest?.referenceCss ?? '') + extraCss);
@@ -937,6 +991,7 @@ async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly
 
         const captures = [];
         const capture = async (suffix) => {
+            await waitForVideos(page, label);
             await page.waitForTimeout(SETTLE_MS);
             // a step may use a face (or an image) the page did not draw before: loaded, and none failed
             await waitForFonts(page, label);
@@ -972,6 +1027,8 @@ async function runP3Fixture(launchBrowser, sidecar, area, name, label, boxesOnly
                 await page.mouse.up();
             }else if (kind === 'advance'){
                 await advanceAnimations(page, value);
+            }else if (kind === 'seekVideo'){
+                await seekVideo(page, label, value[0], value[1]);
             }else if (kind === 'capture'){
                 await capture(value);
             }else{

@@ -12,6 +12,10 @@ HtmlUITexture::~HtmlUITexture(){
     if (ownedRender && !dead){
         ownedRender->destroyTexture();
     }
+    for (std::unique_ptr<TextureRender>& plane : planes){
+        if (plane && !dead)
+            plane->destroyTexture();
+    }
 }
 
 std::unique_ptr<HtmlUITexture> HtmlUITexture::createDynamic(const std::string& label, int width, int height,

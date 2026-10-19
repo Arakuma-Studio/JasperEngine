@@ -13,6 +13,7 @@ JASPERENGINE_IMPORT_MIRROR, built here before the editor starts (no network).
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -1150,22 +1151,27 @@ async def test_examples_resources(ed: Editor):
     got = await ed.session.read_resource("jasper://examples/html-ui")
     index = got.contents[0].text
     examples = [e for e in MANIFEST["examples"] if e["example"]]
-    ed.check_eq(len(examples), 9, "nine examples")
-    ed.check(index.startswith("# HTML/CSS UI examples\n\n9 complete"), index[:200])
+    ed.check_eq(len(examples), 10, "ten examples (phase 6 added video_menu)")
+    ed.check(index.startswith("# HTML/CSS UI examples\n\n10 complete"), index[:200])
     for e in MANIFEST["examples"]:
         ed.check(f"## {e['name']}: {e['title']}" in index, f"{e['name']} in the index")
         section = index.split(f"## {e['name']}: ", 1)[1].split("\n## ", 1)[0]
         for c in e["checks"]:
             ed.check(json.dumps(c["selector"]) in section and f'"type":"{c["type"]}"' in section, f"{e['name']}'s check {c}")
     ed.check("create_ui_document" in index, "how to use one")
-    mimes = {".html": "text/html", ".css": "text/css", ".lua": "text/x-lua", ".svg": "image/svg+xml", ".json": "application/json"}
+    mimes = {".html": "text/html", ".css": "text/css", ".lua": "text/x-lua", ".svg": "image/svg+xml", ".json": "application/json",
+             ".webm": "video/webm"}
     files = sorted(p for p in LIBRARY.rglob("*") if p.is_file())
     for path in files:
         rel = path.relative_to(LIBRARY).as_posix()
         got = await ed.session.read_resource(f"jasper://examples/html-ui/{rel}")
         content = got.contents[0]
         ed.check_eq(content.mime_type, mimes.get(path.suffix, "text/plain"), f"{rel} mime")
-        ed.check(content.text == path.read_text(encoding="utf-8"), f"{rel} content")
+        if path.suffix == ".webm":
+            # binary (video_menu's background, phase 6): a base64 blob
+            ed.check(base64.b64decode(content.blob) == path.read_bytes(), f"{rel} content (blob)")
+        else:
+            ed.check(content.text == path.read_text(encoding="utf-8"), f"{rel} content")
     try:
         await ed.session.read_resource("jasper://examples/html-ui/main_menu/nope.css")
     except MCPError as e:

@@ -373,6 +373,7 @@ void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& def
     if (prop & (1 << 3))  defs.push_back({"HAS_DROP_SHADOW", "1"});          // 'Shd'
     if (prop & (1 << 4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
     if (prop & (1 << 5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
+    if (prop & (1 << 6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
 }
 
 void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {

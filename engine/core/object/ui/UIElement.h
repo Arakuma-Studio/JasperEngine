@@ -12,6 +12,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,6 +44,12 @@ namespace jasperengine{
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
     // Lottie control by p1-vector (htmlui/vector/UIElementLottie.cpp). On an invalid handle
     // every C++ method returns a default and logs a warning (once per method).
+
+    // HTMLMediaElement's MediaError (phase 6): code 1 aborted, 2 network, 3 decode, 4 source not supported
+    struct UIMediaError {
+        int code = 0;
+        std::string message;
+    };
 
     // An element of an HTML/CSS document (UIDocument), with browser names. A value type holding
     // a weak reference: isValid() is false once the element or its document is gone.
@@ -157,6 +164,36 @@ namespace jasperengine{
         void setSpeed(float speed); void setDirection(int direction); void setLoop(bool loop); void setLoopCount(int count);
         void setSegment(float startFrame, float endFrame); void setMarker(const std::string& marker);
         bool isPlaying() const; float getCurrentFrame() const; float getTotalFrames() const; float getDuration() const;
+
+        // --- phase 6 (p6-video): <video>, HTMLMediaElement's API (htmlui/media/UIElementVideo.cpp);
+        // play(), pause(), setLoop(), isPlaying() and getDuration() above serve <video> too. Logs an
+        // error on other elements (once per method and tag), as the Lottie control does ---
+
+        static constexpr int HAVE_NOTHING = 0, HAVE_METADATA = 1, HAVE_CURRENT_DATA = 2, HAVE_FUTURE_DATA = 3, HAVE_ENOUGH_DATA = 4;
+        static constexpr int NETWORK_EMPTY = 0, NETWORK_IDLE = 1, NETWORK_LOADING = 2, NETWORK_NO_SOURCE = 3;
+        static constexpr int MEDIA_ERR_ABORTED = 1, MEDIA_ERR_NETWORK = 2, MEDIA_ERR_DECODE = 3, MEDIA_ERR_SRC_NOT_SUPPORTED = 4;
+
+        void load();
+        std::string canPlayType(const std::string& type) const;     // "probably", "maybe" or ""
+        void fastSeek(double seconds);
+        double getCurrentTime() const; void setCurrentTime(double seconds);
+        double getMediaDuration() const;       // NaN before the metadata (a <lottie>: its duration)
+        bool isPaused() const; bool isEnded() const; bool isSeeking() const;
+        bool getLoop() const;                  // (setLoop above; a <lottie>: loops forever)
+        bool getAutoplay() const; void setAutoplay(bool autoplay);
+        bool getControls() const; void setControls(bool controls);
+        bool isMuted() const; void setMuted(bool muted);
+        bool getDefaultMuted() const; void setDefaultMuted(bool muted);
+        float getVolume() const; void setVolume(float volume);                       // [0, 1]
+        double getPlaybackRate() const; void setPlaybackRate(double rate);           // 0 or [1/16, 16]
+        double getDefaultPlaybackRate() const; void setDefaultPlaybackRate(double rate);
+        bool getPreservesPitch() const; void setPreservesPitch(bool preserve);        // false: the pitch follows the rate
+        int getReadyState() const; int getNetworkState() const;
+        int getVideoWidth() const; int getVideoHeight() const;
+        std::string getCurrentSrc() const;
+        std::string getPoster() const; void setPoster(const std::string& poster);
+        std::string getPreload() const; void setPreload(const std::string& preload);
+        std::optional<UIMediaError> getMediaError() const;
 
     private:
         friend class UIDocumentSystem;

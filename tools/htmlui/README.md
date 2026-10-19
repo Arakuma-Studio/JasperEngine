@@ -62,6 +62,7 @@ not run.
   {"setAttr": ["#id", "data-x", "1"]},     // null removes the attribute
   {"scroll": ["#id", 0, 40]},
   {"advance": 0.25},                      // seconds of the UI clock: animations and transitions are seeked
+  {"seekVideo": ["#v", 1.4]},             // a <video>'s currentTime: the reference waits until the seek is done and the frame is there (the video area runs with scripting on: without it Chromium shows native controls)
   {"capture": "hover"}                    // golden/browser/<area>/<name>.hover.png; without a capture step, one at the end (<name>.png)
  ],
  "boxes": true,                           // text-heavy: the boxes are the oracle, the full image is reported only

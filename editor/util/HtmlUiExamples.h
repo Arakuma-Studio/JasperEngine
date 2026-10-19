@@ -14,7 +14,7 @@
 namespace jasperengine::editor {
 
     // The HTML/CSS UI example library (docs/mcp/guide/html-ui-examples, phase-4 spec 3.7):
-    // nine polished examples and the blank template, embedded in the editor at build time
+    // ten polished examples (phase 6 added video_menu) and the blank template, embedded in the editor at build time
     // (CMakeLists.txt generates html_ui_examples.h). Written into every project's
     // .jasperengine/engine-api/html-ui-examples/ (Generator::writeEditorTooling), served as
     // MCP resources and instantiated by create_ui_document. No ImGui or project state.

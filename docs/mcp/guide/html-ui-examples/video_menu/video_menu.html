@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!--
+  Video menu: a title screen over a looping video.
+  Shows: a full-bleed <video autoplay muted loop> background (AV1 + Opus WebM, object-fit: cover)
+  under a gradient scrim, icon buttons with hover and :focus-visible transitions, keyboard
+  navigation, and a "motion" toggle that pauses and resumes the video from Lua (play(), pause(),
+  the play / pause events). If the video cannot play, the scrim's gradient is the background:
+  VideoMenuUI.lua listens for the video's error event and adds the "no-video" class.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Video menu</title>
+  <link rel="stylesheet" href="video_menu.css">
+</head>
+<body>
+  <video class="backdrop-video" id="backdrop" src="assets/menu-loop.webm" autoplay muted loop aria-hidden="true"></video>
+  <div class="scrim" aria-hidden="true"></div>
+
+  <main class="screen">
+    <header class="brand">
+      <p class="eyebrow">Season 2</p>
+      <h1 class="title">Driftlight</h1>
+    </header>
+
+    <nav class="menu" aria-label="Main menu">
+      <button class="menu-button primary" id="play">
+        <i data-lucide="play"></i><span class="label">Play</span>
+      </button>
+      <button class="menu-button" id="continue">
+        <i data-lucide="history"></i><span class="label">Continue</span>
+      </button>
+      <button class="menu-button" id="options">
+        <i data-lucide="settings"></i><span class="label">Options</span>
+      </button>
+      <button class="menu-button" id="quit">
+        <i data-lucide="log-out"></i><span class="label">Quit</span>
+      </button>
+    </nav>
+  </main>
+
+  <footer class="footer">
+    <button class="motion" id="motion" aria-pressed="false">
+      <i data-lucide="pause"></i><span class="motion-label" id="motion-label">Pause background</span>
+    </button>
+    <span class="version">v2.0.1</span>
+  </footer>
+</body>
+</html>

@@ -133,6 +133,8 @@ namespace {
             return HtmlUIReference::SVG;
         if (ext == "json" || ext == "lottie")
             return HtmlUIReference::LOTTIE;
+        if (ext == "webm" || ext == "mkv" || ext == "mp4" || ext == "m4v" || ext == "mov" || ext == "ogv")
+            return HtmlUIReference::VIDEO;
         if (ext == "ttf" || ext == "otf" || ext == "ttc" || ext == "woff" || ext == "woff2")
             return HtmlUIReference::FONT;
         if (ext == "html" || ext == "htm" || ext == "rml")
@@ -506,6 +508,12 @@ namespace {
                 addAttribute(findAttribute(attributes, "src"), HtmlUIReference::SVG, false);
             }else if (tag == "lottie"){
                 addAttribute(findAttribute(attributes, "src"), HtmlUIReference::LOTTIE, false);
+            }else if (tag == "video"){
+                addAttribute(findAttribute(attributes, "src"), HtmlUIReference::VIDEO, false);
+                addAttribute(findAttribute(attributes, "poster"), HtmlUIReference::IMAGE, false);
+            }else if (tag == "source"){
+                // a <video>'s (a <picture>'s use srcset)
+                addAttribute(findAttribute(attributes, "src"), HtmlUIReference::VIDEO, false);
             }else if (tag == "template"){
                 addAttribute(findAttribute(attributes, "src"), HtmlUIReference::TEMPLATE, false);
             }
@@ -696,6 +704,7 @@ const char* jasperengine::getHtmlUIReferenceKindName(HtmlUIReference::Kind kind)
         case HtmlUIReference::SVG: return "svg";
         case HtmlUIReference::LOTTIE: return "lottie";
         case HtmlUIReference::TEMPLATE: return "template";
+        case HtmlUIReference::VIDEO: return "video";
         case HtmlUIReference::OTHER: default: return "other";
     }
 }

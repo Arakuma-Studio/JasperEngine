@@ -734,6 +734,10 @@ add_subdirectory(libs/thorvg)
 add_subdirectory(libs/rmlui)
 # the HTML5 parser of the HTML UI compatibility layer (engine/core/htmlui/compat/html)
 add_subdirectory(libs/lexbor)
+# the HTML UI's <video>: AV1 (dav1d), Opus (libopus) and the WebM parser (libwebm)
+add_subdirectory(libs/dav1d)
+add_subdirectory(libs/opus)
+add_subdirectory(libs/libwebm)
 
 if(JASPERENGINE_RUNTIME_SHADERS)
     # A game only needs the back end of its own graphics API (GLSL is always in);
@@ -768,7 +772,8 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor ${JASPERENGINE_PHYSICS_LIBS})
+    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
@@ -848,6 +853,17 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/media/Av1Decoder.cpp
+    core/htmlui/media/UIElementVideo.cpp
+    core/htmlui/media/OpusAudioDecoder.cpp
+    core/htmlui/media/UIVideoControls.cpp
+    core/htmlui/media/UIVideoElement.cpp
+    core/htmlui/media/VideoAudio.cpp
+    core/htmlui/media/VideoColorConvert.cpp
+    core/htmlui/media/VideoDemuxer.cpp
+    core/htmlui/media/VideoFormats.cpp
+    core/htmlui/media/VideoPlayback.cpp
+    core/htmlui/media/VideoStream.cpp
     core/htmlui/HtmlUIInspector.cpp
     core/htmlui/HtmlUIAssertions.cpp
     core/htmlui/effects/BuiltinEffectManifests.gen.cpp
@@ -949,6 +965,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
+    core/script/binding/HtmlUIMediaLua.cpp
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
@@ -1060,6 +1077,7 @@ target_link_libraries(
     PUBLIC
 
     sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    dav1d opus webm
     ${JASPERENGINE_PHYSICS_LIBS}
 )
 
@@ -1160,6 +1178,8 @@ if(JASPERENGINE_SHARED)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblunasvg.a:libthorvg.a")
         # the HTML parser of the compat layer (hidden visibility too; C, so lxb_*/lexbor_* symbols)
         target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,liblexbor.a")
+        # the <video> decoders (hidden visibility too: dav1d_*, opus_*, mkvparser::)
+        target_link_options(jasperengine PRIVATE "LINKER:--exclude-libs,libdav1d.a:libopus.a:libwebm.a")
         # and what engine code instantiates over RmlUi types (see the script; ELF only)
         if(NOT WIN32)
             target_link_options(jasperengine PRIVATE "LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/libs/rmlui/hidden-symbols.map")

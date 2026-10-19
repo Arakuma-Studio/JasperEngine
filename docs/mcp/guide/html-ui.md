@@ -74,8 +74,9 @@ page written for Chrome at the canvas size looks the same.
 
 Parity stops at:
 
-- **No JavaScript, no network at run time, no `<video>`, `<canvas>` or `<iframe>`** (by
-  design). Remote fonts and images are imported into the project by the editor.
+- **No JavaScript, no network at run time, no `<canvas>` or `<iframe>`** (by design).
+  `<video>` plays AV1 + Opus WebM only (see "Video"). Remote fonts, images and videos are
+  imported into the project by the editor.
 - **The unsupported CSS** listed under "CSS that differs": container queries, blend modes,
   vertical text, multi-column layout, `subgrid`, scroll snapping, ... Each use is reported.
 - **Small differences without a diagnostic**, also listed there: whole-pixel font sizes,
@@ -304,7 +305,8 @@ pseudo-elements (`::-webkit-slider-thumb`, `::-webkit-scrollbar`, `::placeholder
 |---|---|
 | `<script>` (JavaScript) | `<script type="text/lua">` or a Lua script on the GameObject (`HTMLUI-HTML-0006`, error) |
 | `onclick="..."` and every `on*` attribute | `el:addEventListener("click", fn)` in Lua, or `data-event-click` with a data model (`HTMLUI-HTML-0005`, error) |
-| `<canvas>`, `<video>` | a Lottie animation or an image sequence; 3D or video content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
+| `<canvas>` | a Lottie animation or an image sequence; 3D content drawn by the game behind a transparent part of the page, or the document on a mesh in texture mode (`HTMLUI-HTML-0002`: a placeholder box) |
+| `<video src="clip.mp4">` (H.264, VP9, ...) | `<video src="clip.webm">` with AV1 + Opus: `import_files` converts the file with FFmpeg (`HTMLUI-HTML-0027`) |
 | `<iframe>` | another UI Document (`HTMLUI-HTML-0002`) |
 | `title="tooltip"` | a tooltip element shown on `mouseover` from Lua (`HTMLUI-HTML-0004`, info) |
 | `<div/>` | `<div></div>`: in HTML a non-void element does not self-close (`HTMLUI-HTML-0026`) |
@@ -1061,6 +1063,80 @@ transforms, clipping and filters apply to them as to `<img>`.
 - Not supported: expressions (JavaScript), audio layers, dotLottie themes and state machines,
   ZIP64 or encrypted `.lottie` archives (an `error` event says so).
 
+### Video
+
+```html
+<video id="intro" src="video/intro.webm" autoplay muted loop style="width: 100%; height: 100%; object-fit: cover;"></video>
+<video src="video/trailer.webm" poster="video/trailer.png" controls></video>
+```
+
+**Format: WebM with AV1 video and Opus audio, nothing else.** The engine decodes it itself (dav1d,
+libopus, libwebm: BSD licences, no patents to license, the same on every platform) instead of
+using each platform's decoders, so a video plays identically on desktop, mobile and Web.
+`.mkv` with the same codecs plays too. MP4/H.264, MOV, VP8/VP9 WebM, Ogg/Theora, AVI and the
+rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their poster or nothing.
+
+**Converting**: `import_files {"sources": ["/abs/clip.mp4"], "to_dir": "assets/ui/video"}` writes
+`clip.webm` (AV1 with SVT-AV1, libaom or rav1e, keyframes every 2 s, 8-bit 4:2:0, at most 4096
+px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
+and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
+its references) are converted the same way. It runs your own FFmpeg as a separate program:
+`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`), else
+`ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
+without an AV1 encoder in it, the file is copied unconverted with `HTMLUI-IMP-0010` and the
+exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
+`ffmpeg -i in.mp4 -c:v libsvtav1 -preset 6 -crf 32 -g 60 -pix_fmt yuv420p -c:a libopus -b:a 128k out.webm`.
+
+| Attribute | Behaviour |
+|---|---|
+| `src`, or `<source src type media>` children | the file, relative to the document; the first `<source>` whose `type` passes `canPlayType` and that opens is played |
+| `autoplay`, `loop`, `muted` | play once loaded (sound allowed: there is no browser autoplay policy); seamless loop; start muted |
+| `controls` | the built-in bar (below); the video becomes focusable |
+| `poster` | an image until playback starts or a seek, fitted like the video |
+| `preload` | `none`: opened at `play()`, `load()` or a seek; `metadata` / `auto` (default): opened at once, first frame decoded |
+| `width`, `height` | size hints, as for `<img>`; without a size the element takes the video's (300 x 150 before it is known) |
+
+- Size and drawing: `object-fit` (default `contain`, as in browsers) and `object-position` place
+  the frame in the content box; `border-radius` clips it; `opacity`, `filter`, `mask-image`,
+  transforms, effects (`filter: effect(...)`) and `backdrop-filter` over a video all work. A video
+  cannot be a CSS image (`url(x.webm)` in `background` is `HTMLUI-CSS-0004`): put a `<video>`
+  with `object-fit: cover` behind the content (the `video_menu` example).
+- Timing: a video plays on the UI clock. It keeps playing under `Engine.timeScale = 0` (a pause
+  menu over a video background); to freeze it with the game, `video:pause()` or set
+  `video.playbackRate = Engine.timeScale`. It stops while the app is paused or the MCP holds the
+  game. With a fixed step (MCP `fixed_fps`) or a pinned clock it is **frame-exact**: frame
+  `floor(t * fps)` at time `t`, decoding waits for it; otherwise decoding never blocks a frame:
+  when it falls behind, the picture waits (`waiting`, then `playing`), as a browser buffering.
+- Audio: the Opus track plays through the engine's audio (global volume applies), synced to the
+  picture; more than two channels are mixed down to stereo.
+- Lua (and C++ `UIElement`), as `HTMLMediaElement`: `play()`, `pause()`, `load()`,
+  `canPlayType(type)`, `fastSeek(t)`; properties `currentTime` (set = seek), `duration`
+  (NaN before the metadata), `paused`, `ended`, `seeking`, `loop`, `autoplay`, `controls`,
+  `muted`, `defaultMuted`, `volume`, `playbackRate`, `defaultPlaybackRate`, `readyState`,
+  `networkState`, `videoWidth`, `videoHeight`, `currentSrc`, `poster`, `preload`, `error` (`nil`
+  or `{code, message}`); constants `UIElement.HAVE_ENOUGH_DATA`, `UIElement.MEDIA_ERR_SRC_NOT_SUPPORTED`, ...
+  Out of range values (`volume = 2`) warn and leave the value (HTML throws).
+- Events (they do not bubble): `loadstart`, `durationchange`, `loadedmetadata`, `loadeddata`,
+  `canplay`, `canplaythrough`, `play`, `playing`, `pause`, `timeupdate` (every 250 ms),
+  `seeking`, `seeked`, `ended`, `waiting`, `volumechange`, `ratechange`, `emptied`, `error`
+  (`event.detail.message`). In the editor the document loads before play starts: check
+  `el.readyState >= UIElement.HAVE_METADATA` instead of waiting for `loadedmetadata`.
+- Controls: play/pause, time, a seek bar (click or drag) and mute, shown while paused, hovered or
+  focused, fading 2.5 s after the pointer stops while playing. Keys on the focused video: Space,
+  Enter or `K` toggle, Left/Right seek 5 s (`J`/`L` 10 s), Home/End, `M` mutes; the gamepad's A
+  and d-pad do the same. Restyle with `video videocontrols { ... }` (`videobutton.htmlui-play`,
+  `videotime`, `videotimeline`, `videoprogress`, `videothumb`, `videobutton.htmlui-mute`).
+- Budget (software decoding, ms per frame on one desktop core: 2 at 256 px, 5.6 at 360p, 19 at
+  720p, 42 at 1080p; several cores share a video's work): desktop one 1080p30 or two 720p30;
+  mobile 720p30 at most, 540p better; Web (decoding on the main thread) 480p or smaller, one at a
+  time. Memory: about 1.5 x width x height x 7 bytes per video (decoder pictures and the decode
+  queue), plus the file on Web, where assets live in memory. Keep previews small and pause
+  videos nobody sees.
+- Not supported: other codecs, streaming or remote URLs at run time (import them), `<track>`
+  captions (`HTMLUI-HTML-0002`), `playsinline`/`crossorigin` and the like (dropped, info
+  `HTMLUI-HTML-0028`), picture-in-picture, `preservesPitch` (pitch follows `playbackRate`),
+  `::-webkit-media-controls-*`, HDR (8-bit SDR is shown; 10-bit is decoded and rounded).
+
 ### Fonts
 
 - Built in: Roboto and Noto Sans Arabic; every generic family maps to them.
@@ -1359,7 +1435,12 @@ Read-only, edit mode and play. Returns:
 - `"models": true` (play): the data models' values;
 - `"styles": ["color", "font-size"]`: those computed values on every element;
 - `"screenshot": true`: the Game view cropped to the matches, outlined;
-- `"file": "assets/ui/x.css"`: a file's diagnostics without a live document.
+- `"file": "assets/ui/x.css"`: a file's diagnostics without a live document;
+- a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
+  `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
+  `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
+  `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles
+  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks).
 
 Use it to answer "why is this element there / this size / this colour" before editing CSS.
 
@@ -1436,7 +1517,9 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `height: 100dvh`, `-webkit-fill-available` fixes for mobile browser bars | `100vh` is the canvas, exact | none |
 | hover-only affordances on touch | visible by default or on `:focus`/`:active`; `@media (hover: hover)` is false on touch devices | `HTMLUI-AT-0006` (info) |
 | `title="..."` tooltips | a tooltip element shown on `mouseover` | `HTMLUI-HTML-0004` (info) |
-| `<canvas>`, `<video>`, `<iframe>` | Lottie, images, another UI Document, a texture-mode document | `HTMLUI-HTML-0002` |
+| `<canvas>`, `<iframe>` | Lottie, images, another UI Document, a texture-mode document | `HTMLUI-HTML-0002` |
+| an MP4 / MOV / VP9 `<video>` | AV1 + Opus WebM (`import_files` converts it) | `HTMLUI-HTML-0027` |
+| `background: url(clip.webm)` | a `<video>` with `object-fit: cover` behind the content | `HTMLUI-CSS-0004` |
 | `<div/>` | `<div></div>` | `HTMLUI-HTML-0026` |
 | `<input type="date">`, `type="color"` | your own picker in HTML | `HTMLUI-HTML-0008` |
 | 0-based `data-for` index in Lua | `model.items[i + 1]` | none |
@@ -1444,7 +1527,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 
 ## Examples
 
-Nine polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
+Ten polished examples plus `blank`, each a standalone `.html` + `.css` + Lua script (and
 `assets/`), compat-clean, tested at several viewports. Get them with
 `create_ui_document {"html": "assets/ui/<name>.html", "template": "<name>"}` (files renamed to
 your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read them in
@@ -1463,6 +1546,7 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
+| `video_menu` | a title screen over a looping `<video autoplay muted loop>` (`object-fit: cover`) under a gradient scrim; a toggle pauses the video from Lua, its label follows the `play`/`pause` events, an `error` leaves the gradient | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with

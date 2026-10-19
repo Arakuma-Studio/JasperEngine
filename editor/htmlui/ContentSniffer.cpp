@@ -111,6 +111,10 @@ bool SniffedContent::isFont() const{
     return type == Type::TrueType || type == Type::OpenType;
 }
 
+bool SniffedContent::isVideo() const{
+    return type == Type::WebM || type == Type::Mp4 || type == Type::QuickTime || type == Type::Ogg;
+}
+
 std::string SniffedContent::extension() const{
     switch (type){
         case Type::Png: return "png";
@@ -129,6 +133,10 @@ std::string SniffedContent::extension() const{
         case Type::Json: return "json";
         case Type::Css: return "css";
         case Type::Html: return "html";
+        case Type::WebM: return "webm";
+        case Type::Mp4: return "mp4";
+        case Type::QuickTime: return "mov";
+        case Type::Ogg: return "ogv";
         case Type::Unknown: break;
     }
     return "";
@@ -152,6 +160,10 @@ const char* SniffedContent::name() const{
         case Type::Json: return "JSON";
         case Type::Css: return "CSS";
         case Type::Html: return "HTML page";
+        case Type::WebM: return "WebM/Matroska video";
+        case Type::Mp4: return "MP4 video";
+        case Type::QuickTime: return "QuickTime video";
+        case Type::Ogg: return "Ogg video";
         case Type::Unknown: break;
     }
     return "unknown content";
@@ -206,6 +218,10 @@ SniffedContent jasperengine::editor::htmlui::sniffContent(const std::string& bod
     if (startsWith(body, "\x00\x01\x00\x00", 4) || startsWith(body, "true", 4) || startsWith(body, "ttcf", 4)) return is(Type::TrueType);
     if (startsWith(body, "OTTO", 4)) return is(Type::OpenType);
     if (startsWith(body, "PK\x03\x04", 4)) return is(Type::Zip);
+    // videos (phase 6): EBML, an ISO base media "ftyp" box (AVIF above is one too), Ogg
+    if (startsWith(body, "\x1A\x45\xDF\xA3", 4)) return is(Type::WebM);
+    if (startsWith(body, "ftyp", 4, 4)) return is(startsWith(body, "qt  ", 4, 8) ? Type::QuickTime : Type::Mp4);
+    if (startsWith(body, "OggS", 4)) return is(Type::Ogg);
     if (startsWith(body, "BM", 2) && body.size() >= 26 && (contentType == "image/bmp" || contentType == "image/x-ms-bmp" || urlExtension(url) == "bmp"))
         return is(Type::Bmp);
 

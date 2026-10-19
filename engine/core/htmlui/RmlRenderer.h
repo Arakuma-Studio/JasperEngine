@@ -262,6 +262,31 @@ namespace jasperengine {
         // sokol ids of every buffer and image the renderer owns right now
         void getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint32_t>& images) const;
 
+        // The renderer of an RmlUi context (HtmlUIContext and the tests' RenderTestContext bind
+        // theirs at creation): elements that draw through it (<video>) find it here; nullptr for
+        // a context on another render interface
+        static RmlRenderer* forContext(const Rml::Context* context);
+        static void bindContext(const Rml::Context* context, RmlRenderer* renderer);
+        static void unbindContext(const Rml::Context* context);
+
+        // <video> (phase 6): a frame's Y, U and V planes (target->planes, uploaded) are converted
+        // into target, a 1-sample RGBA8 RENDER_TARGET texture, by one HTMLUI_POST Yuv pass;
+        // colorMatrix is VideoColorConvert::matrix (column-major), chromaScale its chromaScale.
+        // Queued (a newer job for the same target replaces it) and run by runVideoConversions,
+        // which HtmlUIContext calls before beginFrame, outside any pass. A released target drops
+        // its job.
+        struct VideoConversion {
+            HtmlUITexture* target = nullptr;
+            float colorMatrix[16] = {};
+            float chromaScale[2] = {1.0f, 1.0f};
+        };
+        void queueVideoConversion(const VideoConversion& conversion);
+        void cancelVideoConversion(const HtmlUITexture* target);
+        bool hasVideoConversion(const HtmlUITexture* target) const;
+        // runs the queue (outside any pass, once the programs exist); returns the passes drawn
+        int runVideoConversions();
+        uint64_t getVideoConversionCount() const;   // passes run over the renderer's life
+
     private:
         friend class RmlFilterContext;
         // phase 5: the UI effects draw with the renderer's passes, geometry and state
@@ -288,6 +313,8 @@ namespace jasperengine {
             int fsSlot = -1;
             std::pair<int, int> textureSlot{-1, -1};
             std::pair<int, int> maskSlot{-1, -1};
+            std::pair<int, int> chromaUSlot{-1, -1};    // Yuv (phase 6)
+            std::pair<int, int> chromaVSlot{-1, -1};
         };
 
         // a fullscreen pass of an HTMLUI_POST variant: source sampled through uvTransform
@@ -389,6 +416,8 @@ namespace jasperengine {
         std::unordered_set<RmlGeometry*> liveGeometry;
         std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
         std::unordered_set<HtmlUITexture*> liveTextures;
+        std::vector<VideoConversion> videoConversions;
+        uint64_t videoConversionCount = 0;
         std::vector<HtmlUITexture*> pendingReleases;
         std::vector<std::unique_ptr<RmlGeometryPage>> pages;
         std::vector<std::unique_ptr<RmlTransientBuffer>> transientBuffers;
@@ -447,7 +476,8 @@ namespace jasperengine {
         std::pair<int, int> geometryTextureSlot{-1, -1};
         int gradientParamsSlot = -1;
         int gradientFsSlot = -1;
-        PostProgram postPrograms[6];
+        static constexpr int POST_PROGRAM_COUNT = 7;   // ShaderPool's HTMLUI_POST_VARIANT_COUNT
+        PostProgram postPrograms[POST_PROGRAM_COUNT];
         // the composite quad, also the layout template of the dynamic geometry objects
         BufferRender compositeVertexBuffer;
         BufferRender compositeIndexBuffer;

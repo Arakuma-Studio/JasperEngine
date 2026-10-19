@@ -3,6 +3,8 @@
 
 #include "HtmlUIInspector.h"
 #include "HtmlUIInspectorInternal.h"
+#include "media/UIVideoControls.h"
+#include "media/UIVideoElement.h"
 
 #include "Scene.h"
 #include "component/UIDocumentComponent.h"
@@ -1228,6 +1230,49 @@ InspectElement inspect::describe(const Doc& doc, Refs& refs, Rml::Element* eleme
         effect.form = use.filterForm ? "filter" : "paint";
         effect.params = std::move(use.params);
         out.effects.push_back(std::move(effect));
+    }
+    if (UIVideoElement* video = rmlui_dynamic_cast<UIVideoElement*>(element)){
+        auto media = std::make_shared<InspectMedia>();
+        media->currentSrc = video->getCurrentSrc();
+        media->currentTime = video->getCurrentTime();
+        const double duration = video->getDuration();
+        media->duration = std::isfinite(duration) ? duration : -1.0;
+        media->playbackRate = video->getPlaybackRate();
+        media->paused = video->isPaused();
+        media->ended = video->isEnded();
+        media->seeking = video->isSeeking();
+        media->loop = video->getLoop();
+        media->muted = video->isMuted();
+        media->showingPoster = video->isShowingPoster();
+        media->volume = video->getVolume();
+        media->readyState = video->getReadyState();
+        media->networkState = video->getNetworkState();
+        media->videoWidth = video->getVideoWidth();
+        media->videoHeight = video->getVideoHeight();
+        media->errorCode = (int)video->getError().code;
+        media->errorMessage = video->getError().message;
+        media->frame = video->getShownFrameIndex();
+        media->droppedFrames = video->getStreamStats().framesDropped;
+        media->decodeMs = video->getDecodeMsPerFrame();
+        media->memoryBytes = video->getMemoryBytes();
+        media->controls = video->getControls();
+        if (UIVideoControls* controls = video->getControlsWidget()){
+            const UIVideoControls::Rects rects = controls->getRects();
+            auto toRect = [](const Rml::Rectanglef& r){
+                InspectRect out;
+                out.x = r.Left();
+                out.y = r.Top();
+                out.width = r.Width();
+                out.height = r.Height();
+                return out;
+            };
+            media->controlsVisible = rects.visible;
+            media->controlsBar = toRect(rects.bar);
+            media->playButton = toRect(rects.play);
+            media->timeline = toRect(rects.timeline);
+            media->muteButton = toRect(rects.mute);
+        }
+        out.media = std::move(media);
     }
     return out;
 }

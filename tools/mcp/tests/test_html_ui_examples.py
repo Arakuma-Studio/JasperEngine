@@ -1,6 +1,6 @@
 """The HTML/CSS UI example library (phase 4, p4-examples, spec §3.7, §3.9, §5.4).
 
-docs/mcp/guide/html-ui-examples holds nine examples and the blank template (examples.json is the
+docs/mcp/guide/html-ui-examples holds ten examples (phase 6 added video_menu) and the blank template (examples.json is the
 manifest). The editor embeds them and writes them into every project's
 .jasperengine/engine-api/html-ui-examples/. Per example <n> (generated from the manifest):
 
@@ -82,14 +82,16 @@ SURFACE = {
              "#confirm", "#qty-minus", "#qty-plus", "#confirm-buy", "#confirm-cancel"],
     "toasts": ["div#toasts.toast-stack", "div.toast.toast-info", ".message", ".toast-progress"],
     "loading": ["div.loading", "lottie#spinner", "#progress-track", "#progress-fill", "#percent", ".tip", "#press-key", ".loading-card"],
+    "video_menu": ["video.backdrop-video#backdrop", ".scrim", "h1.title", "nav.menu", "button.menu-button#play", "button.menu-button#continue",
+                   "button.menu-button#options", "button.menu-button#quit", "button.motion#motion", "#motion-label", "footer.footer"],
     "blank": ["main.screen", "h1"],
 }
 
 # Examples whose CSS animations run from the document's load (infinite keyframes) and that make
 # no data model (createDataModel reloads a document): play keeps the document the editor loaded,
 # so their phase at play start depends on the wall time spent in edit mode. The test reloads them
-# once play is held, which starts them on the fixed UI clock.
-RESTART_CSS = {"main_menu"}
+# once play is held, which starts them on the fixed UI clock (video_menu: its autoplay video too).
+RESTART_CSS = {"main_menu", "video_menu"}
 
 S: dict = {}   # per example: {"scene", "entity"}, and "editor" (the Editor the scenes were made in)
 
@@ -326,12 +328,12 @@ async def test_pngdiff():
 # ---------------------------------------------------------------------------------------- library rules
 
 async def test_manifest_and_authoring_rules():
-    """examples.json lists the nine examples then blank; each example follows the library's rules
+    """examples.json lists the ten examples then blank; each example follows the library's rules
     (spec §3.7.1): one html linking one css, assets under assets/, a purpose comment at the top, a
     `<Pascal>UI` Lua class with byId and the onLoad binding, generic font families, nothing remote,
     the size limits, and the public ids and classes."""
     check(MANIFEST.get("version") == 1, "manifest version 1")
-    check(NAMES == ["main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop", "toasts", "loading", "blank"],
+    check(NAMES == ["main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop", "toasts", "loading", "video_menu", "blank"],
           f"manifest order: {NAMES}")
     on_disk = sorted(p.name for p in LIBRARY.iterdir() if p.is_dir())
     check(on_disk == sorted(NAMES), f"folders {on_disk}")
@@ -788,6 +790,46 @@ async def loading_after(ed: Editor, n: str) -> None:
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('press-key').offsetHeight > 0") == [True], "#press-key shows")
     await ed.call("send_input", events=[{"type": "key", "key": "space"}], frames_after=2)
     check("loading: continue" in await console_messages(ed), "a key continues")
+
+
+async def video_state(ed: Editor, n: str) -> dict:
+    tree = await ed.call("inspect_ui", entity=n, selector="#backdrop", depth=0)
+    return tree["elements"][0]["media"]
+
+
+async def video_menu_before(ed: Editor, n: str, first: bool) -> None:
+    m = await video_state(ed, n)
+    check(not m["paused"] and m["loop"] and m["muted"] and m["readyState"] == 4, f"the background video plays: {m}")
+    check((m["videoWidth"], m["videoHeight"]) == (640, 360) and abs(m["duration"] - 4.0) < 1e-3, f"menu-loop.webm: {m}")
+    # reloaded when play is held, then 90 frames of 1/60 s: 1.5 s, frame 45 (frame-exact)
+    check(abs(m["currentTime"] - 1.5) < 1e-9 and m["frame"] == 45, f"frame-exact on the UI clock: {m}")
+    await hover(ed, n, "#play", frames_after=20)
+
+
+async def video_menu_after(ed: Editor, n: str) -> None:
+    await console_messages(ed)
+    await click(ed, n, "#motion", frames_after=5)
+    m = await video_state(ed, n)
+    check(m["paused"], f"the motion toggle pauses the video: {m}")
+    label, pressed = await lua(ed, f"local d = {doc_lua(n)}; return d:getElementById('motion-label').textContent, "
+                                   f"d:getElementById('motion'):getAttribute('aria-pressed')")
+    check((label, pressed) == ("Play background", "true"), f"the toggle follows the pause event: {label!r} {pressed!r}")
+    check("video_menu: background paused" in await console_messages(ed), "logged")
+    await ed.call("wait", frames=30)
+    check((await video_state(ed, n))["currentTime"] == m["currentTime"], "paused: the time stays")
+    await click(ed, n, "#motion", frames_after=5)
+    t0 = (await video_state(ed, n))["currentTime"]
+    label = (await lua(ed, f"return {doc_lua(n)}:getElementById('motion-label').textContent"))[0]
+    check(label == "Pause background", f"playing again: {label!r}")
+    # 3 s on: past the 4 s end, the loop wraps (no ended, no pause)
+    await ed.call("wait", frames=180)
+    m = await video_state(ed, n)
+    check(not m["paused"] and not m["ended"] and abs(m["currentTime"] - (t0 + 3.0) % m["duration"]) < 1e-6,
+          f"looped: {t0} + 3 s -> {m['currentTime']}")
+    await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "enter"}], frames_after=10)
+    check(await focused(ed, n) == "play" and "video_menu: play" in await console_messages(ed), "Down focuses Play, Enter presses it")
+    await pad(ed, "dpad_down", "a", frames_after=10)
+    check(await focused(ed, n) == "continue" and "video_menu: continue" in await console_messages(ed), "the d-pad and A do the same")
 
 
 async def blank_before(ed: Editor, n: str, first: bool) -> None:

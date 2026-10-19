@@ -89,7 +89,7 @@ namespace jasperengine::htmlui::compat {
     // what the editor importers download (phase-2 §3.13.3).
     struct RemoteReference {
         std::string url;    // as written (resolved against nothing: remote URLs are absolute)
-        std::string kind;   // "google-fonts-css", "stylesheet", "font", "image", "lottie", "svg"
+        std::string kind;   // "google-fonts-css", "stylesheet", "font", "image", "lottie", "svg", "video" (phase 6)
         SourceRef ref;
     };
 
