@@ -1827,7 +1827,7 @@ vec4 jfx_paint(JfxContext c){
   `JFX_STATE(<name>)` (from `effects/lib/jfx_state.glsl`: `<name>_fetch(ivec2)`,
   `<name>_sample(uv)`, `<name>_size()`), define `vec4 jfx_step(JfxStep s)` (it writes texel
   `s.cell` of pass `s.pass`, compared with `JFX_PASS_<NAME>`, inside `#ifdef JFX_STEP_FORM`),
-  read the images in `jfx_paint`/`jfx_filter`, and end with
+  read the images in the paint or filter function, and end with
   `#include "effects/lib/main_step.glsl"` after the main include. The built-in simulations in
   `engine/shaderlib/effects` (`fluid-smoke.frag`, `reaction-diffusion.frag`, `boids.frag`) are
   the examples; `jasper://docs/html-ui-effects` lists their images.
