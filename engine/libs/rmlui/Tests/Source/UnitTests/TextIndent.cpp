@@ -87,7 +87,9 @@ TEST_CASE("TextIndent.lines")
 		"<div style='width: auto'><span id='ibw' class='ib' style='text-indent: 30px'>XX XX</span></div>"
 		"<div style='width: auto'><span id='ibp' class='ib' style='text-indent: 10%'><span id='ibp1'>XX</span> XX</span></div>"
 		"<div style='width: auto'><span id='ibm' class='ib' style='width: min-content; text-indent: 20px'>XX XX</span></div>"
-		"<div style='width: auto'><span id='ibn' class='ib' style='width: min-content; text-indent: -20px'>XXXX XX</span></div>");
+		"<div style='width: auto'><span id='ibn' class='ib' style='width: min-content; text-indent: -20px'>XXXX XX</span></div>"
+		// an absolutely positioned box before the text does not take the first line
+		"<div style='text-indent: 30px'><span style='position: absolute'>X</span><span id='abs1'>XX</span></div>");
 
 	const auto Check = [&](const char* id, float left, float top, float width) {
 		INFO(id);
@@ -129,6 +131,7 @@ TEST_CASE("TextIndent.lines")
 	Check("ibp1", 5.f, 343.f, 20.f);
 	Check("ibm", 0.f, 363.f, 40.f);
 	Check("ibn", 0.f, 383.f, 20.f);
+	CHECK(Get(document, "abs1")->GetAbsoluteOffset(BoxArea::Border).x == doctest::Approx(30.f));
 	document->Close();
 }
 
