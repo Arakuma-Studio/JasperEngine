@@ -1,0 +1,52 @@
+{
+ "fixture": "text/indent-rtl.html",
+ "viewport": [
+  220,
+  270
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "latin",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 42
+   },
+   {
+    "id": "hebrew",
+    "tag": "div",
+    "x": 10,
+    "y": 60,
+    "w": 200,
+    "h": 42
+   },
+   {
+    "id": "hang",
+    "tag": "div",
+    "x": 10,
+    "y": 110,
+    "w": 200,
+    "h": 28
+   },
+   {
+    "id": "cen",
+    "tag": "div",
+    "x": 10,
+    "y": 160,
+    "w": 200,
+    "h": 42
+   },
+   {
+    "id": "jus",
+    "tag": "div",
+    "x": 10,
+    "y": 210,
+    "w": 200,
+    "h": 42
+   }
+  ]
+ }
+}

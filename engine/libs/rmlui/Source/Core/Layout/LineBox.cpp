@@ -5,6 +5,7 @@
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../../Include/RmlUi/Core/StringUtilities.h"
+#include "../ListMarker.h"
 #include "../TextJustification.h"
 #include "InlineBox.h"
 #include "InlineLevelBox.h"
@@ -28,6 +29,10 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 	RMLUI_ASSERT(!is_closed);
 	const bool first_box = !HasContent();
 
+	// 'text-indent' at the start of the line (p6-justify, P6-J2): before the first box but an outside list marker.
+	if (pending_indent != 0.f)
+		ApplyPendingIndent(box);
+
 	// Find the spacing this element must leave on its right side, to account for its parent inline boxes to be closed later.
 	float open_spacing_right = 0.f;
 	ForAllOpenFragments([&](const Fragment& fragment) { open_spacing_right += fragment.box->GetSpacingRight(); });
@@ -37,7 +42,7 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 	float available_width = FLT_MAX;
 	if (layout_mode != InlineLayoutMode::Nowrap)
 	{
-		available_width = Math::RoundUp(line_width - box_placement_cursor);
+		available_width = Math::RoundUp(line_width - end_indent - box_placement_cursor);
 		if (available_width < 0.f)
 		{
 			if (layout_mode == InlineLayoutMode::WrapAny)
@@ -322,7 +327,8 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 
 	// A line ended by a preserved line feed is a last line too (a forced break).
 	const char last_character = GetLastTextCharacter();
-	if (last_line || last_character == '\n')
+	ends_with_line_feed = (last_character == '\n');
+	if (last_line || ends_with_line_feed)
 		text_align = text_align_last;
 
 	// White space at the end of the line, and justification (p6-justify), out of line.
@@ -333,7 +339,7 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 	}
 
 	// Horizontal alignment using available space on our line.
-	if (box_cursor < line_width)
+	if (box_cursor < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, box_cursor);
 
 	SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
@@ -343,8 +349,8 @@ float LineBox::GetAlignmentOffset(Style::TextAlign text_align, float content_wid
 {
 	switch (text_align)
 	{
-	case Style::TextAlign::Center: return (line_width - content_width) * 0.5f;
-	case Style::TextAlign::Right: return (line_width - content_width);
+	case Style::TextAlign::Center: return (line_width - end_indent - content_width) * 0.5f;
+	case Style::TextAlign::Right: return (line_width - end_indent - content_width);
 	case Style::TextAlign::Left:    // Already left-aligned.
 	case Style::TextAlign::Justify: // Justified: the line is filled.
 	case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
@@ -405,17 +411,50 @@ RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_par
 	Vector<Vector<JustificationSpacing>> justification;
 	if (text_align == Style::TextAlign::Justify)
 	{
-		if (!Justify(line_width - content_width, rtl, justify_end_fragment, justify_end_offset, justification))
+		if (!Justify(line_width - end_indent - content_width, rtl, justify_end_fragment, justify_end_offset, justification))
 			text_align = (rtl ? Style::TextAlign::Right : Style::TextAlign::Left);
 	}
 
-	if (content_width < line_width)
+	if (content_width < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, content_width);
 
 	if (justification.empty())
 		SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 	else
 		SubmitFragments<true>(offset_parent, offset_parent_position, &justification);
+}
+
+void LineBox::SetIndent(float indent, bool rtl)
+{
+	if (rtl)
+	{
+		end_indent = indent;
+		return;
+	}
+	pending_indent = indent;
+	// A line resumed after a block-level box already holds its open inline boxes.
+	if (!fragments.empty())
+		ApplyPendingIndent(nullptr);
+}
+
+void LineBox::ApplyPendingIndent(InlineLevelBox* box)
+{
+	// An outside list marker stays outside the start edge (Chromium does not indent it): the indent waits for the content.
+	if (box)
+	{
+		if (auto marker = rmlui_dynamic_cast<ElementListMarker*>(box->GetElement()))
+		{
+			if (marker->IsOutside())
+				return;
+		}
+	}
+	box_cursor += pending_indent;
+	for (Fragment& fragment : fragments)
+	{
+		if (fragment.type == FragmentType::InlineBox)
+			fragment.position.x += pending_indent;
+	}
+	pending_indent = 0.f;
 }
 
 float LineBox::TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset)

@@ -245,6 +245,12 @@ void ElementListMarker::UpdateGeneratedText()
 	}
 }
 
+bool ElementListMarker::IsOutside()
+{
+	const Property* position = GetProperty(PropertyId::ListStylePosition);
+	return (!position || position->unit != Unit::KEYWORD || position->Get<int>() == 0);
+}
+
 void ElementListMarker::UpdateBox()
 {
 	box_dirty = false;

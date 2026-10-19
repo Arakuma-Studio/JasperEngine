@@ -1113,10 +1113,20 @@ int WidgetTextInput::CalculateLineIndex(float position) const
 
 float WidgetTextInput::GetAlignmentSpecificTextOffset(const Line& line) const
 {
+	// 'text-indent' (p6-justify, P6-J2): an indented line starts after the indent (right to left: ends before it), and is
+	// aligned in the width that leaves.
+	if (line.indent == 0.f)
+		return GetAlignmentOffsetInLine(line);
+	const bool rtl = (parent->GetComputedValues().direction() == Style::Direction::Rtl);
+	return (rtl ? 0.f : line.indent) + GetAlignmentOffsetInLine(line);
+}
+
+float WidgetTextInput::GetAlignmentOffsetInLine(const Line& line) const
+{
 	// Callback to avoid expensive calculation in the cases where it is not needed.
-	auto RemainingWidth = [this](StringView editable_line_string) {
+	auto RemainingWidth = [this, &line](StringView editable_line_string) {
 		const float total_width = (float)ElementUtilities::GetStringWidth(text_element, editable_line_string);
-		return GetAvailableWidth() - total_width;
+		return GetAvailableWidth() - line.indent - total_width;
 	};
 
 	const String& value = text_element->GetText();
@@ -1176,7 +1186,7 @@ void WidgetTextInput::JustifyLine(Line& line) const
 		return;
 
 	const StringView text(value, line.value_offset, end);
-	const float space = GetAvailableWidth() - (float)ElementUtilities::GetStringWidth(text_element, text);
+	const float space = GetAvailableWidth() - line.indent - (float)ElementUtilities::GetStringWidth(text_element, text);
 
 	const auto& computed = parent->GetComputedValues();
 	Vector<JustificationRun> runs(1);
@@ -1364,9 +1374,20 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 	Mesh selection_composition_mesh = selection_composition_geometry.Release(Geometry::ReleaseMode::ClearMesh);
 
 	// Keep generating lines until all the text content is placed.
+	// 'text-indent' (P6-J2): a percentage of the field's width; the first line, with 'each-line' the lines after a line feed, or
+	// with 'hanging' the others.
+	const auto& computed = parent->GetComputedValues();
+	const float text_indent = (computed.text_indent().type == Style::LengthPercentage::Length ? computed.text_indent().value
+																								: ResolveValue(computed.text_indent(), available_width));
+	const bool indent_hanging = (uint8_t(computed.text_indent_mode()) & uint8_t(Style::TextIndentMode::Hanging)) != 0;
+	const bool indent_each_line = (uint8_t(computed.text_indent_mode()) & uint8_t(Style::TextIndentMode::EachLine)) != 0;
+	bool after_line_feed = false;
+
 	do
 	{
-		const float maximum_line_width = available_width - cursor_size.x;
+		const bool indented = text_indent != 0.f && ((lines.empty() || (indent_each_line && after_line_feed)) != indent_hanging);
+		const float line_indent = (indented ? text_indent : 0.f);
+		const float maximum_line_width = available_width - cursor_size.x - line_indent;
 		if (maximum_line_width <= 0.f)
 		{
 			lines.push_back(Line{});
@@ -1375,6 +1396,7 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 
 		Line line = {};
 		line.value_offset = line_begin;
+		line.indent = line_indent;
 		float line_width;
 		String line_content;
 
@@ -1398,10 +1420,11 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 				line_content.append(count, ' ');
 				line_width += ElementUtilities::GetStringWidth(text_element, " ") * (int)count;
 				line.editable_length += (int)count;
-				line.size += (int)count;
+				// The spaces `GenerateLine` hung at the wrap (pre-wrap) are already in the line's size: counted once.
+				line.size = Math::Max(line.size, int(i_space_end) - line_begin);
 				// Consume the hard wrap if we have one on this line, so that it doesn't make its own, empty line.
 				if (text[i_space_end] == '\n')
-					line.size += 1;
+					line.size = Math::Max(line.size, int(i_space_end) - line_begin + 1);
 				// If the spaces extend all the way to the end, we have consumed all the lines.
 				if (i_space_end == text.size())
 					last_line = true;
@@ -1507,7 +1530,8 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 		line_position.y += line_height;
 
 		// Grow the content area width-wise if this line is the longest so far, and push the height out.
-		content_area.x = Math::Max(content_area.x, line_width + cursor_size.x);
+		content_area.x = Math::Max(content_area.x, line_width + line_indent + cursor_size.x);
+		after_line_feed = (line.editable_length < line.size);
 		content_area.y = line_position.y - top_to_baseline;
 
 		// Finally, push the new line into our array of lines.
@@ -1575,12 +1599,15 @@ void WidgetTextInput::UpdateCursorPosition(bool update_ideal_cursor_position)
 		Style::TextAlign text_align = computed.text_align_last();
 		if (text_align == Style::TextAlign::Justify)
 			text_align = Style::ResolveTextAlign(Style::TextAlign::Start, computed.direction());
+		// (the placeholder is the first line: indented)
+		const float indent = (lines.empty() ? 0.f : lines[0].indent);
+		const float start = (computed.direction() == Style::Direction::Rtl ? 0.f : indent);
 		switch (text_align)
 		{
-		case Style::TextAlign::Left: return 0.f;
-		case Style::TextAlign::Justify: return 0.f;
-		case Style::TextAlign::Right: return Math::Max(0.0f, GetAvailableWidth());
-		case Style::TextAlign::Center: return Math::Max(0.0f, 0.5f * GetAvailableWidth());
+		case Style::TextAlign::Left: return start;
+		case Style::TextAlign::Justify: return start;
+		case Style::TextAlign::Right: return start + Math::Max(0.0f, GetAvailableWidth() - indent);
+		case Style::TextAlign::Center: return start + Math::Max(0.0f, 0.5f * (GetAvailableWidth() - indent));
 		case Style::TextAlign::Start: // (resolved by ComputedValues::text_align())
 		case Style::TextAlign::End: return 0.f;
 		}

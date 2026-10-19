@@ -146,6 +146,8 @@ private:
 		int editable_length;
 		// A justified line (p6-justify): the space added around its characters, by their offsets from 'value_offset'.
 		Vector<JustificationSpacing> justification;
+		// 'text-indent' of the line in px (P6-J2), 0 when it is not indented.
+		float indent = 0.f;
 	};
 
 	/// Returns the displayed value of the text field.
@@ -237,6 +239,8 @@ private:
 	/// Returns the offset that aligns the contents of the line according to the 'text-align' property ('text-align-last'
 	/// for the last line and lines ended by a line feed).
 	float GetAlignmentSpecificTextOffset(const Line& line) const;
+	/// The alignment offset within the line's width less its indent.
+	float GetAlignmentOffsetInLine(const Line& line) const;
 	/// The line's alignment: 'text-align', or 'text-align-last' for the last line and a line ended by a line feed (p6-justify).
 	Style::TextAlign GetLineAlignment(const Line& line) const;
 	/// Justifies the line when it is aligned so: distributes the space its text leaves (without the spaces that hang at its

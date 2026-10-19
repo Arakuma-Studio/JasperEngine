@@ -1,0 +1,4 @@
+{
+ "comment": "text-indent in a text area (the first line indented and wrapped in the width it leaves, the line after a line feed not) and text inputs (left and centred); whole pixels, so the image is compared.",
+ "viewport": [260, 130]
+}

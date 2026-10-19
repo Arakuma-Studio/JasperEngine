@@ -58,7 +58,15 @@ public:
 	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, Style::TextAlign text_align_last, bool last_line,
 		bool rtl);
 
+	/// Indents the line by 'text-indent' (p6-justify, P6-J2): a left-to-right line starts after the indent (at its first box),
+	/// a right-to-left one ends before it.
+	void SetIndent(float indent, bool rtl);
+	/// The line was ended by a preserved line feed (a forced break). Available after close.
+	bool EndsWithLineFeed() const { return ends_with_line_feed; }
+
 	float GetBoxCursor() const { return box_cursor; }
+	// The width the content of the line takes, with the indent at its end (right-to-left).
+	float GetContentExtent() const { return box_cursor + end_indent; }
 	Vector2f GetPosition() const { return line_position; }
 	float GetLineWidth() const { return line_width; }
 	float GetLineMinimumHeight() const { return line_minimum_height; }
@@ -128,6 +136,9 @@ private:
 
 	// Splits the line, returning a new line if there are any open fragments.
 	UniquePtr<LineBox> SplitLine(bool split_all_open_boxes);
+
+	// Moves the start of the line by the indent, and the open inline boxes with it (not for an outside list marker).
+	void ApplyPendingIndent(InlineLevelBox* box);
 
 	// The last character of the line's text when its last content is text ('\0' otherwise).
 	char GetLastTextCharacter() const;
@@ -204,6 +215,10 @@ private:
 	bool has_content = false;
 	// The last text run or atomic inline placed, when it is a text run (its index), else -1.
 	FragmentIndex last_text_run = -1;
+	// 'text-indent' (P6-J2): the indent still to apply at the start (left to right), the indent at the end (right to left).
+	float pending_indent = 0.f;
+	float end_indent = 0.f;
+	bool ends_with_line_feed = false;
 	bool is_vertically_positioned = false;
 	bool is_closed = false;
 

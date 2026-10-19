@@ -91,7 +91,8 @@ TEST(ForkFeatures, PresentFeatures){
                                       .with(ForkFeature::ColorFunctions, true)
                                       .with(ForkFeature::TextFillFilter, true)   // phase 5, p5-infra: -jfx-text-fill (P5-1)
                                       .with(ForkFeature::RegisteredProperties, true)    // phase 5, p5-property
-                                      .with(ForkFeature::Justify, true);                // p6-justify (P6-J1)
+                                      .with(ForkFeature::Justify, true)                 // p6-justify (P6-J1)
+                                      .with(ForkFeature::TextIndent, true);             // p6-justify (P6-J2)
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);
