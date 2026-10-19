@@ -1,0 +1,108 @@
+{
+ "fixture": "text/line-clamp-indent.html",
+ "viewport": [
+  350,
+  130
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "first",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "cut",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "second",
+    "tag": "div",
+    "x": 180,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "hanging",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "negative",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "each-line",
+    "tag": "div",
+    "x": 95,
+    "y": 50,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "rtl",
+    "tag": "div",
+    "x": 180,
+    "y": 50,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "rtl-first",
+    "tag": "div",
+    "x": 265,
+    "y": 50,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "percent",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "center",
+    "tag": "div",
+    "x": 95,
+    "y": 90,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "justify",
+    "tag": "div",
+    "x": 180,
+    "y": 90,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "br",
+    "tag": "div",
+    "x": 265,
+    "y": 90,
+    "w": 75,
+    "h": 10
+   }
+  ]
+ }
+}
