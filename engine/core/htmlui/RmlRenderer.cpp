@@ -57,6 +57,9 @@ namespace jasperengine {
         BufferRender* transientIndices = nullptr;
         size_t transientVertexOffset = 0;
         size_t transientIndexOffset = 0;
+        // the recording that drew it last (RmlRenderer::recordSerial): released during that
+        // recording, it waits for the replay
+        uint64_t recordedSerial = 0;
     };
 
     // Persistent geometry storage: a STREAM buffer (sokol's dynamic buffers wait for the GPU
@@ -469,6 +472,26 @@ Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Ve
 }
 
 void RmlRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle handle){
+    RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
+    // drawn by a recorded command: released after the replay. RmlUi frees the mesh now, so data
+    // not in persistent storage yet is kept until then
+    if (recording && geometry && geometry->alive && geometry->recordedSerial == recordSerial){
+        if (!geometry->vertexPage || !geometry->indexPage){
+            if (keptMeshesUsed == keptMeshes.size())
+                keptMeshes.emplace_back();
+            KeptMesh& kept = keptMeshes[keptMeshesUsed++];
+            kept.vertices.assign(geometry->vertices.begin(), geometry->vertices.end());
+            kept.indices.assign(geometry->indices.begin(), geometry->indices.end());
+            geometry->vertices = Rml::Span<const Rml::Vertex>(kept.vertices.data(), kept.vertices.size());
+            geometry->indices = Rml::Span<const int>(kept.indices.data(), kept.indices.size());
+        }
+        deferredReleases.push_back(DeferredRelease{ReleaseKind::GEOMETRY, handle});
+        return;
+    }
+    releaseGeometryNow(handle);
+}
+
+void RmlRenderer::releaseGeometryNow(Rml::CompiledGeometryHandle handle){
     RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
     if (liveGeometry.erase(geometry) == 0)
         return;
@@ -939,20 +962,43 @@ void RmlRenderer::flushPendingReleases(){
 // RmlRenderer: state
 //-------------------------------------------------------------------------------------------
 
+// While recording, the scissor and the clip mask are also set at once: the record-time checks
+// (SaveLayer*) and the state getters read them; the replay sets them again from beginFrame's
 void RmlRenderer::EnableScissorRegion(bool enable){
     scissorEnabled = enable;
+    if (recording)
+        recordCommand(CommandType::SCISSOR_ENABLE).flag = enable ? 1 : 0;
 }
 
 void RmlRenderer::SetScissorRegion(Rml::Rectanglei region){
     scissorRegion = region;
+    if (recording){
+        Command& command = recordCommand(CommandType::SCISSOR_REGION);
+        command.i[0] = region.Left();
+        command.i[1] = region.Top();
+        command.i[2] = region.Right();
+        command.i[3] = region.Bottom();
+    }
 }
 
 void RmlRenderer::SetTransform(const Rml::Matrix4f* newTransform){
+    if (recording){
+        // RmlUi's matrix lives only during the call
+        Command& command = recordCommand(CommandType::TRANSFORM);
+        if (newTransform){
+            command.flag = 1;
+            command.i[0] = (int32_t)commandMatrices.size();
+            commandMatrices.push_back(*newTransform);
+        }
+        return;
+    }
     transform = newTransform ? (projection * (*newTransform)) : projection;
 }
 
 void RmlRenderer::EnableClipMask(bool enable){
     clipMaskEnabled = enable;
+    if (recording)
+        recordCommand(CommandType::CLIP_ENABLE).flag = enable ? 1 : 0;
 }
 
 const Rml::Matrix4f& RmlRenderer::getCurrentTransform() const{
@@ -1373,6 +1419,22 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
 //-------------------------------------------------------------------------------------------
 
 void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
+    if (recording){
+        RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
+        if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
+            return;
+        geometry->recordedSerial = recordSerial;
+        Command& command = recordCommand(CommandType::GEOMETRY);
+        command.a = handle;
+        command.b = textureHandle;
+        command.x = translation.x;
+        command.y = translation.y;
+        return;
+    }
+    renderGeometryNow(handle, translation, textureHandle);
+}
+
+void RmlRenderer::renderGeometryNow(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
     if (frameState != FrameState::ACTIVE){
         if (frameState == FrameState::NONE && !loggedOutsideFrame){
             Log::error("[HTML UI] geometry rendered outside a frame is ignored");
@@ -1394,6 +1456,32 @@ void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector
 }
 
 void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle handle, Rml::Vector2f translation){
+    if (recording){
+        RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
+        if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
+            return;
+        geometry->recordedSerial = recordSerial;
+        // the reference the replay will test against (getStencilRef during the traversal)
+        switch (operation){
+        case Rml::ClipMaskOperation::Set:
+        case Rml::ClipMaskOperation::SetInverse:
+            stencilRef = 1;
+            break;
+        case Rml::ClipMaskOperation::Intersect:
+            stencilRef = (uint8_t)std::min(255, stencilRef + 1);
+            break;
+        }
+        Command& command = recordCommand(CommandType::CLIP_MASK);
+        command.flag = (uint8_t)operation;
+        command.a = handle;
+        command.x = translation.x;
+        command.y = translation.y;
+        return;
+    }
+    renderToClipMaskNow(operation, handle, translation);
+}
+
+void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle handle, Rml::Vector2f translation){
     if (frameState != FrameState::ACTIVE)
         return;
     RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
@@ -1433,6 +1521,16 @@ void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compil
 //-------------------------------------------------------------------------------------------
 
 Rml::LayerHandle RmlRenderer::PushLayer(){
+    if (recording){
+        // the index the replay's push will have: the layers are a stack
+        const int index = recordLayers++;
+        recordCommand(CommandType::PUSH_LAYER).i[0] = index;
+        return (Rml::LayerHandle)index;
+    }
+    return pushLayerNow();
+}
+
+Rml::LayerHandle RmlRenderer::pushLayerNow(){
     if (frameState != FrameState::ACTIVE)
         return 0;
 
@@ -1451,6 +1549,16 @@ Rml::LayerHandle RmlRenderer::PushLayer(){
 }
 
 void RmlRenderer::PopLayer(){
+    if (recording){
+        if (recordLayers > 1)
+            recordLayers--;
+        recordCommand(CommandType::POP_LAYER);
+        return;
+    }
+    popLayerNow();
+}
+
+void RmlRenderer::popLayerNow(){
     if (frameState != FrameState::ACTIVE)
         return;
     if (layersSize <= 1){
@@ -1466,6 +1574,26 @@ void RmlRenderer::PopLayer(){
 
 void RmlRenderer::CompositeLayers(Rml::LayerHandle sourceHandle, Rml::LayerHandle destinationHandle, Rml::BlendMode blendMode,
                                   Rml::Span<const Rml::CompiledFilterHandle> filters){
+    if (recording){
+        Command& command = recordCommand(CommandType::COMPOSITE);
+        command.i[0] = (int32_t)sourceHandle;
+        command.i[1] = (int32_t)destinationHandle;
+        command.i[2] = (int32_t)commandFilters.size();
+        command.i[3] = (int32_t)filters.size();
+        command.flag = (uint8_t)blendMode;
+        for (Rml::CompiledFilterHandle handle : filters){
+            commandFilters.push_back(handle);
+            // an effect filter reads its element now, the pass is drawn at replay
+            if (handle && htmlui::EffectRenderer::isEffectHandle(handle))
+                effects->prepareFilter(handle);
+        }
+        return;
+    }
+    compositeLayersNow(sourceHandle, destinationHandle, blendMode, filters);
+}
+
+void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHandle destinationHandle, Rml::BlendMode blendMode,
+                                     Rml::Span<const Rml::CompiledFilterHandle> filters){
     if (frameState != FrameState::ACTIVE || !target)
         return;
 
@@ -1730,6 +1858,76 @@ void RmlRenderer::blurInto(Framebuffer& source, Framebuffer& destination, Frameb
     }
 }
 
+Framebuffer* RmlRenderer::readableTopLayer(){
+    const int top = layersSize - 1;
+    ensureLayerCleared(top);
+    Framebuffer* layer = target->getLayer(top);
+    if (!layer)
+        return nullptr;
+    // resolved, so it can be read
+    ensureResolved(*layer);
+    return layer;
+}
+
+HtmlUITexture* RmlRenderer::createLayerTexture(int width, int height){
+    std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
+    texture->kind = HtmlUITexture::Kind::RENDER_TARGET;
+    texture->ownedTarget = std::make_unique<Framebuffer>();
+    FramebufferDesc desc;
+    desc.width = width;
+    desc.height = height;
+    desc.color = ColorFormat::RGBA;
+    desc.depth = DepthStencilFormat::NONE;
+    desc.sampleCount = 1;
+    desc.label = "htmlui-layer-texture";
+    gpuCreateCount++;
+    if (!texture->ownedTarget->create(desc)){
+        Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
+        return nullptr;
+    }
+    texture->render = &texture->ownedTarget->getRender().getColorTexture();
+    texture->width = desc.width;
+    texture->height = desc.height;
+    HtmlUITexture* result = texture.release();
+    liveTextures.insert(result);
+    return result;
+}
+
+void RmlRenderer::copyLayerInto(Framebuffer& layer, HtmlUITexture& texture, Rml::Rectanglei bounds, bool tiled, Rml::Vector2i offset,
+                                LoadAction load){
+    if (!texture.ownedTarget)
+        return;
+    // the scissor region of the top layer (at the offset when tiled), no flip: every image is
+    // top-left origin
+    PostDraw copy;
+    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    copy.source = &layer.getRender().getColorTexture();
+    copy.uvTransform[0] = (float)bounds.Width() / (float)targetSize.x;
+    copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
+    copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
+    copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
+    if (tiled){
+        copy.viewport = Rml::Rectanglei::FromPositionSize(offset, bounds.Size());
+        copy.scissor = copy.viewport;
+    }
+    drawPost(*texture.ownedTarget, load, copy, postTargetState(BlendMode::NONE));
+    endPass();
+}
+
+void RmlRenderer::copyLayerIntoMask(Framebuffer& layer, Framebuffer& mask){
+    PostDraw copy;
+    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
+    copy.source = &layer.getRender().getColorTexture();
+    copy.scissor = currentScissorTarget();
+    drawPost(mask, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
+}
+
+// SAVE_TEXTURE's flag
+namespace {
+    constexpr uint8_t SAVE_TILED = 1;
+    constexpr uint8_t SAVE_LOAD = 2;
+}
+
 Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     if (frameState != FrameState::ACTIVE || !target)
         return 0;
@@ -1741,46 +1939,23 @@ Rml::TextureHandle RmlRenderer::SaveLayerAsTexture(){
     if (isEmpty(bounds))
         return 0;
 
-    const int top = layersSize - 1;
-    ensureLayerCleared(top);
-    Framebuffer* layer = target->getLayer(top);
+    if (recording){
+        // the texture now (RmlUi draws with its handle next), its content at replay
+        HtmlUITexture* texture = createLayerTexture(bounds.Width(), bounds.Height());
+        if (!texture)
+            return 0;
+        recordCommand(CommandType::SAVE_TEXTURE).a = reinterpret_cast<uintptr_t>(texture);
+        return reinterpret_cast<Rml::TextureHandle>(texture);
+    }
+
+    Framebuffer* layer = readableTopLayer();
     if (!layer)
         return 0;
-    ensureResolved(*layer);
-
-    std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
-    texture->kind = HtmlUITexture::Kind::RENDER_TARGET;
-    texture->ownedTarget = std::make_unique<Framebuffer>();
-    FramebufferDesc desc;
-    desc.width = bounds.Width();
-    desc.height = bounds.Height();
-    desc.color = ColorFormat::RGBA;
-    desc.depth = DepthStencilFormat::NONE;
-    desc.sampleCount = 1;
-    desc.label = "htmlui-layer-texture";
-    gpuCreateCount++;
-    if (!texture->ownedTarget->create(desc)){
-        Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
+    HtmlUITexture* texture = createLayerTexture(bounds.Width(), bounds.Height());
+    if (!texture)
         return 0;
-    }
-    texture->render = &texture->ownedTarget->getRender().getColorTexture();
-    texture->width = desc.width;
-    texture->height = desc.height;
-
-    // the scissor region of the top layer, no flip: every image is top-left origin
-    PostDraw copy;
-    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
-    copy.source = &layer->getRender().getColorTexture();
-    copy.uvTransform[0] = (float)bounds.Width() / (float)targetSize.x;
-    copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
-    copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
-    copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
-    drawPost(*texture->ownedTarget, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
-    endPass();
-
-    HtmlUITexture* result = texture.release();
-    liveTextures.insert(result);
-    return reinterpret_cast<Rml::TextureHandle>(result);
+    copyLayerInto(*layer, *texture, bounds, false, Rml::Vector2i(0, 0), LoadAction::CLEAR);
+    return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
 Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureHandle, Rml::Vector2i textureDimensions,
@@ -1791,12 +1966,12 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
     if (isEmpty(bounds) || textureDimensions.x <= 0 || textureDimensions.y <= 0)
         return 0;
 
-    const int top = layersSize - 1;
-    ensureLayerCleared(top);
-    Framebuffer* layer = target->getLayer(top);
-    if (!layer)
-        return 0;
-    ensureResolved(*layer);
+    Framebuffer* layer = nullptr;
+    if (!recording){
+        layer = readableTopLayer();
+        if (!layer)
+            return 0;
+    }
 
     // textureDimensions and destinationOffset are in document px; the layer holds target pixels.
     // The texture is made at the target's scale, as SaveLayerAsTexture makes its texture the size
@@ -1811,26 +1986,9 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
     HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(textureHandle);
     LoadAction load = LoadAction::LOAD;
     if (!texture){
-        std::unique_ptr<HtmlUITexture> created = std::make_unique<HtmlUITexture>();
-        created->kind = HtmlUITexture::Kind::RENDER_TARGET;
-        created->ownedTarget = std::make_unique<Framebuffer>();
-        FramebufferDesc desc;
-        desc.width = scaledDimensions.x;
-        desc.height = scaledDimensions.y;
-        desc.color = ColorFormat::RGBA;
-        desc.depth = DepthStencilFormat::NONE;
-        desc.sampleCount = 1;
-        desc.label = "htmlui-layer-texture";
-        gpuCreateCount++;
-        if (!created->ownedTarget->create(desc)){
-            Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
+        texture = createLayerTexture(scaledDimensions.x, scaledDimensions.y);
+        if (!texture)
             return 0;
-        }
-        created->render = &created->ownedTarget->getRender().getColorTexture();
-        created->width = desc.width;
-        created->height = desc.height;
-        texture = created.release();
-        liveTextures.insert(texture);
         // the first tile clears the whole texture
         load = LoadAction::CLEAR;
     }else if (texture->kind != HtmlUITexture::Kind::RENDER_TARGET || !texture->ownedTarget ||
@@ -1838,18 +1996,15 @@ Rml::TextureHandle RmlRenderer::SaveLayerIntoTexture(Rml::TextureHandle textureH
         return 0;
     }
 
-    // the scissor region of the top layer at the offset (no flip: every image is top-left origin)
-    PostDraw copy;
-    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
-    copy.source = &layer->getRender().getColorTexture();
-    copy.uvTransform[0] = (float)bounds.Width() / (float)targetSize.x;
-    copy.uvTransform[1] = (float)bounds.Height() / (float)targetSize.y;
-    copy.uvTransform[2] = (float)bounds.Left() / (float)targetSize.x;
-    copy.uvTransform[3] = (float)bounds.Top() / (float)targetSize.y;
-    copy.viewport = Rml::Rectanglei::FromPositionSize(scaledOffset, bounds.Size());
-    copy.scissor = copy.viewport;
-    drawPost(*texture->ownedTarget, load, copy, postTargetState(BlendMode::NONE));
-    endPass();
+    if (recording){
+        Command& command = recordCommand(CommandType::SAVE_TEXTURE);
+        command.a = reinterpret_cast<uintptr_t>(texture);
+        command.flag = SAVE_TILED | (load == LoadAction::LOAD ? SAVE_LOAD : 0);
+        command.i[0] = scaledOffset.x;
+        command.i[1] = scaledOffset.y;
+        return reinterpret_cast<Rml::TextureHandle>(texture);
+    }
+    copyLayerInto(*layer, *texture, bounds, true, scaledOffset, load);
     return reinterpret_cast<Rml::TextureHandle>(texture);
 }
 
@@ -1857,19 +2012,16 @@ Rml::CompiledFilterHandle RmlRenderer::SaveLayerAsMaskImage(){
     if (frameState != FrameState::ACTIVE || !target)
         return 0;
 
-    const int top = layersSize - 1;
-    ensureLayerCleared(top);
-    Framebuffer* layer = target->getLayer(top);
-    Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
-    if (!layer || !mask)
-        return 0;
-    ensureResolved(*layer);
-
-    PostDraw copy;
-    copy.variant = (int)HtmlUIPostVariant::PASSTHROUGH;
-    copy.source = &layer->getRender().getColorTexture();
-    copy.scissor = currentScissorTarget();
-    drawPost(*mask, LoadAction::CLEAR, copy, postTargetState(BlendMode::NONE));
+    if (recording){
+        // the filter now (RmlUi composites with it next), the blend mask's content at replay
+        recordCommand(CommandType::SAVE_MASK);
+    }else{
+        Framebuffer* layer = readableTopLayer();
+        Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
+        if (!layer || !mask)
+            return 0;
+        copyLayerIntoMask(*layer, *mask);
+    }
 
     RmlCompiledFilter* filter = new RmlCompiledFilter();
     filter->type = RmlCompiledFilter::Type::MASK_IMAGE;
@@ -1965,6 +2117,15 @@ Rml::CompiledFilterHandle RmlRenderer::CompileFilter(const Rml::String& name, co
 void RmlRenderer::ReleaseFilter(Rml::CompiledFilterHandle filter){
     if (!filter)
         return;
+    // recorded composites may use it (a box shadow's blur goes right after its composite)
+    if (recording){
+        deferredReleases.push_back(DeferredRelease{ReleaseKind::FILTER, filter});
+        return;
+    }
+    releaseFilterNow(filter);
+}
+
+void RmlRenderer::releaseFilterNow(Rml::CompiledFilterHandle filter){
     if (htmlui::EffectRenderer::isEffectHandle(filter)){
         effects->releaseFilter(filter);
         return;
@@ -2037,6 +2198,24 @@ Rml::CompiledShaderHandle RmlRenderer::CompileShader(const Rml::String& name, co
 
 void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::CompiledGeometryHandle geometryHandle, Rml::Vector2f translation,
                                Rml::TextureHandle /*texture*/){
+    if (recording){
+        if (!shaderHandle || !geometryHandle)
+            return;
+        // an effect reads its element now; one that draws nothing this frame is not recorded
+        if (htmlui::EffectRenderer::isEffectHandle(shaderHandle) && !effects->prepareShader(shaderHandle))
+            return;
+        reinterpret_cast<RmlGeometry*>(geometryHandle)->recordedSerial = recordSerial;
+        Command& command = recordCommand(CommandType::SHADER);
+        command.a = shaderHandle;
+        command.b = geometryHandle;
+        command.x = translation.x;
+        command.y = translation.y;
+        return;
+    }
+    renderShaderNow(shaderHandle, geometryHandle, translation);
+}
+
+void RmlRenderer::renderShaderNow(Rml::CompiledShaderHandle shaderHandle, Rml::CompiledGeometryHandle geometryHandle, Rml::Vector2f translation){
     if (frameState != FrameState::ACTIVE || !shaderHandle || !geometryHandle)
         return;
     if (htmlui::EffectRenderer::isEffectHandle(shaderHandle)){
@@ -2084,6 +2263,14 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::Comp
 void RmlRenderer::ReleaseShader(Rml::CompiledShaderHandle shader){
     if (!shader)
         return;
+    if (recording){
+        deferredReleases.push_back(DeferredRelease{ReleaseKind::SHADER, shader});
+        return;
+    }
+    releaseShaderNow(shader);
+}
+
+void RmlRenderer::releaseShaderNow(Rml::CompiledShaderHandle shader){
     if (htmlui::EffectRenderer::isEffectHandle(shader)){
         effects->releaseShader(shader);
         return;
@@ -2239,6 +2426,131 @@ void RmlRenderer::abortFrame(){
     endPass();
     frameState = FrameState::NONE;
     target = nullptr;
+    // the recorded frame is dropped, what it held released
+    recording = false;
+    finishRecording();
+}
+
+//-------------------------------------------------------------------------------------------
+// RmlRenderer: command recording (phase-1 spec 3.2.10)
+//-------------------------------------------------------------------------------------------
+
+namespace {
+    std::atomic<bool> commandRecording{true};
+}
+
+void RmlRenderer::setCommandRecordingForTesting(bool enabled){
+    commandRecording = enabled;
+}
+
+bool RmlRenderer::isCommandRecording(){
+    return commandRecording;
+}
+
+size_t RmlRenderer::getLastFrameCommandCount() const{
+    return lastFrameCommandCount;
+}
+
+RmlRenderer::Command& RmlRenderer::recordCommand(CommandType type){
+    commands.emplace_back();
+    Command& command = commands.back();
+    command.type = type;
+    command.flag = 0;
+    command.i[0] = command.i[1] = command.i[2] = command.i[3] = 0;
+    command.x = command.y = 0.0f;
+    command.a = command.b = 0;
+    return command;
+}
+
+void RmlRenderer::replayCommands(){
+    // the state as beginFrame left it
+    transform = projection;
+    scissorEnabled = false;
+    scissorRegion = frameStartScissor;
+    clipMaskEnabled = false;
+    stencilRef = 0;
+    layersSize = 1;
+
+    const Command* command = commands.data();
+    const Command* end = command + commands.size();
+    for (; command != end; command++){
+        const Command& c = *command;
+        switch (c.type){
+        case CommandType::GEOMETRY:
+            renderGeometryNow(c.a, Rml::Vector2f(c.x, c.y), c.b);
+            break;
+        case CommandType::CLIP_MASK:
+            renderToClipMaskNow((Rml::ClipMaskOperation)c.flag, c.a, Rml::Vector2f(c.x, c.y));
+            break;
+        case CommandType::SCISSOR_ENABLE:
+            scissorEnabled = c.flag != 0;
+            break;
+        case CommandType::SCISSOR_REGION:
+            scissorRegion = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
+            break;
+        case CommandType::CLIP_ENABLE:
+            clipMaskEnabled = c.flag != 0;
+            break;
+        case CommandType::TRANSFORM:
+            transform = c.flag ? (projection * commandMatrices[(size_t)c.i[0]]) : projection;
+            break;
+        case CommandType::PUSH_LAYER: {
+            const int index = (int)pushLayerNow();
+            if (index != c.i[0])
+                Log::error("[HTML UI] the replay pushed layer %d where the recording returned %d", index, c.i[0]);
+            break;
+        }
+        case CommandType::POP_LAYER:
+            popLayerNow();
+            break;
+        case CommandType::COMPOSITE:
+            compositeLayersNow((Rml::LayerHandle)c.i[0], (Rml::LayerHandle)c.i[1], (Rml::BlendMode)c.flag,
+                               Rml::Span<const Rml::CompiledFilterHandle>(commandFilters.data() + c.i[2], (size_t)c.i[3]));
+            break;
+        case CommandType::SAVE_TEXTURE: {
+            // the texture exists since the recording; it stays unfilled when the layer cannot be made
+            HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(c.a);
+            if (Framebuffer* layer = readableTopLayer())
+                copyLayerInto(*layer, *texture, currentScissorTarget(), (c.flag & SAVE_TILED) != 0, Rml::Vector2i(c.i[0], c.i[1]),
+                              (c.flag & SAVE_LOAD) ? LoadAction::LOAD : LoadAction::CLEAR);
+            break;
+        }
+        case CommandType::SAVE_MASK: {
+            Framebuffer* layer = readableTopLayer();
+            Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
+            if (layer && mask)
+                copyLayerIntoMask(*layer, *mask);
+            break;
+        }
+        case CommandType::SHADER:
+            renderShaderNow(c.a, c.b, Rml::Vector2f(c.x, c.y));
+            break;
+        }
+    }
+}
+
+void RmlRenderer::finishRecording(){
+    commands.clear();
+    commandMatrices.clear();
+    commandFilters.clear();
+    // releases deferred while recording, in their order
+    for (size_t i = 0; i < deferredReleases.size(); i++){
+        const DeferredRelease release = deferredReleases[i];
+        switch (release.kind){
+        case ReleaseKind::GEOMETRY:
+            releaseGeometryNow(release.handle);
+            break;
+        case ReleaseKind::SHADER:
+            releaseShaderNow(release.handle);
+            break;
+        case ReleaseKind::FILTER:
+            releaseFilterNow(release.handle);
+            break;
+        }
+    }
+    deferredReleases.clear();
+    // the kept meshes' geometry is released: their buffers wait for the next frame's
+    keptMeshesUsed = 0;
 }
 
 bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
@@ -2303,6 +2615,17 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     frameMissesStart = SystemRender::getPipelineCacheMisses();
     frameAppliesStart = SystemRender::getPipelineApplies();
     frameState = FrameState::ACTIVE;
+
+    // RmlUi's calls are recorded until endFrame replays them
+    frameStartScissor = scissorRegion;
+    recording = commandRecording;
+    if (recording){
+        recordSerial++;
+        recordLayers = 1;
+        commands.clear();
+        commandMatrices.clear();
+        commandFilters.clear();
+    }
     return true;
 }
 
@@ -2321,6 +2644,14 @@ bool RmlRenderer::endFrame(){
         return false;
     }
 
+    // the recorded frame, drawn in one go
+    lastFrameCommandCount = 0;
+    if (recording){
+        recording = false;
+        lastFrameCommandCount = commands.size();
+        replayCommands();
+    }
+
     if (layersSize != 1)
         Log::error("[HTML UI] a frame ended with %d layers pushed", layersSize - 1);
 
@@ -2337,6 +2668,9 @@ bool RmlRenderer::endFrame(){
 
     frameState = FrameState::NONE;
     target = nullptr;
+    // what the recording released goes now, before the frame's geometry is persisted (released
+    // geometry is not, as when drawing at once)
+    finishRecording();
     persistGeometry();
     flushPendingReleases();
     return true;

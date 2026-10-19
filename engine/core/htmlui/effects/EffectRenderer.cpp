@@ -96,8 +96,14 @@ void EffectRenderer::releaseGpuResources(){
     }
 }
 
+namespace {
+    // EffectRenderer::frameKey: one counter for every renderer
+    uint64_t frameKeys = 0;
+}
+
 void EffectRenderer::beginFrame(){
     shaderGeneration = ShaderPool::getCustomShaderGeneration();
+    frameKey = ++frameKeys;
 }
 
 Rml::CompiledShaderHandle EffectRenderer::compileShader(const Rml::Dictionary& parameters){
@@ -372,19 +378,41 @@ void EffectRenderer::uploadCommon(EffectInstance& instance, Program& program, Ob
         object.applyUniformBlock(program.ripplesSlot, sizeof(instance.ripples), instance.ripples);
 }
 
+bool EffectRenderer::prepareShader(Rml::CompiledShaderHandle handle){
+    EffectInstance* instance = instanceOf(handle);
+    EffectRuntime& runtime = EffectRuntime::get();
+    if (!runtime.isLive(instance))
+        return false;
+    instance->drawKey = frameKey;
+    instance->drawReady = false;
+    if (!instance->element || !instance->manifest)
+        return false;
+    runtime.prepare(*instance);
+    Program* program = programFor(*instance, false);
+    if (!program)
+        return false;
+    packParams(*instance, *program);
+    instance->drawReady = true;
+    return true;
+}
+
 void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation){
     EffectInstance* instance = instanceOf(handle);
     EffectRuntime& runtime = EffectRuntime::get();
-    if (!runtime.isLive(instance) || !instance->element || !instance->manifest)
+    if (!runtime.isLive(instance))
         return;
-    runtime.prepare(*instance);
+    if (instance->drawKey != frameKey)
+        prepareShader(handle);
+    // not drawn this frame, or its element went after the frame was recorded (a document unloaded
+    // before the replay)
+    if (!instance->drawReady || !instance->element)
+        return;
     Program* program = programFor(*instance, false);
     if (!program)
         return;
     // phase 6: a stateful effect's passes run first (they end the layer's pass, bound again below)
     const bool stateful = instance->manifest->stateful();
     if (stateful){
-        packParams(*instance, *program);
         if (!advanceSimulation(*instance, *program, nullptr))
             return;
     }
@@ -401,8 +429,6 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     renderer.applyPassScissor(scissor);
     if (stateful)
         bindStates(*instance, *program);
-    else
-        packParams(*instance, *program);
 
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
     if (!program->object.beginDraw(renderer.getGeometryState(blendModeOf(instance->blend))))
@@ -450,10 +476,14 @@ bool EffectRenderer::brightPass(EffectInstance& instance, RmlFilterContext& cont
     return true;
 }
 
-bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterContext& context){
+bool EffectRenderer::prepareFilter(Rml::CompiledFilterHandle handle){
     EffectInstance* instance = instanceOf(handle);
     EffectRuntime& runtime = EffectRuntime::get();
-    if (!runtime.isLive(instance) || !instance->element || !instance->manifest)
+    if (!runtime.isLive(instance))
+        return false;
+    instance->drawKey = frameKey;
+    instance->drawReady = false;
+    if (!instance->element || !instance->manifest)
         return false;
     runtime.prepare(*instance);
     Program* program = programFor(*instance, true);
@@ -462,8 +492,9 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     const EffectManifest& m = *instance->manifest;
     Rml::Element* element = instance->element;
 
-    // the layer and the window <-> area-local maps (three projections; affine)
-    const Rml::Vector2i layer = context.getLayerSize();
+    // the layer (the context's target: RmlFilterContext::getLayerSize) and the window <->
+    // area-local maps (three projections; affine)
+    const Rml::Vector2i layer = renderer.targetSize;
     const Rml::Vector2f scale = renderer.getPixelScale();
     EffectFrameBlock& f = instance->frame;
     f.layer[0] = (float)layer.x;
@@ -500,6 +531,32 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
         std::memset(f.toLayerX, 0, sizeof(f.toLayerX));
         std::memset(f.toLayerY, 0, sizeof(f.toLayerY));
     }
+    packParams(*instance, *program);
+    instance->prepassSigma = m.hasPrepass ? scaledPx(*instance, m.prepassSigma) * sx : 0.f;
+    // a running clock redraws the effect every frame, as a paint effect's decorator asks (a
+    // filter is compiled once per reload: a view that redraws on demand, the editor's, stopped
+    // animating a document whose effects were all filters); asked when the pass is drawn
+    instance->redrawContext = EffectClock::isFixed() ? nullptr : (instance->context ? instance->context : element->GetContext());
+    instance->drawReady = true;
+    return true;
+}
+
+bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterContext& context){
+    EffectInstance* instance = instanceOf(handle);
+    EffectRuntime& runtime = EffectRuntime::get();
+    if (!runtime.isLive(instance))
+        return false;
+    if (instance->drawKey != frameKey)
+        prepareFilter(handle);
+    // not drawn this frame, or its element went after the frame was recorded
+    if (!instance->drawReady || !instance->element)
+        return false;
+    Program* program = programFor(*instance, true);
+    if (!program)
+        return false;
+    const EffectManifest& m = *instance->manifest;
+    EffectFrameBlock& f = instance->frame;
+    const Rml::Vector2i layer = context.getLayerSize();
     const Rml::Rectanglei scissor = context.getScissor();
     if (!scissor.Valid() || scissor.Width() <= 0 || scissor.Height() <= 0 || layer.x <= 0 || layer.y <= 0)
         return false;
@@ -507,7 +564,6 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     f.srcRect[1] = ((float)scissor.Top() + 0.5f) / (float)layer.y;
     f.srcRect[2] = ((float)scissor.Right() - 0.5f) / (float)layer.x;
     f.srcRect[3] = ((float)scissor.Bottom() - 0.5f) / (float)layer.y;
-    packParams(*instance, *program);
     // phase 6: a stateful effect's passes (they read the content, primary)
     if (m.stateful() && !advanceSimulation(*instance, *program, &context))
         return false;
@@ -515,7 +571,7 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     // the blur prepass (and its bright pass) into tertiary
     TextureRender* blurred = &context.primary().getRender().getColorTexture();
     if (m.hasPrepass){
-        const float sigma = scaledPx(*instance, m.prepassSigma) * sx;
+        const float sigma = instance->prepassSigma;
         context.blit(context.primary(), context.tertiary());
         if (!m.prepassThreshold.empty()){
             const int index = m.paramIndex(m.prepassThreshold);
@@ -546,10 +602,7 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     context.swap();
     runtime.mutableStats().filterPasses++;
     runtime.mutableFrameStats().filterPasses++;
-    // a running clock redraws the effect every frame, as a paint effect's decorator asks (a
-    // filter is compiled once per reload: a view that redraws on demand, the editor's, stopped
-    // animating a document whose effects were all filters)
-    if (!EffectClock::isFixed())
-        runtime.requestRedraw(instance->context ? instance->context : element->GetContext());
+    if (instance->redrawContext)
+        runtime.requestRedraw(instance->redrawContext);
     return true;
 }
