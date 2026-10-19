@@ -989,6 +989,11 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterProperty(PropertyId::UserSelect, "user-select", "auto", false, false).AddParser("keyword", "auto, text, none, contain, all");
 	RegisterProperty(PropertyId::AccentColor, "accent-color", "auto", true, false).AddParser("keyword", "auto").AddParser("color");
 
+	// -- Text (p6-justify) --
+	// The keywords Chromium parses: no 'match-parent' for 'text-align-last', no 'justify-all' for 'text-align'.
+	RegisterProperty(PropertyId::TextAlignLast, "text-align-last", "auto", true, true).AddParser("keyword", "auto, start, end, left, right, center, justify");
+	RegisterProperty(PropertyId::TextJustify, "text-justify", "auto", true, true).AddParser("keyword", "auto, none, inter-word, inter-character, distribute=3");
+
 	// -- Layout (p3-layout) --
 	// The sizing keywords of width, height, min-*, max-* and flex-basis, 'overflow: clip' and 'flex-wrap: balance' are in
 	// the keyword lists of those properties above.

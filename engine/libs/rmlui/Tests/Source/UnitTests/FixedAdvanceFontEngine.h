@@ -52,22 +52,35 @@ public:
 
 	const Rml::FontMetrics& GetFontMetrics(Rml::FontFaceHandle handle) override { return metrics[(int)handle]; }
 
-	float Measure(Rml::FontFaceHandle handle, Rml::StringView string, const Rml::TextShapingContext& context, Rml::Vector<float>* advances)
+	// The advance of each character, and with a justified line (p6-justify) the space before each one ('offsets').
+	float Measure(Rml::FontFaceHandle handle, Rml::StringView string, const Rml::TextShapingContext& context, Rml::Vector<float>* advances,
+		Rml::Vector<float>* offsets = nullptr)
 	{
 		const float size = (float)(int)handle;
 		float width = 0.f;
+		size_t spacing_index = 0;
 		for (auto it = Rml::StringIteratorU8(string.begin(), string.begin(), string.end()); it; ++it)
 		{
 			const char32_t c = (char32_t)*it;
-			float advance = 0.f;
+			float advance = 0.f, offset = 0.f;
 			if (!IsZeroWidth(c))
 			{
 				advance = size + context.letter_spacing;
 				if (c == ' ' || c == 0xA0)
 					advance += context.word_spacing;
 			}
+			const int byte_offset = (int)(it.get() - string.begin());
+			while (spacing_index < context.justification.size() && context.justification[spacing_index].offset < byte_offset)
+				spacing_index++;
+			if (spacing_index < context.justification.size() && context.justification[spacing_index].offset == byte_offset)
+			{
+				advance += context.justification[spacing_index].before + context.justification[spacing_index].after;
+				offset = context.justification[spacing_index].before;
+			}
 			if (advances)
 				advances->push_back(advance);
+			if (offsets)
+				offsets->push_back(offset);
 			width += advance;
 		}
 		return width;
@@ -83,16 +96,17 @@ public:
 	{
 		generated.push_back(Rml::String(string.begin(), string.end()));
 		generated_positions.push_back(position);
-		Rml::Vector<float> advances;
-		const float width = Measure(handle, string, context, &advances);
+		Rml::Vector<float> advances, offsets;
+		const float width = Measure(handle, string, context, &advances, &offsets);
 		const float size = (float)(int)handle;
 		mesh_list.emplace_back();
 		float x = position.x;
-		for (float advance : advances)
+		for (size_t i = 0; i < advances.size(); i++)
 		{
-			if (advance > 0.f)
-				Rml::MeshUtilities::GenerateQuad(mesh_list.back().mesh, Rml::Vector2f(x, position.y - 0.8f * size), Rml::Vector2f(size, size), colour);
-			x += advance;
+			if (advances[i] > 0.f)
+				Rml::MeshUtilities::GenerateQuad(mesh_list.back().mesh, Rml::Vector2f(x + offsets[i], position.y - 0.8f * size), Rml::Vector2f(size, size),
+					colour);
+			x += advances[i];
 		}
 		return (int)Rml::Math::Round(width);
 	}

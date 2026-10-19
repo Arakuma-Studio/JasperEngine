@@ -25,6 +25,15 @@ text-align: center;
 #htmlui-root .mp {
 text-align: match-parent;
 }
-#htmlui-root .ja {
-text-align: justify;
+#htmlui-root .last {
+text-align-last: center;
+}
+#htmlui-root .lastj {
+text-align-last: justify;
+}
+#htmlui-root .tj {
+text-justify: inter-character;
+}
+#htmlui-root .tjd {
+text-justify: distribute;
 }

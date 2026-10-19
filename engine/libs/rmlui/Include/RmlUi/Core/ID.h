@@ -366,6 +366,9 @@ enum class PropertyId : uint16_t {
 	GridColumnStart,
 	GridColumnEnd,
 
+	// Text (p6-justify)
+	TextAlignLast,
+	TextJustify,
 	// Line clamping (fork, phase 6, P6-L1): '-webkit-line-clamp' and the legacy '-webkit-box-orient' it needs.
 	WebkitLineClamp,
 	WebkitBoxOrient,

@@ -234,14 +234,16 @@ void InlineLevelBox_Text::Submit(const PlacedFragment& placed_fragment)
 	// Line clamping (fork, P6-L1): a run the ellipsis hides draws nothing; the one it follows draws it.
 	if (placed_fragment.clamp_hidden)
 		fragments[fragment_index].clear();
-	if (placed_fragment.clamp_ellipsis)
-		text_element->AddLine(line_offset, std::move(fragments[fragment_index]), MakeUnique<LineClampEllipsis>(*placed_fragment.clamp_ellipsis));
+	if (placed_fragment.justification)
+		text_element->AddLine(line_offset, std::move(fragments[fragment_index]), *placed_fragment.justification);
 	else
 		text_element->AddLine(line_offset, std::move(fragments[fragment_index]));
+	if (placed_fragment.clamp_ellipsis)
+		text_element->SetLineClampEllipsis(MakeUnique<LineClampEllipsis>(*placed_fragment.clamp_ellipsis));
 }
 
 float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, bool line_rtl, bool first_child,
-	float& out_shift)
+	Vector<JustificationSpacing>* justification, float& out_shift)
 {
 	RMLUI_ASSERT((size_t)handle < fragments.size());
 	out_shift = 0.f;
@@ -275,19 +277,36 @@ float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, floa
 	const int num_clusters = (int)ends.size();
 
 	const auto& computed = text_element->GetComputedValues();
-	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+	TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
-	// The part of 'count' clusters on the kept side.
-	const auto part = [&](int count) -> StringView {
-		if (count <= 0)
-			return StringView();
-		if (keep_start)
-			return StringView(text.data(), text.data() + ends[count - 1]);
-		const size_t begin = (count >= num_clusters ? 0 : ends[num_clusters - count - 1]);
-		return StringView(text.data() + begin, text.data() + text.size());
+	// The byte range of the part of 'count' clusters on the kept side.
+	const auto part_begin = [&](int count) -> size_t {
+		return (keep_start || count >= num_clusters ? 0 : ends[num_clusters - count - 1]);
 	};
-	const auto part_width = [&](int count) { return (float)font_engine_interface->GetStringWidth(font_face_handle, part(count), text_shaping_context); };
+	const auto part_end = [&](int count) -> size_t { return (keep_start ? ends[count - 1] : text.size()); };
+	// The justification space of the characters in a byte range, from its start (p6-justify: a justified line is cut with
+	// the space around its characters, as Chromium cuts the expanded shape result).
+	Vector<JustificationSpacing> part_spacing;
+	const auto spacing_of = [&](size_t begin, size_t end) {
+		part_spacing.clear();
+		if (!justification)
+			return;
+		for (const JustificationSpacing& spacing : *justification)
+		{
+			if (spacing.offset >= (int)begin && spacing.offset < (int)end)
+				part_spacing.push_back(JustificationSpacing{spacing.offset - (int)begin, spacing.before, spacing.after});
+		}
+	};
+	const auto part_width = [&](int count) {
+		if (count <= 0)
+			return 0.f;
+		const size_t begin = part_begin(count), end = part_end(count);
+		spacing_of(begin, end);
+		text_shaping_context.justification = Span<const JustificationSpacing>(part_spacing.data(), part_spacing.size());
+		return (float)font_engine_interface->GetStringWidth(font_face_handle, StringView(text.data() + begin, text.data() + end),
+			text_shaping_context);
+	};
 
 	// Chromium's ShapeResult::OffsetToFit: the most clusters whose width is within the space (widths grow with the count).
 	int fit = 0;
@@ -315,10 +334,11 @@ float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, floa
 			fit = 1;
 	}
 
-	const StringView kept = part(fit);
-	String kept_text(kept.begin(), kept.end());
-	text = std::move(kept_text);
-	const float kept_width = (float)font_engine_interface->GetStringWidth(font_face_handle, text, text_shaping_context);
+	const float kept_width = part_width(fit);
+	const size_t begin = part_begin(fit), end = part_end(fit);
+	text = String(text.data() + begin, text.data() + end);
+	if (justification)
+		*justification = std::move(part_spacing);
 	if (line_rtl)
 		out_shift = width - kept_width;
 	return kept_width;

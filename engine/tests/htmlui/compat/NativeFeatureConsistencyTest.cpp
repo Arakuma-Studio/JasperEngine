@@ -178,6 +178,10 @@ namespace {
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-decoration-thickness: 2px", "", "HTMLUI-CSS-0002"},
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-underline-offset: 3px", "", "HTMLUI-CSS-0002"},
         {ForkFeature::TextProperties, SampleKind::Declaration, "white-space: break-spaces", "white-space:pre-wrap", ""},
+        // p6-justify: justified lines, text-align-last, text-justify
+        {ForkFeature::Justify, SampleKind::Declaration, "text-align: justify", "", "HTMLUI-CSS-0005"},
+        {ForkFeature::Justify, SampleKind::Declaration, "text-align-last: center", "", "HTMLUI-CSS-0003"},
+        {ForkFeature::Justify, SampleKind::Declaration, "text-justify: inter-character", "", "HTMLUI-CSS-0003"},
         {ForkFeature::TextProperties, SampleKind::Declaration, "white-space-collapse: preserve", "white-space:pre", ""},
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap-mode: nowrap", "white-space:nowrap", ""},
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap: nowrap", "white-space:nowrap", ""},

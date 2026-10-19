@@ -51,6 +51,25 @@ static int RoundDownToIntegerClamped(float value)
 	return static_cast<int>(value);
 }
 
+#if defined(_MSC_VER)
+	#define RMLUI_TEXT_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+	#define RMLUI_TEXT_NOINLINE __attribute__((noinline))
+#else
+	#define RMLUI_TEXT_NOINLINE
+#endif
+
+// The token, which ends the element's text with a collapsible space, fits in 'max_width' without that space (out of the
+// line breaker's loop: rare).
+RMLUI_TEXT_NOINLINE static bool FitsWithoutTrailingSpace(const String& token, int max_width, FontFaceHandle font_face_handle, const TextShapingContext& context,
+	Character previous_codepoint)
+{
+	if (token.size() < 2 || token.back() != ' ')
+		return false;
+	const StringView word(token.data(), token.data() + token.size() - 1);
+	return GetFontEngineInterface()->GetStringWidth(font_face_handle, word, context, previous_codepoint) <= max_width;
+}
+
 // A line that ends at a soft hyphen shows a hyphen (CSS Text 3 §5.4, 'hyphens: manual').
 static void AppendHyphenAfterSoftHyphen(String& line, float& line_width, FontFaceHandle font_face_handle, const TextShapingContext& context)
 {
@@ -430,6 +449,12 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 			const bool is_last_token = LastToken(next_token_begin, string_end, collapse_white_space, break_at_endline);
 			int max_token_width = RoundDownToIntegerClamped(maximum_line_width - (is_last_token ? line_width + right_spacing_width : line_width));
 
+			// The collapsible space that ends the element's text is removed when the line ends after it (CSS Text 3 §4.1.3,
+			// LineBox::TrimTrailingWhiteSpace): the token fits when its word does, and the line breaks after the space.
+			if (token_width > max_token_width && collapse_white_space && is_last_token &&
+				FitsWithoutTrailingSpace(token, max_token_width, font_face_handle, text_shaping_context, previous_codepoint))
+				max_token_width = token_width;
+
 			if (token_width > max_token_width && hang_spaces && IsWhiteSpaceToken(token))
 			{
 				// Hanging spaces: consumed on this line, without width; the line ends after them.
@@ -506,6 +531,7 @@ void ElementText::ClearLines()
 {
 	RMLUI_ZoneScoped;
 	lines.clear();
+	justifications.clear();
 	line_clamp_ellipsis.reset();
 	line_clamp_ellipsis_line = -1;
 	geometry_dirty = true;
@@ -521,11 +547,18 @@ void ElementText::AddLine(Vector2f line_position, String line)
 	geometry_dirty = true;
 }
 
-void ElementText::AddLine(Vector2f line_position, String line, UniquePtr<LineClampEllipsis> ellipsis)
+void ElementText::AddLine(Vector2f line_position, String line, const Vector<JustificationSpacing>& justification)
 {
 	AddLine(line_position, std::move(line));
+	lines.back().justification_index = (int)justifications.size();
+	justifications.push_back(justification);
+}
+
+void ElementText::SetLineClampEllipsis(UniquePtr<LineClampEllipsis> ellipsis)
+{
 	line_clamp_ellipsis = std::move(ellipsis);
-	line_clamp_ellipsis_line = (line_clamp_ellipsis ? (int)lines.size() - 1 : -1);
+	line_clamp_ellipsis_line = (line_clamp_ellipsis && !lines.empty() ? (int)lines.size() - 1 : -1);
+	geometry_dirty = true;
 }
 
 void ElementText::SuppressAutoLayout()
@@ -673,10 +706,17 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 	TexturedMeshList mesh_list;
 	mesh_list.reserve(geometry.size());
 
+	// A justified line draws its characters with the space added around them (p6-justify).
+	const auto LineContext = [this, &text_shaping_context](const Line& line) {
+		TextShapingContext context = text_shaping_context;
+		context.justification = GetJustification(line);
+		return context;
+	};
+
 	for (Line& line : lines)
 	{
 		line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position, colour,
-			opacity, text_shaping_context, mesh_list);
+			opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
 	}
 
 	const auto text_overflows_on_line = [&](const Line& line) { return line.position.x + line.width > text_overflow.overflow_edge; };
@@ -694,7 +734,7 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			if ((int)i == line_clamp_ellipsis_line)
 			{
 				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line.text, line.position,
-					colour, opacity, text_shaping_context, mesh_list);
+					colour, opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
 				continue;
 			}
 
@@ -719,9 +759,11 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			if (abbreviated_text.empty())
 			{
 				line.width = font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, line_strings[i],
-					line.position, colour, opacity, text_shaping_context, mesh_list);
+					line.position, colour, opacity, line.justification_index < 0 ? text_shaping_context : LineContext(line), mesh_list);
 				continue;
 			}
+			// (an abbreviated line is drawn without its justification: it overflows)
+			line.justification_index = -1;
 			// the kept text in the text's colour, the overflow text after it in the block container's (CSS Overflow 4 §3.2)
 			const float kept_width = (float)font_engine_interface->GenerateString(render_manager, font_face_handle, font_effects_handle, kept_text,
 				line.position, colour, opacity, text_shaping_context, mesh_list);
@@ -788,7 +830,7 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 				const Line& line = lines[i];
 				const Vector2f position = line.position + resolved.offset;
 				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
-					text_shaping_context, shadow_meshes);
+					line.justification_index < 0 ? text_shaping_context : LineContext(line), shadow_meshes);
 				const Rectanglef line_ink =
 					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
 				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);

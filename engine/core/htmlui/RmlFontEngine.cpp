@@ -314,6 +314,63 @@ void RmlFontEngine::decodeText(Rml::StringView string, std::vector<uint32_t>& co
                      codepoints.end());
 }
 
+void RmlFontEngine::decodeText(Rml::StringView string, const Rml::TextShapingContext& context, std::vector<uint32_t>& codepoints,
+                               ShapeOptions& options){
+    if (context.justification.empty()){
+        decodeText(string, codepoints);
+        return;
+    }
+    // the code points with the byte offsets they start at (a byte that does not start a valid
+    // sequence is U+FFFD, as TextShaper::decodeUtf8 reads it), control characters left out
+    codepoints.clear();
+    std::vector<int> offsets;
+    const unsigned char* text = reinterpret_cast<const unsigned char*>(string.begin());
+    const size_t size = string.size();
+    size_t i = 0;
+    while (i < size){
+        const unsigned char lead = text[i];
+        uint32_t codepoint = 0xFFFD;
+        size_t length = 1;
+        if (lead < 0x80){
+            codepoint = lead;
+        }else{
+            const size_t expected = (lead >= 0xF0 && lead <= 0xF4) ? 4 : (lead >= 0xE0) ? 3 : (lead >= 0xC2 && lead < 0xE0) ? 2 : 0;
+            if (expected > 0 && i + expected <= size){
+                uint32_t value = (expected == 2) ? (lead & 0x1Fu) : (expected == 3) ? (lead & 0x0Fu) : (lead & 0x07u);
+                bool valid = true;
+                for (size_t k = 1; k < expected; k++){
+                    if ((text[i + k] & 0xC0u) != 0x80u){
+                        valid = false;
+                        break;
+                    }
+                    value = (value << 6) | (text[i + k] & 0x3Fu);
+                }
+                const uint32_t minimum = (expected == 2) ? 0x80u : (expected == 3) ? 0x800u : 0x10000u;
+                if (valid && value >= minimum && value <= 0x10FFFFu && !(value >= 0xD800u && value <= 0xDFFFu)){
+                    codepoint = value;
+                    length = expected;
+                }
+            }
+        }
+        if (codepoint >= 0x20){
+            codepoints.push_back(codepoint);
+            offsets.push_back((int)i);
+        }
+        i += length;
+    }
+
+    options.justifyAdvance.assign(codepoints.size(), 0.0f);
+    options.justifyOffset.assign(codepoints.size(), 0.0f);
+    for (const Rml::JustificationSpacing& spacing : context.justification){
+        auto it = std::lower_bound(offsets.begin(), offsets.end(), spacing.offset);
+        if (it == offsets.end() || *it != spacing.offset)
+            continue;
+        const size_t index = (size_t)(it - offsets.begin());
+        options.justifyAdvance[index] += spacing.before + spacing.after;
+        options.justifyOffset[index] += spacing.before;
+    }
+}
+
 float RmlFontEngine::measure(const FaceHandle& handle, const std::vector<uint32_t>& codepoints, const ShapeOptions& options) const{
     return TextShaper::measure(handle.faces, handle.emScales, codepoints, 0, codepoints.size(), options);
 }
@@ -336,9 +393,27 @@ int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView st
     if (!face || string.size() == 0)
         return 0;
 
-    const ShapeOptions options = toShapeOptions(context);
+    ShapeOptions options = toShapeOptions(context);
     // (a control character before the string kerns with nothing)
     const bool withPrior = (char32_t)prior_character >= 0x20 && options.kerning;
+
+    if (!context.justification.empty()){
+        // a justified line (not cached): the space added around its characters
+        std::vector<uint32_t> codepoints;
+        decodeText(string, context, codepoints, options);
+        float width = measure(*face, codepoints, options);
+        if (withPrior){
+            const std::vector<uint32_t> priorOnly(1, (uint32_t)prior_character);
+            std::vector<uint32_t> joined(codepoints);
+            joined.insert(joined.begin(), (uint32_t)prior_character);
+            ShapeOptions joinedOptions = options;
+            joinedOptions.justifyAdvance.insert(joinedOptions.justifyAdvance.begin(), 0.0f);
+            joinedOptions.justifyOffset.insert(joinedOptions.justifyOffset.begin(), 0.0f);
+            ShapeOptions priorOptions = toShapeOptions(context);
+            width = measure(*face, joined, joinedOptions) - measure(*face, priorOnly, priorOptions);
+        }
+        return std::max(0, (int)std::lround(width));
+    }
 
     if (widthsVersion != version || widths.size() > maxWidthCacheEntries){
         widths.clear();
@@ -523,10 +598,11 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     const float scale = scaleFor(render_manager);
 
     std::vector<uint32_t> codepoints;
-    decodeText(string, codepoints);
+    ShapeOptions options = toShapeOptions(text_shaping_context);
+    decodeText(string, text_shaping_context, codepoints, options);
 
     std::vector<ShapedGlyph> shaped;
-    shape(*handle, codepoints, toShapeOptions(text_shaping_context), shaped);
+    shape(*handle, codepoints, options, shaped);
 
     if (!renderText){
         // the no-text test variant: the same advance, no quads

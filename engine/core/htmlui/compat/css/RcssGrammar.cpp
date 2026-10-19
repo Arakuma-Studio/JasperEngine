@@ -774,16 +774,18 @@ namespace {
     };
 
     const ForkGrammar kForkGrammar[] = {
-        // p3-text (TextShadow, TextProperties)
+        // p3-text (TextShadow, TextProperties), p6-justify (Justify)
         {"accent-color", ForkFeature::TextProperties, "kw:auto|color"},
         {"letter-spacing", ForkFeature::TextProperties, "kw:normal|length_percent"},
         {"overflow-wrap", ForkFeature::TextProperties, "kw:normal,anywhere,break-word"},
         {"text-align", ForkFeature::TextProperties, "kw:left,right,center,justify,start,end,match-parent,-webkit-center,-webkit-left,-webkit-right"},
+        {"text-align-last", ForkFeature::Justify, "kw:auto,start,end,left,right,center,justify"},   // p6-justify
         {"text-decoration", ForkFeature::TextProperties, "@text_decoration"},
         {"text-decoration-color", ForkFeature::TextProperties, "kw:currentcolor|color"},
         {"text-decoration-line", ForkFeature::TextProperties, "@text_decoration_line"},
         {"text-decoration-style", ForkFeature::TextProperties, "kw:solid,double,dotted,dashed,wavy"},
         {"text-decoration-thickness", ForkFeature::TextProperties, "kw:auto,from-font|length_percent"},
+        {"text-justify", ForkFeature::Justify, "kw:auto,none,inter-word,inter-character,distribute"},   // p6-justify
         {"text-shadow", ForkFeature::TextShadow, "@text_shadow"},
         {"text-underline-offset", ForkFeature::TextProperties, "kw:auto|length_percent"},
         {"text-wrap", ForkFeature::TextProperties, "@text_wrap"},

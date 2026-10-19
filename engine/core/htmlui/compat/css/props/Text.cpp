@@ -331,10 +331,19 @@ void jasperengine::htmlui::compat::rewriteTextAlign(DeclContext& context){
     ValueList w = words(context.value);
     const std::string k = w.size() == 1 ? identOf(w[0]) : std::string();
     const bool rtl = context.session.rootDirection == "rtl";
-    // phase-3 spec 2.2: no justification in the fork (written as is: the fork aligns it left)
-    if (k == "justify" || k == "justify-all")
+    if (context.session.fork(ForkFeature::Justify)){
+        // p6-justify: the fork justifies; 'justify-all' is not parsed by Chromium, the declaration is dropped as there
+        if (k == "justify-all"){
+            context.reportAs(Severity::Warning, codes::UnsupportedValue, "'text-align: justify-all' is not supported (Chromium does not parse it); declaration dropped",
+                             "write text-align: justify with text-align-last: justify");
+            context.dropped = true;
+            return;
+        }
+    }else if (k == "justify" || k == "justify-all"){
+        // without the fork's justification (phase-3 spec 2.2): written as is, the fork aligns it to the start
         context.reportAs(Severity::Info, codes::ApproximatedMinor, "'text-align: " + k + "' does not justify the lines",
                          "Justified text is aligned left.");
+    }
     if (context.session.fork(ForkFeature::TextProperties)){
         // native: start, end and match-parent follow the element's direction
         if (k == "left" || k == "right" || k == "center" || k == "justify" || k == "start" || k == "end" || k == "match-parent" ||

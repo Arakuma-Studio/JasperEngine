@@ -101,7 +101,8 @@ namespace Style {
 			has_font_effect(false), pointer_events(PointerEvents::Auto), focus(Focus::Auto), text_align(TextAlign::Start),
 			text_align_legacy(TextAlignLegacy::None), text_decoration(TextDecoration::None), text_transform(TextTransform::None),
 			white_space_collapse(WhiteSpaceCollapse::Collapse), text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal),
-			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Normal)
+			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Normal),
+			text_align_last(TextAlignLast::Auto), text_justify(TextJustify::Auto)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
@@ -134,6 +135,11 @@ namespace Style {
 		Visibility visibility : 1;
 
 		LineHeight::InheritType line_height_inherit_type : 2;
+
+		// -- Text (p6-justify) --
+		TextAlignLast text_align_last : 3;
+		TextJustify text_justify : 2;
+
 		float line_height = 16.f * 1.2f;
 		float line_height_inherit = 1.2f;
 
@@ -448,6 +454,12 @@ namespace Style {
 		float              word_spacing()              const { return inherited.word_spacing; }
 		bool               has_text_shadow()           const { return inherited.has_text_shadow; }
 
+		// Text (p6-justify)
+		TextAlignLast      specified_text_align_last() const { return inherited.text_align_last; }
+		// The alignment of a last line and of one before a forced break: 'text-align-last' resolved (Style::ResolveTextAlignLast).
+		TextAlign          text_align_last()           const { return ResolveTextAlignLast(inherited.text_align_last, inherited.text_align, inherited.direction); }
+		TextJustify        text_justify()              const { return inherited.text_justify; }
+
 		// Layout (p3-layout)
 		SizingKeyword     width_keyword()              const { return rare.width_keyword; }
 		SizingKeyword     height_keyword()             const { return rare.height_keyword; }
@@ -609,6 +621,10 @@ namespace Style {
 		void letter_spacing            (float value)              { inherited.letter_spacing       = value; }
 		void word_spacing              (float value)              { inherited.word_spacing         = value; }
 		void has_text_shadow           (bool value)               { inherited.has_text_shadow      = value; }
+
+		// Text (p6-justify)
+		void text_align_last           (TextAlignLast value)      { inherited.text_align_last      = value; }
+		void text_justify              (TextJustify value)        { inherited.text_justify         = value; }
 
 		// Layout (p3-layout)
 		void width_keyword             (SizingKeyword value)     { rare.width_keyword              = value; }

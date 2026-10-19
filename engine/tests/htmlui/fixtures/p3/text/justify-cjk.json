@@ -1,0 +1,5 @@
+{
+ "comment": "text-align: justify of ideographs, kana and CJK punctuation (opportunities around each one with text-justify: auto), mixed with Latin words and spaces, across spans, with inter-word (CJK not justified) and inter-character; the CJK characters are Ahem's .notdef box on both sides, the shares fractional: the boxes are the oracle, the glyphs reported (noText gates the backgrounds).",
+ "viewport": [240, 240],
+ "boxes": true, "noText": true
+}

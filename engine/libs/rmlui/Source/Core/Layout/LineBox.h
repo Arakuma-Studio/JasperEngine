@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../Include/RmlUi/Core/StyleTypes.h"
+#include "../../../Include/RmlUi/Core/TextShapingContext.h"
 #include "InlineTypes.h"
 
 namespace Rml {
@@ -46,20 +47,28 @@ public:
 	/// @return The next line if any open fragments had to be split or wrapped down.
 	UniquePtr<LineBox> DetermineVerticalPositioning(const InlineBoxRoot* root_inline_box, bool split_all_open_boxes, float& out_height_of_line);
 
-	/// Makes room for the line-clamp ellipsis at the end of the line (fork, P6-L1), as Chromium's LineTruncator does: from
-	/// the line's end, the first text run or atomic inline that fits beside the ellipsis is followed by it, a text run cut
-	/// to the characters that fit, those after it are hidden (the first one of the line is kept and the ellipsis overflows).
-	/// The ellipsis is placed when the line is closed: after a text run it is drawn by that text, otherwise by the block
-	/// container. Call after the line is vertically positioned, before Close.
+	/// Makes the line the one the line-clamp ellipsis ends (fork, P6-L1). When it is closed, after its trailing white space is
+	/// removed and it is justified (Chromium's LineTruncator works on the justified line), it makes room for the ellipsis at
+	/// its end as Chromium's LineTruncator does: from the line's end, the first text run or atomic inline that fits beside the
+	/// ellipsis is followed by it, a text run cut to the characters that fit (with their justification space), those after it
+	/// are hidden (the first one of the line is kept and the ellipsis overflows). After a text run the ellipsis is drawn by
+	/// that text, otherwise by the block container. Call after the line is vertically positioned, before Close.
 	/// @param[in,out] ellipsis The block container's ellipsis (LineClamp::MakeEllipsis); the line places it (its position) and
 	/// refers to it until it is closed.
-	/// @param[in] rtl The block container's direction is right-to-left: the line ends on its left.
-	void TruncateForLineClamp(LineClampEllipsis& ellipsis, bool rtl);
+	void SetLineClampEllipsis(LineClampEllipsis& ellipsis);
 
-	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes. A line
-	// of a right-to-left block whose content overflows it is aligned to its right, its start (fork, P6-L1).
+	// Closes the line and submits all fragments. Thereby positioning, sizing, and placing their corresponding boxes.
+	// The white space at the end of the line is removed (collapsible) or hangs ('pre-wrap'), and takes no part in the
+	// alignment; a justified line without justification opportunities is aligned to its start (p6-justify). A line of a
+	// right-to-left block whose content overflows it is aligned to its right, its start (fork, P6-L1).
+	// @param[in] text_align The line's alignment, 'text-align', resolved.
+	// @param[in] text_align_last The alignment of a last line, 'text-align-last', resolved: for a last line, also one whose
+	// text ends at a preserved line feed (a forced break).
+	// @param[in] last_line The line is the last of its container or ends with a <br>.
+	// @param[in] rtl The direction of the inline container is right-to-left (its start is the right).
 	// @note The line must have been vertically positioned before closing.
-	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl = false);
+	void Close(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, Style::TextAlign text_align_last, bool last_line,
+		bool rtl);
 
 	float GetBoxCursor() const { return box_cursor; }
 	Vector2f GetPosition() const { return line_position; }
@@ -132,11 +141,34 @@ private:
 	// Place an open fragment.
 	void CloseFragment(Fragment& open_fragment, float right_inner_edge_position);
 
-	// Close() of a line made room for the line-clamp ellipsis in (fork, P6-L1).
-	void SubmitClampedFragments(Element* offset_parent, Vector2f offset_parent_position, bool collapsed_line);
+	// Makes room for the line-clamp ellipsis (fork, P6-L1, see SetLineClampEllipsis), on the line as it is closed: with the
+	// spacing of its justified text runs (by fragment index) when it is justified, 'content_width' its width then.
+	void TruncateForLineClamp(bool rtl, float content_width, Vector<Vector<JustificationSpacing>>* justification);
+	// Positions and submits the fragments of a line made room for the line-clamp ellipsis in (fork, P6-L1).
+	void SubmitClampedFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification);
 
 	// Splits the line, returning a new line if there are any open fragments.
 	UniquePtr<LineBox> SplitLine(bool split_all_open_boxes);
+
+	// The last character of the line's text when its last content is text ('\0' otherwise).
+	char GetLastTextCharacter() const;
+	// The closing of a line with white space at its end or justified (p6-justify), out of the common path.
+	void CloseTrimmedOrJustified(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align, bool rtl);
+	// The offset that aligns content of the given width.
+	float GetAlignmentOffset(Style::TextAlign text_align, float content_width) const;
+	// Positions and submits the fragments, with the spacing of the justified text runs (by fragment index) when justified.
+	template <bool justified>
+	void SubmitFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification);
+
+	// Removes the collapsible white space at the end of the line from its text and the boxes around it (CSS Text 3
+	// §4.1.3). Returns the width of the preserved spaces that hang at its end ('pre-wrap'); 'out_justify_end' is where the
+	// justified content ends: the fragment and the byte offset in its text (the fragments after it are not justified).
+	float TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset);
+	// Changes the width of a fragment: the fragments after it move, the inline boxes around it grow or shrink.
+	void ResizeFragment(int fragment_index, float delta);
+	// Distributes the free space of the line over its justification opportunities (p6-justify). Returns false, and
+	// changes nothing, when there are none.
+	bool Justify(float space, bool rtl, int justify_end_fragment, int justify_end_offset, Vector<Vector<JustificationSpacing>>& out_spacing);
 
 	// Vertically align all descendants of the subtree. Returns the ascent of the top-most box, and descent of the bottom-most box.
 	void VerticallyAlignSubtree(int subtree_root_index, int children_end_index, float& max_ascent, float& max_descent);
@@ -191,17 +223,22 @@ private:
 	FragmentIndex open_fragments_leaf = RootFragmentIndex;
 
 	bool has_content = false;
+	// The last text run or atomic inline placed, when it is a text run (its index), else -1.
+	FragmentIndex last_text_run = -1;
 	bool is_vertically_positioned = false;
 	bool is_closed = false;
 
 	// Content offset due to space distribution from 'text-align'. Available after close.
 	float offset_horizontal_alignment = 0.f;
+	// The right edge of a justified line's content (p6-justify). Available after close.
+	float justified_extent = 0.f;
 
-	// The line-clamp ellipsis of the line (fork, P6-L1), after the fragment 'clamp_ellipsis_fragment' - 1 (0: drawn by the
-	// block container), its baseline origin at 'position' (relative to the line, before 'text-align').
+	// The line-clamp ellipsis of the line (fork, P6-L1): once placed, after the fragment 'clamp_ellipsis_fragment' - 1 (0:
+	// drawn by the block container), its baseline origin at 'position' (relative to the line, before 'text-align').
 	LineClampEllipsis* clamp_ellipsis = nullptr;
 	FragmentIndex clamp_ellipsis_fragment = 0;
-	// The line was made room for an ellipsis in: its fragments are submitted with their clamp state.
+	// The line ends at the clamp point (SetLineClampEllipsis): it is made room for the ellipsis in when closed, and its
+	// fragments are submitted with their clamp state.
 	bool clamp_truncated = false;
 	// The line box's height above baseline. Available after close.
 	float total_height_above_baseline = 0.f;

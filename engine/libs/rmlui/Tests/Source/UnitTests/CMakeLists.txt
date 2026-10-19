@@ -42,6 +42,7 @@ add_executable(${TARGET_NAME}
 	IndividualTransforms.cpp
 	InitialValues.cpp
 	IntrinsicSizing.cpp
+	Justification.cpp
 	Layout.cpp
 	LayoutChildren.cpp
 	LineBreaking.cpp

@@ -2,6 +2,8 @@
 isolation: auto;
 overflow-clip-margin: 0px;
 scrollbar-gutter: auto;
+text-align-last: auto;
+text-justify: auto;
 transition-behavior: normal;
 user-select: auto;
 will-change: auto;

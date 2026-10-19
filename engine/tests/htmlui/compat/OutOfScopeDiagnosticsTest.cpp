@@ -82,9 +82,8 @@ TEST(OutOfScopeDiagnostics, EveryItemIsReportedWithItsHint){
         {".a {\n  text-emphasis: dot;\n}", "HTMLUI-CSS-0002", "span"},
         {".a {\n  text-indent: 2em hanging;\n}", "HTMLUI-CSS-0002", "padding-left"},
         {".a {\n  hyphens: auto;\n}", "HTMLUI-CSS-0003", "soft hyphens"},
-        // text-align: justify
-        {".a {\n  text-align: justify;\n}", "HTMLUI-CSS-0005", "Justified text is aligned left."},
-        {".a {\n  text-align: justify-all;\n}", "HTMLUI-CSS-0005", "Justified text is aligned left."},
+        // text-align: justify is native (p6-justify); justify-all is dropped, as Chromium does not parse it
+        {".a {\n  text-align: justify-all;\n}", "HTMLUI-CSS-0004", "text-align-last: justify"},
         // mix-blend-mode, background-blend-mode
         {".a {\n  mix-blend-mode: multiply;\n}", "HTMLUI-CSS-0002", "opacity"},
         {".a {\n  background-blend-mode: screen;\n}", "HTMLUI-CSS-0002", "pre-blend"},

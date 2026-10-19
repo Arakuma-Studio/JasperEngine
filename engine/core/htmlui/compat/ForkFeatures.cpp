@@ -51,6 +51,7 @@ namespace {
         true,    // ColorFunctions (phase 3, p3-values: CSS Color 4 functions parsed at runtime, a var() inside them too, FORK.md P3-V2)
         true,    // TextFillFilter (phase 5, p5-infra: -jfx-text-fill applies before filter, FORK.md P5-1)
         true,    // RegisteredProperties (phase 5, p5-property: registered custom properties, @property; FORK.md P5-4)
+        true,    // Justify (phase 6, p6-justify: justified lines, text-align-last, text-justify; FORK.md P6-J1)
         true,    // LineClamp (phase 6, p6-line-clamp: Chromium 153's legacy -webkit-line-clamp with its ellipsis; FORK.md P6-L1)
     };
 
@@ -66,6 +67,7 @@ namespace {
         "RelativeFontWeight", "ColorFunctions",
         "TextFillFilter",
         "RegisteredProperties",
+        "Justify",
         "LineClamp",
     };
 
@@ -439,6 +441,10 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return probeTextFill();
         case ForkFeature::RegisteredProperties:
             return probeRegisteredProperties();
+        case ForkFeature::Justify:
+            // the two properties of the feature; justify-all is not parsed, as in Chromium
+            return parses("text-align-last", "justify") && parses("text-justify", "inter-character") && parses("text-justify", "distribute") &&
+                   !parses("text-align", "justify-all");
         case ForkFeature::LineClamp:
             return probeLineClamp();
         case ForkFeature::SelectorsLevel4:

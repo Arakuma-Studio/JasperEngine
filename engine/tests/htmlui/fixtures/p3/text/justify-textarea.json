@@ -1,0 +1,4 @@
+{
+ "comment": "text-align: justify in text areas (wrapped lines filled, the line before a line feed and the last line by text-align-last, auto and justify) and text inputs (one last line: text-align-last: center, and auto at the start); whole-pixel shares of Ahem squares, so the image is compared.",
+ "viewport": [260, 200]
+}

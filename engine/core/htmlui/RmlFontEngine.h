@@ -158,6 +158,10 @@ namespace jasperengine {
         static ShapeOptions toShapeOptions(const Rml::TextShapingContext& context);
         // UTF-8 to code points without the control characters (U+0000..U+001F)
         static void decodeText(Rml::StringView string, std::vector<uint32_t>& codepoints);
+        // the same, and the text of a justified line (p6-justify): the space RmlUi adds around the
+        // characters, by their byte offsets, per code point in options
+        static void decodeText(Rml::StringView string, const Rml::TextShapingContext& context, std::vector<uint32_t>& codepoints,
+                               ShapeOptions& options);
         FaceHandle* toHandle(Rml::FontFaceHandle handle) const;
         bool registerLoaded(const std::shared_ptr<FontFace>& face, const std::string& error, const std::string& family,
                             int weight, int italic, bool fallback);
