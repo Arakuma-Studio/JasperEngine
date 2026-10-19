@@ -773,8 +773,8 @@ No command allocates, and a steady-state frame allocates nothing.
 
 | Call | Recorded | Record time | Replay |
 |---|---|---|---|
-| `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | an empty geometry is dropped; the geometry is marked recorded | the texture checks (dead, not created), the draw |
-| `RenderToClipMask` | `CLIP_MASK` | `stencilRef` mirrored | the stencil clear and write |
+| `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | nothing read | the checks (an empty geometry, a dead or uncreated texture), the draw |
+| `RenderToClipMask` | `CLIP_MASK` | an empty geometry dropped, `stencilRef` mirrored | the stencil clear and write |
 | `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION`, `CLIP_ENABLE` | the state mirrored | the state set |
 | `SetTransform` | `TRANSFORM` (matrix pool index, or none) | the matrix copied | `projection × matrix` |
 | `PushLayer`, `PopLayer` | `PUSH_LAYER`, `POP_LAYER` | the handle is the record-time depth (from 1) | as before (replay checks the index) |
@@ -796,11 +796,12 @@ immediately. The replay starts from `beginFrame`'s state (projection, no scissor
 ref 0, one layer) and sets the state again command by command.
 
 **Resource lifetimes.**
-- `ReleaseGeometry` of a geometry recorded this frame waits until after the replay. If its
-  data is not in persistent storage yet, its vertices and indices are copied first into
-  frame-owned buffers, which are reused across frames: RmlUi frees the mesh on release. A
-  box shadow's geometry goes inside its callback, for example. A geometry not recorded this
-  frame is released at once and reused.
+- `ReleaseGeometry` while recording waits until after the replay. The recording reads no
+  geometry, so it does not know which ones its commands draw. If a geometry's data is not in
+  persistent storage yet, its vertices and indices are copied first into frame-owned buffers,
+  which are reused across frames: RmlUi frees the mesh on release. A box shadow's geometry goes
+  inside its callback, for example. A geometry released while recording is reused only after
+  the replay.
 - `ReleaseShader` and `ReleaseFilter` wait until after the replay while recording, so effect
   instances stay live until their draws have run. An element destroyed mid-frame clears its
   instance's `element` (`EffectRuntime::OnElementDestroy`), and the replayed effect draw is

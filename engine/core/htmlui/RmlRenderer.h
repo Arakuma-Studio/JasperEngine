@@ -471,7 +471,6 @@ namespace jasperengine {
 
         bool recording = false;
         int recordLayers = 0;              // the layer depth at record time (PushLayer's handle)
-        uint64_t recordSerial = 0;         // RmlGeometry::recordedSerial of this frame's recording
         Rml::Rectanglei frameStartScissor; // the scissor region beginFrame left
         std::vector<Command> commands;
         std::vector<Rml::Matrix4f> commandMatrices;

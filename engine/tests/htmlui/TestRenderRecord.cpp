@@ -247,7 +247,7 @@ TEST(RenderRecordTest, ResourcesReleasedMidFrameLiveUntilTheReplay){
             r.RenderGeometry(blurred.handle, Rml::Vector2f(0, 0), 0);
             blurred.release(r);
             const Rml::CompiledFilterHandle filters[] = {blur};
-            r.CompositeLayers(layer, 0, Rml::BlendMode::Blend, filters);
+            r.CompositeLayers(layer, 0, Rml::BlendMode::Blend, Rml::Span<const Rml::CompiledFilterHandle>(filters, 1));
             r.PopLayer();
             r.ReleaseFilter(blur);
 
@@ -280,7 +280,7 @@ TEST(RenderRecordTest, ResourcesReleasedMidFrameLiveUntilTheReplay){
             ASSERT_NE(mask, 0u);
             r.PopLayer();
             const Rml::CompiledFilterHandle maskFilters[] = {mask};
-            r.CompositeLayers(masked, 0, Rml::BlendMode::Blend, maskFilters);
+            r.CompositeLayers(masked, 0, Rml::BlendMode::Blend, Rml::Span<const Rml::CompiledFilterHandle>(maskFilters, 1));
             r.PopLayer();
             r.ReleaseFilter(mask);
         });

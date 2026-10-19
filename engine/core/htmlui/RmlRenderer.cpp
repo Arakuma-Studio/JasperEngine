@@ -57,9 +57,6 @@ namespace jasperengine {
         BufferRender* transientIndices = nullptr;
         size_t transientVertexOffset = 0;
         size_t transientIndexOffset = 0;
-        // the recording that drew it last (RmlRenderer::recordSerial): released during that
-        // recording, it waits for the replay
-        uint64_t recordedSerial = 0;
     };
 
     // Persistent geometry storage: a STREAM buffer (sokol's dynamic buffers wait for the GPU
@@ -473,9 +470,9 @@ Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Ve
 
 void RmlRenderer::ReleaseGeometry(Rml::CompiledGeometryHandle handle){
     RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
-    // drawn by a recorded command: released after the replay. RmlUi frees the mesh now, so data
-    // not in persistent storage yet is kept until then
-    if (recording && geometry && geometry->alive && geometry->recordedSerial == recordSerial){
+    // recorded commands may draw it (the recording does not read the geometry it records): released
+    // after the replay. RmlUi frees the mesh now, so data not in persistent storage yet is kept
+    if (recording && geometry && geometry->alive){
         if (!geometry->vertexPage || !geometry->indexPage){
             if (keptMeshesUsed == keptMeshes.size())
                 keptMeshes.emplace_back();
@@ -1420,10 +1417,7 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
 
 void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
     if (recording){
-        RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
-        if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
-            return;
-        geometry->recordedSerial = recordSerial;
+        // the geometry is read at replay only (an empty one draws nothing there)
         Command& command = recordCommand(CommandType::GEOMETRY);
         command.a = handle;
         command.b = textureHandle;
@@ -1460,7 +1454,6 @@ void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compil
         RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
         if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
             return;
-        geometry->recordedSerial = recordSerial;
         // the reference the replay will test against (getStencilRef during the traversal)
         switch (operation){
         case Rml::ClipMaskOperation::Set:
@@ -2204,7 +2197,6 @@ void RmlRenderer::RenderShader(Rml::CompiledShaderHandle shaderHandle, Rml::Comp
         // an effect reads its element now; one that draws nothing this frame is not recorded
         if (htmlui::EffectRenderer::isEffectHandle(shaderHandle) && !effects->prepareShader(shaderHandle))
             return;
-        reinterpret_cast<RmlGeometry*>(geometryHandle)->recordedSerial = recordSerial;
         Command& command = recordCommand(CommandType::SHADER);
         command.a = shaderHandle;
         command.b = geometryHandle;
@@ -2620,7 +2612,6 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     frameStartScissor = scissorRegion;
     recording = commandRecording;
     if (recording){
-        recordSerial++;
         recordLayers = 1;
         commands.clear();
         commandMatrices.clear();
