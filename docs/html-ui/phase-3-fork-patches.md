@@ -83,7 +83,8 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | Multi-column layout (`columns`, `column-count`) | Tier 3, new fragmentation machinery. | "Use CSS Grid or flex-wrap." |
 | `@layer` cascade layers, `revert-layer` with layers | No cascade layers in the parser; `revert-layer` without layers behaves as `revert` (CSS-correct when no layers exist), `@layer` blocks are diagnosed by compat. | "Remove `@layer`; order rules by specificity." |
 | CSS counters in `counter()` styles other than the list in §3.6; `@counter-style` | Long tail. | "Use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none." |
-| `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| `text-decoration-style: wavy`, `text-emphasis`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| ~~`text-indent`~~ | Implemented after phase 3 by p6-justify (FORK.md P6-J2, "p6-justify text-indent as implemented" in §3.10): lengths, percentages, negative values, `hanging`, `each-line`, in text fields too, interpolated by transitions. | none |
 | ~~`text-align: justify`~~ | Implemented after phase 3 by p6-justify (FORK.md P6-J1, "p6-justify as implemented" in §3.10): justified lines, `text-align-last`, `text-justify`, with the font engine placing the space per character (`TextShapingContext::justification`). Only `text-align: justify-all` is reported (`HTMLUI-CSS-0004`), as Chromium does not parse it. | "write text-align: justify with text-align-last: justify" (for `justify-all`) |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
@@ -1557,6 +1558,36 @@ table above):
   `text-justify` have fractional shares: their boxes are the oracle, the glyphs reported, `noText` gating the rest.
   Right-to-left paragraphs hold one text each: inline boxes of a right-to-left line are still placed left to right
   (mirrored layout, §2.2).
+
+**p6-justify text-indent as implemented** (after phase 3; FORK.md P6-J2, `ForkFeature::TextIndent`): `text-indent:
+<length-percentage> [hanging] [each-line]` (the keywords in any order, once each), inherited, measured against
+Chromium 153 (`NGLineBreaker`/`LineInfo::TextIndent`, `ComputedStyle::TextIndent`):
+
+- **Values.** The shorthand `text-indent` sets two inherited longhands, `-rmlui-text-indent-length` (a length or
+  percentage, `calc()` too, negative allowed; `em` resolved where it is declared and inherited as a length) and
+  `-rmlui-text-indent-mode` (`none`, `hanging`, `each-line`, `hanging-each-line`); `text-indent: hanging` without a
+  length is not parsed, as in Chromium. `ComputedValues::text_indent()` and `text_indent_mode()`. Transitions and
+  animations interpolate the length (`transition: text-indent` expands to the longhands); the mode is discrete.
+- **Which lines.** The first formatted line of a block container: the first line of its first inline container when no
+  block-level box comes before it (an empty block or one with text before ends it; an absolutely positioned box does
+  not), the first line of a block child (it inherits the indent), not the line after a block child. `each-line` also
+  indents each line after `<br>` or a preserved line feed (not lines that wrap); `hanging` indents all the lines but
+  those. Inline-blocks, table cells and list items are block containers of their own.
+- **Width.** A percentage is of the block's content width; while its intrinsic widths are measured
+  (`LayoutDetails::IsMeasuringIntrinsicWidth`: min-/max-content, shrink-to-fit) it is 0, then resolved against the width
+  found, as in Chromium; a length indent counts in the intrinsic widths (a shrink-to-fit inline-block is wider by it, a
+  negative one narrower). The indented line is laid out in the line width less the indent: `center`, `right` and
+  `justify` align within it (a centred line is centred in what the indent leaves); in a right-to-left paragraph the
+  indent is at the right. A negative indent moves the line's start into the padding (or outside the box). Floats placed
+  beside the line come before the indent. An outside list marker is not indented (it stays outside the item's edge); an
+  inside marker is, as the line's first box.
+- **Text fields.** `WidgetTextInput` indents the first line of a text area (wrapped in the width that leaves) and, with
+  `each-line`, the line after each line feed; a text input's line; the caret, selections, IME underlines, hit tests and
+  the placeholder follow.
+- **Not done:** `::first-line` (the fork has no `::first-line`, §2.2).
+- **Fixtures** (`p3/text/indent-*`, Ahem, whole-pixel offsets so the image is compared): `basic` (lengths, `%`,
+  `calc()`, `em`, negative, centred, right, justified), `lines` (`<br>`, preserved line feeds, `hanging`, `each-line`, block
+  children, floats, list markers), `rtl`, `fields` (text area, inputs) and `transition` (halfway values).
 
 ---
 
