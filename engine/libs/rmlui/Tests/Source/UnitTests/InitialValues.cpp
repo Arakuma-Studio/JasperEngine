@@ -143,6 +143,8 @@ String Describe(const ComputedValues& values)
 	RMLUI_FIELD(text_align_last);
 	RMLUI_FIELD(specified_text_align_last);
 	RMLUI_FIELD(text_justify);
+	RMLUI_FIELD(text_indent);
+	RMLUI_FIELD(text_indent_mode);
 	RMLUI_FIELD(text_decoration);
 	RMLUI_FIELD(text_transform);
 	RMLUI_FIELD(white_space);

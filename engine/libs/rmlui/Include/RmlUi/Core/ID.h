@@ -131,6 +131,9 @@ enum class ShorthandId : uint8_t {
 	GridRowGap,
 	GridColumnGap,
 
+	// Text (p6-justify)
+	TextIndent,
+
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,
 
@@ -369,6 +372,8 @@ enum class PropertyId : uint16_t {
 	// Text (p6-justify)
 	TextAlignLast,
 	TextJustify,
+	RmlUi_TextIndentLength,
+	RmlUi_TextIndentMode,
 	// Line clamping (fork, phase 6, P6-L1): '-webkit-line-clamp' and the legacy '-webkit-box-orient' it needs.
 	WebkitLineClamp,
 	WebkitBoxOrient,

@@ -72,6 +72,7 @@ add_executable(${TARGET_NAME}
 	StyleSheetParser.cpp
 	StyleValue.cpp
 	Template.cpp
+	TextIndent.cpp
 	TextProperties.cpp
 	TextTransform.cpp
 	TransitionsAnyChange.cpp

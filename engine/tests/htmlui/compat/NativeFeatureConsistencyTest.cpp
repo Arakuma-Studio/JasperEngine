@@ -182,6 +182,8 @@ namespace {
         {ForkFeature::Justify, SampleKind::Declaration, "text-align: justify", "", "HTMLUI-CSS-0005"},
         {ForkFeature::Justify, SampleKind::Declaration, "text-align-last: center", "", "HTMLUI-CSS-0003"},
         {ForkFeature::Justify, SampleKind::Declaration, "text-justify: inter-character", "", "HTMLUI-CSS-0003"},
+        // p6-justify: text-indent (P6-J2)
+        {ForkFeature::TextIndent, SampleKind::Declaration, "text-indent: 2em hanging each-line", "", "HTMLUI-CSS-0002"},
         {ForkFeature::TextProperties, SampleKind::Declaration, "white-space-collapse: preserve", "white-space:pre", ""},
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap-mode: nowrap", "white-space:nowrap", ""},
         {ForkFeature::TextProperties, SampleKind::Declaration, "text-wrap: nowrap", "white-space:nowrap", ""},

@@ -416,7 +416,8 @@ Native or exactly rewritten, as in Chrome:
   `font-style`, `line-height` (`normal` = the font's spacing), `letter-spacing`,
   `word-spacing`, `text-align` (also `justify`, filled as Chrome fills a line: over the spaces,
   around CJK characters, with `text-justify` `auto`/`inter-word`/`inter-character`/`none`), `text-align-last`,
-  `text-transform` (Unicode), all six `white-space` values,
+  `text-indent` (lengths, `%` of the block's width, negative, `hanging`, `each-line`; also in
+  text fields; it animates), `text-transform` (Unicode), all six `white-space` values,
   `overflow-wrap`, `word-break`, `text-overflow: ellipsis` (one line: `white-space: nowrap;
   overflow: hidden`), several lines ending with "…" (`-webkit-line-clamp`, "Clamping text to a
   few lines" below), `text-decoration` with color, style, thickness and offset, `text-shadow`

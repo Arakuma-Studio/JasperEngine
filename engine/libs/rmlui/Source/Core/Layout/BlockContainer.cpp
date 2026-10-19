@@ -860,7 +860,9 @@ InlineContainer* BlockContainer::EnsureOpenInlineContainer()
 		const float scrollbar_width = (IsScrollContainer() ? element->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL) : 0.f);
 		const float available_width = box.GetSize().x - scrollbar_width;
 
-		auto inline_container_ptr = MakeUnique<InlineContainer>(this, available_width);
+		// Nothing block-level before it: its first line is the block's first formatted line ('text-indent', P6-J2).
+		const bool first_formatted_line = child_boxes.empty();
+		auto inline_container_ptr = MakeUnique<InlineContainer>(this, available_width, first_formatted_line);
 		inline_container = inline_container_ptr.get();
 		child_boxes.push_back(std::move(inline_container_ptr));
 

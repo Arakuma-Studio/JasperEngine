@@ -77,10 +77,9 @@ TEST(OutOfScopeDiagnostics, EveryItemIsReportedWithItsHint){
         // counter styles beyond the list, @counter-style
         {".a {\n  list-style-type: hiragana;\n}", "HTMLUI-CSS-0005", "use one of: decimal"},
         {"@counter-style thumbs {\n  system: cyclic;\n  symbols: x;\n}", "HTMLUI-AT-0001", "use one of: decimal"},
-        // wavy, text-emphasis, text-indent: hanging, hyphens: auto
+        // wavy, text-emphasis, hyphens: auto (text-indent with hanging and each-line is native: P6-J2)
         {".a {\n  text-decoration-style: wavy;\n}", "HTMLUI-CSS-0005", "solid"},
         {".a {\n  text-emphasis: dot;\n}", "HTMLUI-CSS-0002", "span"},
-        {".a {\n  text-indent: 2em hanging;\n}", "HTMLUI-CSS-0002", "padding-left"},
         {".a {\n  hyphens: auto;\n}", "HTMLUI-CSS-0003", "soft hyphens"},
         // text-align: justify is native (p6-justify); justify-all is dropped, as Chromium does not parse it
         {".a {\n  text-align: justify-all;\n}", "HTMLUI-CSS-0004", "text-align-last: justify"},

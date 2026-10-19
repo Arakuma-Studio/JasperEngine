@@ -416,6 +416,8 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `-rmlui-border-top-right-radius-y` | native | RmlUi fork longhand: the vertical radius of border-top-right-radius (written through the CSS property) |  |
 | `-rmlui-direction` | native | RmlUi engine extension |  |
 | `-rmlui-language` | native | RmlUi engine extension |  |
+| `-rmlui-text-indent-length` | native | RmlUi fork longhand: the length of text-indent (written through the CSS property) |  |
+| `-rmlui-text-indent-mode` | native | RmlUi fork longhand: the hanging and each-line keywords of text-indent (written through the CSS property) |  |
 | `-webkit-appearance` | rewritten | none / auto write the control companions; exact for the UA-styled controls |  |
 | `-webkit-backdrop-filter` | native | as backdrop-filter |  |
 | `-webkit-background-clip` | rewritten | as background-clip |  |
@@ -1199,7 +1201,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-transform
+### Properties: tab-index to text-spacing
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -1233,7 +1235,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-emphasis-skip` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-emphasis-style` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-group-align` | unsupported | not supported (HTMLUI-CSS-0002) | use text-align |
-| `text-indent` | unsupported | not supported (Warning) (HTMLUI-CSS-0002) | add padding-left to the first line content, e.g. on the first child |
+| `text-indent` | native | native with the fork (TextIndent): a length or percentage (of the block's width), negative too, with hanging and each-line, as Chromium; not supported without it (Warning) | add padding-left to the first line content, e.g. on the first child |
 | `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
 | `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
 | `text-overflow` | native | ellipsis, clip and strings native |  |
@@ -1241,13 +1243,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
 | `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
 | `text-spacing` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
-| `text-spacing-trim` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
-| `text-transform` | native | full-width and full-size-kana dropped (Info) |  |
 
-### Properties: text-underline-offset to translate
+### Properties: text-spacing-trim to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-spacing-trim` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
+| `text-transform` | native | full-width and full-size-kana dropped (Info) |  |
 | `text-underline-offset` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-underline-position` | unsupported | decoration details are not supported (Info) (HTMLUI-CSS-0002) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-wrap` | native | nowrap -> white-space: nowrap; balance, pretty, stable ignored (Info; with the fork they wrap greedily) |  |

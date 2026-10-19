@@ -5,6 +5,7 @@
 #include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/ElementUtilities.h"
 #include "../../../Include/RmlUi/Core/StringUtilities.h"
+#include "../ListMarker.h"
 #include "../TextJustification.h"
 #include "InlineBox.h"
 #include "InlineLevelBox.h"
@@ -29,6 +30,10 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 	RMLUI_ASSERT(!is_closed);
 	const bool first_box = !HasContent();
 
+	// 'text-indent' at the start of the line (p6-justify, P6-J2): before the first box but an outside list marker.
+	if (pending_indent != 0.f)
+		ApplyPendingIndent(box);
+
 	// Find the spacing this element must leave on its right side, to account for its parent inline boxes to be closed later.
 	float open_spacing_right = 0.f;
 	ForAllOpenFragments([&](const Fragment& fragment) { open_spacing_right += fragment.box->GetSpacingRight(); });
@@ -38,7 +43,7 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 	float available_width = FLT_MAX;
 	if (layout_mode != InlineLayoutMode::Nowrap)
 	{
-		available_width = Math::RoundUp(line_width - box_placement_cursor);
+		available_width = Math::RoundUp(line_width - end_indent - box_placement_cursor);
 		if (available_width < 0.f)
 		{
 			if (layout_mode == InlineLayoutMode::WrapAny)
@@ -314,8 +319,9 @@ void LineBox::TruncateForLineClamp(const bool rtl, const float content_width, Ve
 
 	// Chromium's LineTruncator::TruncateLine, on the fragments of the line: text runs and atomic inlines (inline boxes are
 	// not ellipsized), after the line is justified (their widths include its space). Offsets are measured from the line's
-	// start: its left, or for a right-to-left line the right end of its content.
-	const float available_width = line_width;
+	// start: its left (a left-to-right line's 'text-indent' moved its items), or for a right-to-left line the right end of
+	// its content, its space less the indent at its end (P6-J2).
+	const float available_width = line_width - end_indent;
 	const auto is_item = [](const Fragment& fragment) { return fragment.type == FragmentType::TextRun || fragment.type == FragmentType::SizedBox; };
 
 	FragmentIndex first_item = RootFragmentIndex;
@@ -468,7 +474,8 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 
 	// A line ended by a preserved line feed is a last line too (a forced break).
 	const char last_character = GetLastTextCharacter();
-	if (last_line || last_character == '\n')
+	ends_with_line_feed = (last_character == '\n');
+	if (last_line || ends_with_line_feed)
 		text_align = text_align_last;
 
 	// White space at the end of the line, justification (p6-justify) and the line-clamp ellipsis (fork, P6-L1), out of line.
@@ -480,10 +487,10 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 
 	// Horizontal alignment using available space on our line. Content too long for the line is start-aligned (CSS Text 3
 	// §7.1): a right-to-left line overflows on its left, as in Chromium (fork, P6-L1: the clamped lines of RTL blocks).
-	if (box_cursor < line_width)
+	if (box_cursor < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, box_cursor);
-	else if (rtl && box_cursor > line_width)
-		offset_horizontal_alignment = line_width - box_cursor;
+	else if (rtl && box_cursor > line_width - end_indent)
+		offset_horizontal_alignment = line_width - end_indent - box_cursor;
 
 	SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 }
@@ -492,8 +499,8 @@ float LineBox::GetAlignmentOffset(Style::TextAlign text_align, float content_wid
 {
 	switch (text_align)
 	{
-	case Style::TextAlign::Center: return (line_width - content_width) * 0.5f;
-	case Style::TextAlign::Right: return (line_width - content_width);
+	case Style::TextAlign::Center: return (line_width - end_indent - content_width) * 0.5f;
+	case Style::TextAlign::Right: return (line_width - end_indent - content_width);
 	case Style::TextAlign::Left:    // Already left-aligned.
 	case Style::TextAlign::Justify: // Justified: the line is filled.
 	case Style::TextAlign::Start:   // (resolved by ComputedValues::text_align())
@@ -604,20 +611,20 @@ RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_par
 	Vector<Vector<JustificationSpacing>> justification;
 	if (text_align == Style::TextAlign::Justify)
 	{
-		if (!Justify(line_width - content_width, rtl, justify_end_fragment, justify_end_offset, justification))
+		if (!Justify(line_width - end_indent - content_width, rtl, justify_end_fragment, justify_end_offset, justification))
 			text_align = (rtl ? Style::TextAlign::Right : Style::TextAlign::Left);
 	}
 
 	// The line the line-clamp ellipsis ends (fork, P6-L1) is made room for it now: Chromium's LineTruncator works on the
 	// trimmed and justified line, which is aligned by its width before (ApplyTextAlign).
 	if (clamp_truncated)
-		TruncateForLineClamp(rtl, justification.empty() ? content_width : line_width, justification.empty() ? nullptr : &justification);
+		TruncateForLineClamp(rtl, justification.empty() ? content_width : line_width - end_indent, justification.empty() ? nullptr : &justification);
 
 	// Content too long for the line is start-aligned: on the left of a right-to-left line (fork, P6-L1).
-	if (content_width < line_width)
+	if (content_width < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, content_width);
-	else if (rtl && content_width > line_width)
-		offset_horizontal_alignment = line_width - content_width;
+	else if (rtl && content_width > line_width - end_indent)
+		offset_horizontal_alignment = line_width - end_indent - content_width;
 
 	if (clamp_truncated)
 		SubmitClampedFragments(offset_parent, offset_parent_position, justification.empty() ? nullptr : &justification);
@@ -625,6 +632,39 @@ RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_par
 		SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 	else
 		SubmitFragments<true>(offset_parent, offset_parent_position, &justification);
+}
+
+void LineBox::SetIndent(float indent, bool rtl)
+{
+	if (rtl)
+	{
+		end_indent = indent;
+		return;
+	}
+	pending_indent = indent;
+	// A line resumed after a block-level box already holds its open inline boxes.
+	if (!fragments.empty())
+		ApplyPendingIndent(nullptr);
+}
+
+void LineBox::ApplyPendingIndent(InlineLevelBox* box)
+{
+	// An outside list marker stays outside the start edge (Chromium does not indent it): the indent waits for the content.
+	if (box)
+	{
+		if (auto marker = rmlui_dynamic_cast<ElementListMarker*>(box->GetElement()))
+		{
+			if (marker->IsOutside())
+				return;
+		}
+	}
+	box_cursor += pending_indent;
+	for (Fragment& fragment : fragments)
+	{
+		if (fragment.type == FragmentType::InlineBox)
+			fragment.position.x += pending_indent;
+	}
+	pending_indent = 0.f;
 }
 
 float LineBox::TrimTrailingWhiteSpace(int& out_justify_end_fragment, int& out_justify_end_offset)

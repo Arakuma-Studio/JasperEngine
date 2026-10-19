@@ -22,7 +22,9 @@ struct LineClampEllipsis;
 class InlineContainer final : public LayoutBox {
 public:
 	/// Creates a new block box in an inline context.
-	InlineContainer(BlockContainer* parent, float available_width);
+	/// @param[in] first_formatted_line Its first line is the first formatted line of its block container (nothing block-level
+	/// before it): 'text-indent' indents it.
+	InlineContainer(BlockContainer* parent, float available_width, bool first_formatted_line = false);
 	~InlineContainer();
 
 	/// Adds a new inline-level element to this inline-context box.
@@ -110,6 +112,19 @@ private:
 	// The element's direction is right-to-left: justification visits the lines from their end; overflowing lines and the
 	// line-clamp ellipsis (fork, P6-L1).
 	bool rtl = false;
+
+	// 'text-indent' (p6-justify, P6-J2): the indent in px, and the lines it indents.
+	float text_indent = 0.f;
+	bool first_formatted_line = false;
+	bool indent_hanging = false;
+	bool indent_each_line = false;
+	// The lines formatted so far (line boxes and the lines of breaks without one), and whether the last ended with a forced
+	// break.
+	int formatted_lines = 0;
+	bool after_forced_break = false;
+
+	// Indents a line about to be filled when 'text-indent' indents it.
+	void IndentLine(LineBox* line_box);
 
 	// The vertical position of the currently open line, or otherwise the next one to be placed, relative to the top of this box.
 	float box_cursor = 0;

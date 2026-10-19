@@ -16,8 +16,8 @@
 
 namespace Rml {
 
-InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width) :
-	LayoutBox(Type::InlineContainer), parent(_parent), root_inline_box(_parent->GetElement())
+InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width, bool _first_formatted_line) :
+	LayoutBox(Type::InlineContainer), parent(_parent), first_formatted_line(_first_formatted_line), root_inline_box(_parent->GetElement())
 {
 	RMLUI_ASSERT(_parent);
 
@@ -30,7 +30,30 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 	text_align = computed.text_align();
 	text_align_last = computed.text_align_last();
 	rtl = (computed.direction() == Style::Direction::Rtl);
+
+	// 'text-indent' (P6-J2): a percentage of the block container's width, 0 while an intrinsic width is measured (Chromium).
+	const Style::LengthPercentage& indent = computed.text_indent();
+	const Style::TextIndentMode indent_mode = computed.text_indent_mode();
+	if (indent.type != Style::LengthPercentage::Length || indent.value != 0.f)
+	{
+		const float percentage_basis = (LayoutDetails::IsMeasuringIntrinsicWidth() ? 0.f : Math::Max(_available_width, 0.f));
+		text_indent = ResolveValue(indent, percentage_basis);
+		indent_hanging = (uint8_t(indent_mode) & uint8_t(Style::TextIndentMode::Hanging)) != 0;
+		indent_each_line = (uint8_t(indent_mode) & uint8_t(Style::TextIndentMode::EachLine)) != 0;
+	}
+
+	// Line clamping (fork, P6-L1): the context of the line-clamp container this inline container is in, if any.
 	line_clamp = parent->GetLineClampContext();
+}
+
+void InlineContainer::IndentLine(LineBox* line_box)
+{
+	// The first formatted line, and with 'each-line' a line after a forced break; 'hanging' indents the other lines.
+	const bool indented = ((formatted_lines == 0 && first_formatted_line) || (indent_each_line && after_forced_break)) != indent_hanging;
+	formatted_lines += 1;
+	after_forced_break = false;
+	if (indented)
+		line_box->SetIndent(text_indent, rtl);
 }
 
 InlineContainer::~InlineContainer() {}
@@ -108,22 +131,28 @@ void InlineContainer::AddBreak(float line_height)
 {
 	// Simply end the line if one is open, otherwise increment by the line height.
 	if (GetOpenLineBox())
+	{
 		CloseOpenLineBox(true, true);
+	}
 	else
 	{
 		// (a line of nothing but the <br>: a line for line clamping, fork P6-L1)
 		if (line_clamp)
 			CountEmptyLineForLineClamp();
 		box_cursor += line_height;
+		formatted_lines += 1;
 		if (line_clamp)
 			RecordLineClampHeight();
 	}
+	after_forced_break = true;
 }
 
 void InlineContainer::AddChainedBox(UniquePtr<LineBox> open_line_box)
 {
 	RMLUI_ASSERT(line_boxes.empty());
 	RMLUI_ASSERT(open_line_box && !open_line_box->IsClosed());
+	if (text_indent != 0.f)
+		IndentLine(open_line_box.get());
 	line_boxes.push_back(std::move(open_line_box));
 }
 
@@ -174,6 +203,8 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
 		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align, text_align_last, last_line, rtl);
+		if (line_box->EndsWithLineFeed())
+			after_forced_break = true;
 
 		// Move the cursor down, unless we should collapse the line.
 		if (!line_box->CanCollapseLine())
@@ -217,7 +248,7 @@ void InlineContainer::UpdateLineBoxPlacement(LineBox* line_box, float minimum_wi
 	RMLUI_ASSERT(line_box);
 
 	Vector2f minimum_dimensions = {
-		Math::Max(minimum_width, line_box->GetBoxCursor()),
+		Math::Max(minimum_width, line_box->GetContentExtent()),
 		Math::Max(minimum_height, line_box->GetLineMinimumHeight()),
 	};
 
@@ -260,12 +291,15 @@ void InlineContainer::CountEmptyLineForLineClamp()
 		LineClampEllipsis ellipsis;
 		if (LineClamp::MakeEllipsis(block, ellipsis))
 		{
-			const float line_width = box_size.x;
-			float alignment_offset = 0.f;
-			switch (text_align)
+			// The line ends at a forced break: 'text-align-last' aligns it; 'text-indent' as IndentLine indents the line (P6-J2).
+			const bool indented = ((formatted_lines == 0 && first_formatted_line) || (indent_each_line && after_forced_break)) != indent_hanging;
+			const float indent = (indented ? text_indent : 0.f);
+			const float available = box_size.x - indent;
+			float alignment_offset = (rtl ? 0.f : indent);
+			switch (text_align_last)
 			{
-			case Style::TextAlign::Center: alignment_offset = 0.5f * line_width; break;
-			case Style::TextAlign::Right: alignment_offset = line_width; break;
+			case Style::TextAlign::Center: alignment_offset += 0.5f * available; break;
+			case Style::TextAlign::Right: alignment_offset += available; break;
 			default: break;
 			}
 			const Vector2f line_top_left = position - parent->GetPosition() + Vector2f(0.f, box_cursor);
@@ -289,9 +323,9 @@ float InlineContainer::GetShrinkToFitWidth() const
 {
 	float content_width = 0.0f;
 
-	// Simply find our widest line.
+	// Simply find our widest line (with a right-to-left line's indent).
 	for (const auto& line_box : line_boxes)
-		content_width = Math::Max(content_width, line_box->GetBoxCursor());
+		content_width = Math::Max(content_width, line_box->GetContentExtent());
 
 	return content_width;
 }
@@ -345,6 +379,8 @@ LineBox* InlineContainer::EnsureOpenLineBox()
 	if (line_boxes.empty() || line_boxes.back()->IsClosed())
 	{
 		line_boxes.push_back(MakeUnique<LineBox>());
+		if (text_indent != 0.f)
+			IndentLine(line_boxes.back().get());
 	}
 	return line_boxes.back().get();
 }

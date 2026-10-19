@@ -1,0 +1,44 @@
+{
+ "fixture": "text/indent-transition.html",
+ "viewport": [
+  220,
+  90
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "half": [
+   {
+    "id": "a",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 200,
+    "h": 28
+   },
+   {
+    "id": "a1",
+    "tag": "span",
+    "x": 30,
+    "y": 12,
+    "w": 20,
+    "h": 10
+   },
+   {
+    "id": "b",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 200,
+    "h": 28
+   },
+   {
+    "id": "b1",
+    "tag": "span",
+    "x": 50,
+    "y": 52,
+    "w": 20,
+    "h": 10
+   }
+  ]
+ }
+}

@@ -161,6 +161,9 @@ namespace Style {
 	// 'text-justify' (p6-justify): where justified lines take their space. 'distribute' computes to 'inter-character' (CSS
 	// Text 3, as Chromium computes it).
 	enum class TextJustify : uint8_t { Auto, None, InterWord, InterCharacter };
+	// The keywords of 'text-indent' (p6-justify, P6-J2), flags: 'hanging' indents every line but the first formatted one and
+	// those after a forced break, 'each-line' also the lines after a forced break.
+	enum class TextIndentMode : uint8_t { None = 0, Hanging = 1, EachLine = 2, HangingEachLine = 3 };
 	// The lines of 'text-decoration-line': a combination of flags (phase 3, p3-text).
 	enum class TextDecoration : uint8_t { None = 0, Underline = 1, Overline = 2, LineThrough = 4 };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };

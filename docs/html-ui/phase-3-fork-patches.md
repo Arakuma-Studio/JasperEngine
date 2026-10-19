@@ -83,7 +83,8 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | Multi-column layout (`columns`, `column-count`) | Tier 3, new fragmentation machinery. | "Use CSS Grid or flex-wrap." |
 | `@layer` cascade layers, `revert-layer` with layers | No cascade layers in the parser; `revert-layer` without layers behaves as `revert` (CSS-correct when no layers exist), `@layer` blocks are diagnosed by compat. | "Remove `@layer`; order rules by specificity." |
 | CSS counters in `counter()` styles other than the list in §3.6; `@counter-style` | Long tail. | "Use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none." |
-| `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| `text-decoration-style: wavy`, `text-emphasis`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
+| ~~`text-indent`~~ | Implemented after phase 3 by p6-justify (FORK.md P6-J2, "p6-justify text-indent as implemented" in §3.10): lengths, percentages, negative values, `hanging`, `each-line`, in text fields too, interpolated by transitions. | none |
 | ~~`text-align: justify`~~ | Implemented after phase 3 by p6-justify (FORK.md P6-J1, "p6-justify as implemented" in §3.10): justified lines, `text-align-last`, `text-justify`, with the font engine placing the space per character (`TextShapingContext::justification`). Only `text-align: justify-all` is reported (`HTMLUI-CSS-0004`), as Chromium does not parse it. | "write text-align: justify with text-align-last: justify" (for `justify-all`) |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
@@ -1558,6 +1559,36 @@ table above):
   Right-to-left paragraphs hold one text each: inline boxes of a right-to-left line are still placed left to right
   (mirrored layout, §2.2).
 
+**p6-justify text-indent as implemented** (after phase 3; FORK.md P6-J2, `ForkFeature::TextIndent`): `text-indent:
+<length-percentage> [hanging] [each-line]` (the keywords in any order, once each), inherited, measured against
+Chromium 153 (`NGLineBreaker`/`LineInfo::TextIndent`, `ComputedStyle::TextIndent`):
+
+- **Values.** The shorthand `text-indent` sets two inherited longhands, `-rmlui-text-indent-length` (a length or
+  percentage, `calc()` too, negative allowed; `em` resolved where it is declared and inherited as a length) and
+  `-rmlui-text-indent-mode` (`none`, `hanging`, `each-line`, `hanging-each-line`); `text-indent: hanging` without a
+  length is not parsed, as in Chromium. `ComputedValues::text_indent()` and `text_indent_mode()`. Transitions and
+  animations interpolate the length (`transition: text-indent` expands to the longhands); the mode is discrete.
+- **Which lines.** The first formatted line of a block container: the first line of its first inline container when no
+  block-level box comes before it (an empty block or one with text before ends it; an absolutely positioned box does
+  not), the first line of a block child (it inherits the indent), not the line after a block child. `each-line` also
+  indents each line after `<br>` or a preserved line feed (not lines that wrap); `hanging` indents all the lines but
+  those. Inline-blocks, table cells and list items are block containers of their own.
+- **Width.** A percentage is of the block's content width; while its intrinsic widths are measured
+  (`LayoutDetails::IsMeasuringIntrinsicWidth`: min-/max-content, shrink-to-fit) it is 0, then resolved against the width
+  found, as in Chromium; a length indent counts in the intrinsic widths (a shrink-to-fit inline-block is wider by it, a
+  negative one narrower). The indented line is laid out in the line width less the indent: `center`, `right` and
+  `justify` align within it (a centred line is centred in what the indent leaves); in a right-to-left paragraph the
+  indent is at the right. A negative indent moves the line's start into the padding (or outside the box). Floats placed
+  beside the line come before the indent. An outside list marker is not indented (it stays outside the item's edge); an
+  inside marker is, as the line's first box.
+- **Text fields.** `WidgetTextInput` indents the first line of a text area (wrapped in the width that leaves) and, with
+  `each-line`, the line after each line feed; a text input's line; the caret, selections, IME underlines, hit tests and
+  the placeholder follow.
+- **Not done:** `::first-line` (the fork has no `::first-line`, §2.2).
+- **Fixtures** (`p3/text/indent-*`, Ahem, whole-pixel offsets so the image is compared): `basic` (lengths, `%`,
+  `calc()`, `em`, negative, centred, right, justified), `lines` (`<br>`, preserved line feeds, `hanging`, `each-line`, block
+  children, floats, list markers), `rtl`, `fields` (text area, inputs) and `transition` (halfway values).
+
 **p6-line-clamp as implemented** (phase 6, after phase 3: FORK.md row P6-L1; §2.2 listed line clamping
 as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `LineClampData` and
 `LineTruncator` with the `CSSLineClamp` flag off (its default) and measured on the pinned headless shell:
@@ -1600,6 +1631,13 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
   line's end, justifies it, then makes room for the ellipsis (`TruncateForLineClamp` cuts a run's
   `JustificationSpacing` with its text), and the text run draws both. A clamp line that ends its paragraph
   is cut like any other (`text-align-last` justifies it first).
+- **With text-indent** (found merging P6-J2, measured on the pinned headless shell): the clamp line is
+  made room for the ellipsis in the width its indent leaves: a left-to-right line's items start after the
+  indent (a negative one starts before the box), a right-to-left one ends before it, and an indented
+  centred or justified line is aligned or justified in that width before it is cut; which lines are
+  indented (the first formatted one, `hanging`, `each-line` after a `<br>`) is P6-J2's. A clamp line of
+  nothing but a `<br>` draws its ellipsis at the indent, aligned by `text-align-last` (it ends at a
+  forced break).
 - **Dynamic.** A change of `-webkit-line-clamp` or the orient relays out (the display may change between
   `flow-root` and `flex`); `-webkit-line-clamp` animates discretely (`allow-discrete`: at half the
   duration). Lua's `style.webkitLineClamp` is `-webkit-line-clamp` (CSSOM's webkit-cased names).
@@ -1614,7 +1652,9 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
   (width, `max-height` and the discrete clamp) in Ahem ('p', Ahem's descender, shows the kept characters),
   `line-clamp-cards` (item cards in a grid and a flex row, Roboto: boxes and the no-text image gated) and
   `line-clamp-justify` (justified clamp lines: inter-word, inter-character, the last line of a paragraph,
-  right-to-left, a span; the ellipsis in the block's red, the text in a span's colour).
+  right-to-left, a span; the ellipsis in the block's red, the text in a span's colour) and `line-clamp-indent`
+  (indented clamp lines: first, hanging, each-line, negative, percentage, right-to-left, centred, justified,
+  a `<br>` line).
 
 ---
 

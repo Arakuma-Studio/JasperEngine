@@ -785,6 +785,7 @@ namespace {
         {"text-decoration-line", ForkFeature::TextProperties, "@text_decoration_line"},
         {"text-decoration-style", ForkFeature::TextProperties, "kw:solid,double,dotted,dashed,wavy"},
         {"text-decoration-thickness", ForkFeature::TextProperties, "kw:auto,from-font|length_percent"},
+        {"text-indent", ForkFeature::TextIndent, "@text_indent"},   // p6-justify (P6-J2)
         {"text-justify", ForkFeature::Justify, "kw:auto,none,inter-word,inter-character,distribute"},   // p6-justify
         {"text-shadow", ForkFeature::TextShadow, "@text_shadow"},
         {"text-underline-offset", ForkFeature::TextProperties, "kw:auto|length_percent"},
@@ -922,6 +923,26 @@ namespace {
             const bool firstMode = keywordIn(list[0], "wrap,nowrap"), secondMode = keywordIn(list[1], "wrap,nowrap");
             const char* collapse = "collapse,preserve,preserve-breaks,preserve-spaces,break-spaces";
             return (firstMode && keywordIn(list[1], collapse)) || (secondMode && keywordIn(list[0], collapse));
+        }
+        if (kind == "text_indent"){
+            // '<length-percentage> && hanging? && each-line?' (p6-justify, P6-J2)
+            bool length = false, hanging = false, eachLine = false;
+            for (std::string_view word : list){
+                if (word == "hanging"){
+                    if (hanging)
+                        return false;
+                    hanging = true;
+                }else if (word == "each-line"){
+                    if (eachLine)
+                        return false;
+                    eachLine = true;
+                }else{
+                    if (length || !lengthPercentOrCalc(word, calc))
+                        return false;
+                    length = true;
+                }
+            }
+            return length;
         }
         if (kind == "text_wrap"){
             if (list.size() == 1)
