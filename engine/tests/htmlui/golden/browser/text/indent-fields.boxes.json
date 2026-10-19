@@ -1,0 +1,36 @@
+{
+ "fixture": "text/indent-fields.html",
+ "viewport": [
+  260,
+  130
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "area",
+    "tag": "textarea",
+    "x": 10,
+    "y": 10,
+    "w": 237,
+    "h": 60
+   },
+   {
+    "id": "field",
+    "tag": "input",
+    "x": 10,
+    "y": 80,
+    "w": 238,
+    "h": 16
+   },
+   {
+    "id": "center",
+    "tag": "input",
+    "x": 10,
+    "y": 105,
+    "w": 238,
+    "h": 16
+   }
+  ]
+ }
+}
