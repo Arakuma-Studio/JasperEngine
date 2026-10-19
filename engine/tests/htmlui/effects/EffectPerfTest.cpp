@@ -86,6 +86,17 @@ namespace {
 #endif
     }
 
+    // the host's load average at the start of a measurement (perf gates are judged with the host
+    // to themselves, phase-5 5.4: a loaded run shows in its log)
+    void printLoadAverage(const char* test){
+        std::ifstream file("/proc/loadavg");
+        std::string load;
+        if (file && std::getline(file, load))
+            std::printf("[ effects  ] %s: load average at start %s\n", test, load.c_str());
+        else
+            std::printf("[ effects  ] %s: load average unknown on this platform\n", test);
+    }
+
     double processCpuMs(){
         return 1000.0 * (double)std::clock() / (double)CLOCKS_PER_SEC;
     }
@@ -474,6 +485,7 @@ namespace {
 #ifdef NDEBUG
 
 TEST(EffectPerfTest, GridSteadyStateAndBudgets){
+    printLoadAverage("GridSteadyStateAndBudgets");
     Grid grid;
     if (!grid.gpu || !grid.r.isValid())
         GTEST_SKIP() << "no GPU";
@@ -576,6 +588,7 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
 }
 
 TEST(EffectPerfTest, StatefulSteadyState){
+    printLoadAverage("StatefulSteadyState");
     Grid grid;
     if (!grid.gpu || !grid.r.isValid())
         GTEST_SKIP() << "no GPU";
@@ -639,6 +652,7 @@ TEST(EffectPerfTest, StatefulSteadyState){
 }
 
 TEST(EffectPerfTest, CostTable){
+    printLoadAverage("CostTable");
     EffectScene fill(1024, 1024, 4);
     EffectScene scene(1024, 1024, 4);
     if (!fill.valid() || !scene.valid())
