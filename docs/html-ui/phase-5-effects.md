@@ -2132,8 +2132,11 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   every sokol call, on Vulkan the recording and the submit with the driver's work under them),
   measured and budgeted as on glcore since p5-tooling (A <= 1.5 x B + 1 ms, A2 <= 3 x B + 4 ms,
   budgets unchanged, B measured the same way); the frame is printed. `StatefulSteadyState`
-  (phase 6) gates the same measure. Local host, Vulkan, `LP_NUM_THREADS=2`: engine's own work B
-  0.059 ms, A 0.266, A2 0.965 (frame B 0.177, A 1.049, A2 1.674).
+  (phase 6) gates the same measure. Verified with `EffectPerfTest.*` on the local host
+  (`flock /tmp/htmlui-heavy.lock`, `JOBS=2`, `tools/build.sh htmlui-tests` as is, no
+  `LP_NUM_THREADS`): Vulkan engine's own work B 0.159 ms, A 0.359 (budget 1.238), A2 1.577 (budget
+  4.477), the frame A 1.578 (it would have failed its 1.533); glcore B 0.072, A 0.347 (budget
+  1.108), A2 1.087 (budget 4.217); 3 of 3 tests on each backend.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
