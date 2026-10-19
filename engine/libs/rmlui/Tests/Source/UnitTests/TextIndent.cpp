@@ -135,6 +135,21 @@ TEST_CASE("TextIndent.lines")
 	document->Close();
 }
 
+TEST_CASE("TextIndent.lines_inside_inline_boxes")
+{
+	// A line an open inline box goes on on (split from the line before) is indented as any other: 'hanging' after a wrap,
+	// 'each-line' after a <br> inside the span (Chromium's boxes, as in the line-clamp-indent fixture).
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load("div { width: 75px; } span { display: inline; }",
+		"<div style='text-indent: 20px hanging'><span>XpX XX <span id='hang'>XXX</span> XpX</span></div>"
+		"<div style='text-indent: 20px each-line'><span>XpX<br/><span id='each'>XX</span> XXX XX</span></div>"
+		"<div style='text-indent: 20px'><span>XpX<br/><span id='plain'>XX</span></span></div>");
+	CHECK(Get(document, "hang")->GetAbsoluteOffset(BoxArea::Border) == Vector2f(20.f, 10.f));
+	CHECK(Get(document, "each")->GetAbsoluteOffset(BoxArea::Border) == Vector2f(20.f, 40.f));
+	CHECK(Get(document, "plain")->GetAbsoluteOffset(BoxArea::Border) == Vector2f(0.f, 70.f));
+	document->Close();
+}
+
 TEST_CASE("TextIndent.textarea")
 {
 	FixedAdvanceFontScope scope;

@@ -129,9 +129,11 @@ void InlineContainer::CloseInlineElement(InlineBox* inline_box)
 
 void InlineContainer::AddBreak(float line_height)
 {
-	// Simply end the line if one is open, otherwise increment by the line height.
+	// Simply end the line if one is open, otherwise increment by the line height. The line after the break is one after a
+	// forced break ('each-line'), also the line an open inline box goes on on (split from the closed one, indented then).
 	if (GetOpenLineBox())
 	{
+		after_forced_break = true;
 		CloseOpenLineBox(true, true);
 	}
 	else
@@ -143,8 +145,8 @@ void InlineContainer::AddBreak(float line_height)
 		formatted_lines += 1;
 		if (line_clamp)
 			RecordLineClampHeight();
+		after_forced_break = true;
 	}
-	after_forced_break = true;
 }
 
 void InlineContainer::AddChainedBox(UniquePtr<LineBox> open_line_box)
@@ -221,7 +223,13 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 			if (out_split_line)
 				*out_split_line = std::move(split_line_box);
 			else
+			{
+				// The line the open inline boxes go on on is a formatted line too: 'text-indent' indents it as any other
+				// (hanging, each-line), as Chromium does.
+				if (text_indent != 0.f)
+					IndentLine(split_line_box.get());
 				line_boxes.push_back(std::move(split_line_box));
+			}
 		}
 	}
 }
