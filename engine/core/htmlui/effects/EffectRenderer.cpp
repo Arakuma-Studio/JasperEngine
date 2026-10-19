@@ -381,10 +381,13 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     Program* program = programFor(*instance, false);
     if (!program)
         return;
-    packParams(*instance, *program);
     // phase 6: a stateful effect's passes run first (they end the layer's pass, bound again below)
-    if (instance->manifest->stateful() && !advanceSimulation(*instance, *program, nullptr))
-        return;
+    const bool stateful = instance->manifest->stateful();
+    if (stateful){
+        packParams(*instance, *program);
+        if (!advanceSimulation(*instance, *program, nullptr))
+            return;
+    }
 
     if (!renderer.bindTopLayer())
         return;
@@ -396,8 +399,10 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
         return;
     renderer.applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(renderer.targetSize.x, 1), std::max(renderer.targetSize.y, 1))));
     renderer.applyPassScissor(scissor);
-    if (instance->manifest->stateful())
+    if (stateful)
         bindStates(*instance, *program);
+    else
+        packParams(*instance, *program);
 
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
     if (!program->object.beginDraw(renderer.getGeometryState(blendModeOf(instance->blend))))
