@@ -2118,6 +2118,22 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   tolerance). It measured 7.1 x before, on an idle local host with the fill taken alone. A2's re-instancing is
   3 + 16 a frame (3.6's shared decorators), not 64. *After p5-accept (7.3):* glcore engine's own work A 0.80-0.95 ms
   against 1.22-1.26, Vulkan frame A 1.27-1.37 against 1.69-1.74 (5 runs each, 7.4).
+- **Deviation (p6-stateful-fx): Vulkan gates the engine's own work too.** The Vulkan frame gate
+  depended on the machine: on the local agent host (AMD Ryzen 7 7700, 16 hardware threads, the
+  container capped at 2 CPUs by `JOBS=2`) `GridSteadyStateAndBudgets` failed alone, A 1.577-1.586
+  ms against 1.518-1.585, while the remote host (an EPYC VM, 12 CPUs, `JOBS=4`) passed it by about
+  20 %. The frame's CPU time includes lavapipe's work on the calling thread (command recording,
+  the submit, the waits on its rasterizer threads), and that share does not follow B's: lavapipe
+  starts a rasterizer thread per visible CPU (`tools/build.sh htmlui-tests` sets no
+  `LP_NUM_THREADS`), 16 threads sharing a 2-CPU quota locally against 12 on 4 remotely, and the
+  hosts' caches differ. Pinning `LP_NUM_THREADS` would only move the dependence to the quota; the
+  same run with `LP_NUM_THREADS=2` passed locally at A 1.049 against 1.265. Decision: on both
+  backends the test gates the engine's own work, the frame less `RenderBackendTime` (which times
+  every sokol call, on Vulkan the recording and the submit with the driver's work under them),
+  measured and budgeted as on glcore since p5-tooling (A <= 1.5 x B + 1 ms, A2 <= 3 x B + 4 ms,
+  budgets unchanged, B measured the same way); the frame is printed. `StatefulSteadyState`
+  (phase 6) gates the same measure. Local host, Vulkan, `LP_NUM_THREADS=2`: engine's own work B
+  0.059 ms, A 0.266, A2 0.965 (frame B 0.177, A 1.049, A2 1.674).
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject

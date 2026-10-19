@@ -15,13 +15,15 @@
 //   value text (3.6's decorators are shared by the elements whose value is the same: one per paint
 //   effect) and once per filter element: 3 + 16 a frame, not 64. Document C: A's layers without
 //   effects (RmlUi's brightness() and blur() in place of the effect filters), reported.
-//   What is gated (5.4's deviation, phase-5 spec): on Vulkan the frame's CPU time; on glcore the
-//   engine's own work, the frame less the time the graphics backend took on the thread
-//   (RenderBackendTime: sokol and the GL driver; both on the steady clock, less the measurement's
-//   own clock reads, calibrated). On llvmpipe every render pass is a scene the
-//   driver bins and copies its state into on the calling thread (about 125k instructions at
-//   1280 x 720), and each filter needs four (its layer, the resolve, the filter, the composite):
-//   most of A's frame, a cost a GPU driver does not have. Both measures are printed.
+//   What is gated (5.4's deviation, phase-5 spec): on both backends the engine's own work, the
+//   frame less the time the graphics backend took on the thread (RenderBackendTime: sokol and the
+//   driver under it; both on the steady clock, less the measurement's own clock reads,
+//   calibrated). On llvmpipe every render pass is a scene the driver bins and copies its state
+//   into on the calling thread (about 125k instructions at 1280 x 720), and each filter needs four
+//   (its layer, the resolve, the filter, the composite): most of A's frame, a cost a GPU driver
+//   does not have. lavapipe records and validates every command on the thread too, and that share
+//   depends on the machine (its CPU and caches) differently from B's: gating Vulkan's full frame
+//   passed on one host and failed on another (p6-stateful-fx). Both measures are printed.
 // - Cost table: every built-in effect (the 83 of the catalogue, one row each) fills 1024 x 1024,
 //   rendered and read back through the golden harness (its pointer and trail inputs), against a
 //   background-color fill of the same size measured with it: rounds of 8 captures of the fill
@@ -478,15 +480,11 @@ TEST(EffectPerfTest, GridSteadyStateAndBudgets){
     ASSERT_TRUE(warmUpReferenceEffects());
     HtmlUIClock::setFixedTime(10.0);
 
-    // What is gated (5.4 as implemented, p5-tooling): on Vulkan the frame's CPU time; on glcore the
-    // engine's own work, the frame less the backend's share (sokol and the GL driver, which on
-    // llvmpipe sets up every render pass on this thread: most of a frame with layers, a cost a GPU
-    // driver does not have). The full frame is printed on both.
-#if defined(SOKOL_VULKAN)
-    const bool gateEngine = false;
-#else
+    // What is gated (5.4 as implemented, p5-tooling; Vulkan since p6-stateful-fx): the engine's own
+    // work, the frame less the backend's share (sokol and the driver: llvmpipe sets up every render
+    // pass on this thread, lavapipe records every command on it, a cost a GPU driver does not have
+    // and whose share of the frame depends on the machine). The full frame is printed.
     const bool gateEngine = true;
-#endif
     RenderBackendTime::setEnabled(true);
     struct BackendOff {
         ~BackendOff(){ RenderBackendTime::setEnabled(false); }
@@ -594,11 +592,8 @@ TEST(EffectPerfTest, StatefulSteadyState){
         scatterPerFrame += passes.second;
     }
     HtmlUIClock::setFixedTime(10.0);
-#if defined(SOKOL_VULKAN)
-    const bool gateEngine = false;
-#else
+    // the engine's own work on both backends, as GridSteadyStateAndBudgets
     const bool gateEngine = true;
-#endif
     RenderBackendTime::setEnabled(true);
     struct BackendOff {
         ~BackendOff(){ RenderBackendTime::setEnabled(false); }
