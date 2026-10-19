@@ -62,6 +62,12 @@ CompareResult jasperengine::test::compareWithGoldenFile(const std::string& golde
         return result;
     }
 
+    // JASPER_HTMLUI_WRITE_ACTUAL=1: every compared image is kept (<name>.actual.png in the output
+    // directory), on every backend, to compare two builds' images exactly
+    const char* writeActual = std::getenv("JASPER_HTMLUI_WRITE_ACTUAL");
+    if (writeActual && std::strcmp(writeActual, "1") == 0)
+        writePng(outputDirectory + "/" + name + ".actual.png", rgba, width, height);
+
     if (isGoldenUpdateMode()){
 #if defined(SOKOL_VULKAN)
         result.message = "'" + name + "': goldens are only updated on glcore (HTMLUI_BACKEND=glcore)";
