@@ -422,6 +422,8 @@ namespace jasperengine {
 
         // the RenderInterface calls drawn at once (immediate drawing and the replay)
         void renderGeometryNow(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture);
+        // the replay of RenderGeometry: the texture was checked when it was recorded
+        void drawRecordedGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, HtmlUITexture* texture);
         void renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
         Rml::LayerHandle pushLayerNow();
         void popLayerNow();
@@ -502,6 +504,7 @@ namespace jasperengine {
         Rml::Matrix4f transform;
         bool scissorEnabled = false;
         Rml::Rectanglei scissorRegion;
+        Rml::Rectanglei scissorTarget;      // scissorRegion in target px (toTargetRect), set with it
         bool clipMaskEnabled = false;
         uint8_t stencilRef = 0;
         int layersSize = 0;

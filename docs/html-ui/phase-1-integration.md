@@ -773,9 +773,9 @@ No command allocates, and a steady-state frame allocates nothing.
 
 | Call | Recorded | Record time | Replay |
 |---|---|---|---|
-| `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | nothing read | the checks (an empty geometry, a dead or uncreated texture), the draw |
+| `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | the texture checked (dead, not created; a texture handed to RmlUi becomes the renderer's); the geometry not read | an empty geometry skipped, the draw |
 | `RenderToClipMask` | `CLIP_MASK` | an empty geometry dropped, `stencilRef` mirrored | the stencil clear and write |
-| `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION`, `CLIP_ENABLE` | the state mirrored | the state set |
+| `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION` (document px, and target px in `a`, `b`), `CLIP_ENABLE` | the state mirrored; the region converted to target px once | the state set |
 | `SetTransform` | `TRANSFORM` (matrix pool index, or none) | the matrix copied | `projection × matrix` |
 | `PushLayer`, `PopLayer` | `PUSH_LAYER`, `POP_LAYER` | the handle is the record-time depth (from 1) | as before (replay checks the index) |
 | `CompositeLayers` | `COMPOSITE` (layers, blend, filter span) | the filters copied; effect filters prepared | as before |

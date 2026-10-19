@@ -967,14 +967,28 @@ void RmlRenderer::EnableScissorRegion(bool enable){
         recordCommand(CommandType::SCISSOR_ENABLE).flag = enable ? 1 : 0;
 }
 
+namespace {
+    // a target-px rectangle in a command's two handles (SCISSOR_REGION)
+    uintptr_t packCorner(int x, int y){
+        return (uintptr_t)(uint32_t)x | ((uint64_t)(uint32_t)y << 32);
+    }
+    Rml::Vector2i unpackCorner(uintptr_t packed){
+        return Rml::Vector2i((int)(int32_t)(uint32_t)(packed & 0xFFFFFFFFu), (int)(int32_t)(uint32_t)((uint64_t)packed >> 32));
+    }
+}
+
 void RmlRenderer::SetScissorRegion(Rml::Rectanglei region){
     scissorRegion = region;
+    // in target px once, not at every draw
+    scissorTarget = toTargetRect(region, contextSize, targetSize);
     if (recording){
         Command& command = recordCommand(CommandType::SCISSOR_REGION);
         command.i[0] = region.Left();
         command.i[1] = region.Top();
         command.i[2] = region.Right();
         command.i[3] = region.Bottom();
+        command.a = packCorner(scissorTarget.Left(), scissorTarget.Top());
+        command.b = packCorner(scissorTarget.Right(), scissorTarget.Bottom());
     }
 }
 
@@ -1005,7 +1019,7 @@ const Rml::Matrix4f& RmlRenderer::getCurrentTransform() const{
 Rml::Rectanglei RmlRenderer::getCurrentScissor() const{
     if (!scissorEnabled)
         return Rml::Rectanglei::MakeInvalid();
-    return toTargetRect(scissorRegion, contextSize, targetSize);
+    return scissorTarget;
 }
 
 bool RmlRenderer::isClipMaskEnabled() const{
@@ -1025,7 +1039,7 @@ Rml::Vector2f RmlRenderer::getPixelScale() const{
 Rml::Rectanglei RmlRenderer::currentScissorTarget() const{
     if (!scissorEnabled)
         return fullRect(targetSize.x, targetSize.y);
-    return toTargetRect(scissorRegion, contextSize, targetSize);
+    return scissorTarget;
 }
 
 PipelineState RmlRenderer::layerState(BlendMode blend, ColorWriteMask writeMask, const StencilState& stencil) const{
@@ -1417,15 +1431,26 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
 
 void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
     if (recording){
-        // the geometry is read at replay only (an empty one draws nothing there)
+        // the texture is checked now (it cannot change before the replay, which draws it as it
+        // is); the geometry is read at replay only (an empty one draws nothing there)
+        HtmlUITexture* texture = toTexture(textureHandle);
+        if (texture && (texture->dead || !texture->render || !texture->render->isCreated()))
+            return;
         Command& command = recordCommand(CommandType::GEOMETRY);
         command.a = handle;
-        command.b = textureHandle;
+        command.b = reinterpret_cast<uintptr_t>(texture);
         command.x = translation.x;
         command.y = translation.y;
         return;
     }
     renderGeometryNow(handle, translation, textureHandle);
+}
+
+void RmlRenderer::drawRecordedGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, HtmlUITexture* texture){
+    RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
+    if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
+        return;
+    drawGeometry(geometry, translation, texture, getGeometryState(BlendMode::PREMULTIPLIED));
 }
 
 void RmlRenderer::renderGeometryNow(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
@@ -2459,6 +2484,7 @@ void RmlRenderer::replayCommands(){
     transform = projection;
     scissorEnabled = false;
     scissorRegion = frameStartScissor;
+    scissorTarget = toTargetRect(scissorRegion, contextSize, targetSize);
     clipMaskEnabled = false;
     stencilRef = 0;
     layersSize = 1;
@@ -2469,7 +2495,7 @@ void RmlRenderer::replayCommands(){
         const Command& c = *command;
         switch (c.type){
         case CommandType::GEOMETRY:
-            renderGeometryNow(c.a, Rml::Vector2f(c.x, c.y), c.b);
+            drawRecordedGeometry(c.a, Rml::Vector2f(c.x, c.y), reinterpret_cast<HtmlUITexture*>(c.b));
             break;
         case CommandType::CLIP_MASK:
             renderToClipMaskNow((Rml::ClipMaskOperation)c.flag, c.a, Rml::Vector2f(c.x, c.y));
@@ -2479,6 +2505,7 @@ void RmlRenderer::replayCommands(){
             break;
         case CommandType::SCISSOR_REGION:
             scissorRegion = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
+            scissorTarget = Rml::Rectanglei::FromCorners(unpackCorner(c.a), unpackCorner(c.b));
             break;
         case CommandType::CLIP_ENABLE:
             clipMaskEnabled = c.flag != 0;
@@ -2595,6 +2622,8 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     transform = projection;
 
     scissorEnabled = false;
+    // the region kept from the last frame, at this frame's sizes (EnableScissorRegion may come alone)
+    scissorTarget = toTargetRect(scissorRegion, contextSize, targetSize);
     clipMaskEnabled = false;
     stencilRef = 0;
     layersSize = 1;
