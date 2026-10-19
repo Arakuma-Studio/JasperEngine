@@ -177,9 +177,10 @@ set(DAV1D_ASM_SOURCES "")
 set(DAV1D_ASM_KIND "none")
 if(JASPERENGINE_DAV1D_ASM AND NOT EMSCRIPTEN)
     if(DAV1D_TARGET_ARCH MATCHES "^(x86_64|amd64|x64)$")
-        # NASM itself: CMake's ASM_NASM also takes yasm (the Android NDK ships one, found first),
-        # which dav1d's x86inc does not support
-        if(NOT CMAKE_ASM_NASM_COMPILER)
+        # NASM itself: CMake's ASM_NASM also takes yasm, which dav1d's x86inc does not support (the
+        # Android NDK's toolchain file names its own yasm)
+        get_filename_component(DAV1D_NASM_NAME "${CMAKE_ASM_NASM_COMPILER}" NAME_WE)
+        if(NOT CMAKE_ASM_NASM_COMPILER OR DAV1D_NASM_NAME STREQUAL "yasm")
             find_program(DAV1D_NASM_EXECUTABLE nasm NO_CMAKE_FIND_ROOT_PATH)
             if(DAV1D_NASM_EXECUTABLE)
                 set(CMAKE_ASM_NASM_COMPILER "${DAV1D_NASM_EXECUTABLE}")
