@@ -1269,9 +1269,44 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
                 for (const auto& param : effect.params)
                     params[param.first] = param.second;
                 item["params"] = params;
+                // phase 6: a stateful effect's simulation
+                item["stateful"] = effect.stateful;
+                if (effect.stateful){
+                    item["stateBytes"] = (double)effect.stateBytes;
+                    item["steps"] = (double)effect.steps;
+                    item["simTime"] = effect.simTime;
+                    item["paused"] = effect.paused;
+                }
                 list[index++] = item;
             }
             return list;
+        })
+        .addFunction("effectSplat", [](UIElement* self, const luabridge::LuaRef& options) -> int {
+            UIEffectSplat splat;
+            if (!options.isTable()){
+                Log::warn("[HTML UI] effectSplat takes a table: { x=, y=, radius=, dx=, dy=, color=, strength=, effect= }");
+                return 0;
+            }
+            auto number = [&](const char* key, float fallback){
+                const luabridge::LuaRef value = options[key];
+                return value.isNumber() ? value.unsafe_cast<float>() : fallback;
+            };
+            splat.x = number("x", 0.f);
+            splat.y = number("y", 0.f);
+            splat.radius = number("radius", splat.radius);
+            splat.dx = number("dx", 0.f);
+            splat.dy = number("dy", 0.f);
+            splat.strength = number("strength", splat.strength);
+            const luabridge::LuaRef color = options["color"];
+            if (color.isString())
+                splat.color = color.unsafe_cast<std::string>();
+            const luabridge::LuaRef effect = options["effect"];
+            if (effect.isString())
+                splat.effect = effect.unsafe_cast<std::string>();
+            return self->effectSplat(splat);
+        })
+        .addFunction("effectReset", [](UIElement* self, std::optional<std::string> effect) -> int {
+            return self->effectReset(effect.value_or(std::string()));
         })
         .addFunction("querySelector", [](const UIElement* self, const std::string& selector) -> std::optional<UIElement> {
             return optionalElement(self->querySelector(selector));

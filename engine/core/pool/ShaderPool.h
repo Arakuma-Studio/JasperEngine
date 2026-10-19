@@ -100,6 +100,10 @@ namespace jasperengine{
         // a built-in getShaderStr() back into its key (UI effects: library effects, and project
         // effects through the custom shader name resolver)
         static bool parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey);
+        // a UI effect's "<basename>[_<properties>]" (the part of its shader string after
+        // "uieffect_") into its custom shader and properties (Flt, Stp, Sct); false when the
+        // basename names no effect
+        static bool splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint32_t& properties);
 
         static std::string getShaderStr(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
         static std::string getShaderTypeName(ShaderType shaderType, bool lowerCase = false);

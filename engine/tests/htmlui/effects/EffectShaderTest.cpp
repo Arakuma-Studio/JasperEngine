@@ -25,10 +25,13 @@ TEST(ShaderKeyTest, TypeTokensNamesAndMask){
     EXPECT_EQ(type, ShaderType::UI_EFFECT);
     EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::UI_EFFECT, true), "uieffect");
     EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::UI_EFFECT), "UI Effect");
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::UI_EFFECT), 1);
+    // Flt, and phase 6's Stp and Sct (a stateful effect's step and scatter forms)
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::UI_EFFECT), 3);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::UI_EFFECT, 0, true), "Flt");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::UI_EFFECT, 0, false), "Filter form");
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI_EFFECT), 1u);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::UI_EFFECT, 1, true), "Stp");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::UI_EFFECT, 2, true), "Sct");
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI_EFFECT), 7u);
 }
 
 TEST(ShaderKeyTest, LibraryIdsRoundTrip){
@@ -89,11 +92,15 @@ TEST(ShaderKeyTest, SpecsAndExpansion){
 
     std::vector<ShaderKey> keys;
     ASSERT_TRUE(ShaderPool::expandShaderSpec("uieffect/all", keys, &error)) << error;
-    size_t paint = 0, filter = 0;
-    for (const EffectManifest* m : EffectRegistry::get().builtins())
+    size_t paint = 0, filter = 0, passForms = 0;
+    for (const EffectManifest* m : EffectRegistry::get().builtins()){
         (m->kind == EffectKind::Paint ? paint : filter)++;
-    // 2 x paint + filter + the internal bright pass
-    EXPECT_EQ(keys.size(), 2 * paint + filter + 1);
+        // phase 6: a stateful effect's step (and scatter) form of each draw form
+        const size_t drawForms = m->kind == EffectKind::Paint ? 2 : 1;
+        passForms += drawForms * EffectManifestParser::passForms(*m, 0).size();
+    }
+    // 2 x paint + filter + the internal bright pass + the stateful effects' pass forms
+    EXPECT_EQ(keys.size(), 2 * paint + filter + 1 + passForms);
     std::set<ShaderKey> unique(keys.begin(), keys.end());
     EXPECT_EQ(unique.size(), keys.size());
     keys.clear();
@@ -153,7 +160,8 @@ TEST(EffectShaderBuildTest, EveryVariantEveryBackend){
             if (!m)
                 continue;   // the internal bright pass
             std::vector<std::string> problems;
-            EXPECT_TRUE(EffectManifestParser::checkReflection(*m, data, problems)) << name << ": " << (problems.empty() ? "" : problems[0]);
+            EXPECT_TRUE(EffectManifestParser::checkReflection(*m, data, problems, ShaderPool::getPropertiesFromKey(key))) << name << ": "
+                << (problems.empty() ? "" : problems[0]);
         }
     }
 }

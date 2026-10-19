@@ -83,7 +83,7 @@ def parse_manifest(path):
         fail("%s: an effect file starts with #version 450" % path)
     i += 1
     m = {"backdrop": False, "pointer": "none", "time": [], "suggest": [], "params": [], "source": "", "prepass": "",
-         "margin": "", "geometry": "",
+         "margin": "", "geometry": "", "states": [], "passes": [], "warmup": "", "rate": "", "replay": "", "reseed": "",
          # an original effect whose file carries the kit's MIT notice follows parts of the kit
          "kit_notice": any("Shader Effects Inc." in line for line in lines)}
     while i < len(lines):
@@ -105,6 +105,16 @@ def parse_manifest(path):
             m["time"] = [p.strip() for p in rest.split(",") if p.strip()]
         elif directive == "suggest-for":
             m["suggest"] = rest.split()
+        elif directive == "state":
+            # phase 6: <name> <format> <size> [options]
+            words = rest.split()
+            m["states"].append({"name": words[0], "format": words[1], "size": words[2] if len(words) > 2 else ""})
+        elif directive in ("init", "step"):
+            words = rest.split()
+            m["passes"].append({"name": words[0], "init": directive == "init", "state": words[1] if len(words) > 1 else "",
+                                "options": words[2:]})
+        elif directive in ("warmup", "rate", "replay", "reseed"):
+            m[directive] = rest
         else:
             fail("%s: unknown directive @%s" % (path, directive))
         i += 1
@@ -162,6 +172,42 @@ def cell(text):
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+FORMAT_BYTES = {"rgba8": 4, "rgba16f": 8, "rgba32f": 16, "r32f": 4}
+
+
+def stateful_text(m):
+    """Phase 6: a stateful effect's state images, their memory for a fixed size, and its passes."""
+    single = set()
+    for st in m["states"]:
+        writers = [p for p in m["passes"] if p["state"] == st["name"]]
+        if writers and all("add" in p["options"] or "scatter" in p["options"] for p in writers):
+            single.add(st["name"])
+    images = []
+    fixed_bytes = 0
+    box = False
+    for st in m["states"]:
+        count = 1 if st["name"] in single else 2
+        images.append("`%s` %s %s%s" % (st["name"], st["format"], st["size"], "" if count == 1 else " x2"))
+        if "x" in st["size"] and not st["size"].startswith("box"):
+            w, h = st["size"].split("x")
+            fixed_bytes += int(w) * int(h) * FORMAT_BYTES.get(st["format"], 8) * count
+        else:
+            box = True
+    steps = [p for p in m["passes"] if not p["init"]]
+    memory = "%.1f MB" % (fixed_bytes / (1024.0 * 1024.0)) + (" plus the area-sized images" if box else "")
+    text = "Stateful (a simulation per element, phase 6): state %s (%s); %d pass%s a step" % (
+        ", ".join(images), memory, len(steps), "" if len(steps) == 1 else "es")
+    if m["rate"]:
+        text += " at %s Hz" % m["rate"].split()[0]
+    else:
+        text += " at 60 Hz"
+    if m["warmup"]:
+        text += "; a warm-up of %s steps" % m["warmup"].split()[0]
+    if m["reseed"]:
+        text += "; `%s` restarts it" % m["reseed"]
+    return text + "."
+
+
 def catalogue_text(all_effects):
     by_category = {}
     for m in all_effects:
@@ -185,7 +231,8 @@ def catalogue_text(all_effects):
         "Every effect also takes the universal parameters: `opacity` (percentage, default `100%`), `time-scale` "
         "(number in -10 to 10, default `1`), `time-offset` (time in -3600s to 3600s, default `0s`) and, for paint "
         "effects, `blend` (`normal`, `add`, `screen` or `multiply`). The thumbnails are the effects at t = 1.5 s in "
-        "the test fixtures (pointer effects with the pointer at 70 %, 40 %).",
+        "the test fixtures (pointer effects with the pointer at 70 %, 40 %; stateful effects replay their simulation "
+        "to that time, the pointer moving along the harness's arc).",
         "",
         "| Effect | Kind | Category | Cost | Summary |",
         "|---|---|---|---|---|",
@@ -212,6 +259,8 @@ def catalogue_text(all_effects):
                 facts.append("animated by: %s" % ", ".join("`%s`" % t for t in m["time"]))
             facts.append("source: %s" % m["source"])
             lines.append("; ".join(facts) + ".")
+            if m["states"]:
+                lines += ["", stateful_text(m)]
             if m["suggest"]:
                 lines += ["", "Also found as: %s." % ", ".join("`%s`" % s for s in m["suggest"])]
             lines += ["", "| Param | Type | Default | Range or options | Description |", "|---|---|---|---|---|"]

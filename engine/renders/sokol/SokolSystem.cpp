@@ -207,6 +207,18 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.originTopLeft = sgFeatures.origin_top_left;
         features.msaaRGBA8 = sg_query_pixelformat(SG_PIXELFORMAT_RGBA8).msaa;
         features.msaaDepthStencil = sg_query_pixelformat(SG_PIXELFORMAT_DEPTH_STENCIL).msaa;
+        const sg_pixelformat_info rgba16f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA16F);
+        const sg_pixelformat_info rgba32f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA32F);
+        const sg_pixelformat_info r32f = sg_query_pixelformat(SG_PIXELFORMAT_R32F);
+        features.renderRGBA16F = rgba16f.render;
+        features.blendRGBA16F = rgba16f.blend;
+        features.filterRGBA16F = rgba16f.filter;
+        features.renderRGBA32F = rgba32f.render;
+        features.blendRGBA32F = rgba32f.blend;
+        features.filterRGBA32F = rgba32f.filter;
+        features.renderR32F = r32f.render;
+        features.blendR32F = r32f.blend;
+        features.filterR32F = r32f.filter;
         featuresQueried = true;
     }
     return features;

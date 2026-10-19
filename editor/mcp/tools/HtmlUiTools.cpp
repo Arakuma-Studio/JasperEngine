@@ -697,8 +697,12 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
         for (const hui::InspectEffect& effect : e.effects) {
             Json params = Json::object();
             for (const auto& [name, value] : effect.params) params[name] = value;
-            effects.push_back({{"property", effect.property}, {"index", effect.index}, {"name", effect.name}, {"form", effect.form},
-                               {"params", params}});
+            Json entry = {{"property", effect.property}, {"index", effect.index}, {"name", effect.name}, {"form", effect.form},
+                          {"params", params}};
+            // phase 6: a stateful effect's simulation
+            if (effect.stateful)
+                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused}};
+            effects.push_back(std::move(entry));
         }
         out["effects"] = effects;
     }
@@ -740,7 +744,8 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
         const bool problem = f == "overflow-x" || f == "overflow-y" || f == "clipped";
         line += " " + std::string(problem ? "!" : "") + f;
     }
-    for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name;
+    // phase 6: a paused simulation is marked "~"
+    for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name + (effect.stateful && effect.paused ? "~" : "");
     if (e.media) {
         char buffer[96];
         std::snprintf(buffer, sizeof(buffer), " media:%s %.3fs/%s ready%d", e.media->paused ? "paused" : "playing", e.media->currentTime,

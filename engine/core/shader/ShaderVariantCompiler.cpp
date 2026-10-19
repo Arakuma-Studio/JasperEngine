@@ -9,6 +9,7 @@
 #include "shader/ShaderManifest.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <exception>
@@ -163,6 +164,75 @@ std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es
         return "_spirv" + std::to_string(version);
     }
     return "";
+}
+
+// The defines and annotations of a stateful UI effect (phase 6), read from its manifest block (the
+// "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step pass in
+// declaration order, JFX_PASSES (their count), JFX_STATEFUL; and the 32-bit float states' textures and
+// samplers annotated unfilterable (GLES3/WebGL2 cannot filter them), in a buffer of their own.
+void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args_t& args) {
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start <= source.size()) {
+        size_t end = source.find('\n', start);
+        if (end == std::string::npos)
+            end = source.size();
+        std::string line = source.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        lines.push_back(line);
+        start = end + 1;
+    }
+    size_t i = 0;
+    while (i < lines.size() && lines[i].find_first_not_of(" \t") == std::string::npos)
+        i++;
+    if (i >= lines.size() || lines[i].find("#version") == std::string::npos)
+        return;
+    auto words = [](const std::string& text) {
+        std::vector<std::string> out;
+        size_t p = 0;
+        while (p < text.size()) {
+            while (p < text.size() && std::isspace((unsigned char)text[p]))
+                p++;
+            size_t q = p;
+            while (q < text.size() && !std::isspace((unsigned char)text[q]))
+                q++;
+            if (q > p)
+                out.push_back(text.substr(p, q - p));
+            p = q;
+        }
+        return out;
+    };
+    int passes = 0;
+    bool stateful = false;
+    std::string annotations;
+    for (i++; i < lines.size(); i++) {
+        const std::vector<std::string> w = words(lines[i]);
+        if (w.size() < 2 || w[0] != "//" || w[1].empty() || w[1][0] != '@')
+            break;
+        if ((w[1] == "@init" || w[1] == "@step") && w.size() >= 3) {
+            std::string macro = "JFX_PASS_";
+            for (char c : w[2])
+                macro += c == '-' ? '_' : (char)std::toupper((unsigned char)c);
+            args.defines.push_back({macro, std::to_string(passes++)});
+        } else if (w[1] == "@state" && w.size() >= 4) {
+            stateful = true;
+            if (w[3] == "rgba32f" || w[3] == "r32f") {
+                std::string name = w[2];
+                for (char& c : name)
+                    if (c == '-')
+                        c = '_';
+                annotations += "// @image_sample_type u_state_" + name + " unfilterable_float\n";
+                annotations += "// @sampler_type u_state_" + name + "_smp nonfiltering\n";
+            }
+        }
+    }
+    if (!stateful)
+        return;
+    args.defines.push_back({"JFX_STATEFUL", "1"});
+    args.defines.push_back({"JFX_PASSES", std::to_string(passes)});
+    if (!annotations.empty())
+        args.fileBuffers["effects/__state_annotations__.glsl"] = annotations;
 }
 
 bool hasAnnotation(const shadercompiler::args_t& args, const char* tag,
@@ -492,11 +562,22 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     }else if (shaderType == ShaderType::UI_EFFECT){
         // the fragment is the effect's (compile: effects/<name>.frag, or a project's .frag)
         const bool filterForm = (properties & (1 << 0)) != 0;                   // 'Flt'
-        args.vert_file = filterForm ? "effects/effect_filter.vert" : "effects/effect_paint.vert";
+        const bool stepForm = (properties & (1 << 1)) != 0;                     // 'Stp' (phase 6)
+        const bool scatterForm = (properties & (1 << 2)) != 0;                  // 'Sct' (phase 6)
+        if (scatterForm)
+            args.vert_file = "effects/effect_scatter.vert";
+        else if (stepForm)
+            args.vert_file = "effects/effect_step.vert";
+        else
+            args.vert_file = filterForm ? "effects/effect_filter.vert" : "effects/effect_paint.vert";
         args.frag_file = "";
         args.defines.push_back({"JFX", "1"});
         if (filterForm)
             args.defines.push_back({"JFX_FILTER_FORM", "1"});
+        if (stepForm || scatterForm)
+            args.defines.push_back({"JFX_STEP_FORM", "1"});
+        if (scatterForm)
+            args.defines.push_back({"JFX_SCATTER_FORM", "1"});
     }else{
         return false;
     }
@@ -934,6 +1015,14 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
                     args.defines.push_back({define, "1"});
             }
         }
+    }
+
+    // phase 6: a stateful effect's passes and states, from its manifest (any form: the draw reads
+    // the states too)
+    if (shaderType == ShaderType::UI_EFFECT) {
+        auto source = args.fileBuffers.find(args.frag_file);
+        if (source != args.fileBuffers.end())
+            addUiEffectStateDefinitions(source->second, args);
     }
 
     if (stopped())

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The UI effects' shaders on every backend (phase-5 spec 5.6): the editor's `shaders` command
 # compiles every built-in effect (uieffect/all: a paint effect in both forms, a filter effect and
-# the internal bright pass in the filter form) for GLSL 410, GLSL 300 es (the web), HLSL 5, MSL 2.1
+# the internal bright pass in the filter form, a stateful effect's step and scatter forms too) for GLSL 410, GLSL 300 es (the web), HLSL 5, MSL 2.1
 # (macOS, iOS) and SPIR-V. It must exit 0 and write one .sdat per variant per backend; then
 # `ui-effects --validate` (both forms compiled for glcore, each manifest against the shader's
 # reflection) must pass.
@@ -42,17 +42,29 @@ cleanup() { [[ $KEEP == 1 ]] && echo "kept: $OUT" || rm -rf "$OUT"; }
 trap cleanup EXIT
 
 # the expected variants: every engine/shaderlib/effects/*.frag, by its kind (the internal ones,
-# named with a leading '_', have the filter form only)
+# named with a leading '_', have the filter form only); a stateful effect (phase 6: `// @state`)
+# adds the step form (Stp) of each draw form, and the scatter form (Sct) with a scatter pass
 EFFECTS="$ROOT/engine/shaderlib/effects"
 expected=()
 for frag in "$EFFECTS"/*.frag; do
     name="$(basename "$frag" .frag)"
     base="uieffect_fx_${name//-/_}"
     kind="$(sed -n 's|^// @kind[[:space:]]*\([a-z]*\).*|\1|p' "$frag" | head -1)"
+    forms=()
     if [[ "$name" != _* && "$kind" == paint ]]; then
-        expected+=("$base")
+        forms+=("")
     fi
-    expected+=("${base}_Flt")
+    forms+=("Flt")
+    for form in "${forms[@]}"; do
+        suffix="${form:+_$form}"
+        expected+=("${base}${suffix}")
+        if grep -q '^// @state' "$frag"; then
+            expected+=("${base}_${form}Stp")
+            if grep -qE '^// @step .* scatter ' "$frag"; then
+                expected+=("${base}_${form}Sct")
+            fi
+        fi
+    done
 done
 LANGS=(glsl410 glsl300es hlsl5 msl21macos msl21ios spirv10)
 

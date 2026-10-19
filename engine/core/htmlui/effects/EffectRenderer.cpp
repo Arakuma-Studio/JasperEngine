@@ -90,6 +90,10 @@ void EffectRenderer::releaseGpuResources(){
     programs.clear();
     programsGeneration++;
     brightShader.reset();
+    if (blackCreated){
+        black.destroyTexture();
+        blackCreated = false;
+    }
 }
 
 void EffectRenderer::beginFrame(){
@@ -118,7 +122,7 @@ void EffectRenderer::releaseFilter(Rml::CompiledFilterHandle handle){
     EffectRuntime::get().release(instanceOf(handle));
 }
 
-EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<ShaderRender>& shader, bool filterForm){
+EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<ShaderRender>& shader, bool vertexless, const EffectManifest* manifest){
     auto& slot = programs[shader.get()];
     if (slot && slot->shaderId == shader->backend.get().id)
         return slot.get();
@@ -137,16 +141,34 @@ EffectRenderer::Program* EffectRenderer::loadProgram(const std::shared_ptr<Shade
     program.params.resolve(data, "u_fs_effectParams");
     program.sourceSlot = data.getTextureIndexByName("u_effectSource");
     program.blurredSlot = data.getTextureIndexByName("u_effectBlurred");
+    // phase 6: the states (u_state_<name>, '-' as '_'), the step and scatter blocks
+    program.stateSlots.clear();
+    if (manifest){
+        for (const EffectStateDef& st : manifest->states){
+            std::string name = "u_state_" + st.name;
+            std::replace(name.begin(), name.end(), '-', '_');
+            program.stateSlots.push_back(data.getTextureIndexByName(name));
+        }
+    }
+    program.stepSlot = data.getUniformBlockIndexByName("u_fs_effectStep");
+    program.scatterSlot = data.getUniformBlockIndexByName("u_vs_effectScatter");
+    program.scatterPlaceSlot = data.getTextureIndexByName("u_scatterPlace");
 
     TextureRender* white = &renderer.placeholderWhite;
     program.object.beginLoad(PrimitiveType::TRIANGLES);
     program.object.setShader(shader.get());
-    if (filterForm){
-        // vertexless: a triangle from gl_VertexIndex
+    for (const auto& slot : program.stateSlots){
+        if (slot.first >= 0)
+            program.object.addTexture(slot, ShaderStageType::FRAGMENT, white);
+    }
+    if (vertexless){
+        // vertexless: a triangle from gl_VertexIndex (the scatter form: quads from it)
         if (program.sourceSlot.first >= 0)
             program.object.addTexture(program.sourceSlot, ShaderStageType::FRAGMENT, white);
         if (program.blurredSlot.first >= 0)
             program.object.addTexture(program.blurredSlot, ShaderStageType::FRAGMENT, white);
+        if (program.scatterPlaceSlot.first >= 0)
+            program.object.addTexture(program.scatterPlaceSlot, ShaderStageType::VERTEX, white);
         if (!program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
             Log::error("[HTML UI] could not load the program of a UI effect (filter form)");
             programs.erase(shader.get());
@@ -185,7 +207,7 @@ EffectRenderer::Program* EffectRenderer::programFor(EffectInstance& instance, bo
             cached->shaderId != 0 && cached->shaderId == instance.shader->backend.get().id)
             return cached;
         if (instance.shader->isCreated())
-            return rememberProgram(instance, loadProgram(instance.shader, filterForm));
+            return rememberProgram(instance, loadProgram(instance.shader, filterForm, instance.manifest));
     }
 
     const ShaderKey key = EffectRegistry::get().shaderKey(*instance.manifest, filterForm);
@@ -206,7 +228,7 @@ EffectRenderer::Program* EffectRenderer::programFor(EffectInstance& instance, bo
         if (!instance.shader || !instance.shader->isCreated())
             return nullptr;
     }
-    return rememberProgram(instance, loadProgram(instance.shader, filterForm));
+    return rememberProgram(instance, loadProgram(instance.shader, filterForm, instance.manifest));
 }
 
 EffectRenderer::Program* EffectRenderer::rememberProgram(EffectInstance& instance, Program* program){
@@ -359,6 +381,13 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     Program* program = programFor(*instance, false);
     if (!program)
         return;
+    // phase 6: a stateful effect's passes run first (they end the layer's pass, bound again below)
+    const bool stateful = instance->manifest->stateful();
+    if (stateful){
+        packParams(*instance, *program);
+        if (!advanceSimulation(*instance, *program, nullptr))
+            return;
+    }
 
     if (!renderer.bindTopLayer())
         return;
@@ -370,7 +399,10 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
         return;
     renderer.applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(renderer.targetSize.x, 1), std::max(renderer.targetSize.y, 1))));
     renderer.applyPassScissor(scissor);
-    packParams(*instance, *program);
+    if (stateful)
+        bindStates(*instance, *program);
+    else
+        packParams(*instance, *program);
 
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
     if (!program->object.beginDraw(renderer.getGeometryState(blendModeOf(instance->blend))))
@@ -404,7 +436,7 @@ bool EffectRenderer::brightPass(EffectInstance& instance, RmlFilterContext& cont
         brightShader = ShaderPool::get(ShaderType::UI_EFFECT, ShaderPool::getPropertiesFromKey(key), ShaderPool::getCustomIdFromKey(key));
     if (!brightShader || !brightShader->isCreated())
         return false;
-    Program* program = loadProgram(brightShader, true);
+    Program* program = loadProgram(brightShader, true, nullptr);
     if (!program)
         return false;
     program->object.addTexture(program->sourceSlot, ShaderStageType::FRAGMENT, &context.tertiary().getRender().getColorTexture());
@@ -476,6 +508,9 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
     f.srcRect[2] = ((float)scissor.Right() - 0.5f) / (float)layer.x;
     f.srcRect[3] = ((float)scissor.Bottom() - 0.5f) / (float)layer.y;
     packParams(*instance, *program);
+    // phase 6: a stateful effect's passes (they read the content, primary)
+    if (m.stateful() && !advanceSimulation(*instance, *program, &context))
+        return false;
 
     // the blur prepass (and its bright pass) into tertiary
     TextureRender* blurred = &context.primary().getRender().getColorTexture();
@@ -499,6 +534,8 @@ bool EffectRenderer::applyFilter(Rml::CompiledFilterHandle handle, RmlFilterCont
         program->object.addTexture(program->sourceSlot, ShaderStageType::FRAGMENT, &context.primary().getRender().getColorTexture());
     if (program->blurredSlot.first >= 0)
         program->object.addTexture(program->blurredSlot, ShaderStageType::FRAGMENT, blurred);
+    if (m.stateful())
+        bindStates(*instance, *program);
     const uint64_t misses = SystemRender::getPipelineCacheMisses();
     context.drawFullscreen(context.secondary(), program->object, context.postState(BlendMode::NONE), [&](ObjectRender& object){
         uploadCommon(*instance, *program, object);

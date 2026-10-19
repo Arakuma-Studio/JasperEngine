@@ -172,6 +172,9 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode EffectManifest{DiagArea::FX, 14};
         inline constexpr DiagCode EffectShaderCompile{DiagArea::FX, 15};
         inline constexpr DiagCode EffectCost{DiagArea::FX, 16};
+        // phase 6 (stateful effects)
+        inline constexpr DiagCode EffectStateUnsupported{DiagArea::FX, 17};
+        inline constexpr DiagCode EffectStatefulBudget{DiagArea::FX, 18};
     }
 
     // Hints shared by several reporters (phase-3 spec 2.2's replacement hints).

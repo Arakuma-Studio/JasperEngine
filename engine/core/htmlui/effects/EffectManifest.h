@@ -29,6 +29,14 @@ namespace jasperengine::htmlui {
     //   // @geometry   fill | bounds <scaled>                      (paint kind; default fill)
     //   // @suggest-for <word> [<word> ...]
     //   // @param      <name> <type> <default> [<min> <max>] [<opt>|<opt>|...] -- <description>
+    //   phase 6 (stateful effects, docs/html-ui/phase-6-stateful-effects.md 3.2; @cost stateful):
+    //   // @state      <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
+    //   // @init       <pass> <state>
+    //   // @step       <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    //   // @warmup     <steps> <dt>
+    //   // @rate       <hz> [max <substeps>]
+    //   // @replay     <seconds>
+    //   // @reseed     <param>[, <param>]
     //   <scaled> := <param>[*<number>][+<number>px] | <number>px
     //
     // A default with spaces is double-quoted; ranges carry units. Diagnostics are
@@ -53,7 +61,12 @@ namespace jasperengine::htmlui {
         // time, enum, boolean: float; position: vec2; color: vec4; palette: vec4[8] <p>,
         // vec4[2] <p>Stops, float <p>Count), no other member, and the frame block. Problems are
         // appended as sentences; true when there is none.
-        static bool checkReflection(const EffectManifest& manifest, ShaderData& shader, std::vector<std::string>& problems);
+        // properties: the variant's (bit 1 Stp, bit 2 Sct: a stateful effect's step or scatter form,
+        // which has u_fs_effectStep and may read no parameter at all)
+        static bool checkReflection(const EffectManifest& manifest, ShaderData& shader, std::vector<std::string>& problems, uint32_t properties = 0);
+        // the variants a stateful effect has besides its draw forms (Stp, and Sct with a scatter
+        // pass), or'd onto a draw form's properties
+        static std::vector<uint32_t> passForms(const EffectManifest& manifest, uint32_t drawForm);
     };
 
 }

@@ -19,6 +19,10 @@ the project root.
   (effect-shader-compile at the .frag line) and by check, the render recovers when fixed; a manifest
   error is effect-manifest at its line; a renamed .frag (also during play) is effect-file-missing
   until the CSS follows; a document using an effect only in Lua style or a @media block draws it.
+- Stateful effects (phase 6, spec 4.5): a second document with `fog`, `ink-flow` and `time-trail`:
+  pinned screenshots are identical, the live clock moves the fog, inspect_ui reports each
+  simulation's state, and in play `eval_lua` splats into `ink-flow` (`el:effectSplat{...}`) and its
+  region changes, deterministically under the pinned clock.
 
 Runs on a scratch copy of the fixture project (canvas 1280 x 720, assets in assets/).
 """
@@ -310,6 +314,115 @@ async def test_sheen_hover_transition(ed: Editor):
         ed.check_eq(params.get("intensity"), "0.9", f"the hover rule's intensity after the transition: {params}")
         (a, sd_a), (b, sd_b) = stats(idle, rect), stats(hover, rect)
         ed.check(sum(b) > sum(a) + 30, f"the hovered sheen is brighter: mean {tuple(round(v) for v in b)}, was {tuple(round(v) for v in a)}")
+    finally:
+        await ed.call("play", action="stop")
+
+
+STATE_HTML = """<html>
+<head>
+    <title>stateful effects</title>
+    <link rel="stylesheet" href="stateful.css"/>
+</head>
+<body>
+    <div id="fog" class="fog"></div>
+    <div id="ink" class="ink"></div>
+    <div id="trail" class="trail"><div class="b1"></div><div class="b4"></div></div>
+</body>
+</html>
+"""
+
+STATE_CSS = """body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }
+.fog, .ink, .trail { position: absolute; top: 40px; width: 360px; height: 220px; }
+.fog { left: 40px; background: #0b0d14; background-image: effect(fog); }
+.ink { left: 440px; background: #000000; background-image: effect(ink-flow); }
+.trail { left: 840px; filter: effect(time-trail, trail-source alpha); }
+.trail div { position: absolute; width: 50%; height: 50%; }
+.b1 { left: 0; top: 0; background-color: #e74c3c; }
+.b4 { left: 50%; top: 50%; background-color: #3498db; }
+"""
+
+STATE_REGIONS = {"fog": (44, 44, 396, 256), "ink": (444, 44, 796, 256), "trail": (840, 40, 1200, 260)}
+
+
+async def state_shot(ed: Editor, label: str) -> Shot:
+    raw = await ed.call_raw("screenshot", {"view": "game", "scene": S["state-scene"], "max_width": 1280})
+    ed.check(not raw.is_error and raw.images, f"{label}: no screenshot: {raw.text[:300]}")
+    png = raw.images[0][0]
+    (ed.scratch.root / f"html-ui-effects-{label}.png").write_bytes(png)
+    return Shot(png, raw.value)
+
+
+async def test_stateful_effects(ed: Editor):
+    write(ed, "assets/ui/stateful.html", STATE_HTML)
+    write(ed, "assets/ui/stateful.css", STATE_CSS)
+    made = await ed.call("create_scene", name="HtmlUiStateful", type="UI")
+    S["state-scene"] = made["scene"]["id"]
+    r = await ed.call("create_ui_document", scene=S["state-scene"], html="assets/ui/stateful.html", name="Stateful")
+    S["state-entity"] = r["entity"]["id"]
+    ed.check_eq(r["diagnostics"], [], "the stateful document loads clean")
+    await ed.call("save_scene", scene=S["state-scene"], path="scenes/HtmlUiStateful")
+    await ed.call("set_ui_effect_time", time=1.5)
+    # the variants compile on first use (async in the editor): wait for the fog
+    deadline = time.monotonic() + 90
+    while True:
+        first = await state_shot(ed, "state-t1")
+        _, sd = stats(first, STATE_REGIONS["fog"])
+        if sd >= 4 or time.monotonic() > deadline:
+            break
+        await asyncio.sleep(1.0)
+    ed.check(sd >= 4, f"the fog draws (sd {sd:.1f})")
+    _, trail_sd = stats(first, STATE_REGIONS["trail"])
+    ed.check(trail_sd >= 20, f"the time-trail filter draws its content (sd {trail_sd:.1f})")
+    again = await state_shot(ed, "state-t1-again")
+    for name, rect in STATE_REGIONS.items():
+        ed.check(same(first, again, rect), f"{name}: a second render at the pinned time differs")
+    # inspect_ui: each simulation's state
+    for selector, name in ((".fog", "fog"), (".ink", "ink-flow"), (".trail", "time-trail")):
+        r = await ed.call("inspect_ui", scene=S["state-scene"], entity=S["state-entity"], selector=selector, depth=0)
+        effect = r["elements"][0]["effects"][0]
+        ed.check_eq(effect["name"], name, selector)
+        state = effect.get("state")
+        ed.check(state and state["bytes"] > 0 and state["steps"] > 0 and not state["paused"], f"{selector}: the simulation's state: {effect}")
+        ed.check(abs(state["time"] - 1.5) < 1e-6, f"{selector}: the simulation time is the pinned time: {state}")
+    plain = await ed.call("inspect_ui", scene=S["scene"], entity=S["entity"], selector=".hero", depth=0)
+    ed.check("state" not in plain["elements"][0]["effects"][0], "a stateless effect has no state")
+    # list_ui_effects names a simulation's images and passes
+    raw = await ed.call_raw("list_ui_effects", {"name": "fog"})
+    fog = raw.value["effects"][0]
+    ed.check_eq((fog["cost"], [st["name"] for st in fog["state"]["states"]]), ("stateful", ["vel", "pd", "dye"]), f"fog's state: {fog}")
+    ed.check(fog["state"]["passes"] and fog["state"]["rate"] == 60, f"fog's passes and rate: {fog['state']}")
+    ed.check("state: vel rgba16f 256x256" in raw.text, raw.text)
+    # the live clock moves the fog
+    await ed.call("set_ui_effect_time", time=None)
+    await asyncio.sleep(0.6)
+    live = await state_shot(ed, "state-live")
+    ed.check(not same(first, live, STATE_REGIONS["fog"]), "the live clock moves the fog")
+    await ed.call("set_ui_effect_time", time=1.5)
+
+
+async def test_stateful_splat_in_play(ed: Editor):
+    rect = STATE_REGIONS["ink"]
+    await ed.call("play", action="start", scene=S["state-scene"])
+    try:
+        await ed.call("set_ui_effect_time", time=1.5)
+        await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": 20, "y": 700}], space="canvas", frames_after=3)
+        before = await state_shot(ed, "ink-before")
+        _, sd_before = stats(before, rect)
+        code = ("local ink = UIDocument(scene, entity('Stateful')):querySelector('.ink')\n"
+                "return ink:effectSplat{ x = 180, y = 110, dx = 900, dy = -200, radius = 50, color = '#ff8a00', strength = 2 }")
+        values = (await ed.call("eval_lua", code=code))["values"]
+        ed.check_eq(values, [1], "one simulation took the splat")
+        none = (await ed.call("eval_lua", code="return UIDocument(scene, entity('Stateful')):querySelector('.ink'):effectSplat{ x = 1, y = 1, effect = 'fog' }"))["values"]
+        ed.check_eq(none, [0], "a splat for an effect the element does not use is not taken")
+        await asyncio.sleep(0.3)
+        after = await state_shot(ed, "ink-after")
+        mean, sd_after = stats(after, rect)
+        ed.check(not same(before, after, rect) and sd_after > sd_before + 3,
+                 f"the splat shows in the ink (sd {sd_before:.1f} -> {sd_after:.1f}, mean {tuple(round(v) for v in mean)})")
+        again = await state_shot(ed, "ink-again")
+        ed.check(same(after, again, rect), "the pinned clock replays the logged splat identically")
+        reset = (await ed.call("eval_lua", code="return UIDocument(scene, entity('Stateful')):querySelector('.ink'):effectReset()"))["values"]
+        ed.check_eq(reset, [1], "effectReset restarts the simulation")
     finally:
         await ed.call("play", action="stop")
 

@@ -14,6 +14,9 @@
 #include "htmlui/compat/runtime/HtmlDialogElement.h"
 #include "htmlui/compat/runtime/HtmlFormSupport.h"
 #include "htmlui/effects/EffectInstancers.h"
+#include "htmlui/effects/EffectRegistry.h"
+#include "htmlui/effects/EffectRuntime.h"
+#include "htmlui/effects/EffectValue.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -30,6 +33,7 @@
 #include "../../../libs/rmlui/Source/Core/TransformState.h"
 
 #include <algorithm>
+#include <map>
 #include <cctype>
 #include <cmath>
 
@@ -1156,6 +1160,7 @@ std::string UIElement::getCssText() const{
 std::vector<UIEffectInfo> UIElement::getEffects() const{
     HTMLUI_ELEMENT(std::vector<UIEffectInfo>())
     std::vector<UIEffectInfo> effects;
+    std::map<std::string, int> ordinals;
     for (htmlui::EffectUse& use : htmlui::collectEffectUses(element)){
         UIEffectInfo info;
         info.property = use.property;
@@ -1163,9 +1168,48 @@ std::vector<UIEffectInfo> UIElement::getEffects() const{
         info.name = use.name;
         info.form = use.filterForm ? "filter" : "paint";
         info.params = std::move(use.params);
+        // phase 6: the simulation of a stateful effect (the n-th use of a name is its n-th state)
+        const htmlui::EffectManifest* manifest = htmlui::EffectRegistry::get().find(use.name);
+        if (manifest && manifest->stateful()){
+            info.stateful = true;
+            const htmlui::EffectSimulationInfo sim = htmlui::EffectRuntime::get().simulationInfo(element, use.name, ordinals[use.name]++);
+            info.stateBytes = sim.bytes;
+            info.steps = sim.steps;
+            info.simTime = sim.time;
+            info.paused = sim.paused;
+        }
         effects.push_back(std::move(info));
     }
     return effects;
+}
+
+int UIElement::effectSplat(const UIEffectSplat& splat){
+    HTMLUI_ELEMENT(0)
+    htmlui::EffectSplatData data;
+    data.position = Rml::Vector2f(splat.x, splat.y);
+    data.radius = std::max(0.f, splat.radius);
+    data.velocity = Rml::Vector2f(splat.dx, splat.dy);
+    data.strength = splat.strength;
+    htmlui::EffectParamDef colorDef;
+    colorDef.type = htmlui::EffectParamType::Color;
+    htmlui::EffectValue color;
+    std::string error;
+    if (!splat.color.empty()){
+        if (htmlui::EffectValueParser::parse(colorDef, splat.color, color, error) && !color.isVar && !color.currentColor){
+            data.color[0] = color.color.x;
+            data.color[1] = color.color.y;
+            data.color[2] = color.color.z;
+            data.color[3] = color.color.w;
+        }else{
+            Log::warn("[HTML UI] effectSplat: '%s' is not a colour (%s); white is used", splat.color.c_str(), error.c_str());
+        }
+    }
+    return htmlui::EffectRuntime::get().splat(element, data, splat.effect);
+}
+
+int UIElement::effectReset(const std::string& effect){
+    HTMLUI_ELEMENT(0)
+    return htmlui::EffectRuntime::get().resetSimulations(element, effect);
 }
 
 void UIElement::setCssText(const std::string& css){

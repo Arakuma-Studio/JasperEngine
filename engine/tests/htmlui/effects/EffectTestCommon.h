@@ -15,6 +15,7 @@
 #include "harness/TestSystem.h"
 
 #include "htmlui/compat/VirtualFiles.h"
+#include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "htmlui/effects/EffectRuntime.h"
 
@@ -59,9 +60,16 @@ namespace jasperengine::test::effects {
     inline bool warmUpEffect(const htmlui::EffectManifest& m){
         std::vector<ShaderKey> keys;
         htmlui::EffectRegistry& registry = htmlui::EffectRegistry::get();
+        auto addForm = [&](bool filterForm){
+            const ShaderKey key = registry.shaderKey(m, filterForm);
+            keys.push_back(key);
+            // phase 6: a stateful effect's step and scatter variants
+            for (uint32_t form : htmlui::EffectManifestParser::passForms(m, ShaderPool::getPropertiesFromKey(key)))
+                keys.push_back(ShaderPool::getShaderKey(ShaderPool::getShaderTypeFromKey(key), form, ShaderPool::getCustomIdFromKey(key)));
+        };
         if (m.kind == htmlui::EffectKind::Paint)
-            keys.push_back(registry.shaderKey(m, false));
-        keys.push_back(registry.shaderKey(m, true));
+            addForm(false);
+        addForm(true);
         if (!m.prepassThreshold.empty())
             keys.push_back(registry.brightPassKey());
         for (int i = 0; i < 400; i++){
@@ -129,6 +137,11 @@ namespace jasperengine::test::effects {
             FixtureRunner::Capture capture;
             if (!runner.capture(capture, true))
                 return false;
+            // phase 6: a pinned stateful effect's replay may span frames (the uniform budget)
+            for (int i = 0; i < 100 && htmlui::EffectRuntime::get().pendingReplays() > 0; i++){
+                if (!runner.capture(capture, true))
+                    return false;
+            }
             image = std::move(capture.image);
             return !image.empty();
         }

@@ -92,21 +92,26 @@ namespace {
         return nullptr;
     }
 
-    // more than four high-cost effects in one compile: one note
+    // more than four high-cost (or four stateful, phase 6) effects in one compile: one note each
     void countCost(hc::Session& session, const EffectManifest& m, hc::DiagnosticSink& sink, hc::SourceRef ref){
-        if (m.cost != EffectCost::High)
+        if (m.cost != EffectCost::High && m.cost != EffectCost::Stateful)
             return;
+        const bool stateful = m.cost == EffectCost::Stateful;
         static std::mutex mutex;
-        static std::map<const hc::Session*, int> counts;
+        static std::map<std::pair<const hc::Session*, bool>, int> counts;
         std::lock_guard<std::mutex> lock(mutex);
         // (a new session at the same address starts over: entries of finished sessions are kept small)
-        if (counts.size() > 64)
+        if (counts.size() > 128)
             counts.clear();
-        const int count = ++counts[&session];
+        const int count = ++counts[{&session, stateful}];
         if (count == 5){
-            EffectDiagnostic d = makeEffectDiagnostic(hc::codes::EffectCost, "more than four high-cost effects in this document",
-                                                      "keep high-cost effects to a couple of elements or a quarter of the screen "
-                                                      "(guide: Effects, performance)");
+            EffectDiagnostic d = stateful
+                ? makeEffectDiagnostic(hc::codes::EffectCost, "more than four stateful effects in this document",
+                                       "each simulation runs its passes every frame it is drawn: keep two or three on screen "
+                                       "(guide: Effects, stateful effects)")
+                : makeEffectDiagnostic(hc::codes::EffectCost, "more than four high-cost effects in this document",
+                                       "keep high-cost effects to a couple of elements or a quarter of the screen "
+                                       "(guide: Effects, performance)");
             sink.report(d, ref);
         }
     }

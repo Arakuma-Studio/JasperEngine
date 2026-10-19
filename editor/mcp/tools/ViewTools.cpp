@@ -22,6 +22,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
@@ -66,6 +67,8 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (rs && !rs->isAllLoaded()) return false;
     auto us = sp->scene->getSystem<UISystem>();
     if (us && us->hasPendingImages()) return false;
+    // pinned stateful UI effects still replaying their state (phase 6): drawn a few frames later
+    if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
     return true;

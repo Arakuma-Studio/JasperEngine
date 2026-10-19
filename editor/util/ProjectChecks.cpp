@@ -1005,6 +1005,37 @@ namespace {
             entry["margin"] = scaled(m.margin);
         if (m.boundsGeometry)
             entry["geometry"] = {{"bounds", scaled(m.boundsExtent)}};
+        // phase 6: a stateful effect's images and passes
+        if (m.stateful()) {
+            nlohmann::json states = nlohmann::json::array();
+            for (const fx::EffectStateDef& st : m.states) {
+                std::string size;
+                if (st.fixedSize) {
+                    size = std::to_string(st.width) + "x" + std::to_string(st.height);
+                } else {
+                    char scale[32];
+                    std::snprintf(scale, sizeof(scale), "%g", st.boxScale);
+                    size = std::string("box") + (st.boxScale != 1.f ? std::string("*") + scale : std::string()) + " max " + std::to_string(st.boxMax);
+                }
+                states.push_back({{"name", st.name}, {"format", fx::effectStateFormatName(st.format)}, {"size", size},
+                                  {"filter", st.linear ? "linear" : "nearest"}, {"wrap", st.repeat ? "repeat" : "clamp"},
+                                  {"resize", st.resample ? "resample" : "clear"}, {"images", st.single ? 1 : 2}});
+            }
+            nlohmann::json passes = nlohmann::json::array();
+            for (const fx::EffectPassDef& pass : m.passes) {
+                nlohmann::json p = {{"name", pass.name}, {"state", m.states[(size_t)pass.state].name}, {"init", pass.init}};
+                if (!pass.repeatParam.empty()) p["repeat"] = pass.repeatParam;
+                else if (pass.repeat > 1) p["repeat"] = pass.repeat;
+                if (pass.additive) p["add"] = true;
+                if (pass.scatterState >= 0) p["scatter"] = m.states[(size_t)pass.scatterState].name;
+                passes.push_back(std::move(p));
+            }
+            nlohmann::json state = {{"states", states}, {"passes", passes}, {"rate", m.rateHz}, {"max_substeps", m.maxSubsteps},
+                                    {"replay", m.replaySeconds}, {"reseed", m.reseedParams}};
+            if (m.warmupSteps > 0)
+                state["warmup"] = {{"steps", m.warmupSteps}, {"dt", m.warmupDt}};
+            entry["state"] = std::move(state);
+        }
         return entry;
     }
 
@@ -1189,10 +1220,16 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::uiEffectUse
     fx::EffectManifest manifest;
     std::vector<fx::EffectDiagnostic> diags;
     const int type = static_cast<int>(ShaderType::UI_EFFECT);
-    if (fx::EffectManifestParser::parse(source, relativeFile, false, manifest, diags) && manifest.kind == fx::EffectKind::Paint) {
-        return {{base, type, 0}, {base, type, 1}};
+    std::vector<ShaderUse> uses;
+    const bool parsed = fx::EffectManifestParser::parse(source, relativeFile, false, manifest, diags);
+    for (uint32_t drawForm = (parsed && manifest.kind == fx::EffectKind::Paint) ? 0u : 1u; drawForm <= 1u; drawForm++) {
+        uses.push_back({base, type, drawForm});
+        // phase 6: a stateful effect's step (and scatter) forms
+        if (parsed)
+            for (uint32_t form : fx::EffectManifestParser::passForms(manifest, drawForm))
+                uses.push_back({base, type, form});
     }
-    return {{base, type, 1}};
+    return uses;
 }
 
 std::vector<std::string> editor::ProjectChecks::uiEffectFiles(Project* project) {
@@ -1423,7 +1460,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         if (effect) {
             // the parameter block the shader declares is the manifest's
             std::vector<std::string> mismatches;
-            if (!fx::EffectManifestParser::checkReflection(manifest, data, mismatches)) {
+            if (!fx::EffectManifestParser::checkReflection(manifest, data, mismatches, use.properties)) {
                 check.ok = false;
                 const std::string rel = projectRelative(project->getProjectPath(), uiEffectFile(project, use.base));
                 for (const std::string& mismatch : mismatches) {
@@ -1545,7 +1582,7 @@ Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
     Json item = {{"shader", check.use.base}, {"type", shaderTypeName(check.use.shaderType)}, {"ok", check.ok}};
     if (isUiEffectUse(check.use)) {
         item["effect"] = ShaderPool::getUiEffectName(check.use.base);
-        item["form"] = (check.use.properties & 1u) ? "filter" : "paint";
+        item["form"] = std::string((check.use.properties & 1u) ? "filter" : "paint") + ((check.use.properties & 4u) ? "-scatter" : (check.use.properties & 2u) ? "-step" : "");
     }
     if (!check.ok) {
         item["errors"] = check.errors;
