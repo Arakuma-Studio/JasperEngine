@@ -240,6 +240,7 @@ with the patch that implements it; `ForkFeatures.TableMatchesProbes` checks them
 | `BackgroundLayers` | P3-P5 | `background` and every `background-*`, `mask`, `mask-image`, `mask-position`, `-size`, `-repeat` pass through as the fork's layer longhands (`Background.cpp`: one native longhand list per declaration, every layer kept; `-webkit-mask-*` as `mask-*`; `mask-origin`/`-clip` dropped with an Info; a whole-value `var()` is read as the CSS value, its `url()`s resolved for the declaring file: the `native-layers` var family; gradient text keeps phase 2's solid colour from the rule's gradient; `currentcolor` and `color-mix(currentcolor …)` in gradient stops stay for the fork, which resolves them where the layer is drawn); transitions name them; the canvas background is the fork's (`SetCanvasBackground(true, "htmlbody")`, no static body → root copy); compat's `LayerImageSource` gives the fork compat documents' `url()` images (SVG rasterized per tile, raster images repeating through `rmlui-wrap`). Without it the phase-2 emulation runs: `url()` layers through the `html-layer` decorator, gradients as decorators over the clip box, decorator-syntax masks. |
 | `RelativeFontWeight` | P3-V4 | (appended by p3-integration; the probe parses `bolder`/`lighter`) `font-weight: bolder`/`lighter` pass through for the fork to resolve against the parent's weight (CSS Fonts 4's table); without it compat writes 700 or 100 (relative to a normal parent weight, Info). |
 | `ColorFunctions` | P3-V2, P3-V12 | (appended by p3-integration; the probe parses space-separated `hsl()`, `rgb()` percentages, `rgba()`, `hwb()`, `color-mix()`) a colour function with a `var()` that has no static value (declared with several values: a theme switched by a root class, a variable set from a script), and only `var()`, `calc()` and colour functions inside (`ValueNormalizer::isRuntimeColorFunction`: no relative `from` syntax, no `light-dark()`), is kept for the fork where the fork resolves colours (`colorFunctionsNative`: the colour rewrites with `currentcolor` kept, box shadows, filters): the fork substitutes the variable when the element's style is computed, so `hsl(var(--h) 50% 40%)` follows the theme. A function whose variables have one static value is still resolved by compat. Without the feature such a value is dropped (`HTMLUI-CSS-0016`, "depends on a value that is only known at runtime"). |
+| `Justify` | P6-J1 | (appended by p6-justify; the probe parses `text-align-last: justify`, `text-justify: inter-character`/`distribute` and refuses `text-align: justify-all`) `text-align: justify` is written without the "aligned left" Info, `text-align-last` and `text-justify` pass through (`RcssGrammar` fork rows; without the feature they are dropped as ignored, `HTMLUI-CSS-0003`), `text-align: justify-all` is dropped (`HTMLUI-CSS-0004`, hint `text-align: justify` with `text-align-last: justify`) as Chromium drops it; without the feature it is written as `justify`. |
 
 ### Benchmarks (p3-base)
 
@@ -574,6 +575,51 @@ for `object-fit`/`object-position`, `ReplacedContentGeometry` for rounded conten
 render interface's `CallbackTexture`/render targets for the converted frame. The fork's unit tests
 and its file list are unchanged; the `mkvparser::` entry of `engine/libs/rmlui/hidden-symbols.map`
 keeps libwebm's C++ symbols out of the shared engine (that map is the engine's, not RmlUi code).
+
+## Phase 6 patches (justification)
+
+Work packages of phase 6 that patch the fork, each a native fork patch with its compat change.
+
+| Id | Commits | Files | What and why | Upstream | Tests |
+|---|---|---|---|---|---|
+| P6-J1 | `063627a8` `rmlui: text-align: justify, text-align-last and text-justify as Chromium justifies (P6-J1)`; `f82f07a6` `rmlui: a word at the end of an element's text fits a line when it does without the collapsible space after it (P6-J1)`; `7f6b888f`, `c6b18e14`, `33b8760f` (performance: the common path of `LineBox::Close`, the text field's hit test) (p6-justify) | `Include/RmlUi/Core/{ComputedValues,ElementText,ID,StyleTypes,TextShapingContext}.h`, `Source/Core/{ElementStyle,ElementText,StyleSheetSpecification}.cpp`, `Source/Core/{TextJustification.{h,cpp},UnicodeJustificationTables.inl} (new)`, `Source/Core/Elements/WidgetTextInput.{h,cpp}`, `Source/Core/Layout/{InlineContainer,InlineLevelBox,LineBox}.{h,cpp}`, `Source/Core/Layout/InlineTypes.h`, `Utilities/gen_case_tables.py`; `Tests/Source/UnitTests/{Justification.cpp (new),FixedAdvanceFontEngine.h,InitialValues.cpp,CMakeLists.txt}` | `text-align: justify` (6.3 accepted it and aligned left; phase-3 spec 2.2), `text-align-last` (`auto start end left right center justify`; Chromium does not parse `match-parent`) and `text-justify` (`auto none inter-word inter-character distribute`, `distribute` computing to `inter-character`), inherited, as Chromium 153 (`justification_utils.cc`, `JustificationContext`, `ShapeResultSpacing`): the free space of a line is shared equally by its opportunities (the last one taking what rounding leaves): after spaces, tabs, line feeds and no-break spaces; with `auto` also before and after CJK ideographs, kana, CJK symbols and emoji (not before the first of a line, not twice between two); with `inter-character` after every grapheme cluster but inside cursive scripts, before the character after an atomic inline; none after the last character of the line, none with `none`; each text's own `text-justify` applies to it; a right-to-left line is visited from its end. A line without opportunities, or that overflows, is aligned to its start. The last line of an inline container (also before a block-level box) and a line ended by `<br>` or a preserved line feed take `text-align-last` (`auto`: `text-align`, `start` for `justify`), also when the text is not justified. The space reaches the font engine per character (`TextShapingContext::justification`: before/after by byte offset; a text's line: `ElementText::GetJustification(line)`); the line box moves the fragments after an opportunity, widens the inline boxes around them and moves atomic inlines by the space before them; decorations, shadows and `text-overflow` follow the line's width. White space at the end of a line is removed when collapsible (from the text and the boxes around it) and hangs with `pre-wrap` (not aligned, not justified), as in Chromium; a word at the end of an element's text fits when it fits without its collapsible space (6.3 moved it down for the space). Text areas and inputs justify their lines (the spaces of a wrap hang) and place the caret, selections, IME underlines and hit tests on the justified line; a text input's line is a last line. Unicode tables (Unicode 16.0: Scripts, Default_Ignorable_Code_Point, grapheme cluster breaks, emoji; Chromium 153's CJK lists) generated by `gen_case_tables.py`. `justify-all` is not parsed (Chromium does not either). | upstreamable | `Justification.cpp` (opportunities, the run distribution, computed values, positions and widths of 32 boxes against Chromium's, trailing white space, text areas); `InitialValues.cpp`; `p3/text/justify-*` (`BrowserParityTest`) |
+
+### Benchmarks (p6-justify)
+
+Instruction counts (callgrind 3.18, deterministic) of RmlUi's whole benchmark suite (`Tests/Source/Benchmarks`, the same
+sources for both trees), static Release builds (`-O3 -DNDEBUG`, g++ 13.3, the engine's build image), each nanobench run
+called twice untimed and four times between `CALLGRIND_ZERO_STATS` and `CALLGRIND_DUMP_STATS` (a scratch patch of
+`nanobench.h`, not committed); per iteration. Before = the fork at `main` `4958e5f7b`; after = `33b8760fa`
+(`hui/p6-justify`; the merges since change no fork file). The documents of the suite justify no line:
+this is the cost for text that is not justified. 248 runs: median +0.01 %, 232 within ±0.5 %; two builds of the same
+sources differ by about 1 % in a few runs (the parse-only `SetInnerRML` runs move -2.3 .. +1.4 %):
+
+| Case | Before | After | Change |
+|---|---|---|---|
+| `Flexbox basic layout` SetInnerRML + Update (fast version) | 2202440 | 2217722 | +0.69 % |
+| `Flexbox basic layout` SetInnerRML + Update | 3259421 | 3283944 | +0.75 % |
+| `Flexbox chat` Short words | 3398477 | 3411995 | +0.40 % |
+| `Flexbox chat` Long words | 48856187 | 48864651 | +0.02 % |
+| `Flexbox shrink-to-fit` Basic | 241613 | 243658 | +0.85 % |
+| `Grid inventory` fixed: Relayout | 4436189 | 4454925 | +0.42 % |
+| `Element` (long texts) SetInnerRML + Update | 101660659 | 101859879 | +0.20 % |
+| `SetInnerRML + Update` (100 elements) | 4318046 | 4323253 | +0.12 % |
+| `Table basic` SetInnerRML + Update | 712829 | 715284 | +0.34 % |
+| `ElementDocument` LoadDocument + Show + Update + Render | 3480268 | 3481154 | +0.03 % |
+| `Element` Update (unmodified), `Update (unmodified)` | — | — | +0.00 % |
+| `WidgetTextInput.FormatText` ascii, emoji, japanese | — | — | -1.0 .. +0.4 % |
+| `WidgetTextInput.CalculateCharacterIndex` ascii | 542658 | 543886 | +0.23 % |
+| `Data bindings: Update` Basic | 409529 | 414713 | +1.27 % |
+
+The first version cost +2.0 % in `Flexbox basic layout` (the white space at a line's end looked for in every line, the
+forced break read through another call per wrapped line, the justification checked per fragment, the line's spacing in
+every `ElementText::Line`, larger fragment constructors returned through memory). Now a line that is neither justified
+nor ends with white space closes as in 6.3 but for one read of its last character; the rest is out of line
+(`LineBox::CloseTrimmedOrJustified`, `ElementText`'s trailing-space check `FitsWithoutTrailingSpace`, the text field's
+justified widths). What remains in `Data bindings: Update` (+0.9 .. +1.3 %) is a correctness change of P6-J1 for text that
+is not justified: its texts end with a space before the end of their block, which Chromium removes from the line; removing
+it measures the space (about 1.2k instructions per update of the benchmark). Scratch scripts and dumps: `build/bench` of
+the p6-justify worktree (not committed).
 
 ## Upstream rebase rehearsal (p3-integration)
 

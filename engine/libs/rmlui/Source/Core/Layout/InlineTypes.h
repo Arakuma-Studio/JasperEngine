@@ -4,6 +4,8 @@
 
 namespace Rml {
 
+struct JustificationSpacing;
+
 using LayoutOverflowHandle = int;
 using LayoutFragmentHandle = int;
 
@@ -38,6 +40,8 @@ struct PlacedFragment {
 	// the line's top with no height, as Chromium gives such an empty span.
 	bool collapsed_line = false;
 	float line_top = 0.f; // The line's top, relative to the offset parent (with collapsed_line).
+	// A text run of a justified line: the space added around its characters (p6-justify), null otherwise.
+	const Vector<JustificationSpacing>* justification = nullptr;
 };
 
 } // namespace Rml

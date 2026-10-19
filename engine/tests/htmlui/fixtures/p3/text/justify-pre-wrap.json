@@ -1,0 +1,5 @@
+{
+ "comment": "text-align: justify with pre-wrap (preserved spaces share the free space, the spaces at a wrap hang, a line feed ends a last line), pre with text-align-last: justify, break-spaces, pre-line and nowrap (one last line); Ahem advances are exact, the shares fractional: the boxes are the oracle, the glyphs reported (noText gates the backgrounds).",
+ "boxes": true, "noText": true,
+ "viewport": [470, 200]
+}

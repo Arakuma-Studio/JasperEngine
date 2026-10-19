@@ -228,3 +228,42 @@ TEST_F(TextZeroWidthEngine, WordAndLetterSpacing){
     // the width cache keys on the word spacing
     EXPECT_EQ(engine.GetStringWidth(face, "H H", Rml::TextShapingContext{language}), 30);
 }
+
+// TextShapingContext::justification (p6-justify): the space a justified line adds around a character, by its byte offset:
+// before + after on the cluster's advance, its glyphs moved by the space before it; measured and drawn alike; an offset
+// that starts no character, or names a control character, adds nothing.
+TEST_F(TextZeroWidthEngine, JustificationSpacing){
+    const Rml::FontFaceHandle face = engine.GetFontFaceHandle("ahem", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 10);
+    ASSERT_NE(face, 0u);
+    // "H H\xc2\xa0H": the space at byte 1, the no-break space at bytes 3-4, the last H at byte 5
+    const std::vector<Rml::JustificationSpacing> spacing = {{1, 0.0f, 3.0f}, {3, 0.0f, 4.0f}, {4, 0.0f, 9.0f}, {5, 2.0f, 0.0f}};
+    Rml::TextShapingContext justified{language};
+    justified.justification = spacing;
+    EXPECT_EQ(engine.GetStringWidth(face, "H H\xc2\xa0H", Rml::TextShapingContext{language}), 50);
+    EXPECT_EQ(engine.GetStringWidth(face, "H H\xc2\xa0H", justified), 59);
+
+    Rml::TexturedMeshList meshes;
+    const int width = engine.GenerateString(context->GetRenderManager(), face, 0, "H H\xc2\xa0H", Rml::Vector2f(0, 20),
+                                            Rml::ColourbPremultiplied(255, 255, 255, 255), 1.0f, justified, meshes);
+    EXPECT_EQ(width, 59);
+    ASSERT_FALSE(meshes.empty());
+    // the three inked squares: at 0, after the stretched space (10 + 3), after the stretched no-break space and the space
+    // before the last H (13 + 10 + 4 + 10 + 2)
+    ASSERT_GE(meshes[0].mesh.vertices.size(), 12u);
+    EXPECT_NEAR(meshes[0].mesh.vertices[0].position.x, 0.0f, 1.0f);
+    EXPECT_NEAR(meshes[0].mesh.vertices[4].position.x, 23.0f, 1.0f);
+    EXPECT_NEAR(meshes[0].mesh.vertices[8].position.x, 49.0f, 1.0f);
+
+    // the line feed RmlUi keeps at the end of a 'pre' line is no character of the shaped text: its spacing is ignored
+    const std::vector<Rml::JustificationSpacing> feed = {{1, 0.0f, 6.0f}, {3, 0.0f, 8.0f}};
+    Rml::TextShapingContext withFeed{language};
+    withFeed.justification = feed;
+    EXPECT_EQ(engine.GetStringWidth(face, "H H\n", withFeed), 36);
+    // a right-to-left run takes the space as well
+    const std::vector<Rml::JustificationSpacing> hebrew = {{4, 0.0f, 7.0f}};
+    Rml::TextShapingContext rtl{language};
+    rtl.text_direction = Rml::Style::Direction::Rtl;
+    const int plain = engine.GetStringWidth(face, "\xd7\x90\xd7\x90 \xd7\x91", rtl);
+    rtl.justification = hebrew;
+    EXPECT_EQ(engine.GetStringWidth(face, "\xd7\x90\xd7\x90 \xd7\x91", rtl), plain + 7);
+}

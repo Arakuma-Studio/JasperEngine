@@ -1,0 +1,4 @@
+{
+ "comment": "text-align-last: auto, start, end, left, right, center, justify; lines ended by <br>; right-to-left start and end; text-align-last on centred text; justify-all dropped as in Chromium (text-align: right stays); text-align-last inherited; whole-pixel shares and offsets of Ahem squares, so the image is compared.",
+ "viewport": [502, 270]
+}

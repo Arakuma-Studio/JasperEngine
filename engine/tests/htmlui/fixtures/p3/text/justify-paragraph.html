@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify, one paragraph in several widths</title>
+<style>
+  /* Every line but the last is stretched to the line width over its spaces (Chromium's even share, the last space taking
+     what rounding leaves); the last line, a line before a block and a one-word line stay at the start. Ahem squares make
+     every advance exact; the shares are fractional, so the spans' boxes are the oracle. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; text-align: justify; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="w150" style="left: 10px; top: 10px; width: 150px">JUSTIFIED TEXT <span id="a150">SHARES</span> THE SPACE OF A LINE <span id="b150">BETWEEN</span> ITS WORDS SO THAT BOTH EDGES <span id="c150">LINE UP</span> AND THE LAST LINE STAYS AT THE <span id="d150">START</span></div>
+<div class="p" id="w223" style="left: 170px; top: 10px; width: 223px">JUSTIFIED TEXT <span id="a223">SHARES</span> THE SPACE OF A LINE <span id="b223">BETWEEN</span> ITS WORDS SO THAT BOTH EDGES <span id="c223">LINE UP</span> AND THE LAST LINE STAYS AT THE <span id="d223">START</span></div>
+<div class="p" id="w301" style="left: 10px; top: 200px; width: 301px">JUSTIFIED TEXT <span id="a301">SHARES</span> THE SPACE OF A LINE <span id="b301">BETWEEN</span> ITS WORDS SO THAT BOTH EDGES <span id="c301">LINE UP</span> AND THE LAST LINE STAYS AT THE <span id="d301">START</span></div>
+<div class="p" id="word" style="left: 330px; top: 200px; width: 97px">A <span id="long">LONGWORDHERE</span> FITS ON NO LINE <span id="e">WITH</span> ANOTHER</div>
+<div class="p" id="blocks" style="left: 10px; top: 300px; width: 173px">BEFORE A <span id="f">BLOCK</span><div id="inner">THE LINE IS LAST</div>AND <span id="g">AFTER</span> IT THE LINES ARE FILLED AGAIN</div>
+<div class="p" id="nested" style="left: 200px; top: 300px; width: 211px"><span id="outer">AN OUTER SPAN <span id="inner2">WITH AN INNER</span> ONE THAT WRAPS OVER</span> THE LINES</div>
+</body>
+</html>

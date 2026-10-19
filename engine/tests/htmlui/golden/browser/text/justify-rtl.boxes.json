@@ -1,0 +1,44 @@
+{
+ "fixture": "text/justify-rtl.html",
+ "viewport": [
+  240,
+  180
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "latin",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 220,
+    "h": 28
+   },
+   {
+    "id": "hebrew",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 220,
+    "h": 28
+   },
+   {
+    "id": "end",
+    "tag": "div",
+    "x": 10,
+    "y": 90,
+    "w": 220,
+    "h": 28
+   },
+   {
+    "id": "ltr",
+    "tag": "div",
+    "x": 10,
+    "y": 130,
+    "w": 220,
+    "h": 28
+   }
+  ]
+ }
+}

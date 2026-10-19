@@ -1,0 +1,5 @@
+{
+ "comment": "text-justify: auto, inter-word, none, inter-character and distribute (computes to inter-character), with inline-blocks and per-span values; the shares are fractional: the boxes are the oracle, the glyphs reported (noText gates the backgrounds).",
+ "viewport": [470, 180],
+ "boxes": true, "noText": true
+}

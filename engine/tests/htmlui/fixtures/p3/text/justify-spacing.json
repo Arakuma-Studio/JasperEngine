@@ -1,0 +1,4 @@
+{
+ "comment": "text-align: justify with letter-spacing, word-spacing (lengths, negative, em) and both: the justification shares what the spaced line leaves; whole-pixel shares of Ahem squares, so the image is compared.",
+ "viewport": [280, 260]
+}

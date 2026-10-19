@@ -84,7 +84,7 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | `@layer` cascade layers, `revert-layer` with layers | No cascade layers in the parser; `revert-layer` without layers behaves as `revert` (CSS-correct when no layers exist), `@layer` blocks are diagnosed by compat. | "Remove `@layer`; order rules by specificity." |
 | CSS counters in `counter()` styles other than the list in §3.6; `@counter-style` | Long tail. | "Use one of: decimal, decimal-leading-zero, lower/upper-alpha/latin, lower/upper-roman, lower-greek, disc, circle, square, none." |
 | `text-decoration-style: wavy`, `text-emphasis`, `text-indent: hanging/each-line`, `hyphens: auto` | Long tail; `wavy` renders as `solid`. | listed per property |
-| `text-align: justify` | 6.3 has no justification (the value is accepted and aligns left); distributing space needs per-line glyph placement in the font engine interface. | "Justified text is aligned left." (the guide's limits list) |
+| ~~`text-align: justify`~~ | Implemented after phase 3 by p6-justify (FORK.md P6-J1, "p6-justify as implemented" in §3.10): justified lines, `text-align-last`, `text-justify`, with the font engine placing the space per character (`TextShapingContext::justification`). Only `text-align: justify-all` is reported (`HTMLUI-CSS-0004`), as Chromium does not parse it. | "write text-align: justify with text-align-last: justify" (for `justify-all`) |
 | `mix-blend-mode`, `background-blend-mode` | Needs blend modes beyond `Blend/Replace` in `RenderInterface::CompositeLayers` (RenderInterface.h:98-122) on all sokol backends; phase 5 (effects) owns new compositing modes. | "Not supported; use opacity or a pre-blended image." |
 | `background-clip: text` | Needs text as a mask layer per text run; phase 5 effects library provides a shader decorator for gradient text. | "Use the gradient-text effect (phase 5)." |
 | `display: ruby*`, table `border-collapse: collapse` parity, `caption-side`, CSS automatic table layout | Tables are rare in game UI; RmlUi's table model is kept as is: a table without a `width` fills its container (CSS shrinks it to its content) and columns without a width share the table's width equally (CSS sizes them by content). Phase 2's golden pages leave these widths out of the layout gate (`data-ref-tol="auto-width"` on `ua-defaults`' table, the `settings` key-binding table's cells have no ids). | per property; the guide says "give tables and columns a width" |
@@ -1491,7 +1491,7 @@ table above):
   `ComputedValues::text_align()` returns it resolved against the element's direction (`left`/
   `right`), `specified_text_align()` the keyword. `match-parent` takes the parent's keyword and
   resolves it against the element's own direction, as Chromium does (CSS says the parent's).
-  `justify` still aligns left: 6.3 has no justification and none is added (§2.2 list, the guide).
+  `justify` still aligned left in phase 3 (6.3 has no justification); p6-justify added it (below).
 - **`text-overflow`.** The clipping block container is found through inline ancestors, the clip
   edge is measured from the text's own position (6.3 compared a line's width with the container's
   width, wrong for text that does not start at the container's left), and the ellipsis is drawn in
@@ -1515,6 +1515,48 @@ table above):
 - **Compat.** `ForkFeature::TextShadow` and `::TextProperties` are appended and present; the
   rewrites of `Text.cpp` pass the properties through with them (checked by `RcssGrammar`'s fork
   rows), `RewriteId::UserSelect` is appended for `user-select`'s Info on `text`/`all`/`contain`.
+
+**p6-justify as implemented** (after phase 3; FORK.md P6-J1, `ForkFeature::Justify`): `text-align: justify`,
+`text-align-last` and `text-justify`, measured against Chromium 153 and its sources (`justification_utils.cc`,
+`justification_opportunity.cc`, `shape_result_spacing.cc`, `line_info.cc`):
+
+- **Opportunities and shares.** The free space of a line (its width less the content's, without the white space at its
+  end) is divided by the number of opportunities; each takes that share, the last one what is left (Chromium's
+  `NextExpansion`). Opportunities (`JustificationContext`): after a space, tab, line feed or no-break space (U+1361 and
+  the other separators that take `word-spacing` are not, as in Chromium); with `text-justify: auto` also before and after
+  each CJK ideograph, kana, CJK symbol and emoji (`Character::IsCjkIdeographOrSymbol`: Chromium's lists, generated with
+  the Unicode tables), not before the first character of a line or after an opportunity; `inter-word` spaces only;
+  `inter-character` (and `distribute`, which computes to it, as in Chromium) after every grapheme cluster, none inside a
+  run of a cursive script (Arabic, Syriac, Mongolian, N'Ko, Mandaic, Phags-pa, Hanifi Rohingya) or after an atomic inline,
+  one before the character that follows such a run or inline; `none` none. Default-ignorable characters (zero-width space, soft hyphen) never take one. The
+  opportunity after the last character of a line is not used. A span's own `text-justify` applies to its text; an atomic
+  inline is justified as U+FFFC with its own value (no opportunity with `auto`). A right-to-left line is visited from its
+  end, as Chromium counts it. A line without opportunities, or that does not fit, is aligned to its start.
+- **Last lines.** The last line of an inline container (also the one a block-level box interrupts) and a line ended by
+  `<br>` or a preserved line feed take `text-align-last`; `auto` is `text-align`, `start` for `justify`
+  (`ComputedValues::text_align_last()`). It also aligns the last line of text that is not justified (`text-align: left;
+  text-align-last: center` centres it), as in Chromium. All lines of `white-space: pre` are last lines. `match-parent`
+  is not parsed for `text-align-last`, `justify-all` not for `text-align`: Chromium parses neither; compat drops
+  `justify-all` (`HTMLUI-CSS-0004`).
+- **Placement.** `LineBox::Close` gives each text fragment the space of its characters (`JustificationSpacing`: the
+  space before and after a character, by byte offset), moves every fragment by the space before it, widens the inline
+  boxes by the space inside them (their boxes are Chromium's) and moves an atomic inline by the space before it. The font
+  engine adds the space to the clusters' advances and moves their glyphs by the space before them (Chromium's glyph
+  offset for the space before an ideograph); `ElementText` draws, decorates (underlines run under the stretched spaces)
+  and shadows each line with it; an abbreviated `text-overflow` line is drawn without it.
+- **White space at a line end** (all alignments, as Chromium): a collapsible space is removed from the line's text and
+  from the boxes that end with it (a span ending in a space is as wide as its word), and does not count for centring
+  and right alignment; the preserved spaces of a wrapped `pre-wrap` line hang (not aligned, not justified); `pre` and
+  `break-spaces` keep them. The line breaker lets a word at the end of an element's text fit when it fits without its
+  collapsible space (6.3 moved it to the next line for the width of the space).
+- **Text fields.** `WidgetTextInput` justifies its wrapped lines (the spaces at a wrap hang), aligns the last line and a
+  line ended by a line feed by `text-align-last`, and places text segments, the caret, selections, IME underlines and
+  hit tests (`CalculateCharacterIndex`) with the space of the line; a text input's one line is a last line.
+- **Fixtures** (`p3/text/justify-*`, Ahem): `inline`, `spacing`, `last-line`, `rtl` and `textarea` have whole-pixel shares and
+  compare the image; `paragraph` (150, 223, 301px), `pre-wrap`, `cjk` (Ahem's .notdef box on both sides) and
+  `text-justify` have fractional shares: their boxes are the oracle, the glyphs reported, `noText` gating the rest.
+  Right-to-left paragraphs hold one text each: inline boxes of a right-to-left line are still placed left to right
+  (mirrored layout, §2.2).
 
 ---
 

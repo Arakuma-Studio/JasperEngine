@@ -1199,16 +1199,16 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-underline-position
+### Properties: tab-index to text-transform
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
 | `tab-index` | native | RmlUi engine extension |  |
 | `tab-size` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `table-layout` | ignored | table layout algorithm hint; ignored (Info) (HTMLUI-CSS-0003) |  |
-| `text-align` | native | start, end, -webkit-center, match-parent, justify-all rewritten (native with the fork but justify-all, -moz-center); justify aligns left |  |
+| `text-align` | native | start, end, -webkit-center, match-parent rewritten (native with the fork but -moz-center); justify justifies with the fork (Justify), else aligns to the start; justify-all is dropped with the fork, as Chromium does not parse it |  |
 | `text-align-all` | unsupported | draft longhand of text-align; not supported (HTMLUI-CSS-0002) | use text-align |
-| `text-align-last` | ignored | justification detail; ignored (HTMLUI-CSS-0003) |  |
+| `text-align-last` | native | the alignment of the last line and of lines before a forced break; native with the fork (Justify): auto, start, end, left, right, center, justify (match-parent is not parsed, as in Chromium); ignored without it |  |
 | `text-anchor` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `text-autospace` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-box` | unsupported | leading trimming is not supported (HTMLUI-CSS-0002) | adjust line-height or padding |
@@ -1234,7 +1234,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-emphasis-style` | unsupported | emphasis marks are not supported (Info) (HTMLUI-CSS-0002) | mark the characters with a span carrying the emphasis glyph |
 | `text-group-align` | unsupported | not supported (HTMLUI-CSS-0002) | use text-align |
 | `text-indent` | unsupported | not supported (Warning) (HTMLUI-CSS-0002) | add padding-left to the first line content, e.g. on the first child |
-| `text-justify` | ignored | justification detail; ignored (HTMLUI-CSS-0003) |  |
+| `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
 | `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
 | `text-overflow` | native | ellipsis, clip and strings native |  |
 | `text-rendering` | ignored | font rendering hint; the font engine decides (HTMLUI-CSS-0003) |  |
@@ -1243,13 +1243,13 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-spacing` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-spacing-trim` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-transform` | native | full-width and full-size-kana dropped (Info) |  |
-| `text-underline-offset` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
-| `text-underline-position` | unsupported | decoration details are not supported (Info) (HTMLUI-CSS-0002) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 
-### Properties: text-wrap to translate
+### Properties: text-underline-offset to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-underline-offset` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
+| `text-underline-position` | unsupported | decoration details are not supported (Info) (HTMLUI-CSS-0002) | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
 | `text-wrap` | native | nowrap -> white-space: nowrap; balance, pretty, stable ignored (Info; with the fork they wrap greedily) |  |
 | `text-wrap-mode` | native | combined with white-space-collapse into the equivalent white-space (native with the fork) |  |
 | `text-wrap-style` | rewritten | balance, pretty, stable ignored (Info) |  |
@@ -1653,7 +1653,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `min-width` | `min-content` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
 | `min-width` | `stretch` | native | intrinsic sizing keyword approximated (Warning) until the fork has BoxParity |  |
 
-### Values: o-t
+### Values: o-s
 
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -1692,12 +1692,18 @@ Values of a property that are not handled like the property's other values; `<..
 | `row-gap` | `normal` | rewritten | normal gap is 0 in flex layout |  |
 | `scrollbar-width` | `none` | rewritten | generated rules hide the scrollbars |  |
 | `scrollbar-width` | `thin` | rewritten | generated rules make the scrollbars 8px |  |
+
+### Values: t-w
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
 | `text-align` | `-moz-center` | rewritten | legacy prefixed value |  |
 | `text-align` | `-webkit-center` | rewritten | legacy prefixed value |  |
 | `text-align` | `-webkit-left` | rewritten | legacy prefixed value (with the fork it also aligns block children) |  |
 | `text-align` | `-webkit-right` | rewritten | legacy prefixed value (with the fork it also aligns block children) |  |
 | `text-align` | `end` | rewritten | LTR; an RTL document swaps it |  |
-| `text-align` | `justify-all` | rewritten | the last line is not justified |  |
+| `text-align` | `justify` | native | aligned to the start without the fork (Info); justified with it (Justify) |  |
+| `text-align` | `justify-all` | unsupported | without the fork written as justify (the last line is not justified); with it dropped (Warning), as Chromium does not parse it (HTMLUI-CSS-0004) | write text-align: justify with text-align-last: justify |
 | `text-align` | `match-parent` | rewritten | the parent's direction is not resolved (Info) |  |
 | `text-align` | `start` | rewritten | LTR; an RTL document swaps it |  |
 | `text-decoration` | `<multiple lines>` | approximated | only one decoration line (Info) (HTMLUI-CSS-0005) |  |
@@ -1724,11 +1730,6 @@ Values of a property that are not handled like the property's other values; `<..
 | `transition-timing-function` | `step-end` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `transition-timing-function` | `step-start` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
 | `transition-timing-function` | `steps()` | native | stepped easing drawn as linear until the fork has TimingFunctions (Warning) |  |
-
-### Values: v-w
-
-| Property | Value | Support | Notes | Instead |
-|---|---|---|---|---|
 | `visibility` | `collapse` | rewritten | collapse drawn as hidden |  |
 | `white-space` | `break-spaces` | rewritten | trailing spaces do not wrap |  |
 | `white-space-collapse` | `break-spaces` | rewritten | mapped to the equivalent white-space (with text-wrap-mode) |  |

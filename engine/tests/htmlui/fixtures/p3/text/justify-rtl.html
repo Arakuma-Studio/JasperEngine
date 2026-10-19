@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify of right-to-left text</title>
+<style>
+  /* A right-to-left line is filled like a left-to-right one; its start, where the last line stays, is the right. Hebrew
+     letters are Ahem's .notdef box on both sides (one em). One text per paragraph (inline boxes in right-to-left lines are
+     laid out left to right: mirrored layout is out of scope, phase-3 spec 2.2). Whole-pixel shares: the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; left: 10px; width: 220px; text-align: justify; direction: rtl; background: #f0f4f8; }
+</style>
+</head>
+<body>
+<div class="p" id="latin" style="top: 10px">XX XXX X XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="hebrew" style="top: 50px">אא בבב ג דדדד הה ווו זזזזז חח טט יי כככ</div>
+<div class="p" id="end" style="top: 90px; text-align-last: end">אא בבב ג דדדד הה ווו זזזזז חח טט יי כככ</div>
+<div class="p" id="ltr" style="top: 130px; direction: ltr">אא בבב ג דדדד הה ווו זזזזז חח טט יי כככ</div>
+</body>
+</html>
