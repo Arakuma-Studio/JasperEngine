@@ -140,7 +140,8 @@ TEST_CASE("TextIndent.textarea")
 	FixedAdvanceFontScope scope;
 	ElementDocument* document = scope.Load(
 		"textarea, input { display: inline-block; width: 200px; height: 40px; white-space: pre-wrap; text-indent: 30px; }",
-		"<textarea id='area'>XX XXX XXXX XX XXX XXXXX XX X\nXX XX</textarea>");
+		"<textarea id='area'>XX XXX XXXX XX XXX XXXXX XX X\nXX XX</textarea>"
+		"<textarea id='hang'>XXXXXXXXXXXXXXXX XX</textarea><textarea id='hang0' style='text-indent: 0'>XXXXXXXXXXXXXXXXXXX XX</textarea>");
 
 	// the first line starts after the indent and wraps in the width it leaves; the line after the line feed is not indented
 	Vector<const ElementText::Line*> lines;
@@ -160,6 +161,16 @@ TEST_CASE("TextIndent.textarea")
 	CHECK(lines[1]->position.x == doctest::Approx(0.f));
 	CHECK(lines[2]->text == "XX XX");
 	CHECK(lines[2]->position.x == doctest::Approx(0.f));
+
+	// a space that does not fit beside the indent (or at all) hangs at the wrap; the next line starts after it, once
+	for (const char* id : {"hang", "hang0"})
+	{
+		INFO(id);
+		lines.clear();
+		collect(Get(document, id));
+		REQUIRE(lines.size() == 2);
+		CHECK(lines[1]->text == "XX");
+	}
 	document->Close();
 }
 

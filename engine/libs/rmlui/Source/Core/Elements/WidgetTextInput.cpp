@@ -1420,10 +1420,11 @@ Vector2f WidgetTextInput::FormatText(float height_constraint)
 				line_content.append(count, ' ');
 				line_width += ElementUtilities::GetStringWidth(text_element, " ") * (int)count;
 				line.editable_length += (int)count;
-				line.size += (int)count;
+				// The spaces `GenerateLine` hung at the wrap (pre-wrap) are already in the line's size: counted once.
+				line.size = Math::Max(line.size, int(i_space_end) - line_begin);
 				// Consume the hard wrap if we have one on this line, so that it doesn't make its own, empty line.
 				if (text[i_space_end] == '\n')
-					line.size += 1;
+					line.size = Math::Max(line.size, int(i_space_end) - line_begin + 1);
 				// If the spaces extend all the way to the end, we have consumed all the lines.
 				if (i_space_end == text.size())
 					last_line = true;
