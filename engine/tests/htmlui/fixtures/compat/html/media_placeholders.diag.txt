@@ -1,4 +1,4 @@
-compat/html/media_placeholders.html:2:1: warning: <video> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: render a texture through UIDocument render-to-texture, or use Lottie) [HTMLUI-HTML-0002]
+compat/html/media_placeholders.html:2:1: warning: <canvas> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: render a texture through UIDocument render-to-texture) [HTMLUI-HTML-0002]
 compat/html/media_placeholders.html:3:1: warning: <audio> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: play the sound from Lua) [HTMLUI-HTML-0002]
 compat/html/media_placeholders.html:4:1: warning: <iframe> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: load the page as its own UIDocument) [HTMLUI-HTML-0002]
 compat/html/media_placeholders.html:5:1: warning: <canvas> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: render a texture through UIDocument render-to-texture) [HTMLUI-HTML-0002]

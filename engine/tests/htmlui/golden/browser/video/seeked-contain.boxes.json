@@ -1,0 +1,28 @@
+{
+ "fixture": "video/seeked-contain.html",
+ "viewport": [
+  360,
+  280
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "frame",
+    "tag": "div",
+    "x": 16,
+    "y": 16,
+    "w": 320,
+    "h": 240
+   },
+   {
+    "id": "v",
+    "tag": "video",
+    "x": 16,
+    "y": 16,
+    "w": 320,
+    "h": 240
+   }
+  ]
+ }
+}

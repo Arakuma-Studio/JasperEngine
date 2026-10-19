@@ -133,6 +133,7 @@ bool HtmlUIContext::create(Rml::Vector2i dimensions){
 
     // the renderer is this context's own (Rml::SetRenderInterface is never called)
     context = Rml::CreateContext(name, dimensions, renderer.get(), textInputHandler.get());
+    RmlRenderer::bindContext(context, renderer.get());
     if (!context){
         Log::error("[HTML UI] could not create context '%s'", name.c_str());
         return false;
@@ -209,6 +210,7 @@ void HtmlUIContext::destroy(){
     touches.clear();
 
     // geometry goes back through RmlRenderer::ReleaseGeometry
+    RmlRenderer::unbindContext(context);
     Rml::RemoveContext(name);
     context = nullptr;
     navigateListener.reset();   // detached with the root element

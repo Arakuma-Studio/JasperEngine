@@ -7,6 +7,9 @@
 //   HAS_DROP_SHADOW    the source's alpha times the shadow colour, inside texCoordMinMax
 //   HAS_BLUR           one 7-tap separable gaussian pass along params.yz, mirrored at texCoordMinMax
 //   HAS_UNPREMULTIPLY  straight alpha (render-to-texture documents)
+//   HAS_YUV            a video frame: Y (u_htmluiPostTex), U and V planes (R8) to opaque RGB by
+//                      colorMatrix (offsets and range folded in its fourth column); params.yz
+//                      scale the texture coordinates of the chroma planes (odd sizes)
 uniform u_fs_htmluiPost {
     vec4 params;            // x: opacity (passthrough), yz: texel offset (blur)
     vec4 texCoordMinMax;    // xy: min, zw: max texture coordinate read (blur, drop shadow)
@@ -20,6 +23,12 @@ uniform sampler u_htmluiPost_smp;
 #ifdef HAS_BLEND_MASK
     uniform texture2D u_htmluiMaskTex;
     uniform sampler u_htmluiMask_smp;
+#endif
+#ifdef HAS_YUV
+    uniform texture2D u_htmluiYuvU;
+    uniform sampler u_htmluiYuvU_smp;
+    uniform texture2D u_htmluiYuvV;
+    uniform sampler u_htmluiYuvV_smp;
 #endif
 
 in vec2 v_uv;
@@ -76,6 +85,12 @@ void main() {
 #elif defined(HAS_UNPREMULTIPLY)
     vec4 color = source(v_uv);
     g_finalColor = vec4(color.rgb / max(color.a, 1e-5), color.a);
+#elif defined(HAS_YUV)
+    vec2 chromaUv = v_uv * htmluiPost.params.yz;
+    vec4 yuv = vec4(source(v_uv).r,
+                    texture(sampler2D(u_htmluiYuvU, u_htmluiYuvU_smp), chromaUv).r,
+                    texture(sampler2D(u_htmluiYuvV, u_htmluiYuvV_smp), chromaUv).r, 1.0);
+    g_finalColor = vec4(clamp((htmluiPost.colorMatrix * yuv).rgb, 0.0, 1.0), 1.0);
 #else
     g_finalColor = source(v_uv);
 #endif

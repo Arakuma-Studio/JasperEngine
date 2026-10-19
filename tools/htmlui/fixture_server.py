@@ -14,7 +14,9 @@ HttpClient::setHostRewrite:
     https://fonts.google.com/download    -> /gfdl/download   license list ()]}'-guarded JSON)
     https://fonts.google.com/metadata    -> /gfmeta/metadata  family list
     https://cdnjs.cloudflare.com         -> /cdn       Font-Awesome-like CSS, woff2-only CSS, @import chains
-    https://images.example.com           -> /img       images by content type and magic bytes
+    https://images.example.com           -> /img       images by content type and magic bytes; videos
+                                                    (/img/clip.webm: the AV1 test card, /img/trailer:
+                                                    the VP9 one as video/mp4, phase 6)
     https://lottie.host                  -> /lottie    Lottie JSON, dotLottie v1/v2 (built here)
     https://lottiefiles.com              -> /lfpage    a LottieFiles page linking an animation
 
@@ -166,6 +168,12 @@ class Handler(BaseHTTPRequestHandler):
         with open(path, "rb") as handle:
             self.send(200, handle.read(), content_type)
 
+    def video(self, name, content_type):
+        # the clips of engine/tests/htmlui/fixtures/video (the root is fixtures/compat/net)
+        path = os.path.join(self.server.root, "..", "..", "video", name)
+        with open(path, "rb") as handle:
+            self.send(200, handle.read(), content_type)
+
     def base_font(self):
         with open(os.path.join(self.server.root, "gstatic", "base.ttf"), "rb") as handle:
             return handle.read()
@@ -220,6 +228,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.file(os.path.join("img", "image.webp"), "image/webp")
         if path == "/img/octet":
             return self.file(os.path.join("img", "pixel.png"), "application/octet-stream")
+        if path == "/img/clip.webm":
+            return self.video("testcard-noaudio.webm", "video/webm")
+        if path == "/img/trailer":
+            return self.video("testcard-vp9.webm", "video/mp4")
         if path == "/img/page":
             return self.send(200, "<!doctype html><html><body>not an image</body></html>", "text/html; charset=utf-8")
 

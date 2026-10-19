@@ -149,6 +149,13 @@ linux)
             nm -D $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (lxb|lexbor)_' | head -20 >&2
             exit 1
         fi
+        # and the <video> decoders: dav1d, libopus, libwebm's parser (engine/libs/{dav1d,opus,libwebm})
+        leaked=\$(nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -cE ' (dav1d|opus)_|mkvparser::' || true)
+        if [[ \$leaked != 0 ]]; then
+            echo \"libjasperengine.so exports \$leaked video decoder symbols:\" >&2
+            nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (dav1d|opus)_|mkvparser::' | head -20 >&2
+            exit 1
+        fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
         cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG

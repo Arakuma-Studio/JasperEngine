@@ -4,11 +4,14 @@
 // UIElement's <lottie> control (phase 1, p1-vector): each method forwards to the
 // UILottieElement behind the handle. An invalid handle logs the phase-1 lifetime message once
 // per method; any other element logs an error naming its tag (once per method and tag).
+// play(), pause(), setLoop(), isPlaying() and getDuration() serve a <video> too (phase 6:
+// htmlui/media/UIElementVideo.cpp has the rest of its API).
 
 #include "UIElement.h"
 #include "UIElementInternal.h"
 #include "HtmlUIScriptInternal.h"
 #include "UILottieElement.h"
+#include "media/UIVideoElement.h"
 
 #include "Log.h"
 
@@ -45,13 +48,29 @@ namespace {
     static std::set<std::string> warnedTags_##method; \
     UILottieElement* lottie = lottieOf(get(), warnedInvalid_##method, warnedTags_##method, #method)
 
+namespace {
+
+    UIVideoElement* asVideo(Rml::Element* element){
+        return element ? rmlui_dynamic_cast<UIVideoElement*>(element) : nullptr;
+    }
+
+}
+
 void UIElement::play(){
+    if (UIVideoElement* video = asVideo(get())){
+        video->play();
+        return;
+    }
     LOTTIE_OF(play);
     if (lottie)
         lottie->play();
 }
 
 void UIElement::pause(){
+    if (UIVideoElement* video = asVideo(get())){
+        video->pause();
+        return;
+    }
     LOTTIE_OF(pause);
     if (lottie)
         lottie->pause();
@@ -88,6 +107,10 @@ void UIElement::setDirection(int direction){
 }
 
 void UIElement::setLoop(bool loop){
+    if (UIVideoElement* video = asVideo(get())){
+        video->setLoop(loop);
+        return;
+    }
     LOTTIE_OF(setLoop);
     if (lottie)
         lottie->setLoop(loop);
@@ -112,6 +135,8 @@ void UIElement::setMarker(const std::string& marker){
 }
 
 bool UIElement::isPlaying() const{
+    if (UIVideoElement* video = asVideo(get()))
+        return !video->isPaused();
     LOTTIE_OF(isPlaying);
     return lottie ? lottie->isPlaying() : false;
 }
@@ -127,6 +152,8 @@ float UIElement::getTotalFrames() const{
 }
 
 float UIElement::getDuration() const{
+    if (UIVideoElement* video = asVideo(get()))
+        return (float)video->getDuration();
     LOTTIE_OF(getDuration);
     return lottie ? lottie->getDuration() : 0.0f;
 }

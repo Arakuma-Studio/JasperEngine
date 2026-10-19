@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify in a text area and a text input</title>
+<style>
+  /* A text area justifies its wrapped lines (pre-wrap: the spaces at a wrap hang); the line before a line feed and the
+     last line take text-align-last; a text input's one line is a last line. Whole-pixel shares of Ahem squares: the image
+     is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; background: #ffffff; }
+  textarea, input { position: absolute; left: 10px; font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040;
+    padding: 0; border: 1px solid #8090a0; background: #f0f4f8; appearance: none; resize: none; overflow: hidden;
+    text-align: justify; }
+  textarea { width: 235px; height: 58px; }
+  input { width: 236px; height: 14px; }
+</style>
+</head>
+<body>
+<textarea id="area" style="top: 10px">XX XXX X XXXX XX XXX XXXXX XX X XX X XX
+XXXX XXX XXXX XXX XX X XXXX XX</textarea>
+<textarea id="last" style="top: 80px; text-align-last: justify">XX XXX X XXXX XX XXX XXXXX XX X XX X XX
+XXXX XXX XXXX XXX XX X XXXX XX</textarea>
+<input id="field" style="top: 150px; text-align-last: center" value="XX XXX X XXXX">
+<input id="plain" style="top: 175px" value="XX XXX X XXXX">
+</body>
+</html>

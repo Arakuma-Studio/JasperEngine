@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <memory>
 #include <set>
 #include <sstream>
@@ -705,6 +706,23 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
         }
         out["effects"] = effects;
     }
+    // a <video>'s state and its controls' rectangles (phase 6)
+    if (e.media) {
+        const hui::InspectMedia& m = *e.media;
+        Json media = {{"currentSrc", m.currentSrc}, {"currentTime", m.currentTime}, {"paused", m.paused}, {"ended", m.ended},
+                      {"seeking", m.seeking}, {"loop", m.loop}, {"muted", m.muted}, {"volume", m.volume}, {"playbackRate", m.playbackRate},
+                      {"readyState", m.readyState}, {"networkState", m.networkState}, {"videoWidth", m.videoWidth},
+                      {"videoHeight", m.videoHeight}, {"frame", m.frame}, {"droppedFrames", m.droppedFrames},
+                      {"decodeMs", std::round(m.decodeMs * 1000.0) / 1000.0}, {"memoryBytes", m.memoryBytes}, {"poster", m.showingPoster}};
+        media["duration"] = m.duration >= 0.0 ? Json(m.duration) : Json(nullptr);
+        if (m.errorCode != 0)
+            media["error"] = {{"code", m.errorCode}, {"message", m.errorMessage}};
+        if (m.controls) {
+            media["controls"] = {{"visible", m.controlsVisible}, {"bar", boxInt(m.controlsBar)}, {"play", boxInt(m.playButton)},
+                                 {"timeline", boxInt(m.timeline)}, {"mute", boxInt(m.muteButton)}};
+        }
+        out["media"] = media;
+    }
     if (styles && !styles->empty()) {
         Json map = Json::object();
         for (const hui::InspectStyle& s : *styles) map[s.property] = s.value;
@@ -728,6 +746,14 @@ std::string elementLine(const hui::InspectElement& e, const std::vector<hui::Ins
     }
     // phase 6: a paused simulation is marked "~"
     for (const hui::InspectEffect& effect : e.effects) line += " fx:" + effect.name + (effect.stateful && effect.paused ? "~" : "");
+    if (e.media) {
+        char buffer[96];
+        std::snprintf(buffer, sizeof(buffer), " media:%s %.3fs/%s ready%d", e.media->paused ? "paused" : "playing", e.media->currentTime,
+                      e.media->duration >= 0.0 ? std::to_string(e.media->duration).substr(0, 5).c_str() : "?", e.media->readyState);
+        line += buffer;
+        if (e.media->errorCode != 0)
+            line += " !error" + std::to_string(e.media->errorCode);
+    }
     if (styles && !styles->empty()) {
         line += " {";
         for (size_t i = 0; i < styles->size(); i++) line += (i ? "; " : "") + (*styles)[i].property + ": " + (*styles)[i].value;
@@ -1572,6 +1598,7 @@ std::string mimeOf(const std::string& path) {
     if (ext == ".lua") return "text/x-lua";
     if (ext == ".svg") return "image/svg+xml";
     if (ext == ".json") return "application/json";
+    if (ext == ".webm") return "video/webm";   // phase 6: video_menu's background (a blob)
     return "text/plain";
 }
 
@@ -1863,7 +1890,14 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tmpl.read = [](const std::string& uri, const std::map<std::string, std::string>& vars) {
             const std::string path = vars.count("path") ? vars.at("path") : std::string();
             if (const HtmlUiExamples::File* file = HtmlUiExamples::find(path)) {
-                return resourceText(uri, mimeOf(path), std::string(file->data));
+                const std::string mime = mimeOf(path);
+                if (mime.rfind("video/", 0) == 0) {
+                    ResourceResult result;
+                    result.contents.push_back({uri, mime, {}, Base64::encode(reinterpret_cast<const unsigned char*>(file->data.data()),
+                                                                             file->data.size())});
+                    return result;
+                }
+                return resourceText(uri, mime, std::string(file->data));
             }
             std::string names;
             for (const std::string& n : HtmlUiExamples::names()) names += (names.empty() ? "" : ", ") + n;

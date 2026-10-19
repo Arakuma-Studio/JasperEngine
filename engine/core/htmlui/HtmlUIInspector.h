@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,6 +60,24 @@ struct InspectEffect {
     bool paused = false;
 };
 
+// The state of a <video> (phase 6, p6-video): HTMLMediaElement's values, the decoder's statistics,
+// and the rectangles of its default controls (non-DOM parts: send_input targets)
+struct InspectMedia {
+    std::string currentSrc;
+    double currentTime = 0, duration = 0, playbackRate = 1;   // duration: -1 before the metadata
+    bool paused = true, ended = false, seeking = false, loop = false, muted = false, showingPoster = false;
+    float volume = 1;
+    int readyState = 0, networkState = 0, videoWidth = 0, videoHeight = 0;
+    int errorCode = 0;
+    std::string errorMessage;
+    int frame = -1;                    // index of the frame on screen
+    uint64_t droppedFrames = 0;
+    double decodeMs = 0;               // average decode time per frame
+    size_t memoryBytes = 0;
+    bool controls = false, controlsVisible = false;
+    InspectRect controlsBar, playButton, timeline, muteButton;
+};
+
 struct InspectElement {
     int index = -1;            // position in the returned list
     int parent = -1;           // index of the parent in the list, -1 when not listed
@@ -74,6 +93,7 @@ struct InspectElement {
     int childCount = 0;        // element children (SVG internals are not elements here: <svg> is a leaf)
     InspectFlags flags;
     std::vector<InspectEffect> effects;   // p5-tooling: the effects it draws with, in property order
+    std::shared_ptr<InspectMedia> media;  // p6-video: a <video>'s state, null for other elements
 };
 
 struct InspectBoxModel {

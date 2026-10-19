@@ -8,6 +8,7 @@
 #include "RmlFontEngine.h"
 #include "RmlSystem.h"
 #include "vector/UILottieElement.h"
+#include "media/UIVideoElement.h"
 #include "compat/runtime/RuntimeRegistry.h"
 #include "effects/EffectRegistry.h"
 #include "effects/EffectSimulator.h"
@@ -92,6 +93,7 @@ bool HtmlUI::acquire(){
     LunaSVGRuntime::ensureFonts();
     ThorVGRuntime::acquire();
     UILottieElement::registerInstancer();
+    UIVideoElement::registerInstancer();
     // the compat layer's runtime emulations (phase-2 hook H1), before any document loads
     htmlui::compat::registerRuntime();
     // the UI effects (phase 5): their typed instancers, property parsers and runtime plugin
@@ -130,6 +132,7 @@ void HtmlUI::release(){
 
     // after Rml::Shutdown: the documents (and their ThorVG animations) are gone
     UILottieElement::releaseInstancer();
+    UIVideoElement::releaseInstancer();
     htmlui::compat::releaseRuntime();
     htmlui::EffectRegistry::get().shutdown();
     ThorVGRuntime::release();

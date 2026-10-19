@@ -71,8 +71,10 @@ private:
 
 	/// Close any open line box.
 	/// @param[in] split_all_open_boxes Split all open inline boxes, even if they have no content.
+	/// @param[in] last_line The line is the last of the container or ends with a <br>: 'text-align-last' aligns it (as a line ended
+	/// by a preserved line feed, which LineBox::Close finds).
 	/// @param[out] out_split_line Optionally return any resulting split line, otherwise it will be added as a new line box to this container.
-	void CloseOpenLineBox(bool split_all_open_boxes, UniquePtr<LineBox>* out_split_line = nullptr);
+	void CloseOpenLineBox(bool split_all_open_boxes, bool last_line, UniquePtr<LineBox>* out_split_line = nullptr);
 
 	/// Find and set the position and line width for the currently open line box.
 	/// @param[in] line_box The currently open line box.
@@ -89,8 +91,12 @@ private:
 	float element_line_height = 0.f;
 	// True if content should wrap instead of overflowing the line box.
 	bool wrap_content = false;
-	// The element's text-align property.
+	// The element's text-align property, and the alignment of its last line and of lines before a forced break (resolved
+	// 'text-align-last', p6-justify).
 	Style::TextAlign text_align = {};
+	Style::TextAlign text_align_last = {};
+	// The element's direction is right-to-left: justification visits the lines from their end.
+	bool rtl = false;
 
 	// The vertical position of the currently open line, or otherwise the next one to be placed, relative to the top of this box.
 	float box_cursor = 0;

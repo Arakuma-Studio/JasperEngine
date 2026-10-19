@@ -89,6 +89,8 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode UnsupportedImageFormat{DiagArea::HTML, 24};
         inline constexpr DiagCode DialogNotModal{DiagArea::HTML, 25};
         inline constexpr DiagCode SelfClosingTag{DiagArea::HTML, 26};   // p2-html
+        inline constexpr DiagCode UnsupportedMediaFormat{DiagArea::HTML, 27};   // phase 6, p6-video
+        inline constexpr DiagCode MediaAttributeIgnored{DiagArea::HTML, 28};    // phase 6, p6-video
         // CSS
         inline constexpr DiagCode UnknownProperty{DiagArea::CSS, 1};
         inline constexpr DiagCode UnsupportedProperty{DiagArea::CSS, 2};
@@ -147,6 +149,8 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode WoffOnly{DiagArea::IMP, 7};
         inline constexpr DiagCode LicenseNote{DiagArea::IMP, 8};
         inline constexpr DiagCode ManifestFileMissing{DiagArea::IMP, 9};
+        inline constexpr DiagCode VideoNotConverted{DiagArea::IMP, 10};        // phase 6, p6-video
+        inline constexpr DiagCode VideoConversionFailed{DiagArea::IMP, 11};    // phase 6, p6-video
         // SVG
         inline constexpr DiagCode SvgRecolor{DiagArea::SVG, 1};
         inline constexpr DiagCode SvgUnsupportedContent{DiagArea::SVG, 2};

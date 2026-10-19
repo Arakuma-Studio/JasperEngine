@@ -634,6 +634,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/htmlui/ImageImporter.cpp
     ${EDITOR_DIR}/htmlui/ImportManifestWriter.cpp
     ${EDITOR_DIR}/htmlui/LottieImporter.cpp
+    ${EDITOR_DIR}/htmlui/VideoImporter.cpp
     ${EDITOR_DIR}/htmlui/RemoteImporter.cpp
     ${EDITOR_DIR}/htmlui/StylesheetImporter.cpp
 

@@ -147,6 +147,12 @@ namespace Style {
 	// The block alignment of the legacy 'text-align' values -webkit-left, -webkit-right, -webkit-center: the block-level
 	// children of the element are aligned as by 'justify-self' (phase 3, p3-layout).
 	enum class TextAlignLegacy : uint8_t { None, Left, Right, Center };
+	// 'text-align-last' (p6-justify): the alignment of a block's last line and of a line ended by a forced break; 'auto' is
+	// 'text-align', 'start' for 'justify'. ('match-parent' is not parsed, as in Chromium.)
+	enum class TextAlignLast : uint8_t { Auto, Start, End, Left, Right, Center, Justify };
+	// 'text-justify' (p6-justify): where justified lines take their space. 'distribute' computes to 'inter-character' (CSS
+	// Text 3, as Chromium computes it).
+	enum class TextJustify : uint8_t { Auto, None, InterWord, InterCharacter };
 	// The lines of 'text-decoration-line': a combination of flags (phase 3, p3-text).
 	enum class TextDecoration : uint8_t { None = 0, Underline = 1, Overline = 2, LineThrough = 4 };
 	enum class TextTransform : uint8_t { None, Capitalize, Uppercase, Lowercase };
@@ -272,6 +278,22 @@ namespace Style {
 		if (align == TextAlign::End)
 			return direction == Direction::Rtl ? TextAlign::Left : TextAlign::Right;
 		return align;
+	}
+	// The alignment of a last line (CSS Text 3 §7.2, Chromium's ComputedStyle::GetTextAlign(true)): 'text-align-last', or for
+	// 'auto' the 'text-align', where 'justify' is 'start'; 'start' and 'end' resolved against the direction.
+	inline TextAlign ResolveTextAlignLast(TextAlignLast align_last, TextAlign align, Direction direction)
+	{
+		switch (align_last)
+		{
+		case TextAlignLast::Auto: return ResolveTextAlign(align == TextAlign::Justify ? TextAlign::Start : align, direction);
+		case TextAlignLast::Start: return ResolveTextAlign(TextAlign::Start, direction);
+		case TextAlignLast::End: return ResolveTextAlign(TextAlign::End, direction);
+		case TextAlignLast::Left: return TextAlign::Left;
+		case TextAlignLast::Right: return TextAlign::Right;
+		case TextAlignLast::Center: return TextAlign::Center;
+		case TextAlignLast::Justify: return TextAlign::Justify;
+		}
+		return ResolveTextAlign(align, direction);
 	}
 
 	// The CSS 2.1 'white-space' keyword nearest to the longhands: spaces preserved or not, lines wrapped or not.

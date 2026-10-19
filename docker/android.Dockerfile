@@ -4,7 +4,8 @@ FROM eclipse-temurin:21-jdk-jammy
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMDLINE_TOOLS=9862592
 
-RUN apt-get update && apt-get install -y --no-install-recommends unzip wget git ccache \
+# nasm: dav1d's asm for the x86_64 ABI (the NDK assembles the arm .S files itself)
+RUN apt-get update && apt-get install -y --no-install-recommends unzip wget git ccache nasm \
     && rm -rf /var/lib/apt/lists/* \
     && git config --system --add safe.directory '*'
 

@@ -198,7 +198,10 @@ void InlineLevelBox_Text::Submit(const PlacedFragment& placed_fragment)
 		line_offset = placed_fragment.position - element_offset;
 	}
 
-	text_element->AddLine(line_offset, std::move(fragments[fragment_index]));
+	if (placed_fragment.justification)
+		text_element->AddLine(line_offset, std::move(fragments[fragment_index]), *placed_fragment.justification);
+	else
+		text_element->AddLine(line_offset, std::move(fragments[fragment_index]));
 }
 
 String InlineLevelBox_Text::DebugDumpNameValue() const

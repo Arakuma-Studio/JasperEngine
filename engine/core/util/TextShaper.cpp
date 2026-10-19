@@ -6,6 +6,8 @@
 #include "FontFace.h"
 #include "StringUtils.h"
 
+#include <algorithm>
+
 #include "hb.h"
 #include "SheenBidi/SheenBidi.h"
 
@@ -66,6 +68,35 @@ namespace {
             glyph.line = line;
 
             shaped.push_back(glyph);
+        }
+
+        if (!options.justifyAdvance.empty()){
+            //a justified line: each cluster takes the space of its codepoints (a ligature, the space of all
+            //it covers), added after its last glyph in visual order; its glyphs move by the space before it
+            std::vector<size_t> clusters;
+            for (size_t i = first; i < shaped.size(); i++)
+                clusters.push_back(shaped[i].cluster);
+            std::sort(clusters.begin(), clusters.end());
+            clusters.erase(std::unique(clusters.begin(), clusters.end()), clusters.end());
+            for (size_t i = first; i < shaped.size();){
+                size_t groupEnd = i + 1;
+                while (groupEnd < shaped.size() && shaped[groupEnd].cluster == shaped[i].cluster)
+                    groupEnd++;
+                const size_t clusterBegin = shaped[i].cluster;
+                auto next = std::upper_bound(clusters.begin(), clusters.end(), clusterBegin);
+                const size_t clusterEnd = (next != clusters.end()) ? *next : offset + length;
+                float advance = 0.0f, shift = 0.0f;
+                for (size_t c = clusterBegin; c < clusterEnd && c < options.justifyAdvance.size(); c++){
+                    advance += options.justifyAdvance[c];
+                    shift += (c < options.justifyOffset.size()) ? options.justifyOffset[c] : 0.0f;
+                }
+                if (advance != 0.0f){
+                    for (size_t g = i; g < groupEnd; g++)
+                        shaped[g].xOffset += shift;
+                    shaped[groupEnd - 1].xAdvance += advance;
+                }
+                i = groupEnd;
+            }
         }
 
         if (options.letterSpacing != 0.0f || options.wordSpacing != 0.0f){

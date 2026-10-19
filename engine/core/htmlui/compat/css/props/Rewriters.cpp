@@ -14,6 +14,7 @@
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
 #include "htmlui/effects/EffectCompat.h"
+#include "htmlui/media/VideoFormats.h"
 
 #include <algorithm>
 #include <cstring>
@@ -459,6 +460,14 @@ std::optional<std::string> props::urlOf(const ComponentValue& value){
 }
 
 std::string props::resolveUrlIn(Session& session, const std::string& url, uint32_t file, SourceRef ref, const char* kind){
+    // a video is not a CSS image (browsers do not play one there either; phase 6): the layer goes
+    if (std::strcmp(kind, "image") == 0 && jasperengine::VideoFormats::isVideoPath(url)){
+        if (session.sink){
+            session.sink->report(codes::UnsupportedValue, ref, "'" + url + "': a video cannot be a CSS image; the image is dropped",
+                                 "place a <video autoplay loop muted> with object-fit: cover behind the content", "", url);
+        }
+        return std::string();
+    }
     session.memoTaint++;   // (the file's directory, the manifest, the result's dependencies)
     const std::string fromPath = session.files.path(file);
     const ResolvedUrl resolved = session.urls.resolve(url, fromPath, kind, ref, session.sink);

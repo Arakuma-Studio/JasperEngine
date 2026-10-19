@@ -1,0 +1,20 @@
+{
+ "fixture": "video/poster.html",
+ "viewport": [
+  320,
+  240
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "v",
+    "tag": "video",
+    "x": 20,
+    "y": 20,
+    "w": 280,
+    "h": 200
+   }
+  ]
+ }
+}

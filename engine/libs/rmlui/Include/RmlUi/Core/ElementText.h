@@ -4,6 +4,7 @@
 #include "Element.h"
 #include "Geometry.h"
 #include "Header.h"
+#include "TextShapingContext.h"
 
 namespace Rml {
 
@@ -42,6 +43,8 @@ public:
 	/// @param[in] line_position The position of this line, as an offset from the first line.
 	/// @param[in] line The contents of the line.
 	void AddLine(Vector2f line_position, String line);
+	/// Adds a new line of justified text (p6-justify): the space added around its characters.
+	void AddLine(Vector2f line_position, String line, const Vector<JustificationSpacing>& justification);
 
 	/// Prevents the element from dirtying its document's layout when its text is changed.
 	void SuppressAutoLayout();
@@ -52,12 +55,20 @@ public:
 		String text;
 		Vector2f position;
 		int width;
+		// A justified line (p6-justify): its index among the element's justified lines (GetJustification), -1 otherwise.
+		int justification_index = -1;
 	};
 
 	using LineList = Vector<Line>;
 
 	// Returns the current list of lines.
 	const LineList& GetLines() const { return lines; }
+	/// Returns the space a justified line adds around its characters (p6-justify), included in its width; empty when the
+	/// line is not justified.
+	Span<const JustificationSpacing> GetJustification(const Line& line) const
+	{
+		return line.justification_index < 0 ? Span<const JustificationSpacing>() : Span<const JustificationSpacing>(justifications[line.justification_index]);
+	}
 
 protected:
 	void OnRender() override;
@@ -81,6 +92,8 @@ private:
 	String text;
 
 	LineList lines;
+	// The spacing of the justified lines (Line::justification_index).
+	Vector<Vector<JustificationSpacing>> justifications;
 
 	struct TexturedGeometry {
 		Geometry geometry;

@@ -2,6 +2,7 @@
 
 #include "../../../Include/RmlUi/Core/EventListener.h"
 #include "../../../Include/RmlUi/Core/Geometry.h"
+#include "../../../Include/RmlUi/Core/TextShapingContext.h"
 #include "../../../Include/RmlUi/Core/Vertex.h"
 #include <float.h>
 
@@ -143,6 +144,8 @@ private:
 		int size;
 		// The length of the editable characters on the line (excluding any trailing endline).
 		int editable_length;
+		// A justified line (p6-justify): the space added around its characters, by their offsets from 'value_offset'.
+		Vector<JustificationSpacing> justification;
 	};
 
 	/// Returns the displayed value of the text field.
@@ -231,8 +234,18 @@ private:
 	/// @param[in] line_begin The absolute index at the beginning of the line.
 	void GetLineIMEComposition(StringView& pre_composition, StringView& ime_composition, const String& line, int line_begin) const;
 
-	/// Returns the offset that aligns the contents of the line according to the 'text-align' property.
+	/// Returns the offset that aligns the contents of the line according to the 'text-align' property ('text-align-last'
+	/// for the last line and lines ended by a line feed).
 	float GetAlignmentSpecificTextOffset(const Line& line) const;
+	/// The line's alignment: 'text-align', or 'text-align-last' for the last line and a line ended by a line feed (p6-justify).
+	Style::TextAlign GetLineAlignment(const Line& line) const;
+	/// Justifies the line when it is aligned so: distributes the space its text leaves (without the spaces that hang at its
+	/// end) over the justification opportunities, into 'line.justification' (p6-justify).
+	void JustifyLine(Line& line) const;
+	/// The width of the characters [begin, end) of the line, with the space its justification adds to them.
+	float GetLineStringWidth(const Line& line, int begin, int end, Character prior_character = Character::Null) const;
+	/// The justification of the line's characters [begin, end), by their offsets from 'begin'.
+	static Vector<JustificationSpacing> GetLineJustification(const Line& line, int begin, int end);
 
 	/// Returns the width available for the text contents without overflowing, that is, the content area subtracted by any scrollbar.
 	float GetAvailableWidth() const;

@@ -1,0 +1,44 @@
+{
+ "fixture": "text/justify-textarea.html",
+ "viewport": [
+  260,
+  200
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "area",
+    "tag": "textarea",
+    "x": 10,
+    "y": 10,
+    "w": 237,
+    "h": 60
+   },
+   {
+    "id": "last",
+    "tag": "textarea",
+    "x": 10,
+    "y": 80,
+    "w": 237,
+    "h": 60
+   },
+   {
+    "id": "field",
+    "tag": "input",
+    "x": 10,
+    "y": 150,
+    "w": 238,
+    "h": 16
+   },
+   {
+    "id": "plain",
+    "tag": "input",
+    "x": 10,
+    "y": 175,
+    "w": 238,
+    "h": 16
+   }
+  ]
+ }
+}

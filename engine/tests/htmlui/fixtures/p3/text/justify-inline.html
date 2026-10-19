@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-align: justify with inline boxes, inline-blocks, decorations and shadows</title>
+<style>
+  /* The spaces between and inside inline boxes take the free space; padding, borders and inline-blocks do not, and the
+     boxes grow by the space of their spaces; underlines and line-throughs run under the stretched spaces, text shadows
+     follow the glyphs. The widths give whole-pixel shares (Ahem squares), so the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 16px; color: #203040; }
+  .p { position: absolute; left: 10px; text-align: justify; background: #f0f4f8; }
+  .pad { padding: 0 4px; border-left: 2px solid #c03030; background: #c8d8e8; }
+  .ib { display: inline-block; width: 16px; height: 8px; background: #30a050; }
+  .u { text-decoration: underline; text-decoration-color: #c03030; }
+  .s { text-shadow: 2px 2px 0 #e0a040; }
+</style>
+</head>
+<body>
+<div class="p" id="boxes" style="top: 10px; width: 272px">XX <span id="s1" class="pad">XX XX</span> XXX <span id="ib1" class="ib"></span> XX X<span id="ib2" class="ib"></span>XX XXXX <span id="s2" class="pad">XXX X XX XXX XXXX</span> XX XXX XXXXX X XX</div>
+<div class="p" id="nest" style="top: 80px; width: 268px"><span id="n1" style="background: #c8d8e8">XXX <span id="n2" style="background: #a8c0d8">XX XX <span id="n3" style="background: #88a8c8">X X</span></span> XXXX</span> XXX XXXXX XX XXX XXXX XX</div>
+<div class="p u" id="under" style="top: 130px; width: 256px">XXX XX XXXX X XXXX XX XXX X <span id="u1" style="text-decoration: line-through">XX XXX X XXXX XX</span> XXX XXX X</div>
+<div class="p s" id="shadow" style="top: 180px; width: 256px">XXX XX XXXX X XXXX XX XXX X <span id="sh1">XX XXX X XXXX XX</span> XXX XXX X</div>
+</body>
+</html>

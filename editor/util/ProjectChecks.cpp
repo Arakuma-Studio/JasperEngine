@@ -816,6 +816,9 @@ Json editor::ProjectChecks::uiSupportJson() {
         RowCode code;
         if (std::string_view(row.name) == "on*") {
             code = rowCode(codes::EventHandlerAttribute);
+        } else if (std::string_view(row.element) == "video" && support == Support::Ignored) {
+            // the media attributes mapVideo drops (phase 6)
+            code = rowCode(codes::MediaAttributeIgnored);
         } else if (support == Support::Unsupported || support == Support::Fallback) {
             code = rowCode(codes::UnsupportedAttribute, Severity::Warning);
         } else if (support == Support::Ignored || support == Support::Approximated) {

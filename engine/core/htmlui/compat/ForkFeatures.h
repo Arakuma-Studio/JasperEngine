@@ -18,7 +18,7 @@ namespace jasperengine::htmlui::compat {
     // TextShadow TextProperties Sticky BoxParity AnimationLonghands IndividualTransforms
     // (phase-3 Appendix A) and RelativeFontWeight ColorFunctions (found by p3-integration's
     // audit), phase 5
-    // RegisteredProperties TextFillFilter. Each new value gets
+    // RegisteredProperties TextFillFilter, phase 6 Justify. Each new value gets
     // a kPresent entry, a name and a probe in ForkFeatures.cpp.
     enum class ForkFeature : uint8_t {
         None, Calc, BorderStyle, PercentRadius, PseudoElements, RootIsWhere, Fixed,
@@ -35,6 +35,7 @@ namespace jasperengine::htmlui::compat {
         RelativeFontWeight, ColorFunctions,         // p3-values (appended by p3-integration)
         TextFillFilter,                             // phase 5, p5-infra: -jfx-text-fill (gradient text of effect layers)
         RegisteredProperties,                       // phase 5, p5-property (@property)
+        Justify,                                    // phase 6, p6-justify: text-align: justify, text-align-last, text-justify
         Count
     };
 

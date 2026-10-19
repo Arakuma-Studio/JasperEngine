@@ -83,6 +83,9 @@ private:
     // cmake executable override ("" = look it up on PATH). Machine-specific,
     // stored editor-wide like emsdkPath.
     static std::string cmakePath;
+    // ffmpeg executable for video imports ("" = JASPER_FFMPEG, then PATH). Machine-specific,
+    // stored editor-wide like emsdkPath (htmlui/VideoImporter, phase 6).
+    static std::string ffmpegPath;
     static std::filesystem::path defaultExportDirectory;
     
     // Window settings. The size is physical pixels, only meaningful again at the
@@ -160,6 +163,9 @@ public:
     // cmake executable override ("" = look it up on PATH)
     static std::string getCMakePath();
     static void setCMakePath(const std::string& path);
+    // ffmpeg executable for the video importer ("" = JASPER_FFMPEG, then PATH)
+    static std::string getFfmpegPath();
+    static void setFfmpegPath(const std::string& path);
     static std::filesystem::path getDefaultExportDirectory();
     static void setDefaultExportDirectory(const std::filesystem::path& path);
     

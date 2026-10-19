@@ -522,7 +522,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
-        case ShaderType::HTMLUI_POST: return 6;
+        case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
         default:                 return 0;
@@ -619,6 +619,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 3: return shortName ? "Shd" : "Drop Shadow";
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
+            case 6: return shortName ? "Yuv" : "YUV";
         }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {

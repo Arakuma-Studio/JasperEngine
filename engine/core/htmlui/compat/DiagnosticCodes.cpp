@@ -107,6 +107,15 @@ namespace {
         {codes::SelfClosingTag, W, false, "self-closing-tag", "Self-closing tag",
          "In HTML, <div/> (any element that is not void, such as img, br or input) does not close the element: everything "
          "after it goes inside it until its parent ends, which changes the layout. Browsers do the same. Write <div></div>."},
+        {codes::UnsupportedMediaFormat, W, true, "unsupported-media-format", "Unsupported media format",
+         "A <video> (or <source>) names a file the engine cannot play: the engine plays WebM with AV1 video and Opus audio on "
+         "every platform (MP4, MOV, Ogg, H.264, HEVC, VP8, VP9 and Theora are not decoded). The source is skipped, and the "
+         "video shows its poster or nothing. Convert the file: MCP import_files and the Project window convert videos with "
+         "a user-installed FFmpeg (SVT-AV1 or libaom, libopus). Error when no source of the <video> can be played."},
+        {codes::MediaAttributeIgnored, I, false, "media-attribute-ignored", "Media attribute ignored",
+         "A <video> attribute or content without an engine equivalent was dropped: playsinline (videos always play inline), "
+         "crossorigin, controlslist, disablepictureinpicture, disableremoteplayback, x-webkit-airplay, mediagroup, and the "
+         "fallback content inside <video> (browsers that play video never show it either)."},
 
         // ---- CSS
         {codes::UnknownProperty, W, false, "unknown-property", "Unknown property",
@@ -266,6 +275,14 @@ namespace {
         {codes::ManifestFileMissing, W, false, "manifest-file-missing", "Manifest file missing",
          "An import manifest entry points to a file that does not exist; re-import the resource (load the document in the "
          "editor, jasperengine-editor import-ui, or MCP import_files from_document)."},
+        {codes::VideoNotConverted, W, false, "video-not-converted", "Video not converted",
+         "The importer kept a video the engine cannot play because no FFmpeg with an AV1 encoder was found (JASPER_FFMPEG, "
+         "the editor setting, then PATH). Install FFmpeg with SVT-AV1 (or libaom-av1, rav1e) and libopus and import it "
+         "again, or run the command in the message. FFmpeg is the user's own tool, run as a separate program; the engine "
+         "never links or ships it."},
+        {codes::VideoConversionFailed, E, false, "video-conversion-failed", "Video conversion failed",
+         "FFmpeg could not convert the video to AV1 + Opus WebM (an unreadable or damaged input, or an encoder error); the "
+         "message has FFmpeg's last lines. The original is not imported."},
 
         // ---- SVG
         {codes::SvgRecolor, I, false, "svg-recolor", "SVG recolored",
