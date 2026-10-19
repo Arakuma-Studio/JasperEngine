@@ -113,4 +113,53 @@ bool ParseTextWrapShorthand(PropertyDictionary& dictionary, const ShorthandDefin
 	return true;
 }
 
+// 'text-indent' (p6-justify, P6-J2): one length or percentage (calc() included) and the keywords 'hanging' and
+// 'each-line', each at most once, in any order.
+bool ParseTextIndentShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification)
+{
+	StringList words;
+	SplitWhitespaceList(value, words);
+	if (words.empty() || words.size() > 3)
+		return false;
+
+	String length;
+	bool hanging = false, each_line = false;
+	for (const String& word : words)
+	{
+		const String keyword = StringUtilities::ToLower(word);
+		if (keyword == "hanging")
+		{
+			if (hanging)
+				return false;
+			hanging = true;
+		}
+		else if (keyword == "each-line")
+		{
+			if (each_line)
+				return false;
+			each_line = true;
+		}
+		else
+		{
+			if (!length.empty())
+				return false;
+			length = word;
+		}
+	}
+	if (length.empty())
+		return false;
+
+	const char* mode = (hanging ? (each_line ? "hanging-each-line" : "hanging") : (each_line ? "each-line" : "none"));
+	PropertyDictionary parsed;
+	if (!specification.ParsePropertyDeclaration(parsed, PropertyId::RmlUi_TextIndentLength, length) ||
+		!specification.ParsePropertyDeclaration(parsed, PropertyId::RmlUi_TextIndentMode, mode))
+		return false;
+
+	(void)definition;
+	for (const auto& id_property : parsed.GetProperties())
+		dictionary.SetProperty(id_property.first, id_property.second);
+	return true;
+}
+
 } // namespace Rml

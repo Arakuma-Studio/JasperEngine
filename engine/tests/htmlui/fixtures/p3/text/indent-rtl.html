@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-indent of right-to-left text</title>
+<style>
+  /* A right-to-left first line ends the indent before the right edge; hanging indents the other lines; justified and
+     centred lines use the width the indent leaves. Hebrew is Ahem's .notdef box on both sides (one em). One text per
+     paragraph (inline boxes of right-to-left lines are laid out left to right: phase-3 spec 2.2). Whole pixels: the image is
+     compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; left: 10px; width: 200px; direction: rtl; text-indent: 30px; background: #f0f4f8; }
+</style>
+</head>
+<body>
+<div class="p" id="latin" style="top: 10px">XX XXX XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="hebrew" style="top: 60px">אא בבב גגגג דד ההה ווווו זז ח טטט יי</div>
+<div class="p" id="hang" style="top: 110px; text-indent: 30px hanging">אא בבב גגגג דד ההה ווווו זז ח טטט יי</div>
+<div class="p" id="cen" style="top: 160px; text-align: center">אא בבב גגגג דד ההה ווווו זז ח טטט יי</div>
+<div class="p" id="jus" style="top: 210px; width: 200px; text-align: justify">אא בבב גגגג דד ההה ווווו זז ח טטט יי</div>
+</body>
+</html>

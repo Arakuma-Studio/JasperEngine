@@ -102,7 +102,7 @@ namespace Style {
 			text_align_legacy(TextAlignLegacy::None), text_decoration(TextDecoration::None), text_transform(TextTransform::None),
 			white_space_collapse(WhiteSpaceCollapse::Collapse), text_wrap_mode(TextWrapMode::Wrap), word_break(WordBreak::Normal),
 			direction(Direction::Auto), visibility(Visibility::Visible), line_height_inherit_type(LineHeight::Normal),
-			text_align_last(TextAlignLast::Auto), text_justify(TextJustify::Auto)
+			text_align_last(TextAlignLast::Auto), text_justify(TextJustify::Auto), text_indent_mode(TextIndentMode::None)
 		{}
 
 		// Font face used to render text and resolve ex properties. Does not represent a true property
@@ -139,6 +139,7 @@ namespace Style {
 		// -- Text (p6-justify) --
 		TextAlignLast text_align_last : 3;
 		TextJustify text_justify : 2;
+		TextIndentMode text_indent_mode : 2;
 
 		float line_height = 16.f * 1.2f;
 		float line_height_inherit = 1.2f;
@@ -150,6 +151,9 @@ namespace Style {
 		bool has_text_shadow = false;
 		float letter_spacing = 0.f; // px
 		float word_spacing = 0.f;   // px
+
+		// 'text-indent' (p6-justify): a percentage is of the width of the block container whose first line it indents.
+		LengthPercentage text_indent;
 	};
 
 	struct RareValues {
@@ -450,6 +454,8 @@ namespace Style {
 		// The alignment of a last line and of one before a forced break: 'text-align-last' resolved (Style::ResolveTextAlignLast).
 		TextAlign          text_align_last()           const { return ResolveTextAlignLast(inherited.text_align_last, inherited.text_align, inherited.direction); }
 		TextJustify        text_justify()              const { return inherited.text_justify; }
+		const LengthPercentage& text_indent()          const { return inherited.text_indent; }
+		TextIndentMode     text_indent_mode()          const { return inherited.text_indent_mode; }
 
 		// Layout (p3-layout)
 		SizingKeyword     width_keyword()              const { return rare.width_keyword; }
@@ -611,6 +617,8 @@ namespace Style {
 		// Text (p6-justify)
 		void text_align_last           (TextAlignLast value)      { inherited.text_align_last      = value; }
 		void text_justify              (TextJustify value)        { inherited.text_justify         = value; }
+		void text_indent               (LengthPercentage value)   { inherited.text_indent          = std::move(value); }
+		void text_indent_mode          (TextIndentMode value)     { inherited.text_indent_mode     = value; }
 
 		// Layout (p3-layout)
 		void width_keyword             (SizingKeyword value)     { rare.width_keyword              = value; }

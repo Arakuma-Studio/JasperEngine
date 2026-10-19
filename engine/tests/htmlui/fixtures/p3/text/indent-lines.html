@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the lines text-indent indents</title>
+<style>
+  /* The first formatted line only (not after <br> or a preserved line feed); 'each-line' also the lines after a forced
+     break; 'hanging' every other line; a block child indents its own first line (inherited) and the text after it is not
+     indented, nor the text after an empty block; the indent starts after a float; an outside list marker stays at the
+     item's edge while an inside one is indented. Ahem squares, whole pixels: the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; width: 200px; text-indent: 30px; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+  ul { margin: 0; padding-left: 40px; }
+</style>
+</head>
+<body>
+<div class="p" id="br" style="left: 10px; top: 10px"><span id="br1">XX</span> XXX<br><span id="br2">XX</span> XXX XXXX XX XXX XXXXX XX X</div>
+<div class="p" id="each" style="left: 230px; top: 10px; text-indent: 30px each-line"><span id="each1">XX</span> XXX<br><span id="each2">XX</span> XXX XXXX XX XXX XXXXX XX X</div>
+<div class="p" id="hang" style="left: 10px; top: 70px; text-indent: 30px hanging"><span id="hang1">XX</span> XXX XXXX XX XXX XXXXX XX <span id="hang2">X</span> XXX XX</div>
+<div class="p" id="pre" style="left: 230px; top: 70px; white-space: pre"><span id="pre1">XX</span> X
+<span id="pre2">XXX</span> XX</div>
+<div class="p" id="blk" style="left: 10px; top: 130px"><span id="blk1">XX</span> X<div id="inner"><span id="blk2">XX</span> X</div><span id="blk3">XX</span> XX</div>
+<div class="p" id="emp" style="left: 230px; top: 130px"><div></div><span id="emp1">XX</span> XX</div>
+<div class="p" id="flt" style="left: 10px; top: 190px"><span id="f1" style="float: left; width: 40px; height: 24px"></span><span id="flt1">XX</span> XXX XXXX XX XXX XXXXX XX X</div>
+<ul class="p" id="list" style="left: 230px; top: 190px"><li id="li1"><span id="lis1">XX</span> XX</li><li id="li2" style="list-style-position: inside"><span id="lis2">XX</span> XX</li></ul>
+</body>
+</html>

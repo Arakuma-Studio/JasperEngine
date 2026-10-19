@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-indent lengths, percentages and alignment</title>
+<style>
+  /* text-indent moves the first line's start: a length, a percentage of the block's width, calc(), an em computed where it
+     is declared (the span inherits the length), a negative indent into the padding; centred, right-aligned and justified
+     first lines are aligned in the width the indent leaves. Ahem squares and whole-pixel offsets: the image is compared. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; width: 200px; background: #f0f4f8; }
+  span { background: #c8d8e8; }
+</style>
+</head>
+<body>
+<div class="p" id="len" style="left: 10px; top: 10px; text-indent: 25px"><span id="len1">XX</span> XXX XXXX XX XXX XXXXX XX <span id="len2">X</span> XXX XX XX</div>
+<div class="p" id="pct" style="left: 230px; top: 10px; text-indent: 10%"><span id="pct1">XX</span> XXX XXXX XX XXX XXXXX XX X XXX XX</div>
+<div class="p" id="calc" style="left: 10px; top: 70px; text-indent: calc(10% + 6px)"><span id="calc1">XX</span> XXX XXXX XX XXX XXXXX XX X</div>
+<div class="p" id="em" style="left: 230px; top: 70px; text-indent: 3em; font-size: 20px; line-height: 24px"><span id="em1" style="font-size: 10px">XX XXX XXXX XX XXX XXXXX XX</span></div>
+<div class="p" id="neg" style="left: 10px; top: 130px; width: 180px; text-indent: -16px; padding-left: 20px"><span id="neg1">XX</span> XXX XXXX XX XXX XXXXX XX <span id="neg2">X</span></div>
+<div class="p" id="cen" style="left: 230px; top: 130px; text-indent: 30px; text-align: center"><span id="cen1">XX</span> XXX XXXX XX XXX XXXXX XX X XXX XX <span id="cen2">XX</span></div>
+<div class="p" id="rig" style="left: 10px; top: 190px; text-indent: 30px; text-align: right"><span id="rig1">XX</span> XXX XXXX XX XXX XXXXX XX</div>
+<div class="p" id="jus" style="left: 230px; top: 190px; width: 206px; text-indent: 30px; text-align: justify"><span id="jus1">XX</span> XXX XXXX <span id="jus2">XX</span> XXX XXXXX XX</div>
+</body>
+</html>

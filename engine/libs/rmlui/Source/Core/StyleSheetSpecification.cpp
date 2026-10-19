@@ -990,6 +990,11 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	// The keywords Chromium parses: no 'match-parent' for 'text-align-last', no 'justify-all' for 'text-align'.
 	RegisterProperty(PropertyId::TextAlignLast, "text-align-last", "auto", true, true).AddParser("keyword", "auto, start, end, left, right, center, justify");
 	RegisterProperty(PropertyId::TextJustify, "text-justify", "auto", true, true).AddParser("keyword", "auto, none, inter-word, inter-character, distribute=3");
+	// 'text-indent' (P6-J2): '<length-percentage> && hanging? && each-line?', a shorthand of the length and the keywords.
+	RegisterProperty(PropertyId::RmlUi_TextIndentLength, "-rmlui-text-indent-length", "0px", true, true).AddParser("length_percent");
+	RegisterProperty(PropertyId::RmlUi_TextIndentMode, "-rmlui-text-indent-mode", "none", true, true).AddParser("keyword", "none, hanging, each-line, hanging-each-line");
+	RegisterShorthand(ShorthandId::TextIndent, "text-indent", "-rmlui-text-indent-length, -rmlui-text-indent-mode", ShorthandType::Custom);
+	properties.SetShorthandParser(ShorthandId::TextIndent, &ParseTextIndentShorthand);
 
 	// -- Layout (p3-layout) --
 	// The sizing keywords of width, height, min-*, max-* and flex-basis, 'overflow: clip' and 'flex-wrap: balance' are in

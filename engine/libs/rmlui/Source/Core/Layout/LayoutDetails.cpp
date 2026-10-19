@@ -486,11 +486,30 @@ namespace {
 	private:
 		bool previous;
 	};
+
+	// While an intrinsic width is measured (any of them); a layout at a definite width inside one is not.
+	bool measuring_intrinsic_width = false;
+
+	class IntrinsicWidthScope {
+	public:
+		explicit IntrinsicWidthScope(bool value) : previous(measuring_intrinsic_width) { measuring_intrinsic_width = value; }
+		~IntrinsicWidthScope() { measuring_intrinsic_width = previous; }
+		IntrinsicWidthScope(const IntrinsicWidthScope&) = delete;
+		IntrinsicWidthScope& operator=(const IntrinsicWidthScope&) = delete;
+
+	private:
+		bool previous;
+	};
 } // namespace
 
 bool LayoutDetails::IsMeasuringMinContent()
 {
 	return measuring_min_content;
+}
+
+bool LayoutDetails::IsMeasuringIntrinsicWidth()
+{
+	return measuring_intrinsic_width;
 }
 
 float LayoutDetails::GetMinContentWidth(Element* element, Vector2f containing_block)
@@ -502,6 +521,7 @@ float LayoutDetails::GetMinContentWidth(Element* element, Vector2f containing_bl
 		return result;
 
 	MinContentScope scope(true);
+	IntrinsicWidthScope intrinsic_scope(true);
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
 	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
@@ -536,6 +556,7 @@ float LayoutDetails::GetMaxContentWidth(Element* element, Vector2f containing_bl
 		return result;
 
 	MinContentScope scope(false);
+	IntrinsicWidthScope intrinsic_scope(true);
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
 	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
@@ -570,6 +591,7 @@ float LayoutDetails::GetContentHeightForWidth(Element* element, float border_box
 		return result;
 
 	MinContentScope scope(false);
+	IntrinsicWidthScope intrinsic_scope(false);
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
 	const float edges = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);
@@ -656,9 +678,12 @@ float LayoutDetails::GetShrinkToFitWidth(Element* element, Vector2f containing_b
 	// @performance. Some formatting can be simplified, e.g. absolute elements do not contribute to the shrink-to-fit
 	// width. Also, children of elements with a fixed width and height don't need to be formatted further.
 	RootBox root(Math::Max(containing_block, Vector2f(0.f)));
-	UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block);
-
-	float shrink_to_fit_width = layout_box->GetShrinkToFitWidth();
+	float shrink_to_fit_width = 0.f;
+	{
+		IntrinsicWidthScope intrinsic_scope(true);
+		UniquePtr<LayoutBox> layout_box = FormattingContext::FormatIndependent(&root, element, &box, FormattingContextType::Block);
+		shrink_to_fit_width = layout_box->GetShrinkToFitWidth();
+	}
 	if (available_width < 0.f && containing_block.x >= 0)
 		available_width = Math::Max(0.f, containing_block.x - box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Margin, BoxArea::Padding));
 	// The space of a vertical scrollbar that is always there is part of the width.
@@ -934,6 +959,7 @@ float LayoutDetails::GetContentHeight(Element* element, float border_box_width, 
 		return result;
 
 	MinContentScope scope(false);
+	IntrinsicWidthScope intrinsic_scope(false);
 	Box box;
 	LayoutDetails::BuildBox(box, containing_block, element, BuildBoxMode::UnalignedBlock);
 	const float edges_x = box.GetSizeAcross(BoxDirection::Horizontal, BoxArea::Border, BoxArea::Padding);

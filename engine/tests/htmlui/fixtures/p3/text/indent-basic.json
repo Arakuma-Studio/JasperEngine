@@ -1,0 +1,4 @@
+{
+ "comment": "text-indent as a length, a percentage of the block's width, calc(), an inherited em length, a negative indent into the padding, and with centred, right-aligned and justified first lines; Ahem squares and whole-pixel offsets, so the image is compared.",
+ "viewport": [450, 240]
+}

@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: text-indent transitions</title>
+<style>
+  /* text-indent interpolates as a length (the keywords are discrete): halfway through a 1s linear transition from 0 to
+     40px the first line starts at 20px; from 10% to 60px of a 200px block, at 40px. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 14px; color: #203040; }
+  .p { position: absolute; left: 10px; width: 200px; background: #f0f4f8; transition: text-indent 1s linear; }
+  span { background: #c8d8e8; }
+  #a { top: 10px; text-indent: 0px; }
+  #a.to { text-indent: 40px; }
+  #b { top: 50px; text-indent: 10%; }
+  #b.to { text-indent: 60px; }
+</style>
+</head>
+<body>
+<div class="p" id="a"><span id="a1">XX</span> XXX XXXX XX XXX XXXXX XX</div>
+<div class="p" id="b"><span id="b1">XX</span> XXX XXXX XX XXX XXXXX XX</div>
+</body>
+</html>

@@ -52,6 +52,7 @@ namespace {
         true,    // TextFillFilter (phase 5, p5-infra: -jfx-text-fill applies before filter, FORK.md P5-1)
         true,    // RegisteredProperties (phase 5, p5-property: registered custom properties, @property; FORK.md P5-4)
         true,    // Justify (phase 6, p6-justify: justified lines, text-align-last, text-justify; FORK.md P6-J1)
+        true,    // TextIndent (phase 6, p6-justify: text-indent with hanging and each-line; FORK.md P6-J2)
     };
 
     constexpr const char* kNames[(size_t)ForkFeature::Count] = {
@@ -67,6 +68,7 @@ namespace {
         "TextFillFilter",
         "RegisteredProperties",
         "Justify",
+        "TextIndent",
     };
 
     constexpr uint64_t bitOf(ForkFeature feature){
@@ -409,6 +411,9 @@ std::optional<bool> ForkFeatures::probe(ForkFeature feature){
             return probeTextFill();
         case ForkFeature::RegisteredProperties:
             return probeRegisteredProperties();
+        case ForkFeature::TextIndent:
+            // the shorthand with its keywords and a percentage in calc()
+            return parses("text-indent", "1em hanging each-line") && parses("text-indent", "calc(10% + 2px)") && !parses("text-indent", "hanging");
         case ForkFeature::Justify:
             // the two properties of the feature; justify-all is not parsed, as in Chromium
             return parses("text-align-last", "justify") && parses("text-justify", "inter-character") && parses("text-justify", "distribute") &&
