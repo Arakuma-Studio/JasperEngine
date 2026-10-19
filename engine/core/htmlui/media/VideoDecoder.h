@@ -37,7 +37,8 @@ namespace jasperengine {
         virtual size_t getPictureBytes() const = 0;
     };
 
-    // AV1 on dav1d (C build, both bit depths): n_threads by the frame size (1 up to 640x360,
+    // AV1 on dav1d (both bit depths; its asm where the build has it: x86-64, aarch64, armv7, the
+    // CPU features detected at run time): n_threads by the frame size (1 up to 640x360,
     // 2 up to 1280x720, else 4), max_frame_delay 1, and a picture allocator that pools and counts
     // its buffers. Pictures are converted to packed 8-bit planes.
     class JASPERENGINE_API Av1Decoder : public VideoDecoder {
@@ -55,6 +56,12 @@ namespace jasperengine {
         static void setThreadCountForTesting(int threads);
         // picture bytes of every Av1Decoder alive (leak tests)
         static size_t getLivePictureBytes();
+        // dav1d's CPU feature mask (dav1d_set_cpu_flags_mask): 0 = the C functions only, ~0u =
+        // every feature the CPU has (the default); applies to decoders opened afterwards
+        static void setCpuFlagsMaskForTesting(unsigned mask);
+        // the CPU features dav1d found (its DAV1D_X86_CPU_FLAG_* / DAV1D_ARM_CPU_FLAG_* bits; 0
+        // without asm, or before the first open())
+        static unsigned getCpuFlags();
 
         // the pool behind dav1d's picture callbacks (public for the C callbacks)
         struct PicturePool {

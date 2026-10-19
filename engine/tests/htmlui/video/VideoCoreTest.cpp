@@ -338,6 +338,93 @@ TEST(Av1Decoder, DamagedFrameFails){
     EXPECT_NE(error.find("damaged"), std::string::npos) << error;
 }
 
+// dav1d's asm (x86-64 NASM, aarch64/armv7 NEON, the CPU features detected at run time) decodes
+// every clip bit for bit as its C functions do: every frame of the test clips (8-bit, 10-bit,
+// 4:4:4, an odd size, the example's loop) and of the clips in JASPER_VIDEO_MEASURE (':'-separated,
+// e.g. 720p and 1080p encodes), with the CPU feature mask off (C only) and on. Prints the decoder's
+// time per frame both ways, with 1 thread and with the engine's count (the speedup the asm gives).
+TEST(Av1Decoder, AsmDecodesBitExactlyAsC){
+    struct Decoded {
+        std::vector<VideoFrame> frames;
+        double msPerFrame = 0.0;
+        int threads = 0;
+    };
+    auto decodeFile = [](const std::string& path, unsigned mask, int threads) -> Decoded {
+        Decoded out;
+        Av1Decoder::setCpuFlagsMaskForTesting(mask);
+        Av1Decoder::setThreadCountForTesting(threads);
+        VideoDemuxer demuxer;
+        EXPECT_TRUE(demuxer.open(path)) << path << ": " << demuxer.getError().message;
+        Av1Decoder decoder;
+        std::string error;
+        EXPECT_TRUE(decoder.open(demuxer.getVideoTrack(), error)) << error;
+        out.threads = decoder.getThreadCount();
+        std::vector<uint8_t> data;
+        double seconds = 0.0;
+        for (const VideoPacketRef& packet : demuxer.getVideoPackets()){
+            EXPECT_TRUE(demuxer.read(packet, data));
+            VideoFrame frame;
+            bool got = false;
+            const auto start = std::chrono::steady_clock::now();
+            EXPECT_TRUE(decoder.decode(data.data(), data.size(), packet.ptsNs, frame, got, error)) << error;
+            seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+            if (!got)
+                break;
+            out.frames.push_back(std::move(frame));
+        }
+        out.msPerFrame = out.frames.empty() ? 0.0 : seconds * 1000.0 / (double)out.frames.size();
+        Av1Decoder::setThreadCountForTesting(0);
+        Av1Decoder::setCpuFlagsMaskForTesting(~0u);
+        return out;
+    };
+
+    std::vector<std::string> clips;
+    for (const char* name : {"testcard-noaudio.webm", "testcard-10bit.webm", "testcard-444.webm", "odd-size.webm"})
+        clips.push_back(videoFixture(name));
+    clips.push_back(std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/../../../docs/mcp/guide/html-ui-examples/video_menu/assets/menu-loop.webm");
+    if (const char* extra = std::getenv("JASPER_VIDEO_MEASURE")){
+        const std::string list = extra;
+        for (size_t at = 0; at <= list.size();){
+            const size_t end = std::min(list.find(':', at), list.size());
+            if (end > at)
+                clips.push_back(list.substr(at, end - at));
+            at = end + 1;
+        }
+    }
+
+    for (const std::string& clip : clips){
+        const std::string name = clip.substr(clip.find_last_of('/') + 1);
+        const Decoded c = decodeFile(clip, 0u, 1);
+        const Decoded asmOne = decodeFile(clip, ~0u, 1);
+        ASSERT_FALSE(c.frames.empty()) << name;
+        ASSERT_EQ(asmOne.frames.size(), c.frames.size()) << name;
+        for (size_t i = 0; i < c.frames.size(); i++){
+            const VideoFrame& a = asmOne.frames[i];
+            const VideoFrame& b = c.frames[i];
+            ASSERT_EQ(a.width, b.width) << name << " frame " << i;
+            ASSERT_EQ(a.height, b.height) << name << " frame " << i;
+            ASSERT_TRUE(a.y == b.y && a.u == b.u && a.v == b.v) << name << ": frame " << i << " differs between the asm and C";
+        }
+        // the engine's thread count (frame threads change nothing in the output either)
+        const Decoded cMany = decodeFile(clip, 0u, 0);
+        const Decoded asmMany = decodeFile(clip, ~0u, 0);
+        ASSERT_EQ(asmMany.frames.size(), c.frames.size()) << name;
+        for (size_t i = 0; i < c.frames.size(); i++){
+            ASSERT_TRUE(asmMany.frames[i].y == c.frames[i].y && asmMany.frames[i].u == c.frames[i].u && asmMany.frames[i].v == c.frames[i].v)
+                << name << ": frame " << i << " differs (asm, " << asmMany.threads << " threads)";
+        }
+        std::printf("[asm] %s %dx%d, %zu frames: 1 thread C %.2f ms/frame, asm %.2f (x%.2f); %d threads C %.2f, asm %.2f (x%.2f)\n",
+                    name.c_str(), c.frames[0].width, c.frames[0].height, c.frames.size(), c.msPerFrame, asmOne.msPerFrame,
+                    asmOne.msPerFrame > 0.0 ? c.msPerFrame / asmOne.msPerFrame : 0.0, asmMany.threads, cMany.msPerFrame,
+                    asmMany.msPerFrame, asmMany.msPerFrame > 0.0 ? cMany.msPerFrame / asmMany.msPerFrame : 0.0);
+    }
+    std::printf("[asm] dav1d CPU features: 0x%x\n", Av1Decoder::getCpuFlags());
+#if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64)
+    // the engine's test builds assemble it (the build images have NASM): the decoder found features
+    EXPECT_NE(Av1Decoder::getCpuFlags(), 0u) << "dav1d was built without its asm (CMake: \"dav1d: asm none\"; NASM missing?)";
+#endif
+}
+
 TEST(Av1Decoder, PicturePoolIsCountedAndFreed){
     const size_t before = Av1Decoder::getLivePictureBytes();
     {

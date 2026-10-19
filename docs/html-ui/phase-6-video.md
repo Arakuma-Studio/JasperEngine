@@ -82,9 +82,9 @@ a user-installed FFmpeg is available (`import_files`, the Project window). Expor
 - **Other codecs**: VP8, VP9, Theora, MPEG-1/2, H.264 and HEVC are diagnosed and converted by the
   importer (3.12). Reasons are in 3.1.
 - **dav1d assembly** (x86 AVX2/SSSE3 through NASM, ARM NEON): the measured speed-up is 3.3× on
-  x86-64 (3.1.4). It is left out because it cannot be validated here: the build images have no
-  NASM, and there is no ARM device or emulator to run dav1d's `checkasm` on. Adding it is a CMake
-  switch plus the asm file lists (3.2.1). It is the first follow-up.
+  x86-64 (3.1.4). It was left out of the first package because it could not be validated: the
+  build images had no NASM, and there was no ARM device or emulator. *(Done by the follow-up, 7.6:
+  NASM in the images, the arm asm checked under QEMU.)*
 - **Alpha video** (VP9 alpha side data, AV1 has no WebM alpha mapping): no royalty-free alpha
   format is decodable by the chosen stack. Use Lottie or a sprite sheet for alpha-blended motion.
 - **Streaming and network sources** (HLS, DASH, MSE, `http(s):` at run time): the HTML UI has no
@@ -221,9 +221,8 @@ Each copy is byte for byte from the tag, minus what is not built (dav1d: `tools/
 `examples/`, `doc/`, and the `src/` asm directories `x86 arm ppc riscv loongarch`; libopus: `dnn/`,
 `tests/`, `training/`, `doc/`, the encoder-only sources, and the x86/ARM intrinsics directories).
 Each library directory has a `README.jasper.md` that lists what was left out and how to update it.
-Adding dav1d's asm later means copying `src/x86` (NASM, `config.asm`) and `src/arm` (GAS `.S`,
-built by the C toolchain), adding their file lists to the CMake and Xcode targets, setting
-`HAVE_ASM 1`, and running `checkasm` on each architecture.
+*(The follow-up of 7.6 added dav1d's asm: `src/x86`, `src/arm`, `src/ext/x86/x86inc.asm`,
+`config/config.asm`, the file lists in the CMake and Xcode targets, `HAVE_ASM` from `DAV1D_ASM`.)*
 
 Hidden visibility as for the other vendored libraries: `-fvisibility=hidden`, the API macros set
 empty, `--exclude-libs` for `libdav1d.a libopus.a libwebm.a` where the shared engine links them,
@@ -995,5 +994,46 @@ branch point (4958e5f7b), so there was nothing to merge.
 - Android was compiled (all four ABIs), not run. The Web build was compiled, exported and played
   in Chromium headless (WebGL2 on SwiftShader), but without pthreads only (the inline decoder).
 - Audio was tested with the test consumer only: no host had an audio output device.
-- dav1d's asm (3.3x faster) is not enabled (the first follow-up).
+- dav1d's asm (3.3x faster) is not enabled (the first follow-up). *(Enabled by 7.6.)*
 
+### 7.6 Follow-up: dav1d's asm (p6-video, after the merge 5f4b9914e)
+- **What**: dav1d's own asm with its run-time CPU dispatch (`src/x86/cpu.c`, `src/arm/cpu.c`),
+  vendored byte for byte with `src/ext/x86/x86inc.asm` (x264's macros, ISC, in `NOTICE.md`), as
+  upstream's `src/meson.build` lists it, both bit depths:
+  - x86-64 (Linux, Windows, macOS on Intel, Android x86_64): 46 NASM files through CMake's
+    `ASM_NASM` (elf64, win64, macho64 with `-DDAV1D_NASM_PREFIX`), `config/config.asm`. NASM 2.14 or
+    newer; `nasm` is in `docker/linux.Dockerfile` and `docker/android.Dockerfile` (the NDK's yasm,
+    which its toolchain file names, is replaced: dav1d's x86inc needs NASM). Without NASM the
+    configure says "dav1d: asm none" and the build is C. NASM's dependency file goes through `-MF`
+    (2.15 reads CMake's `-MD <file>` as two inputs).
+  - aarch64 (Android arm64-v8a, Linux, iOS, macOS on Apple silicon): 19 `.S` files through the C
+    compiler; dotprod, i8mm, SVE and SVE2 with clang 17 / Apple clang 16 or newer (`config.h`).
+  - armv7 (Android armeabi-v7a): 17 `.S` files, assembled as ARM code (`-marm`; the NDK compiles C as
+    Thumb).
+  - C: the Web (dav1d has no WebAssembly SIMD), 32-bit x86, and arm with MSVC (upstream needs
+    gas-preprocessor and armasm there). `JASPERENGINE_DAV1D_ASM=OFF` builds C everywhere.
+  - Xcode: the 46 NASM files with a build rule (`nasm` from PATH, Homebrew or `/usr/local/bin`;
+    x86_64 slices), the arm64 `.S` files through wrappers `engine/libs/dav1d/xcode/aarch64_*.S`
+    (names no C file has), `DAV1D_ASM`, `EXCLUDED_SOURCE_FILE_NAMES[arch=...]`;
+    `xcode_add_video_libs.py --check` passes.
+- **Bit-exact**: `Av1Decoder.AsmDecodesBitExactlyAsC` decodes every frame of the test clips (8-bit,
+  10-bit, 4:4:4, 97x55, the 640x360 example loop) and of the measurement clips with dav1d's CPU
+  feature mask 0 (C) and ~0, with 1 thread and with the engine's count, and compares every plane:
+  identical on the test host (x86-64, features 0x2f: SSE2 to AVX-512). The arm asm, without arm
+  hardware: `tools/htmlui/dav1d-asm-check/run.sh` builds `check.c` with this CMake for aarch64 and
+  armv7 (clang 18) and runs it under QEMU with every feature QEMU emulates (aarch64 0x1f: NEON,
+  dotprod, i8mm, SVE, SVE2; armv7 0x7: NEON, dotprod, i8mm): every frame of the same eight clips
+  identical, as on x86-64.
+- **Speed** (test host's EPYC, idle, `Av1Decoder.AsmDecodesBitExactlyAsC`, decode time per frame, 1
+  thread, the 3.1.3 Mandelbrot zoom, 3 s at CRF 35, C → asm): 256x256 1.74 → 0.76 ms (2.30x),
+  640x360 4.28 → 1.77 (2.42x), 1280x720 13.52 → 5.91 (2.29x), 1920x1080 28.63 → 12.62 (2.27x); the
+  `video_menu` loop (640x360) 5.66 → 1.25 (4.53x). The asm matches the 3.1.4 libdav1d column (5.88 and
+  12.3 ms at 720p and 1080p); this C build decodes this content faster than the 3.1.4 C column, so
+  the speedup on it is 2.3x rather than 3.3x. The arm speedups are not measured (QEMU's timings say
+  nothing about hardware).
+- **Runs** (test host, `JOBS=4`, `lock-c`): video tests 78 passed on glcore and Vulkan; linux built
+  with no warning, the `nm -D` check passes (no `dav1d_` export; the asm's symbols are hidden:
+  x86inc and asm.S mark them so); web (C) and android built: 19 aarch64 and 17 armv7 asm objects,
+  and the x86_64 ABI with its 46 NASM objects (NASM, not the NDK's yasm).
+- **Not verified**: the asm on real arm hardware (only QEMU), Windows/MSVC and Xcode builds (no such
+  host), and checkasm (not vendored: upstream's deeper per-function check of a new release).
