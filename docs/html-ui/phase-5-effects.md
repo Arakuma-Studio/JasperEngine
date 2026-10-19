@@ -2154,8 +2154,7 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   host's reboot on 18 October (B's own work 0.21-0.26 ms against 0.17-0.19, A 1.31-1.40 against
   0.80-0.95), with the same kernel mitigations, so the VM most likely runs on other hardware now.
   The budgets are unchanged; on this host the glcore gate needs either the engine-side cost of
-  document A cut by about 10-20 % (callgrind on 6619bb171 and main shows where; not done in
-  p6-stateful-fx, whose change does not move it) or the gate taken on a host comparable to the
+  document A cut by about 10-20 % (not done in p6-stateful-fx, whose change does not move it) or the gate taken on a host comparable to the
   one phase 5 measured on. Vulkan (the engine's own work) passes with a wide margin on both hosts.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
