@@ -1,0 +1,8 @@
+{
+ "comment": "The clamp line of justified text: Chromium justifies the line, then makes room for the ellipsis in it (LineTruncator on the justified items: a space keeps its share, the characters that no longer fit go). The ellipsis has the block's colour (red), the text the span's; a clamp line that ends a paragraph (text-align-last: justified, then cut), inter-character justification, one without a justification opportunity, right-to-left lines, a span across the clamp point; 'p' (Ahem's descender) shows which characters are kept.",
+ "viewport": [
+  320,
+  170
+ ],
+ "boxes": true
+}

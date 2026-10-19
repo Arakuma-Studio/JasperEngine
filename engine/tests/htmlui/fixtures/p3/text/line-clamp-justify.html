@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the legacy line clamp of justified text</title>
+<style>
+  /* The clamp line of justified text: Chromium justifies the line, then makes room for the ellipsis in it (LineTruncator on the justified items: a space keeps its share, the characters that no longer fit go). The ellipsis has the block's colour (red), the text the span's; a clamp line that ends a paragraph (text-align-last: justified, then cut), inter-character justification, one without a justification opportunity, right-to-left lines, a span across the clamp point; 'p' (Ahem's descender) shows which characters are kept. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 75px; background: #e0e8f0; text-align: justify; color: #d02020; }
+  .t { color: #203040; }
+  .b { background: #f0c0a0; }
+  p { margin: 0; }
+</style>
+</head>
+<body>
+<div class="c" id="one" style="left: 10px; top: 10px; -webkit-line-clamp: 1"><span class="t">XpX XX XXX XpX</span></div>
+<div class="c" id="two" style="left: 95px; top: 10px"><span class="t">XpX XX XXX Xp XXX XX XpX</span></div>
+<div class="c" id="wide" style="left: 180px; top: 10px; width: 125px"><span class="t">XpX XXX XX XXXXX XpXp XX XX</span></div>
+<div class="c" id="fits" style="left: 10px; top: 50px"><span class="t">XpX XX XXXX X XpX</span></div>
+<div class="c" id="last" style="left: 95px; top: 50px; text-align-last: justify"><p><span class="t">XpX XX XXX XpX</span></p><p><span class="t">XX XX</span></p></div>
+<div class="c" id="word" style="left: 180px; top: 50px; -webkit-line-clamp: 1"><span class="t">XpXpXpXpXpXp XX</span></div>
+<div class="c" id="rtl" style="left: 10px; top: 90px" dir="rtl"><span class="t">XpX XX XXX Xp XXX XX</span></div>
+<div class="c" id="rtl-start" style="left: 95px; top: 90px; text-align: start" dir="rtl"><span class="t">XpX XX XXX Xp XXX XX</span></div>
+<div class="c" id="rtl-wide" style="left: 180px; top: 90px; width: 125px" dir="rtl"><span class="t">XpX XXX XX XXXXX XpXp XX XX</span></div>
+<div class="c" id="span" style="left: 10px; top: 130px"><span class="t">XpX <span class="b">XX XXX Xp XXX</span> XX</span></div>
+<div class="c" id="chars" style="left: 95px; top: 130px; text-justify: inter-character; -webkit-line-clamp: 1"><span class="t">XpXXpX XX XX</span></div>
+<div class="c" id="plain" style="left: 180px; top: 130px; -webkit-line-clamp: 1; text-align: left"><span class="t">XpX XX XXX XpX</span></div>
+</body>
+</html>
