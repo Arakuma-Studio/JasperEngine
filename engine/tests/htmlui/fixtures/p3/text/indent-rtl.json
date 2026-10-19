@@ -1,0 +1,4 @@
+{
+ "comment": "text-indent of right-to-left paragraphs: the indent before the right edge of the first line, hanging, centred and justified; Hebrew is Ahem's .notdef box on both sides; whole pixels, so the image is compared.",
+ "viewport": [220, 270]
+}

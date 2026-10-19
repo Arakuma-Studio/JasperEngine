@@ -1,0 +1,4 @@
+{
+ "comment": "text-indent indents the first formatted line only: not after <br> or a preserved line feed (each-line does), hanging inverts it, a block child's first line is indented and the text after it or after an empty block is not, floats come before the indent, an outside list marker stays at the item's edge and an inside one is indented; Ahem squares, whole pixels, so the image is compared.",
+ "viewport": [450, 250]
+}

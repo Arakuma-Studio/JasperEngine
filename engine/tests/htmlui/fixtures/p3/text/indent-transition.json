@@ -1,0 +1,10 @@
+{
+ "comment": "text-indent transitions interpolate the length: halfway through 0 to 40px the first line starts at 20px, through 10% (20px of the 200px block) to 60px at 40px; whole pixels, so the image is compared.",
+ "viewport": [220, 90],
+ "steps": [
+  {"addClass": ["#a", "to"]},
+  {"addClass": ["#b", "to"]},
+  {"advance": 0.5},
+  {"capture": "half"}
+ ]
+}
