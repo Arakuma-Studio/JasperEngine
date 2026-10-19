@@ -400,6 +400,51 @@ TEST_CASE("LineClamp.inline_content")
 	}
 }
 
+TEST_CASE("LineClamp.justified")
+{
+	// Chromium justifies the clamp line (P6-J1) before its LineTruncator runs: the ellipsis takes the place of what no
+	// longer fits on the justified line, a space keeping its share (the browser-parity fixture p3/text/line-clamp-justify).
+	FixedAdvanceFontScope scope;
+	const String justified = ".j { width: 75px; text-align: justify; } ";
+
+	SUBCASE("the justified line is cut: the ellipsis after the characters that fit with their space")
+	{
+		Clamped clamped(scope, justified, "<div class='c j' id='c' style='-webkit-line-clamp: 1'>XpX XX XXX XpX</div>");
+		CHECK(LinesOf(clamped.Get("c")) == StringList{"XpX X", "XXX XpX"});
+		CHECK(clamped.EllipsisOf("c").x == 65.f);
+	}
+	SUBCASE("a kept space keeps its share")
+	{
+		Clamped clamped(scope, justified, "<div class='c j' id='c'>XpX XX XXXX X XpX</div>");
+		CHECK(LinesOf(clamped.Get("c")) == StringList{"XpX XX", "XXXX ", "XpX"});
+		CHECK(clamped.EllipsisOf("c") == Vector2f(65.f, 18.f));
+		ElementText* text = TextOf(clamped.Get("c"));
+		REQUIRE(text->GetLines().size() == 3);
+		CHECK(text->GetJustification(text->GetLines()[1]).size() == 1);
+	}
+	SUBCASE("inter-character")
+	{
+		Clamped clamped(scope, justified, "<div class='c j' id='c' style='-webkit-line-clamp: 1; text-justify: inter-character'>XpXXpX XX XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpXXp");
+		CHECK(clamped.EllipsisOf("c").x == 65.f);
+	}
+	SUBCASE("the clamp line that ends a paragraph: text-align-last justifies it, then it is cut")
+	{
+		Clamped clamped(scope, ".j { width: 75px; text-align-last: justify; } ",
+			"<div class='c j' id='c'><div id='p'>XpX XX XXX XpX</div><div>XX XX</div></div>");
+		CHECK(LinesOf(clamped.Get("p")) == StringList{"XpX XX", "XXX Xp"});
+		CHECK(clamped.EllipsisOf("p").x == 65.f);
+	}
+	SUBCASE("right to left: the kept part stays where justification placed it")
+	{
+		Clamped clamped(scope, justified, "<div class='c j' id='c' style='-rmlui-direction: rtl'>XpX XX XXX Xp XXX XX</div>");
+		CHECK(LinesOf(clamped.Get("c")) == StringList{"XpX XX", "XX Xp", "XXX XX"});
+		CHECK(clamped.EllipsisOf("c").x == 0.f);
+		ElementText* text = TextOf(clamped.Get("c"));
+		CHECK(text->GetAbsoluteOffset().x + text->GetLines()[1].position.x == 10.f);
+	}
+}
+
 TEST_CASE("LineClamp.blocks")
 {
 	FixedAdvanceFontScope scope;
