@@ -1126,10 +1126,11 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
   Enter or `K` toggle, Left/Right seek 5 s (`J`/`L` 10 s), Home/End, `M` mutes; the gamepad's A
   and d-pad do the same. Restyle with `video videocontrols { ... }` (`videobutton.htmlui-play`,
   `videotime`, `videotimeline`, `videoprogress`, `videothumb`, `videobutton.htmlui-mute`).
-- Budget (software decoding, ms per frame on one desktop core: 2 at 256 px, 5.6 at 360p, 19 at
-  720p, 42 at 1080p; several cores share a video's work): desktop one 1080p30 or two 720p30;
-  mobile 720p30 at most, 540p better; Web (decoding on the main thread) 480p or smaller, one at a
-  time. Memory: about 1.5 x width x height x 7 bytes per video (decoder pictures and the decode
+- Budget (software decoding with dav1d's SIMD asm on x86-64 and ARM, ms per frame on one core of
+  a server EPYC: 0.8 at 256 px, 1.8 at 360p, 5.9 at 720p, 12.6 at 1080p; without it, as on the
+  Web, 1.7, 4.3, 13.5 and 28.6; several cores share a video's work): desktop one 1080p30 or two
+  720p30 with headroom; mobile 720p30, 1080p30 on recent phones; Web (C, decoding on the main
+  thread) 480p or smaller, one at a time. Memory: about 1.5 x width x height x 7 bytes per video (decoder pictures and the decode
   queue), plus the file on Web, where assets live in memory. Keep previews small and pause
   videos nobody sees.
 - Not supported: other codecs, streaming or remote URLs at run time (import them), `<track>`

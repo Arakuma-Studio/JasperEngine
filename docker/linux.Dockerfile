@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libwayland-dev wayland-protocols extra-cmake-modules \
         libdbus-1-dev \
         ccache \
+        # dav1d's x86-64 asm (the HTML UI's <video>): NASM 2.14 or newer (22.04: 2.15)
+        nasm \
         # Headless runs: virtual X server, Mesa software GL and Vulkan (lavapipe), screenshots.
         xvfb xauth x11-utils x11-apps imagemagick libgl1-mesa-dri mesa-utils dbus xdotool \
         mesa-vulkan-drivers vulkan-tools \
