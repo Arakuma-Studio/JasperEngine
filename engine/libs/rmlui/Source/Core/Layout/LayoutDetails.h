@@ -157,6 +157,9 @@ public:
 	/// True while a min-content width is measured (GetMinContentWidth): text that breaks words to fit
 	/// ('overflow-wrap: break-word') keeps them whole then (p3-text).
 	static bool IsMeasuringMinContent();
+	/// True while an intrinsic width is measured (min-content, max-content, shrink-to-fit): a percentage 'text-indent' is
+	/// then 0, as in Chromium (p6-justify, P6-J2).
+	static bool IsMeasuringIntrinsicWidth();
 	/// The element's max-content width: the width of its border box formatted without a width constraint (shrink-to-fit
 	/// without the clamp to the available width). A definite 'width' is its own max-content width.
 	/// @return The width of the border box.

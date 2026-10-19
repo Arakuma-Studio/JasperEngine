@@ -2210,6 +2210,12 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 	case PropertyId::TextJustify:
 		values.text_justify((TextJustify)p->Get<int>());
 		break;
+	case PropertyId::RmlUi_TextIndentLength:
+		values.text_indent(ComputeLengthPercentage(p, font_size, document_font_size, dp_ratio, vp_dimensions));
+		break;
+	case PropertyId::RmlUi_TextIndentMode:
+		values.text_indent_mode((TextIndentMode)p->Get<int>());
+		break;
 
 	// Invalid properties
 	case PropertyId::Invalid:

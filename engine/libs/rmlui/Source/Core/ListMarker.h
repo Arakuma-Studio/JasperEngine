@@ -41,6 +41,9 @@ public:
 	const String& GetMarkerText() const { return marker_text; }
 	/// The counter style or string the marker shows ("" for an image or a ::marker content).
 	const String& GetMarkerStyle() const { return style; }
+	/// 'list-style-position: outside': the marker is placed outside the item's start edge (its first line's indent does
+	/// not move it, p6-justify).
+	bool IsOutside();
 
 protected:
 	void OnUpdate() override;

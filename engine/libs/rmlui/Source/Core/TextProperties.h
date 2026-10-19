@@ -33,6 +33,10 @@ bool ParseWhiteSpaceShorthand(PropertyDictionary& dictionary, const ShorthandDef
 /// and wrap as 'auto' does.
 bool ParseTextWrapShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
+/// 'text-indent' (p6-justify, P6-J2): '<length-percentage> && hanging? && each-line?'; sets '-rmlui-text-indent-length' and
+/// '-rmlui-text-indent-mode'.
+bool ParseTextIndentShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
+	const PropertySpecification& specification);
 /// 'text-decoration': '<line> || <style> || <color> || <thickness>', where the line may be several keywords.
 bool ParseTextDecorationShorthand(PropertyDictionary& dictionary, const ShorthandDefinition& definition, const String& value,
 	const PropertySpecification& specification);
