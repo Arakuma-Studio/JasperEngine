@@ -905,6 +905,7 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
 
 void RmlRenderer::destroyTexture(HtmlUITexture* texture){
     liveTextures.erase(texture);
+    cancelVideoConversion(texture);
     // the destructor destroys what it owns, without GPU calls when dead
     delete texture;
 }
@@ -2120,6 +2121,7 @@ bool RmlRenderer::loadPrograms(){
     geometryShader = ShaderPool::get(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true));
     gradientShader = ShaderPool::get(ShaderType::HTMLUI_GRADIENT, 0);
     bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated();
+    static_assert(POST_PROGRAM_COUNT == HTMLUI_POST_VARIANT_COUNT, "one post program per HTMLUI_POST variant");
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
         // asked every time until created: the pool hands a pending variant to its builder again
@@ -2206,12 +2208,18 @@ bool RmlRenderer::loadPipelines(){
         program.fsSlot = data.getUniformBlockIndexByName("u_fs_htmluiPost");
         program.textureSlot = data.getTextureIndexByName("u_htmluiPostTex");
         program.maskSlot = data.getTextureIndexByName("u_htmluiMaskTex");
+        program.chromaUSlot = data.getTextureIndexByName("u_htmluiYuvU");
+        program.chromaVSlot = data.getTextureIndexByName("u_htmluiYuvV");
         // vertexless: a triangle from gl_VertexIndex, no vertex or index buffer
         program.object.beginLoad(PrimitiveType::TRIANGLES);
         program.object.setShader(program.shader.get());
         program.object.addTexture(program.textureSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
         if (program.maskSlot.first >= 0)
             program.object.addTexture(program.maskSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+        if (program.chromaUSlot.first >= 0)
+            program.object.addTexture(program.chromaUSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+        if (program.chromaVSlot.first >= 0)
+            program.object.addTexture(program.chromaVSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
         if (!program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
             Log::error("[HTML UI] could not load the HTML UI post-process programs");
             destroyPipelineObjects();
@@ -2419,8 +2427,13 @@ void RmlRenderer::releaseGpuResources(){
             texture->ownedRender->destroyTexture();
         if (texture->ownedTarget)
             texture->ownedTarget->destroy();
+        for (std::unique_ptr<TextureRender>& plane : texture->planes){
+            if (plane)
+                plane->destroyTexture();
+        }
         texture->dead = true;
     }
+    videoConversions.clear();
 }
 
 void RmlRenderer::destroyPipelineObjects(){
@@ -2457,6 +2470,8 @@ void RmlRenderer::destroyPipelineObjects(){
         program.fsSlot = -1;
         program.textureSlot = {-1, -1};
         program.maskSlot = {-1, -1};
+        program.chromaUSlot = {-1, -1};
+        program.chromaVSlot = {-1, -1};
     }
     geometryParamsSlot = -1;
     geometryTextureSlot = {-1, -1};
@@ -2535,6 +2550,107 @@ size_t RmlRenderer::getLastFrameDrawCount() const{
 
 uint64_t RmlRenderer::getGpuCreateCount() const{
     return gpuCreateCount;
+}
+
+//-------------------------------------------------------------------------------------------
+// RmlRenderer: contexts and <video> frames (phase 6)
+//-------------------------------------------------------------------------------------------
+
+namespace {
+
+    std::unordered_map<const Rml::Context*, RmlRenderer*>& contextRenderers(){
+        static std::unordered_map<const Rml::Context*, RmlRenderer*> value;
+        return value;
+    }
+
+}
+
+RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
+    auto it = contextRenderers().find(context);
+    return it == contextRenderers().end() ? nullptr : it->second;
+}
+
+void RmlRenderer::bindContext(const Rml::Context* context, RmlRenderer* renderer){
+    if (context && renderer)
+        contextRenderers()[context] = renderer;
+}
+
+void RmlRenderer::unbindContext(const Rml::Context* context){
+    contextRenderers().erase(context);
+}
+
+void RmlRenderer::queueVideoConversion(const VideoConversion& conversion){
+    if (!conversion.target)
+        return;
+    for (VideoConversion& queued : videoConversions){
+        if (queued.target == conversion.target){
+            queued = conversion;
+            return;
+        }
+    }
+    videoConversions.push_back(conversion);
+}
+
+void RmlRenderer::cancelVideoConversion(const HtmlUITexture* target){
+    videoConversions.erase(std::remove_if(videoConversions.begin(), videoConversions.end(),
+                                          [target](const VideoConversion& queued){ return queued.target == target; }),
+                           videoConversions.end());
+}
+
+bool RmlRenderer::hasVideoConversion(const HtmlUITexture* target) const{
+    for (const VideoConversion& queued : videoConversions){
+        if (queued.target == target)
+            return true;
+    }
+    return false;
+}
+
+int RmlRenderer::runVideoConversions(){
+    // outside any pass: before beginFrame, or in a frame before its first pass opens
+    if (videoConversions.empty() || activeKind != TargetKind::NONE || frameState == FrameState::DROPPED || !isReady())
+        return 0;
+    PostProgram& program = postPrograms[(int)HtmlUIPostVariant::YUV];
+    int drawn = 0;
+    std::vector<VideoConversion> jobs;
+    jobs.swap(videoConversions);
+    for (const VideoConversion& job : jobs){
+        HtmlUITexture* target = job.target;
+        if (!target || target->dead || !target->ownedTarget || !target->ownedTarget->isCreated() ||
+            !target->planes[0] || !target->planes[1] || !target->planes[2])
+            continue;
+
+        CameraRender pass;
+        pass.setColorActions(LoadAction::DONTCARE, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        pass.setLabel("html ui video");
+        pass.startRenderPass(&target->ownedTarget->getRender());
+        pass.applyViewportTopLeft(0, 0, target->width, target->height);
+        pass.applyScissorTopLeft(0, 0, target->width, target->height);
+        program.object.addTexture(program.textureSlot, ShaderStageType::FRAGMENT, target->planes[0].get());
+        program.object.addTexture(program.chromaUSlot, ShaderStageType::FRAGMENT, target->planes[1].get());
+        program.object.addTexture(program.chromaVSlot, ShaderStageType::FRAGMENT, target->planes[2].get());
+        if (program.object.beginDraw(postTargetState(BlendMode::NONE))){
+            PostVsParams vs = {{1.0f, 1.0f, 0.0f, 0.0f}};
+            program.object.applyUniformBlock(program.vsSlot, sizeof(PostVsParams), &vs);
+            PostParams fs;
+            fs.params[1] = job.chromaScale[0];
+            fs.params[2] = job.chromaScale[1];
+            std::memcpy(fs.colorMatrix, job.colorMatrix, sizeof(fs.colorMatrix));
+            program.object.applyUniformBlock(program.fsSlot, sizeof(PostParams), &fs);
+            program.object.draw(0, 3, 1);
+            drawn++;
+        }
+        pass.endRenderPass();
+    }
+    // back to the placeholders: nothing keeps a plane bound
+    program.object.addTexture(program.textureSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    program.object.addTexture(program.chromaUSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    program.object.addTexture(program.chromaVSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    videoConversionCount += (uint64_t)drawn;
+    return drawn;
+}
+
+uint64_t RmlRenderer::getVideoConversionCount() const{
+    return videoConversionCount;
 }
 
 size_t RmlRenderer::getGeometryBufferCount() const{

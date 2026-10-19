@@ -612,6 +612,16 @@ and `ElementText::ClearLines` resets (about 20 000), `Element::SetBox` showing a
 about 15 000) and the baseline loops' clamp bound (about 13 000). Scripts and dumps of the measurement:
 `build/p6lc-bench` of the p6-line-clamp worktree on the test host (not committed).
 
+## Phase 6 (video)
+
+Phase 6 (`docs/html-ui/phase-6-video.md`, p6-video) added **no fork patch**. `<video>` is an engine
+element (`UIVideoElement`, a `video` instancer like `<lottie>`) built on what the fork already has:
+non-DOM children for the controls (`AppendChild(…, false)`, as scrollbars), `ComputeObjectFitRect`
+for `object-fit`/`object-position`, `ReplacedContentGeometry` for rounded content (P4-G1), and the
+render interface's `CallbackTexture`/render targets for the converted frame. The fork's unit tests
+and its file list are unchanged; the `mkvparser::` entry of `engine/libs/rmlui/hidden-symbols.map`
+keeps libwebm's C++ symbols out of the shared engine (that map is the engine's, not RmlUi code).
+
 ## Upstream rebase rehearsal (p3-integration)
 
 Rehearsed in a scratch clone of `https://github.com/mikke89/RmlUi` (2026-10-11/12): upstream `master` at

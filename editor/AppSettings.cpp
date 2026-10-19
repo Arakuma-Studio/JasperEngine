@@ -4,6 +4,7 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
 #include <cstdlib>
@@ -55,6 +56,7 @@ std::string AppSettings::lastCMakeCxxCompiler;
 std::string AppSettings::lastCMakeGenerator;
 std::string AppSettings::emsdkPath;
 std::string AppSettings::cmakePath;
+std::string AppSettings::ffmpegPath;
 std::filesystem::path AppSettings::defaultExportDirectory;
 int AppSettings::windowWidth = 1280;
 int AppSettings::windowHeight = 720;
@@ -156,6 +158,12 @@ bool AppSettings::loadSettings() {
         // Load cmake executable override
         if (settingsData["cmake"] && settingsData["cmake"]["path"]) {
             cmakePath = settingsData["cmake"]["path"].as<std::string>();
+        }
+
+        // Load the video importer's ffmpeg override
+        if (settingsData["ffmpeg"] && settingsData["ffmpeg"]["path"]) {
+            ffmpegPath = settingsData["ffmpeg"]["path"].as<std::string>();
+            htmlui::VideoImporter::setFfmpegPath(ffmpegPath);
         }
         if (settingsData["export"] && settingsData["export"]["default_dir"]) {
             defaultExportDirectory = settingsData["export"]["default_dir"].as<std::string>();
@@ -314,6 +322,15 @@ bool AppSettings::saveSettings() {
             settingsData.remove("cmake");
         }
 
+        // the video importer's ffmpeg override
+        if (!ffmpegPath.empty()) {
+            YAML::Node ffmpegNode;
+            ffmpegNode["path"] = ffmpegPath;
+            settingsData["ffmpeg"] = ffmpegNode;
+        } else {
+            settingsData.remove("ffmpeg");
+        }
+
         if (!defaultExportDirectory.empty()) {
             YAML::Node exportNode;
             exportNode["default_dir"] = defaultExportDirectory.string();
@@ -450,6 +467,16 @@ std::string AppSettings::getCMakePath() {
 
 void AppSettings::setCMakePath(const std::string& path) {
     cmakePath = path;
+    saveSettings();
+}
+
+std::string AppSettings::getFfmpegPath() {
+    return ffmpegPath;
+}
+
+void AppSettings::setFfmpegPath(const std::string& path) {
+    ffmpegPath = path;
+    htmlui::VideoImporter::setFfmpegPath(path);
     saveSettings();
 }
 

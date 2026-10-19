@@ -31,6 +31,7 @@
 #include "command/type/UnlinkMaterialCmd.h"
 #include "component/MeshComponent.h"
 #include "htmlui/HtmlUiImporters.h"
+#include "htmlui/VideoImporter.h"
 #include "htmlui/compat/ImportManifest.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
@@ -1239,6 +1240,11 @@ struct RemoteImport {
     std::string destDir;                  // project-relative, inside the assets
     std::vector<std::string> urls, fonts, icons;
     std::string document;                 // from_document, project-relative ("" = none)
+    // local videos the engine does not play (phase 6): converted into videoTarget by FFmpeg
+    std::vector<fs::path> videos;
+    fs::path videoTarget;
+    bool overwrite = false;
+    std::vector<importers::VideoImportResult> videoResults;
     // filled by the worker
     std::vector<std::pair<std::string, importers::ImportResult>> results;   // what was asked -> its result
     importers::ImportResult documentResult;
@@ -1363,6 +1369,45 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
         if (!result.written.empty()) remote.push_back({{"source", source}, {"files", result.written}});
     }
 
+    // the converted (or copied unconverted) videos
+    Json videos = Json::array(), videoDiagnostics = Json::array();
+    std::string videoText;
+    for (const importers::VideoImportResult& result : state->videoResults) {
+        Json item = {{"message", result.message}, {"converted", result.converted}};
+        if (!result.output.empty()) {
+            item["file"] = projectRelative(project, result.output);
+            changed.push_back(result.output);
+        }
+        if (!result.command.empty()) item["command"] = result.command;
+        if (!result.encoder.empty()) item["encoder"] = result.encoder;
+        videoText += "\n" + result.message;
+        for (const jasperengine::htmlui::compat::Diagnostic& d : result.diagnostics) {
+            videoDiagnostics.push_back({{"code", d.code.id()}, {"severity", jasperengine::htmlui::compat::severityName(d.severity)},
+                                        {"message", d.message}, {"suggestion", d.suggestion}});
+            videoText += "\n" + std::string(jasperengine::htmlui::compat::severityName(d.severity)) + ": " + d.message + " (fix: " +
+                         d.suggestion + ") [" + d.code.id() + "]";
+        }
+        if (!result.ok && result.diagnostics.empty())
+            failed.push_back({{"source", result.output.filename().u8string()}, {"error", result.message}});
+        videos.push_back(item);
+    }
+    if (!state->videoResults.empty()) {
+        data["videos"] = videos;
+        if (!videoDiagnostics.empty()) data["diagnostics"] = videoDiagnostics;
+        syncFiles(ctx, changed, false);
+        if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
+        text += videoText;
+        if (state->urls.empty() && state->fonts.empty() && state->icons.empty() && state->document.empty()) {
+            const bool anyOk = std::any_of(state->videoResults.begin(), state->videoResults.end(),
+                                           [](const importers::VideoImportResult& r) { return r.ok || r.copied; });
+            if (!anyOk && !data.contains("imported"))
+                call->fail(text, data);
+            else
+                call->ok(text, data);
+            return;
+        }
+    }
+
     // from_document: the URLs it imported, then (rewrite) each replaced in the file by its path relative to the file
     std::string rewriteNote;
     if (!state->document.empty()) {
@@ -1449,6 +1494,34 @@ void importFilesTool(const CallPtr& call) {
 
     auto state = std::make_shared<RemoteImport>();
     state->projectRoot = project->getProjectPath();
+    // videos the engine does not play are converted (FFmpeg, on the worker) instead of copied (phase 6)
+    std::vector<std::string> plainFiles;
+    for (const std::string& item : local) {
+        const fs::path source = fs::u8path(item).lexically_normal();
+        std::error_code exists;
+        if (source.is_absolute() && fs::is_regular_file(source, exists) && importers::VideoImporter::isVideoFile(source) &&
+            !importers::VideoImporter::isPlayable(source)) {
+            state->videos.push_back(source);
+        } else {
+            plainFiles.push_back(item);
+        }
+    }
+    if (!state->videos.empty()) {
+        fs::path target;
+        if (!resolveExisting(call, "to_dir", target, false)) return;
+        state->videoTarget = target;
+        state->overwrite = args.value("overwrite", false);
+        for (const fs::path& video : state->videos) {
+            fs::path output = target / video.filename();
+            output.replace_extension(".webm");
+            std::error_code ec;
+            if (fs::exists(output, ec) && !state->overwrite) {
+                call->fail(projectRelative(project, output) + " already exists; pass overwrite: true to replace it.");
+                return;
+            }
+        }
+    }
+    local = plainFiles;
     const bool remote = !urls.empty() || !fonts.empty() || !icons.empty() || fromDocument;
     if (remote) {
         fs::path dest;
@@ -1491,12 +1564,14 @@ void importFilesTool(const CallPtr& call) {
     Json data = Json::object();
     std::string text;
     if (!local.empty() && !importLocalFiles(call, local, data, text)) return;
-    if (!remote) {
+    if (!remote && state->videos.empty()) {
         call->ok(text, data);
         return;
     }
 
     std::thread([state]() {
+        for (const fs::path& video : state->videos)
+            state->videoResults.push_back(importers::VideoImporter::importFile(video, state->videoTarget, state->overwrite));
         const std::string dest = state->destDir;
         for (const std::string& url : state->urls) state->results.emplace_back(url, importers::importUrl(state->projectRoot, url, dest));
         if (!state->fonts.empty()) {
@@ -2954,7 +3029,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
             "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
             "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it).";
+            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},

@@ -57,6 +57,7 @@ namespace jasperengine { namespace test {
             static int counter = 0;
             name = "render-test-" + std::to_string(++counter);
             context = Rml::CreateContext(name, contextSize, &renderer);
+            RmlRenderer::bindContext(context, &renderer);
 
             target.ensure(targetSize.x, targetSize.y, sampleCount);
             screen.createFramebuffer(TextureType::TEXTURE_2D, targetSize.x, targetSize.y, TextureFilter::LINEAR, TextureFilter::LINEAR,
@@ -80,6 +81,7 @@ namespace jasperengine { namespace test {
             if (context){
                 context->UnloadAllDocuments();
                 context->Update();
+                RmlRenderer::unbindContext(context);
                 Rml::RemoveContext(name);
                 context = nullptr;
                 Rml::ReleaseTextures(&renderer);
@@ -121,6 +123,8 @@ namespace jasperengine { namespace test {
             Rml::SetGeometryPixelSize(targetSize.x > 0 ? (float)contextSize.x / (float)targetSize.x : 1.0f);
             if (context){
                 context->Update();
+                // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
+                renderer.runVideoConversions();
                 if (begun)
                     context->Render();
             }

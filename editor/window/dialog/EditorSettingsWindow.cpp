@@ -11,6 +11,7 @@
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
 #include "SettingsCategoryList.h"
+#include "htmlui/VideoImporter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,7 +39,7 @@ namespace {
     const settingsui::Category preferencesCategories[] = {
         {"General", "", "editor vsync default build directory output"},
         {"Code Editor", "", "font size"},
-        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop"},
+        {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
         {"Shader Cache", "", "clear shader cache"},
     };
     constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
@@ -179,6 +180,8 @@ void EditorSettingsWindow::open(Project* project) {
     }
 
     m_emsdkOverride = AppSettings::getEmsdkPath();
+    m_ffmpegOverride = AppSettings::getFfmpegPath();
+    refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
@@ -198,6 +201,25 @@ void EditorSettingsWindow::refreshCMakeStatus() {
 
 void EditorSettingsWindow::refreshEmsdkStatus() {
     m_emsdkInfo = Exporter::detectEmsdk(m_emsdkOverride);
+}
+
+// what the importer would use with the override being edited (it runs `ffmpeg -encoders`: only
+// when the dialog opens or the path changes)
+void EditorSettingsWindow::refreshFfmpegStatus() {
+    std::string why;
+    const std::string found = htmlui::VideoImporter::findFfmpeg(&why, &m_ffmpegOverride);
+    m_ffmpegUsable = false;
+    if (found.empty()) {
+        m_ffmpegStatus = "Not found: " + why + ". Videos are imported unconverted (HTMLUI-IMP-0010).";
+        return;
+    }
+    const std::vector<std::string> encoders = htmlui::VideoImporter::av1Encoders(found);
+    if (encoders.empty()) {
+        m_ffmpegStatus = found + " has no AV1 encoder (libsvtav1, libaom-av1 or librav1e): videos are imported unconverted.";
+        return;
+    }
+    m_ffmpegUsable = true;
+    m_ffmpegStatus = found + " (AV1: " + encoders.front() + ")";
 }
 
 void EditorSettingsWindow::show() {
@@ -343,6 +365,8 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
         drawCMakeSettings();
         sectionRow("Web Build");
         drawWebSettings();
+        sectionRow("Video Import");
+        drawVideoImportSettings();
     });
 }
 
@@ -475,6 +499,37 @@ void EditorSettingsWindow::drawWebSettings() {
     }
 }
 
+void EditorSettingsWindow::drawVideoImportSettings() {
+    beginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
+        "Empty means JASPER_FFMPEG, then PATH. It runs as a separate program; it is never shipped.", !m_ffmpegOverride.empty());
+    const fs::path display = m_ffmpegOverride.empty() ? fs::path("<Auto-detect>") : fs::path(m_ffmpegOverride);
+    drawPathPicker(
+        "##EditorFfmpegPath", "Browse##editor_ffmpeg", "Auto##editor_ffmpeg",
+        display, !m_ffmpegOverride.empty(), false,
+        [this](const std::string& selectedPath) {
+            m_ffmpegOverride = selectedPath;
+            refreshFfmpegStatus();
+        },
+        [this]() {
+            m_ffmpegOverride.clear();
+            refreshFfmpegStatus();
+        }
+    );
+
+    ImGui::TableNextRow();
+    ImGui::TableNextColumn();
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted("Status");
+    ImGui::TableNextColumn();
+    if (m_ffmpegUsable) {
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), ICON_FA_CIRCLE_CHECK " %s", m_ffmpegStatus.c_str());
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.0f, 1.0f));
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", m_ffmpegStatus.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
     drawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
         beginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
@@ -513,6 +568,7 @@ bool EditorSettingsWindow::applySettings() {
     // Also the editor-wide default, so a new project starts from it
     AppSettings::setLastCMakeKit(build.cCompiler, build.cxxCompiler, build.generator);
     AppSettings::setEmsdkPath(m_emsdkOverride);
+    AppSettings::setFfmpegPath(m_ffmpegOverride);
     return AppSettings::saveSettings();
 }
 

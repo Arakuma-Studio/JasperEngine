@@ -4,8 +4,8 @@
    Rml::Vertex, Rml::ElementDocument*, ...) and members taking RmlUi types would otherwise be
    exported; --exclude-libs only covers librmlui.a's own objects. RmlUi is an engine detail
    (docs/html-ui/DESIGN.md, swappable core). The vector libraries behind it (ThorVG's tvg::,
-   LunaSVG's lunasvg::) are engine details too. */
+   LunaSVG's lunasvg::) are engine details too, as is the <video> demuxer (libwebm's mkvparser::). */
 {
     global: *;
-    local: extern "C++" { *Rml::*; *tvg::*; *lunasvg::*; };
+    local: extern "C++" { *Rml::*; *tvg::*; *lunasvg::*; *mkvparser::*; };
 };

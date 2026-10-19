@@ -402,6 +402,55 @@ namespace {
         node.children[index] = std::move(div);
     }
 
+    // <video> (phase 6): the engine element (UIVideoElement). Attributes without an equivalent
+    // and the fallback content go (Info); <source> children stay for the run-time choice and
+    // <track> is removed by its own rule; the URLs and formats are checked with the other URLs
+    // (AttributeTransform)
+    void mapVideo(TransformContext& context, HtmlNode& video){
+        static const char* const ignored[] = {"playsinline", "webkit-playsinline", "crossorigin", "controlslist", "disablepictureinpicture",
+                                              "disableremoteplayback", "x-webkit-airplay", "mediagroup"};
+        std::string droppedNames;
+        SourceRef where = video.ref;
+        for (const char* name : ignored){
+            if (const HtmlAttr* attribute = video.findAttr(name)){
+                if (droppedNames.empty() && attribute->nameRef.valid())
+                    where = attribute->nameRef;
+                droppedNames += (droppedNames.empty() ? "" : ", ") + std::string(name);
+                video.removeAttr(name);
+            }
+        }
+        if (!droppedNames.empty()){
+            context.sink.report(codes::MediaAttributeIgnored, where,
+                                "<video> attributes without an engine equivalent dropped: " + droppedNames +
+                                    (droppedNames.find("playsinline") != std::string::npos ? " (videos always play inline)" : ""),
+                                "", "", "video");
+        }
+
+        bool fallback = false;
+        SourceRef fallbackRef;
+        for (size_t i = 0; i < video.children.size();){
+            HtmlNode& child = *video.children[i];
+            const bool keep = child.is("source") || child.is("track") ||
+                              (child.kind == HtmlNode::Kind::Comment) ||
+                              (child.kind == HtmlNode::Kind::Text && trim(child.text).empty());
+            if (keep && !(child.kind == HtmlNode::Kind::Text)){
+                i++;
+                continue;
+            }
+            if (child.kind != HtmlNode::Kind::Text || !trim(child.text).empty()){
+                if (!fallback)
+                    fallbackRef = child.location();
+                fallback = true;
+            }
+            video.removeChild(&child);
+        }
+        if (fallback){
+            context.sink.report(codes::MediaAttributeIgnored, fallbackRef.valid() ? fallbackRef : video.ref,
+                                "the fallback content of <video> is not rendered (browsers that play video do not show it either)",
+                                "", "", "video");
+        }
+    }
+
     void mapLottie(TransformContext& context, HtmlNode& node, size_t index){
         HtmlNode& original = *node.children[index];
         std::unique_ptr<HtmlNode> lottie = makeReplacement(original, "lottie");
@@ -804,7 +853,11 @@ namespace {
         if (tag == "htmltemplate" || tag == "lottie" || tag == "svg")
             return true;
 
-        if (tag == "video" || tag == "audio" || tag == "iframe" || tag == "canvas" || tag == "object" || tag == "embed" ||
+        if (tag == "video"){
+            mapVideo(context, element);
+            return true;
+        }
+        if (tag == "audio" || tag == "iframe" || tag == "canvas" || tag == "object" || tag == "embed" ||
             tag == "portal" || tag == "frameset" || tag == "frame" || tag == "applet" || tag == "marquee"){
             placeholder(context, node, index, elementRow(tag));
             return false;

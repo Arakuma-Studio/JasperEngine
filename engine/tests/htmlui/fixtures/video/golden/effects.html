@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><style>
+  body { margin: 0; padding: 12px; display: flex; flex-wrap: wrap; gap: 12px; width: 560px; background: #101318; }
+  video { display: block; width: 240px; height: 135px; }
+  #gray { filter: grayscale(1) blur(2px); }
+  #fx { filter: effect(chromatic-aberration, strength 0.6); }
+  #behind { position: relative; width: 240px; height: 135px; }
+  #behind video { position: absolute; left: 0; top: 0; }
+  #glass { position: absolute; left: 40px; top: 30px; width: 160px; height: 75px; border-radius: 14px;
+           backdrop-filter: effect(frosted-glass, blur 8px); }
+</style></head><body>
+<video id="gray" src="../testcard-noaudio.webm"></video>
+<video id="fx" src="../testcard-noaudio.webm"></video>
+<div id="behind"><video id="under" src="../testcard-noaudio.webm"></video><div id="glass"></div></div>
+</body></html>
