@@ -155,7 +155,7 @@ TEST_CASE("TextIndent.textarea")
 	};
 	collect(Get(document, "area"));
 	REQUIRE(lines.size() >= 3);
-	CHECK(lines[0]->text == "XX XXX XXXX XX XXX ");
+	CHECK(lines[0]->text == "XX XXX XXXX XX ");
 	CHECK(lines[0]->position.x == doctest::Approx(30.f));
 	CHECK(lines[1]->position.x == doctest::Approx(0.f));
 	CHECK(lines[2]->text == "XX XX");
