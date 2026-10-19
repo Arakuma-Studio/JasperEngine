@@ -750,6 +750,106 @@ textureBinds, layersPushed, filtersApplied, geometryLive, geometryBytes; }` is r
   `Framebuffer::create`/`BufferRender::createBuffer` calls over 10 frames of a static
   document with filters and expects 0 after frame 1.
 
+#### 3.2.10 RmlRenderer command recording, as implemented (p6-stateful-fx)
+Why. On llvmpipe every sokol call does the driver's work inline, so RmlUi's traversal ran
+between driver memcpys that evicted the last-level cache: the engine's own time in phase 5's
+glcore gate was ~16k LL misses a frame (phase-5 §5.4, callgrind). Since this change, the calls
+between `beginFrame` and `endFrame` are **recorded**. The traversal and the effects'
+preparation then run on a warm cache, and `endFrame` **replays** the list to sokol in one
+tight loop.
+
+**Command format.** `RmlRenderer::Command` is a 48-byte POD:
+- `type` and `flag` (`uint8_t`): the call, and its enable, clip operation or blend mode;
+- `int32_t i[4]`: a rectangle, a pair of layers, a pool index and count, or an offset;
+- `float x, y`: the translation;
+- `uintptr_t a, b`: geometry, texture, shader or filter handles.
+
+The list is a `std::vector<Command>` cleared every frame with its capacity kept. Two side
+pools hold what RmlUi passes by pointer or span and frees after the call:
+- `SetTransform` matrices (`Rml::Matrix4f`);
+- `CompositeLayers` filter handles.
+
+No command allocates, and a steady-state frame allocates nothing.
+
+| Call | Recorded | Record time | Replay |
+|---|---|---|---|
+| `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | an empty geometry is dropped; the geometry is marked recorded | the texture checks (dead, not created), the draw |
+| `RenderToClipMask` | `CLIP_MASK` | `stencilRef` mirrored | the stencil clear and write |
+| `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION`, `CLIP_ENABLE` | the state mirrored | the state set |
+| `SetTransform` | `TRANSFORM` (matrix pool index, or none) | the matrix copied | `projection × matrix` |
+| `PushLayer`, `PopLayer` | `PUSH_LAYER`, `POP_LAYER` | the handle is the record-time depth (from 1) | as before (replay checks the index) |
+| `CompositeLayers` | `COMPOSITE` (layers, blend, filter span) | the filters copied; effect filters prepared | as before |
+| `SaveLayerAsTexture`, `SaveLayerIntoTexture` | `SAVE_TEXTURE` (texture, load action, offset) | scissor and size checks; the texture created and returned | the top layer copied into it |
+| `SaveLayerAsMaskImage` | `SAVE_MASK` | the `MASK_IMAGE` filter allocated and returned | the top layer copied into the blend mask |
+| `RenderShader` | `SHADER` (shader, geometry, translation) | an effect prepared, dropped when it draws nothing | the gradient or the effect draw |
+
+Not recorded:
+- `CompileGeometry`, `LoadTexture`, `GenerateTexture*`, `CompileShader` and `CompileFilter`
+  make objects and draw nothing, so they run at once;
+- `runVideoConversions` runs outside the frame's passes, before or after `beginFrame`, and
+  no pass is open while recording.
+
+**State mirrored at record time.** The scissor (enable and region), the clip mask, the
+stencil reference and the layer depth are mirrored, so `getCurrentScissor`,
+`isClipMaskEnabled` and `getStencilRef` answer during the traversal as they did when drawing
+immediately. The replay starts from `beginFrame`'s state (projection, no scissor, no clip,
+ref 0, one layer) and sets the state again command by command.
+
+**Resource lifetimes.**
+- `ReleaseGeometry` of a geometry recorded this frame waits until after the replay. If its
+  data is not in persistent storage yet, its vertices and indices are copied first into
+  frame-owned buffers, which are reused across frames: RmlUi frees the mesh on release. A
+  box shadow's geometry goes inside its callback, for example. A geometry not recorded this
+  frame is released at once and reused.
+- `ReleaseShader` and `ReleaseFilter` wait until after the replay while recording, so effect
+  instances stay live until their draws have run. An element destroyed mid-frame clears its
+  instance's `element` (`EffectRuntime::OnElementDestroy`), and the replayed effect draw is
+  skipped.
+- `ReleaseTexture` is deferred within a frame, as before.
+- The deferred releases run after the replay and before the geometry drawn this frame moves
+  to persistent storage, so released geometry is not persisted, as with immediate drawing.
+- Textures returned by `SaveLayer*` are created at record time and filled at replay. If the
+  layer cannot be made at replay (a GPU failure), the texture stays unfilled; drawing
+  immediately returned 0 in that case.
+
+**Effects.**
+- `EffectRenderer::prepareShader` and `prepareFilter` run at record time and store their
+  result in the instance (`drawKey`, `drawReady`). The work they do:
+  - `EffectRuntime::prepare`;
+  - the program;
+  - `packParams`;
+  - for filters: the layer maps through `Element::Project`, the prepass sigma and the
+    redraw context.
+- The replayed draws read only the instance; they prepare it themselves when drawing
+  immediately.
+- Stateful step and scatter passes are part of the replayed draw. They run with the replayed
+  transform and scissor, and they read the element through `toLocal` only while it exists.
+- An effect filter whose composite turns out to draw nothing (an empty layer) is still
+  prepared, so its clocks integrate that frame. Under a fixed clock nothing changes.
+
+**Frames, readbacks, views.**
+- The frame drivers are unchanged: `HtmlUIContext::render`, the test harnesses and
+  `FixtureRunner` run `beginFrame` → `Context::Render` → `endFrame`, and `endFrame` now
+  replays first.
+- Readbacks run after `endFrame` and see the replayed frame:
+  - `drawUnpremultiplied` for texture-mode documents;
+  - `readLayer` in the tests;
+  - MCP screenshots;
+  - the editor's views and the composite.
+- A dropped frame records nothing.
+- `abortFrame`, `releaseGpuResources` and the destructor drop the list and run the deferred
+  releases.
+- `RmlRenderer::setCommandRecordingForTesting(bool)` (default on): off draws immediately, the
+  reference of the equivalence tests. `getLastFrameCommandCount()` is the count of the last
+  frame.
+
+Tests (`RenderRecordTest`):
+- recording and immediate frames are byte-identical on a set of documents (layers, filters,
+  masks, box shadows, gradients, effects, transforms);
+- geometry, textures and effects released mid-frame;
+- an empty frame (no commands, layer 0 cleared);
+- a context removed between `Render` and `endFrame`.
+
 ---
 
 ### 3.3 Shaders and registration (p1-render)
