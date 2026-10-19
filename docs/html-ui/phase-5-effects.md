@@ -2156,6 +2156,37 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   The budgets are unchanged; on this host the glcore gate needs either the engine-side cost of
   document A cut by about 10-20 % (not done in p6-stateful-fx, whose change does not move it) or the gate taken on a host comparable to the
   one phase 5 measured on. Vulkan (the engine's own work) passes with a wide margin on both hosts.
+- **Profile of the glcore gate on the rebooted host (p6-stateful-fx perf, 19-20 October 2026).**
+  `EffectPerfProfile.Frames` (skipped unless `JASPER_EFFECT_PERF_PROFILE=A|B|A2`) renders 30
+  warm-up frames of a 5.4 document, then `JASPER_EFFECT_PERF_FRAMES` frames inside
+  `profiledFrames()`; `valgrind --tool=callgrind --toggle-collect='*profiledFrames*'
+  --cache-sim=yes` collects them, and a summary counts the engine's own work: the self cost of the
+  test binary's functions (engine, fork, test) less sokol (`sg_*`, `jasperengine::Sokol*`:
+  `RenderBackendTime`'s scopes), plus their calls into libc/libstdc++/libm; Mesa, LLVM and the JIT
+  code are left out. Per frame (5 frames, the VM's 8 MB last-level cache simulated):
+  - B: 154 k instructions, 2.58 k last-level misses (0.81 k code, 1.78 k data); A: 401 k
+    instructions, 15.9 k last-level misses (10.2 k code, 5.7 k data). A's misses by area: RmlUi's
+    traversal 6.6 k, `RmlRenderer` 4.9 k, the effects 3.2 k, the rest 1.1 k.
+  - Against the measured times (B 0.21-0.26 ms, A 1.31-1.49 ms) both cost about 90 ns a
+    last-level miss: the engine's own time here is its cache misses, not its instructions
+    (B runs at about 0.6 instructions a nanosecond, A at 0.3).
+  - The misses are the engine's code and data fetched again after the driver's work between two
+    engine segments: llvmpipe copies about 9 M instructions' worth of memory a frame (libc
+    memcpy/memset under `_sg_gl_draw`: a draw that samples a layer rendered in the same scene
+    makes llvmpipe rasterize that scene inside the draw), more than the 8 MB cache holds, at each
+    of A's filters and backdrops. The host before the reboot evidently kept more of it.
+  - The gate: A <= 1.5 x B + 1 ms is about 1.33 ms here; a 15 % margin needs A <= 1.16 ms, about
+    12.7 k misses, so about 3.2 k fewer misses a frame (20 %) in what only A does (the effects and
+    the layers and filters, about 8.1 k together): work shared with B (RmlUi's traversal) lowers
+    the budget by 1.5 times what it saves.
+  - Tried: preparing every effect instance of the context in one loop at the first effect draw of
+    a frame (code and instances hot across the 64 instances instead of fetched again between
+    passes). It did not help: 79.4 k misses for 5 frames before, 81.1 k after (the instances'
+    data is evicted again before their draw); reverted.
+  - Not reached: the 15 % margin. What would remove most of A's refetches is structural: record
+    the frame's render-interface calls during RmlUi's traversal into a compact command list and
+    replay them to sokol afterwards, so the engine's own work runs before the driver's instead of
+    between its passes. That is a change of `RmlRenderer`'s immediate model (P1), not done here.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
