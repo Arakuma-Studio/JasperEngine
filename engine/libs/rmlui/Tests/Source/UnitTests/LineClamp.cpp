@@ -400,6 +400,47 @@ TEST_CASE("LineClamp.inline_content")
 	}
 }
 
+TEST_CASE("LineClamp.indented")
+{
+	// 'text-indent' (P6-J2) on the clamp line: the ellipsis follows what fits in the width the indent leaves (Chromium's
+	// values, the browser-parity fixture p3/text/line-clamp-indent).
+	FixedAdvanceFontScope scope;
+	const String indented = ".i { width: 75px; -webkit-line-clamp: 1; text-indent: 20px; } ";
+
+	SUBCASE("the indented first line")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c'>XpX XX XXX</div>");
+		CHECK(clamped.EllipsisOf("c").x == 50.f);
+	}
+	SUBCASE("cut beside the indent")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c'>XpXpXpXpX XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpXp");
+		CHECK(clamped.EllipsisOf("c").x == 60.f);
+	}
+	SUBCASE("hanging: the second line is indented")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c' style='-webkit-line-clamp: 2; text-indent: 20px hanging'>XpX XX XXX XpX</div>");
+		CHECK(clamped.EllipsisOf("c").x == 50.f);
+	}
+	SUBCASE("right to left: the line ends before the indent")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c' style='-rmlui-direction: rtl'>XpX XX XXX</div>");
+		CHECK(clamped.EllipsisOf("c").x == 15.f);
+	}
+	SUBCASE("justified in what the indent leaves, then cut")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c' style='text-indent: 15px; text-align: justify'>XpX X XXXX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpX ");
+		CHECK(clamped.EllipsisOf("c").x == 65.f);
+	}
+	SUBCASE("a line of nothing but a <br>: the ellipsis at the indent")
+	{
+		Clamped clamped(scope, indented, "<div class='c i' id='c'><br/>XX</div>");
+		CHECK(clamped.EllipsisOf("c", true).x - BoxOf(clamped.document, "c").Left() == 20.f);
+	}
+}
+
 TEST_CASE("LineClamp.justified")
 {
 	// Chromium justifies the clamp line (P6-J1) before its LineTruncator runs: the ellipsis takes the place of what no
