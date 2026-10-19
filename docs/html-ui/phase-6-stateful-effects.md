@@ -624,3 +624,24 @@ glcore on llvmpipe, the remote test host (4 threads), `EffectPerfTest` Release:
 - Non-stateful pages: `GridSteadyStateAndBudgets` A 1.219 ms (budget 1.288), A2 3.528 ms (budget
   4.575); the phase-5 rows of the cost table within their bounds (highest low ×3.17, medium ×9.32).
 
+
+### 6.4 Verification (remote test host, inside `lock-b`, merged with `main` 7dfb15b33)
+- `tools/build.sh linux`: exit 0; the one warning is `engine/core/math/Matrix3.cpp`'s
+  `-Wstringop-overflow` (untouched here, shown when it recompiles).
+- `htmlui-tests` glcore: 3266 tests, 3192 passed, 73 skipped, 1 failed:
+  `EffectPerfTest.GridSteadyStateAndBudgets` (A 1.535 ms against 1.375, the engine's own work).
+  Since the host's reboot on 18 October it misses this gate for `main` too (main 4958e5f7b
+  against this branch, alternating, alone: A 1.385/1.213/1.262 ms for main, 1.509/1.459/1.264 for
+  the branch, budgets 1.28-1.31); `LP_NUM_THREADS` 1, 2, 4 or unset did not bring it under (1.229
+  to 2.099). Vulkan: 3266 tests, all passed but the 73 skips (the engine-work gate, 5.4).
+- The 18 stateful goldens pass on glcore and Vulkan from one set of files (also on the local host,
+  `LP_NUM_THREADS=2`); `EffectStatefulTest` 15 tests; `EffectLifecycleTest` 2.
+- `htmlui-editor-tests` 62 passed, 1 skipped; `run-rmlui-tests.sh` 426/426; `web` and `android`
+  build (0 warnings in web); `check_effect_shaders.sh` (1158 variants, `ui-effects --validate`
+  PASS); generators current (`gen_html_ui_support.py --check`, the Xcode syncs, the effect
+  manifests and catalogue).
+- MCP suite (`-j 2`, `LP_NUM_THREADS=2`): 577 passed, 0 failed, 14 skipped (LuaLS not installed,
+  slow gates); slow tests (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1`): the effects export and the
+  HTML UI export with their Desktop players, 12 passed (the player draws `boids` from its exported
+  paint, step and scatter variants).
+- Not verified: Windows (HLSL 5 compiled only), macOS and iOS (MSL compiled only).
