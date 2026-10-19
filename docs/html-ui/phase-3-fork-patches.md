@@ -1637,7 +1637,8 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
   centred or justified line is aligned or justified in that width before it is cut; which lines are
   indented (the first formatted one, `hanging`, `each-line` after a `<br>`) is P6-J2's. A clamp line of
   nothing but a `<br>` draws its ellipsis at the indent, aligned by `text-align-last` (it ends at a
-  forced break).
+  forced break). Merging it found that a line an open inline box goes on on (a span across a wrap or a
+  `<br>`) was not indented by `hanging` or `each-line`; P6-J2 now indents it (`db0b00b9d`).
 - **Dynamic.** A change of `-webkit-line-clamp` or the orient relays out (the display may change between
   `flow-root` and `flex`); `-webkit-line-clamp` animates discretely (`allow-discrete`: at half the
   duration). Lua's `style.webkitLineClamp` is `-webkit-line-clamp` (CSSOM's webkit-cased names).
