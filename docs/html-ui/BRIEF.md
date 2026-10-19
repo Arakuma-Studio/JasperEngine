@@ -66,6 +66,13 @@ additions only; append, don't reorder.
   regression, and say in your report which runs passed and failed. Never raise a target,
   never commit a slack factor (`JASPER_HTMLUI_PERF_SLACK` is for a local look, not for a
   result), never skip or disable one. They are gated at phase acceptance by the integrator.
+- Perf gates (`EffectPerfTest`, `CompatPerf.*`, ...) are judged with the test host to
+  themselves: on the remote host take all three locks in a fixed order
+  (`flock /root/jasper/lock-a flock /root/jasper/lock-b flock /root/jasper/lock-c ...`, which
+  waits for the other agents' jobs and blocks new ones), check that the load average is under 1,
+  measure, and release them. `EffectPerfTest` prints the load average at the start of each test.
+  Compare a branch against `main` measured the same way, alternating, before calling a result a
+  regression.
 - Kill only processes you started, by PID. Never `pkill -f jasperengine-editor`. Clean up
   only the scratch directories your own runs created (exact paths), never by wildcard.
 

@@ -2022,6 +2022,16 @@ OVERRIDES[('UIElement', 'getEffects')] = {
             'in property order, with the canonical CSS text of every parameter (universal ones included).',
             'Catalogue: jasper://docs/html-ui-effects.'],
     'overloads': [([], 'UIEffectInfo[]')]}
+# phase 6 (docs/html-ui/phase-6-stateful-effects.md 3.8): inputs and resets of stateful effects
+OVERRIDES[('UIElement', 'effectSplat')] = {
+    'doc': ['Injects a splat into the element\'s stateful effects (fluid-smoke, ink-flow, boids, ...): a push',
+            'of dye and velocity they take at their next step (logged and replayed under a fixed effect time).',
+            'x, y, radius in the effect area\'s CSS px; dx, dy px/s; effect names one effect (default: all).',
+            'Returns how many simulations took it.'],
+    'overloads': [([('splat', 'UIEffectSplat')], 'integer')]}
+OVERRIDES[('UIElement', 'effectReset')] = {
+    'doc': ['Restarts the element\'s stateful effects (or the one named) from their initial state; returns how many.'],
+    'overloads': [([('effect', 'string?')], 'integer')]}
 OVERRIDES[('UIDocument', 'setEffectTime')] = {
     'doc': ['Freezes every HTML UI effect at `seconds` of effect time (screenshots, tests); nil runs them again.',
             'Only the effects: CSS animations, transitions and anime keep running.'],
@@ -2132,7 +2142,23 @@ def html_ui_types_file():
           '---@field index integer # 1-based: the layer or function in the property',
           '---@field name string # the effect, "frosted-glass"',
           '---@field form "paint"|"filter" # paint: an image layer; filter: in filter, backdrop-filter or gradient text',
-          '---@field params table<string, string> # every parameter\'s canonical CSS text, universal ones included']
+          '---@field params table<string, string> # every parameter\'s canonical CSS text, universal ones included',
+          '---@field stateful boolean # a simulation (cost class stateful): the fields below describe it',
+          '---@field stateBytes integer # its state images\' bytes (0 before its first frame)',
+          '---@field steps integer # steps since its reset',
+          '---@field simTime number # its simulation time, seconds',
+          '---@field paused boolean # not drawn last frame (culled, hidden, removed): it does not step',
+          '',
+          '---The table of UIElement:effectSplat',
+          '---@class UIEffectSplat',
+          '---@field x number # effect area CSS px',
+          '---@field y number',
+          '---@field radius number? # CSS px, default 24',
+          '---@field dx number? # velocity, px/s',
+          '---@field dy number?',
+          '---@field color string? # a CSS colour, default "#ffffff"',
+          '---@field strength number? # default 1',
+          '---@field effect string? # one effect\'s name; default every stateful effect of the element']
     return FILE_HEADER + '\n'.join(L) + '\n'
 
 # Precise LuaLS types of parameters whose C++ type says nothing (luabridge::LuaRef becomes

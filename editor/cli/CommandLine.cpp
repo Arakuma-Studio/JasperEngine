@@ -2428,18 +2428,26 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
                 }
             }
             for (int filterForm = m->kind == fx::EffectKind::Paint ? 0 : 1; filterForm <= 1; filterForm++) {
-                const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI_EFFECT, (uint32_t)filterForm, customId);
-                ShaderData data;
-                std::string compileError, log;
-                const std::string form = filterForm ? "filter form" : "paint form";
-                if (!ShaderVariantCompiler::compile(key, ShaderBackend::GLCore, m->builtin ? nullptr : &sources, data, &compileError, &log)) {
-                    problems.push_back(m->name + " (" + form + "): " + compileError + (log.empty() ? "" : "\n" + log));
-                    continue;
-                }
-                std::vector<std::string> mismatches;
-                if (!fx::EffectManifestParser::checkReflection(*m, data, mismatches)) {
-                    for (const std::string& mismatch : mismatches)
-                        problems.push_back(m->name + " (" + form + "): " + mismatch);
+                // the draw form, and a stateful effect's step (and scatter) forms of it
+                std::vector<uint32_t> forms = {(uint32_t)filterForm};
+                for (uint32_t pass : fx::EffectManifestParser::passForms(*m, (uint32_t)filterForm))
+                    forms.push_back(pass);
+                for (uint32_t properties : forms) {
+                    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI_EFFECT, properties, customId);
+                    ShaderData data;
+                    std::string compileError, log;
+                    std::string form = filterForm ? "filter form" : "paint form";
+                    if (properties & 2u) form += ", step";
+                    if (properties & 4u) form += ", scatter";
+                    if (!ShaderVariantCompiler::compile(key, ShaderBackend::GLCore, m->builtin ? nullptr : &sources, data, &compileError, &log)) {
+                        problems.push_back(m->name + " (" + form + "): " + compileError + (log.empty() ? "" : "\n" + log));
+                        continue;
+                    }
+                    std::vector<std::string> mismatches;
+                    if (!fx::EffectManifestParser::checkReflection(*m, data, mismatches, properties)) {
+                        for (const std::string& mismatch : mismatches)
+                            problems.push_back(m->name + " (" + form + "): " + mismatch);
+                    }
                 }
             }
         }
@@ -2463,7 +2471,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
         for (const std::string& problem : problems)
             std::cerr << "error: " << problem << "\n";
         if (validate && problems.empty())
-            std::cout << "every effect compiles in both forms and matches its manifest\n";
+            std::cout << "every effect compiles in every form and matches its manifest\n";
     }
     return problems.empty() ? 0 : 1;
 }

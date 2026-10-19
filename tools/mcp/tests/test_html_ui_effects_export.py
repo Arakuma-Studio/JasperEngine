@@ -5,7 +5,8 @@ a paint background (`stripes`), gradient text (`stripes` in the filter form), a 
 (`pixelate`), a backdrop filter only inside a @media block the conversion leaves out on a desktop
 (`frosted-glass` in `(hover: none)`), a paint effect only inside a width @media block
 (`cursor-trail`), an effect only a Lua script sets through `style` (`spotlight`, both forms), and
-a project effect (`tint-wave`, with a project include). A declared but unused project effect
+a project effect (`tint-wave`, with a project include), and a stateful effect with a scatter pass
+(`boids`, phase 6: its paint, step and scatter variants). A declared but unused project effect
 (`spare-glow`), a .frag no document declares and the forms nothing uses are not exported.
 
 - `jasperengine-editor export` (CLI, on a copy of the project) ships exactly those variants in
@@ -52,6 +53,7 @@ HTML = """<html>
     <div id="trail" class="trail"></div>
     <div id="lua" class="lua"></div>
     <div id="tint" class="tint"></div>
+    <div id="flock" class="flock"></div>
 </body>
 </html>
 """
@@ -77,6 +79,8 @@ body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }
 .lua { left: 440px; top: 300px; width: 360px; height: 220px; background-color: #202840; }
 .tint { left: 840px; top: 300px; width: 360px; height: 220px; background-color: #000000;
         background-image: effect(tint-wave, color #33ff88, speed 0.5); }
+.flock { position: absolute; left: 440px; top: 540px; width: 360px; height: 160px;
+         background-image: effect(boids, count 600, color-a #8ec5ff, color-b #8ec5ff); }
 """
 
 LUA = """---@class ShippedUI : ScriptInstance
@@ -132,7 +136,8 @@ GLSL = """float local_wave(float x, float t){
 
 # what the scene needs: (shader string, without the backend suffix)
 EXPECTED = {"uieffect_fx_stripes", "uieffect_fx_stripes_Flt", "uieffect_fx_pixelate_Flt", "uieffect_fx_frosted_glass_Flt",
-            "uieffect_fx_cursor_trail", "uieffect_fx_spotlight", "uieffect_fx_spotlight_Flt", "uieffect_ui_fx_tint_wave_frag"}
+            "uieffect_fx_cursor_trail", "uieffect_fx_spotlight", "uieffect_fx_spotlight_Flt", "uieffect_ui_fx_tint_wave_frag",
+            "uieffect_fx_boids", "uieffect_fx_boids_Stp", "uieffect_fx_boids_Sct"}
 LICENSE = harness.REPO / "engine" / "shaderlib" / "effects" / "LICENSE.shaders-com.txt"
 
 
@@ -299,6 +304,10 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     red, blue, green = stripes_seen(png)
     ed.check(red > 200 and blue > 200, f"the player draws the stripes (red {red}, blue {blue} samples)")
     ed.check(green > 100, f"the player draws the project effect (green {green} samples)")
+    # the flock (a stateful effect: its step and scatter variants run in the player)
+    boids = sum(1 for y in range(int(545 * sy), int(695 * sy), 2) for x in range(int(445 * sx), int(795 * sx), 2)
+                if near(tuple(rows[y][x * ch:x * ch + 3]), (0x8e, 0xc5, 0xff), 40))
+    ed.check(boids > 40, f"the player draws the boids ({boids} samples)")
     log = str(raw.value)
     ed.check("Missing shader" not in log and "missing shader" not in log, f"no variant is missing: {log[:3000]}")
 

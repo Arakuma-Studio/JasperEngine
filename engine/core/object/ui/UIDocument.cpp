@@ -245,6 +245,10 @@ void UIDocument::setEffectTime(std::optional<double> seconds){
     htmlui::EffectClock::setFixedTime(seconds);
 }
 
+size_t UIDocument::getPendingEffectReplays(){
+    return htmlui::EffectRuntime::get().pendingReplays();
+}
+
 double UIDocument::getEffectTime(){
     return htmlui::EffectClock::now();
 }

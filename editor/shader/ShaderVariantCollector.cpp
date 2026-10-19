@@ -757,10 +757,23 @@ void editor::ShaderVariantCollector::addUiEffectKeys(const UiEffectUses& uses, s
             paintForm = false;
             filterForm = true;
         }
+        // phase 6: a stateful effect's step form (and scatter form) of each draw form it is used in
+        auto addForm = [&](bool filter){
+            const ShaderKey key = registry.shaderKey(*m, filter);
+            keys.insert(ShaderPool::normalizeKey(key));
+            if (!m->stateful())
+                return;
+            const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
+            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+            const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+            keys.insert(ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties | 2u, customId)));
+            if (m->hasScatter())
+                keys.insert(ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties | 4u, customId)));
+        };
         if (paintForm)
-            keys.insert(ShaderPool::normalizeKey(registry.shaderKey(*m, false)));
+            addForm(false);
         if (filterForm)
-            keys.insert(ShaderPool::normalizeKey(registry.shaderKey(*m, true)));
+            addForm(true);
         if (m->hasPrepass && !m->prepassThreshold.empty())
             keys.insert(ShaderPool::normalizeKey(registry.brightPassKey()));
     };

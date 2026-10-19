@@ -324,7 +324,15 @@ namespace jasperengine{
         // RGBA8 stored sRGB-encoded: the hardware decodes on sampling (before filtering) and
         // encodes on write, so a chain of them filters in linear light (the bloom chain).
         // Colour-renderable and filterable in core GLES 3.0, GL 3.0, D3D11, Metal and Vulkan
-        SRGB8A8
+        SRGB8A8,
+        // float colour attachments (phase 6, the UI effects' simulation state): renderable on
+        // GL 3.0, D3D11, Metal and Vulkan; GLES3/WebGL2 need EXT_color_buffer_float (or
+        // _half_float for RGBA16F). RGBA16F is filterable everywhere; the 32-bit ones are not on
+        // GLES3/WebGL2 without OES_texture_float_linear (sample them with NEAREST). Ask
+        // SystemRender::getFeatures() before creating one
+        RGBA16F,
+        RGBA32F,
+        R32F
     };
 
     enum class TextureFilter{

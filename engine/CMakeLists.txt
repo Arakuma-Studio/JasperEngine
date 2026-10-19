@@ -873,6 +873,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectRegistry.cpp
     core/htmlui/effects/EffectRenderer.cpp
     core/htmlui/effects/EffectRuntime.cpp
+    core/htmlui/effects/EffectSimulator.cpp
     core/htmlui/effects/EffectSyntax.cpp
     core/htmlui/effects/EffectValue.cpp
     core/io/Data.cpp

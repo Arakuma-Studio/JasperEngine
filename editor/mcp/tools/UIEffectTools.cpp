@@ -132,10 +132,18 @@ void listUiEffectsTool(const CallPtr& call) {
         if (full) {
             text += "\n  " + entry.value("example", std::string());
             for (const Json& param : entry["params"]) text += "\n  - " + paramLine(param);
+            // phase 6: a simulation's images
+            if (entry.contains("state")) {
+                std::vector<std::string> images;
+                for (const Json& st : entry["state"]["states"])
+                    images.push_back(st.value("name", std::string()) + " " + st.value("format", std::string()) + " " + st.value("size", std::string()));
+                text += "\n  state: " + joined(images, 8) + "; " + std::to_string(entry["state"]["passes"].size()) + " passes";
+            }
         } else {
             std::vector<std::string> names;
             for (const Json& param : entry["params"]) names.push_back(param.value("name", std::string()));
             entry.erase("params");
+            entry.erase("state");
             entry["param_names"] = names;
         }
         list.push_back(std::move(entry));

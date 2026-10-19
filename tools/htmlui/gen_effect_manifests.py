@@ -3,7 +3,8 @@
 # built-in UI effect (phase 5), read from engine/shaderlib/effects/<name>.frag. A shipped game
 # has no shader sources (only the compiled variants), so the effect registry reads the
 # manifests from this table. Each entry is the file's #version line, its manifest block (the
-# "// @" lines right after it) and its main include line, which is all the registry parses and
+# "// @" lines right after it) and its main include lines (main_paint/main_filter, and main_step
+# of a stateful effect), which is all the registry parses and
 # checks. Files whose name starts with '_' are internal passes and are skipped.
 #
 #   python3 tools/htmlui/gen_effect_manifests.py [--check]
@@ -19,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 EFFECTS = os.path.join(ROOT, "engine", "shaderlib", "effects")
 OUTPUT = os.path.join(ROOT, "engine", "core", "htmlui", "effects", "BuiltinEffectManifests.gen.cpp")
 
-MAIN_INCLUDE = re.compile(r'^\s*#include\s+"effects/lib/main_(paint|filter)\.glsl"\s*$')
+MAIN_INCLUDE = re.compile(r'^\s*#include\s+"effects/lib/main_(paint|filter|step)\.glsl"\s*$')
 
 
 def manifest_of(path):

@@ -13,6 +13,8 @@
 #include "effects/lib/jfx_color.glsl"
 #include "effects/lib/jfx_sdf.glsl"
 
+// (the step forms of a stateful effect have main_step.glsl's main)
+#ifndef JFX_STEP_FORM
 void main(){
     JfxContext c = jfx_context();
 #ifdef JFX_FILTER_FORM
@@ -39,5 +41,6 @@ void main(){
     frag_color = jfx_encode(jfx_paint(c)) * (v_color.a * clamp(frame.misc.x, 0.0, 1.0) * coverage);
 #endif
 }
+#endif // JFX_STEP_FORM
 
 #endif // JFX_MAIN_PAINT_GLSL

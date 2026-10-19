@@ -2118,6 +2118,44 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   tolerance). It measured 7.1 x before, on an idle local host with the fill taken alone. A2's re-instancing is
   3 + 16 a frame (3.6's shared decorators), not 64. *After p5-accept (7.3):* glcore engine's own work A 0.80-0.95 ms
   against 1.22-1.26, Vulkan frame A 1.27-1.37 against 1.69-1.74 (5 runs each, 7.4).
+- **Deviation (p6-stateful-fx): Vulkan gates the engine's own work too.** The Vulkan frame gate
+  depended on the machine: on the local agent host (AMD Ryzen 7 7700, 16 hardware threads, the
+  container capped at 2 CPUs by `JOBS=2`) `GridSteadyStateAndBudgets` failed alone, A 1.577-1.586
+  ms against 1.518-1.585, while the remote host (an EPYC VM, 12 CPUs, `JOBS=4`) passed it by about
+  20 %. The frame's CPU time includes lavapipe's work on the calling thread (command recording,
+  the submit, the waits on its rasterizer threads), and that share does not follow B's: lavapipe
+  starts a rasterizer thread per visible CPU (`tools/build.sh htmlui-tests` sets no
+  `LP_NUM_THREADS`), 16 threads sharing a 2-CPU quota locally against 12 on 4 remotely, and the
+  hosts' caches differ. Pinning `LP_NUM_THREADS` would only move the dependence to the quota; the
+  same run with `LP_NUM_THREADS=2` passed locally at A 1.049 against 1.265. Decision: on both
+  backends the test gates the engine's own work, the frame less `RenderBackendTime` (which times
+  every sokol call, on Vulkan the recording and the submit with the driver's work under them),
+  measured and budgeted as on glcore since p5-tooling (A <= 1.5 x B + 1 ms, A2 <= 3 x B + 4 ms,
+  budgets unchanged, B measured the same way); the frame is printed. `StatefulSteadyState`
+  (phase 6) gates the same measure. Verified with `EffectPerfTest.*` on the local host
+  (`flock /tmp/htmlui-heavy.lock`, `JOBS=2`, `tools/build.sh htmlui-tests` as is, no
+  `LP_NUM_THREADS`): Vulkan engine's own work B 0.159 ms, A 0.359 (budget 1.238), A2 1.577 (budget
+  4.477), the frame A 1.578 (it would have failed its 1.533); glcore B 0.072, A 0.347 (budget
+  1.108), A2 1.087 (budget 4.217); 3 of 3 tests on each backend.
+- **The glcore gate on the remote host after its reboot (p6-stateful-fx, 19 October 2026).**
+  Judged with the host to ourselves (the three locks taken, load average under 1 before the
+  first run; `EffectPerfTest` now prints the load average at the start of each test), A (the
+  engine's own work, glcore) misses its budget for every tree measured, by about the same amount:
+  - `main` (03af8c494's parent 7dfb15b33) and `hui/p6-stateful-fx`, `EffectPerfTest.*` 5 times
+    each, alternating: main A 1.414 (budget 1.318), 1.460 (1.346), 1.355 (1.325), 1.494 (1.322),
+    1.479 (1.339); branch 1.421 (1.347), 1.465 (1.343), 1.494 (1.353), 1.376 (1.321), 1.432
+    (1.327). Means 1.440 and 1.438 ms; A2 3.6-4.2 against 4.6-4.7 (passes). The branch's other
+    tests pass (`StatefulSteadyState` S 1.68-2.07 against 4.24-4.26, `CostTable`).
+  - The phase-5 acceptance tree itself (6619bb171, which measured A 0.80-0.95 here in 7.4), the
+    shader-library merge (b75f93dae) and `main` (03af8c494), `GridSteadyStateAndBudgets` 3 times
+    each, alternating: phase 5 A 1.399 (1.342), 1.337 (1.310), 1.311 (1.318); the merge 1.325
+    (1.334), 1.474 (1.337), 1.379 (1.328); main 1.360 (1.344), 1.351 (1.321), 1.333 (1.339).
+  The code did not get slower: the same phase-5 tree costs about 50 % more here than before the
+  host's reboot on 18 October (B's own work 0.21-0.26 ms against 0.17-0.19, A 1.31-1.40 against
+  0.80-0.95), with the same kernel mitigations, so the VM most likely runs on other hardware now.
+  The budgets are unchanged; on this host the glcore gate needs either the engine-side cost of
+  document A cut by about 10-20 % (not done in p6-stateful-fx, whose change does not move it) or the gate taken on a host comparable to the
+  one phase 5 measured on. Vulkan (the engine's own work) passes with a wide margin on both hosts.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject

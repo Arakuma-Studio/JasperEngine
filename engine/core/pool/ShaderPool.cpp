@@ -370,18 +370,18 @@ bool ShaderPool::getShaderCliSpec(const std::string& shaderStr, std::string& cli
     if (shaderType == ShaderType::UI_EFFECT) {
         if (underscorePos == std::string::npos)
             return false;
-        std::string basename = shaderStr.substr(underscorePos + 1);
-        const std::string filterSuffix = "_" + getShaderPropertyName(shaderType, 0, true);
-        const bool filterForm = basename.size() > filterSuffix.size() &&
-                                basename.compare(basename.size() - filterSuffix.size(), filterSuffix.size(), filterSuffix) == 0;
-        if (filterForm)
-            basename.resize(basename.size() - filterSuffix.size());
-        const std::string custom = resolveCustomShaderBasename(basename);
-        if (custom.empty())
+        std::string custom;
+        uint32_t properties = 0;
+        if (!splitUiEffectShaderStr(shaderStr.substr(underscorePos + 1), custom, properties))
             return false;
         cliSpec = typeToken + "/" + getUiEffectName(custom);
-        if (filterForm)
-            cliSpec += ":" + getShaderPropertyName(shaderType, 0, true);
+        std::string props;
+        for (int bit = 0; bit < getShaderPropertyCount(shaderType); bit++) {
+            if (properties & (1u << bit))
+                props += (props.empty() ? "" : ",") + getShaderPropertyName(shaderType, bit, true);
+        }
+        if (!props.empty())
+            cliSpec += ":" + props;
         return true;
     }
 
@@ -523,7 +523,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
         case ShaderType::HTMLUI_POST: return 7;
-        case ShaderType::UI_EFFECT: return 1;
+        // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
+        case ShaderType::UI_EFFECT: return 3;
         default:                 return 0;
     }
 }
@@ -623,6 +624,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {
             case 0: return shortName ? "Flt" : "Filter form";
+            case 1: return shortName ? "Stp" : "Step form";
+            case 2: return shortName ? "Sct" : "Scatter form";
         }
     } else if (shaderType == ShaderType::POINTS) {
         switch (bit) {
@@ -1067,24 +1070,59 @@ bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey
         const size_t kind = source.find("// @kind");
         const size_t end = kind == std::string::npos ? kind : source.find('\n', kind);
         const bool paint = kind != std::string::npos && source.substr(kind, end - kind).find("paint") != std::string::npos;
+        // phase 6: a stateful effect (// @state lines) has a step form per draw form, and a
+        // scatter form when a step pass scatters
+        const bool stateful = source.find("\n// @state") != std::string::npos;
+        bool scatter = false;
+        for (size_t at = source.find("\n// @step"); stateful && at != std::string::npos; at = source.find("\n// @step", at + 1)) {
+            const size_t lineEnd = source.find('\n', at + 1);
+            if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
+                scatter = true;
+        }
+        auto addForms = [&](uint32_t drawForm){
+            shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm, customId));
+            if (stateful)
+                shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm | 2u, customId));
+            if (scatter)
+                shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm | 4u, customId));
+        };
         if (paint)
-            shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, 0, customId));
-        shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, 1, customId));
+            addForms(0);
+        addForms(1);
     }
     return true;
+}
+
+bool ShaderPool::splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint32_t& properties){
+    // "<basename>[_<Flt|Stp|Sct, concatenated>]": the property names are capitalised, effect
+    // basenames are not, and the longest suffix that leaves a known effect wins
+    static const struct { const char* suffix; uint32_t properties; } suffixes[] = {
+        {"_FltStp", 1u | 2u}, {"_FltSct", 1u | 4u}, {"_Flt", 1u}, {"_Stp", 2u}, {"_Sct", 4u}};
+    for (const auto& candidate : suffixes) {
+        const size_t length = std::char_traits<char>::length(candidate.suffix);
+        if (basenameAndProperties.size() <= length ||
+            basenameAndProperties.compare(basenameAndProperties.size() - length, length, candidate.suffix) != 0)
+            continue;
+        const std::string custom = resolveCustomShaderBasename(basenameAndProperties.substr(0, basenameAndProperties.size() - length));
+        if (!custom.empty()) {
+            customShader = custom;
+            properties = candidate.properties;
+            return true;
+        }
+    }
+    customShader = resolveCustomShaderBasename(basenameAndProperties);
+    properties = 0;
+    return !customShader.empty();
 }
 
 bool ShaderPool::parseShaderStr(const std::string& shaderStr, ShaderKey& shaderKey){
     // a UI effect: its basename back into the custom shader it names
     if (shaderStr.rfind("uieffect_", 0) == 0) {
-        std::string basename = shaderStr.substr(9);
-        const bool filterForm = basename.size() > 4 && basename.compare(basename.size() - 4, 4, "_Flt") == 0;
-        if (filterForm)
-            basename.resize(basename.size() - 4);
-        const std::string custom = resolveCustomShaderBasename(basename);
-        if (custom.empty())
+        std::string custom;
+        uint32_t properties = 0;
+        if (!splitUiEffectShaderStr(shaderStr.substr(9), custom, properties))
             return false;
-        shaderKey = getShaderKey(ShaderType::UI_EFFECT, filterForm ? 1u : 0u, registerCustomShader(custom));
+        shaderKey = getShaderKey(ShaderType::UI_EFFECT, properties, registerCustomShader(custom));
         return true;
     }
     std::string spec;

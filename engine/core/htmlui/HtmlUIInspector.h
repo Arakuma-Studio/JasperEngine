@@ -51,6 +51,13 @@ struct InspectEffect {
     std::string name;
     std::string form;
     std::vector<std::pair<std::string, std::string>> params;
+    // phase 6: a stateful effect's simulation (its state images' bytes, steps since its reset,
+    // simulation time in s, paused: not drawn last frame)
+    bool stateful = false;
+    size_t stateBytes = 0;
+    int64_t steps = 0;
+    double simTime = 0.0;
+    bool paused = false;
 };
 
 // The state of a <video> (phase 6, p6-video): HTMLMediaElement's values, the decoder's statistics,
