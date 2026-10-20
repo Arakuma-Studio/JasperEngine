@@ -509,10 +509,10 @@ TEST(TextShaperTest, MatchesSTBTextShaping){
     Chain chain = builtInChain(24.0f);
     EXPECT_FLOAT_EQ(measure(chain, "Hello, World! AV Ta fi 0123"), 239.579987f);
 
-    // the face picked per codepoint: current face kept while it covers, else the first
+    // the face picked per codepoint: the first that has it, after a fallback the primary again
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 'A', 0), 0u);
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x0645, 0), 1u);
-    EXPECT_EQ(TextShaper::selectFace(chain.faces, ' ', 1), 1u);
+    EXPECT_EQ(TextShaper::selectFace(chain.faces, ' ', 1), 0u);
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x4E2D, 1), 0u);   // nobody: the primary's .notdef
 
     // offsets, lines and ranges
