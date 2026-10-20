@@ -174,18 +174,20 @@ TEST(STBTextCharacterizationTest, ArabicShapingBidi){
     ASSERT_NE(stb.load("", {}, 32), nullptr);
 
     TextRun run;
+    // (the spaces, digits and punctuation between Arabic words are the primary face's: each codepoint takes the first face
+    // that has it, as Chromium falls back)
     run.text = "Hello \xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd8\xa7 \xd8\xa8\xd8\xa7\xd9\x84\xd8\xb9\xd8\xa7\xd9\x84\xd9\x85 123 world";
-    EXPECT_EQ(runText(stb, run, true), "size=266x32 vertices=124 quads=31 chars=29 version=23 geometry=e69630032e324331 "
-              "carets=7013e62ef3561abb pos=19.4799995:0,33.9599991:0,40.5999985:0,47.2399979:0,62.8133316:0,"
-              "69.5866623:0,192.56604:0,184.611496:0,179.21756:0,170.29332:0,165.096344:0,160.687256:0,"
-              "156.747864:0,152.672104:0,148.263016:0,144.323624:0,136.429688:0,132.020599:0,128.081207:0,"
-              "119.566048:0,84.9333267:0,100.279991:0,115.626656:0,199.339371:0,219.859375:0,235.432709:0,"
-              "244.686035:0,251.326035:0,266.726044:0");
+    EXPECT_EQ(runText(stb, run, true), "size=272x32 vertices=124 quads=31 chars=29 version=22 geometry=a56ead26708582ad "
+              "carets=b6609a4090298b81 pos=19.4799995:0,33.9599991:0,40.5999985:0,47.2399979:0,62.8133316:0,"
+              "69.5866623:0,198.233902:0,190.279358:0,184.885422:0,175.961182:0,170.764206:0,166.355118:0,"
+              "159.581787:0,155.506027:0,151.096939:0,147.157547:0,139.263611:0,134.854523:0,130.915131:0,"
+              "122.399986:0,84.9333267:0,100.279991:0,115.626656:0,205.007233:0,225.527237:0,241.100571:0,"
+              "250.353897:0,256.993896:0,272.39389:0");
 
     // a paragraph starting with Arabic is right-to-left
     run.text = "\xd8\xb9\xd8\xb1\xd8\xa8\xd9\x8a (abc) \xd9\x84\xd8\xa7";
-    EXPECT_EQ(runText(stb, run, true), "size=112x32 vertices=60 quads=15 chars=13 version=33 geometry=428e24188e814f31 "
-              "carets=69f10e6adcda2fe3 pos=111.258194:0,103.636978:0,98.0915222:0,94.0157623:0,82.8642426:0,"
+    EXPECT_EQ(runText(stb, run, true), "size=114x32 vertices=60 quads=15 chars=13 version=32 geometry=52815618d7e697e9 "
+              "carets=975ad04066ef7396 pos=114.092133:0,106.470917:0,100.925461:0,96.8497009:0,85.6981812:0,"
               "78.9248505:0,39.7915154:0,55.1248474:0,69.4181824:0,24.9381828:0,15.5915155:0,8.81818199:0,5.5:0");
     EXPECT_EQ(atlasSignature(stb), "atlas=512x512 pixels=6bc7a85364d3d535");
 }
@@ -234,11 +236,11 @@ TEST(STBTextCharacterizationTest, MultilineWrap){
     // Arabic wraps with its final forms
     run.text = "\xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd8\xa7 \xd8\xa8\xd8\xa7\xd9\x84\xd8\xb9\xd8\xa7\xd9\x84\xd9\x85 \xd9\x85\xd8\xb1\xd8\xad\xd8\xa8\xd8\xa7 \xd8\xa8\xd8\xa7\xd9\x84\xd8\xb9\xd8\xa7\xd9\x84\xd9\x85";
     run.width = 100;
-    EXPECT_EQ(runText(stb, run, true), "size=100x20 vertices=124 quads=31 chars=27 version=38 geometry=a0458d51073845d1 "
-              "carets=6c312b081203d4e9 pos=93.7121353:0,88.7405472:0,85.3693314:0,79.7916794:0,76.5435715:0,"
-              "73.7878876:0,71.3257675:0,68.7784195:0,66.0227356:0,63.5606117:0,58.6268997:0,55.8712158:0,"
-              "53.4090958:0,48.0871239:0,45.6250038:0,40.6534119:0,37.2821999:0,31.7045479:0,28.4564419:0,"
-              "25.7007599:0,23.2386379:0,20.6912899:0,17.9356079:0,15.4734859:0,10.539773:0,7.784091:0,5.32196999:0");
+    EXPECT_EQ(runText(stb, run, true), "size=100x20 vertices=124 quads=31 chars=27 version=37 geometry=51e25aa78183803d "
+              "carets=4dd0752c8126119d pos=99.0257797:0,94.0541916:0,90.6829758:0,85.1053238:0,81.8572159:0,"
+              "79.101532:0,74.8681946:0,72.3208466:0,69.5651627:0,67.1030426:0,62.1693268:0,59.4136429:0,"
+              "56.9515228:0,51.6295509:0,47.3962173:0,42.4246254:0,39.0534134:0,33.4757614:0,30.2276535:0,"
+              "27.4719715:0,23.2386379:0,20.6912899:0,17.9356079:0,15.4734859:0,10.539773:0,7.784091:0,5.32196999:0");
 
     // newlines without wrapping, fixed size kept
     run.text = "one\ntwo\nthree";
@@ -247,7 +249,7 @@ TEST(STBTextCharacterizationTest, MultilineWrap){
     run.fixedWidth = true;
     run.fixedHeight = true;
     run.multiline = false;
-    EXPECT_EQ(runText(stb, run, true), "size=50x30 vertices=44 quads=11 chars=11 version=38 geometry=c3e0d215610d6655 "
+    EXPECT_EQ(runText(stb, run, true), "size=50x30 vertices=44 quads=11 chars=11 version=37 geometry=c3e0d215610d6655 "
               "carets=fc10512741a9a83c pos=9.73333359:0,19.1583328:0,28.2083321:0,5.58333349:20,18.4083347:20,"
               "28.1416683:20,5.58333349:40,14.9833336:40,20.6083336:40,29.6583328:40,38.7083321:40");
     EXPECT_EQ(atlasSignature(stb), "atlas=512x512 pixels=85c83b135e68734a");

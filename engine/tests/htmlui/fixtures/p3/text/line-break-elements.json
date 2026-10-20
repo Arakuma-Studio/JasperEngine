@@ -1,5 +1,5 @@
 {
  "comment": "Line breaking across element boundaries, as Chromium: words split by spans, links and padded spans hold together and wrap whole; spaces inside and outside spans; '-' before digits after a letter; ideographs; punctuation in spans.",
  "viewport": [300, 130],
- "boxes": true
+ "boxes": true, "noText": true
 }
