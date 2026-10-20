@@ -37,12 +37,12 @@ namespace TextUnicode {
 	// opening one, around joiners and glue, or before combining marks).
 	bool IsLineBreakOpportunity(Character before, Character after, Style::WordBreak word_break);
 
-	// Line clamping (fork, P6-L1): 'c' continues the cluster before it (a combining mark, a joiner, an emoji modifier, a
-	// variation selector): text is not cut before it.
+	// 'c' continues the character before it (a combining mark, a joiner, an emoji modifier, a variation selector): no
+	// strong direction of its own (FirstStrongDirection).
 	bool ContinuesCluster(Character c);
-	// Line clamping (fork, P6-L1): the direction of a run, from its first strongly directional character (Hebrew, Arabic
-	// and the other right-to-left scripts; letters of the others): 1 left-to-right, -1 right-to-left, 0 none (digits,
-	// punctuation, spaces).
+	// The direction of a run for a font engine that does not resolve bidi (FontEngineInterface::GetBidiRuns' default, fork
+	// P6-L1), from its first strongly directional character (Hebrew, Arabic and the other right-to-left scripts; letters
+	// of the others): 1 left-to-right, -1 right-to-left, 0 none (digits, punctuation, spaces).
 	int FirstStrongDirection(StringView text);
 
 	// U+00AD SOFT HYPHEN: a break opportunity that shows a hyphen when the line breaks there.
