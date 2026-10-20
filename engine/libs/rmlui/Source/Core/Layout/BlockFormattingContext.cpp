@@ -228,7 +228,7 @@ bool BlockFormattingContext::FormatBlockContainerChild(BlockContainer* parent_co
 	// Check for special formatting tags.
 	if (element->GetTagName() == "br")
 	{
-		parent_container->AddBreak();
+		parent_container->AddBreak(element);
 		return true;
 	}
 

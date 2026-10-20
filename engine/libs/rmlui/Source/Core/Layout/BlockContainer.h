@@ -110,8 +110,8 @@ public:
 	/// @param[in] handle A handle previously returned from 'AddInlineElement()'.
 	void CloseInlineElement(InlineBoxHandle handle);
 
-	// Adds a line-break to this block box.
-	void AddBreak();
+	// Adds a line-break to this block box: the <br> element 'br' (a line-clamp ellipsis alone on its line follows it).
+	void AddBreak(Element* br = nullptr);
 
 	// Estimates the static position of a hypothetical next element to be placed.
 	Vector2f GetOpenStaticPosition(Style::Display display) const;

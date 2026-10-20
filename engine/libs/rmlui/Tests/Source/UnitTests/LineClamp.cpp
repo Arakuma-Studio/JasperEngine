@@ -675,3 +675,114 @@ TEST_CASE("LineClamp.transition_is_discrete")
 		CHECK(HeightOf(clamped.document, "c") == 40.f);
 	}
 }
+
+TEST_CASE("LineClamp.grapheme_clusters")
+{
+	// The ellipsis cuts between extended grapheme clusters (UAX #29), as Chromium (the browser-parity fixture
+	// p3/text/line-clamp-graphemes, the characters Ahem's .notdef boxes, one em each).
+	FixedAdvanceFontScope scope;
+	const String one = ".g { width: 75px; -webkit-line-clamp: 1; } ";
+	SUBCASE("an emoji with a skin-tone modifier")
+	{
+		Clamped clamped(scope, one, "<div class='c g' id='c'>XpX\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbdXX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpX\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd");
+		CHECK(clamped.EllipsisOf("c").x == 50.f);
+	}
+	SUBCASE("a flag: two regional indicators")
+	{
+		Clamped clamped(scope, one, "<div class='c g' id='c'>XpXXX\xf0\x9f\x87\xab\xf0\x9f\x87\xb7\xf0\x9f\x87\xa9\xf0\x9f\x87\xaa XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpXXX");
+		CHECK(clamped.EllipsisOf("c").x == 50.f);
+	}
+	SUBCASE("an Indic conjunct: KA VIRAMA SSA")
+	{
+		Clamped clamped(scope, one, "<div class='c g' id='c'>XpXXX\xe0\xa4\x95\xe0\xa5\x8d\xe0\xa4\xb7XX XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpXXX");
+		CHECK(clamped.EllipsisOf("c").x == 50.f);
+	}
+}
+
+TEST_CASE("LineClamp.bidi")
+{
+	// The runs of the clamp line as the font engine lays them out (UAX #9), cut from the line's end as Chromium cuts a line's
+	// items: a run against the line's direction keeps its end (the browser-parity fixture p3/text/line-clamp-bidi).
+	FixedAdvanceFontScope scope;
+	const String one = ".b { width: 75px; -webkit-line-clamp: 1; } ";
+	const String rlo = "\xe2\x80\xae", pdf = "\xe2\x80\xac";
+	const String alef = "\xd7\x90", bet = "\xd7\x91", gimel = "\xd7\x92";
+	SUBCASE("left to right: a right-to-left run at the end keeps its logical end, its visual left")
+	{
+		Clamped clamped(scope, one, "<div class='c b' id='c'>XX " + rlo + "XXpp" + pdf + " XpX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XX " + rlo + "Xpp" + pdf);
+		CHECK(clamped.EllipsisOf("c").x == 60.f);
+	}
+	SUBCASE("left to right: Hebrew at the end")
+	{
+		Clamped clamped(scope, one, "<div class='c b' id='c'>XpX " + alef + bet + gimel + " XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XpX " + bet + gimel);
+		CHECK(clamped.EllipsisOf("c").x == 60.f);
+	}
+	SUBCASE("right to left: a right-to-left run on the left keeps its logical start, the kept part stays at the right")
+	{
+		Clamped clamped(scope, one, "<div class='c b' id='c' style='-rmlui-direction: rtl'>XXp " + rlo + "Xpp" + pdf + " XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == "XXp " + rlo + "Xp" + pdf);
+		CHECK(clamped.EllipsisOf("c").x == 5.f);
+	}
+	SUBCASE("right to left: a left-to-right run on the left keeps its logical end")
+	{
+		Clamped clamped(scope, one, "<div class='c b' id='c' style='-rmlui-direction: rtl'>" + alef + bet + " XXpp XX</div>");
+		CHECK(LinesOf(clamped.Get("c")).front() == alef + bet + " Xpp");
+		CHECK(clamped.EllipsisOf("c").x == 5.f);
+	}
+}
+
+TEST_CASE("LineClamp.ellipsis_style")
+{
+	// Chromium paints the ellipsis with the line's style: the block container's text shadows (not the cut run's), and no
+	// text decoration of the block's or the run's (the browser-parity fixture p3/text/line-clamp-style).
+	FixedAdvanceFontScope scope;
+	const String one = ".s { width: 75px; -webkit-line-clamp: 1; } ";
+	const auto ellipses = [&]() {
+		Vector<Vector2f> result;
+		for (size_t i = 0; i < scope.font_engine.generated.size(); i++)
+			if (scope.font_engine.generated[i] == ellipsis)
+				result.push_back(scope.font_engine.generated_positions[i]);
+		return result;
+	};
+	SUBCASE("the block's shadow, offset")
+	{
+		Clamped clamped(scope, one, "<div class='c s' id='c' style='text-shadow: 3px 2px 0 #0a0'><span style='text-shadow: none'>XpX XX XXX</span></div>");
+		const Vector<Vector2f> drawn = ellipses();
+		REQUIRE(drawn.size() == 2);
+		CHECK(drawn[1] - drawn[0] == Vector2f(3.f, 2.f)); // (the glyphs are generated first)
+	}
+	SUBCASE("the cut run's shadow is not the ellipsis's")
+	{
+		Clamped clamped(scope, one, "<div class='c s' id='c'><span style='text-shadow: 3px 2px 0 #00d'>XpX XX XXX</span></div>");
+		CHECK(ellipses().size() == 1);
+	}
+	SUBCASE("the block's shadow on an ellipsis the block draws (after an inline-block)")
+	{
+		Clamped clamped(scope, one + ".ib10 { display: inline-block; width: 10px; height: 10px; } ",
+			"<div class='c s' id='c' style='text-shadow: 3px 2px 0 #0a0'><span style='text-shadow: none'>XpX X</span><span class='ib10'></span> XX</div>");
+		const Vector<Vector2f> drawn = ellipses();
+		REQUIRE(drawn.size() == 2);
+		CHECK(drawn[1] - drawn[0] == Vector2f(3.f, 2.f)); // (the glyphs are generated first)
+	}
+}
+
+TEST_CASE("LineClamp.paint_order")
+{
+	// An ellipsis the block container draws is painted after the atomic inline it follows and its content (Chromium paints
+	// the line's items in order), before the text after it in the block flow: the order the geometry is generated in on the
+	// first render (the browser-parity fixture p3/text/line-clamp-paint-order).
+	FixedAdvanceFontScope scope;
+	Clamped clamped(scope, ".o { width: 75px; -webkit-line-clamp: 1; } .ibq { display: inline-block; width: 10px; } ",
+		"<div class='c o' id='c'><div>XpX X<span class='ibq'>Q</span> XX</div><div>RR</div></div>");
+	const StringList& generated = scope.font_engine.generated;
+	const auto index_of = [&](const String& value) { return (int)(std::find(generated.begin(), generated.end(), value) - generated.begin()); };
+	REQUIRE(index_of(ellipsis) < (int)generated.size());
+	CHECK(index_of("XpX X") < index_of(ellipsis));
+	CHECK(index_of("Q") < index_of(ellipsis));
+	CHECK(index_of(ellipsis) < index_of("RR"));
+}

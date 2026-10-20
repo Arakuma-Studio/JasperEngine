@@ -103,6 +103,16 @@ public:
 	virtual int GenerateString(RenderManager& render_manager, FontFaceHandle face_handle, FontEffectsHandle font_effects_handle, StringView string,
 		Vector2f position, ColourbPremultiplied colour, float opacity, const TextShapingContext& text_shaping_context, TexturedMeshList& mesh_list);
 
+	/// Called by RmlUi for the directional runs of a string as GenerateString lays them out (fork, P6-L1: the line-clamp
+	/// ellipsis): the Unicode bidirectional algorithm (UAX #9) with the text shaping context's direction as the paragraph's,
+	/// in visual order, left to right. Every byte of the string belongs to one run.
+	/// @param[in] string The string, one line of an element's text.
+	/// @param[in] text_shaping_context The element's text shaping context: its direction is the paragraph's.
+	/// @param[out] runs The runs, in visual order.
+	/// @note The default is one run, right to left when the string's first strong character is (an engine that does not
+	/// reorder text).
+	virtual void GetBidiRuns(StringView string, const TextShapingContext& text_shaping_context, Vector<TextBidiRun>& runs);
+
 	/// Called by RmlUi to determine if the text geometry is required to be re-generated. Whenever the returned version
 	/// is changed, all geometry belonging to the given face handle will be re-generated.
 	/// @param[in] face_handle The font handle.

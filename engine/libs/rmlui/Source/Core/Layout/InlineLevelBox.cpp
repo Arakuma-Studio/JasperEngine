@@ -5,6 +5,7 @@
 #include "../../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../../Include/RmlUi/Core/TextShapingContext.h"
 #include "../LineClampEllipsis.h"
+#include "../TextJustification.h"
 #include "../TextUnicode.h"
 #include "LayoutDetails.h"
 #include "LayoutPools.h"
@@ -242,8 +243,8 @@ void InlineLevelBox_Text::Submit(const PlacedFragment& placed_fragment)
 		text_element->SetLineClampEllipsis(MakeUnique<LineClampEllipsis>(*placed_fragment.clamp_ellipsis));
 }
 
-float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, bool line_rtl, bool first_child,
-	Vector<JustificationSpacing>* justification, float& out_shift)
+float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, float ellipsis_width, bool line_rtl,
+	bool first_child, Vector<JustificationSpacing>* justification, float& out_shift)
 {
 	RMLUI_ASSERT((size_t)handle < fragments.size());
 	out_shift = 0.f;
@@ -253,92 +254,197 @@ float InlineLevelBox_Text::TruncateForEllipsis(LayoutFragmentHandle handle, floa
 	if (text.empty() || font_face_handle == 0)
 		return first_child ? width : -1.f;
 
-	// The part on the line's start side: a run's start in the line's direction, its end against it (the visual left of an
-	// RTL run on an LTR line).
-	const int run_direction = TextUnicode::FirstStrongDirection(text);
-	const bool keep_start = (run_direction == 0 || (run_direction < 0) == line_rtl);
-
-	// The places it can be cut, between clusters ('ends[i]': the byte length of the first i + 1 clusters).
-	Vector<size_t> ends;
-	{
-		const char* p = text.data();
-		const char* end = text.data() + text.size();
-		Character previous = TextUnicode::DecodeUTF8(p, end);
-		while (p < end)
-		{
-			const char* at = p;
-			const Character c = TextUnicode::DecodeUTF8(p, end);
-			if (!TextUnicode::ContinuesCluster(c) && previous != Character(0x200D))
-				ends.push_back(size_t(at - text.data()));
-			previous = c;
-		}
-		ends.push_back(text.size());
-	}
-	const int num_clusters = (int)ends.size();
-
 	const auto& computed = text_element->GetComputedValues();
 	TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
 	FontEngineInterface* font_engine_interface = GetFontEngineInterface();
-	// The byte range of the part of 'count' clusters on the kept side.
-	const auto part_begin = [&](int count) -> size_t {
-		return (keep_start || count >= num_clusters ? 0 : ends[num_clusters - count - 1]);
-	};
-	const auto part_end = [&](int count) -> size_t { return (keep_start ? ends[count - 1] : text.size()); };
-	// The justification space of the characters in a byte range, from its start (p6-justify: a justified line is cut with
-	// the space around its characters, as Chromium cuts the expanded shape result).
+	const int size = (int)text.size();
+
+	// The places it can be cut: between extended grapheme clusters (UAX #29), as Chromium cuts a shape result.
+	Vector<TextJustification::Cluster> clusters;
+	TextJustification::GetClusters(text, clusters);
+	Vector<int> boundaries;
+	boundaries.reserve(clusters.size() + 1);
+	for (const TextJustification::Cluster& cluster : clusters)
+		boundaries.push_back(cluster.offset);
+	boundaries.push_back(size);
+
+	// The directional runs as the font engine lays them out, in visual order: Chromium's items of the line.
+	Vector<TextBidiRun> runs;
+	font_engine_interface->GetBidiRuns(text, text_shaping_context, runs);
+	if (runs.empty())
+		runs.push_back(TextBidiRun{0, size, line_rtl});
+
+	// The width of the bytes [begin, end) with the justification space of their characters.
 	Vector<JustificationSpacing> part_spacing;
-	const auto spacing_of = [&](size_t begin, size_t end) {
-		part_spacing.clear();
+	const auto spacing_of = [&](int begin, int end, Vector<JustificationSpacing>& out) {
+		out.clear();
 		if (!justification)
 			return;
 		for (const JustificationSpacing& spacing : *justification)
 		{
-			if (spacing.offset >= (int)begin && spacing.offset < (int)end)
-				part_spacing.push_back(JustificationSpacing{spacing.offset - (int)begin, spacing.before, spacing.after});
+			if (spacing.offset >= begin && spacing.offset < end)
+				out.push_back(JustificationSpacing{spacing.offset - begin, spacing.before, spacing.after});
 		}
 	};
-	const auto part_width = [&](int count) {
-		if (count <= 0)
+	const auto range_width = [&](int begin, int end) {
+		if (end <= begin)
 			return 0.f;
-		const size_t begin = part_begin(count), end = part_end(count);
-		spacing_of(begin, end);
+		spacing_of(begin, end, part_spacing);
 		text_shaping_context.justification = Span<const JustificationSpacing>(part_spacing.data(), part_spacing.size());
-		return (float)font_engine_interface->GetStringWidth(font_face_handle, StringView(text.data() + begin, text.data() + end),
-			text_shaping_context);
+		const float result =
+			(float)font_engine_interface->GetStringWidth(font_face_handle, StringView(text.data() + begin, text.data() + end), text_shaping_context);
+		text_shaping_context.justification = {};
+		return result;
 	};
 
-	// Chromium's ShapeResult::OffsetToFit: the most clusters whose width is within the space (widths grow with the count).
-	int fit = 0;
+	// Each run's width and its offset from the line's start side (the left, or the right of a right-to-left line).
+	const int num_runs = (int)runs.size();
+	Vector<float> run_widths(num_runs), run_offsets(num_runs);
+	for (int i = 0; i < num_runs; i++)
+		run_widths[i] = range_width(runs[i].begin, runs[i].end);
 	{
-		int low = 1, high = num_clusters;
-		while (low <= high)
+		float offset = 0.f;
+		for (int k = 0; k < num_runs; k++)
 		{
-			const int middle = (low + high) / 2;
-			if (part_width(middle) <= space)
-			{
-				fit = middle;
-				low = middle + 1;
-			}
-			else
-				high = middle - 1;
+			const int i = (line_rtl ? num_runs - 1 - k : k);
+			run_offsets[i] = offset;
+			offset += run_widths[i];
 		}
 	}
-	if (fit == 0 || fit == num_clusters)
+
+	// Which bytes are kept: the runs from the line's start up to the one the ellipsis follows, its part on the line's start side.
+	Vector<bool> kept(size, false);
+	const auto keep = [&](int begin, int end) {
+		for (int i = begin; i < end; i++)
+			kept[i] = true;
+	};
+	// The clusters of a run, its boundaries in [begin, end].
+	const auto run_boundaries = [&](const TextBidiRun& run) {
+		Vector<int> result;
+		for (int boundary : boundaries)
+		{
+			if (boundary >= run.begin && boundary <= run.end)
+				result.push_back(boundary);
+		}
+		if (result.empty() || result.front() != run.begin)
+			result.insert(result.begin(), run.begin);
+		if (result.back() != run.end)
+			result.push_back(run.end);
+		return result;
+	};
+
+	const int line_start_run = (line_rtl ? num_runs - 1 : 0);
+	int ellipsized = -1;
+	for (int k = 0; k < num_runs; k++)
 	{
-		if (!first_child)
-			return -1.f;
-		// The first character of a line is clipped rather than ellipsized (CSS UI 4 §5.2): one is kept.
-		fit = (fit == 0 ? 1 : num_clusters - 1);
-		if (fit <= 0)
-			fit = 1;
+		// From the line's end: the right on a left-to-right line, the left on a right-to-left one.
+		const int i = (line_rtl ? k : num_runs - 1 - k);
+		const TextBidiRun& run = runs[i];
+		const bool first = (first_child && i == line_start_run);
+		const float run_space = space - run_offsets[i];
+
+		// Starts past the line's end: left out (but the line's first), the next run is tried.
+		if (run_space + ellipsis_width <= 0.f && !first)
+			continue;
+		// It fits beside the ellipsis.
+		if (run_space >= run_widths[i])
+		{
+			ellipsized = i;
+			keep(run.begin, run.end);
+			break;
+		}
+
+		// Cut to the clusters that fit, on the line's start side: the run's start when it goes in the line's direction.
+		const bool keep_start = (run.rtl == line_rtl);
+		const Vector<int> cuts = run_boundaries(run);
+		const int num_clusters = (int)cuts.size() - 1;
+		const auto part = [&](int count, int& begin, int& end) {
+			begin = (keep_start ? run.begin : cuts[num_clusters - count]);
+			end = (keep_start ? cuts[count] : run.end);
+		};
+		// Chromium's ShapeResult::OffsetToFit: the most clusters within the space (widths grow with the count).
+		int fit = 0;
+		{
+			int low = 1, high = num_clusters;
+			while (low <= high)
+			{
+				const int middle = (low + high) / 2;
+				int begin = 0, end = 0;
+				part(middle, begin, end);
+				if (range_width(begin, end) <= run_space)
+				{
+					fit = middle;
+					low = middle + 1;
+				}
+				else
+					high = middle - 1;
+			}
+		}
+		if (fit == 0 || fit == num_clusters)
+		{
+			if (!first)
+				continue;
+			// The first character of a line is clipped rather than ellipsized (CSS UI 4 §5.2): one is kept.
+			fit = (fit == 0 ? 1 : num_clusters - 1);
+			if (fit <= 0)
+				fit = 1;
+		}
+		int begin = 0, end = 0;
+		part(fit, begin, end);
+		keep(begin, end);
+		ellipsized = i;
+		break;
+	}
+	if (ellipsized < 0)
+		return -1.f;
+	// The runs between the line's start and the cut one.
+	for (int i = 0; i < num_runs; i++)
+	{
+		if (line_rtl ? i > ellipsized : i < ellipsized)
+			keep(runs[i].begin, runs[i].end);
 	}
 
-	const float kept_width = part_width(fit);
-	const size_t begin = part_begin(fit), end = part_end(fit);
-	text = String(text.data() + begin, text.data() + end);
+	// The kept text, in logical order. The explicit directional formatting characters and marks stay (zero width): the kept
+	// text resolves to the same directions.
+	String kept_text;
+	kept_text.reserve(text.size());
+	Vector<int> new_offset(size + 1, 0);
+	{
+		const char* p = text.data();
+		const char* end = text.data() + size;
+		while (p < end)
+		{
+			const int at = int(p - text.data());
+			const Character c = TextUnicode::DecodeUTF8(p, end);
+			const int next = int(p - text.data());
+			const char32_t v = (char32_t)c;
+			const bool directional_format = (v >= 0x202A && v <= 0x202E) || (v >= 0x2066 && v <= 0x2069) || v == 0x200E || v == 0x200F ||
+				v == 0x061C;
+			for (int b = at; b < next; b++)
+				new_offset[b] = (int)kept_text.size() + (b - at);
+			if (kept[at] || directional_format)
+				kept_text.append(text, (size_t)at, (size_t)(next - at));
+		}
+		new_offset[size] = (int)kept_text.size();
+	}
 	if (justification)
-		*justification = std::move(part_spacing);
+	{
+		Vector<JustificationSpacing> kept_spacing;
+		for (const JustificationSpacing& spacing : *justification)
+		{
+			if (spacing.offset >= 0 && spacing.offset < size && kept[spacing.offset])
+				kept_spacing.push_back(JustificationSpacing{new_offset[spacing.offset], spacing.before, spacing.after});
+		}
+		*justification = std::move(kept_spacing);
+	}
+	text = std::move(kept_text);
+
+	spacing_of(0, (int)text.size(), part_spacing);
+	if (justification)
+		part_spacing = *justification;
+	text_shaping_context.justification = Span<const JustificationSpacing>(part_spacing.data(), part_spacing.size());
+	const float kept_width = (float)font_engine_interface->GetStringWidth(font_face_handle, text, text_shaping_context);
 	if (line_rtl)
 		out_shift = width - kept_width;
 	return kept_width;

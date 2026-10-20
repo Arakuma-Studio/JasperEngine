@@ -127,7 +127,7 @@ void InlineContainer::CloseInlineElement(InlineBox* inline_box)
 	}
 }
 
-void InlineContainer::AddBreak(float line_height)
+void InlineContainer::AddBreak(float line_height, Element* br)
 {
 	// Simply end the line if one is open, otherwise increment by the line height. The line after the break is one after a
 	// forced break ('each-line'), also the line an open inline box goes on on (split from the closed one, indented then).
@@ -140,7 +140,7 @@ void InlineContainer::AddBreak(float line_height)
 	{
 		// (a line of nothing but the <br>: a line for line clamping, fork P6-L1)
 		if (line_clamp)
-			CountEmptyLineForLineClamp();
+			CountEmptyLineForLineClamp(br);
 		box_cursor += line_height;
 		formatted_lines += 1;
 		if (line_clamp)
@@ -287,7 +287,7 @@ void InlineContainer::CountLineForLineClamp(LineBox* line_box)
 	line_clamp->lines_until_clamp -= 1;
 }
 
-void InlineContainer::CountEmptyLineForLineClamp()
+void InlineContainer::CountEmptyLineForLineClamp(Element* br)
 {
 	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line == 0)
 		first_past_clamp_line = (int)line_boxes.size() + 1;
@@ -312,7 +312,8 @@ void InlineContainer::CountEmptyLineForLineClamp()
 			}
 			const Vector2f line_top_left = position - parent->GetPosition() + Vector2f(0.f, box_cursor);
 			ellipsis.position = line_top_left + Vector2f(alignment_offset + (rtl ? -ellipsis.width : 0.f), root_inline_box.GetHeightAboveBaseline());
-			LineClampAccess::SetBlockEllipsis(block, &ellipsis);
+			// (painted after the <br>, or after the block's own content when there is no element to follow)
+			LineClampAccess::SetBlockEllipsis(block, &ellipsis, br ? br : block);
 		}
 	}
 	line_clamp->lines_until_clamp -= 1;

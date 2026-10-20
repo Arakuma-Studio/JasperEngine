@@ -303,8 +303,9 @@ void ElementText::OnRender()
 	if (!render)
 		return;
 
+	const bool transformed = (GetTransformState() && GetTransformState()->GetTransform());
 	if (!shadows.empty())
-		RenderShadows(render_manager, translation);
+		RenderShadowList(render_manager, shadows, translation, transformed);
 
 	// Underline and overline under the text, line-through over it.
 	if (decoration_under)
@@ -315,12 +316,21 @@ void ElementText::OnRender()
 
 	if (decoration_over)
 		decoration_over.Render(translation);
+
+	// The line-clamp ellipsis (fork, P6-L1) after the text, its shadows first: Chromium paints it after the item it follows,
+	// with the block container's text shadows and no decoration.
+	if (!line_clamp_ellipsis_geometry.empty())
+	{
+		if (!line_clamp_ellipsis_shadows.empty())
+			RenderShadowList(render_manager, line_clamp_ellipsis_shadows, translation, transformed);
+		for (const TexturedGeometry& part : line_clamp_ellipsis_geometry)
+			part.geometry.Render(translation, part.texture);
+	}
 }
 
-void ElementText::RenderShadows(RenderManager& render_manager, Vector2f translation)
+void ElementText::RenderShadowList(RenderManager& render_manager, Vector<Shadow>& shadows, Vector2f translation, bool transformed)
 {
 	const Rectanglei initial_scissor_region = render_manager.GetScissorRegion();
-	const bool transformed = (GetTransformState() && GetTransformState()->GetTransform());
 
 	// The first shadow is painted on top (CSS Text Decoration 3 §4): draw them from the last.
 	for (auto it = shadows.rbegin(); it != shadows.rend(); ++it)
@@ -773,16 +783,12 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 		}
 	}
 
-	// The line-clamp ellipsis (fork, P6-L1), in its block container's font and colour, after its line's text.
+	// The line-clamp ellipsis (fork, P6-L1), in its block container's font, colour and text shadows, after its line's text.
+	line_clamp_ellipsis_geometry.clear();
+	line_clamp_ellipsis_shadows.clear();
 	if (line_clamp_ellipsis && line_clamp_ellipsis_line >= 0 && line_clamp_ellipsis_line < (int)lines.size())
-	{
-		const LineClampEllipsis& ellipsis = *line_clamp_ellipsis;
-		const TextShapingContext ellipsis_shaping_context{ellipsis.language, ellipsis.direction, ellipsis.font_kerning, ellipsis.letter_spacing,
-			ellipsis.word_spacing};
-		font_engine_interface->GenerateString(render_manager, ellipsis.font_face_handle, 0, ellipsis.text,
-			lines[line_clamp_ellipsis_line].position + ellipsis.position, ellipsis.colour.ToPremultiplied(opacity), opacity, ellipsis_shaping_context,
-			mesh_list);
-	}
+		LineClamp::GenerateEllipsis(render_manager, *line_clamp_ellipsis, lines[line_clamp_ellipsis_line].position + line_clamp_ellipsis->position,
+			opacity, line_clamp_ellipsis_geometry, line_clamp_ellipsis_shadows);
 
 	// Apply the new geometry and textures. Reuse the old geometry if the mesh matches, which can be relatively common
 	// where the layout is changed in a way that does not visually affect this element.

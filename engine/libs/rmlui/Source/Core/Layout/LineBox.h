@@ -252,6 +252,8 @@ private:
 	// drawn by the block container), its baseline origin at 'position' (relative to the line, before 'text-align').
 	LineClampEllipsis* clamp_ellipsis = nullptr;
 	FragmentIndex clamp_ellipsis_fragment = 0;
+	// The atomic inline a block container's ellipsis follows (painted after it).
+	Element* clamp_ellipsis_after = nullptr;
 	// The line ends at the clamp point (SetLineClampEllipsis): it is made room for the ellipsis in when closed, and its
 	// fragments are submitted with their clamp state.
 	bool clamp_truncated = false;

@@ -76,6 +76,24 @@ public:
 		return line.justification_index < 0 ? Span<const JustificationSpacing>() : Span<const JustificationSpacing>(justifications[line.justification_index]);
 	}
 
+	/// Text geometry with its texture.
+	struct TexturedGeometry {
+		Geometry geometry;
+		Texture texture;
+	};
+	/// The geometry of one 'text-shadow' of a text.
+	struct Shadow {
+		Vector<TexturedGeometry> geometry; // the text in the shadow's colour, offset
+		Geometry decoration;               // and its decoration lines
+		float blur = 0.f;                  // CSS blur radius
+		Rectanglef ink;                    // what it covers before blurring, in the element's space
+		CompiledFilter filter;             // the blur, compiled for the render manager when first drawn
+	};
+	/// Draws text shadows, the last one first (the first is on top, CSS Text Decoration 3 §4); a blurred shadow through a
+	/// layer and the blur filter. Used by the text and by the line-clamp ellipsis a block container draws (fork, P6-L1).
+	/// @param[in] transformed The geometry is drawn under a transform (no scissor from the shadows' ink then).
+	static void RenderShadowList(RenderManager& render_manager, Vector<Shadow>& shadows, Vector2f translation, bool transformed);
+
 protected:
 	void OnRender() override;
 
@@ -92,8 +110,6 @@ private:
 	// Generates the decoration lines of 'text-decoration' (phase 3: underline and overline into 'under', drawn below the
 	// text, line-through into 'over', drawn above it), in the given colour and offset from the lines.
 	void GenerateDecoration(Mesh& under, Mesh& over, FontFaceHandle font_face_handle, ColourbPremultiplied decoration_colour, Vector2f offset);
-	// Draws the text shadows behind the text, the last one first; a blurred shadow through a layer and the blur filter.
-	void RenderShadows(RenderManager& render_manager, Vector2f translation);
 
 	String text;
 
@@ -101,10 +117,6 @@ private:
 	// The spacing of the justified lines (Line::justification_index).
 	Vector<Vector<JustificationSpacing>> justifications;
 
-	struct TexturedGeometry {
-		Geometry geometry;
-		Texture texture;
-	};
 	Vector<TexturedGeometry> geometry;
 
 	// The decoration lines: underline and overline are drawn under the text, line-through over it (CSS Text Decoration 3).
@@ -112,18 +124,14 @@ private:
 	Geometry decoration_over;
 
 	// The shadows of 'text-shadow' (phase 3), in their declared order.
-	struct Shadow {
-		Vector<TexturedGeometry> geometry; // the text in the shadow's colour, offset
-		Geometry decoration;               // and its decoration lines
-		float blur = 0.f;                  // CSS blur radius
-		Rectanglef ink;                    // what it covers before blurring, in the element's space
-		CompiledFilter filter;             // the blur, compiled for the render manager when first drawn
-	};
 	Vector<Shadow> shadows;
 
-	// The line-clamp ellipsis after one of the lines (fork, P6-L1), and that line.
+	// The line-clamp ellipsis after one of the lines (fork, P6-L1), and that line; its glyphs and the block container's
+	// text shadows, drawn after the text as Chromium paints the ellipsis after the item it follows.
 	UniquePtr<LineClampEllipsis> line_clamp_ellipsis;
 	int line_clamp_ellipsis_line = -1;
+	Vector<TexturedGeometry> line_clamp_ellipsis_geometry;
+	Vector<Shadow> line_clamp_ellipsis_shadows;
 
 	ColourbPremultiplied colour;
 	float opacity;

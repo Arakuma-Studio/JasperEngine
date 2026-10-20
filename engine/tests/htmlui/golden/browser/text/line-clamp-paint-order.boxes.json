@@ -1,0 +1,60 @@
+{
+ "fixture": "text/line-clamp-paint-order.html",
+ "viewport": [
+  180,
+  100
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "span-background",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "inline-block-overflow",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "next-block",
+    "tag": "div",
+    "x": 180,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "positioned",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "br-next-block",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 75,
+    "h": 40
+   },
+   {
+    "id": "text-span-background",
+    "tag": "div",
+    "x": 95,
+    "y": 50,
+    "w": 75,
+    "h": 30
+   }
+  ]
+ }
+}

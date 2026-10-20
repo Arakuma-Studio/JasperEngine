@@ -1,0 +1,108 @@
+{
+ "fixture": "text/line-clamp-style.html",
+ "viewport": [
+  350,
+  100
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "block-shadow",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "run-shadow",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "block-underline",
+    "tag": "div",
+    "x": 180,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "run-underline",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "closed-underline",
+    "tag": "div",
+    "x": 10,
+    "y": 40,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "line-through",
+    "tag": "div",
+    "x": 95,
+    "y": 40,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "overline",
+    "tag": "div",
+    "x": 180,
+    "y": 40,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "block-drawn-shadow",
+    "tag": "div",
+    "x": 265,
+    "y": 40,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "closed-shadow",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "block-drawn-underline",
+    "tag": "div",
+    "x": 95,
+    "y": 70,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "negative-shadow",
+    "tag": "div",
+    "x": 180,
+    "y": 70,
+    "w": 75,
+    "h": 20
+   },
+   {
+    "id": "inherited-shadow",
+    "tag": "div",
+    "x": 265,
+    "y": 70,
+    "w": 75,
+    "h": 20
+   }
+  ]
+ }
+}

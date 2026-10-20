@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generates the Unicode tables of the fork's text code (phase-3 spec 3.10, p3-text).
 
-    Utilities/gen_case_tables.py [--ucd DIR] [--version 16.0.0]
+    Utilities/gen_case_tables.py [--ucd DIR] [--version 16.0.0] [--check]
 
 writes, next to this script's Source/Core:
 
@@ -20,7 +20,7 @@ writes, next to this script's Source/Core:
                                 below, and the emoji of emoji-data.txt and the RGI sequences), the
                                 cursive scripts it does not space (Scripts.txt), the default-ignorable
                                 code points (DerivedCoreProperties.txt) and the grapheme cluster breaks
-                                (GraphemeBreakProperty.txt, Extended_Pictographic)
+                                (GraphemeBreakProperty.txt, Extended_Pictographic, Indic_Conjunct_Break)
 
 The Unicode Character Database files (UnicodeData.txt, SpecialCasing.txt, LineBreak.txt, Scripts.txt,
 DerivedCoreProperties.txt, auxiliary/GraphemeBreakProperty.txt, emoji/emoji-data.txt and the emoji
@@ -32,6 +32,7 @@ The output is deterministic: run it again after a Unicode update and commit both
 import argparse
 import os
 import sys
+import tempfile
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -289,9 +290,12 @@ CJK_SYMBOL_RANGES = [
 # Character::IsCursiveScript: the scripts whose letters join (no letter spacing, no inter-character
 # justification inside them)
 CURSIVE_SCRIPTS = ("Arabic", "Hanifi_Rohingya", "Mandaic", "Mongolian", "Nko", "Phags_Pa", "Syriac")
-# The grapheme cluster break classes the justification's cluster iteration tells apart (UAX #29);
-# Extended_Pictographic is listed beside them (GB11)
-GRAPHEME_CLASSES = ["Other", "Extend", "ZWJ", "SpacingMark", "Prepend", "Regional_Indicator", "L", "V", "T", "LV", "LVT", "ExtPict"]
+# The grapheme cluster break classes of UAX #29 (every Grapheme_Cluster_Break value); Extended_Pictographic is listed
+# beside them (GB11)
+GRAPHEME_CLASSES = ["Other", "CR", "LF", "Control", "Extend", "ZWJ", "SpacingMark", "Prepend", "Regional_Indicator", "L", "V", "T",
+                    "LV", "LVT", "ExtPict"]
+# Indic_Conjunct_Break (DerivedCoreProperties.txt, GB9c)
+INCB_VALUES = ["Consonant", "Extend", "Linker"]
 
 
 def property_codes(path, wanted):
@@ -328,6 +332,36 @@ def property_classes(path, wanted):
     return classes
 
 
+def indic_conjunct_break(path):
+    """'code(..code) ; InCB; Value' lines -> {code point: value}"""
+    classes = {}
+    for line in read_lines(path):
+        fields = [f.strip() for f in line.split(";")]
+        if len(fields) < 3 or fields[1] != "InCB" or fields[2] not in INCB_VALUES:
+            continue
+        code = fields[0]
+        if ".." in code:
+            a, b = code.split("..")
+            span = range(int(a, 16), int(b, 16) + 1)
+        else:
+            span = [int(code, 16)]
+        for c in span:
+            classes[c] = fields[2]
+    return classes
+
+
+def class_runs(classes):
+    """{code point: value} -> [[first, last, value]] of consecutive code points with the same value"""
+    runs = []
+    for c in sorted(classes):
+        cls = classes[c]
+        if runs and runs[-1][1] + 1 == c and runs[-1][2] == cls:
+            runs[-1][1] = c
+        else:
+            runs.append([c, c, cls])
+    return runs
+
+
 def sequence_codes(path, kinds):
     """the code points of the emoji sequences of the given types ('cp cp ... ; type ; ...')"""
     codes = set()
@@ -358,18 +392,12 @@ def justification_tables(paths):
     grapheme = property_classes(paths["GraphemeBreakProperty.txt"], tuple(GRAPHEME_CLASSES[1:-1]))
     for c in ext_pict:
         grapheme.setdefault(c, "ExtPict")
-    runs = []
-    for c in sorted(grapheme):
-        cls = grapheme[c]
-        if runs and runs[-1][1] + 1 == c and runs[-1][2] == cls:
-            runs[-1][1] = c
-        else:
-            runs.append([c, c, cls])
-    return ranges_of(cjk), ranges_of(cursive), ranges_of(ignorable), runs
+    incb = indic_conjunct_break(paths["DerivedCoreProperties.txt"])
+    return ranges_of(cjk), ranges_of(cursive), ranges_of(ignorable), class_runs(grapheme), class_runs(incb)
 
 
 def write_justification_tables(tables, version, out_path):
-    cjk, cursive, ignorable, grapheme = tables
+    cjk, cursive, ignorable, grapheme, incb = tables
 
     def write_ranges(f, name, ranges):
         f.write("static const CodepointRange %s[] = {\n" % name)
@@ -391,24 +419,44 @@ def write_justification_tables(tables, version, out_path):
         for i in range(0, len(grapheme), 4):
             f.write("\t" + " ".join("{0x%05X, 0x%05X, GraphemeBreak::%s}," % (a, b, c) for a, b, c in grapheme[i:i + 4]) + "\n")
         f.write("};\n")
-    return len(cjk), len(cursive), len(ignorable), len(grapheme)
+        f.write("\n// Indic_Conjunct_Break values other than None (DerivedCoreProperties.txt, GB9c): {first, last, value}, sorted.\n")
+        f.write("static const IndicConjunctBreakRange indic_conjunct_break_ranges[] = {\n")
+        for i in range(0, len(incb), 4):
+            f.write("\t" + " ".join("{0x%05X, 0x%05X, IndicConjunctBreak::%s}," % (a, b, c) for a, b, c in incb[i:i + 4]) + "\n")
+        f.write("};\n")
+    return len(cjk), len(cursive), len(ignorable), len(grapheme), len(incb)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--ucd", help="directory holding the Unicode files listed above")
     parser.add_argument("--version", default="16.0.0", help="Unicode version to download (default 16.0.0)")
+    parser.add_argument("--check", action="store_true", help="write nothing: exit 1 when a generated table differs from Source/Core's")
     args = parser.parse_args()
 
+    out_dir = tempfile.mkdtemp(prefix="gen_case_tables-") if args.check else SOURCE
     paths = ucd_paths(args)
     data = unicode_data(paths["UnicodeData.txt"])
     special = special_casing(paths["SpecialCasing.txt"])
-    simple, full, words = write_case_tables(data, special, args.version, os.path.join(SOURCE, "UnicodeCaseTables.inl"))
-    runs = write_line_break_tables(line_break_classes(paths["LineBreak.txt"]), args.version, os.path.join(SOURCE, "UnicodeLineBreakTables.inl"))
+    simple, full, words = write_case_tables(data, special, args.version, os.path.join(out_dir, "UnicodeCaseTables.inl"))
+    runs = write_line_break_tables(line_break_classes(paths["LineBreak.txt"]), args.version, os.path.join(out_dir, "UnicodeLineBreakTables.inl"))
     justification = write_justification_tables(justification_tables(paths), args.version,
-                                               os.path.join(SOURCE, "UnicodeJustificationTables.inl"))
+                                               os.path.join(out_dir, "UnicodeJustificationTables.inl"))
+    if args.check:
+        stale = []
+        for name in ("UnicodeCaseTables.inl", "UnicodeLineBreakTables.inl", "UnicodeJustificationTables.inl"):
+            with open(os.path.join(out_dir, name), "rb") as generated, open(os.path.join(SOURCE, name), "rb") as current:
+                if generated.read() != current.read():
+                    stale.append(name)
+            os.remove(os.path.join(out_dir, name))
+        os.rmdir(out_dir)
+        if stale:
+            print("gen_case_tables: stale: " + ", ".join(stale))
+            return 1
+        print("gen_case_tables: the tables are current")
+        return 0
     print("gen_case_tables: simple %s, full %s, %d word ranges, %d line-break ranges" % (simple, full, words, runs))
-    print("gen_case_tables: justification: %d CJK, %d cursive, %d default-ignorable, %d grapheme ranges" % justification)
+    print("gen_case_tables: justification: %d CJK, %d cursive, %d default-ignorable, %d grapheme, %d Indic conjunct ranges" % justification)
     return 0
 
 
