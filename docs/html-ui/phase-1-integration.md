@@ -764,10 +764,13 @@ tight loop.
 - `float x, y`: the translation;
 - `uintptr_t a, b`: geometry, texture, shader or filter handles.
 
-The list is a `std::vector<Command>` cleared every frame with its capacity kept. Two side
-pools hold what RmlUi passes by pointer or span and frees after the call:
+The list is a `std::vector<Command>` cleared every frame with its capacity kept. Three side
+pools hold what does not fit a command, or what RmlUi passes by pointer or span and frees
+after the call:
 - `SetTransform` matrices (`Rml::Matrix4f`);
-- `CompositeLayers` filter handles.
+- `CompositeLayers` filter handles;
+- `SetScissorRegion` regions in document px (the stateful passes read them; the draws read the
+  target-px rectangle in the command).
 
 No command allocates, and a steady-state frame allocates nothing.
 
@@ -775,7 +778,7 @@ No command allocates, and a steady-state frame allocates nothing.
 |---|---|---|---|
 | `RenderGeometry` | `GEOMETRY` (geometry, texture, translation) | the texture checked (dead, not created; a texture handed to RmlUi becomes the renderer's); the geometry not read | an empty geometry skipped, the draw |
 | `RenderToClipMask` | `CLIP_MASK` | an empty geometry dropped, `stencilRef` mirrored | the stencil clear and write |
-| `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION` (document px, and target px in `a`, `b`), `CLIP_ENABLE` | the state mirrored; the region converted to target px once | the state set |
+| `EnableScissorRegion`, `SetScissorRegion`, `EnableClipMask` | `SCISSOR_ENABLE`, `SCISSOR_REGION` (target px; the document-px region in the pool), `CLIP_ENABLE` | the state mirrored; the region converted to target px once | the state set |
 | `SetTransform` | `TRANSFORM` (matrix pool index, or none) | the matrix copied | `projection × matrix` |
 | `PushLayer`, `PopLayer` | `PUSH_LAYER`, `POP_LAYER` | the handle is the record-time depth (from 1) | as before (replay checks the index) |
 | `CompositeLayers` | `COMPOSITE` (layers, blend, filter span) | the filters copied; effect filters prepared | as before |

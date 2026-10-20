@@ -967,28 +967,19 @@ void RmlRenderer::EnableScissorRegion(bool enable){
         recordCommand(CommandType::SCISSOR_ENABLE).flag = enable ? 1 : 0;
 }
 
-namespace {
-    // a target-px rectangle in a command's two handles (SCISSOR_REGION)
-    uintptr_t packCorner(int x, int y){
-        return (uintptr_t)(uint32_t)x | ((uint64_t)(uint32_t)y << 32);
-    }
-    Rml::Vector2i unpackCorner(uintptr_t packed){
-        return Rml::Vector2i((int)(int32_t)(uint32_t)(packed & 0xFFFFFFFFu), (int)(int32_t)(uint32_t)((uint64_t)packed >> 32));
-    }
-}
-
 void RmlRenderer::SetScissorRegion(Rml::Rectanglei region){
     scissorRegion = region;
     // in target px once, not at every draw
     scissorTarget = toTargetRect(region, contextSize, targetSize);
     if (recording){
+        // the draws read the target rectangle; the document one (the stateful passes') goes to the pool
         Command& command = recordCommand(CommandType::SCISSOR_REGION);
-        command.i[0] = region.Left();
-        command.i[1] = region.Top();
-        command.i[2] = region.Right();
-        command.i[3] = region.Bottom();
-        command.a = packCorner(scissorTarget.Left(), scissorTarget.Top());
-        command.b = packCorner(scissorTarget.Right(), scissorTarget.Bottom());
+        command.i[0] = scissorTarget.Left();
+        command.i[1] = scissorTarget.Top();
+        command.i[2] = scissorTarget.Right();
+        command.i[3] = scissorTarget.Bottom();
+        command.a = commandRects.size();
+        commandRects.push_back(region);
     }
 }
 
@@ -2504,8 +2495,8 @@ void RmlRenderer::replayCommands(){
             scissorEnabled = c.flag != 0;
             break;
         case CommandType::SCISSOR_REGION:
-            scissorRegion = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
-            scissorTarget = Rml::Rectanglei::FromCorners(unpackCorner(c.a), unpackCorner(c.b));
+            scissorTarget = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
+            scissorRegion = commandRects[c.a];
             break;
         case CommandType::CLIP_ENABLE:
             clipMaskEnabled = c.flag != 0;
@@ -2552,6 +2543,7 @@ void RmlRenderer::finishRecording(){
     commands.clear();
     commandMatrices.clear();
     commandFilters.clear();
+    commandRects.clear();
     // releases deferred while recording, in their order
     for (size_t i = 0; i < deferredReleases.size(); i++){
         const DeferredRelease release = deferredReleases[i];
@@ -2645,6 +2637,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         commands.clear();
         commandMatrices.clear();
         commandFilters.clear();
+        commandRects.clear();
     }
     return true;
 }

@@ -477,6 +477,7 @@ namespace jasperengine {
         std::vector<Command> commands;
         std::vector<Rml::Matrix4f> commandMatrices;
         std::vector<Rml::CompiledFilterHandle> commandFilters;
+        std::vector<Rml::Rectanglei> commandRects;     // SetScissorRegion's (document px)
         std::vector<DeferredRelease> deferredReleases;
         std::vector<KeptMesh> keptMeshes;
         size_t keptMeshesUsed = 0;
