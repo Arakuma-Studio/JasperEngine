@@ -2154,7 +2154,7 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   host's reboot on 18 October (B's own work 0.21-0.26 ms against 0.17-0.19, A 1.31-1.40 against
   0.80-0.95), with the same kernel mitigations, so the VM most likely runs on other hardware now.
   The budgets are unchanged; on this host the glcore gate needs either the engine-side cost of
-  document A cut by about 10-20 % (not done in p6-stateful-fx, whose change does not move it) or the gate taken on a host comparable to the
+  document A cut by about 10-20 % (done since by record-then-replay, below) or the gate taken on a host comparable to the
   one phase 5 measured on. Vulkan (the engine's own work) passes with a wide margin on both hosts.
 - **Profile of the glcore gate on the rebooted host (p6-stateful-fx perf, 19-20 October 2026).**
   `EffectPerfProfile.Frames` (skipped unless `JASPER_EFFECT_PERF_PROFILE=A|B|A2`) renders 30
@@ -2186,7 +2186,67 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
   - Not reached: the 15 % margin. What would remove most of A's refetches is structural: record
     the frame's render-interface calls during RmlUi's traversal into a compact command list and
     replay them to sokol afterwards, so the engine's own work runs before the driver's instead of
-    between its passes. That is a change of `RmlRenderer`'s immediate model (P1), not done here.
+    between its passes. That is a change of `RmlRenderer`'s immediate model (P1), done next.
+- **Record-then-replay (p6-stateful-fx, 20 October 2026; phase-1 spec 3.2.10).** `RmlRenderer`
+  records the frame's render-interface calls during RmlUi's traversal, and the effects prepare
+  at record time. `endFrame` replays the commands to sokol in one loop.
+  - Every frame is byte-identical to the frame drawn immediately (`RenderRecordTest`), and every
+    golden image of both backends is identical to main's (7.4 runs below).
+  - callgrind, the engine's own work per frame (5 frames, the same summary as above), main →
+    branch:
+
+    | Document | Instructions | Last-level misses |
+    |---|---|---|
+    | A | 400.7 k → 404.9 k (+1.0 %) | 15.89 k → 10.82 k (−32 %) |
+    | B | 154.3 k → 155.3 k (+0.7 %) | 2.58 k → 2.63 k (+1.8 %) |
+    | A2 | 4.777 M → 4.833 M (+1.2 %) | 32.5 k → 20.2 k (−38 %) |
+
+    By area in A:
+    - RmlUi's traversal fell from 6.6 k to 2.8 k misses, now on a warm cache;
+    - the effects fell from 3.2 k to 2.1 k;
+    - `RmlRenderer`, now the replay, went from 4.9 k to 4.9 k: its code is fetched again after
+      each of the driver's passes, as before.
+  - The cost of recording a simple document (B: 488 geometry commands a frame):
+    - about 3.1 k instructions to record them (some 6 a command);
+    - 1.0 k for their texture checks, which moved from the draw;
+    - 1.0 k for the replay loop;
+    - about 50 last-level misses to write the list (23 KB);
+    - in all, net of what moved, +1.0 k instructions a frame (+0.7 %).
+  - Timing on the remote host with the host to ourselves:
+    - the three locks were taken and the load was 0.80 before the first run (the load averages
+      the tests print afterwards are our own runs');
+    - `GridSteadyStateAndBudgets` and `StatefulSteadyState` ran alternately on main (537273aa5)
+      and the branch;
+    - budgets unchanged.
+
+    glcore, the engine's own work, 5 runs each:
+
+    | | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Mean |
+    |---|---|---|---|---|---|---|
+    | main A (budget) | 1.389 (1.340) | 1.380 (1.320) | 1.332 (1.335) | 1.391 (1.325) | 1.391 (1.314) | 1.377 |
+    | branch A (budget) | 0.965 (1.252) | 0.976 (1.259) | 0.979 (1.273) | 1.002 (1.294) | 1.006 (1.285) | 0.986 |
+    | branch margin | 22.9 % | 22.5 % | 23.1 % | 22.6 % | 21.7 % | |
+
+    - main fails A 4 times in 5. The branch passes every run, all of them by more than the 15 %
+      asked for.
+    - B's own work is lower on the branch too: 0.168-0.196 ms against 0.209-0.227. The budgets
+      follow it (1.252-1.294 against 1.314-1.340).
+    - A2: main 3.49-3.87 ms, the branch 2.45-2.80 (budgets 4.51-4.68).
+    - `StatefulSteadyState` S: main 1.51-1.73 ms, the branch 1.45-1.62 (budget 4.18-4.26).
+    - The frame (driver included) is unchanged: A about 20.1 ms on main and 20.1-20.6 on the
+      branch, B 0.89-0.97 against 0.83-0.92.
+
+    Vulkan (lavapipe), 3 runs each:
+    - the engine's own work, A: main 0.432, 0.440, 0.472 ms; the branch 0.424, 0.421, 0.385
+      (budgets 1.28-1.30);
+    - A2: main 2.47-2.57 ms, the branch 2.28-2.55;
+    - S: main 0.365-0.383 ms, the branch 0.366-0.373;
+    - the frame, A: main 1.669-1.774 ms, the branch 1.539-1.739;
+    - the frame, B: main 0.575-0.615 ms, the branch 0.516-0.555;
+    - the frame, A2: main 4.12-4.45 ms, the branch 4.13-4.87 (one run at 4.87, the other two
+      4.33 and 4.13).
+
+    Nothing regresses beyond the runs' spread.
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject

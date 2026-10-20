@@ -854,6 +854,9 @@ Tests (`RenderRecordTest`):
 - an empty frame (no commands, layer 0 cleared);
 - a context removed between `Render` and `endFrame`.
 
+Measured (instructions, last-level misses, the glcore gate on the remote host): phase-5 §5.4,
+"Record-then-replay".
+
 ---
 
 ### 3.3 Shaders and registration (p1-render)
