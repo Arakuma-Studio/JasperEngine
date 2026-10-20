@@ -13,8 +13,14 @@ writes, next to this script's Source/Core:
                                 takes the simple titlecase mapping, as Chromium does; the
                                 letters and digits that make up words (general categories L, M,
                                 N)
-    UnicodeLineBreakTables.inl  line-break opportunities: the UAX #14 classes the fork's line
-                                breaker tells apart (LineBreak.txt), every other code point is AL
+    UnicodeLineBreakTables.inl  line-break opportunities (UAX #14, every rule): the line-break
+                                classes (LineBreak.txt, LB1 applied, QU split by General_Category
+                                Pi and Pf), East_Asian_Width F, W and H (EastAsianWidth.txt) and
+                                the unassigned Extended_Pictographic code points (LB30b)
+    ../Tests/Source/UnitTests/LineBreakTestData.inl  the strings of LineBreakTest.txt with UAX #14's
+                                breaks and Chromium 153's, measured by tools/htmlui/linebreak-oracle.mjs
+                                (linebreak-chromium-153.json here), and Chromium's breaks between two
+                                printable ASCII characters (linebreak-chromium-153-ascii.json)
     UnicodeJustificationTables.inl  'text-align: justify' (p6-justify): the characters Chromium
                                 justifies around (Character::IsCjkIdeographOrSymbol: its lists, copied
                                 below, and the emoji of emoji-data.txt and the RGI sequences), the
@@ -22,11 +28,12 @@ writes, next to this script's Source/Core:
                                 code points (DerivedCoreProperties.txt) and the grapheme cluster breaks
                                 (GraphemeBreakProperty.txt, Extended_Pictographic, Indic_Conjunct_Break)
 
-The Unicode Character Database files (UnicodeData.txt, SpecialCasing.txt, LineBreak.txt, Scripts.txt,
-DerivedCoreProperties.txt, auxiliary/GraphemeBreakProperty.txt, emoji/emoji-data.txt and the emoji
-sequence files emoji-sequences.txt, emoji-zwj-sequences.txt) are read from --ucd (one directory), or
-downloaded from unicode.org into build/unicode-<version>/ of the repository.
-The output is deterministic: run it again after a Unicode update and commit both files.
+The Unicode Character Database files (UnicodeData.txt, SpecialCasing.txt, LineBreak.txt, EastAsianWidth.txt,
+Scripts.txt, DerivedCoreProperties.txt, auxiliary/GraphemeBreakProperty.txt, auxiliary/LineBreakTest.txt,
+emoji/emoji-data.txt and the emoji sequence files emoji-sequences.txt, emoji-zwj-sequences.txt) are read from
+--ucd (one directory), or downloaded from unicode.org into build/unicode-<version>/ of the repository.
+The output is deterministic: run it again after a Unicode update and commit the files (measure Chromium's breaks of
+the new LineBreakTest.txt again first: linebreak-oracle.mjs).
 """
 
 import argparse
