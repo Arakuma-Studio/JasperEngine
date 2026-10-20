@@ -219,6 +219,14 @@ namespace jasperengine::htmlui {
         int trailUsed = 0, ripplesUsed = 0;   // the entries prepare wrote last
         uint64_t preparedFrame = UINT64_MAX;
         float seed = -1.f;                    // seedOf(element), once per instance (< 0: not yet)
+        // the draw's preparation (EffectRenderer::prepareShader/prepareFilter; RmlRenderer records the
+        // frame and replays it, so it runs at record time): the renderer frame it was for, whether
+        // the effect draws, and what a filter's pass reads of the element (the prepass sigma in
+        // target px, the context an animated filter asks to redraw)
+        uint64_t drawKey = 0;
+        bool drawReady = false;
+        float prepassSigma = 0.f;
+        Rml::Context* redrawContext = nullptr;
     };
 
     struct EffectStats {

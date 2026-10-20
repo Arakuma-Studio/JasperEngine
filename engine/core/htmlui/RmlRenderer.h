@@ -131,9 +131,10 @@ namespace jasperengine {
     // RmlUi's render interface on the engine render abstraction, with every optional RmlUi 6.3
     // feature (port of RmlUi's GL3 renderer onto sokol passes): stencil clip masks, layers,
     // SaveLayerAsTexture/SaveLayerAsMaskImage, filters (filter and backdrop-filter), gradients.
-    // One per HtmlUIContext; it draws immediately between beginFrame and endFrame into the
-    // context's RmlRenderTarget, opening a sokol pass only when it needs a different target, so
-    // a frame without layers or filters is one pass.
+    // One per HtmlUIContext. Between beginFrame and endFrame it records RmlUi's calls into a
+    // command list (phase-1 spec 3.2.10), which endFrame replays into the context's
+    // RmlRenderTarget, opening a sokol pass only when it needs a different target, so a frame
+    // without layers or filters is one pass.
     class JASPERENGINE_INTERNAL RmlRenderer : public Rml::RenderInterface {
     public:
         RmlRenderer();
@@ -229,6 +230,12 @@ namespace jasperengine {
         // tests: false draws every backdrop through its temporary layer, as RmlUi's GL3 renderer
         // (DeferredComposite); the images are the same
         static void setCompositeFusionForTesting(bool enabled);
+        // tests: false draws every call at once instead of recording the frame and replaying it
+        // in endFrame (phase-1 spec 3.2.10); the images are the same. Read by beginFrame
+        static void setCommandRecordingForTesting(bool enabled);
+        static bool isCommandRecording();
+        // the commands the last frame recorded (0 when it drew immediately)
+        size_t getLastFrameCommandCount() const;
 
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
@@ -413,6 +420,69 @@ namespace jasperengine {
         void destroyPipelineObjects();
         void abortFrame();
 
+        // the RenderInterface calls drawn at once (immediate drawing and the replay)
+        void renderGeometryNow(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, Rml::TextureHandle texture);
+        // the replay of RenderGeometry: the texture was checked when it was recorded
+        void drawRecordedGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, HtmlUITexture* texture);
+        void renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
+        Rml::LayerHandle pushLayerNow();
+        void popLayerNow();
+        void compositeLayersNow(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blendMode,
+                                Rml::Span<const Rml::CompiledFilterHandle> filters);
+        void renderShaderNow(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
+        void releaseGeometryNow(Rml::CompiledGeometryHandle geometry);
+        void releaseFilterNow(Rml::CompiledFilterHandle filter);
+        void releaseShaderNow(Rml::CompiledShaderHandle shader);
+        // SaveLayerAs*/SaveLayerIntoTexture: the top layer, cleared and resolved to be read (nullptr
+        // when it cannot be made); a 1-sample RGBA8 render-target texture (target px); the copy of
+        // the scissor region of the top layer (bounds) into it, at offset when tiled
+        Framebuffer* readableTopLayer();
+        HtmlUITexture* createLayerTexture(int width, int height);
+        void copyLayerInto(Framebuffer& layer, HtmlUITexture& texture, Rml::Rectanglei bounds, bool tiled, Rml::Vector2i offset, LoadAction load);
+        void copyLayerIntoMask(Framebuffer& layer, Framebuffer& mask);
+
+        // Command recording (phase-1 spec 3.2.10). One POD per call; what RmlUi passes by pointer
+        // or span goes into the side pools. Everything is cleared, its capacity kept, every frame
+        enum class CommandType : uint8_t {
+            GEOMETRY, CLIP_MASK, SCISSOR_ENABLE, SCISSOR_REGION, CLIP_ENABLE, TRANSFORM,
+            PUSH_LAYER, POP_LAYER, COMPOSITE, SAVE_TEXTURE, SAVE_MASK, SHADER
+        };
+        struct Command {
+            CommandType type;
+            uint8_t flag;           // enable, clip operation, blend mode, load action (SAVE_TEXTURE), tiled
+            int32_t i[4];           // a rectangle; layers; a pool index and count; an offset
+            float x, y;             // translation
+            uintptr_t a, b;         // geometry, texture, shader, filter handles
+        };
+        static_assert(sizeof(Command) <= 48, "a command is 48 bytes");
+        enum class ReleaseKind : uint8_t { GEOMETRY, SHADER, FILTER };
+        struct DeferredRelease {
+            ReleaseKind kind;
+            uintptr_t handle;
+        };
+        // the data of a recorded geometry released before the replay, not yet in persistent storage
+        struct KeptMesh {
+            std::vector<Rml::Vertex> vertices;
+            std::vector<int> indices;
+        };
+        Command& recordCommand(CommandType type);
+        void replayCommands();
+        // the releases deferred while recording (after the replay, before persistGeometry), and the
+        // kept meshes; also drops the list (a frame aborted)
+        void finishRecording();
+
+        bool recording = false;
+        int recordLayers = 0;              // the layer depth at record time (PushLayer's handle)
+        Rml::Rectanglei frameStartScissor; // the scissor region beginFrame left
+        std::vector<Command> commands;
+        std::vector<Rml::Matrix4f> commandMatrices;
+        std::vector<Rml::CompiledFilterHandle> commandFilters;
+        std::vector<Rml::Rectanglei> commandRects;     // SetScissorRegion's (document px)
+        std::vector<DeferredRelease> deferredReleases;
+        std::vector<KeptMesh> keptMeshes;
+        size_t keptMeshesUsed = 0;
+        size_t lastFrameCommandCount = 0;
+
         std::unordered_set<RmlGeometry*> liveGeometry;
         std::vector<RmlGeometry*> releasedGeometry;   // released, kept for reuse (RmlGeometry::alive)
         std::unordered_set<HtmlUITexture*> liveTextures;
@@ -435,6 +505,7 @@ namespace jasperengine {
         Rml::Matrix4f transform;
         bool scissorEnabled = false;
         Rml::Rectanglei scissorRegion;
+        Rml::Rectanglei scissorTarget;      // scissorRegion in target px (toTargetRect), set with it
         bool clipMaskEnabled = false;
         uint8_t stencilRef = 0;
         int layersSize = 0;

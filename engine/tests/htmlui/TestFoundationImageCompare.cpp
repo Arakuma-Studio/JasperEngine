@@ -31,8 +31,9 @@ namespace {
         p[0] = r; p[1] = g; p[2] = b;
     }
 
-    // goldens of this suite live in the build directory, never in golden/; the update
-    // switch of the run (JASPER_HTMLUI_UPDATE_GOLDEN) is put back after each test
+    // goldens of this suite live in the build directory, never in golden/; the run's update and
+    // keep switches (JASPER_HTMLUI_UPDATE_GOLDEN, JASPER_HTMLUI_WRITE_ACTUAL) are put back after
+    // each test
     class ImageCompareTest : public ::testing::Test {
     protected:
         void SetUp() override{
@@ -44,6 +45,10 @@ namespace {
             hadUpdate = update != nullptr;
             savedUpdate = update ? update : "";
             unsetenv("JASPER_HTMLUI_UPDATE_GOLDEN");
+            const char* keep = std::getenv("JASPER_HTMLUI_WRITE_ACTUAL");
+            hadKeep = keep != nullptr;
+            savedKeep = keep ? keep : "";
+            unsetenv("JASPER_HTMLUI_WRITE_ACTUAL");
         }
 
         void TearDown() override{
@@ -51,6 +56,8 @@ namespace {
                 setenv("JASPER_HTMLUI_UPDATE_GOLDEN", savedUpdate.c_str(), 1);
             else
                 unsetenv("JASPER_HTMLUI_UPDATE_GOLDEN");
+            if (hadKeep)
+                setenv("JASPER_HTMLUI_WRITE_ACTUAL", savedKeep.c_str(), 1);
             std::filesystem::remove_all(directory);
         }
 
@@ -65,6 +72,8 @@ namespace {
         std::string directory;
         bool hadUpdate = false;
         std::string savedUpdate;
+        bool hadKeep = false;
+        std::string savedKeep;
     };
 
 }
