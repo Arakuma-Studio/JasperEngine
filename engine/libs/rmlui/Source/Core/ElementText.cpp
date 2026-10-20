@@ -606,13 +606,15 @@ void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 		return true;
 	};
 	LineBreakContext prefix, suffix;
+	// (an ASCII text that ends with white space has an opportunity there whatever follows: no need to look)
+	const bool skip_suffix = (line_breaks_ascii && !text.empty() && StringUtilities::IsWhitespace(text.back()));
 	if (context_previous)
 	{
 		GatherLineBreakContext(this, false, decode_escape_characters, line_breaks_ascii ? 2 : LineBreakContext::capacity, prefix);
 		if (line_breaks_ascii && !plain(prefix))
 			GatherLineBreakContext(this, false, decode_escape_characters, LineBreakContext::capacity, prefix);
 	}
-	if (context_next)
+	if (context_next && !skip_suffix)
 	{
 		GatherLineBreakContext(this, true, decode_escape_characters, line_breaks_ascii ? 1 : LineBreakContext::capacity, suffix);
 		if (line_breaks_ascii && !plain(suffix))
@@ -690,7 +692,17 @@ float ElementText::MeasureGluedContentAfter()
 	ElementText* from = this;
 	while (ElementText* next = from->GetContextNext())
 	{
-		width += from->context_edges_after;
+		// The edges of the inline boxes the next text is in and this one is not (those this one is in and closes before it
+		// are the line's: its right spacing).
+		for (Element* box = next->GetParentNode(); box; box = box->GetParentNode())
+		{
+			bool shared = false;
+			for (Element* own = from->GetParentNode(); own && !shared; own = own->GetParentNode())
+				shared = (own == box);
+			if (shared || !IsTransparentInlineBox(box))
+				break;
+			width += InlineBoxEdge(box, true);
+		}
 		bool whole = false;
 		width += next->MeasureLeadingWord(whole);
 		if (!whole)
@@ -703,7 +715,6 @@ float ElementText::MeasureGluedContentAfter()
 namespace {
 	struct InlineContextLinker {
 		ElementText* last_text = nullptr;
-		float edges = 0.f;
 
 		void Visit(Element* parent)
 		{
@@ -713,23 +724,17 @@ namespace {
 			{
 				if (auto text = rmlui_dynamic_cast<ElementText*>(child))
 				{
-					text->LinkAfter(last_text, edges);
+					text->LinkAfter(last_text);
 					last_text = text;
-					edges = 0.f;
 				}
 				else if (IsSkippedInContext(child))
 					continue;
-				else if (child->GetTagName() != "br" && IsTransparentInlineBox(child))
-				{
-					edges += InlineBoxEdge(child, true);
+				else if (IsTransparentInlineBox(child) && child->GetTagName() != "br")
 					Visit(child);
-					edges += InlineBoxEdge(child, false);
-				}
 				else
 				{
 					// an atomic inline, a block, a <br>: the context stops
 					last_text = nullptr;
-					edges = 0.f;
 				}
 			}
 		}
@@ -738,7 +743,7 @@ namespace {
 
 static uint32_t inline_context_stamp = 0;
 
-void ElementText::LinkAfter(ElementText* previous, float edges_between)
+void ElementText::LinkAfter(ElementText* previous)
 {
 	// (zero is never a stamp: a text not linked yet computes its breaks the first time)
 	if (++inline_context_stamp == 0)
@@ -746,12 +751,8 @@ void ElementText::LinkAfter(ElementText* previous, float edges_between)
 	context_stamp = inline_context_stamp;
 	context_previous = previous;
 	context_next = nullptr;
-	context_edges_after = 0.f;
 	if (previous)
-	{
 		previous->context_next = this;
-		previous->context_edges_after = edges_between;
-	}
 }
 
 void ElementText::LinkInlineFormattingContext(Element* root)
@@ -761,7 +762,7 @@ void ElementText::LinkInlineFormattingContext(Element* root)
 	{
 		if (auto text = rmlui_dynamic_cast<ElementText*>(root->GetChild(0)))
 		{
-			text->LinkAfter(nullptr, 0.f);
+			text->LinkAfter(nullptr);
 			return;
 		}
 	}

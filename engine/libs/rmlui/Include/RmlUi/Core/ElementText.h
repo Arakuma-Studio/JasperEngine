@@ -69,7 +69,7 @@ public:
 	/// inline, a block or a <br> between them).
 	ElementText* GetContextPrevious() const { return context_previous; }
 	/// Links this text after 'previous' in its inline formatting context (null: it starts it).
-	void LinkAfter(ElementText* previous, float edges_between);
+	void LinkAfter(ElementText* previous);
 	ElementText* GetContextNext() const { return context_next; }
 
 	/// Clears all lines of generated text and prepares the element for generating new lines.
@@ -187,12 +187,10 @@ private:
 	// (the context is gathered once per layout: each linking of the context stamps its texts anew)
 	uint32_t context_stamp = 0;
 	uint32_t line_breaks_stamp = 0;
-	// The texts before and after this one in its inline formatting context (LinkInlineFormattingContext), and the edges of
-	// the inline boxes between it and the next.
+	// The texts before and after this one in its inline formatting context (LinkInlineFormattingContext).
 	// (a text unlinks itself from its neighbours when it is destroyed; the links are made again before each layout)
 	ElementText* context_previous = nullptr;
 	ElementText* context_next = nullptr;
-	float context_edges_after = 0.f;
 
 	void UpdateLineBreaks(bool decode_escape_characters);
 	void EnsureLineBreaks(bool decode_escape_characters);
