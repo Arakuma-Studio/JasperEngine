@@ -1698,13 +1698,36 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
   LB20a before a Hebrew letter too, no break before U+3000, and its own table between two printable ASCII
   characters (`break_iterator.cc`: before `(`, `<`, `[`, `{` after punctuation, after `?`, after `-`, a
   `-` before a digit only after a letter or digit). Not compared (CSS's, not UAX #14's): white space,
-  the soft hyphen, characters without width after a boundary. Known difference: an element boundary
-  inside a word is an opportunity in the fork. Fixture `text/line-break-uax14` (flags, skin tones, ZWJ
-  sequences, numbers, hyphens and digits, `?`, punctuation, kana, ideographs and digits, dashes,
-  quotation marks, URLs). Its prices avoid characters Ahem lacks: the engine's text shaper
-  (`TextShaper::selectFace`) keeps a fallback face while it covers the next characters, so the digits
-  after a rupee sign took the fallback font where Chromium goes back to Ahem (a font-fallback
-  difference, not a line-breaking one).
+  the soft hyphen, characters without width after a boundary. Fixture `text/line-break-uax14` (flags,
+  skin tones, ZWJ sequences, numbers and prices, hyphens and digits, `?`, punctuation, kana, ideographs
+  and digits, dashes, quotation marks, URLs).
+- **Across element boundaries** (the last round, FORK.md P6-L2): the opportunities come from the whole
+  inline formatting context's text, as Chromium computes them: `a<b>b</b>` does not break, a word that
+  spans elements wraps whole. A block container links its inline formatting context's texts in layout
+  order before its layout (`ElementText::LinkInlineFormattingContext`: through inline boxes, stopping at
+  atomic inlines, blocks and `<br>`); a text breaks with a few code points of the texts around it; a
+  text (or an inline box starting with one) that goes on with the word before it stays on its line, and
+  the last word of a text fits with what follows it up to the next opportunity or moves to the next line
+  with it. Fixture `text/line-break-elements` (spans, links, padded and nested spans inside words,
+  spaces at boundaries, `-` and digits, ideographs, punctuation).
+- **Font fallback per grapheme cluster** (engine, the same round): `TextShaper` gave a fallback face
+  every codepoint after it that the face covered (digits after a ₹ took the fallback font); each
+  grapheme cluster now takes the first face of the chain that has all of it, or the one codepoint it
+  composes into (`e` + U+0301 is Ahem's é), as Chromium reshapes only the clusters a font has no glyph
+  for: after a fallback, the primary font again (`TextShaper::clusterEnd`, `selectClusterFace`; a
+  cluster of default-ignorables keeps the face around it). The spaces, digits and punctuation between
+  Arabic words are now the primary face's, as in Chromium (golden `text_fallback_rtl`, the STBText
+  characterization). Shaping cost (callgrind of `TextShaper::shapeRange` on a corpus against main,
+  `FontFace`'s ASCII coverage now a bitmap read at load): Latin text 10 to 20 % fewer instructions,
+  symbols in Ahem 32 % fewer, Arabic with spaces 41 % more (eleven runs instead of four: its spaces and
+  digits are the runs Chromium shapes with the primary font too), 1.2 % fewer over the corpus; runs split
+  only where the face changes. Fixture `text/font-fallback-primary` (rupee, euro, ruble signs, Greek,
+  Cyrillic, then digits and Latin letters; in spans; composing and non-composing accents).
+- **render-reference determinism**: `paint/opacity-fade-transition.quarter.png` changed in about one
+  `--check` in twenty (one box at another opacity than its computed one, which was right): the
+  compositor had started the opacity transition, and a screenshot could show it at its own time instead
+  of the paused and seeked one. The references are rendered with `--disable-threaded-animation`
+  (animations on the main thread only); every reference is unchanged by it.
 
 ---
 
