@@ -1,0 +1,21 @@
+{
+ "comment": "A clamped box whose width transitions (its lines wrap again at each width, the ellipsis moves), one whose max-height transitions over its clamped height, and -webkit-line-clamp itself: discrete, it changes at once, or at half the duration with transition-behavior: allow-discrete. Captured at 0.25, 0.5, 0.75 and 1 s.",
+ "viewport": [
+  210,
+  110
+ ],
+ "steps": [
+  {"addClass": ["#width", "on"]},
+  {"addClass": ["#max", "on"]},
+  {"addClass": ["#discrete", "on"]},
+  {"addClass": ["#instant", "on"]},
+  {"advance": 0.25},
+  {"capture": "quarter"},
+  {"advance": 0.25},
+  {"capture": "half"},
+  {"advance": 0.25},
+  {"capture": "three-quarters"},
+  {"advance": 0.25},
+  {"capture": "end"}
+ ]
+}

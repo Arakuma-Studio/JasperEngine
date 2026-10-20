@@ -9,6 +9,7 @@
 #include "../TextJustification.h"
 #include "InlineBox.h"
 #include "InlineLevelBox.h"
+#include "../LineClampEllipsis.h"
 #include "LayoutPools.h"
 #include <float.h>
 #include <numeric>
@@ -303,6 +304,152 @@ UniquePtr<LineBox> LineBox::DetermineVerticalPositioning(const InlineBoxRoot* ro
 	return new_line_box;
 }
 
+void LineBox::SetLineClampEllipsis(LineClampEllipsis& ellipsis)
+{
+	RMLUI_ASSERT(is_vertically_positioned && !is_closed);
+	clamp_truncated = true;
+	clamp_ellipsis = &ellipsis;
+}
+
+void LineBox::TruncateForLineClamp(const bool rtl, const float content_width, Vector<Vector<JustificationSpacing>>* justification)
+{
+	RMLUI_ASSERT(clamp_truncated && clamp_ellipsis);
+	LineClampEllipsis& ellipsis = *clamp_ellipsis;
+	clamp_ellipsis = nullptr; // set again when it is placed
+
+	// Chromium's LineTruncator::TruncateLine, on the fragments of the line: text runs and atomic inlines (inline boxes are
+	// not ellipsized), after the line is justified (their widths include its space). Offsets are measured from the line's
+	// start: its left (a left-to-right line's 'text-indent' moved its items), or for a right-to-left line the right end of
+	// its content, its space less the indent at its end (P6-J2).
+	const float available_width = line_width - end_indent;
+	const auto is_item = [](const Fragment& fragment) { return fragment.type == FragmentType::TextRun || fragment.type == FragmentType::SizedBox; };
+
+	FragmentIndex first_item = RootFragmentIndex;
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const int index = (rtl ? (int)fragments.size() - 1 - i : i);
+		if (is_item(fragments[index]))
+		{
+			first_item = index;
+			break;
+		}
+	}
+	// Nothing but inline boxes: Chromium places no ellipsis (a line of nothing but a <br> has no line box here, see
+	// InlineContainer::AddBreak).
+	if (first_item == RootFragmentIndex)
+		return;
+
+	const auto item_extent = [](const Fragment& fragment, float& out_left, float& out_width) {
+		out_left = fragment.position.x;
+		out_width = fragment.layout_width;
+		if (fragment.type == FragmentType::SizedBox)
+		{
+			const InlineLevelBox_Atomic* atomic = static_cast<const InlineLevelBox_Atomic*>(fragment.box);
+			out_left += atomic->GetMarginLeft();
+			out_width = atomic->GetBorderWidth();
+		}
+	};
+	const auto hide = [](Fragment& fragment, bool first) {
+		if (first)
+			return;
+		if (fragment.type == FragmentType::SizedBox && !static_cast<const InlineLevelBox_Atomic*>(fragment.box)->CanBeHiddenByEllipsis())
+			return;
+		fragment.clamp_hidden = true;
+	};
+
+	FragmentIndex ellipsized = RootFragmentIndex;
+	float ellipsized_width = 0.f;
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const int index = (rtl ? i : (int)fragments.size() - 1 - i);
+		Fragment& fragment = fragments[index];
+		if (!is_item(fragment))
+			continue;
+		const bool first = (index == first_item);
+
+		float left = 0.f, width = 0.f;
+		item_extent(fragment, left, width);
+		const float offset = (rtl ? content_width - (left + width) : left);
+		float space = available_width - offset;
+		// Completely outside of the line: hidden (but the first one), the next one is tried.
+		if (space <= 0.f)
+		{
+			hide(fragment, first);
+			continue;
+		}
+
+		space -= ellipsis.width;
+		if (space >= width)
+		{
+			ellipsized = index;
+			ellipsized_width = width;
+			break;
+		}
+
+		// It does not fit with the ellipsis: a text run is cut, an atomic inline stays when it is the first one.
+		if (space <= 0.f && !first)
+		{
+			hide(fragment, first);
+			continue;
+		}
+		if (fragment.type == FragmentType::SizedBox)
+		{
+			if (first)
+			{
+				ellipsized = index;
+				ellipsized_width = width;
+				break;
+			}
+			hide(fragment, first);
+			continue;
+		}
+		float shift = 0.f;
+		Vector<JustificationSpacing>* spacing = (justification && !(*justification)[index].empty() ? &(*justification)[index] : nullptr);
+		const float kept_width = static_cast<InlineLevelBox_Text*>(fragment.box)
+									 ->TruncateForEllipsis(fragment.fragment_handle, width, space, rtl, first, spacing, shift);
+		if (kept_width >= 0.f)
+		{
+			// (on a right-to-left line the kept end stays where it was)
+			fragment.position.x += shift;
+			ellipsized = index;
+			ellipsized_width = kept_width;
+			break;
+		}
+		hide(fragment, first);
+	}
+
+	// No item to place it after (Chromium aborts: the hidden ones stay hidden).
+	if (ellipsized == RootFragmentIndex)
+		return;
+
+	const Fragment& fragment = fragments[ellipsized];
+	float left = 0.f, width = 0.f;
+	item_extent(fragment, left, width);
+	const float ellipsis_x = (rtl ? left - ellipsis.width : left + ellipsized_width);
+
+	clamp_ellipsis = &ellipsis;
+	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized + 1 : 0);
+	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
+
+	// Chromium appends the ellipsis to the line's items: an inline box still open at the line's end (it goes on on the
+	// next line) spans it, its fragment covers the ellipsis too (getBoundingClientRect, backgrounds).
+	const float ellipsis_left = ellipsis_x, ellipsis_right = ellipsis_x + ellipsis.width;
+	for (Fragment& open : fragments)
+	{
+		if (open.type != FragmentType::InlineBox || !open.split_right || open.children_end_index == 0)
+			continue;
+		const float content_left = open.position.x + (open.split_left ? 0.f : open.box->GetSpacingLeft());
+		const float content_right = content_left + open.layout_width;
+		if (ellipsis_right > content_right)
+			open.layout_width += ellipsis_right - content_right;
+		if (ellipsis_left < content_left)
+		{
+			open.position.x -= content_left - ellipsis_left;
+			open.layout_width += content_left - ellipsis_left;
+		}
+	}
+}
+
 #if defined(_MSC_VER)
 	#define RMLUI_LINEBOX_NOINLINE __declspec(noinline)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -331,16 +478,19 @@ void LineBox::Close(Element* offset_parent, Vector2f offset_parent_position, Sty
 	if (last_line || ends_with_line_feed)
 		text_align = text_align_last;
 
-	// White space at the end of the line, and justification (p6-justify), out of line.
-	if (text_align == Style::TextAlign::Justify || last_character == ' ' || last_character == '\n')
+	// White space at the end of the line, justification (p6-justify) and the line-clamp ellipsis (fork, P6-L1), out of line.
+	if (text_align == Style::TextAlign::Justify || last_character == ' ' || last_character == '\n' || clamp_truncated)
 	{
 		CloseTrimmedOrJustified(offset_parent, offset_parent_position, text_align, rtl);
 		return;
 	}
 
-	// Horizontal alignment using available space on our line.
+	// Horizontal alignment using available space on our line. Content too long for the line is start-aligned (CSS Text 3
+	// §7.1): a right-to-left line overflows on its left, as in Chromium (fork, P6-L1: the clamped lines of RTL blocks).
 	if (box_cursor < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, box_cursor);
+	else if (rtl && box_cursor > line_width - end_indent)
+		offset_horizontal_alignment = line_width - end_indent - box_cursor;
 
 	SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 }
@@ -397,6 +547,56 @@ inline void LineBox::SubmitFragments(Element* offset_parent, Vector2f offset_par
 	is_closed = true;
 }
 
+void LineBox::SubmitClampedFragments(Element* offset_parent, Vector2f offset_parent_position, const Vector<Vector<JustificationSpacing>>* justification)
+{
+	const bool collapsed_line = CanCollapseLine();
+
+	// The line-clamp ellipsis (fork, P6-L1): relative to the text run it follows, or drawn by the block container.
+	const Vector2f line_origin = line_position - offset_parent_position + Vector2f(offset_horizontal_alignment, 0.f);
+	if (clamp_ellipsis)
+	{
+		if (clamp_ellipsis_fragment != 0)
+			clamp_ellipsis->position -= fragments[clamp_ellipsis_fragment - 1].position;
+		else
+		{
+			clamp_ellipsis->position += line_origin;
+			LineClampAccess::SetBlockEllipsis(offset_parent, clamp_ellipsis);
+			clamp_ellipsis = nullptr;
+		}
+	}
+
+	for (int i = 0; i < (int)fragments.size(); i++)
+	{
+		const Fragment& fragment = fragments[i];
+		if (fragment.type == FragmentType::InlineBox && fragment.children_end_index == 0)
+			continue;
+
+		RMLUI_ASSERT(fragment.layout_width >= 0.f);
+
+		const Vector<JustificationSpacing>* fragment_justification = nullptr;
+		if (justification && fragment.type == FragmentType::TextRun && !fragment.clamp_hidden && !(*justification)[i].empty())
+			fragment_justification = &(*justification)[i];
+		PlacedFragment placed_fragment = {
+			offset_parent,
+			fragment.fragment_handle,
+			line_origin + fragment.position,
+			fragment.layout_width,
+			fragment.split_left,
+			fragment.split_right,
+			collapsed_line,
+			line_position.y - offset_parent_position.y,
+			fragment_justification,
+		};
+		placed_fragment.clamp_hidden = fragment.clamp_hidden;
+		if (clamp_ellipsis && i == clamp_ellipsis_fragment - 1)
+			placed_fragment.clamp_ellipsis = clamp_ellipsis;
+		fragment.box->Submit(placed_fragment);
+	}
+	clamp_ellipsis = nullptr;
+
+	is_closed = true;
+}
+
 RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_parent, Vector2f offset_parent_position, Style::TextAlign text_align,
 	bool rtl)
 {
@@ -415,10 +615,20 @@ RMLUI_LINEBOX_NOINLINE void LineBox::CloseTrimmedOrJustified(Element* offset_par
 			text_align = (rtl ? Style::TextAlign::Right : Style::TextAlign::Left);
 	}
 
+	// The line the line-clamp ellipsis ends (fork, P6-L1) is made room for it now: Chromium's LineTruncator works on the
+	// trimmed and justified line, which is aligned by its width before (ApplyTextAlign).
+	if (clamp_truncated)
+		TruncateForLineClamp(rtl, justification.empty() ? content_width : line_width - end_indent, justification.empty() ? nullptr : &justification);
+
+	// Content too long for the line is start-aligned: on the left of a right-to-left line (fork, P6-L1).
 	if (content_width < line_width - end_indent)
 		offset_horizontal_alignment = GetAlignmentOffset(text_align, content_width);
+	else if (rtl && content_width > line_width - end_indent)
+		offset_horizontal_alignment = line_width - end_indent - content_width;
 
-	if (justification.empty())
+	if (clamp_truncated)
+		SubmitClampedFragments(offset_parent, offset_parent_position, justification.empty() ? nullptr : &justification);
+	else if (justification.empty())
 		SubmitFragments<false>(offset_parent, offset_parent_position, nullptr);
 	else
 		SubmitFragments<true>(offset_parent, offset_parent_position, &justification);

@@ -8,6 +8,8 @@
 
 namespace Rml {
 
+struct LineClampEllipsis;
+
 class RMLUICORE_API ElementText final : public Element {
 public:
 	RMLUI_RTTI_DeclareWithParent(ElementText, Element)
@@ -45,6 +47,10 @@ public:
 	void AddLine(Vector2f line_position, String line);
 	/// Adds a new line of justified text (p6-justify): the space added around its characters.
 	void AddLine(Vector2f line_position, String line, const Vector<JustificationSpacing>& justification);
+	/// Makes the line added last the one that a line-clamp ellipsis ends (fork, phase 6, P6-L1): its text is what fits beside
+	/// the ellipsis, drawn after it with the ellipsis's own font and colour (LineClampEllipsis, positioned from the line's
+	/// position).
+	void SetLineClampEllipsis(UniquePtr<LineClampEllipsis> ellipsis);
 
 	/// Prevents the element from dirtying its document's layout when its text is changed.
 	void SuppressAutoLayout();
@@ -114,6 +120,10 @@ private:
 		CompiledFilter filter;             // the blur, compiled for the render manager when first drawn
 	};
 	Vector<Shadow> shadows;
+
+	// The line-clamp ellipsis after one of the lines (fork, P6-L1), and that line.
+	UniquePtr<LineClampEllipsis> line_clamp_ellipsis;
+	int line_clamp_ellipsis_line = -1;
 
 	ColourbPremultiplied colour;
 	float opacity;

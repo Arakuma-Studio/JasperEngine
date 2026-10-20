@@ -1,0 +1,7 @@
+{
+ "comment": "Chromium clamps in the block flow: the lines of nested blocks (with margins, borders) count, the ellipsis ends the line the count reaches N at, the clamped height ends there without the margins after it, and the blocks after the clamp point (with overflow: visible, painted) are as tall as their first line; a block with its own formatting context, an inline-block or a float keeps its lines out of the count; an empty block after the clamp line keeps the ellipsis; floats below the clamped height are not enclosed.",
+ "viewport": [
+  340,
+  130
+ ]
+}

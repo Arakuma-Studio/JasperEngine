@@ -1,0 +1,7 @@
+{
+ "comment": "The clamp line with 'text-indent': an indented clamp line makes room for the ellipsis in what the indent leaves (its items start after the indent, a right-to-left one ends before it), a clamp line that is not indented has the whole width; hanging, each-line after a <br>, a negative indent, a percentage, a centred and a justified indented line, a <br> line. The ellipsis has the block's colour (red), the text the span's; 'p' (Ahem's descender) shows which characters are kept.",
+ "viewport": [
+  350,
+  130
+ ]
+}

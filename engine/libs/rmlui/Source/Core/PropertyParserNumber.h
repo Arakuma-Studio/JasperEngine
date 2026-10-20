@@ -31,8 +31,9 @@ public:
 	static void Shutdown();
 
 	/// Phase 3 (values): what CSS requires of some numbers. 'AlphaValue' reads a percentage as a fraction ('50%' is 0.5,
-	/// <alpha-value>), 'NonNegative' rejects negative numbers (flex factors), 'Integer' rejects non-integers (z-index).
-	enum class Restriction { None, AlphaValue, NonNegative, Integer };
+	/// <alpha-value>), 'NonNegative' rejects negative numbers (flex factors), 'Integer' rejects non-integers (z-index),
+	/// 'PositiveInteger' accepts integers from 1 ('-webkit-line-clamp', fork P6-L1).
+	enum class Restriction { None, AlphaValue, NonNegative, Integer, PositiveInteger };
 	PropertyParserNumber& SetRestriction(Restriction restriction);
 
 private:

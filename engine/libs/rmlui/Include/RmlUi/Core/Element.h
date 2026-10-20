@@ -39,6 +39,7 @@ class StyleSheetContainer;
 class TransformState;
 class LayoutDetails;
 class ElementCascade;
+class LineClampAccess;
 struct ElementMeta;
 struct StackingContextChild;
 
@@ -826,6 +827,11 @@ private:
 	// WillChange.h), as of the last change of those properties: the layout is dirtied when it changes.
 	bool fixed_containing_block : 1;
 	bool absolute_containing_block : 1;
+	// An atomic inline the line-clamp ellipsis truncated (fork, phase 6, P6-L1): neither it nor its descendants are painted
+	// or hit (not in the stacking context), as Chromium's LineTruncator hides it; set by the line that places it.
+	bool line_clamp_hidden : 1;
+	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
+	bool draws_line_clamp_ellipsis : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;
@@ -897,6 +903,7 @@ private:
 	friend class Rml::LayoutEngine;
 	friend class Rml::ElementScroll;
 	friend class Rml::ElementCascade;
+	friend class Rml::LineClampAccess;
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

@@ -83,6 +83,12 @@ public:
 
 	void Submit(const PlacedFragment& placed_fragment) override;
 
+	// Line clamping (fork, P6-L1): the ellipsis follows the border box, not the margin box (Chromium's line items).
+	float GetMarginLeft() const;
+	float GetBorderWidth() const;
+	// False when it holds an absolutely positioned descendant: Chromium's LineTruncator does not hide it then.
+	bool CanBeHiddenByEllipsis() const;
+
 	String DebugDumpNameValue() const override { return "InlineLevelBox_Atomic"; }
 
 private:
@@ -102,6 +108,17 @@ public:
 		LayoutOverflowHandle overflow_handle) override;
 
 	void Submit(const PlacedFragment& placed_fragment) override;
+
+	/// Line clamping (fork, P6-L1): cuts a fragment to the characters that fit in 'space' beside the ellipsis, as
+	/// Chromium's LineTruncator::TruncateChild: the part on the line's start side (the start of a run in the line's
+	/// direction, the end of one against it), whole clusters, at least one character for the first child of the line.
+	/// @param[in] width The fragment's width.
+	/// @param[in,out] justification The space of a justified line around the fragment's characters (p6-justify), or null:
+	/// they are measured with it, and it is cut with them.
+	/// @param[out] out_shift How far the kept part moves on a right-to-left line (its right edge stays in place).
+	/// @return The width of the kept part, or a negative value when none fits (the fragment is unchanged).
+	float TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, bool line_rtl, bool first_child,
+		Vector<JustificationSpacing>* justification, float& out_shift);
 
 	String DebugDumpNameValue() const override;
 

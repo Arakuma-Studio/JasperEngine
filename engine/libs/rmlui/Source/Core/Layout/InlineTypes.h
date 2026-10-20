@@ -4,6 +4,7 @@
 
 namespace Rml {
 
+struct LineClampEllipsis;
 struct JustificationSpacing;
 
 using LayoutOverflowHandle = int;
@@ -42,6 +43,10 @@ struct PlacedFragment {
 	float line_top = 0.f; // The line's top, relative to the offset parent (with collapsed_line).
 	// A text run of a justified line: the space added around its characters (p6-justify), null otherwise.
 	const Vector<JustificationSpacing>* justification = nullptr;
+	// Line clamping (fork, P6-L1): the fragment is hidden by the line-clamp ellipsis, or the ellipsis follows it (with its
+	// position relative to the fragment's position: its text's baseline origin).
+	bool clamp_hidden = false;
+	const LineClampEllipsis* clamp_ellipsis = nullptr;
 };
 
 } // namespace Rml

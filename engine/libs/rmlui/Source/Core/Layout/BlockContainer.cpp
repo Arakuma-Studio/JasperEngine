@@ -3,10 +3,12 @@
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
+#include "../LineClampEllipsis.h"
 #include "FloatedBoxSpace.h"
 #include "InlineContainer.h"
 #include "LayoutDetails.h"
 #include "LineBox.h"
+#include "LineClamp.h"
 #include <float.h>
 
 namespace Rml {
@@ -23,7 +25,18 @@ BlockContainer::BlockContainer(ContainerBox* _parent_container, FloatedBoxSpace*
 		// We are the root of the formatting context, establish a new space for floated boxes.
 		root_space = MakeUnique<FloatedBoxSpace>();
 		space = root_space.get();
+
+		// A line-clamp container clamps its block formatting context (fork, P6-L1).
+		if (const int lines = element->GetComputedValues().line_clamp())
+		{
+			own_line_clamp.lines_until_clamp = lines;
+			owns_line_clamp = true;
+			line_clamp = &own_line_clamp;
+		}
 	}
+	// Our lines place a new ellipsis, if any (fork, P6-L1).
+	if (LineClampAccess::HasBlockEllipsis(element))
+		LineClampAccess::SetBlockEllipsis(element, nullptr);
 
 	// Our top margin collapses with our first in-flow child's if nothing separates them (CSS 2.1 §8.3.1): we are not the
 	// root of a block formatting context, and have no top border or padding.
@@ -38,11 +51,25 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	if (!CloseOpenInlineContainer())
 		return false;
 
+	// A line-clamp container whose count ends at exactly 0 has nothing after its clamp line: it is laid out again without
+	// clamping, so it shows no ellipsis (fork, P6-L1; Chromium's ShouldRelayoutWithNoForcedTruncate).
+	// Clamped inside us: our automatic height ends at our clamp position, without the margins after it (fork, P6-L1).
+	bool clamped = false;
+	if (line_clamp)
+	{
+		if (owns_line_clamp && clamped_here && line_clamp->lines_until_clamp == 0)
+		{
+			ignore_line_clamp = true;
+			return false;
+		}
+		clamped = clamped_here;
+	}
+
 	// Our bottom margin collapses with our last in-flow child's if nothing separates them (CSS 2.1 §8.3.1): we are not the
 	// root of a block formatting context, our height is 'auto' and we have no bottom border or padding.
 	const bool auto_height = (box.GetSize().y < 0);
 	const bool no_bottom_edges = (box.GetEdge(BoxArea::Border, BoxEdge::Bottom) == 0.f && box.GetEdge(BoxArea::Padding, BoxEdge::Bottom) == 0.f);
-	bool bottom_margin_collapses = (!root_space && auto_height && no_bottom_edges);
+	bool bottom_margin_collapses = (!root_space && auto_height && no_bottom_edges && !clamped);
 
 	// Set this box's height, if necessary.
 	if (auto_height)
@@ -50,10 +77,14 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 		float content_height = box_cursor;
 		if ((!bottom_margin_collapses || trailing_after_clearance) && !top_margin_open)
 			content_height += trailing_margin_set.Resolve();
+		// (Chromium's legacy line clamp: the intrinsic block size at the clamp point, no margins or floats after it)
+		if (clamped)
+			content_height = clamp_cursor;
 
 		if (!parent_block_container)
 		{
-			content_height = Math::Max(content_height, space->GetDimensions(FloatedBoxEdge::Margin).y - (position.y + box.GetPosition().y));
+			if (!clamped)
+				content_height = Math::Max(content_height, space->GetDimensions(FloatedBoxEdge::Margin).y - (position.y + box.GetPosition().y));
 			content_height += element->GetElementScroll()->GetScrollbarSize(ElementScroll::HORIZONTAL);
 		}
 
@@ -67,8 +98,8 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 	else if (content_max_height >= 0.f)
 	{
 		// A height from an aspect ratio is the automatic minimum height: taller content extends us.
-		float content_height = box_cursor + (top_margin_open ? 0.f : trailing_margin_set.Resolve());
-		if (!parent_block_container)
+		float content_height = (clamped ? clamp_cursor : box_cursor + (top_margin_open ? 0.f : trailing_margin_set.Resolve()));
+		if (!parent_block_container && !clamped)
 			content_height = Math::Max(content_height, space->GetDimensions(FloatedBoxEdge::Margin).y - (position.y + box.GetPosition().y));
 		if (content_height > box.GetSize().y)
 			box.SetContent({box.GetSize().x, Math::Max(Math::Min(content_height, content_max_height), box.GetSize().y)});
@@ -122,6 +153,8 @@ bool BlockContainer::Close(BlockContainer* parent_block_container)
 				{box.GetEdge(BoxArea::Margin, BoxEdge::Right), box.GetEdge(BoxArea::Margin, BoxEdge::Bottom)}, bottom_margin_set, collapsed_through,
 				joined_parent_top_margin, clearance))
 			return false;
+		if (line_clamp)
+			parent_block_container->UpdateLineClampAfterChild(lines_at_open, true);
 	}
 
 	// Now that we have been sized, we can proceed with formatting and placing positioned elements that this container
@@ -221,6 +254,13 @@ BlockContainer* BlockContainer::OpenBlockBox(Element* child_element, const Box& 
 
 	auto child_container_ptr = MakeUnique<BlockContainer>(this, space, child_element, child_box, min_height, max_height);
 	BlockContainer* child_container = child_container_ptr.get();
+	// (it shares our formatting context, and our line-clamp context: fork, P6-L1)
+	if (line_clamp)
+	{
+		NoteLineClampChild();
+		child_container->line_clamp = line_clamp;
+		child_container->lines_at_open = line_clamp->lines_until_clamp;
+	}
 
 	bool joins_top_margin = false;
 	child_container->position = PlaceBlockLevelChild(child_element, child_box, child_element->GetComputedValues().clear(),
@@ -282,6 +322,8 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 	LayoutBox* block_level_box = block_level_box_ptr.get();
 	if (block_level_box->GetType() != Type::Replaced)
 		static_cast<ContainerBox*>(block_level_box)->SetFlowPositionTop(child_position.y);
+	if (line_clamp)
+		NoteLineClampChild();
 	child_boxes.push_back(std::move(block_level_box_ptr));
 
 	// A box establishing an independent formatting context does not collapse margins with its content, and is never
@@ -292,6 +334,9 @@ LayoutBox* BlockContainer::AddBlockLevelBox(UniquePtr<LayoutBox> block_level_box
 			{child_box.GetEdge(BoxArea::Margin, BoxEdge::Right), child_box.GetEdge(BoxArea::Margin, BoxEdge::Bottom)}, child_bottom_margin_set, false,
 			joins_top_margin, child_clearance))
 		return nullptr;
+	// (its lines are its own formatting context's: the count is unchanged)
+	if (line_clamp)
+		UpdateLineClampAfterChild(line_clamp->lines_until_clamp, true);
 
 	return block_level_box;
 }
@@ -415,6 +460,13 @@ void BlockContainer::CloseInlineElement(InlineBoxHandle handle)
 void BlockContainer::AddBreak()
 {
 	const float line_height = element->GetLineHeight();
+
+	// With line clamping the <br> makes a line of an inline container, which counts it (fork, P6-L1).
+	if (line_clamp)
+	{
+		EnsureOpenInlineContainer()->AddBreak(line_height);
+		return;
+	}
 
 	// Check for an inline box as our last child; if so, we can simply end its line and bail.
 	if (InlineContainer* inline_container = GetOpenInlineContainer())
@@ -748,6 +800,22 @@ void BlockContainer::ResetContents()
 	box_cursor = 0;
 	content_alignment_offset = 0;
 	trailing_after_clearance = false;
+	// Line clamping (fork, P6-L1): counted again, or not at all once the container is laid out without clamping.
+	if (owns_line_clamp)
+	{
+		if (ignore_line_clamp)
+		{
+			owns_line_clamp = false;
+			line_clamp = nullptr;
+		}
+		else
+			own_line_clamp.lines_until_clamp = element->GetComputedValues().line_clamp();
+	}
+	clamp_cursor = 0.f;
+	clamped_here = false;
+	first_past_clamp_child = 0;
+	if (LineClampAccess::HasBlockEllipsis(element))
+		LineClampAccess::SetBlockEllipsis(element, nullptr);
 	trailing_margin_set = CollapsibleMarginSet();
 	adjoining_floats = false;
 	top_margin_open = (!root_space && box.GetEdge(BoxArea::Border, BoxEdge::Top) == 0.f && box.GetEdge(BoxArea::Padding, BoxEdge::Top) == 0.f);
@@ -787,6 +855,8 @@ InlineContainer* BlockContainer::EnsureOpenInlineContainer()
 	// Otherwise, we open a new one.
 	if (!inline_container)
 	{
+		if (line_clamp)
+			NoteLineClampChild();
 		const float scrollbar_width = (IsScrollContainer() ? element->GetElementScroll()->GetScrollbarSize(ElementScroll::VERTICAL) : 0.f);
 		const float available_width = box.GetSize().x - scrollbar_width;
 
@@ -822,9 +892,35 @@ bool BlockContainer::CloseOpenInlineContainer()
 		const CollapsibleMarginSet margins_after = (empty ? trailing_margin_set : CollapsibleMarginSet());
 		if (!EncloseChildBox(inline_container, child_position, {0, child_height}, {0.f, 0.f}, margins_after, empty, false, false))
 			return false;
+
+		// Our clamp position: after its line at the clamp point (fork, P6-L1).
+		if (line_clamp && !clamped_here && inline_container->GetLineClampHeight() >= 0.f)
+		{
+			clamp_cursor = child_position.y - (position.y + box.GetPosition().y) + inline_container->GetLineClampHeight();
+			clamped_here = true;
+		}
 	}
 
 	return true;
+}
+
+void BlockContainer::NoteLineClampChild()
+{
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_child == 0)
+		first_past_clamp_child = (int)child_boxes.size() + 1;
+}
+
+void BlockContainer::UpdateLineClampAfterChild(int lines_before, bool block_level_child)
+{
+	// Chromium's BlockLineClampData::UpdateAfterLayout: a block-level box without lines right at the clamp point is
+	// content after it (no relayout without clamping); past the clamp point we record our clamp position.
+	if (block_level_child && lines_before == 0 && line_clamp->lines_until_clamp == 0)
+		line_clamp->lines_until_clamp = -1;
+	if (line_clamp->lines_until_clamp <= 0 && !clamped_here)
+	{
+		clamp_cursor = box_cursor;
+		clamped_here = true;
+	}
 }
 
 void BlockContainer::EnsureEmptyInterruptedLineBox()
@@ -878,9 +974,12 @@ bool BlockContainer::GetChildBaseline(const LayoutBox& child_box, bool last, flo
 
 bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	// The baseline of our first child that itself has a baseline.
-	for (const auto& child_box : child_boxes)
+	// The baseline of our first child that itself has a baseline (not those laid out past the line-clamp point: Chromium,
+	// fork P6-L1).
+	const auto end = (first_past_clamp_child != 0 ? child_boxes.begin() + (first_past_clamp_child - 1) : child_boxes.end());
+	for (auto it = child_boxes.begin(); it != end; ++it)
 	{
+		const auto& child_box = *it;
 		if (GetChildBaseline(*child_box, false, out_baseline))
 		{
 			out_baseline += content_alignment_offset;
@@ -896,7 +995,8 @@ bool BlockContainer::GetBaselineOfFirstLine(float& out_baseline) const
 bool BlockContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
 	// Return the baseline of our last child that itself has a baseline.
-	for (int i = (int)child_boxes.size() - 1; i >= 0; i--)
+	const int end = (first_past_clamp_child != 0 ? first_past_clamp_child - 1 : (int)child_boxes.size());
+	for (int i = end - 1; i >= 0; i--)
 	{
 		if (GetChildBaseline(*child_boxes[i], true, out_baseline))
 		{

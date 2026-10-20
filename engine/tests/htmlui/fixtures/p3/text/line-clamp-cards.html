@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: clamped item descriptions in grid and flex cards</title>
+<style>
+  /* Item cards as a game UI writes them: a grid of cards whose descriptions are clamped to two lines (one of them shorter, unclamped; one clamped to three), the price row after the description; a flex row of a clamped flex item stretched taller than its two lines (the lines after them show), a flex-grown one and a fixed one; a clamped grid item that spans two columns. Text-heavy (the boxes are the oracle): the glyph rasterization differs from Chromium's; the page without its text is gated at the strict metric (noText). */
+  @font-face { font-family: "Roboto Text"; src: url("../../../fonts/Roboto-Regular-subset-post.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Roboto Text"; font-size: 13px; line-height: 17px; color: #e8ecf4; background: #141824; }
+  .grid { position: absolute; left: 10px; top: 10px; display: grid; grid-template-columns: repeat(3, 140px); gap: 8px; }
+  .card { display: flex; flex-direction: column; gap: 4px; padding: 8px; background: #232a3c; border: 1px solid #3b4660; border-radius: 6px; }
+  .name { margin: 0; font-size: 15px; line-height: 19px; color: #ffd27a; }
+  .desc { margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; line-height: 16px; color: #a8b2c8; }
+  .price { color: #8fd18f; }
+  .row { position: absolute; left: 10px; top: 240px; width: 436px; display: flex; gap: 8px; }
+  .row > div { padding: 6px; background: #232a3c; }
+  .wide { grid-column: span 2; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <div class="card" id="c1"><h3 class="name" id="n1">Ember Blade</h3><p class="desc" id="d1">A sword forged in dragonfire. Deals extra fire damage and ignites enemies on critical hits.</p><span class="price" id="p1">1200 gold</span></div>
+  <div class="card" id="c2"><h3 class="name" id="n2">Health Potion</h3><p class="desc" id="d2">Restores 50 health.</p><span class="price" id="p2">35 gold</span></div>
+  <div class="card" id="c3"><h3 class="name" id="n3">Frost Ward</h3><p class="desc" id="d3" style="-webkit-line-clamp: 3">An amulet of glacier ice that slows every attacker and halves the cold damage you take from spells and traps.</p><span class="price" id="p3">860 gold</span></div>
+  <div class="card wide" id="c4"><h3 class="name" id="n4">Map of the Sunken Isles</h3><p class="desc" id="d4">Marks the wrecks, the reefs and the hidden coves of the archipelago, with the tides of every season written in the margins by a sailor who drowned there.</p><span class="price" id="p4">400 gold</span></div>
+  <div class="card" id="c5"><h3 class="name" id="n5">Lockpick</h3><p class="desc" id="d5">Opens simple locks. Breaks when the lock is too hard for your skill.</p><span class="price" id="p5">5 gold</span></div>
+</div>
+<div class="row">
+  <div class="desc" id="r1" style="width: 170px">Stretched in a flex row: as tall as the row, so its lines after the clamped two show below the ellipsis.</div>
+  <div class="desc" id="r2" style="flex: 1">Grown to the free width, it wraps there before it is clamped to two lines of the description.</div>
+  <div id="r3" style="width: 60px; height: 50px">tall</div>
+</div>
+</body>
+</html>

@@ -173,6 +173,10 @@ bool PropertyParserNumber::ParseValue(Property& property, const String& value, c
 			if (float_value != float(int(float_value)))
 				return false;
 			break;
+		case Restriction::PositiveInteger:
+			if (float_value < 1.f || float_value > float(1 << 24) || float_value != float(int(float_value)))
+				return false;
+			break;
 		}
 		property.value = float_value;
 		property.unit = unit;

@@ -1,0 +1,7 @@
+{
+ "comment": "display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: N; overflow: hidden at N = 1..4 and widths 35..125px: N lines tall, the last one ending with the ellipsis (Ahem's U+2026 is a full square) after the characters that fit beside it; fewer lines or exactly N lines show none; padding and borders lie outside the lines; text-align offsets the uncut line (a right-aligned ellipsis ends outside, clipped); 'p' (Ahem's descender) shows which characters are kept.",
+ "viewport": [
+  360,
+  220
+ ]
+}

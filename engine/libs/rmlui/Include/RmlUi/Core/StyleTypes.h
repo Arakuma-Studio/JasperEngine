@@ -75,7 +75,15 @@ namespace Style {
 		InlineGrid,
 		ListItem,
 		Contents,
+		// Fork (phase 6, P6-L1): the legacy 'display: -webkit-box' and '-webkit-inline-box' are specified values only:
+		// ElementStyle::ComputeValues resolves them as Chromium does, to 'flow-root' and 'inline-block' for a line-clamp
+		// container ('-webkit-box-orient: vertical' and '-webkit-line-clamp' not 'none'), to 'flex' and 'inline-flex'
+		// otherwise. No computed value holds them.
+		WebkitBox,
+		WebkitInlineBox,
 	};
+	// Fork (phase 6, P6-L1): '-webkit-box-orient' ('inline-axis' and 'block-axis' are 'horizontal' and 'vertical').
+	enum class BoxOrient : uint8_t { Horizontal, Vertical };
 	// 'sticky' is laid out as 'relative' until sticky offsets (p3-layout).
 	enum class Position : uint8_t { Static, Relative, Absolute, Fixed, Sticky };
 

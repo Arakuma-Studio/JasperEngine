@@ -1,0 +1,20 @@
+{
+ "comment": "-webkit-line-clamp set from the element's style (a script's, through the element API) to 3, to none (the box is then the legacy flex container: all its lines), back to 1; the width changed on another box moves its ellipsis; a class turns the clamp off on a third.",
+ "viewport": [
+  230,
+  70
+ ],
+ "steps": [
+  {"capture": "two"},
+  {"setStyle": ["#count", "-webkit-line-clamp", "3"]},
+  {"setStyle": ["#width", "width", "75px"]},
+  {"addClass": ["#toggle", "open"]},
+  {"capture": "three"},
+  {"setStyle": ["#count", "-webkit-line-clamp", "none"]},
+  {"setStyle": ["#width", "width", "35px"]},
+  {"removeClass": ["#toggle", "open"]},
+  {"capture": "none"},
+  {"setStyle": ["#count", "-webkit-line-clamp", "1"]},
+  {"capture": "one"}
+ ]
+}

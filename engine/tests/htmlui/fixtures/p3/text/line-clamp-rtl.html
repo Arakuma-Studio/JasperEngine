@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line clamp in right-to-left blocks</title>
+<style>
+  /* In a right-to-left block the clamped line ends on its left: the ellipsis is placed left of the content, a run that does not fit beside it loses its characters on the left (the kept part stays where it was: 'p', Ahem's descender, shows which), right-aligned by text-align: start, or aligned by text-align: left and center from the uncut line; the same box written left to right for comparison. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 55px; background: #e0e8f0; }
+</style>
+</head>
+<body>
+<div class="c" id="fits" dir="rtl" style="left: 10px; top: 10px">XXX XpX XXX XXX</div>
+<div class="c" id="cut" dir="rtl" style="left: 75px; top: 10px">XXXXX pXXpX XXX</div>
+<div class="c" id="ltr" style="left: 140px; top: 10px">XXXXX pXXpX XXX</div>
+<div class="c" id="left" dir="rtl" style="left: 205px; top: 10px; text-align: left">XXX XpX XXX XXX</div>
+<div class="c" id="center" dir="rtl" style="left: 10px; top: 40px; width: 56px; text-align: center">XXX pXX XXX XXX</div>
+<div class="c" id="three" dir="rtl" style="left: 75px; top: 40px; -webkit-line-clamp: 3; width: 85px">XXX XXXX XX pXXXpXX XXX</div>
+<div class="c" id="direction" style="left: 170px; top: 40px; direction: rtl">XX XpXpXX XXX</div>
+</body>
+</html>

@@ -57,11 +57,14 @@ namespace {
         return element.isValid() ? std::optional<UIElement>(element) : std::nullopt;
     }
 
-    // camelCase -> kebab-case for style keys (custom properties and hyphenated names unchanged)
+    // camelCase -> kebab-case for style keys (custom properties and hyphenated names unchanged); CSSOM's webkit-cased
+    // names are the -webkit- properties (style.webkitLineClamp is -webkit-line-clamp, as style.WebkitLineClamp)
     std::string cssName(const std::string& key){
         if (key.rfind("--", 0) == 0 || key.find('-') != std::string::npos)
             return key;
         std::string out;
+        if (key.size() > 6 && key.compare(0, 6, "webkit") == 0 && std::isupper((unsigned char)key[6]))
+            out = "-";
         for (char c : key){
             if (std::isupper((unsigned char)c)){
                 out += '-';

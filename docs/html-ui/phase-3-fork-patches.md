@@ -77,7 +77,7 @@ colours, `image-set()` by dp ratio), phase 2's behaviour stays.
 | `subgrid`, `masonry` | Not implemented by Taffy either; no stable browser-reference semantics across engines (masonry). Tier 3 or below. | "Use nested grids with explicit track sizes." |
 | `@container` queries, `container-type` | Requires a layout→style→layout fix-point loop RmlUi's update order cannot express without a second full style pass per frame; Tier 3, low game-UI use. | "Use media queries (canvas size) or classes set from Lua." |
 | `::first-line`, `::first-letter`, `::selection` (non-input), `::placeholder`, `::-webkit-scrollbar*` | `::first-line/letter` need fragment-level styling inside the inline formatter; the other three are mapped by the compat layer to RmlUi's own widget elements (phase 2) and stay there. | first-line/letter: "Wrap the text in a `<span>`." |
-| `-webkit-line-clamp` / `line-clamp` | Needs multi-line ellipsis in `InlineContainer` and the legacy `display: -webkit-box` model; rare in game UI. | "Use `max-height` + `overflow: hidden`, or single-line `text-overflow: ellipsis`." |
+| `line-clamp` (the standard shorthand), `max-lines`, `block-ellipsis`, `continue` | Chromium 153 implements none of them (it parses only `-webkit-line-clamp`) and drops them; so does compat (`HTMLUI-CSS-0002`, Info beside a `-webkit-line-clamp`). The legacy `-webkit-line-clamp` box was out of scope here and is implemented since phase 6 (p6-line-clamp, FORK.md P6-L1; §3.10 "p6-line-clamp as implemented"). | "Use display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden." |
 | Static text selection (`user-select: text/all` on non-input content) | RmlUi has selection only inside text inputs; implementing selection for arbitrary inline content is a separate feature, not a CSS parity fix. `user-select: none/auto` are native (they match current behavior). | "Text outside inputs is not selectable." |
 | `scroll-snap-*`, `scroll-behavior: smooth` (as CSS), `overscroll-behavior` values beyond `auto/contain` | Needs snap points in `ScrollController`; game menus navigate with focus/gamepad (`nav-*`). Smooth scrolling is available from Lua (`scrollIntoView{behavior="smooth"}`). | "Use focus navigation or Lua scrolling." |
 | Multi-column layout (`columns`, `column-count`) | Tier 3, new fragmentation machinery. | "Use CSS Grid or flex-wrap." |
@@ -1588,6 +1588,74 @@ Chromium 153 (`NGLineBreaker`/`LineInfo::TextIndent`, `ComputedStyle::TextIndent
 - **Fixtures** (`p3/text/indent-*`, Ahem, whole-pixel offsets so the image is compared): `basic` (lengths, `%`,
   `calc()`, `em`, negative, centred, right, justified), `lines` (`<br>`, preserved line feeds, `hanging`, `each-line`, block
   children, floats, list markers), `rtl`, `fields` (text area, inputs) and `transition` (halfway values).
+
+**p6-line-clamp as implemented** (phase 6, after phase 3: FORK.md row P6-L1; §2.2 listed line clamping
+as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `LineClampData` and
+`LineTruncator` with the `CSSLineClamp` flag off (its default) and measured on the pinned headless shell:
+
+- **Properties.** Chromium 153 parses `-webkit-line-clamp: none | <integer [1,∞]>`,
+  `-webkit-box-orient` (with `inline-axis`/`block-axis`) and `display: -webkit-box | -webkit-inline-box`,
+  and none of `line-clamp`, `max-lines`, `block-ellipsis`, `continue`. The fork registers the first three;
+  compat (`ForkFeature::LineClamp`) writes them natively, `-webkit-box-orient` beside the `flex-direction`
+  of the legacy flexbox mapping (its aliases as `horizontal`/`vertical`, the keywords Chromium computes), and drops `line-clamp` (`HTMLUI-CSS-0002`, Info when the rule also
+  declares `-webkit-line-clamp`); an Info (`HTMLUI-CSS-0003`) tells when the rule's own `display` or
+  orient makes the clamp do nothing. Without the feature phase 2's `max-height` cut stays.
+- **The legacy box.** As Chromium's `StyleAdjuster`: a `-webkit-box` (`-webkit-inline-box`) with a vertical
+  orient and a clamp computes to `flow-root` (`inline-block`) and is a line-clamp container; any other
+  one is a flex container (compat's legacy box properties). Blockified (a flex or grid item) it stays one.
+  The inspector reports `display: flow-root` for it, as `getComputedStyle`.
+- **Counting.** In the container's block formatting context: its lines and those of its in-flow blocks
+  that do not establish their own context (not inline-blocks, floats, flex or `flow-root` children); empty
+  line boxes do not count, a line of nothing but a `<br>` does. The line the count reaches N at is the
+  clamp line. Every block of the context ends its automatic height after its first line or child past
+  the clamp point, without the margins after it or the floats below it, so a block after the clamp point
+  is as tall as its first line (Chromium's legacy intrinsic block size); a definite height, `min-height`
+  and `max-height` apply over it. The content after the clamp point is laid out and painted: `overflow:
+  hidden` hides it, a stretched flex item shows it. A container whose count ends at exactly 0 (nothing
+  after the clamp line) is laid out again without clamping: no ellipsis; an empty or lineless block right
+  after the clamp line is content after it. Lines and blocks past the clamp point give no baseline.
+- **The ellipsis.** U+2026 when the line's font has the glyph, `...` otherwise, in the font and colour of
+  the block container whose line it ends, on the line's baseline. From the line's end (its left in a
+  right-to-left block) the first text run or atomic inline that fits beside the ellipsis is followed by
+  it, a text run cut to the clusters that fit (its line-start side: the run's end against the line's
+  direction), the items after it hidden (a hidden atomic inline is neither painted nor hit); the first
+  item of the line is kept, the ellipsis then overflowing. Inline boxes are not ellipsized: after a
+  span's text the ellipsis covers its right padding and border. The line keeps the alignment offset of
+  its uncut content (a right-aligned ellipsis may end outside the box, clipped). `text-overflow` still
+  ellipsizes the other overflowing lines. A line too long for a right-to-left block is start-aligned: it
+  overflows on its left (CSS Text 3 §7.1, a fix found here).
+- **With justification** (found merging p6-justify): Chromium justifies the clamp line before its
+  `LineTruncator` runs, which then works on the justified items: a space keeps its share, a text run is cut
+  by its justified width (a kept space with its share, the ellipsis right after it), the kept part of a
+  right-to-left line stays where justification placed it. `LineBox::Close` does the same: it trims the
+  line's end, justifies it, then makes room for the ellipsis (`TruncateForLineClamp` cuts a run's
+  `JustificationSpacing` with its text), and the text run draws both. A clamp line that ends its paragraph
+  is cut like any other (`text-align-last` justifies it first).
+- **With text-indent** (found merging P6-J2, measured on the pinned headless shell): the clamp line is
+  made room for the ellipsis in the width its indent leaves: a left-to-right line's items start after the
+  indent (a negative one starts before the box), a right-to-left one ends before it, and an indented
+  centred or justified line is aligned or justified in that width before it is cut; which lines are
+  indented (the first formatted one, `hanging`, `each-line` after a `<br>`) is P6-J2's. A clamp line of
+  nothing but a `<br>` draws its ellipsis at the indent, aligned by `text-align-last` (it ends at a
+  forced break). Merging it found that a line an open inline box goes on on (a span across a wrap or a
+  `<br>`) was not indented by `hanging` or `each-line`; P6-J2 now indents it (`db0b00b9d`).
+- **Dynamic.** A change of `-webkit-line-clamp` or the orient relays out (the display may change between
+  `flow-root` and `flex`); `-webkit-line-clamp` animates discretely (`allow-discrete`: at half the
+  duration). Lua's `style.webkitLineClamp` is `-webkit-line-clamp` (CSSOM's webkit-cased names).
+- **Not done** (no Chromium 153 behaviour to match): the `CSSLineClamp` model (`line-clamp: auto`,
+  hidden lines past the clamp, `block-ellipsis` strings). Approximated: grapheme clusters are code
+  points that start a cluster (not combining marks, joiners, emoji modifiers), a run's direction is its
+  first strong character's, the ellipsis has no text shadow or decoration of its own, and an ellipsis
+  the block draws (after an atomic inline, on a `<br>` line) paints before the block's children.
+- **Fixtures** (`text/`, Chromium references, default tolerances): `line-clamp-legacy` (N = 1..4, widths
+  35..125px, fewer and exactly N lines, edges, alignment, heights, the inline box), `line-clamp-inline`,
+  `line-clamp-nested`, `line-clamp-rtl`, `line-clamp-dynamic` (steps setting the clamp), `line-clamp-transition`
+  (width, `max-height` and the discrete clamp) in Ahem ('p', Ahem's descender, shows the kept characters),
+  `line-clamp-cards` (item cards in a grid and a flex row, Roboto: boxes and the no-text image gated) and
+  `line-clamp-justify` (justified clamp lines: inter-word, inter-character, the last line of a paragraph,
+  right-to-left, a span; the ellipsis in the block's red, the text in a span's colour) and `line-clamp-indent`
+  (indented clamp lines: first, hanging, each-line, negative, percentage, right-to-left, centred, justified,
+  a `<br>` line).
 
 ---
 

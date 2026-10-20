@@ -291,6 +291,15 @@ namespace Style {
 		bool has_translate = false, has_rotate = false, has_scale = false;
 
 		// -- Grid (p3-grid) --
+
+		// -- Line clamp (fork, phase 6, P6-L1) --
+		// '-webkit-line-clamp' (0 = 'none') and '-webkit-box-orient' as declared; 'line_clamp' is the number of lines the
+		// element clamps its block formatting context at: '-webkit-line-clamp' of a line-clamp container (a 'display:
+		// -webkit-box' or '-webkit-inline-box' with a vertical orient, which computes to 'flow-root' or 'inline-block'), 0
+		// for any other element (ElementStyle::ComputeValues).
+		int webkit_line_clamp = 0;
+		int line_clamp = 0;
+		BoxOrient box_orient = BoxOrient::Horizontal;
 	};
 
 	class ComputedValues : NonCopyMoveable {
@@ -493,6 +502,11 @@ namespace Style {
 		StyleValuePtr     grid_column_start()          const { return GetLocalProperty(PropertyId::GridColumnStart, StyleValuePtr()); }
 		StyleValuePtr     grid_column_end()            const { return GetLocalProperty(PropertyId::GridColumnEnd, StyleValuePtr()); }
 
+		// Line clamp (fork, P6-L1)
+		int               webkit_line_clamp()          const { return rare.webkit_line_clamp; }
+		int               line_clamp()                 const { return rare.line_clamp; }
+		BoxOrient         box_orient()                 const { return rare.box_orient; }
+
 		// -- Assignment --
 		// Common
 		void width              (LengthPercentageAuto value) { StoreLengthPercentageAuto(ComputedCalculationSlot::Width, value); common.width_type = value.type; common.width_value = value.value; }
@@ -640,6 +654,11 @@ namespace Style {
 		void has_scale                 (bool value)              { rare.has_scale                  = value; }
 
 		// Grid (p3-grid)
+
+		// Line clamp (fork, P6-L1)
+		void webkit_line_clamp         (int value)               { rare.webkit_line_clamp          = value; }
+		void line_clamp                (int value)               { rare.line_clamp                 = value; }
+		void box_orient                (BoxOrient value)         { rare.box_orient                 = value; }
 
 		// clang-format on
 

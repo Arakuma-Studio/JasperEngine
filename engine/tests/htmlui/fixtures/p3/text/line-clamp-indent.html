@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the legacy line clamp with text-indent</title>
+<style>
+  /* The clamp line with 'text-indent': an indented clamp line makes room for the ellipsis in what the indent leaves (its items start after the indent, a right-to-left one ends before it), a clamp line that is not indented has the whole width; hanging, each-line after a <br>, a negative indent, a percentage, a centred and a justified indented line, a <br> line. The ellipsis has the block's colour (red), the text the span's; 'p' (Ahem's descender) shows which characters are kept. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; background: #e0e8f0; color: #d02020; text-indent: 20px; }
+  .t { color: #203040; }
+</style>
+</head>
+<body>
+<div class="c" id="first" style="left: 10px; top: 10px"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="cut" style="left: 95px; top: 10px"><span class="t">XpXpXpXpX XX</span></div>
+<div class="c" id="second" style="left: 180px; top: 10px; -webkit-line-clamp: 2"><span class="t">XpX XX XXX XX XpX</span></div>
+<div class="c" id="hanging" style="left: 265px; top: 10px; -webkit-line-clamp: 2; text-indent: 20px hanging"><span class="t">XpX XX XXX XpX</span></div>
+<div class="c" id="negative" style="left: 10px; top: 50px; text-indent: -10px"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="each-line" style="left: 95px; top: 50px; -webkit-line-clamp: 2; text-indent: 20px each-line"><span class="t">XpX<br>XX XXX XX</span></div>
+<div class="c" id="rtl" style="left: 180px; top: 50px; -webkit-line-clamp: 2" dir="rtl"><span class="t">XpX XX XXX XX</span></div>
+<div class="c" id="rtl-first" style="left: 265px; top: 50px" dir="rtl"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="percent" style="left: 10px; top: 90px; text-indent: 20%"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="center" style="left: 95px; top: 90px; text-indent: 15px; text-align: center"><span class="t">XpX XXXXX</span></div>
+<div class="c" id="justify" style="left: 180px; top: 90px; text-indent: 15px; text-align: justify"><span class="t">XpX X XXXX</span></div>
+<div class="c" id="br" style="left: 265px; top: 90px"><br><span class="t">XX</span></div>
+</body>
+</html>

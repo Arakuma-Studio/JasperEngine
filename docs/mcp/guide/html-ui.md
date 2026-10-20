@@ -419,7 +419,8 @@ Native or exactly rewritten, as in Chrome:
   `text-indent` (lengths, `%` of the block's width, negative, `hanging`, `each-line`; also in
   text fields; it animates), `text-transform` (Unicode), all six `white-space` values,
   `overflow-wrap`, `word-break`, `text-overflow: ellipsis` (one line: `white-space: nowrap;
-  overflow: hidden`), `text-decoration` with color, style, thickness and offset, `text-shadow`
+  overflow: hidden`), several lines ending with "…" (`-webkit-line-clamp`, "Clamping text to a
+  few lines" below), `text-decoration` with color, style, thickness and offset, `text-shadow`
   (several, blurred: a glow), `-webkit-text-stroke` (drawn outside the glyphs), soft hyphens
   (`&shy;`) and zero-width spaces as break opportunities, right-to-left text with
   `direction: rtl` (Arabic shaping built in).
@@ -454,8 +455,9 @@ Each item below is reported where you write it (the code in brackets), with the 
 - **Multi-column layout** (`columns`, `column-count`: `HTMLUI-CSS-0002`): grid or
   `flex-wrap`.
 - **`subgrid`, `masonry`** (`HTMLUI-CSS-0004`): nested grids with explicit track sizes.
-- **`-webkit-line-clamp`** (`HTMLUI-CSS-0006`): cuts after n lines without an ellipsis; for an
-  ellipsis use one line with `text-overflow: ellipsis`.
+- **The standard `line-clamp`**, `max-lines`, `block-ellipsis`, `continue` (`HTMLUI-CSS-0002`;
+  info beside a `-webkit-line-clamp`): Chrome 153 does not implement them and drops them, so
+  does the engine; write the `-webkit-line-clamp` box ("Clamping text to a few lines").
 - **Scroll snapping and smooth scrolling** (`scroll-snap-*`: info `HTMLUI-CSS-0002`;
   `scroll-behavior`: info `HTMLUI-CSS-0003`): scroll from Lua (`el:scrollTo(x, y, true)` is
   smooth, `scrollIntoView`).
@@ -499,6 +501,29 @@ Differences **without a diagnostic** (the engine cannot tell when they matter):
 - Text outside inputs cannot be selected; `user-select: none` only turns selection off in text
   inputs.
 - A `<legend>` is as wide as its text; a password field shows `*`.
+
+### Clamping text to a few lines
+
+Item descriptions and card texts cut after n lines with "…" use the box Chrome implements:
+
+```css
+.item-desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+}
+```
+
+It is two lines tall and the second line ends with "…" in the box's font and colour, after the
+characters that fit beside it, exactly as in Chrome: the lines of nested blocks count, a text
+with fewer lines shows none, padding and borders are outside the lines, a right-to-left box ends
+on its left, a flex or grid item clamps the same (stretched taller, it shows more lines). Without
+`overflow: hidden` the lines after the clamp stay visible, as in Chrome. `-webkit-line-clamp:
+none` shows every line (from Lua `el.style.webkitLineClamp = "none"`: a "read more" toggle). On
+any other `display` it does nothing (info `HTMLUI-CSS-0003`). In a transition it changes at
+once (with `transition-behavior: allow-discrete`, at half the duration); transition the width
+or `max-height` instead.
 
 ### Text effects
 
@@ -1515,7 +1540,7 @@ the image is: image.canvas_rect is the canvas rectangle it shows, in canvas px.
 | `mix-blend-mode`, `background-blend-mode` | `opacity`, or a pre-blended image | `HTMLUI-CSS-0002` |
 | `writing-mode: vertical-rl` | `transform: rotate(90deg)` | `HTMLUI-CSS-0002` |
 | `columns: 2` | grid or `flex-wrap` | `HTMLUI-CSS-0002` |
-| `-webkit-line-clamp` for an ellipsis | one line with `text-overflow: ellipsis` | `HTMLUI-CSS-0006` |
+| `line-clamp: 2` (the standard shorthand) | `display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden` | `HTMLUI-CSS-0002` |
 | `height: 100dvh`, `-webkit-fill-available` fixes for mobile browser bars | `100vh` is the canvas, exact | none |
 | hover-only affordances on touch | visible by default or on `:focus`/`:active`; `@media (hover: hover)` is false on touch devices | `HTMLUI-AT-0006` (info) |
 | `title="..."` tooltips | a tooltip element shown on `mouseover` | `HTMLUI-HTML-0004` (info) |

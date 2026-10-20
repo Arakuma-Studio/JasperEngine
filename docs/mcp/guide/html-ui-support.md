@@ -424,10 +424,10 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `-webkit-box-align` | rewritten | legacy (2009) flexbox mapped to align-items |  |
 | `-webkit-box-direction` | rewritten | legacy (2009) flexbox mapped to flex-direction |  |
 | `-webkit-box-flex` | rewritten | legacy (2009) flexbox mapped to flex-grow |  |
-| `-webkit-box-orient` | rewritten | legacy (2009) flexbox mapped to flex-direction |  |
+| `-webkit-box-orient` | rewritten | legacy (2009) flexbox mapped to flex-direction; with the fork (LineClamp) also written as the fork's -webkit-box-orient: vertical with -webkit-line-clamp makes a display: -webkit-box a line-clamp container |  |
 | `-webkit-box-pack` | rewritten | legacy (2009) flexbox mapped to justify-content |  |
 | `-webkit-font-smoothing` | ignored | font rendering hint; the font engine decides (HTMLUI-CSS-0003) |  |
-| `-webkit-line-clamp` | approximated | cut after n lines without an ellipsis (Warning) (HTMLUI-CSS-0006) |  |
+| `-webkit-line-clamp` | native | native with the fork (LineClamp), as Chromium 153: a display: -webkit-box with -webkit-box-orient: vertical shows n lines, the last one ending with an ellipsis (no effect on other boxes, Info); without it cut after n lines without an ellipsis (Warning) |  |
 | `-webkit-mask` | rewritten | as mask (the fork's mask layers with BackgroundLayers; without it mask-image decorators); mask-mode and mask-composite parts unsupported, origin and clip boxes have no effect with the fork (Info) |  |
 | `-webkit-mask-clip` | approximated | with the fork no effect: the mask is clipped to the border box (Info, phase-3 spec 3.9); without it merged into the mask layer list (html-layer arguments) (HTMLUI-CSS-0005) |  |
 | `-webkit-mask-image` | rewritten | as mask-image (the fork's mask layers with BackgroundLayers; without it the layer rewrite of backgrounds) |  |
@@ -505,7 +505,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `background-tbd` | unsupported | draft background shorthand placeholder; not supported (HTMLUI-CSS-0002) | use background |
 | `baseline-shift` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `baseline-source` | unsupported | not supported (HTMLUI-CSS-0002) | use vertical-align or align-items |
-| `block-ellipsis` | unsupported | not supported (HTMLUI-CSS-0002) | use text-overflow: ellipsis on a single line |
+| `block-ellipsis` | unsupported | not supported: Chromium 153 does not implement it either (HTMLUI-CSS-0002) | use display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden |
 | `block-size` | rewritten | mapped to height (horizontal writing mode) |  |
 | `block-step` | unsupported | vertical rhythm is not supported (HTMLUI-CSS-0002) | set explicit heights in multiples of the step |
 | `block-step-align` | unsupported | vertical rhythm is not supported (HTMLUI-CSS-0002) | set explicit heights in multiples of the step |
@@ -680,7 +680,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `container-type` | unsupported | container queries (@container) are not supported (HTMLUI-CSS-0002) | use @media on the viewport size, or toggle classes from Lua |
 | `content` | native | only meaningful on ::before/::after (and ::marker with ListMarkers), which need the fork; ignored elsewhere |  |
 | `content-visibility` | ignored | rendering optimization hint; no visible effect in a game UI (HTMLUI-CSS-0003) |  |
-| `continue` | unsupported | not supported (HTMLUI-CSS-0002) | use overflow: hidden |
+| `continue` | unsupported | not supported: Chromium 153 does not implement it either (HTMLUI-CSS-0002) | use display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden |
 | `corner` | unsupported | corner shorthand (draft) is not supported (HTMLUI-CSS-0002) | use border-radius |
 | `corner-block-end` | unsupported | corner shorthand (draft) is not supported (HTMLUI-CSS-0002) | use border-radius |
 | `corner-block-end-shape` | unsupported | corner shapes other than round are not supported (HTMLUI-CSS-0002) | use border-radius for round corners, or clip-path: polygon() for bevels |
@@ -889,7 +889,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `letter-spacing` | native | lengths; percentages of the font size with the fork (TextProperties) |  |
 | `lighting-color` | unsupported | SVG-internal styling is not supported (Info) (HTMLUI-CSS-0002) | set it as a presentation attribute inside the SVG file |
 | `line-break` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
-| `line-clamp` | approximated | cut after n lines without an ellipsis (Warning) (HTMLUI-CSS-0006) |  |
+| `line-clamp` | unsupported | with the fork (LineClamp) dropped as Chromium 153 drops it (it implements only -webkit-line-clamp; Info when the rule also declares -webkit-line-clamp); without it cut after n lines without an ellipsis (Warning) (HTMLUI-CSS-0002) | use display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden |
 | `line-fit-edge` | unsupported | leading trimming is not supported (HTMLUI-CSS-0002) | adjust line-height or padding |
 | `line-grid` | unsupported | line grids are not supported (HTMLUI-CSS-0002) | use a line-height that matches the grid |
 | `line-height` | native | normal -> 1.2 (approximated, documented) |  |
@@ -950,7 +950,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `max-block-size` | rewritten | mapped to max-height (horizontal writing mode) |  |
 | `max-height` | native | sizing keywords approximated as none |  |
 | `max-inline-size` | rewritten | mapped to max-width (horizontal writing mode) |  |
-| `max-lines` | unsupported | not supported (HTMLUI-CSS-0002) | use max-height with overflow: hidden (or -webkit-line-clamp) |
+| `max-lines` | unsupported | not supported: Chromium 153 does not implement it either (HTMLUI-CSS-0002) | use display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: <n>; overflow: hidden |
 | `max-size` | unsupported | not supported (draft) (HTMLUI-CSS-0002) | use max-width and max-height |
 | `max-width` | native | sizing keywords approximated as none |  |
 | `min-block-size` | rewritten | mapped to min-height (horizontal writing mode) |  |
@@ -1446,7 +1446,7 @@ Values of a property that are not handled like the property's other values; `<..
 | `border-width` | `thick` | rewritten | keyword width (exact) |  |
 | `border-width` | `thin` | rewritten | keyword width (exact) |  |
 
-### Values: c-d
+### Values: c
 
 | Property | Value | Support | Notes | Instead |
 |---|---|---|---|---|
@@ -1499,11 +1499,16 @@ Values of a property that are not handled like the property's other values; `<..
 | `cursor` | `wait` | native |  |  |
 | `cursor` | `zoom-in` | native |  |  |
 | `cursor` | `zoom-out` | native |  |  |
-| `display` | `-ms-flexbox` | rewritten | legacy prefixed value (-webkit-box with -webkit-line-clamp -> block) |  |
+
+### Values: d
+
+| Property | Value | Support | Notes | Instead |
+|---|---|---|---|---|
+| `display` | `-ms-flexbox` | rewritten | legacy prefixed value |  |
 | `display` | `-ms-inline-flexbox` | rewritten | legacy prefixed value |  |
-| `display` | `-webkit-box` | rewritten | legacy prefixed value (-webkit-box with -webkit-line-clamp -> block) |  |
-| `display` | `-webkit-flex` | rewritten | legacy prefixed value (-webkit-box with -webkit-line-clamp -> block) |  |
-| `display` | `-webkit-inline-box` | rewritten | legacy prefixed value |  |
+| `display` | `-webkit-box` | native | the fork's legacy box with LineClamp: a line-clamp container (flow-root) with -webkit-box-orient: vertical and -webkit-line-clamp, else a flex container; without it flex (block with -webkit-line-clamp in the rule) |  |
+| `display` | `-webkit-flex` | rewritten | legacy prefixed value |  |
+| `display` | `-webkit-inline-box` | native | the fork's legacy inline box with LineClamp: an inline-block line-clamp container with -webkit-box-orient: vertical and -webkit-line-clamp, else inline-flex; without it inline-flex (block with -webkit-line-clamp in the rule) |  |
 | `display` | `-webkit-inline-flex` | rewritten | legacy prefixed value |  |
 | `display` | `block` | native |  |  |
 | `display` | `block flex` | rewritten | two-value syntax -> the single keyword |  |

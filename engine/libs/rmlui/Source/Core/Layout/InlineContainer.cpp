@@ -7,10 +7,12 @@
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../../../Include/RmlUi/Core/Property.h"
 #include "BlockContainer.h"
+#include "../LineClampEllipsis.h"
 #include "FloatedBoxSpace.h"
 #include "InlineLevelBox.h"
 #include "LayoutDetails.h"
 #include "LineBox.h"
+#include "LineClamp.h"
 
 namespace Rml {
 
@@ -39,6 +41,9 @@ InlineContainer::InlineContainer(BlockContainer* _parent, float _available_width
 		indent_hanging = (uint8_t(indent_mode) & uint8_t(Style::TextIndentMode::Hanging)) != 0;
 		indent_each_line = (uint8_t(indent_mode) & uint8_t(Style::TextIndentMode::EachLine)) != 0;
 	}
+
+	// Line clamping (fork, P6-L1): the context of the line-clamp container this inline container is in, if any.
+	line_clamp = parent->GetLineClampContext();
 }
 
 void InlineContainer::IndentLine(LineBox* line_box)
@@ -124,17 +129,24 @@ void InlineContainer::CloseInlineElement(InlineBox* inline_box)
 
 void InlineContainer::AddBreak(float line_height)
 {
-	// Simply end the line if one is open, otherwise increment by the line height.
+	// Simply end the line if one is open, otherwise increment by the line height. The line after the break is one after a
+	// forced break ('each-line'), also the line an open inline box goes on on (split from the closed one, indented then).
 	if (GetOpenLineBox())
 	{
+		after_forced_break = true;
 		CloseOpenLineBox(true, true);
 	}
 	else
 	{
+		// (a line of nothing but the <br>: a line for line clamping, fork P6-L1)
+		if (line_clamp)
+			CountEmptyLineForLineClamp();
 		box_cursor += line_height;
 		formatted_lines += 1;
+		if (line_clamp)
+			RecordLineClampHeight();
+		after_forced_break = true;
 	}
-	after_forced_break = true;
 }
 
 void InlineContainer::AddChainedBox(UniquePtr<LineBox> open_line_box)
@@ -187,6 +199,9 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 		if (height_of_line > line_box->GetLineMinimumHeight())
 			UpdateLineBoxPlacement(line_box, 0.f, height_of_line);
 
+		if (line_clamp)
+			CountLineForLineClamp(line_box);
+
 		// Now that the line has been given a final position and size, close the line box to submit all the fragments.
 		// Our parent block container acts as the containing block for our inline boxes.
 		line_box->Close(parent->GetElement(), parent->GetPosition(), text_align, text_align_last, last_line, rtl);
@@ -197,6 +212,9 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 		if (!line_box->CanCollapseLine())
 			box_cursor = (line_box->GetPosition().y - position.y) + height_of_line;
 
+		if (line_clamp)
+			RecordLineClampHeight();
+
 		// If we have any pending floating elements for our parent, then this would be an ideal time to place them.
 		parent->PlaceQueuedFloats(position.y + box_cursor);
 
@@ -205,7 +223,13 @@ void InlineContainer::CloseOpenLineBox(bool split_all_open_boxes, bool last_line
 			if (out_split_line)
 				*out_split_line = std::move(split_line_box);
 			else
+			{
+				// The line the open inline boxes go on on is a formatted line too: 'text-indent' indents it as any other
+				// (hanging, each-line), as Chromium does.
+				if (text_indent != 0.f)
+					IndentLine(split_line_box.get());
 				line_boxes.push_back(std::move(split_line_box));
+			}
 		}
 	}
 }
@@ -246,6 +270,63 @@ void InlineContainer::UpdateLineBoxPlacement(LineBox* line_box, float minimum_wi
 	line_box->SetLineBox(line_position, available_width, minimum_dimensions.y);
 }
 
+void InlineContainer::CountLineForLineClamp(LineBox* line_box)
+{
+	// Lines with content count (Chromium: not its empty line boxes).
+	if (line_box->CanCollapseLine())
+		return;
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line == 0)
+		first_past_clamp_line = (int)line_boxes.size();
+
+	if (line_clamp->lines_until_clamp == 1)
+	{
+		clamp_ellipsis = MakeUnique<LineClampEllipsis>();
+		if (LineClamp::MakeEllipsis(parent->GetElement(), *clamp_ellipsis))
+			line_box->SetLineClampEllipsis(*clamp_ellipsis);
+	}
+	line_clamp->lines_until_clamp -= 1;
+}
+
+void InlineContainer::CountEmptyLineForLineClamp()
+{
+	if (line_clamp->lines_until_clamp <= 0 && first_past_clamp_line == 0)
+		first_past_clamp_line = (int)line_boxes.size() + 1;
+
+	if (line_clamp->lines_until_clamp == 1)
+	{
+		// The ellipsis alone at the line's start (the <br> is the item it follows), on the baseline of the line's strut.
+		Element* block = parent->GetElement();
+		LineClampEllipsis ellipsis;
+		if (LineClamp::MakeEllipsis(block, ellipsis))
+		{
+			// The line ends at a forced break: 'text-align-last' aligns it; 'text-indent' as IndentLine indents the line (P6-J2).
+			const bool indented = ((formatted_lines == 0 && first_formatted_line) || (indent_each_line && after_forced_break)) != indent_hanging;
+			const float indent = (indented ? text_indent : 0.f);
+			const float available = box_size.x - indent;
+			float alignment_offset = (rtl ? 0.f : indent);
+			switch (text_align_last)
+			{
+			case Style::TextAlign::Center: alignment_offset += 0.5f * available; break;
+			case Style::TextAlign::Right: alignment_offset += available; break;
+			default: break;
+			}
+			const Vector2f line_top_left = position - parent->GetPosition() + Vector2f(0.f, box_cursor);
+			ellipsis.position = line_top_left + Vector2f(alignment_offset + (rtl ? -ellipsis.width : 0.f), root_inline_box.GetHeightAboveBaseline());
+			LineClampAccess::SetBlockEllipsis(block, &ellipsis);
+		}
+	}
+	line_clamp->lines_until_clamp -= 1;
+}
+
+void InlineContainer::RecordLineClampHeight()
+{
+	if (line_clamp->lines_until_clamp <= 0 && !has_clamp_height)
+	{
+		clamp_height = Math::Max(box_cursor, 0.f);
+		has_clamp_height = true;
+	}
+}
+
 float InlineContainer::GetShrinkToFitWidth() const
 {
 	float content_width = 0.0f;
@@ -276,7 +357,8 @@ Vector2f InlineContainer::GetStaticPositionEstimate(bool inline_level_box) const
 // §9.4.2, Chromium): an inline-block whose content is an empty ::before has its baseline at its bottom margin edge (fork, P4-G11).
 bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 {
-	for (auto it = line_boxes.rbegin(); it != line_boxes.rend(); ++it)
+	// (the lines laid out past the line-clamp point give none: Chromium, fork P6-L1)
+	for (auto it = line_boxes.rbegin() + (first_past_clamp_line != 0 ? (int)line_boxes.size() - (first_past_clamp_line - 1) : 0); it != line_boxes.rend(); ++it)
 	{
 		if ((*it)->CanCollapseLine())
 			continue;
@@ -288,8 +370,10 @@ bool InlineContainer::GetBaselineOfLastLine(float& out_baseline) const
 
 bool InlineContainer::GetBaselineOfFirstLine(float& out_baseline) const
 {
-	for (const auto& line_box : line_boxes)
+	const auto end = (first_past_clamp_line != 0 ? line_boxes.begin() + (first_past_clamp_line - 1) : line_boxes.end());
+	for (auto it = line_boxes.begin(); it != end; ++it)
 	{
+		const auto& line_box = *it;
 		if (line_box->CanCollapseLine())
 			continue;
 		out_baseline = line_box->GetPosition().y + line_box->GetBaseline();

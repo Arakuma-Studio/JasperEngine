@@ -59,9 +59,11 @@ TEST(OutOfScopeDiagnostics, EveryItemIsReportedWithItsHint){
         // ::first-line, ::first-letter
         {".a::first-line {\n  color: red;\n}", "HTMLUI-SEL-0001", "span"},
         {".a::first-letter {\n  color: red;\n}", "HTMLUI-SEL-0001", "span"},
-        // -webkit-line-clamp, line-clamp (approximated: cut without an ellipsis)
-        {".a {\n  -webkit-line-clamp: 2;\n}", "HTMLUI-CSS-0006", "text-overflow: ellipsis"},
-        {".a {\n  line-clamp: 2;\n}", "HTMLUI-CSS-0006", "text-overflow: ellipsis"},
+        // line-clamp and its longhands: Chromium 153 implements only -webkit-line-clamp (native since p6-line-clamp)
+        {".a {\n  line-clamp: 2;\n}", "HTMLUI-CSS-0002", "-webkit-line-clamp"},
+        {".a {\n  max-lines: 2;\n}", "HTMLUI-CSS-0002", "-webkit-line-clamp"},
+        {".a {\n  block-ellipsis: auto;\n}", "HTMLUI-CSS-0002", "-webkit-line-clamp"},
+        {".a {\n  continue: discard;\n}", "HTMLUI-CSS-0002", "-webkit-line-clamp"},
         // static text selection
         {".a {\n  user-select: text;\n}", "HTMLUI-CSS-0005", "text inputs"},
         {".a {\n  user-select: all;\n}", "HTMLUI-CSS-0005", "text inputs"},

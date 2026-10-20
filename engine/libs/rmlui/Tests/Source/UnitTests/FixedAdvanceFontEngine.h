@@ -95,6 +95,7 @@ public:
 		Rml::ColourbPremultiplied colour, float, const Rml::TextShapingContext& context, Rml::TexturedMeshList& mesh_list) override
 	{
 		generated.push_back(Rml::String(string.begin(), string.end()));
+		generated_positions.push_back(position);
 		Rml::Vector<float> advances, offsets;
 		const float width = Measure(handle, string, context, &advances, &offsets);
 		const float size = (float)(int)handle;
@@ -112,8 +113,9 @@ public:
 
 	int GetVersion(Rml::FontFaceHandle) override { return 1; }
 
-	// every string GenerateString was given, in order
+	// every string GenerateString was given, in order, and its baseline origin (relative to what draws it)
 	Rml::StringList generated;
+	Rml::Vector<Rml::Vector2f> generated_positions;
 
 private:
 	Rml::UnorderedMap<int, Rml::FontMetrics> metrics;

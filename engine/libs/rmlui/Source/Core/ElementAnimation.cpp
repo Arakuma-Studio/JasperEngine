@@ -480,6 +480,10 @@ static Property InterpolateProperties(const Property& p0, const Property& p1, fl
 {
 	const Property& p_discrete = (alpha < 0.5f ? p0 : p1);
 
+	// (discrete, fork P6-L1: see IsInterpolable)
+	if (definition && definition->GetId() == PropertyId::WebkitLineClamp)
+		return p_discrete;
+
 #ifdef RMLUI_MATH_EXPRESSIONS
 	if ((Any(p0.unit & Unit::NUMERIC) || p0.unit == Unit::CALCULATION) && (Any(p1.unit & Unit::NUMERIC) || p1.unit == Unit::CALCULATION))
 	{
@@ -1026,6 +1030,10 @@ static bool IsNumericProperty(const Property& property)
 
 bool IsInterpolable(const Property& from, const Property& to, Element& element, const PropertyDefinition* definition)
 {
+	// '-webkit-line-clamp' animates discretely, as in Chromium (fork, P6-L1): its integer is not interpolated.
+	if (definition && definition->GetId() == PropertyId::WebkitLineClamp)
+		return false;
+
 	// 'text-shadow: none' against a shadow list (the empty list, padded).
 	if (definition && definition->GetId() == PropertyId::TextShadow && from.unit != to.unit &&
 		(from.unit == Unit::STYLE_VALUE || to.unit == Unit::STYLE_VALUE) && (from.unit == Unit::KEYWORD || to.unit == Unit::KEYWORD))

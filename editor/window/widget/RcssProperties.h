@@ -16,6 +16,8 @@ namespace jasperengine::editor {
         "-rmlui-language",
         "-rmlui-text-indent-length",
         "-rmlui-text-indent-mode",
+        "-webkit-box-orient",
+        "-webkit-line-clamp",
         "accent-color",
         "align-content",
         "align-items",

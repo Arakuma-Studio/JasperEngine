@@ -111,7 +111,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -275,6 +275,9 @@ void Element::Render()
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);
 			OnRender();
 		}
+		// The line-clamp ellipsis this block container draws itself (fork, P6-L1: after an atomic inline, or alone on a line).
+		if (draws_line_clamp_ellipsis)
+			LineClamp::RenderBlockEllipsis(this, *meta->line_clamp_ellipsis);
 	}
 
 	RenderStackingContextChildren();
@@ -668,6 +671,13 @@ void Element::SetScrollableOverflowRectangle(Vector2f _scrollable_overflow_recta
 
 void Element::SetBox(const Box& box)
 {
+	// Placed again: an atomic inline the line-clamp ellipsis truncates is hidden once more by its line (fork, P6-L1).
+	if (line_clamp_hidden)
+	{
+		line_clamp_hidden = false;
+		DirtyStackingContext();
+	}
+
 	if (box != main_box || additional_boxes.size() > 0)
 	{
 #ifdef RMLUI_DEBUG
@@ -2529,6 +2539,11 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// change how this element's children are painted.
 	if (changed_properties.Contains(PropertyId::Display))
 		DirtyStackingContext();
+
+	// -- Line clamp (fork, P6-L1) --
+	// The ellipsis a block container draws is placed by its lines: a box of another kind has none.
+	if (changed_properties.Contains(PropertyId::Display) && draws_line_clamp_ellipsis)
+		LineClampAccess::SetBlockEllipsis(this, nullptr);
 }
 
 void Element::OnPseudoClassChange(const String& /*pseudo_class*/, bool /*activate*/) {}
@@ -2990,6 +3005,9 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 		return;
 	if (meta->computed_values.visibility() != Style::Visibility::Visible && (local_stacking_context_forced || is_non_dom_element || !parent))
 		return;
+	// Truncated by a line-clamp ellipsis (fork, P6-L1): not painted, not hit, with its subtree.
+	if (line_clamp_hidden)
+		return;
 
 	const Display display = GetDisplay();
 
@@ -3064,6 +3082,8 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 		case Display::TableColumn:
 		case Display::TableColumnGroup:
 		case Display::Contents:                 // Never added: its children are added in its place.
+		case Display::WebkitBox:                // (resolved by ElementStyle::ComputeValues, fork P6-L1)
+		case Display::WebkitInlineBox:
 		case Display::None: RMLUI_ERROR; break; // Handled above.
 		}
 	}

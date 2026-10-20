@@ -1,0 +1,7 @@
+{
+ "comment": "In a right-to-left block the clamped line ends on its left: the ellipsis is placed left of the content, a run that does not fit beside it loses its characters on the left (the kept part stays where it was: 'p', Ahem's descender, shows which), right-aligned by text-align: start, or aligned by text-align: left and center from the uncut line; the same box written left to right for comparison.",
+ "viewport": [
+  270,
+  80
+ ]
+}

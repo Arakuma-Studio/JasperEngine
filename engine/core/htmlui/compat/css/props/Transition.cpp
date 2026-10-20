@@ -535,6 +535,11 @@ namespace {
         }
         const std::string lower = lowerAscii(written);
         std::string_view name = Arena::current().copy(lower);
+        // the fork's legacy line-clamp properties keep their prefix (P6-L1; '-webkit-line-clamp' animates discretely)
+        if ((name == "-webkit-line-clamp" || name == "-webkit-box-orient") && session.options.fork.has(ForkFeature::LineClamp)){
+            names[0] = name;
+            return 1;
+        }
         for (std::string_view prefix : {std::string_view("-webkit-"), std::string_view("-moz-")}){
             if (startsWith(name, prefix) && (findProperty(name.substr(prefix.size())) || RcssGrammar::known(name.substr(prefix.size()))))
                 name = name.substr(prefix.size());

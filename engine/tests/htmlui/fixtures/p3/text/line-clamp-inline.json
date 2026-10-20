@@ -1,0 +1,7 @@
+{
+ "comment": "The ellipsis is in the block's colour, after the text of a span (over its right padding and border), after an inline-block that fits beside it (which hides one that does not, and keeps one that starts the line), on a line of nothing but a <br>, at the end of pre lines; nowrap keeps one line (no clamp ellipsis, text-overflow ellipsizes it); text-overflow ellipsizes the other lines of the box.",
+ "viewport": [
+  340,
+  170
+ ]
+}

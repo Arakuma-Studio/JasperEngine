@@ -832,6 +832,10 @@ namespace {
         {"will-change", ForkFeature::GroupOpacity, "string"},
         // p5-infra: the gradient-text filter list of effect layers (P5-1): the effects' jfx-* filters and the standard ones
         {"-jfx-text-fill", ForkFeature::TextFillFilter, "@jfx_filter"},
+        // p6-line-clamp (P6-L1): Chromium 153's legacy line clamping; compat checks that the count is an integer from 1
+        {"-webkit-box-orient", ForkFeature::LineClamp, "kw:horizontal,vertical"},
+        {"-webkit-line-clamp", ForkFeature::LineClamp, "kw:none|number"},
+        {"display", ForkFeature::LineClamp, "kw:-webkit-box,-webkit-inline-box"},
     };
 
     const ForkGrammar* findForkGrammar(std::string_view name){
@@ -1115,7 +1119,12 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value, con
         ~Scope(){ acceptedForkBits = previous; }
     } scope(fork.bits());
     const bool calc = fork.has(ForkFeature::Calc);
-    if (const ForkGrammar* row = findForkGrammar(property); row && fork.has(row->feature)){
+    // (a property can have rows of several features: display, BoxParity's and LineClamp's)
+    bool any_fork_row = false;
+    for (const ForkGrammar& row : kForkGrammar){
+        if (row.name != property || !fork.has(row.feature))
+            continue;
+        any_fork_row = true;
         const std::string_view trimmed = trim(value);
         if (trimmed.empty())
             return false;
@@ -1125,7 +1134,7 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value, con
         }
         if (acceptsWith(property, value, calc))
             return true;
-        return anySegment(row->grammar, '|', [&](std::string_view alternative){
+        if (anySegment(row.grammar, '|', [&](std::string_view alternative){
             if (alternative[0] == '@'){
                 const std::string_view kind = alternative.substr(1);
                 if (kind.compare(0, 5, "text_") == 0 || kind == "white_space")
@@ -1143,8 +1152,11 @@ bool RcssGrammar::accepts(std::string_view property, std::string_view value, con
                 return true;
             }
             return checkAlternatives(trimmed, alternative, calc);
-        });
+        }))
+            return true;
     }
+    if (any_fork_row)
+        return false;
     return acceptsWith(property, value, calc);
 }
 

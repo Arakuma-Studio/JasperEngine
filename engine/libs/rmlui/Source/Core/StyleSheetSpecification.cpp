@@ -580,6 +580,9 @@ void StyleSheetSpecification::RegisterDefaultParsers()
 	RegisterParser("alpha_value", &alpha_value_parser.SetRestriction(PropertyParserNumber::Restriction::AlphaValue));
 	RegisterParser("non_negative_number", &non_negative_number_parser.SetRestriction(PropertyParserNumber::Restriction::NonNegative));
 	RegisterParser("integer", &integer_parser.SetRestriction(PropertyParserNumber::Restriction::Integer));
+	// (fork, P6-L1: '-webkit-line-clamp'; no calc(), as the property never computes from one in practice)
+	static PropertyParserNumber positive_integer_parser(Unit::NUMBER);
+	RegisterParser("positive_integer", &positive_integer_parser.SetRestriction(PropertyParserNumber::Restriction::PositiveInteger));
 	static PropertyParserAspectRatio aspect_ratio_parser;
 	RegisterParser("aspect_ratio", &aspect_ratio_parser);
 
@@ -671,7 +674,7 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 	RegisterShorthand(ShorthandId::BorderColor, "border-color", "border-top-color, border-right-color, border-bottom-color, border-left-color", ShorthandType::Box);
 
 	RegisterProperty(PropertyId::Display, "display", "inline", false, true)
-		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, grid, inline-grid, list-item, contents");
+		.AddParser("keyword", "none, block, inline, inline-block, flow-root, flex, inline-flex, table, inline-table, table-row, table-row-group, table-column, table-column-group, table-cell, grid, inline-grid, list-item, contents, -webkit-box, -webkit-inline-box");
 	RegisterProperty(PropertyId::Position, "position", "static", false, true).AddParser("keyword", "static, relative, absolute, fixed, sticky");
 	RegisterProperty(PropertyId::Top, "top", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockHeight);
 	RegisterProperty(PropertyId::Right, "right", "auto", false, false).AddParser("keyword", "auto").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ContainingBlockWidth);
@@ -1046,6 +1049,14 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 
 	// -- Grid (p3-grid) --
 	RegisterGridProperties(properties);
+
+	// -- Line clamp (fork, phase 6, P6-L1) --
+	// Chromium 153's legacy line clamping: '-webkit-line-clamp: none | <integer [1,inf]>' and '-webkit-box-orient' (Chromium's
+	// computed keywords: compat writes its aliases inline-axis and block-axis as them), which make a 'display: -webkit-box' a
+	// line-clamp container (ComputeValues).
+	RegisterProperty(PropertyId::WebkitLineClamp, "-webkit-line-clamp", "none", false, true).AddParser("keyword", "none").AddParser("positive_integer");
+	RegisterProperty(PropertyId::WebkitBoxOrient, "-webkit-box-orient", "horizontal", false, true)
+		.AddParser("keyword", "horizontal, vertical");
 
 	// -- Values (p3-values), continued: the logical shorthands, which name the physical properties and shorthands of
 	// the other packages (border-<side> of p3-paint) --
