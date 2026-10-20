@@ -296,6 +296,10 @@ void Element::RenderStackingContextChildren()
 
 	// An element that is not a stacking context has no children here, and its outline is painted by its stacking context.
 	const bool own_outline = (local_stacking_context && has_outline(this));
+	// (nothing to paint: most elements; an ellipsis is only painted here with the element it follows in the list, or as
+	// this element's own)
+	if (stacking_context.empty() && !own_outline && !draws_line_clamp_ellipsis)
+		return;
 	bool any_outline = own_outline;
 	for (const Element* element : stacking_context)
 		any_outline |= has_outline(element);
