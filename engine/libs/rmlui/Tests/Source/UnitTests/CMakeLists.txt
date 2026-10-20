@@ -46,6 +46,7 @@ add_executable(${TARGET_NAME}
 	Layout.cpp
 	LayoutChildren.cpp
 	LineBreaking.cpp
+	LineBreak.cpp
 	LineClamp.cpp
 	ListMarkers.cpp
 	Localization.cpp

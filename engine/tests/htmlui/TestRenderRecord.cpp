@@ -80,6 +80,23 @@ html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; backgroun
 <div id="text">Recorded 123</div>
 </body></html>)";
 
+    // Line-clamp ellipses the blocks draw themselves (after an inline-block: painted by the stacking context with the
+    // block's transform, clip and text shadow, between the inline content and the positioned inline-block over it) and
+    // one a text run draws
+    const char* const kLineClampDocument = R"html(<!DOCTYPE html>
+<html><head><style>
+html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #101218; font-family: sans-serif; color: #fff; }
+.c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; width: 140px;
+     font-size: 16px; line-height: 20px; background: #2c3e50; color: #f39c12; text-shadow: 2px 2px 0 #c0392b; }
+.t { color: #ecf0f1; }
+.ib { display: inline-block; width: 24px; height: 14px; background: #27ae60; }
+</style></head><body>
+<div class="c" style="left: 10px; top: 10px"><span class="t">Two lines of text then</span> <span class="ib"></span> <span class="t">more text after</span></div>
+<div class="c" style="left: 190px; top: 10px; transform: rotate(-6deg)"><span class="t">A turned block with</span> <span class="ib" style="position: relative; top: 4px"><span style="display: block; width: 40px; height: 8px; background: #8e44ad"></span></span> <span class="t">hidden words</span></div>
+<div class="c" style="left: 10px; top: 120px; float: left"><span class="t">A text run draws this one at the end of the line</span></div>
+<div class="c" style="left: 190px; top: 120px; opacity: 0.8"><span class="t">Translucent</span><br><br><span class="t">past the clamp</span></div>
+</body></html>)html";
+
     // paint, filter, backdrop and stateful effects, one under a transform
     std::string effectsDocument(){
         std::string html = R"(<!DOCTYPE html>
@@ -196,6 +213,7 @@ TEST(RenderRecordTest, RecordedFramesMatchImmediateOnes){
     FixedClock clock(1.0);
     expectRecordingMatches(kLayersDocument, "layers");
     expectRecordingMatches(effectsDocument(), "effects");
+    expectRecordingMatches(kLineClampDocument, "line-clamp");
     EffectRuntime::get().clearTestInput();
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
 }

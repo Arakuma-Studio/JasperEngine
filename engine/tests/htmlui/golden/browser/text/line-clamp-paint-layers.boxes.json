@@ -1,0 +1,44 @@
+{
+ "fixture": "text/line-clamp-paint-layers.html",
+ "viewport": [
+  180,
+  90
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "relative",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "opacity",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "transform",
+    "tag": "div",
+    "x": 10,
+    "y": 50,
+    "w": 75,
+    "h": 30
+   },
+   {
+    "id": "negative",
+    "tag": "div",
+    "x": 95,
+    "y": 50,
+    "w": 75,
+    "h": 30
+   }
+  ]
+ }
+}

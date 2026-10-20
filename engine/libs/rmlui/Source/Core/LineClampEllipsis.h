@@ -19,9 +19,10 @@ class RenderManager;
     container's, nor the text run's), without text decorations, on the line's baseline, after the last content that fits
     beside it.
     The text run it follows draws it with its own glyphs (ElementText), after its text. After an atomic inline, or on a line
-    of nothing but a <br>, the block container draws it, painted after that element and its descendants in the inline
-    content (Element::RenderStackingContextChildren): over earlier inline content, inline boxes' backgrounds and the
-    backgrounds of block-level boxes, under positioned ones, as Chromium paints the line's items.
+    of nothing but a <br>, the block container draws it, painted by its stacking context in the inline content after that
+    element and its descendants (before it when it is positioned or a stacking context: painted later, over it):
+    over earlier inline content, inline boxes' backgrounds and the backgrounds of block-level boxes, under positioned
+    ones, as Chromium paints the line's items (Element::BuildLocalStackingContext, RenderStackingContextChildren).
 */
 struct LineClampEllipsis {
 	// The ellipsis's baseline origin: relative to the text element's line positions (a text run's), or to the block
@@ -46,6 +47,10 @@ struct LineClampEllipsis {
 struct LineClampBlockEllipsis {
 	LineClampEllipsis ellipsis;
 	Element* after = nullptr;
+	// Where its stacking context paints it, found while building the stacking context: after this element of it, before
+	// any when null (Element::BuildLocalStackingContext).
+	Element* paint_after = nullptr;
+	bool placed = false;
 	Vector<ElementText::TexturedGeometry> geometry;
 	Vector<ElementText::Shadow> shadows;
 	int font_handle_version = -1;
@@ -61,8 +66,11 @@ public:
 	/// The colour or text shadows of the block container changed: its ellipsis is generated again.
 	static void DirtyBlockEllipsis(Element* block);
 	static bool HasBlockEllipsis(const Element* block) { return block->draws_line_clamp_ellipsis; }
-	/// LineClamp::RenderEllipsisAfter.
-	static void RenderEllipsisAfter(Element* after);
+	/// The ellipsis the block container draws itself, null when none.
+	static LineClampBlockEllipsis* GetBlockEllipsis(Element* block);
+	static bool IsStackingContext(const Element* element) { return element->local_stacking_context; }
+	/// LineClamp::RenderBlockEllipsis.
+	static void RenderBlockEllipsis(Element* block);
 	/// Hides an atomic inline the ellipsis truncates, with its subtree (Element::SetBox shows it again).
 	static void SetHidden(Element* element, bool hidden);
 };
@@ -77,9 +85,9 @@ namespace LineClamp {
 	/// block container's text shadows.
 	void GenerateEllipsis(RenderManager& render_manager, const LineClampEllipsis& ellipsis, Vector2f origin, float opacity,
 		Vector<ElementText::TexturedGeometry>& out_geometry, Vector<ElementText::Shadow>& out_shadows);
-	/// Paints the ellipsis a block container draws after the element 'after' (marked by SetBlockEllipsis), with the block
-	/// container's transform and clip. Nothing when no block container's ellipsis follows the element any more.
-	void RenderEllipsisAfter(Element* after);
+	/// Paints the ellipsis a block container draws (after an atomic inline or a <br>), with the block container's
+	/// transform and clip: its stacking context calls it where the ellipsis is painted (Element::BuildLocalStackingContext).
+	void RenderBlockEllipsis(Element* block);
 
 } // namespace LineClamp
 

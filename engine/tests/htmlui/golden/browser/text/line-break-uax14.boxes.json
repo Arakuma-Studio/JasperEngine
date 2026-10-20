@@ -1,0 +1,108 @@
+{
+ "fixture": "text/line-break-uax14.html",
+ "viewport": [
+  300,
+  140
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "flags",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 45,
+    "h": 20
+   },
+   {
+    "id": "skin-tones",
+    "tag": "div",
+    "x": 65,
+    "y": 10,
+    "w": 25,
+    "h": 30
+   },
+   {
+    "id": "zwj",
+    "tag": "div",
+    "x": 100,
+    "y": 10,
+    "w": 35,
+    "h": 20
+   },
+   {
+    "id": "numbers",
+    "tag": "div",
+    "x": 145,
+    "y": 10,
+    "w": 30,
+    "h": 40
+   },
+   {
+    "id": "hyphen-digits",
+    "tag": "div",
+    "x": 185,
+    "y": 10,
+    "w": 50,
+    "h": 40
+   },
+   {
+    "id": "question",
+    "tag": "div",
+    "x": 245,
+    "y": 10,
+    "w": 40,
+    "h": 40
+   },
+   {
+    "id": "punctuation",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 40,
+    "h": 50
+   },
+   {
+    "id": "kana",
+    "tag": "div",
+    "x": 60,
+    "y": 70,
+    "w": 25,
+    "h": 30
+   },
+   {
+    "id": "cjk-digits",
+    "tag": "div",
+    "x": 95,
+    "y": 70,
+    "w": 35,
+    "h": 30
+   },
+   {
+    "id": "dashes",
+    "tag": "div",
+    "x": 140,
+    "y": 70,
+    "w": 30,
+    "h": 50
+   },
+   {
+    "id": "quotes",
+    "tag": "div",
+    "x": 180,
+    "y": 70,
+    "w": 40,
+    "h": 20
+   },
+   {
+    "id": "words",
+    "tag": "div",
+    "x": 230,
+    "y": 70,
+    "w": 40,
+    "h": 40
+   }
+  ]
+ }
+}

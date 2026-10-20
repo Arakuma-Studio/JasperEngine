@@ -1,0 +1,7 @@
+{
+ "comment": "Where lines wrap inside words, UAX #14 (Unicode 16.0) as Chromium 153 applies it: flags break between regional-indicator pairs (LB30a), emoji with skin-tone modifiers and ZWJ sequences stay together (LB30b, LB8a) and break between each other, numbers and prices stay together (LB25), small kana break as ideographs, ideographs break before and after digits, em dash pairs hold (LB17), quotation marks hold to their words (LB15a/b, LB19); Chromium's own table between ASCII characters: after '?', after '-' (before a digit only after a letter or digit), before '(' after punctuation. The characters Ahem has no glyph for are its .notdef box on both sides.",
+ "viewport": [
+  300,
+  140
+ ]
+}

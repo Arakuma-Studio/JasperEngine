@@ -1,0 +1,7 @@
+{
+ "comment": "An ellipsis the block container draws after an inline-block that is positioned (relative) or a stacking context (opacity, transform) is painted with the line's inline content, as Chromium paints it: the inline-block and its child (blue, overflowing over the ellipsis) are painted later, over it; a z-index -1 one is painted before the block's content, under it. The ellipsis has the block's colour (red), the text a span's.",
+ "viewport": [
+  180,
+  90
+ ]
+}

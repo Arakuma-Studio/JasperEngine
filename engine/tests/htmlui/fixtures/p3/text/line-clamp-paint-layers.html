@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: a line-clamp ellipsis after a positioned or stacking-context inline-block</title>
+<style>
+  /* An ellipsis the block container draws after an inline-block that is positioned (relative) or a stacking context (opacity, transform) is painted with the line's inline content, as Chromium paints it: the inline-block and its child (blue, overflowing over the ellipsis) are painted later, over it; a z-index -1 one is painted before the block's content, under it. The ellipsis has the block's colour (red), the text a span's. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 20px; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; height: 30px; background: #e0e8f0; color: #d02020; }
+  .t { color: #203040; }
+  .ib { display: inline-block; width: 10px; height: 10px; background: #f0c0a0; }
+  .bl { display: block; width: 30px; height: 6px; background: #0000d0; }
+</style>
+</head>
+<body>
+<div class="c" id="relative" style="left: 10px; top: 10px"><span class="t">XpX X</span><span class="ib" style="position: relative"><span class="bl"></span></span><span class="t"> XX XX</span></div>
+<div class="c" id="opacity" style="left: 95px; top: 10px"><span class="t">XpX X</span><span class="ib" style="opacity: 0.99"><span class="bl"></span></span><span class="t"> XX XX</span></div>
+<div class="c" id="transform" style="left: 10px; top: 50px"><span class="t">XpX X</span><span class="ib" style="transform: translateX(0)"><span class="bl"></span></span><span class="t"> XX XX</span></div>
+<div class="c" id="negative" style="left: 95px; top: 50px; z-index: 0"><span class="t">XpX X</span><span class="ib" style="position: relative; z-index: -1"><span class="bl"></span></span><span class="t"> XX XX</span></div>
+</body>
+</html>
