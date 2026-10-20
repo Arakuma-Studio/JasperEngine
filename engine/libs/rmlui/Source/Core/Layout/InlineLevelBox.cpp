@@ -197,8 +197,9 @@ FragmentConstructor InlineLevelBox_Text::CreateFragment(InlineLayoutMode mode, f
 	bool overflow = !text_element->GenerateLine(line_contents, line_length, line_width, line_begin, available_width, right_spacing_width, first_box,
 		decode_escape_characters, allow_empty);
 
-	if (overflow && line_contents.empty())
-		// We couldn't fit anything on this line.
+	if (overflow && line_contents.empty() && line_length == 0)
+		// We couldn't fit anything on this line. (Preserved spaces that hang at its end, alone on it, are consumed: the
+		// line is theirs, as a line of nothing but a tab after a preserved newline at width 0.)
 		return {};
 
 	LayoutOverflowHandle out_overflow_handle = {};

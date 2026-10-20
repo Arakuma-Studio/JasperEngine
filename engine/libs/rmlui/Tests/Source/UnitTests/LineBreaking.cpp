@@ -188,3 +188,44 @@ TEST_CASE("LineBreaking.shrink_to_fit_is_at_least_the_min_content_width")
 	CHECK(WidthOf(document, "wide") == 50.f);
 	document->Close();
 }
+
+TEST_CASE("LineBreaking.ascii_text_as_the_table")
+{
+	// A text of printable ASCII and white space asks Chromium's ASCII table directly (no table of opportunities kept,
+	// ElementText's ComputeLineBreaks); with a character past ASCII the whole text goes through UAX #14: at width 0 every
+	// opportunity is a line, the same in both.
+	FixedAdvanceFontScope scope;
+	const String ascii = "a-b?c(d) x-1 (-1) [e]{f} h/i.j,k;l:m!n%o#p=r*s+t|u~v\\w^x_y`z \"q\"";
+	const String e_acute = "\xc3\xa9"; // U+00E9
+	ElementDocument* document = scope.Load("",
+		"<div id='ascii' style='width: 0'>" + ascii + "</div><div id='table' style='width: 0'>" + ascii + " " + e_acute + "</div>" +
+			"<div id='pre' style='width: 0; white-space: pre-wrap'>" + ascii + "\t" + ascii + "\n" + ascii + "</div>");
+
+	StringList ascii_lines = LinesOf(document, "ascii");
+	StringList table_lines = LinesOf(document, "table");
+	REQUIRE(table_lines.size() == ascii_lines.size() + 1);
+	CHECK(table_lines.back() == e_acute);
+	table_lines.pop_back();
+	CHECK(table_lines == ascii_lines);
+	CHECK(ascii_lines.size() >= 10);
+	CHECK(LinesOf(document, "pre").size() >= 3 * ascii_lines.size());
+
+	document->Close();
+}
+
+TEST_CASE("LineBreaking.hanging_spaces_alone_on_a_line")
+{
+	// Preserved spaces after a preserved newline hang at the end of a line of their own when nothing fits (width 0): the
+	// layout went on asking for that line, which consumed them but held no text, without end.
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load("",
+		"<div id='tab' style='width: 0; white-space: pre-wrap'>a\n\tb</div><div id='spaces' style='width: 0; white-space: pre-wrap'>a\n  b</div>");
+	for (const char* id : {"tab", "spaces"})
+	{
+		INFO(id);
+		const StringList lines = LinesOf(document, id);
+		REQUIRE(lines.size() == 3);
+		CHECK(lines.back() == "b");
+	}
+	document->Close();
+}
