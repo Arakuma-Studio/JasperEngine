@@ -1642,20 +1642,45 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
 - **Dynamic.** A change of `-webkit-line-clamp` or the orient relays out (the display may change between
   `flow-root` and `flex`); `-webkit-line-clamp` animates discretely (`allow-discrete`: at half the
   duration). Lua's `style.webkitLineClamp` is `-webkit-line-clamp` (CSSOM's webkit-cased names).
+- **The ellipsis's style and paint order** (p6-line-clamp follow-up, measured on the pinned headless shell):
+  Chromium paints it with the line's style, the block container's: its `text-shadow` (not the cut run's,
+  whether a text run or the block draws the ellipsis), painted after the text before it (a shadow with a
+  negative offset is over that text), and no text decoration at all (the block's underline, line-through
+  and overline and a span's underline stop where it starts). The fork generates it with the block's
+  current colour and shadows (`LineClamp::GenerateEllipsis`; `ElementText` draws it and its shadows after
+  its text). An ellipsis the block draws (after an atomic inline, on a `<br>` line) is painted after that
+  element and its descendants in the stacking context's inline content
+  (`Element::RenderStackingContextChildren`, `LineClamp::RenderEllipsisAfter` with the block's transform
+  and clip): over an inline-block's overflowing content, the background of a span it is in and the
+  background of a block after it, under positioned elements, as Chromium paints the line's items.
+- **Clusters and directions** (the same follow-up): a text run is cut between extended grapheme clusters
+  (UAX #29, every rule, Unicode 16.0: `TextJustification::GetClusters` with CR/LF/Control and
+  Indic_Conjunct_Break added to the tables `gen_case_tables.py` generates), as Chromium never splits an
+  emoji ZWJ sequence, a skin-tone modifier, a flag, a combining sequence, an Indic conjunct or Hangul
+  jamo. Its directional runs come from the font engine's bidi resolution
+  (`FontEngineInterface::GetBidiRuns`, the engine's SheenBidi with the block's direction as the
+  paragraph's, as it shapes them) and are cut as Chromium's line items, from the line's end in visual
+  order: a run against the line's direction keeps its logical end, one with it its start, the runs past
+  the cut are left out; the explicit directional formatting characters and marks stay, so the kept text
+  resolves the same way.
 - **Not done** (no Chromium 153 behaviour to match): the `CSSLineClamp` model (`line-clamp: auto`,
-  hidden lines past the clamp, `block-ellipsis` strings). Approximated: grapheme clusters are code
-  points that start a cluster (not combining marks, joiners, emoji modifiers), a run's direction is its
-  first strong character's, the ellipsis has no text shadow or decoration of its own, and an ellipsis
-  the block draws (after an atomic inline, on a `<br>` line) paints before the block's children.
+  hidden lines past the clamp, `block-ellipsis` strings). An atomic inline that is a stacking context or
+  positioned is painted in the positioned phase, and an ellipsis the block draws after it with it
+  (Chromium paints that ellipsis in the inline content before it). Inline boxes of a right-to-left line
+  are still placed left to right (§2.2), so a mixed-direction clamp line is measured per text run.
 - **Fixtures** (`text/`, Chromium references, default tolerances): `line-clamp-legacy` (N = 1..4, widths
   35..125px, fewer and exactly N lines, edges, alignment, heights, the inline box), `line-clamp-inline`,
   `line-clamp-nested`, `line-clamp-rtl`, `line-clamp-dynamic` (steps setting the clamp), `line-clamp-transition`
   (width, `max-height` and the discrete clamp) in Ahem ('p', Ahem's descender, shows the kept characters),
-  `line-clamp-cards` (item cards in a grid and a flex row, Roboto: boxes and the no-text image gated) and
+  `line-clamp-cards` (item cards in a grid and a flex row, Roboto: boxes and the no-text image gated),
   `line-clamp-justify` (justified clamp lines: inter-word, inter-character, the last line of a paragraph,
-  right-to-left, a span; the ellipsis in the block's red, the text in a span's colour) and `line-clamp-indent`
+  right-to-left, a span; the ellipsis in the block's red, the text in a span's colour), `line-clamp-indent`
   (indented clamp lines: first, hanging, each-line, negative, percentage, right-to-left, centred, justified,
-  a `<br>` line).
+  a `<br>` line), `line-clamp-style` (the block's and a run's text shadows and decorations),
+  `line-clamp-paint-order` (an ellipsis the block draws over an inline-block's overflow, a span's and a later
+  block's background, under a positioned box), `line-clamp-graphemes` (emoji sequences, a flag, a combining
+  accent, an Indic conjunct, Hangul; Ahem's .notdef box) and `line-clamp-bidi` (right-to-left runs through
+  RLO and Hebrew on both directions' lines).
 
 ---
 
