@@ -832,9 +832,6 @@ private:
 	bool line_clamp_hidden : 1;
 	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
 	bool draws_line_clamp_ellipsis : 1;
-	// A block container's line-clamp ellipsis is painted after it and its descendants (fork P6-L1): an atomic inline or a
-	// <br> the ellipsis follows on its line.
-	bool line_clamp_ellipsis_after : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;

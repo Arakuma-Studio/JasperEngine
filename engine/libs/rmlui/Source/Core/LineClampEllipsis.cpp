@@ -16,8 +16,17 @@ namespace Rml {
 
 void LineClampAccess::SetBlockEllipsis(Element* block, const LineClampEllipsis* ellipsis, Element* after)
 {
-	block->draws_line_clamp_ellipsis = (ellipsis != nullptr && after != nullptr);
-	if (!block->draws_line_clamp_ellipsis)
+	const bool draws = (ellipsis != nullptr && after != nullptr);
+	// Where the stacking context paints it depends on the element it follows (Element::BuildLocalStackingContext).
+	const Element* previous_after = (block->draws_line_clamp_ellipsis ? block->meta->line_clamp_ellipsis->after : nullptr);
+	if (draws != block->draws_line_clamp_ellipsis || (draws && previous_after != after))
+	{
+		if (block->local_stacking_context)
+			block->stacking_context_dirty = true;
+		block->DirtyStackingContext();
+	}
+	block->draws_line_clamp_ellipsis = draws;
+	if (!draws)
 	{
 		block->meta->line_clamp_ellipsis.reset();
 		return;
@@ -25,8 +34,6 @@ void LineClampAccess::SetBlockEllipsis(Element* block, const LineClampEllipsis* 
 	block->meta->line_clamp_ellipsis = MakeUnique<LineClampBlockEllipsis>();
 	block->meta->line_clamp_ellipsis->ellipsis = *ellipsis;
 	block->meta->line_clamp_ellipsis->after = after;
-	// (an element whose mark stays after the ellipsis moves on finds no block container that draws one after it)
-	after->line_clamp_ellipsis_after = true;
 }
 
 void LineClampAccess::DirtyBlockEllipsis(Element* block)
@@ -112,20 +119,10 @@ void LineClamp::GenerateEllipsis(RenderManager& render_manager, const LineClampE
 	}
 }
 
-void LineClampAccess::RenderEllipsisAfter(Element* after)
+void LineClampAccess::RenderBlockEllipsis(Element* block)
 {
-	// The block container that draws an ellipsis after this element: an ancestor (or the element itself).
-	Element* block = after;
-	for (; block; block = block->GetParentNode())
-	{
-		if (block->draws_line_clamp_ellipsis && block->meta->line_clamp_ellipsis->after == after)
-			break;
-	}
-	if (!block)
-	{
-		after->line_clamp_ellipsis_after = false;
+	if (!block->draws_line_clamp_ellipsis)
 		return;
-	}
 	if (block->GetComputedValues().visibility() != Style::Visibility::Visible || block->GetComputedValues().opacity() <= 0.f)
 		return;
 
@@ -161,9 +158,9 @@ void LineClampAccess::RenderEllipsisAfter(Element* after)
 		part.geometry.Render(translation, part.texture);
 }
 
-void LineClamp::RenderEllipsisAfter(Element* after)
+void LineClamp::RenderBlockEllipsis(Element* block)
 {
-	LineClampAccess::RenderEllipsisAfter(after);
+	LineClampAccess::RenderBlockEllipsis(block);
 }
 
 } // namespace Rml

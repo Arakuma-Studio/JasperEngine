@@ -786,3 +786,22 @@ TEST_CASE("LineClamp.paint_order")
 	CHECK(index_of("Q") < index_of(ellipsis));
 	CHECK(index_of(ellipsis) < index_of("RR"));
 }
+
+TEST_CASE("LineClamp.paint_order_positioned")
+{
+	// After a positioned inline-block (or one that is a stacking context) the ellipsis is still painted with the inline
+	// content, before the inline-block, which is painted later with the positioned elements (the browser-parity fixture
+	// p3/text/line-clamp-paint-layers).
+	for (const char* layer : {"position: relative", "opacity: 0.5", "transform: translateX(0px)"})
+	{
+		INFO(layer);
+		FixedAdvanceFontScope scope;
+		Clamped clamped(scope, ".o { width: 75px; -webkit-line-clamp: 1; } .ibq { display: inline-block; width: 10px; } ",
+			String("<div class='c o' id='c'>XpX X<span class='ibq' style='") + layer + "'>Q</span> XX XX</div>");
+		const StringList& generated = scope.font_engine.generated;
+		const auto index_of = [&](const String& value) { return (int)(std::find(generated.begin(), generated.end(), value) - generated.begin()); };
+		REQUIRE(index_of(ellipsis) < (int)generated.size());
+		CHECK(index_of("XpX X") < index_of(ellipsis));
+		CHECK(index_of(ellipsis) < index_of("Q"));
+	}
+}

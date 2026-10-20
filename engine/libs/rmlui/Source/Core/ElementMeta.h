@@ -34,6 +34,9 @@ struct ElementMeta {
 	Element* pseudo_elements[3] = {nullptr, nullptr, nullptr};
 	// The line-clamp ellipsis the element draws as a block container (fork, phase 6, P6-L1; LineClampEllipsis.h).
 	UniquePtr<LineClampBlockEllipsis> line_clamp_ellipsis;
+	// As a stacking context: the line-clamp ellipses its block containers draw, each painted after the element of its
+	// stacking context at the index (-1: before them), sorted by index (fork P6-L1; Element::BuildLocalStackingContext).
+	UniquePtr<Vector<std::pair<int, Element*>>> line_clamp_ellipses;
 };
 
 struct ElementMetaPool {
