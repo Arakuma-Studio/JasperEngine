@@ -270,6 +270,7 @@ private:
 	int first_past_clamp_child = 0; // its index + 1, 0 for none
 	float clamp_cursor = 0.f;       // when 'clamped_here'
 	bool clamped_here = false;
+	bool inline_context_linked = false; // (ElementText::LinkInlineFormattingContext, at the first inline-level element)
 	bool owns_line_clamp = false;
 	bool ignore_line_clamp = false;
 };

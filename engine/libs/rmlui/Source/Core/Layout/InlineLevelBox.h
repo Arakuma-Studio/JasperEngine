@@ -25,6 +25,10 @@ public:
 	// Submit a fragment's position and size to be displayed on the underlying element.
 	virtual void Submit(const PlacedFragment& placed_fragment) = 0;
 
+	// No line-break opportunity before the box's next fragment (fork, P6-L2): it goes on the line after the content before
+	// it, as a word an element boundary splits.
+	virtual bool IsGluedToPrevious(LayoutOverflowHandle /*overflow_handle*/) { return false; }
+
 	float GetHeightAboveBaseline() const { return height_above_baseline; }
 	float GetDepthBelowBaseline() const { return depth_below_baseline; }
 	Style::VerticalAlign::Type GetVerticalAlign() const { return vertical_align_type; }
@@ -108,6 +112,8 @@ public:
 		LayoutOverflowHandle overflow_handle) override;
 
 	void Submit(const PlacedFragment& placed_fragment) override;
+
+	bool IsGluedToPrevious(LayoutOverflowHandle overflow_handle) override;
 
 	/// Line clamping (fork, P6-L1): cuts a fragment to what fits in 'space' beside the ellipsis, as Chromium's
 	/// LineTruncator cuts a line's items: the fragment's directional runs (as the font engine lays them out, UAX #9) are

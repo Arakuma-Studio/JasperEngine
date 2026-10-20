@@ -5,6 +5,9 @@
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/ElementText.h>
 #include <doctest.h>
+#include <algorithm>
+#include <cmath>
+#include <functional>
 
 using namespace Rml;
 
@@ -229,3 +232,85 @@ TEST_CASE("LineBreaking.hanging_spaces_alone_on_a_line")
 	}
 	document->Close();
 }
+
+namespace {
+// Every line of the texts under the element 'id', in tree order, as "text@n": n the line it is on (0 the first).
+StringList PlacedLinesOf(ElementDocument* document, const String& id)
+{
+	Vector<std::pair<String, float>> lines;
+	const std::function<void(Element*)> visit = [&](Element* element) {
+		if (auto text = rmlui_dynamic_cast<ElementText*>(element))
+		{
+			for (const ElementText::Line& line : text->GetLines())
+				lines.emplace_back(line.text, text->GetAbsoluteOffset(BoxArea::Border).y + line.position.y);
+			return;
+		}
+		for (int i = 0; i < element->GetNumChildren(); i++)
+			visit(element->GetChild(i));
+	};
+	Element* element = document->GetElementById(id);
+	REQUIRE(element);
+	visit(element);
+	Vector<float> tops;
+	for (const auto& line : lines)
+		tops.push_back(std::round(line.second));
+	std::sort(tops.begin(), tops.end());
+	tops.erase(std::unique(tops.begin(), tops.end()), tops.end());
+	StringList result;
+	for (const auto& line : lines)
+		result.push_back(line.first + "@" +
+			ToString(int(std::find(tops.begin(), tops.end(), std::round(line.second)) - tops.begin())));
+	return result;
+}
+// The same, joined with '|' (doctest prints it).
+String Placed(ElementDocument* document, const String& id)
+{
+	String result;
+	for (const String& line : PlacedLinesOf(document, id))
+		result += (result.empty() ? "" : "|") + line;
+	return result;
+}
+} // namespace
+
+TEST_CASE("LineBreaking.across_element_boundaries")
+{
+	// The opportunities come from the inline formatting context's text, not each text's (Chromium): a word an element
+	// boundary splits does not break there, and goes to the next line whole; the text around a boundary decides the breaks
+	// next to it (P6-L2).
+	FixedAdvanceFontScope scope;
+	ElementDocument* document = scope.Load(".w0 { width: 0; } .w25 { width: 25px; } i { padding: 0 5px; }",
+		"<div id='glued' class='w0'>a<b>b</b>c d</div>"                     //
+		"<div id='space' class='w0'>a <b>b</b></div>"                       //
+		"<div id='space-inside' class='w0'>a<b> b</b></div>"                //
+		"<div id='whole' class='w25'>xx yy<b>zz</b></div>"                  //
+		"<div id='nested' class='w25'>xx y<b><i>y</i>z</b>z</div>"          //
+		"<div id='minus' class='w0'>x<b>-1</b></div>"                       //
+		"<div id='sign' class='w0'>(<b>-1</b>)</div>"                       //
+		"<div id='punctuation' class='w0'>ab<b>!</b>(c)</div>"              //
+		"<div id='cjk' class='w0'>\xe6\xbc\xa2<b>\xe5\xad\x97</b></div>"    //
+		"<div id='hidden' class='w0'>a<span style='display: none'>x</span>b<span style='position: absolute'>y</span>c</div>");
+
+	CHECK(Placed(document, "glued") == "a@0|b@0|c@0|d@1");
+	// (the space after "a" ends its line: what is left of it, nothing, starts the next)
+	CHECK(Placed(document, "space") == "a@0|@1|b@1");
+	// (a collapsible space that starts a text is its word's, gone at the line's start: Chromium breaks after it)
+	CHECK(Placed(document, "space-inside") == "a@0|b@1");
+	// "yy" does not fit with "zz" after it: the two go to the next line
+	CHECK(Placed(document, "whole") == "xx@0|yy@1|zz@1");
+	// through nested boxes, their padding counted
+	CHECK(Placed(document, "nested") == "xx@0|y@1|y@1|z@1|z@1");
+	// '-' before a digit after a letter (in the text before) breaks; after '(' it does not
+	CHECK(Placed(document, "minus") == "x@0|-@0|1@1");
+	CHECK(Placed(document, "sign") == "(@0|-1@0|)@0");
+	CHECK(Placed(document, "punctuation") == "ab@0|!@0|(c)@1");
+	// ideographs break between each other across a boundary too
+	CHECK(Placed(document, "cjk") == "\xe6\xbc\xa2@0|\xe5\xad\x97@1");
+	// what is not displayed or out of flow is no boundary
+	const StringList hidden = PlacedLinesOf(document, "hidden");
+	REQUIRE(hidden.size() >= 3);
+	CHECK(hidden.front() == "a@0");
+	CHECK(Placed(document, "hidden").find("c@0") != String::npos);
+
+	document->Close();
+}
+

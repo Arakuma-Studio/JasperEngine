@@ -39,6 +39,19 @@ public:
 	bool GenerateLine(String& line, int& line_length, float& line_width, int line_begin, float maximum_line_width, float right_spacing_width,
 		bool trim_whitespace_prefix, bool decode_escape_characters, bool allow_empty);
 
+	/// Line breaking across the inline formatting context (fork, P6-L2): whether a line may break before this text's first
+	/// character, after the inline content before it (the text of the elements around it, as Chromium computes the
+	/// opportunities on the whole context's text: no break inside a word that an element boundary splits); true at the
+	/// context's start.
+	bool IsLineBreakOpportunityBefore();
+	/// Links the texts of the inline formatting context of the block container 'root' in order (fork, P6-L2: the inline
+	/// content they go on through, inline boxes, and where it stops, atomic inlines, blocks, <br>), before its layout.
+	static void LinkInlineFormattingContext(Element* root);
+	/// The texts before and after this one in its inline formatting context, as last linked (null: none, or an atomic
+	/// inline, a block or a <br> between them).
+	ElementText* GetContextPrevious() const { return static_cast<ElementText*>(context_previous.get()); }
+	ElementText* GetContextNext() const { return static_cast<ElementText*>(context_next.get()); }
+
 	/// Clears all lines of generated text and prepares the element for generating new lines.
 	void ClearLines();
 	/// Adds a new line into the text element.
@@ -144,6 +157,22 @@ private:
 	Style::WordBreak line_breaks_word_break = Style::WordBreak::Normal;
 	bool line_breaks_decode_escape_characters = false;
 	bool line_breaks_dirty = true;
+	// The inline formatting context's text before and after this one the opportunities were computed with (fork, P6-L2: a
+	// few code points of the texts around it, through inline boxes), and whether a line may break at its start and end.
+	Vector<Character> line_breaks_prefix;
+	Vector<Character> line_breaks_suffix;
+	bool line_break_before = true;
+	bool line_break_after = true;
+	bool line_breaks_context_fresh = false; // (gathered for this layout already: by IsLineBreakOpportunityBefore)
+	// The texts before and after this one in its inline formatting context (LinkInlineFormattingContext), and the edges of
+	// the inline boxes between it and the next.
+	ObserverPtr<Element> context_previous;
+	ObserverPtr<Element> context_next;
+	float context_edges_after = 0.f;
+
+	void UpdateLineBreaks(bool decode_escape_characters);
+	float MeasureLeadingWord(bool& out_whole);
+	float MeasureGluedContentAfter();
 
 	bool geometry_dirty : 1;
 

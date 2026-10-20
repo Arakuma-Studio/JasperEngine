@@ -1,6 +1,7 @@
 #include "../../Include/RmlUi/Core/ElementText.h"
 #include <algorithm>
 #include <cstring>
+#include <functional>
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementDocument.h"
@@ -36,10 +37,16 @@ struct TokenRules {
 	bool decode_escape_characters;
 	const char* text_begin; // the element's text, read back for 'capitalize'
 	const uint8_t* line_breaks; // the line-break opportunities of the text, by byte offset from 'text_begin'; null: ASCII
+	Character context_before;   // the inline formatting context's code point before the text (Null: none)
 };
 
 static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, Vector<uint8_t>& out_breaks);
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const Vector<Character>& prefix,
+	const Vector<Character>& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after);
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, Vector<Character>& out_context);
+static bool IsTransparentInlineBox(Element* element);
+static bool IsSkippedInContext(Element* element);
+static float InlineBoxEdge(Element* element, bool left);
 static bool IsWhiteSpaceToken(const String& token);
 static bool LastToken(const char* token_begin, const char* string_end, bool collapse_white_space, bool break_at_endline);
 
@@ -419,15 +426,17 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
 	WordBreak word_break = computed.word_break();
-	if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters)
-	{
-		ComputeLineBreaks(text, decode_escape_characters, word_break, line_breaks);
-		line_breaks_dirty = false;
-		line_breaks_word_break = word_break;
-		line_breaks_decode_escape_characters = decode_escape_characters;
-	}
+	// (once per layout of the text: the inline content around it may have changed)
+	if (line_begin == 0 && !line_breaks_context_fresh)
+		UpdateLineBreaks(decode_escape_characters);
+	else if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters)
+		UpdateLineBreaks(decode_escape_characters);
+	line_breaks_context_fresh = false;
 	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
-		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data()};
+		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(), line_breaks_prefix.empty() ? Character::Null : line_breaks_prefix.back()};
+	// The content after the text up to the next opportunity when there is none at its end (a word an element boundary
+	// splits): measured once, when the text's last token is (Chromium breaks before the whole word, not inside it).
+	float glued_after_width = -1.f;
 
 	// A word that does not fit on a line of its own is broken anywhere: 'word-break: break-all' at any width, 'overflow-wrap'
 	// ('anywhere', 'break-word', and the legacy 'word-break: break-word') when the word starts the line. The min-content
@@ -475,6 +484,20 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 			if (token_width > max_token_width && collapse_white_space && is_last_token &&
 				FitsWithoutTrailingSpace(token, max_token_width, font_face_handle, text_shaping_context, previous_codepoint))
 				max_token_width = token_width;
+
+			// The last token of a word that goes on in the inline content after the text: it fits with that content, or
+			// goes to the next line with it (P6-L2).
+			if (!line_break_after && next_token_begin == string_end && word_break != WordBreak::BreakAll && token_width <= max_token_width &&
+				(allow_empty || !line.empty()) && !IsWhiteSpaceToken(token) && !(collapse_white_space && !token.empty() && token.back() == ' '))
+			{
+				if (glued_after_width < 0.f)
+					glued_after_width = MeasureGluedContentAfter();
+				if (token_width + glued_after_width > max_token_width)
+				{
+					AppendHyphenAfterSoftHyphen(line, line_width, font_face_handle, text_shaping_context);
+					return false;
+				}
+			}
 
 			if (token_width > max_token_width && hang_spaces && IsWhiteSpaceToken(token))
 			{
@@ -546,6 +569,137 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	}
 
 	return true;
+}
+
+void ElementText::UpdateLineBreaks(bool decode_escape_characters)
+{
+	// The inline formatting context's text around this one (fork, P6-L2): the opportunities again when it changed.
+	Vector<Character> prefix, suffix;
+	GatherLineBreakContext(this, false, decode_escape_characters, prefix);
+	GatherLineBreakContext(this, true, decode_escape_characters, suffix);
+	const Style::WordBreak word_break = GetComputedValues().word_break();
+	if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters ||
+		prefix != line_breaks_prefix || suffix != line_breaks_suffix)
+	{
+		ComputeLineBreaks(text, decode_escape_characters, word_break, prefix, suffix, line_breaks, line_break_before, line_break_after);
+		line_breaks_dirty = false;
+		line_breaks_word_break = word_break;
+		line_breaks_decode_escape_characters = decode_escape_characters;
+		line_breaks_prefix = std::move(prefix);
+		line_breaks_suffix = std::move(suffix);
+	}
+}
+
+bool ElementText::IsLineBreakOpportunityBefore()
+{
+	UpdateLineBreaks(true);
+	line_breaks_context_fresh = true;
+	// Collapsible white space that starts the text is its first word's: the line may break before it, as it disappears
+	// at the next line's start (Chromium breaks after it, where it hangs).
+	if (!text.empty() && StringUtilities::IsWhitespace(text[0]))
+	{
+		const Style::WhiteSpaceCollapse collapse = GetComputedValues().white_space_collapse();
+		if (collapse == Style::WhiteSpaceCollapse::Collapse || collapse == Style::WhiteSpaceCollapse::PreserveBreaks)
+			return true;
+	}
+	return line_break_before;
+}
+
+float ElementText::MeasureLeadingWord(bool& out_whole)
+{
+	out_whole = false;
+	FontFaceHandle font_face_handle = GetFontFaceHandle();
+	if (font_face_handle == 0)
+		return 0.f;
+	UpdateLineBreaks(true);
+	line_breaks_context_fresh = true;
+	if (text.empty())
+	{
+		out_whole = true;
+		return 0.f;
+	}
+	if (StringUtilities::IsWhitespace(text[0]))
+		return 0.f;
+
+	using namespace Style;
+	const auto& computed = GetComputedValues();
+	const WhiteSpaceCollapse white_space_collapse = computed.white_space_collapse();
+	const bool collapse_white_space = (white_space_collapse == WhiteSpaceCollapse::Collapse || white_space_collapse == WhiteSpaceCollapse::PreserveBreaks);
+	const bool break_at_endline = (white_space_collapse == WhiteSpaceCollapse::Preserve || white_space_collapse == WhiteSpaceCollapse::PreserveBreaks ||
+		white_space_collapse == WhiteSpaceCollapse::BreakSpaces);
+	const TokenRules token_rules{collapse_white_space, break_at_endline, white_space_collapse == WhiteSpaceCollapse::BreakSpaces, computed.text_transform(),
+		computed.word_break(), true, text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(),
+		line_breaks_prefix.empty() ? Character::Null : line_breaks_prefix.back()};
+	String token;
+	const char* token_begin = text.c_str();
+	const char* string_end = token_begin + text.size();
+	BuildToken(token, token_begin, string_end, false, token_rules);
+	while (!token.empty() && (token.back() == ' ' || token.back() == '\n'))
+		token.pop_back();
+	out_whole = (token_begin == string_end && !line_break_after);
+	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
+		computed.word_spacing()};
+	return (float)GetFontEngineInterface()->GetStringWidth(font_face_handle, token, text_shaping_context, Character::Null);
+}
+
+float ElementText::MeasureGluedContentAfter()
+{
+	// The content after this text up to the inline formatting context's next line-break opportunity, through inline boxes
+	// (their edges) and texts with none (fork, P6-L2).
+	float width = 0.f;
+	ElementText* from = this;
+	while (ElementText* next = from->GetContextNext())
+	{
+		width += from->context_edges_after;
+		bool whole = false;
+		width += next->MeasureLeadingWord(whole);
+		if (!whole)
+			break;
+		from = next;
+	}
+	return width;
+}
+
+void ElementText::LinkInlineFormattingContext(Element* root)
+{
+	ElementText* last_text = nullptr;
+	float edges = 0.f;
+	const auto boundary = [&]() {
+		last_text = nullptr;
+		edges = 0.f;
+	};
+	const std::function<void(Element*)> visit = [&](Element* parent) {
+		ScopedLayoutChildList layout_children;
+		LayoutDetails::GetLayoutChildren(parent, *layout_children, false);
+		for (Element* child : *layout_children)
+		{
+			if (auto text = rmlui_dynamic_cast<ElementText*>(child))
+			{
+				text->context_previous.reset();
+				text->context_next.reset();
+				text->context_edges_after = 0.f;
+				if (last_text)
+				{
+					last_text->context_next = text->GetObserverPtr();
+					last_text->context_edges_after = edges;
+					text->context_previous = last_text->GetObserverPtr();
+				}
+				last_text = text;
+				edges = 0.f;
+			}
+			else if (IsSkippedInContext(child))
+				continue;
+			else if (child->GetTagName() != "br" && IsTransparentInlineBox(child))
+			{
+				edges += InlineBoxEdge(child, true);
+				visit(child);
+				edges += InlineBoxEdge(child, false);
+			}
+			else
+				boundary();
+		}
+	};
+	visit(root);
 }
 
 void ElementText::ClearLines()
@@ -1064,11 +1218,49 @@ static bool IsAsciiText(const String& text, bool decode_escape_characters)
 	return true;
 }
 
-// The line-break opportunities of an element's text, read as BuildToken reads it (escape codes decoded if asked): UAX #14
-// tailored as Chromium (TextUnicode::GetLineBreakOpportunities); 'out_breaks[offset]' is 1 when a line may break before the
-// character that starts at that byte.
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, Vector<uint8_t>& out_breaks)
+static bool IsContextWhiteSpace(Character c)
 {
+	return c == Character(' ') || c == Character('\t') || c == Character('\n') || c == Character('\r') || c == Character('\f');
+}
+
+// The opportunity between two pieces of an inline formatting context's text, 'before' ending where 'after' starts (fork,
+// P6-L2): after white space, never before it (UAX #14 LB18, LB7), Chromium's table between two printable ASCII characters,
+// else UAX #14 over the two; true when either is empty (the context's start or end, or an atomic inline).
+static bool IsBoundaryOpportunity(const Character* before, size_t num_before, const Character* after, size_t num_after, Style::WordBreak word_break)
+{
+	if (num_before == 0 || num_after == 0)
+		return true;
+	const Character b = before[num_before - 1], a = after[0];
+	if (IsContextWhiteSpace(b))
+		return true;
+	if (IsContextWhiteSpace(a))
+		return false;
+	if (word_break == Style::WordBreak::BreakAll)
+		return true;
+	const auto printable = [](Character c) { return (char32_t)c >= 0x21 && (char32_t)c <= 0x7E; };
+	if (word_break != Style::WordBreak::KeepAll && printable(b) && printable(a))
+		return TextUnicode::IsAsciiLineBreakOpportunity(num_before >= 2 ? (char32_t)before[num_before - 2] : 0, (char32_t)b, (char32_t)a);
+	Vector<Character> window(before, before + num_before);
+	window.insert(window.end(), after, after + num_after);
+	Vector<bool> breaks;
+	TextUnicode::GetLineBreakOpportunities(window, word_break, TextUnicode::LineBreakTailoring::Chromium, breaks);
+	return breaks[num_before];
+}
+
+// The line-break opportunities of an element's text, read as BuildToken reads it (escape codes decoded if asked): UAX #14
+// tailored as Chromium (TextUnicode::GetLineBreakOpportunities) over the text with the inline formatting context's text
+// around it ('prefix', 'suffix': a few code points); 'out_breaks[offset]' is 1 when a line may break before the character
+// that starts at that byte; 'out_break_before', 'out_break_after' at the text's start and end.
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const Vector<Character>& prefix,
+	const Vector<Character>& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after)
+{
+	out_break_before = out_break_after = true;
+	if (text.empty())
+	{
+		out_breaks.clear();
+		return;
+	}
+
 	// A text of printable ASCII characters and white space (no escape code read, no 'keep-all'), most texts: BuildToken
 	// asks Chromium's table for the pairs of printable characters it ends a token between, the only boundaries it asks
 	// about (not around white space), and no table is kept.
@@ -1076,13 +1268,26 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 	{
 		out_breaks.clear();
 		out_breaks.shrink_to_fit();
+		if (!prefix.empty() || !suffix.empty())
+		{
+			constexpr size_t context_size = 16;
+			Character head[context_size], tail[context_size];
+			const size_t num = Math::Min(text.size(), context_size);
+			for (size_t i = 0; i < num; i++)
+			{
+				head[i] = Character((unsigned char)text[i]);
+				tail[i] = Character((unsigned char)text[text.size() - num + i]);
+			}
+			out_break_before = IsBoundaryOpportunity(prefix.data(), prefix.size(), head, num, word_break);
+			out_break_after = IsBoundaryOpportunity(tail, num, suffix.data(), suffix.size(), word_break);
+		}
 		return;
 	}
 
 	out_breaks.assign(text.size() + 1, 0);
-	Vector<Character> characters;
+	Vector<Character> characters(prefix);
 	Vector<int> offsets;
-	characters.reserve(text.size());
+	characters.reserve(prefix.size() + text.size() + suffix.size());
 	offsets.reserve(text.size());
 	const char* p = text.c_str();
 	const char* end = p + text.size();
@@ -1094,10 +1299,92 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 		offsets.push_back(int(p - text.c_str()));
 		p = next;
 	}
+	const size_t num_characters = offsets.size();
+	characters.insert(characters.end(), suffix.begin(), suffix.end());
 	Vector<bool> breaks;
 	TextUnicode::GetLineBreakOpportunities(characters, word_break, TextUnicode::LineBreakTailoring::Chromium, breaks);
-	for (size_t i = 1; i < characters.size(); i++)
-		out_breaks[offsets[i]] = breaks[i] ? 1 : 0;
+	for (size_t i = 1; i < num_characters; i++)
+		out_breaks[offsets[i]] = breaks[prefix.size() + i] ? 1 : 0;
+	// (white space before or after: as IsBoundaryOpportunity, which the texts on the other side compute)
+	if (!prefix.empty())
+		out_break_before = IsContextWhiteSpace(prefix.back()) || (!IsContextWhiteSpace(characters[prefix.size()]) && breaks[prefix.size()]);
+	if (!suffix.empty())
+		out_break_after = IsContextWhiteSpace(characters[prefix.size() + num_characters - 1]) ||
+			(!IsContextWhiteSpace(suffix.front()) && breaks[prefix.size() + num_characters]);
+}
+
+// An element the inline formatting context's text goes on through (fork, P6-L2): an inline box (not replaced, in flow).
+static bool IsTransparentInlineBox(Element* element)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	return computed.display() == Style::Display::Inline && computed.position() != Style::Position::Absolute &&
+		computed.position() != Style::Position::Fixed && computed.float_() == Style::Float::None && !element->IsReplaced();
+}
+
+// An element with no part in the inline formatting context's content: not displayed, out of flow.
+static bool IsSkippedInContext(Element* element)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	return computed.display() == Style::Display::None || computed.position() == Style::Position::Absolute ||
+		computed.position() == Style::Position::Fixed || computed.float_() != Style::Float::None;
+}
+
+// The margin, border and padding an inline box adds to the line on one side.
+static float InlineBoxEdge(Element* element, bool left)
+{
+	const ComputedValues& computed = element->GetComputedValues();
+	if (left)
+		return ResolveValueOr(computed.margin_left(), 0.f, 0.f) + computed.border_left_width() + ResolveValueOr(computed.padding_left(), 0.f, 0.f);
+	return ResolveValueOr(computed.margin_right(), 0.f, 0.f) + computed.border_right_width() + ResolveValueOr(computed.padding_right(), 0.f, 0.f);
+}
+
+// A few code points of the inline formatting context's text after (or before) a text, in order (fork, P6-L2).
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, Vector<Character>& out_context)
+{
+	constexpr size_t context_size = 16;
+	out_context.clear();
+	ElementText* other = text;
+	while (out_context.size() < context_size)
+	{
+		other = (forward ? other->GetContextNext() : other->GetContextPrevious());
+		if (!other)
+			break;
+		const String& other_text = other->GetText();
+		if (other_text.empty())
+			continue;
+		const char* p = other_text.c_str();
+		const char* end = p + other_text.size();
+		if (forward)
+		{
+			while (p != end && out_context.size() < context_size)
+			{
+				const char* next = nullptr;
+				bool non_breaking = false;
+				out_context.push_back(ReadCharacter(p, end, decode_escape_characters, next, non_breaking));
+				p = next;
+			}
+		}
+		else
+		{
+			// the last code points, read from a little before them
+			if (other_text.size() > 4 * context_size)
+			{
+				p = end - 4 * context_size;
+				while (p != end && IsContinuationByte(*p))
+					++p;
+			}
+			Vector<Character> chunk;
+			while (p != end)
+			{
+				const char* next = nullptr;
+				bool non_breaking = false;
+				chunk.push_back(ReadCharacter(p, end, decode_escape_characters, next, non_breaking));
+				p = next;
+			}
+			const size_t take = Math::Min(chunk.size(), context_size - out_context.size());
+			out_context.insert(out_context.begin(), chunk.end() - take, chunk.end());
+		}
+	}
 }
 
 // A character of a run that BuildToken appends at once: printable ASCII other than a space and those a line may break
@@ -1302,8 +1589,8 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 					// (Chromium's table breaks after '-' and '?', and before '(' '<' '[' '{', nowhere else)
 					const char previous_byte = rules.text_begin[offset - 1], byte = rules.text_begin[offset];
 					if ((previous_byte == '-' || previous_byte == '?' || byte == '(' || byte == '<' || byte == '[' || byte == '{') &&
-						TextUnicode::IsAsciiLineBreakOpportunity(offset >= 2 ? (char32_t)rules.text_begin[offset - 2] : 0, (char32_t)previous_byte,
-							(char32_t)byte))
+						TextUnicode::IsAsciiLineBreakOpportunity(
+							offset >= 2 ? (char32_t)rules.text_begin[offset - 2] : (char32_t)rules.context_before, (char32_t)previous_byte, (char32_t)byte))
 						return false;
 				}
 			}
