@@ -2250,6 +2250,15 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
       4.33 and 4.13).
 
     Nothing regresses beyond the runs' spread.
+  - Verified on the remote host with the final code:
+    - `tools/build.sh linux` (0 warnings), `htmlui-editor-tests` (72 passed), the RmlUi tests (436
+      cases), `web`, `android`, the generator and xcode checks;
+    - `htmlui-tests` on glcore (3,203 tests: all pass, `EffectPerfTest` included on the shared
+      host; `ImageCompareTest.Identical` failed in that run only because
+      `JASPER_HTMLUI_WRITE_ACTUAL` was set, fixed since and rerun) and on Vulkan (3,203 passed);
+    - the MCP suite (577 passed, 14 skipped) and the slow tests (12 passed);
+    - `check_effect_shaders.sh` (101 effects);
+    - `render-reference.mjs --fixtures all --check` (532 files, all the same).
 
 ### 5.5 MCP end-to-end (`tools/mcp/tests/test_html_ui_effects.py`)
 1. Write `ui/effects.html` and `ui/effects.css` into a fixture copy, and create a GameObject
