@@ -141,6 +141,42 @@ TEST_CASE("Justification.opportunities")
 	CHECK(clusters[3].offset == 22);
 }
 
+TEST_CASE("Justification.grapheme_clusters")
+{
+	// Every UAX #29 rule (Unicode 16.0, the line-clamp ellipsis cuts on these: fork P6-L1).
+	const auto offsets = [](const String& text) {
+		Vector<TextJustification::Cluster> clusters;
+		TextJustification::GetClusters(text, clusters);
+		Vector<int> result;
+		for (const auto& cluster : clusters)
+			result.push_back(cluster.offset);
+		return result;
+	};
+	// GB3, GB4, GB5: CR LF is one cluster; nothing joins a control, not even a mark after it
+	CHECK(offsets("a\r\nb") == Vector<int>{0, 1, 3});
+	CHECK(offsets("\n" + acute + "a") == Vector<int>{0, 1, 3});
+	CHECK(offsets("a\xc2\xad" + acute) == Vector<int>{0, 1, 3}); // the soft hyphen is a control
+	// GB6, GB7, GB8: Hangul syllables from jamo (L V T), and a precomposed LV with a T
+	CHECK(offsets("\xe1\x84\x80\xe1\x85\xa1\xe1\x86\xa8" "a") == Vector<int>{0, 9});
+	CHECK(offsets("\xea\xb0\x80\xe1\x86\xa8" "a") == Vector<int>{0, 6});
+	// GB9, GB9a: marks and spacing marks (Devanagari KA + vowel sign I)
+	CHECK(offsets("e" + acute + acute + "x") == Vector<int>{0, 5});
+	CHECK(offsets("\xe0\xa4\x95\xe0\xa4\xbf" "x") == Vector<int>{0, 6});
+	// GB9b: a prepended concatenation mark joins what follows (ARABIC NUMBER SIGN)
+	CHECK(offsets("\xd8\x80" "1a") == Vector<int>{0, 3});
+	// GB9c: an Indic conjunct, KA VIRAMA SSA (also through a nukta), but not after a vowel sign
+	CHECK(offsets("\xe0\xa4\x95\xe0\xa5\x8d\xe0\xa4\xb7" "x") == Vector<int>{0, 9});
+	CHECK(offsets("\xe0\xa4\x95\xe0\xa4\xbc\xe0\xa5\x8d\xe0\xa4\xb7") == Vector<int>{0});
+	CHECK(offsets("\xe0\xa4\x95\xe0\xa4\xbf\xe0\xa4\xb7") == Vector<int>{0, 6});
+	// GB11: emoji ZWJ sequences, a skin-tone modifier
+	CHECK(offsets("\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9\xe2\x80\x8d\xf0\x9f\x91\xa7" "a") == Vector<int>{0, 18});
+	CHECK(offsets("\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd" "a") == Vector<int>{0, 8});
+	// a ZWJ after a letter joins it, the letter after the ZWJ starts a cluster
+	CHECK(offsets("a\xe2\x80\x8d" "b") == Vector<int>{0, 4});
+	// GB12, GB13: regional indicators in pairs
+	CHECK(offsets("\xf0\x9f\x87\xab\xf0\x9f\x87\xb7\xf0\x9f\x87\xa9\xf0\x9f\x87\xaa\xf0\x9f\x87\xab") == Vector<int>{0, 8, 16});
+}
+
 TEST_CASE("Justification.runs")
 {
 	// 17px over "XX XXX X" + "XXXX": two spaces, the last one takes what is left; none after the last character

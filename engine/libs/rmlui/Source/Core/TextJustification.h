@@ -32,9 +32,9 @@ namespace TextJustification {
 	// The character an atomic inline (an inline-block, an image) is justified as.
 	constexpr Character ObjectReplacementCharacter = static_cast<Character>(0xFFFC);
 
-	// The grapheme clusters of a UTF-8 string (UAX #29, the rules a justification opportunity needs: combining marks, joiners,
-	// spacing marks, emoji sequences, regional indicator pairs, Hangul syllables): the byte offset and code point of the
-	// first character of each one, in order.
+	// The extended grapheme clusters of a UTF-8 string (UAX #29, every rule: CR LF, controls, Hangul syllables, combining
+	// marks, joiners, spacing marks, prepended concatenation marks, Indic conjuncts, emoji sequences, regional indicator
+	// pairs): the byte offset and code point of the first character of each one, in order.
 	struct Cluster {
 		int offset;
 		Character first;

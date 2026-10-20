@@ -109,15 +109,19 @@ public:
 
 	void Submit(const PlacedFragment& placed_fragment) override;
 
-	/// Line clamping (fork, P6-L1): cuts a fragment to the characters that fit in 'space' beside the ellipsis, as
-	/// Chromium's LineTruncator::TruncateChild: the part on the line's start side (the start of a run in the line's
-	/// direction, the end of one against it), whole clusters, at least one character for the first child of the line.
+	/// Line clamping (fork, P6-L1): cuts a fragment to what fits in 'space' beside the ellipsis, as Chromium's
+	/// LineTruncator cuts a line's items: the fragment's directional runs (as the font engine lays them out, UAX #9) are
+	/// visited from the line's end; a run that fits ends the cut, one that does not is cut to its extended grapheme clusters
+	/// (UAX #29) on the line's start side (its start when it goes in the line's direction, its end otherwise), the runs
+	/// past it are left out; the run at the line's start of the line's first item keeps at least one cluster.
 	/// @param[in] width The fragment's width.
+	/// @param[in] space The space for the fragment beside the ellipsis, from its start on the line's start side.
+	/// @param[in] ellipsis_width The ellipsis's width (a run that starts past the line's end is left out).
 	/// @param[in,out] justification The space of a justified line around the fragment's characters (p6-justify), or null:
 	/// they are measured with it, and it is cut with them.
 	/// @param[out] out_shift How far the kept part moves on a right-to-left line (its right edge stays in place).
 	/// @return The width of the kept part, or a negative value when none fits (the fragment is unchanged).
-	float TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, bool line_rtl, bool first_child,
+	float TruncateForEllipsis(LayoutFragmentHandle handle, float width, float space, float ellipsis_width, bool line_rtl, bool first_child,
 		Vector<JustificationSpacing>* justification, float& out_shift);
 
 	String DebugDumpNameValue() const override;

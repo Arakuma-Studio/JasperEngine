@@ -12,12 +12,19 @@ namespace TextJustification {
 			char32_t last;
 		};
 
-		// The UAX #29 Grapheme_Cluster_Break values the cluster iteration tells apart, and Extended_Pictographic.
-		enum class GraphemeBreak : uint8_t { Other, Extend, ZWJ, SpacingMark, Prepend, Regional_Indicator, L, V, T, LV, LVT, ExtPict };
+		// The UAX #29 Grapheme_Cluster_Break values, and Extended_Pictographic.
+		enum class GraphemeBreak : uint8_t { Other, CR, LF, Control, Extend, ZWJ, SpacingMark, Prepend, Regional_Indicator, L, V, T, LV, LVT, ExtPict };
 		struct GraphemeBreakRange {
 			char32_t first;
 			char32_t last;
 			GraphemeBreak value;
+		};
+		// Indic_Conjunct_Break (GB9c).
+		enum class IndicConjunctBreak : uint8_t { None, Consonant, Extend, Linker };
+		struct IndicConjunctBreakRange {
+			char32_t first;
+			char32_t last;
+			IndicConjunctBreak value;
 		};
 
 #include "UnicodeJustificationTables.inl"
@@ -35,11 +42,20 @@ namespace TextJustification {
 
 		GraphemeBreak GetGraphemeBreak(char32_t c)
 		{
-			// (nothing below U+00A9, the first Extended_Pictographic, joins a cluster)
-			if (c < 0xA9)
+			// (printable ASCII is Other: the common case)
+			if (c >= 0x20 && c < 0x7F)
 				return GraphemeBreak::Other;
 			const GraphemeBreakRange* range = FindRange(grapheme_break_ranges, c);
 			return range ? range->value : GraphemeBreak::Other;
+		}
+
+		IndicConjunctBreak GetIndicConjunctBreak(char32_t c)
+		{
+			// (the first one is U+0300, a combining mark)
+			if (c < 0x300)
+				return IndicConjunctBreak::None;
+			const IndicConjunctBreakRange* range = FindRange(indic_conjunct_break_ranges, c);
+			return range ? range->value : IndicConjunctBreak::None;
 		}
 	} // namespace
 
@@ -72,28 +88,38 @@ namespace TextJustification {
 
 		GraphemeBreak previous = GraphemeBreak::Other;
 		bool first = true;
-		bool in_pictographic = false; // after Extended_Pictographic Extend*
+		bool in_pictographic = false;     // after Extended_Pictographic Extend*
 		bool pictographic_joiner = false; // after Extended_Pictographic Extend* ZWJ (GB11)
-		int regional_indicators = 0;  // the regional indicators before this character, in a row (GB12, GB13)
+		int regional_indicators = 0;      // the regional indicators before this character, in a row (GB12, GB13)
+		// GB9c: after InCB=Consonant [InCB=Extend InCB=Linker]* (1), with a Linker among them (2)
+		int conjunct = 0;
 
 		while (p < end)
 		{
 			const char* start = p;
 			const Character c = TextUnicode::DecodeUTF8(p, end);
 			const GraphemeBreak value = GetGraphemeBreak((char32_t)c);
+			const IndicConjunctBreak incb = GetIndicConjunctBreak((char32_t)c);
 
 			bool joins = false;
 			if (!first)
 			{
 				using G = GraphemeBreak;
-				if (value == G::Extend || value == G::ZWJ || value == G::SpacingMark || previous == G::Prepend)
-					joins = true; // GB9, GB9a, GB9b
+				if (previous == G::CR && value == G::LF)
+					joins = true; // GB3
+				else if (previous == G::CR || previous == G::LF || previous == G::Control || value == G::CR || value == G::LF ||
+					value == G::Control)
+					joins = false; // GB4, GB5
 				else if (previous == G::L && (value == G::L || value == G::V || value == G::LV || value == G::LVT))
 					joins = true; // GB6
 				else if ((previous == G::LV || previous == G::V) && (value == G::V || value == G::T))
 					joins = true; // GB7
 				else if ((previous == G::LVT || previous == G::T) && value == G::T)
 					joins = true; // GB8
+				else if (value == G::Extend || value == G::ZWJ || value == G::SpacingMark || previous == G::Prepend)
+					joins = true; // GB9, GB9a, GB9b
+				else if (conjunct == 2 && incb == IndicConjunctBreak::Consonant)
+					joins = true; // GB9c
 				else if (pictographic_joiner && value == G::ExtPict)
 					joins = true; // GB11
 				else if (value == G::Regional_Indicator && regional_indicators % 2 == 1)
@@ -106,6 +132,12 @@ namespace TextJustification {
 			pictographic_joiner = (in_pictographic && value == GraphemeBreak::ZWJ);
 			in_pictographic = (value == GraphemeBreak::ExtPict || (in_pictographic && value == GraphemeBreak::Extend));
 			regional_indicators = (value == GraphemeBreak::Regional_Indicator ? regional_indicators + 1 : 0);
+			if (incb == IndicConjunctBreak::Consonant)
+				conjunct = 1;
+			else if (conjunct != 0 && incb == IndicConjunctBreak::Linker)
+				conjunct = 2;
+			else if (conjunct != 0 && incb != IndicConjunctBreak::Extend)
+				conjunct = 0;
 			previous = value;
 			first = false;
 		}

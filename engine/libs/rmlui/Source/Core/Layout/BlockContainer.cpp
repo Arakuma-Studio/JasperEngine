@@ -457,21 +457,21 @@ void BlockContainer::CloseInlineElement(InlineBoxHandle handle)
 	EnsureOpenInlineContainer()->CloseInlineElement(handle.inline_box);
 }
 
-void BlockContainer::AddBreak()
+void BlockContainer::AddBreak(Element* br)
 {
 	const float line_height = element->GetLineHeight();
 
 	// With line clamping the <br> makes a line of an inline container, which counts it (fork, P6-L1).
 	if (line_clamp)
 	{
-		EnsureOpenInlineContainer()->AddBreak(line_height);
+		EnsureOpenInlineContainer()->AddBreak(line_height, br);
 		return;
 	}
 
 	// Check for an inline box as our last child; if so, we can simply end its line and bail.
 	if (InlineContainer* inline_container = GetOpenInlineContainer())
 	{
-		inline_container->AddBreak(line_height);
+		inline_container->AddBreak(line_height, br);
 		return;
 	}
 

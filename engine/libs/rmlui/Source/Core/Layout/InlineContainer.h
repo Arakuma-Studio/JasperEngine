@@ -40,7 +40,8 @@ public:
 	void CloseInlineElement(InlineBox* inline_box);
 
 	/// Add a break to the last line.
-	void AddBreak(float line_height);
+	/// @param[in] br The <br> element (a line-clamp ellipsis alone on its line is painted after it), or null.
+	void AddBreak(float line_height, Element* br = nullptr);
 	/// Adds a line box for resuming one that was previously split.
 	/// @param[in] open_line_box The line box overflowing from a previous inline container.
 	void AddChainedBox(UniquePtr<LineBox> open_line_box);
@@ -93,7 +94,7 @@ private:
 	// Line clamping (fork, P6-L1): counts a line box before it is closed, and makes room for the ellipsis on the clamp
 	// line; after it is closed, records the clamp height. A line of nothing but a <br> counts too (AddBreak).
 	void CountLineForLineClamp(LineBox* line_box);
-	void CountEmptyLineForLineClamp();
+	void CountEmptyLineForLineClamp(Element* br);
 	void RecordLineClampHeight();
 
 	BlockContainer* parent; // [not-null]

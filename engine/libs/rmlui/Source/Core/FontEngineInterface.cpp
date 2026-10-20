@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/StringUtilities.h"
+#include "TextUnicode.h"
 
 namespace Rml {
 
@@ -56,6 +57,13 @@ int FontEngineInterface::GenerateString(RenderManager& /*render_manager*/, FontF
 	const TextShapingContext& /*text_shaping_context*/, TexturedMeshList& /*mesh_list*/)
 {
 	return 0;
+}
+
+void FontEngineInterface::GetBidiRuns(StringView string, const TextShapingContext& text_shaping_context, Vector<TextBidiRun>& runs)
+{
+	const int direction = TextUnicode::FirstStrongDirection(string);
+	const bool rtl = (direction == 0 ? text_shaping_context.text_direction == Style::Direction::Rtl : direction < 0);
+	runs.assign(1, TextBidiRun{0, (int)string.size(), rtl});
 }
 
 int FontEngineInterface::GetVersion(FontFaceHandle /*handle*/)

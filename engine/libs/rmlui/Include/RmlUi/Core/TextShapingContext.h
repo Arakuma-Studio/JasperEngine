@@ -17,6 +17,17 @@ struct JustificationSpacing {
 };
 
 /*
+    A directional run of a string as a font engine lays it out (fork, P6-L1: the line-clamp ellipsis cuts the runs as
+    Chromium's LineTruncator cuts a line's items): the bytes [begin, end) of the string, right to left when its bidi
+    embedding level is odd.
+*/
+struct TextBidiRun {
+	int begin = 0;
+	int end = 0;
+	bool rtl = false;
+};
+
+/*
     Data extracted from the properties of an element to help provide context for text shaping and spacing.
 */
 struct TextShapingContext {

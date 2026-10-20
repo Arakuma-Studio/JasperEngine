@@ -111,7 +111,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), line_clamp_ellipsis_after(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -275,9 +275,6 @@ void Element::Render()
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);
 			OnRender();
 		}
-		// The line-clamp ellipsis this block container draws itself (fork, P6-L1: after an atomic inline, or alone on a line).
-		if (draws_line_clamp_ellipsis)
-			LineClamp::RenderBlockEllipsis(this, *meta->line_clamp_ellipsis);
 	}
 
 	RenderStackingContextChildren();
@@ -301,10 +298,35 @@ void Element::RenderStackingContextChildren()
 	bool any_outline = own_outline;
 	for (const Element* element : stacking_context)
 		any_outline |= has_outline(element);
+	// The line-clamp ellipsis a block container draws after an atomic inline or a <br> (fork, P6-L1) is painted where
+	// Chromium paints it: in the inline content, after that element and its descendants.
+	Element* ellipsis_after = nullptr;
+	const auto flush_ellipsis = [&ellipsis_after](const Element* next) {
+		if (!ellipsis_after)
+			return;
+		for (const Element* e = (next ? next->parent : nullptr); e; e = e->parent)
+		{
+			if (e == ellipsis_after)
+				return;
+		}
+		LineClamp::RenderEllipsisAfter(ellipsis_after);
+		ellipsis_after = nullptr;
+	};
+
 	if (!any_outline)
 	{
 		for (Element* element : stacking_context)
+		{
+			if (ellipsis_after)
+				flush_ellipsis(element);
 			element->Render();
+			if (element->line_clamp_ellipsis_after)
+			{
+				flush_ellipsis(nullptr);
+				ellipsis_after = element;
+			}
+		}
+		flush_ellipsis(nullptr);
 		return;
 	}
 
@@ -347,12 +369,20 @@ void Element::RenderStackingContextChildren()
 			layers.pop_back();
 		}
 
+		if (ellipsis_after)
+			flush_ellipsis(element);
+
 		const bool is_layer = (element->local_stacking_context || element->GetPosition() != Style::Position::Static);
 		// The outlines of the layer the element is in are painted before it, unless it is painted below the layer's content.
 		if (is_layer && !(element->local_stacking_context && element->z_index < 0.f))
 			flush(layers.back().begin);
 
 		element->Render();
+		if (element->line_clamp_ellipsis_after)
+		{
+			flush_ellipsis(nullptr);
+			ellipsis_after = element;
+		}
 
 		// A stacking context paints its own outline (in its Render).
 		if (!element->local_stacking_context)
@@ -363,6 +393,7 @@ void Element::RenderStackingContextChildren()
 				pending.push_back(element);
 		}
 	}
+	flush_ellipsis(nullptr);
 	flush(pending_base);
 	layers.resize(layers_base);
 }
@@ -2544,6 +2575,11 @@ void Element::OnPropertyChange(const PropertyIdSet& changed_properties)
 	// The ellipsis a block container draws is placed by its lines: a box of another kind has none.
 	if (changed_properties.Contains(PropertyId::Display) && draws_line_clamp_ellipsis)
 		LineClampAccess::SetBlockEllipsis(this, nullptr);
+	// It has the block container's colour and text shadows.
+	if (draws_line_clamp_ellipsis &&
+		(changed_properties.Contains(PropertyId::Color) || changed_properties.Contains(PropertyId::TextShadow) ||
+			changed_properties.Contains(PropertyId::Opacity)))
+		LineClampAccess::DirtyBlockEllipsis(this);
 }
 
 void Element::OnPseudoClassChange(const String& /*pseudo_class*/, bool /*activate*/) {}

@@ -406,7 +406,7 @@ void LineBox::TruncateForLineClamp(const bool rtl, const float content_width, Ve
 		float shift = 0.f;
 		Vector<JustificationSpacing>* spacing = (justification && !(*justification)[index].empty() ? &(*justification)[index] : nullptr);
 		const float kept_width = static_cast<InlineLevelBox_Text*>(fragment.box)
-									 ->TruncateForEllipsis(fragment.fragment_handle, width, space, rtl, first, spacing, shift);
+									 ->TruncateForEllipsis(fragment.fragment_handle, width, space, ellipsis.width, rtl, first, spacing, shift);
 		if (kept_width >= 0.f)
 		{
 			// (on a right-to-left line the kept end stays where it was)
@@ -429,6 +429,7 @@ void LineBox::TruncateForLineClamp(const bool rtl, const float content_width, Ve
 
 	clamp_ellipsis = &ellipsis;
 	clamp_ellipsis_fragment = (fragment.type == FragmentType::TextRun ? ellipsized + 1 : 0);
+	clamp_ellipsis_after = (fragment.type == FragmentType::TextRun ? nullptr : fragment.box->GetElement());
 	clamp_ellipsis->position = Vector2f(ellipsis_x, total_height_above_baseline);
 
 	// Chromium appends the ellipsis to the line's items: an inline box still open at the line's end (it goes on on the
@@ -560,7 +561,7 @@ void LineBox::SubmitClampedFragments(Element* offset_parent, Vector2f offset_par
 		else
 		{
 			clamp_ellipsis->position += line_origin;
-			LineClampAccess::SetBlockEllipsis(offset_parent, clamp_ellipsis);
+			LineClampAccess::SetBlockEllipsis(offset_parent, clamp_ellipsis, clamp_ellipsis_after);
 			clamp_ellipsis = nullptr;
 		}
 	}
