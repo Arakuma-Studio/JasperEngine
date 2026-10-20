@@ -30,6 +30,7 @@ The output is deterministic: run it again after a Unicode update and commit both
 """
 
 import argparse
+import json
 import os
 import sys
 import tempfile
@@ -37,11 +38,14 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCE = os.path.join(HERE, "..", "Source", "Core")
+TESTS = os.path.join(HERE, "..", "Tests", "Source", "UnitTests")
 # file name -> its path under https://www.unicode.org/Public/ (the emoji sequences are versioned without the micro version)
 FILES = {
     "UnicodeData.txt": "%(v)s/ucd/UnicodeData.txt",
     "SpecialCasing.txt": "%(v)s/ucd/SpecialCasing.txt",
     "LineBreak.txt": "%(v)s/ucd/LineBreak.txt",
+    "EastAsianWidth.txt": "%(v)s/ucd/EastAsianWidth.txt",
+    "LineBreakTest.txt": "%(v)s/ucd/auxiliary/LineBreakTest.txt",
     "Scripts.txt": "%(v)s/ucd/Scripts.txt",
     "DerivedCoreProperties.txt": "%(v)s/ucd/DerivedCoreProperties.txt",
     "GraphemeBreakProperty.txt": "%(v)s/ucd/auxiliary/GraphemeBreakProperty.txt",
@@ -50,15 +54,13 @@ FILES = {
     "emoji-zwj-sequences.txt": "emoji/%(e)s/emoji-zwj-sequences.txt",
 }
 
-# The line-break classes the line breaker (TextUnicode.cpp) distinguishes, in the order of the
-# LineBreakClass enum; every other class (AL, SA, AI, XX, PR, PO, SY, ...) reads as AL there.
-# SP, BK, CR, LF, NL are white space or segment breaks, handled before the classes are asked.
-LINE_BREAK_CLASSES = ["AL", "ZW", "GL", "BA", "HY", "B2", "ID", "CL", "CP", "EX", "IS", "NS", "OP", "QU", "CM", "ZWJ",
-                      "NU", "IN", "EB", "EM", "BB", "H2", "H3", "JL", "JV", "JT"]
-# read as one of the classes above (CSS 'line-break: normal': small kana are ideographs)
-LINE_BREAK_ALIASES = {"CJ": "ID", "WJ": "GL", "HL": "AL", "AI": "AL", "SA": "AL", "XX": "AL", "PR": "AL", "PO": "AL", "SY": "AL",
-                      "CB": "AL", "SG": "AL", "AK": "AL", "AP": "AL", "AS": "AL", "VF": "AL", "VI": "AL", "RI": "AL",
-                      "SP": "AL", "BK": "AL", "CR": "AL", "LF": "AL", "NL": "AL"}
+# The UAX #14 line-break classes, in the order of TextUnicode.cpp's LineBreakClass enum: every class but those LB1
+# resolves (AI, SG, XX -> AL; SA -> CM for Mn and Mc, AL otherwise), and QU split by General_Category Pi and Pf
+# (LB15a, LB15b, LB19). CJ stays: the line breaker resolves it (CSS 'line-break: normal': as ID, Chromium's tailoring).
+LINE_BREAK_CLASSES = ["AL", "AK", "AP", "AS", "B2", "BA", "BB", "BK", "CB", "CJ", "CL", "CM", "CP", "CR", "EB", "EM", "EX",
+                      "GL", "H2", "H3", "HL", "HY", "ID", "IN", "IS", "JL", "JT", "JV", "LF", "NL", "NS", "NU", "OP", "PO",
+                      "PR", "QU", "QU_Pi", "QU_Pf", "RI", "SP", "SY", "VF", "VI", "WJ", "ZW", "ZWJ"]
+LINE_BREAK_RESOLVED = {"AI": "AL", "SG": "AL", "XX": "AL"}
 
 
 def ucd_paths(args):
@@ -133,25 +135,36 @@ def ranges_of(codes):
     return out
 
 
-def line_break_classes(path):
+def general_categories(path):
+    """code -> General_Category, ranges expanded (unlisted code points are Cn)"""
+    return {code: entry[0] for code, entry in unicode_data(path).items()}
+
+
+def line_break_classes(path, categories):
+    """[(first, last, class)] of every code point whose class is not AL (LB1 applied, QU split)"""
     classes = {}
+    # unlisted code points: the defaults LineBreak.txt's header names (ID for the unassigned ideographic ranges, PR for
+    # the Currency Symbols block), XX (AL) otherwise
+    for a, b, cls in ((0x3400, 0x4DBF, "ID"), (0x4E00, 0x9FFF, "ID"), (0xF900, 0xFAFF, "ID"), (0x20000, 0x2FFFD, "ID"),
+                      (0x30000, 0x3FFFD, "ID"), (0x1F000, 0x1FAFF, "ID"), (0x1FC00, 0x1FFFD, "ID"), (0x20A0, 0x20CF, "PR")):
+        for c in range(a, b + 1):
+            classes[c] = cls
     for line in read_lines(path):
         code, cls = [f.strip() for f in line.split(";")]
-        cls = LINE_BREAK_ALIASES.get(cls, cls)
-        if cls not in LINE_BREAK_CLASSES:
-            raise SystemExit("gen_case_tables: unknown line-break class " + cls)
         if ".." in code:
             a, b = code.split("..")
             a, b = int(a, 16), int(b, 16)
         else:
             a = b = int(code, 16)
         for c in range(a, b + 1):
-            classes[c] = cls
-    # unlisted code points: the UAX #14 defaults for unassigned ideographic ranges are ID
-    for a, b in ((0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xF900, 0xFAFF), (0x20000, 0x2FFFD), (0x30000, 0x3FFFD), (0x1F000, 0x1FAFF),
-                 (0x1FC00, 0x1FFFD)):
-        for c in range(a, b + 1):
-            classes.setdefault(c, "ID")
+            value = LINE_BREAK_RESOLVED.get(cls, cls)
+            if value == "SA":
+                value = "CM" if categories.get(c) in ("Mn", "Mc") else "AL"
+            elif value == "QU" and categories.get(c) in ("Pi", "Pf"):
+                value = "QU_" + categories[c]
+            if value not in LINE_BREAK_CLASSES:
+                raise SystemExit("gen_case_tables: unknown line-break class " + cls)
+            classes[c] = value
     runs = []
     for c in sorted(classes):
         cls = classes[c]
@@ -161,6 +174,32 @@ def line_break_classes(path):
             runs.append([c, c, cls])
     # the default needs no entry
     return [r for r in runs if r[2] != "AL"]
+
+
+def east_asian_wide(path):
+    """the code points of East_Asian_Width F, W or H (UAX #14's $EastAsian), the @missing defaults applied"""
+    values = {}
+    with open(path, encoding="utf-8") as f:
+        for raw in f:
+            missing = raw.startswith("# @missing:")
+            line = raw[len("# @missing:"):] if missing else raw.split("#", 1)[0]
+            line = line.strip()
+            if not line or ";" not in line:
+                continue
+            code, value = [x.strip() for x in line.split(";")[:2]]
+            if ".." in code:
+                a, b = code.split("..")
+                a, b = int(a, 16), int(b, 16)
+            else:
+                a = b = int(code, 16)
+            if missing and a == 0 and b == 0x10FFFF:
+                continue  # N: not East Asian
+            for c in range(a, b + 1):
+                if missing:
+                    values.setdefault(c, value)
+                else:
+                    values[c] = value
+    return {c for c, v in values.items() if v in ("F", "W", "H")}
 
 
 def hex_list(values, per_line, width):
@@ -228,16 +267,60 @@ def write_case_tables(data, special, version, out_path):
     return {k: len(v) for k, v in simple.items()}, {k: len(v) for k, v in full.items()}, len(words)
 
 
-def write_line_break_tables(runs, version, out_path):
+def write_line_break_tables(runs, east_asian, unassigned_pictographic, version, out_path):
     with open(out_path, "w", encoding="utf-8", newline="\n") as f:
-        f.write(HEADER % (version, "LineBreak.txt"))
-        f.write("\n// UAX #14 line-break classes other than AL: {first, last, class}, sorted. The classes not\n")
-        f.write("// told apart by the line breaker are AL (Utilities/gen_case_tables.py, LINE_BREAK_ALIASES).\n")
+        f.write(HEADER % (version, "LineBreak.txt, EastAsianWidth.txt, UnicodeData.txt, emoji-data.txt"))
+        f.write("\n// UAX #14 line-break classes other than AL: {first, last, class}, sorted. LB1 is applied (AI, SG, XX -> AL; SA ->\n")
+        f.write("// CM for Mn and Mc, AL otherwise), QU is split by General_Category Pi and Pf.\n")
         f.write("static const LineBreakRange line_break_ranges[] = {\n")
         for i in range(0, len(runs), 4):
             f.write("\t" + " ".join("{0x%05X, 0x%05X, LineBreakClass::%s}," % (a, b, c) for a, b, c in runs[i:i + 4]) + "\n")
         f.write("};\n")
-    return len(runs)
+        f.write("\n// East_Asian_Width F, W or H (UAX #14's $EastAsian: LB19a, LB21a, LB30): {first, last}, sorted.\n")
+        f.write("static const CodepointRange east_asian_ranges[] = {\n")
+        for i in range(0, len(east_asian), 6):
+            f.write("\t" + " ".join("{0x%05X, 0x%05X}," % tuple(r) for r in east_asian[i:i + 6]) + "\n")
+        f.write("};\n")
+        f.write("\n// Extended_Pictographic code points that are unassigned (LB30b): {first, last}, sorted.\n")
+        f.write("static const CodepointRange unassigned_pictographic_ranges[] = {\n")
+        for i in range(0, len(unassigned_pictographic), 6):
+            f.write("\t" + " ".join("{0x%05X, 0x%05X}," % tuple(r) for r in unassigned_pictographic[i:i + 6]) + "\n")
+        f.write("};\n")
+    return len(runs), len(east_asian), len(unassigned_pictographic)
+
+
+def write_line_break_test(test_path, chromium_path, version, out_path):
+    """Tests/Source/UnitTests/LineBreakTestData.inl: the strings of LineBreakTest.txt with UAX #14's breaks and the breaks
+    Chromium 153 makes (measured by tools/htmlui/linebreak-oracle.mjs: Utilities/linebreak-chromium-153.json)"""
+    with open(chromium_path, encoding="utf-8") as f:
+        chromium = json.load(f)
+    tests = []
+    for line in read_lines(test_path):
+        tokens = line.split()
+        codes = [t for t in tokens if t not in ("\u00f7", "\u00d7")]
+        marks = "".join("/" if t == "\u00f7" else "x" for t in tokens if t in ("\u00f7", "\u00d7"))
+        tests.append((codes, marks))
+    if len(chromium) != len(tests):
+        raise SystemExit("gen_case_tables: linebreak-chromium-153.json has %d strings, LineBreakTest.txt %d" % (len(chromium), len(tests)))
+    with open(out_path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(HEADER % (version, "LineBreakTest.txt; Chromium 153's breaks measured by tools/htmlui/linebreak-oracle.mjs"))
+        f.write("\n// {code points, UAX #14's breaks, Chromium's ('?': not measured, a character without width after the boundary)}:\n")
+        f.write("// '/' a break, 'x' none, one per boundary from before the first code point to after the last.\n")
+        f.write("static const LineBreakTestCase line_break_test_cases[] = {\n")
+        for (codes, marks), measured in zip(tests, chromium):
+            inner = "".join("?" if m is None else ("/" if m else "x") for m in measured)
+            f.write('\t{"%s", "%s", "%s"},\n' % (" ".join(codes), marks, marks[0] + inner + marks[-1]))
+        f.write("};\n")
+        with open(chromium_path.replace(".json", "-ascii.json"), encoding="utf-8") as ascii_file:
+            ascii_pairs = json.load(ascii_file)
+        for name in ("isolated", "after_x"):
+            f.write("\n// Chromium's breaks between two printable ASCII characters ('!' to '~'), a row per first character, a column per\n")
+            f.write("// second ('/' a break), %s.\n" % ("alone" if name == "isolated" else "after 'x'"))
+            f.write("static const char* const line_break_ascii_%s[] = {\n" % name)
+            for row in ascii_pairs[name]:
+                f.write('\t"%s",\n' % row)
+            f.write("};\n")
+    return len(tests)
 
 
 # --- 'text-align: justify' (p6-justify) -------------------------------------------------------------
@@ -439,13 +522,20 @@ def main():
     data = unicode_data(paths["UnicodeData.txt"])
     special = special_casing(paths["SpecialCasing.txt"])
     simple, full, words = write_case_tables(data, special, args.version, os.path.join(out_dir, "UnicodeCaseTables.inl"))
-    runs = write_line_break_tables(line_break_classes(paths["LineBreak.txt"]), args.version, os.path.join(out_dir, "UnicodeLineBreakTables.inl"))
+    categories = general_categories(paths["UnicodeData.txt"])
+    pictographic = property_codes(paths["emoji-data.txt"], ("Extended_Pictographic",))
+    runs = write_line_break_tables(line_break_classes(paths["LineBreak.txt"], categories), ranges_of(east_asian_wide(paths["EastAsianWidth.txt"])),
+                                   ranges_of(c for c in pictographic if c not in categories), args.version,
+                                   os.path.join(out_dir, "UnicodeLineBreakTables.inl"))
+    tests = write_line_break_test(paths["LineBreakTest.txt"], os.path.join(HERE, "linebreak-chromium-153.json"), args.version,
+                                  os.path.join(out_dir if args.check else TESTS, "LineBreakTestData.inl"))
     justification = write_justification_tables(justification_tables(paths), args.version,
                                                os.path.join(out_dir, "UnicodeJustificationTables.inl"))
     if args.check:
         stale = []
-        for name in ("UnicodeCaseTables.inl", "UnicodeLineBreakTables.inl", "UnicodeJustificationTables.inl"):
-            with open(os.path.join(out_dir, name), "rb") as generated, open(os.path.join(SOURCE, name), "rb") as current:
+        for name in ("UnicodeCaseTables.inl", "UnicodeLineBreakTables.inl", "UnicodeJustificationTables.inl", "LineBreakTestData.inl"):
+            current_dir = TESTS if name == "LineBreakTestData.inl" else SOURCE
+            with open(os.path.join(out_dir, name), "rb") as generated, open(os.path.join(current_dir, name), "rb") as current:
                 if generated.read() != current.read():
                     stale.append(name)
             os.remove(os.path.join(out_dir, name))
@@ -455,7 +545,9 @@ def main():
             return 1
         print("gen_case_tables: the tables are current")
         return 0
-    print("gen_case_tables: simple %s, full %s, %d word ranges, %d line-break ranges" % (simple, full, words, runs))
+    print("gen_case_tables: simple %s, full %s, %d word ranges, %d line-break, %d East Asian, %d unassigned pictographic ranges"
+          % ((simple, full, words) + runs))
+    print("gen_case_tables: %d LineBreakTest.txt strings" % tests)
     print("gen_case_tables: justification: %d CJK, %d cursive, %d default-ignorable, %d grapheme, %d Indic conjunct ranges" % justification)
     return 0
 

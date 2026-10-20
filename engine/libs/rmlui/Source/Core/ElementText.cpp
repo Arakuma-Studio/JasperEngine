@@ -34,9 +34,11 @@ struct TokenRules {
 	Style::WordBreak word_break;
 	bool decode_escape_characters;
 	const char* text_begin; // the element's text, read back for 'capitalize'
+	const uint8_t* line_breaks; // the line-break opportunities of the text, by byte offset from 'text_begin'
 };
 
 static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, Vector<uint8_t>& out_breaks);
 static bool IsWhiteSpaceToken(const String& token);
 static bool LastToken(const char* token_begin, const char* string_end, bool collapse_white_space, bool break_at_endline);
 
@@ -214,6 +216,7 @@ void ElementText::SetText(const String& _text)
 	if (text != _text)
 	{
 		text = _text;
+		line_breaks_dirty = true;
 
 		if (dirty_layout_on_change)
 		{
@@ -415,8 +418,15 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
 	WordBreak word_break = computed.word_break();
+	if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters)
+	{
+		ComputeLineBreaks(text, decode_escape_characters, word_break, line_breaks);
+		line_breaks_dirty = false;
+		line_breaks_word_break = word_break;
+		line_breaks_decode_escape_characters = decode_escape_characters;
+	}
 	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
-		text.c_str()};
+		text.c_str(), line_breaks.data()};
 
 	// A word that does not fit on a line of its own is broken anywhere: 'word-break: break-all' at any width, 'overflow-wrap'
 	// ('anywhere', 'break-word', and the legacy 'word-break: break-word') when the word starts the line. The min-content
@@ -1017,11 +1027,39 @@ static inline Character ReadCharacter(const char* p, const char* string_end, boo
 	return ReadEscapedOrEncodedCharacter(p, string_end, decode_escape_characters, next, non_breaking);
 }
 
-// A character of a run that BuildToken appends at once: printable ASCII other than a space, a hyphen (a line may break
-// after it) and an escape code's '&'.
+// The line-break opportunities of an element's text, read as BuildToken reads it (escape codes decoded if asked): UAX #14
+// tailored as Chromium (TextUnicode::GetLineBreakOpportunities); 'out_breaks[offset]' is 1 when a line may break before the
+// character that starts at that byte.
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, Vector<uint8_t>& out_breaks)
+{
+	out_breaks.assign(text.size() + 1, 0);
+	Vector<Character> characters;
+	Vector<int> offsets;
+	characters.reserve(text.size());
+	offsets.reserve(text.size());
+	const char* p = text.c_str();
+	const char* end = p + text.size();
+	while (p != end)
+	{
+		const char* next = nullptr;
+		bool non_breaking = false;
+		characters.push_back(ReadCharacter(p, end, decode_escape_characters, next, non_breaking));
+		offsets.push_back(int(p - text.c_str()));
+		p = next;
+	}
+	Vector<bool> breaks;
+	TextUnicode::GetLineBreakOpportunities(characters, word_break, TextUnicode::LineBreakTailoring::Chromium, breaks);
+	for (size_t i = 1; i < characters.size(); i++)
+		out_breaks[offsets[i]] = breaks[i] ? 1 : 0;
+}
+
+// A character of a run that BuildToken appends at once: printable ASCII other than a space and those a line may break
+// next to between two ASCII characters (after '-' and '?', before '(' '<' '[' '{': Chromium's table), and an escape code's
+// '&'.
 static bool IsPlainAsciiByte(char c, bool decode_escape_characters)
 {
-	return c > ' ' && c < 0x7F && c != '-' && !(decode_escape_characters && c == '&');
+	return c > ' ' && c < 0x7F && c != '-' && c != '?' && c != '(' && c != '<' && c != '[' && c != '{' &&
+		!(decode_escape_characters && c == '&');
 }
 
 static bool IsWhiteSpaceCharacter(Character c)
@@ -1202,12 +1240,10 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 			AppendTransformed(token, character, before_previous, previous, following, rules.text_transform);
 			token_begin = next;
 
-			// A line-break opportunity between this character and the next ends the token. Between two ASCII characters
-			// the only one is after a hyphen (TextUnicode::IsLineBreakOpportunity: the ASCII line-break classes break after HY
-			// alone), so the pair rules are asked only then and for other characters.
+			// A line-break opportunity between this character and the next ends the token (the text's UAX #14
+			// opportunities, ComputeLineBreaks).
 			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking &&
-				(character == Character('-') || (char32_t)character >= 0x80 || (char32_t)following >= 0x80) &&
-				TextUnicode::IsLineBreakOpportunity(character, following, rules.word_break))
+				rules.line_breaks[next - rules.text_begin])
 				return false;
 		}
 
