@@ -6,6 +6,7 @@
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementDocument.h"
 #include "../../Include/RmlUi/Core/ElementUtilities.h"
+#include "../../Include/RmlUi/Core/Elements/ElementFormControl.h"
 #include "../../Include/RmlUi/Core/Event.h"
 #include "../../Include/RmlUi/Core/FontEngineInterface.h"
 #include "../../Include/RmlUi/Core/MeshUtilities.h"
@@ -42,7 +43,7 @@ struct TokenRules {
 
 static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
 using LineBreakContext = ElementText::LineBreakContext;
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const LineBreakContext& prefix,
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, bool ascii, const LineBreakContext& prefix,
 	const LineBreakContext& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after);
 static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, int limit, LineBreakContext& out_context);
 static bool IsAsciiText(const String& text, bool decode_escape_characters);
@@ -619,7 +620,7 @@ void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 	}
 	if (text_changed || prefix != line_breaks_prefix || suffix != line_breaks_suffix)
 	{
-		ComputeLineBreaks(text, decode_escape_characters, word_break, prefix, suffix, line_breaks, line_break_before, line_break_after);
+		ComputeLineBreaks(text, decode_escape_characters, word_break, line_breaks_ascii, prefix, suffix, line_breaks, line_break_before, line_break_after);
 		line_breaks_dirty = false;
 		line_breaks_word_break = word_break;
 		line_breaks_decode_escape_characters = decode_escape_characters;
@@ -1316,8 +1317,9 @@ static bool IsBoundaryOpportunity(const Character* before, size_t num_before, co
 // The line-break opportunities of an element's text, read as BuildToken reads it (escape codes decoded if asked): UAX #14
 // tailored as Chromium (TextUnicode::GetLineBreakOpportunities) over the text with the inline formatting context's text
 // around it ('prefix', 'suffix': a few code points); 'out_breaks[offset]' is 1 when a line may break before the character
-// that starts at that byte; 'out_break_before', 'out_break_after' at the text's start and end.
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const LineBreakContext& prefix,
+// that starts at that byte; 'out_break_before', 'out_break_after' at the text's start and end. 'ascii': the text is printable
+// ASCII and white space (IsAsciiText) and 'word-break' is not 'keep-all'.
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, bool ascii, const LineBreakContext& prefix,
 	const LineBreakContext& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after)
 {
 	out_break_before = out_break_after = true;
@@ -1330,7 +1332,7 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 	// A text of printable ASCII characters and white space (no escape code read, no 'keep-all'), most texts: BuildToken
 	// asks Chromium's table for the pairs of printable characters it ends a token between, the only boundaries it asks
 	// about (not around white space), and no table is kept.
-	if (word_break != Style::WordBreak::KeepAll && IsAsciiText(text, decode_escape_characters))
+	if (ascii)
 	{
 		out_breaks.clear();
 		out_breaks.shrink_to_fit();
@@ -1384,8 +1386,10 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 static bool IsTransparentInlineBox(Element* element)
 {
 	const ComputedValues& computed = element->GetComputedValues();
+	// (a form control is atomic whatever its display: asked first, its intrinsic size can cost)
 	return computed.display() == Style::Display::Inline && computed.position() != Style::Position::Absolute &&
-		computed.position() != Style::Position::Fixed && computed.float_() == Style::Float::None && !element->IsReplaced();
+		computed.position() != Style::Position::Fixed && computed.float_() == Style::Float::None &&
+		!rmlui_dynamic_cast<ElementFormControl*>(element) && !element->IsReplaced();
 }
 
 // An element with no part in the inline formatting context's content: not displayed, out of flow.
