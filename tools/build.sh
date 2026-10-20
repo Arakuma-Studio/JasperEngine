@@ -19,6 +19,7 @@
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
+# JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
 # From a git worktree, the main checkout's ccache and .git are shared.
@@ -95,6 +96,7 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 [[ -n "${JASPER_HTMLUI_UPDATE_GOLDEN:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_UPDATE_GOLDEN=$JASPER_HTMLUI_UPDATE_GOLDEN")
+[[ -n "${JASPER_HTMLUI_WRITE_ACTUAL:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_WRITE_ACTUAL=$JASPER_HTMLUI_WRITE_ACTUAL")
 # the HTML UI performance tests' tolerance on a loaded host (compat_perf_test.cpp)
 [[ -n "${JASPER_HTMLUI_PERF_SLACK:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_PERF_SLACK=$JASPER_HTMLUI_PERF_SLACK")
 [[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")

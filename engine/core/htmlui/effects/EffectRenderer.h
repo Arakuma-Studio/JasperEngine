@@ -50,6 +50,12 @@ namespace jasperengine::htmlui {
         // RmlRenderer hooks: CompileShader/CompileFilter named "jfx" take the instance
         // ({"instance": VOIDPTR}) and give it back tagged; the handle owns the instance
         Rml::CompiledShaderHandle compileShader(const Rml::Dictionary& parameters);
+        // A draw's preparation, which reads the element (RmlRenderer calls it while recording the
+        // frame, the draw follows at replay): EffectRuntime::prepare, the program, the packed
+        // parameters, a filter's layer maps. False: the effect draws nothing this frame. The draws
+        // prepare first themselves when it has not run this frame (drawing at once)
+        bool prepareShader(Rml::CompiledShaderHandle handle);
+        bool prepareFilter(Rml::CompiledFilterHandle handle);
         void renderShader(Rml::CompiledShaderHandle handle, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
         void releaseShader(Rml::CompiledShaderHandle handle);
         Rml::CompiledFilterHandle compileFilter(const Rml::Dictionary& parameters);
@@ -120,6 +126,8 @@ namespace jasperengine::htmlui {
         uint64_t programsGeneration = 1;
         // ShaderPool's custom-shader generation, read once a frame (beginFrame)
         uint32_t shaderGeneration = 0;
+        // this renderer frame (EffectInstance::drawKey; unique across renderers)
+        uint64_t frameKey = 0;
         std::map<ShaderRender*, std::unique_ptr<Program>> programs;
         std::shared_ptr<ShaderRender> brightShader;
         TextureRender black;                    // the state placeholder (a 1x1 transparent black image)
