@@ -614,6 +614,14 @@ and `ElementText::ClearLines` resets (about 20 000), `Element::SetBox` showing a
 about 15 000) and the baseline loops' clamp bound (about 13 000). Scripts and dumps of the measurement:
 `build/p6lc-bench` of the p6-line-clamp worktree on the test host (not committed).
 
+Measured again the same way on the final tree, after the merges with P6-J1 and P6-J2 (the clamp line goes through
+`CloseTrimmedOrJustified`), against `main` `eb8e160fa`: all 248 cases within -2.49 % .. +1.53 %. Unmodified updates
++0.00 %, `element` SetInnerRML + Update +0.10 %, `elementdocument` LoadDocument + Show + Update + Render +0.18 %,
+`flexbox.chat` Short words -0.02 % and Long words +0.01 %, `flexbox.shrink-to-fit` Nested +0.41 %, `grid` flex Relayout
++0.44 % and auto-fill Relayout +0.38 %, `table_basic` SetInnerRML +0.39 %. The largest, `Table inline-block` SetInnerRML
+(+1.53 %, 19 000 of 1.26 million instructions), is all under `malloc` in the `background` shorthand's layer parsing
+(`SplitLayerList`, `ParseLayer`: heap state, no function P6-L1 changes), as the `calc()` parsing and `FormatText` cases.
+
 ## Phase 6 (video)
 
 Phase 6 (`docs/html-ui/phase-6-video.md`, p6-video) added **no fork patch**. `<video>` is an engine
