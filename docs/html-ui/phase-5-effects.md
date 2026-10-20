@@ -2196,18 +2196,18 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
     image (new: `tools/build.sh` passes it on). On glcore and on Vulkan, the 613 images of each
     run are byte for byte the same as main's.
   - callgrind, the engine's own work per frame (5 frames, the same summary as above), main →
-    branch:
+    branch (the final code):
 
     | Document | Instructions | Last-level misses |
     |---|---|---|
-    | A | 400.7 k → 404.9 k (+1.0 %) | 15.89 k → 10.82 k (−32 %) |
-    | B | 154.3 k → 155.3 k (+0.7 %) | 2.58 k → 2.63 k (+1.8 %) |
-    | A2 | 4.777 M → 4.833 M (+1.2 %) | 32.5 k → 20.2 k (−38 %) |
+    | A | 400.7 k → 404.8 k (+1.0 %) | 15.89 k → 10.85 k (−32 %) |
+    | B | 154.3 k → 155.3 k (+0.7 %) | 2.58 k → 2.63 k (+1.9 %) |
+    | A2 | 4.777 M → 4.837 M (+1.3 %) | 32.5 k → 21.4 k (−34 %) |
 
     By area in A:
     - RmlUi's traversal fell from 6.6 k to 2.8 k misses, now on a warm cache;
     - the effects fell from 3.2 k to 2.1 k;
-    - `RmlRenderer`, now the replay, went from 4.9 k to 4.9 k: its code is fetched again after
+    - `RmlRenderer`, now the replay, went from 4.9 k to 5.0 k: its code is fetched again after
       each of the driver's passes, as before.
   - The cost of recording a simple document (B: 488 geometry commands a frame):
     - about 3.1 k instructions to record them (some 6 a command);
