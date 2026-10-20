@@ -75,6 +75,9 @@ namespace jasperengine {
         int GenerateString(Rml::RenderManager& render_manager, Rml::FontFaceHandle face_handle, Rml::FontEffectsHandle font_effects_handle,
                            Rml::StringView string, Rml::Vector2f position, Rml::ColourbPremultiplied colour, float opacity,
                            const Rml::TextShapingContext& text_shaping_context, Rml::TexturedMeshList& mesh_list) override;
+        // the bidi runs shapeRange lays out (SheenBidi, the context's direction as the paragraph's), in visual order, as
+        // byte ranges of the string: the line-clamp ellipsis cuts them (fork P6-L1)
+        void GetBidiRuns(Rml::StringView string, const Rml::TextShapingContext& context, Rml::Vector<Rml::TextBidiRun>& runs) override;
         int GetVersion(Rml::FontFaceHandle handle) override;   // one global version
         void ReleaseFontResources() override;                  // drops handles, glyph cache, pages; faces stay registered
 

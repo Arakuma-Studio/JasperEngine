@@ -8,6 +8,8 @@
 #include "util/FontFace.h"
 #include "util/FontRegistry.h"
 
+#include "SheenBidi/SheenBidi.h"
+
 #include <RmlUi/Core/Mesh.h>
 #include <RmlUi/Core/MeshUtilities.h>
 #include <RmlUi/Core/RenderManager.h>
@@ -368,6 +370,93 @@ void RmlFontEngine::decodeText(Rml::StringView string, const Rml::TextShapingCon
         const size_t index = (size_t)(it - offsets.begin());
         options.justifyAdvance[index] += spacing.before + spacing.after;
         options.justifyOffset[index] += spacing.before;
+    }
+}
+
+void RmlFontEngine::GetBidiRuns(Rml::StringView string, const Rml::TextShapingContext& context, Rml::Vector<Rml::TextBidiRun>& runs){
+    runs.clear();
+    const int size = (int)string.size();
+    if (size == 0)
+        return;
+    // the code points shapeRange sees (control characters left out, as decodeText does) and the byte each starts at
+    std::vector<uint32_t> codepoints;
+    std::vector<int> offsets;
+    const unsigned char* text = reinterpret_cast<const unsigned char*>(string.begin());
+    int i = 0;
+    while (i < size){
+        const unsigned char lead = text[i];
+        uint32_t codepoint = 0xFFFD;
+        int length = 1;
+        if (lead < 0x80){
+            codepoint = lead;
+        }else{
+            const int expected = (lead >= 0xF0 && lead <= 0xF4) ? 4 : (lead >= 0xE0) ? 3 : (lead >= 0xC2 && lead < 0xE0) ? 2 : 0;
+            if (expected > 0 && i + expected <= size){
+                uint32_t value = (expected == 2) ? (lead & 0x1Fu) : (expected == 3) ? (lead & 0x0Fu) : (lead & 0x07u);
+                bool valid = true;
+                for (int k = 1; k < expected; k++){
+                    if ((text[i + k] & 0xC0u) != 0x80u){
+                        valid = false;
+                        break;
+                    }
+                    value = (value << 6) | (text[i + k] & 0x3Fu);
+                }
+                const uint32_t minimum = (expected == 2) ? 0x80u : (expected == 3) ? 0x800u : 0x10000u;
+                if (valid && value >= minimum && value <= 0x10FFFFu && !(value >= 0xD800u && value <= 0xDFFFu)){
+                    codepoint = value;
+                    length = expected;
+                }
+            }
+        }
+        if (codepoint >= 0x20){
+            codepoints.push_back(codepoint);
+            offsets.push_back(i);
+        }
+        i += length;
+    }
+    const bool rtlBase = (context.text_direction == Rml::Style::Direction::Rtl);
+    if (codepoints.empty()){
+        runs.push_back(Rml::TextBidiRun{0, size, rtlBase});
+        return;
+    }
+    // a run's bytes: from its first code point to the next code point after its last (the left-out control characters
+    // after it with it), the first run in logical order from the string's start
+    const auto byteOf = [&](size_t index){ return index == 0 ? 0 : (index >= offsets.size() ? size : offsets[index]); };
+
+    SBCodepointSequence sequence;
+    sequence.stringEncoding = SBStringEncodingUTF32;
+    sequence.stringBuffer = (void*)codepoints.data();
+    sequence.stringLength = (SBUInteger)codepoints.size();
+    SBAlgorithmRef algorithm = SBAlgorithmCreate(&sequence);
+    SBParagraphRef paragraph = algorithm ? SBAlgorithmCreateParagraph(algorithm, 0, (SBUInteger)codepoints.size(), rtlBase ? 1 : 0) : NULL;
+    SBLineRef line = paragraph ? SBParagraphCreateLine(paragraph, 0, SBParagraphGetLength(paragraph)) : NULL;
+    if (line){
+        const SBUInteger count = SBLineGetRunCount(line);
+        const SBRun* sbRuns = SBLineGetRunsPtr(line);
+        for (SBUInteger r = 0; r < count; r++){
+            const size_t first = (size_t)sbRuns[r].offset;
+            const size_t last = first + (size_t)sbRuns[r].length;
+            runs.push_back(Rml::TextBidiRun{byteOf(first), byteOf(last), (sbRuns[r].level & 1) != 0});
+        }
+        SBLineRelease(line);
+    }
+    if (paragraph)
+        SBParagraphRelease(paragraph);
+    if (algorithm)
+        SBAlgorithmRelease(algorithm);
+    // (a paragraph separator ends SheenBidi's paragraph: the rest goes on in the last run)
+    int covered = 0;
+    for (const Rml::TextBidiRun& run : runs)
+        covered = std::max(covered, run.end);
+    if (runs.empty())
+        runs.push_back(Rml::TextBidiRun{0, size, rtlBase});
+    else if (covered < size){
+        for (Rml::TextBidiRun& run : runs){
+            if (run.end == covered){
+                run.end = size;
+                break;
+            }
+        }
     }
 }
 
