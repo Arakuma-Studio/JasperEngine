@@ -119,6 +119,11 @@ void LineClamp::GenerateEllipsis(RenderManager& render_manager, const LineClampE
 	}
 }
 
+LineClampBlockEllipsis* LineClampAccess::GetBlockEllipsis(Element* block)
+{
+	return block->draws_line_clamp_ellipsis ? block->meta->line_clamp_ellipsis.get() : nullptr;
+}
+
 void LineClampAccess::RenderBlockEllipsis(Element* block)
 {
 	if (!block->draws_line_clamp_ellipsis)

@@ -2960,12 +2960,94 @@ static bool operator<(const StackingContextChild& lhs, const StackingContextChil
 	return int(lhs.order) < int(rhs.order);
 }
 
-// Treat all children in the range [index_begin, end) as if the parent created a new stacking context, by sorting them
-// separately and then assigning their parent's paint order. However, positioned and descendants which create a new
-// stacking context should be considered part of the parent stacking context. See CSS 2, Appendix E.
-static void StackingContext_MakeAtomicRange(Vector<StackingContextChild>& stacking_children, size_t index_begin, RenderOrder parent_render_order)
+// Where the stacking context paints the line-clamp ellipses the block containers of a unit draw after an atomic inline or
+// a <br> (fork, P6-L1): 'owner' and the blocks among the entries from 'index_begin' on, sorted in paint order, not placed
+// yet (the blocks of an atomic unit inside are placed when it is made one). Chromium paints one with the line's items, in
+// the inline content after the in-flow inline content before it in tree order: after the atomic inline it follows and
+// its descendants, or, when that one is positioned or a stacking context (painted later, over it), before it. The
+// block-level backgrounds, floats and negative stacking contexts are under it, positioned elements over it. The ellipsis
+// is painted after the last entry under it ('paint_after'): 'owner' when none in an atomic unit (painted first), before
+// every entry of a stacking context. An atomic unit's negative stacking contexts are painted outside it: never that entry.
+static void StackingContext_PlaceLineClampEllipses(Vector<StackingContextChild>& stacking_children, size_t index_begin, Element* owner,
+	bool is_stacking_context)
 {
+	const auto is_layered = [](RenderOrder order) {
+		return order == RenderOrder::Positioned || order == RenderOrder::StackPositive || order == RenderOrder::StackNegative;
+	};
+	const auto is_descendant_or_self = [](const Element* element, const Element* ancestor) {
+		for (const Element* e = element; e; e = e->GetParentNode())
+		{
+			if (e == ancestor)
+				return true;
+		}
+		return false;
+	};
+	const auto place = [&](Element* block) {
+		LineClampBlockEllipsis& ellipsis = *LineClampAccess::GetBlockEllipsis(block);
+		ellipsis.placed = true;
+		// the tree order the ellipsis follows: past the subtree of the element it follows when that one is painted in the
+		// inline content, before it otherwise
+		int limit = INT_MAX;
+		for (size_t i = index_begin; i < stacking_children.size(); i++)
+		{
+			if (stacking_children[i].element != ellipsis.after)
+				continue;
+			limit = stacking_children[i].tree_index;
+			if (!is_layered(stacking_children[i].order))
+			{
+				for (size_t j = index_begin; j < stacking_children.size(); j++)
+				{
+					if (stacking_children[j].tree_index >= limit && is_descendant_or_self(stacking_children[j].element, ellipsis.after))
+						limit = stacking_children[j].tree_index + 1;
+				}
+			}
+			break;
+		}
+		ellipsis.paint_after = (is_stacking_context ? nullptr : owner);
+		for (size_t i = index_begin; i < stacking_children.size(); i++)
+		{
+			const RenderOrder order = stacking_children[i].order;
+			if (order == RenderOrder::Positioned || order == RenderOrder::StackPositive)
+				break;
+			if (order == RenderOrder::StackNegative && !is_stacking_context)
+				continue;
+			if (order != RenderOrder::Inline || stacking_children[i].tree_index < limit)
+				ellipsis.paint_after = stacking_children[i].element;
+		}
+	};
+	if (LineClampBlockEllipsis* ellipsis = LineClampAccess::GetBlockEllipsis(owner))
+	{
+		if (!ellipsis->placed)
+			place(owner);
+	}
+	for (size_t i = index_begin; i < stacking_children.size(); i++)
+	{
+		// (a block that is a stacking context of its own places its ellipsis in its own)
+		Element* element = stacking_children[i].element;
+		LineClampBlockEllipsis* ellipsis = LineClampAccess::GetBlockEllipsis(element);
+		if (ellipsis && !ellipsis->placed && !LineClampAccess::IsStackingContext(element))
+			place(element);
+	}
+}
+
+// Treat all children in the range [index_begin, end) as if the parent created a new stacking context: they are sorted
+// separately (their tree order kept in 'tree_index' to place the line-clamp ellipses 'element' and its block containers
+// draw), then they all take their parent's paint order. However, positioned and descendants which create a new stacking
+// context should be considered part of the parent stacking context. See CSS 2, Appendix E.
+static void StackingContext_MakeAtomicRange(Vector<StackingContextChild>& stacking_children, size_t index_begin, RenderOrder parent_render_order,
+	Element* element)
+{
+	bool any_line_clamp_ellipsis = LineClampAccess::HasBlockEllipsis(element);
+	for (size_t i = index_begin; i < stacking_children.size(); i++)
+	{
+		stacking_children[i].tree_index = (int)i;
+		any_line_clamp_ellipsis |= LineClampAccess::HasBlockEllipsis(stacking_children[i].element);
+	}
+
 	std::stable_sort(stacking_children.begin() + index_begin, stacking_children.end());
+
+	if (any_line_clamp_ellipsis)
+		StackingContext_PlaceLineClampEllipses(stacking_children, index_begin, element, false);
 
 	for (auto it = stacking_children.begin() + index_begin; it != stacking_children.end(); ++it)
 	{
@@ -2980,6 +3062,8 @@ void Element::BuildLocalStackingContext()
 	stacking_context_dirty = false;
 
 	Vector<StackingContextChild> stacking_children;
+	if (draws_line_clamp_ellipsis)
+		meta->line_clamp_ellipsis->placed = false;
 	AddChildrenToStackingContext(stacking_children);
 	bool any_line_clamp_ellipsis = draws_line_clamp_ellipsis;
 	for (size_t i = 0; i < stacking_children.size(); i++)
@@ -2993,65 +3077,30 @@ void Element::BuildLocalStackingContext()
 	for (size_t i = 0; i < stacking_children.size(); i++)
 		stacking_context[i] = stacking_children[i].element;
 
-	// The line-clamp ellipses the block containers of this stacking context draw (fork, P6-L1): Chromium paints one with
-	// the line's items, in the inline content after the in-flow inline content before it in tree order: after the atomic
-	// inline it follows and its descendants, or, when that one is positioned or a stacking context (painted later, over
-	// it), before it. The block-level backgrounds, floats and negative stacking contexts are under it, positioned elements
-	// over it.
+	// The line-clamp ellipses the block containers of this stacking context draw (fork, P6-L1), painted after the entry
+	// StackingContext_PlaceLineClampEllipses found (here, or when it made an atomic unit of the entries).
 	meta->line_clamp_ellipses.reset();
 	if (any_line_clamp_ellipsis)
 	{
-		const auto is_descendant = [](const Element* element, const Element* ancestor) {
-			for (const Element* e = element->parent; e; e = e->parent)
-			{
-				if (e == ancestor)
-					return true;
-			}
-			return false;
-		};
-		// tree order -> sorted index
-		Vector<int> sorted_index(stacking_children.size());
-		for (size_t i = 0; i < stacking_children.size(); i++)
-			sorted_index[stacking_children[i].tree_index] = (int)i;
+		StackingContext_PlaceLineClampEllipses(stacking_children, 0, this, true);
 		Vector<std::pair<int, Element*>> ellipses;
-		const auto place = [&](Element* block) {
-			const Element* after = block->meta->line_clamp_ellipsis->after;
-			// the tree order the ellipsis follows: past the anchor's subtree when it is painted in the inline content
-			int limit = INT_MAX;
-			for (size_t t = 0; t < stacking_children.size(); t++)
-			{
-				const StackingContextChild& anchor = stacking_children[sorted_index[t]];
-				if (anchor.element != after)
-					continue;
-				const bool layered = (anchor.order == RenderOrder::Positioned || anchor.order == RenderOrder::StackPositive ||
-					anchor.order == RenderOrder::StackNegative);
-				limit = (int)t;
-				if (!layered)
-				{
-					limit = (int)t + 1;
-					while (limit < (int)stacking_children.size() && is_descendant(stacking_children[sorted_index[limit]].element, after))
-						limit++;
-				}
-				break;
-			}
+		const auto add = [&](Element* block) {
+			const Element* paint_after = block->meta->line_clamp_ellipsis->paint_after;
 			int index = -1;
-			for (int i = 0; i < (int)stacking_children.size(); i++)
+			if (paint_after)
 			{
-				const RenderOrder order = stacking_children[i].order;
-				if (order == RenderOrder::Positioned || order == RenderOrder::StackPositive)
-					break;
-				if (order != RenderOrder::Inline || stacking_children[i].tree_index < limit)
-					index = i;
+				const auto it = std::find(stacking_context.begin(), stacking_context.end(), paint_after);
+				if (it != stacking_context.end())
+					index = int(it - stacking_context.begin());
 			}
 			ellipses.emplace_back(index, block);
 		};
 		if (draws_line_clamp_ellipsis)
-			place(this);
-		for (const StackingContextChild& child : stacking_children)
+			add(this);
+		for (Element* element : stacking_context)
 		{
-			// (a block that is a stacking context of its own places its ellipsis in its own)
-			if (child.element->draws_line_clamp_ellipsis && !child.element->local_stacking_context)
-				place(child.element);
+			if (element->draws_line_clamp_ellipsis && !element->local_stacking_context)
+				add(element);
 		}
 		std::stable_sort(ellipses.begin(), ellipses.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 		meta->line_clamp_ellipses = MakeUnique<Vector<std::pair<int, Element*>>>(std::move(ellipses));
@@ -3188,6 +3237,8 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 		render_as_atomic_unit = true;
 
 	stacking_children.push_back(StackingContextChild{this, order});
+	if (draws_line_clamp_ellipsis)
+		meta->line_clamp_ellipsis->placed = false;
 
 	if (include_children && !children.empty())
 	{
@@ -3196,7 +3247,7 @@ void Element::AddToStackingContext(Vector<StackingContextChild>& stacking_childr
 		AddChildrenToStackingContext(stacking_children);
 
 		if (render_as_atomic_unit)
-			StackingContext_MakeAtomicRange(stacking_children, index_child_begin, order);
+			StackingContext_MakeAtomicRange(stacking_children, index_child_begin, order, this);
 	}
 }
 

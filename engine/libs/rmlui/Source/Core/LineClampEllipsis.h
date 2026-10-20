@@ -47,6 +47,10 @@ struct LineClampEllipsis {
 struct LineClampBlockEllipsis {
 	LineClampEllipsis ellipsis;
 	Element* after = nullptr;
+	// Where its stacking context paints it, found while building the stacking context: after this element of it, before
+	// any when null (Element::BuildLocalStackingContext).
+	Element* paint_after = nullptr;
+	bool placed = false;
 	Vector<ElementText::TexturedGeometry> geometry;
 	Vector<ElementText::Shadow> shadows;
 	int font_handle_version = -1;
@@ -62,6 +66,9 @@ public:
 	/// The colour or text shadows of the block container changed: its ellipsis is generated again.
 	static void DirtyBlockEllipsis(Element* block);
 	static bool HasBlockEllipsis(const Element* block) { return block->draws_line_clamp_ellipsis; }
+	/// The ellipsis the block container draws itself, null when none.
+	static LineClampBlockEllipsis* GetBlockEllipsis(Element* block);
+	static bool IsStackingContext(const Element* element) { return element->local_stacking_context; }
 	/// LineClamp::RenderBlockEllipsis.
 	static void RenderBlockEllipsis(Element* block);
 	/// Hides an atomic inline the ellipsis truncates, with its subtree (Element::SetBox shows it again).

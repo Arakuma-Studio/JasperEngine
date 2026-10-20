@@ -805,3 +805,36 @@ TEST_CASE("LineClamp.paint_order_positioned")
 		CHECK(index_of(ellipsis) < index_of("Q"));
 	}
 }
+
+TEST_CASE("LineClamp.paint_order_atomic_block")
+{
+	// A block container that is painted as a unit (positioned, floating, an inline-block), or one inside such a unit, paints
+	// the ellipsis with its own inline content: after its text and the inline-block the ellipsis follows, not before the
+	// unit (the browser-parity fixture p3/text/line-clamp-paint-order, whose blocks are absolutely positioned).
+	struct Case {
+		const char* style;
+		const char* body;
+	};
+	const Case cases[] = {
+		{"position: absolute", "XpX X<span class='ibq'>Q</span> XX XX"},
+		{"position: relative", "XpX X<span class='ibq'>Q</span> XX XX"},
+		{"float: left", "XpX X<span class='ibq'>Q</span> XX XX"},
+		{"display: -webkit-inline-box", "XpX X<span class='ibq'>Q</span> XX XX"},
+		{"position: absolute", "<div>XpX X<span class='ibq'>Q</span> XX</div><div>RR</div>"},
+		{"float: left", "<div>XpX X<span class='ibq'>Q</span> XX</div><div>RR</div>"},
+	};
+	for (const Case& c : cases)
+	{
+		INFO(c.style, " ", c.body);
+		FixedAdvanceFontScope scope;
+		Clamped clamped(scope, ".o { width: 75px; -webkit-line-clamp: 1; } .ibq { display: inline-block; width: 10px; } ",
+			String("<div class='c o' id='c' style='") + c.style + "'>" + c.body + "</div>");
+		const StringList& generated = scope.font_engine.generated;
+		const auto index_of = [&](const String& value) { return (int)(std::find(generated.begin(), generated.end(), value) - generated.begin()); };
+		REQUIRE(index_of(ellipsis) < (int)generated.size());
+		CHECK(index_of("XpX X") < index_of(ellipsis));
+		CHECK(index_of("Q") < index_of(ellipsis));
+		if (index_of("RR") < (int)generated.size())
+			CHECK(index_of(ellipsis) < index_of("RR"));
+	}
+}
