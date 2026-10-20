@@ -1709,7 +1709,9 @@ as out of scope). What Chromium 153 does, read in its `BlockLayoutAlgorithm`, `L
   text (or an inline box starting with one) that goes on with the word before it stays on its line, and
   the last word of a text fits with what follows it up to the next opportunity or moves to the next line
   with it. Fixture `text/line-break-elements` (spans, links, padded and nested spans inside words,
-  spaces at boundaries, `-` and digits, ideographs, punctuation).
+  spaces at boundaries, `-` and digits, ideographs, punctuation). Cost against main (callgrind of
+  RmlUi's benchmarks): +0.25 % on average, data-binding updates up to +5.2 %, `SetInnerRML + Update` up
+  to +1.6 %.
 - **Font fallback per grapheme cluster** (engine, the same round): `TextShaper` gave a fallback face
   every codepoint after it that the face covered (digits after a ₹ took the fallback font); each
   grapheme cluster now takes the first face of the chain that has all of it, or the one codepoint it
