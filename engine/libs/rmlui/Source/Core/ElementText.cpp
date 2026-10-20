@@ -44,7 +44,8 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 using LineBreakContext = ElementText::LineBreakContext;
 static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const LineBreakContext& prefix,
 	const LineBreakContext& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after);
-static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, LineBreakContext& out_context);
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, int limit, LineBreakContext& out_context);
+static bool IsAsciiText(const String& text, bool decode_escape_characters);
 static bool IsTransparentInlineBox(Element* element);
 static bool IsSkippedInContext(Element* element);
 static float InlineBoxEdge(Element* element, bool left);
@@ -433,12 +434,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	const TextShapingContext text_shaping_context{computed.language(), computed.direction(), computed.font_kerning(), computed.letter_spacing(),
 		computed.word_spacing()};
 	WordBreak word_break = computed.word_break();
-	// (once per layout of the text: the inline content around it may have changed)
-	if (line_begin == 0 && !line_breaks_context_fresh)
-		UpdateLineBreaks(decode_escape_characters);
-	else if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters)
-		UpdateLineBreaks(decode_escape_characters);
-	line_breaks_context_fresh = false;
+	EnsureLineBreaks(decode_escape_characters);
 	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
 		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(),
 		line_breaks_prefix.size ? line_breaks_prefix.characters[line_breaks_prefix.size - 1] : Character::Null};
@@ -579,17 +575,49 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 	return true;
 }
 
+void ElementText::EnsureLineBreaks(bool decode_escape_characters)
+{
+	// (once per layout of the text, as the inline content around it may have changed; again when the text did)
+	if (line_breaks_stamp != context_stamp || line_breaks_dirty || line_breaks_decode_escape_characters != decode_escape_characters ||
+		line_breaks_word_break != GetComputedValues().word_break())
+	{
+		line_breaks_stamp = context_stamp;
+		UpdateLineBreaks(decode_escape_characters);
+	}
+}
+
 void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 {
-	// The inline formatting context's text around this one (fork, P6-L2): the opportunities again when it changed.
+	// The inline formatting context's text around this one (fork, P6-L2): the opportunities again when it changed. A text
+	// of ASCII with ASCII around it needs two code points before it and one after (Chromium's table); any other, a few.
+	const Style::WordBreak word_break = GetComputedValues().word_break();
+	const bool text_changed =
+		(line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters);
+	if (text_changed)
+		line_breaks_ascii = (word_break != Style::WordBreak::KeepAll && IsAsciiText(text, decode_escape_characters));
+	const auto plain = [](const LineBreakContext& context) {
+		for (int i = 0; i < context.size; i++)
+		{
+			const char32_t c = (char32_t)context.characters[i];
+			if (c > 0x7E || (c < 0x21 && c != ' ' && c != '\t' && c != '\n' && c != '\r'))
+				return false;
+		}
+		return true;
+	};
 	LineBreakContext prefix, suffix;
 	if (context_previous)
-		GatherLineBreakContext(this, false, decode_escape_characters, prefix);
+	{
+		GatherLineBreakContext(this, false, decode_escape_characters, line_breaks_ascii ? 2 : LineBreakContext::capacity, prefix);
+		if (line_breaks_ascii && !plain(prefix))
+			GatherLineBreakContext(this, false, decode_escape_characters, LineBreakContext::capacity, prefix);
+	}
 	if (context_next)
-		GatherLineBreakContext(this, true, decode_escape_characters, suffix);
-	const Style::WordBreak word_break = GetComputedValues().word_break();
-	if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters ||
-		prefix != line_breaks_prefix || suffix != line_breaks_suffix)
+	{
+		GatherLineBreakContext(this, true, decode_escape_characters, line_breaks_ascii ? 1 : LineBreakContext::capacity, suffix);
+		if (line_breaks_ascii && !plain(suffix))
+			GatherLineBreakContext(this, true, decode_escape_characters, LineBreakContext::capacity, suffix);
+	}
+	if (text_changed || prefix != line_breaks_prefix || suffix != line_breaks_suffix)
 	{
 		ComputeLineBreaks(text, decode_escape_characters, word_break, prefix, suffix, line_breaks, line_break_before, line_break_after);
 		line_breaks_dirty = false;
@@ -602,8 +630,10 @@ void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 
 bool ElementText::IsLineBreakOpportunityBefore()
 {
-	UpdateLineBreaks(true);
-	line_breaks_context_fresh = true;
+	// (nothing before it in the context: no need to look further)
+	if (!context_previous)
+		return true;
+	EnsureLineBreaks(true);
 	// Collapsible white space that starts the text is its first word's: the line may break before it, as it disappears
 	// at the next line's start (Chromium breaks after it, where it hangs).
 	if (!text.empty() && StringUtilities::IsWhitespace(text[0]))
@@ -621,8 +651,7 @@ float ElementText::MeasureLeadingWord(bool& out_whole)
 	FontFaceHandle font_face_handle = GetFontFaceHandle();
 	if (font_face_handle == 0)
 		return 0.f;
-	UpdateLineBreaks(true);
-	line_breaks_context_fresh = true;
+	EnsureLineBreaks(true);
 	if (text.empty())
 	{
 		out_whole = true;
@@ -706,8 +735,14 @@ namespace {
 	};
 } // namespace
 
+static uint32_t inline_context_stamp = 0;
+
 void ElementText::LinkAfter(ElementText* previous, float edges_between)
 {
+	// (zero is never a stamp: a text not linked yet computes its breaks the first time)
+	if (++inline_context_stamp == 0)
+		++inline_context_stamp;
+	context_stamp = inline_context_stamp;
 	context_previous = previous;
 	context_next = nullptr;
 	context_edges_after = 0.f;
@@ -1371,12 +1406,12 @@ static float InlineBoxEdge(Element* element, bool left)
 }
 
 // A few code points of the inline formatting context's text after (or before) a text, in order (fork, P6-L2).
-static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, LineBreakContext& out_context)
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, int limit, LineBreakContext& out_context)
 {
-	constexpr int capacity = LineBreakContext::capacity;
+	const int capacity = Math::Min(limit, (int)LineBreakContext::capacity);
 	out_context.size = 0;
 	// (before: gathered from the text nearest backwards, kept in reverse order, turned round at the end)
-	Character reversed[capacity];
+	Character reversed[LineBreakContext::capacity];
 	int num_reversed = 0;
 	ElementText* other = text;
 	while ((forward ? out_context.size : num_reversed) < capacity)
@@ -1408,7 +1443,7 @@ static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_
 				while (p != end && IsContinuationByte(*p))
 					++p;
 			}
-			Character ring[capacity];
+			Character ring[LineBreakContext::capacity];
 			int count = 0;
 			while (p != end)
 			{

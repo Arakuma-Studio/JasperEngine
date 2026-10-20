@@ -183,7 +183,10 @@ private:
 	LineBreakContext line_breaks_suffix;
 	bool line_break_before = true;
 	bool line_break_after = true;
-	bool line_breaks_context_fresh = false; // (gathered for this layout already: by IsLineBreakOpportunityBefore)
+	bool line_breaks_ascii = false; // (no table: printable ASCII and white space, ComputeLineBreaks)
+	// (the context is gathered once per layout: each linking of the context stamps its texts anew)
+	uint32_t context_stamp = 0;
+	uint32_t line_breaks_stamp = 0;
 	// The texts before and after this one in its inline formatting context (LinkInlineFormattingContext), and the edges of
 	// the inline boxes between it and the next.
 	// (a text unlinks itself from its neighbours when it is destroyed; the links are made again before each layout)
@@ -192,6 +195,7 @@ private:
 	float context_edges_after = 0.f;
 
 	void UpdateLineBreaks(bool decode_escape_characters);
+	void EnsureLineBreaks(bool decode_escape_characters);
 	float MeasureLeadingWord(bool& out_whole);
 	float MeasureGluedContentAfter();
 
