@@ -53,7 +53,12 @@ namespace jasperengine {
         bool hasPostTable() const;
 
         uint32_t getGlyphIndex(uint32_t codepoint) const;   // 0 = not covered
-        bool hasCodepoint(uint32_t codepoint) const;
+        // (ASCII from a bitmap read at load: font fallback asks it for every codepoint)
+        bool hasCodepoint(uint32_t codepoint) const{
+            if (codepoint < 128)
+                return ((asciiCoverage[codepoint >> 6] >> (codepoint & 63)) & 1) != 0;
+            return getGlyphIndex(codepoint) != 0;
+        }
         float scaleForPixelHeight(float pixels) const;      // stbtt_ScaleForPixelHeight (STBText semantics)
         float scaleForEmSize(float pixels) const;           // stbtt_ScaleForMappingEmToPixels (CSS font-size)
         // Coverage bitmap (R8, rows of `width` bytes) of one glyph at a scale; offsets of its
@@ -94,6 +99,7 @@ namespace jasperengine {
         int underlinePosition = 0;
         int underlineThickness = 0;
         bool postTable = false;
+        uint64_t asciiCoverage[2] = {};
     };
 
 }

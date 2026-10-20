@@ -141,8 +141,13 @@ namespace {
         hb_script_t script = HB_SCRIPT_COMMON;
 
         for (size_t i = offset; i < end;){
-            const size_t clusterEnd = TextShaper::clusterEnd(codepoints, i, end);
-            const unsigned int nextFace = TextShaper::selectClusterFace(faces, codepoints, i, clusterEnd, face);
+            //(most clusters are one codepoint: nothing below the combining marks extends one but CR LF and a ZWJ)
+            const uint32_t first = codepoints[i];
+            size_t clusterEnd = i + 1;
+            if (clusterEnd < end && (codepoints[clusterEnd] >= 0x0300 || first == 0x200D || first == 0x000D))
+                clusterEnd = TextShaper::clusterEnd(codepoints, i, end);
+            const unsigned int nextFace = (clusterEnd == i + 1) ? TextShaper::selectFace(faces, first, face)
+                                                                : TextShaper::selectClusterFace(faces, codepoints, i, clusterEnd, face);
 
             hb_script_t nextScript = script;
             for (size_t k = i; k < clusterEnd; k++){
