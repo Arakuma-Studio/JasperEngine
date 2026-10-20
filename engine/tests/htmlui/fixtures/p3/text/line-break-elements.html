@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: line breaking across element boundaries</title>
+<style>
+  /* Line-break opportunities come from the text of the whole inline formatting context, as Chromium computes them: a word
+     that styled spans or links split does not break at their boundaries, and goes to the next line whole when it does not
+     fit; spaces inside or outside a span break as anywhere; the text on both sides of a boundary decides the breaks next to
+     it (a '-' before a digit after a letter, ideographs). */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; color: #203040; }
+  .b { position: absolute; background: #e0e8f0; }
+  b { color: #c03020; font-weight: normal; }
+  a { color: #2050c0; text-decoration: none; }
+  i { font-style: normal; color: #208040; padding: 0 3px; background: #c0e0c0; }
+</style>
+</head>
+<body>
+<div class="b" id="spans" style="left: 10px; top: 10px; width: 45px">XX XX<b>XX</b>X X<b>X</b><b>X</b>X XX</div>
+<div class="b" id="link" style="left: 65px; top: 10px; width: 45px">XX X<a href="#">XX</a>X XXX <a href="#">XX</a> X</div>
+<div class="b" id="padded" style="left: 120px; top: 10px; width: 55px">XX X<i>XX</i>X XX<i>X</i></div>
+<div class="b" id="letters" style="left: 185px; top: 10px; width: 35px"><b>X</b>X<b>X</b>X<b>X</b> <b>X</b>X</div>
+<div class="b" id="spaces" style="left: 230px; top: 10px; width: 35px">XXX<b> XX</b>X <b>XX </b>XX</div>
+<div class="b" id="minus" style="left: 10px; top: 70px; width: 25px">XX<b>-12</b> (<b>-1</b>)</div>
+<div class="b" id="cjk" style="left: 45px; top: 70px; width: 25px">&#x6F22;<b>&#x5B57;&#x6F22;</b>&#x5B57;X<b>X</b></div>
+<div class="b" id="nested" style="left: 80px; top: 70px; width: 45px">XX X<b>X<a href="#">X<i>X</i></a></b>X XX</div>
+<div class="b" id="punctuation" style="left: 140px; top: 70px; width: 35px">XX<b>!</b>(X) X<b>.</b>X<b>?</b>XX</div>
+</body>
+</html>
