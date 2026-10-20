@@ -47,10 +47,30 @@ public:
 	/// Links the texts of the inline formatting context of the block container 'root' in order (fork, P6-L2: the inline
 	/// content they go on through, inline boxes, and where it stops, atomic inlines, blocks, <br>), before its layout.
 	static void LinkInlineFormattingContext(Element* root);
+	/// A few code points of the inline formatting context's text around a text (line breaking, fork P6-L2).
+	struct LineBreakContext {
+		static constexpr int capacity = 8;
+		Character characters[capacity];
+		int size = 0;
+		bool operator==(const LineBreakContext& other) const
+		{
+			if (size != other.size)
+				return false;
+			for (int i = 0; i < size; i++)
+			{
+				if (characters[i] != other.characters[i])
+					return false;
+			}
+			return true;
+		}
+		bool operator!=(const LineBreakContext& other) const { return !(*this == other); }
+	};
 	/// The texts before and after this one in its inline formatting context, as last linked (null: none, or an atomic
 	/// inline, a block or a <br> between them).
-	ElementText* GetContextPrevious() const { return static_cast<ElementText*>(context_previous.get()); }
-	ElementText* GetContextNext() const { return static_cast<ElementText*>(context_next.get()); }
+	ElementText* GetContextPrevious() const { return context_previous; }
+	/// Links this text after 'previous' in its inline formatting context (null: it starts it).
+	void LinkAfter(ElementText* previous, float edges_between);
+	ElementText* GetContextNext() const { return context_next; }
 
 	/// Clears all lines of generated text and prepares the element for generating new lines.
 	void ClearLines();
@@ -159,15 +179,16 @@ private:
 	bool line_breaks_dirty = true;
 	// The inline formatting context's text before and after this one the opportunities were computed with (fork, P6-L2: a
 	// few code points of the texts around it, through inline boxes), and whether a line may break at its start and end.
-	Vector<Character> line_breaks_prefix;
-	Vector<Character> line_breaks_suffix;
+	LineBreakContext line_breaks_prefix;
+	LineBreakContext line_breaks_suffix;
 	bool line_break_before = true;
 	bool line_break_after = true;
 	bool line_breaks_context_fresh = false; // (gathered for this layout already: by IsLineBreakOpportunityBefore)
 	// The texts before and after this one in its inline formatting context (LinkInlineFormattingContext), and the edges of
 	// the inline boxes between it and the next.
-	ObserverPtr<Element> context_previous;
-	ObserverPtr<Element> context_next;
+	// (a text unlinks itself from its neighbours when it is destroyed; the links are made again before each layout)
+	ElementText* context_previous = nullptr;
+	ElementText* context_next = nullptr;
 	float context_edges_after = 0.f;
 
 	void UpdateLineBreaks(bool decode_escape_characters);

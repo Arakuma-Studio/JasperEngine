@@ -41,9 +41,10 @@ struct TokenRules {
 };
 
 static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const Vector<Character>& prefix,
-	const Vector<Character>& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after);
-static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, Vector<Character>& out_context);
+using LineBreakContext = ElementText::LineBreakContext;
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const LineBreakContext& prefix,
+	const LineBreakContext& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after);
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, LineBreakContext& out_context);
 static bool IsTransparentInlineBox(Element* element);
 static bool IsSkippedInContext(Element* element);
 static float InlineBoxEdge(Element* element, bool left);
@@ -217,7 +218,13 @@ ElementText::ElementText(const String& tag) :
 	font_effects_handle(0)
 {}
 
-ElementText::~ElementText() {}
+ElementText::~ElementText()
+{
+	if (context_previous && context_previous->context_next == this)
+		context_previous->context_next = nullptr;
+	if (context_next && context_next->context_previous == this)
+		context_next->context_previous = nullptr;
+}
 
 void ElementText::SetText(const String& _text)
 {
@@ -433,7 +440,8 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 		UpdateLineBreaks(decode_escape_characters);
 	line_breaks_context_fresh = false;
 	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
-		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(), line_breaks_prefix.empty() ? Character::Null : line_breaks_prefix.back()};
+		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(),
+		line_breaks_prefix.size ? line_breaks_prefix.characters[line_breaks_prefix.size - 1] : Character::Null};
 	// The content after the text up to the next opportunity when there is none at its end (a word an element boundary
 	// splits): measured once, when the text's last token is (Chromium breaks before the whole word, not inside it).
 	float glued_after_width = -1.f;
@@ -574,9 +582,11 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 {
 	// The inline formatting context's text around this one (fork, P6-L2): the opportunities again when it changed.
-	Vector<Character> prefix, suffix;
-	GatherLineBreakContext(this, false, decode_escape_characters, prefix);
-	GatherLineBreakContext(this, true, decode_escape_characters, suffix);
+	LineBreakContext prefix, suffix;
+	if (context_previous)
+		GatherLineBreakContext(this, false, decode_escape_characters, prefix);
+	if (context_next)
+		GatherLineBreakContext(this, true, decode_escape_characters, suffix);
 	const Style::WordBreak word_break = GetComputedValues().word_break();
 	if (line_breaks_dirty || line_breaks_word_break != word_break || line_breaks_decode_escape_characters != decode_escape_characters ||
 		prefix != line_breaks_prefix || suffix != line_breaks_suffix)
@@ -585,8 +595,8 @@ void ElementText::UpdateLineBreaks(bool decode_escape_characters)
 		line_breaks_dirty = false;
 		line_breaks_word_break = word_break;
 		line_breaks_decode_escape_characters = decode_escape_characters;
-		line_breaks_prefix = std::move(prefix);
-		line_breaks_suffix = std::move(suffix);
+		line_breaks_prefix = prefix;
+		line_breaks_suffix = suffix;
 	}
 }
 
@@ -629,7 +639,7 @@ float ElementText::MeasureLeadingWord(bool& out_whole)
 		white_space_collapse == WhiteSpaceCollapse::BreakSpaces);
 	const TokenRules token_rules{collapse_white_space, break_at_endline, white_space_collapse == WhiteSpaceCollapse::BreakSpaces, computed.text_transform(),
 		computed.word_break(), true, text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data(),
-		line_breaks_prefix.empty() ? Character::Null : line_breaks_prefix.back()};
+		line_breaks_prefix.size ? line_breaks_prefix.characters[line_breaks_prefix.size - 1] : Character::Null};
 	String token;
 	const char* token_begin = text.c_str();
 	const char* string_end = token_begin + text.size();
@@ -660,46 +670,67 @@ float ElementText::MeasureGluedContentAfter()
 	return width;
 }
 
-void ElementText::LinkInlineFormattingContext(Element* root)
-{
-	ElementText* last_text = nullptr;
-	float edges = 0.f;
-	const auto boundary = [&]() {
-		last_text = nullptr;
-		edges = 0.f;
-	};
-	const std::function<void(Element*)> visit = [&](Element* parent) {
-		ScopedLayoutChildList layout_children;
-		LayoutDetails::GetLayoutChildren(parent, *layout_children, false);
-		for (Element* child : *layout_children)
+namespace {
+	struct InlineContextLinker {
+		ElementText* last_text = nullptr;
+		float edges = 0.f;
+
+		void Visit(Element* parent)
 		{
-			if (auto text = rmlui_dynamic_cast<ElementText*>(child))
+			ScopedLayoutChildList layout_children;
+			LayoutDetails::GetLayoutChildren(parent, *layout_children, false);
+			for (Element* child : *layout_children)
 			{
-				text->context_previous.reset();
-				text->context_next.reset();
-				text->context_edges_after = 0.f;
-				if (last_text)
+				if (auto text = rmlui_dynamic_cast<ElementText*>(child))
 				{
-					last_text->context_next = text->GetObserverPtr();
-					last_text->context_edges_after = edges;
-					text->context_previous = last_text->GetObserverPtr();
+					text->LinkAfter(last_text, edges);
+					last_text = text;
+					edges = 0.f;
 				}
-				last_text = text;
-				edges = 0.f;
+				else if (IsSkippedInContext(child))
+					continue;
+				else if (child->GetTagName() != "br" && IsTransparentInlineBox(child))
+				{
+					edges += InlineBoxEdge(child, true);
+					Visit(child);
+					edges += InlineBoxEdge(child, false);
+				}
+				else
+				{
+					// an atomic inline, a block, a <br>: the context stops
+					last_text = nullptr;
+					edges = 0.f;
+				}
 			}
-			else if (IsSkippedInContext(child))
-				continue;
-			else if (child->GetTagName() != "br" && IsTransparentInlineBox(child))
-			{
-				edges += InlineBoxEdge(child, true);
-				visit(child);
-				edges += InlineBoxEdge(child, false);
-			}
-			else
-				boundary();
 		}
 	};
-	visit(root);
+} // namespace
+
+void ElementText::LinkAfter(ElementText* previous, float edges_between)
+{
+	context_previous = previous;
+	context_next = nullptr;
+	context_edges_after = 0.f;
+	if (previous)
+	{
+		previous->context_next = this;
+		previous->context_edges_after = edges_between;
+	}
+}
+
+void ElementText::LinkInlineFormattingContext(Element* root)
+{
+	// (most often a text alone: nothing around it)
+	if (root->GetNumChildren(true) == 1)
+	{
+		if (auto text = rmlui_dynamic_cast<ElementText*>(root->GetChild(0)))
+		{
+			text->LinkAfter(nullptr, 0.f);
+			return;
+		}
+	}
+	InlineContextLinker linker;
+	linker.Visit(root);
 }
 
 void ElementText::ClearLines()
@@ -1251,8 +1282,8 @@ static bool IsBoundaryOpportunity(const Character* before, size_t num_before, co
 // tailored as Chromium (TextUnicode::GetLineBreakOpportunities) over the text with the inline formatting context's text
 // around it ('prefix', 'suffix': a few code points); 'out_breaks[offset]' is 1 when a line may break before the character
 // that starts at that byte; 'out_break_before', 'out_break_after' at the text's start and end.
-static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const Vector<Character>& prefix,
-	const Vector<Character>& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after)
+static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, const LineBreakContext& prefix,
+	const LineBreakContext& suffix, Vector<uint8_t>& out_breaks, bool& out_break_before, bool& out_break_after)
 {
 	out_break_before = out_break_after = true;
 	if (text.empty())
@@ -1268,9 +1299,9 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 	{
 		out_breaks.clear();
 		out_breaks.shrink_to_fit();
-		if (!prefix.empty() || !suffix.empty())
+		if (prefix.size || suffix.size)
 		{
-			constexpr size_t context_size = 16;
+			constexpr size_t context_size = LineBreakContext::capacity;
 			Character head[context_size], tail[context_size];
 			const size_t num = Math::Min(text.size(), context_size);
 			for (size_t i = 0; i < num; i++)
@@ -1278,16 +1309,16 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 				head[i] = Character((unsigned char)text[i]);
 				tail[i] = Character((unsigned char)text[text.size() - num + i]);
 			}
-			out_break_before = IsBoundaryOpportunity(prefix.data(), prefix.size(), head, num, word_break);
-			out_break_after = IsBoundaryOpportunity(tail, num, suffix.data(), suffix.size(), word_break);
+			out_break_before = IsBoundaryOpportunity(prefix.characters, prefix.size, head, num, word_break);
+			out_break_after = IsBoundaryOpportunity(tail, num, suffix.characters, suffix.size, word_break);
 		}
 		return;
 	}
 
 	out_breaks.assign(text.size() + 1, 0);
-	Vector<Character> characters(prefix);
+	Vector<Character> characters(prefix.characters, prefix.characters + prefix.size);
 	Vector<int> offsets;
-	characters.reserve(prefix.size() + text.size() + suffix.size());
+	characters.reserve(prefix.size + text.size() + suffix.size);
 	offsets.reserve(text.size());
 	const char* p = text.c_str();
 	const char* end = p + text.size();
@@ -1300,17 +1331,18 @@ static void ComputeLineBreaks(const String& text, bool decode_escape_characters,
 		p = next;
 	}
 	const size_t num_characters = offsets.size();
-	characters.insert(characters.end(), suffix.begin(), suffix.end());
+	characters.insert(characters.end(), suffix.characters, suffix.characters + suffix.size);
 	Vector<bool> breaks;
 	TextUnicode::GetLineBreakOpportunities(characters, word_break, TextUnicode::LineBreakTailoring::Chromium, breaks);
 	for (size_t i = 1; i < num_characters; i++)
-		out_breaks[offsets[i]] = breaks[prefix.size() + i] ? 1 : 0;
+		out_breaks[offsets[i]] = breaks[prefix.size + i] ? 1 : 0;
 	// (white space before or after: as IsBoundaryOpportunity, which the texts on the other side compute)
-	if (!prefix.empty())
-		out_break_before = IsContextWhiteSpace(prefix.back()) || (!IsContextWhiteSpace(characters[prefix.size()]) && breaks[prefix.size()]);
-	if (!suffix.empty())
-		out_break_after = IsContextWhiteSpace(characters[prefix.size() + num_characters - 1]) ||
-			(!IsContextWhiteSpace(suffix.front()) && breaks[prefix.size() + num_characters]);
+	const size_t num_prefix = (size_t)prefix.size;
+	if (prefix.size)
+		out_break_before = IsContextWhiteSpace(prefix.characters[num_prefix - 1]) || (!IsContextWhiteSpace(characters[num_prefix]) && breaks[num_prefix]);
+	if (suffix.size)
+		out_break_after = IsContextWhiteSpace(characters[num_prefix + num_characters - 1]) ||
+			(!IsContextWhiteSpace(suffix.characters[0]) && breaks[num_prefix + num_characters]);
 }
 
 // An element the inline formatting context's text goes on through (fork, P6-L2): an inline box (not replaced, in flow).
@@ -1339,12 +1371,15 @@ static float InlineBoxEdge(Element* element, bool left)
 }
 
 // A few code points of the inline formatting context's text after (or before) a text, in order (fork, P6-L2).
-static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, Vector<Character>& out_context)
+static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_escape_characters, LineBreakContext& out_context)
 {
-	constexpr size_t context_size = 16;
-	out_context.clear();
+	constexpr int capacity = LineBreakContext::capacity;
+	out_context.size = 0;
+	// (before: gathered from the text nearest backwards, kept in reverse order, turned round at the end)
+	Character reversed[capacity];
+	int num_reversed = 0;
 	ElementText* other = text;
-	while (out_context.size() < context_size)
+	while ((forward ? out_context.size : num_reversed) < capacity)
 	{
 		other = (forward ? other->GetContextNext() : other->GetContextPrevious());
 		if (!other)
@@ -1356,34 +1391,43 @@ static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_
 		const char* end = p + other_text.size();
 		if (forward)
 		{
-			while (p != end && out_context.size() < context_size)
+			while (p != end && out_context.size < capacity)
 			{
 				const char* next = nullptr;
 				bool non_breaking = false;
-				out_context.push_back(ReadCharacter(p, end, decode_escape_characters, next, non_breaking));
+				out_context.characters[out_context.size++] = ReadCharacter(p, end, decode_escape_characters, next, non_breaking);
 				p = next;
 			}
 		}
 		else
 		{
-			// the last code points, read from a little before them
-			if (other_text.size() > 4 * context_size)
+			// the last code points, read from a little before them into a ring
+			if (other_text.size() > 4 * capacity)
 			{
-				p = end - 4 * context_size;
+				p = end - 4 * capacity;
 				while (p != end && IsContinuationByte(*p))
 					++p;
 			}
-			Vector<Character> chunk;
+			Character ring[capacity];
+			int count = 0;
 			while (p != end)
 			{
 				const char* next = nullptr;
 				bool non_breaking = false;
-				chunk.push_back(ReadCharacter(p, end, decode_escape_characters, next, non_breaking));
+				ring[count % capacity] = ReadCharacter(p, end, decode_escape_characters, next, non_breaking);
+				count++;
 				p = next;
 			}
-			const size_t take = Math::Min(chunk.size(), context_size - out_context.size());
-			out_context.insert(out_context.begin(), chunk.end() - take, chunk.end());
+			const int available = Math::Min(count, capacity);
+			for (int i = 0; i < available && num_reversed < capacity; i++)
+				reversed[num_reversed++] = ring[(count - 1 - i) % capacity];
 		}
+	}
+	if (!forward)
+	{
+		for (int i = 0; i < num_reversed; i++)
+			out_context.characters[i] = reversed[num_reversed - 1 - i];
+		out_context.size = num_reversed;
 	}
 }
 
