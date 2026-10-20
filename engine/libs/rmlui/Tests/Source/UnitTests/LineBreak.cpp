@@ -136,6 +136,30 @@ TEST_CASE("LineBreak.ascii_pairs_as_chromium")
 				const bool expected = (table[a - 0x21][b - 0x21] == '/');
 				if (bool(breaks[text.size() - 1]) != expected)
 					FAIL("ASCII pair ", char(a), char(b), (after_x ? " after 'x'" : ""), ": Chromium ", (expected ? "breaks" : "does not break"));
+				// (what ElementText asks for a text of ASCII characters)
+				if (TextUnicode::IsAsciiLineBreakOpportunity(after_x ? U'x' : 0, a, b) != expected)
+					FAIL("ASCII pair ", char(a), char(b), (after_x ? " after 'x'" : ""), ": IsAsciiLineBreakOpportunity differs");
+			}
+		}
+	}
+
+	// Every pair of printable ASCII characters after each ASCII character, white space and the text's start: the table
+	// ElementText asks for an ASCII text is GetLineBreakOpportunities's answer.
+	for (int first = -1; first < 0x7F; first++)
+	{
+		for (char32_t a = 0x21; a <= 0x7E; a++)
+		{
+			for (char32_t b = 0x21; b <= 0x7E; b++)
+			{
+				Vector<Character> text;
+				if (first >= 0)
+					text.push_back(Character(first));
+				text.push_back(Character(a));
+				text.push_back(Character(b));
+				Vector<bool> breaks;
+				TextUnicode::GetLineBreakOpportunities(text, Style::WordBreak::Normal, TextUnicode::LineBreakTailoring::Chromium, breaks);
+				if (bool(breaks[text.size() - 1]) != TextUnicode::IsAsciiLineBreakOpportunity(first >= 0 ? char32_t(first) : 0, a, b))
+					FAIL("ASCII pair ", char(a), char(b), " after ", first, ": IsAsciiLineBreakOpportunity differs");
 			}
 		}
 	}

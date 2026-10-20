@@ -140,7 +140,7 @@ private:
 
 	// The line-break opportunities of the text (TextUnicode::GetLineBreakOpportunities, tailored as Chromium), by the byte
 	// offset of the character a line may break before; computed when lines are first generated after the text changes.
-	Vector<uint8_t> line_breaks;
+	Vector<uint8_t> line_breaks; // (empty for a text of printable ASCII and white space: TextUnicode::IsAsciiLineBreakOpportunity)
 	Style::WordBreak line_breaks_word_break = Style::WordBreak::Normal;
 	bool line_breaks_decode_escape_characters = false;
 	bool line_breaks_dirty = true;

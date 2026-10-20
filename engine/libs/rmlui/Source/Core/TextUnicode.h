@@ -48,6 +48,10 @@ namespace TextUnicode {
 	// whether a line may break before the code point k (k = 1 .. n - 1; [0] is false, [n] true). Mandatory breaks
 	// (LB4, LB5) are opportunities too: white space processing applies them.
 	void GetLineBreakOpportunities(Span<const Character> text, Style::WordBreak word_break, LineBreakTailoring tailoring, Vector<bool>& out_breaks);
+	// Chromium's opportunity between two printable ASCII characters ('!' to '~'), 'previous' and 'c', after
+	// 'before_previous' (0 at the start): what GetLineBreakOpportunities gives with LineBreakTailoring::Chromium, but for
+	// 'keep-all'.
+	bool IsAsciiLineBreakOpportunity(char32_t before_previous, char32_t previous, char32_t c);
 
 	// 'c' continues the character before it (a combining mark, a joiner, an emoji modifier, a variation selector): no
 	// strong direction of its own (FirstStrongDirection).

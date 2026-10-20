@@ -1,5 +1,6 @@
 #include "../../Include/RmlUi/Core/ElementText.h"
 #include <algorithm>
+#include <cstring>
 #include "../../Include/RmlUi/Core/Context.h"
 #include "../../Include/RmlUi/Core/Core.h"
 #include "../../Include/RmlUi/Core/ElementDocument.h"
@@ -34,7 +35,7 @@ struct TokenRules {
 	Style::WordBreak word_break;
 	bool decode_escape_characters;
 	const char* text_begin; // the element's text, read back for 'capitalize'
-	const uint8_t* line_breaks; // the line-break opportunities of the text, by byte offset from 'text_begin'
+	const uint8_t* line_breaks; // the line-break opportunities of the text, by byte offset from 'text_begin'; null: ASCII
 };
 
 static bool BuildToken(String& token, const char*& token_begin, const char* string_end, bool first_token, const TokenRules& rules);
@@ -426,7 +427,7 @@ bool ElementText::GenerateLine(String& line, int& line_length, float& line_width
 		line_breaks_decode_escape_characters = decode_escape_characters;
 	}
 	const TokenRules token_rules{collapse_white_space, break_at_endline, break_spaces, computed.text_transform(), word_break, decode_escape_characters,
-		text.c_str(), line_breaks.data()};
+		text.c_str(), line_breaks.empty() ? nullptr : line_breaks.data()};
 
 	// A word that does not fit on a line of its own is broken anywhere: 'word-break: break-all' at any width, 'overflow-wrap'
 	// ('anywhere', 'break-word', and the legacy 'word-break: break-word') when the word starts the line. The min-content
@@ -1027,11 +1028,57 @@ static inline Character ReadCharacter(const char* p, const char* string_end, boo
 	return ReadEscapedOrEncodedCharacter(p, string_end, decode_escape_characters, next, non_breaking);
 }
 
+// The text is printable ASCII and white space (an escape code's '&' not, when they are decoded): eight bytes at a time,
+// those that may not be looked at one by one.
+static bool IsAsciiText(const String& text, bool decode_escape_characters)
+{
+	const auto is_ascii = [decode_escape_characters](char c) {
+		return (c > ' ' && c < 0x7F && !(decode_escape_characters && c == '&')) || StringUtilities::IsWhitespace(c);
+	};
+	constexpr uint64_t ones = 0x0101010101010101ull, highs = 0x8080808080808080ull;
+	const auto has_zero_byte = [](uint64_t w) { return ((w - ones) & ~w & highs) != 0; };
+	const char* p = text.data();
+	const char* end = p + text.size();
+	for (; end - p >= 8; p += 8)
+	{
+		uint64_t w;
+		memcpy(&w, p, 8);
+		if (w & highs)
+			return false;
+		// (exact for bytes below 0x80: a byte below 0x20, 0x7F, '&')
+		const bool control = (((w - ones * 0x20) & ~w & highs) != 0);
+		if (control || has_zero_byte(w ^ (ones * 0x7F)) || (decode_escape_characters && has_zero_byte(w ^ (ones * '&'))))
+		{
+			for (int i = 0; i < 8; i++)
+			{
+				if (!is_ascii(p[i]))
+					return false;
+			}
+		}
+	}
+	for (; p != end; ++p)
+	{
+		if (!is_ascii(*p))
+			return false;
+	}
+	return true;
+}
+
 // The line-break opportunities of an element's text, read as BuildToken reads it (escape codes decoded if asked): UAX #14
 // tailored as Chromium (TextUnicode::GetLineBreakOpportunities); 'out_breaks[offset]' is 1 when a line may break before the
 // character that starts at that byte.
 static void ComputeLineBreaks(const String& text, bool decode_escape_characters, Style::WordBreak word_break, Vector<uint8_t>& out_breaks)
 {
+	// A text of printable ASCII characters and white space (no escape code read, no 'keep-all'), most texts: BuildToken
+	// asks Chromium's table for the pairs of printable characters it ends a token between, the only boundaries it asks
+	// about (not around white space), and no table is kept.
+	if (word_break != Style::WordBreak::KeepAll && IsAsciiText(text, decode_escape_characters))
+	{
+		out_breaks.clear();
+		out_breaks.shrink_to_fit();
+		return;
+	}
+
 	out_breaks.assign(text.size() + 1, 0);
 	Vector<Character> characters;
 	Vector<int> offsets;
@@ -1242,9 +1289,24 @@ static bool BuildToken(String& token, const char*& token_begin, const char* stri
 
 			// A line-break opportunity between this character and the next ends the token (the text's UAX #14
 			// opportunities, ComputeLineBreaks).
-			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking &&
-				rules.line_breaks[next - rules.text_begin])
-				return false;
+			if (following != Character::Null && !IsWhiteSpaceCharacter(following) && !non_breaking && !following_non_breaking)
+			{
+				const size_t offset = size_t(next - rules.text_begin);
+				if (rules.line_breaks)
+				{
+					if (rules.line_breaks[offset])
+						return false;
+				}
+				else
+				{
+					// (Chromium's table breaks after '-' and '?', and before '(' '<' '[' '{', nowhere else)
+					const char previous_byte = rules.text_begin[offset - 1], byte = rules.text_begin[offset];
+					if ((previous_byte == '-' || previous_byte == '?' || byte == '(' || byte == '<' || byte == '[' || byte == '{') &&
+						TextUnicode::IsAsciiLineBreakOpportunity(offset >= 2 ? (char32_t)rules.text_begin[offset - 2] : 0, (char32_t)previous_byte,
+							(char32_t)byte))
+						return false;
+				}
+			}
 		}
 
 		before_previous = previous;

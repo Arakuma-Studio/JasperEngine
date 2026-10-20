@@ -574,6 +574,11 @@ namespace TextUnicode {
 		};
 	} // namespace
 
+	bool IsAsciiLineBreakOpportunity(char32_t before_previous, char32_t previous, char32_t c)
+	{
+		return AsciiBreakBetween(before_previous, previous, c);
+	}
+
 	void AppendUppercase(String& out, Character c)
 	{
 		AppendMapped(out, static_cast<char32_t>(c), CaseKind::Upper, case_sequence_upper, case_mapping_upper);
