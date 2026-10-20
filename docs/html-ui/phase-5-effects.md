@@ -2190,8 +2190,11 @@ The driver auto-enumerates all built-in effects and pins the fixed clock (C1 + `
 - **Record-then-replay (p6-stateful-fx, 20 October 2026; phase-1 spec 3.2.10).** `RmlRenderer`
   records the frame's render-interface calls during RmlUi's traversal, and the effects prepare
   at record time. `endFrame` replays the commands to sokol in one loop.
-  - Every frame is byte-identical to the frame drawn immediately (`RenderRecordTest`), and every
-    golden image of both backends is identical to main's (7.4 runs below).
+  - Every frame is byte-identical to the frame drawn immediately (`RenderRecordTest`).
+  - Every image the suites compare is identical to main's on both backends. The full suites of
+    main and of the branch ran with `JASPER_HTMLUI_WRITE_ACTUAL=1`, which keeps every compared
+    image (new: `tools/build.sh` passes it on). On glcore and on Vulkan, the 613 images of each
+    run are byte for byte the same as main's.
   - callgrind, the engine's own work per frame (5 frames, the same summary as above), main →
     branch:
 
