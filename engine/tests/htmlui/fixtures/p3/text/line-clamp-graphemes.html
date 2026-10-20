@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line-clamp ellipsis cuts between grapheme clusters</title>
+<style>
+  /* The ellipsis cuts a text run between extended grapheme clusters (UAX #29), never inside one: an emoji with a skin-tone modifier, an emoji ZWJ sequence, a flag (two regional indicators), a combining accent, an Indic conjunct (KA VIRAMA SSA), a consonant with a vowel sign, Hangul jamo (L V T) and syllables. The characters Ahem has no glyph for are its .notdef box, one em wide, on both sides; the ellipsis has the block's colour (red). */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; background: #e0e8f0; color: #d02020; }
+  .t { color: #203040; }
+</style>
+</head>
+<body>
+<div class="c" id="skin-tone" style="left: 10px; top: 10px"><span class="t">XpX&#x1F44D;&#x1F3FD;&#x1F44D;&#x1F3FD;XX</span></div>
+<div class="c" id="zwj" style="left: 95px; top: 10px"><span class="t">XpXX&#x1F468;&#x200D;&#x1F469;&#x200D;&#x1F467;X</span></div>
+<div class="c" id="flags" style="left: 180px; top: 10px"><span class="t">XpXXX&#x1F1EB;&#x1F1F7;&#x1F1E9;&#x1F1EA; XX</span></div>
+<div class="c" id="combining" style="left: 265px; top: 10px"><span class="t">XpXXXe&#x301;XX XX</span></div>
+<div class="c" id="conjunct" style="left: 10px; top: 30px"><span class="t">XpXXX&#x915;&#x94D;&#x937;XX XX</span></div>
+<div class="c" id="vowel-sign" style="left: 95px; top: 30px"><span class="t">XpXXX&#x915;&#x93F;XX XX</span></div>
+<div class="c" id="jamo" style="left: 180px; top: 30px"><span class="t">XpXXX&#x1100;&#x1161;&#x11A8;XX</span></div>
+<div class="c" id="syllables" style="left: 265px; top: 30px"><span class="t">XpXXX&#xD55C;X&#xD55C;X</span></div>
+</body>
+</html>

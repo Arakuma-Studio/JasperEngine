@@ -1,0 +1,76 @@
+{
+ "fixture": "text/line-clamp-graphemes.html",
+ "viewport": [
+  350,
+  50
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "skin-tone",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "zwj",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "flags",
+    "tag": "div",
+    "x": 180,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "combining",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "conjunct",
+    "tag": "div",
+    "x": 10,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "vowel-sign",
+    "tag": "div",
+    "x": 95,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "jamo",
+    "tag": "div",
+    "x": 180,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "syllables",
+    "tag": "div",
+    "x": 265,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   }
+  ]
+ }
+}

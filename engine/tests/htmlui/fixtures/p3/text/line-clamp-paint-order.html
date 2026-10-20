@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: where the line-clamp ellipsis a block draws is painted</title>
+<style>
+  /* An ellipsis the block container draws (after an inline-block, or alone on a <br> line) is painted as Chromium paints the line's items: after the inline-block and its content (over its overflowing child, blue), over the background of a span it is in (green) and of a block after it (blue, a negative margin), under a positioned element (blue). The ellipsis has the block's colour (red), the text a span's. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 20px; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; height: 30px; background: #e0e8f0; color: #d02020; }
+  .t { color: #203040; }
+  .ib { display: inline-block; width: 10px; height: 10px; background: #f0c0a0; }
+  .bl { background: #0000d0; }
+</style>
+</head>
+<body>
+<div class="c" id="span-background" style="left: 10px; top: 10px"><span style="background: #00a000"><span class="t">XpX X</span><span class="ib"></span><span class="t"> XX XX</span></span></div>
+<div class="c" id="inline-block-overflow" style="left: 95px; top: 10px"><span class="t">XpX X</span><span class="ib"><span class="bl" style="display: block; width: 30px; height: 8px"></span></span><span class="t"> XX XX</span></div>
+<div class="c" id="next-block" style="left: 180px; top: 10px"><div><span class="t">XpX X</span><span class="ib"></span><span class="t"> XX</span></div><div class="bl" style="margin-top: -15px; height: 20px"></div></div>
+<div class="c" id="positioned" style="left: 265px; top: 10px"><span class="t">XpX X</span><span class="ib"></span><span class="t"> XX XX</span><div class="bl" style="position: absolute; left: 62px; top: 2px; width: 6px; height: 6px"></div></div>
+<div class="c" id="br-next-block" style="left: 10px; top: 50px; -webkit-line-clamp: 2; height: 40px"><div><span class="t">XpX</span><br><br><span class="t">XX</span></div><div class="bl" style="margin-top: -25px; height: 20px; width: 40px"></div></div>
+<div class="c" id="text-span-background" style="left: 95px; top: 50px"><span style="background: #00a000"><span class="t">XpX XX XXX</span></span></div>
+</body>
+</html>

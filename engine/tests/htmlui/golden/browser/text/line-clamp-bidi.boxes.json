@@ -1,0 +1,76 @@
+{
+ "fixture": "text/line-clamp-bidi.html",
+ "viewport": [
+  350,
+  50
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "ltr-override",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "rtl-override",
+    "tag": "div",
+    "x": 95,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "ltr-hebrew",
+    "tag": "div",
+    "x": 180,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "rtl-latin",
+    "tag": "div",
+    "x": 265,
+    "y": 10,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "ltr-hebrew-first",
+    "tag": "div",
+    "x": 10,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "rtl-hebrew",
+    "tag": "div",
+    "x": 95,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "ltr-override-start",
+    "tag": "div",
+    "x": 180,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   },
+   {
+    "id": "rtl-ltr-override",
+    "tag": "div",
+    "x": 265,
+    "y": 30,
+    "w": 75,
+    "h": 10
+   }
+  ]
+ }
+}

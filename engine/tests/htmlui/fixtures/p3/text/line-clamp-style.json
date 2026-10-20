@@ -1,0 +1,7 @@
+{
+ "comment": "Chromium paints the ellipsis with the line's style: the text-shadow of the block container whose line it ends (green), not the cut run's (blue), whether a text run or the block draws it (after an inline-block); its shadow is painted after the text before it (over it, a negative offset); no text decoration reaches it: the block's underline, line-through and overline and a span's underline (open or closed) stop at it. The ellipsis has the block's colour (red), the text a span's.",
+ "viewport": [
+  350,
+  100
+ ]
+}

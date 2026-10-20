@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line-clamp ellipsis's text shadow and decorations</title>
+<style>
+  /* Chromium paints the ellipsis with the line's style: the text-shadow of the block container whose line it ends (green), not the cut run's (blue), whether a text run or the block draws it (after an inline-block); its shadow is painted after the text before it (over it, a negative offset); no text decoration reaches it: the block's underline, line-through and overline and a span's underline (open or closed) stop at it. The ellipsis has the block's colour (red), the text a span's. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 20px; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; height: 20px; background: #e0e8f0; color: #d02020; }
+  .t { color: #203040; }
+  .ns { text-shadow: none; }
+  .ib { display: inline-block; width: 10px; height: 10px; background: #f0c0a0; }
+</style>
+</head>
+<body>
+<div class="c" id="block-shadow" style="left: 10px; top: 10px; text-shadow: 3px 3px 0 #00a000"><span class="t ns">XpX XX XXX</span></div>
+<div class="c" id="run-shadow" style="left: 95px; top: 10px"><span class="t" style="text-shadow: 3px 3px 0 #0000d0">XpX XX XXX</span></div>
+<div class="c" id="block-underline" style="left: 180px; top: 10px; text-decoration: underline #00a000; text-underline-offset: 3px"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="run-underline" style="left: 265px; top: 10px"><span class="t" style="text-decoration: underline #0000d0; text-underline-offset: 3px">XpX XX XXX</span></div>
+<div class="c" id="closed-underline" style="left: 10px; top: 40px"><span class="t" style="text-decoration: underline #0000d0; text-underline-offset: 3px">XpX XX</span><span class="t"> XXX</span></div>
+<div class="c" id="line-through" style="left: 95px; top: 40px; text-decoration: line-through #00a000"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="overline" style="left: 180px; top: 40px; text-decoration: overline #00a000"><span class="t">XpX XX XXX</span></div>
+<div class="c" id="block-drawn-shadow" style="left: 265px; top: 40px; text-shadow: 3px 3px 0 #00a000"><span class="t ns">XpX X</span><span class="ib"></span><span class="t ns"> XX</span></div>
+<div class="c" id="closed-shadow" style="left: 10px; top: 70px"><span class="t" style="text-shadow: 3px 3px 0 #0000d0">XpX XX</span><span class="t"> XXX</span></div>
+<div class="c" id="block-drawn-underline" style="left: 95px; top: 70px; text-decoration: underline #00a000; text-underline-offset: 3px"><span class="t">XpX X</span><span class="ib"></span><span class="t"> XX</span></div>
+<div class="c" id="negative-shadow" style="left: 180px; top: 70px; text-shadow: -4px 0 0 #00a000"><span class="t ns">XpX XX XXX</span></div>
+<div class="c" id="inherited-shadow" style="left: 265px; top: 70px; text-shadow: 2px 2px 0 #00a000">XpX XX XXX</div>
+</body>
+</html>

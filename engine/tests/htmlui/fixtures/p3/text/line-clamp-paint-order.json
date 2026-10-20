@@ -1,0 +1,7 @@
+{
+ "comment": "An ellipsis the block container draws (after an inline-block, or alone on a <br> line) is painted as Chromium paints the line's items: after the inline-block and its content (over its overflowing child, blue), over the background of a span it is in (green) and of a block after it (blue, a negative margin), under a positioned element (blue). The ellipsis has the block's colour (red), the text a span's.",
+ "viewport": [
+  180,
+  100
+ ]
+}

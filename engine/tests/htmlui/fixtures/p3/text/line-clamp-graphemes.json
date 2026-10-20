@@ -1,0 +1,7 @@
+{
+ "comment": "The ellipsis cuts a text run between extended grapheme clusters (UAX #29), never inside one: an emoji with a skin-tone modifier, an emoji ZWJ sequence, a flag (two regional indicators), a combining accent, an Indic conjunct (KA VIRAMA SSA), a consonant with a vowel sign, Hangul jamo (L V T) and syllables. The characters Ahem has no glyph for are its .notdef box, one em wide, on both sides; the ellipsis has the block's colour (red).",
+ "viewport": [
+  350,
+  50
+ ]
+}

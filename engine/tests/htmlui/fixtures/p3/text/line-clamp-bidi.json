@@ -1,0 +1,7 @@
+{
+ "comment": "The clamp line's directional runs (UAX #9, the block's direction the paragraph's) are cut from the line's end as Chromium's LineTruncator cuts its items: a run against the line's direction keeps its logical end (on a left-to-right line, the visual left of a right-to-left run), one in it its start; on a right-to-left line the kept part stays at the right. Right-to-left Latin through RLO ... PDF ('p' shows the order), Hebrew as Ahem's .notdef box; the ellipsis has the block's colour (red).",
+ "viewport": [
+  350,
+  50
+ ]
+}

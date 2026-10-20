@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: the line-clamp ellipsis on mixed-direction lines</title>
+<style>
+  /* The clamp line's directional runs (UAX #9, the block's direction the paragraph's) are cut from the line's end as Chromium's LineTruncator cuts its items: a run against the line's direction keeps its logical end (on a left-to-right line, the visual left of a right-to-left run), one in it its start; on a right-to-left line the kept part stays at the right. Right-to-left Latin through RLO ... PDF ('p' shows the order), Hebrew as Ahem's .notdef box; the ellipsis has the block's colour (red). */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 10px; line-height: 1; }
+  .c { position: absolute; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; width: 75px; background: #e0e8f0; color: #d02020; }
+  .t { color: #203040; }
+</style>
+</head>
+<body>
+<div class="c" id="ltr-override" style="left: 10px; top: 10px"><span class="t">XX &#x202E;XXpp&#x202C; XpX</span></div>
+<div class="c" id="rtl-override" style="left: 95px; top: 10px" dir="rtl"><span class="t">XXp &#x202E;Xpp&#x202C; XX</span></div>
+<div class="c" id="ltr-hebrew" style="left: 180px; top: 10px"><span class="t">XpX &#x5D0;&#x5D1;&#x5D2; XX</span></div>
+<div class="c" id="rtl-latin" style="left: 265px; top: 10px" dir="rtl"><span class="t">&#x5D0;&#x5D1; XXpp XX</span></div>
+<div class="c" id="ltr-hebrew-first" style="left: 10px; top: 30px"><span class="t">&#x5D0;&#x5D1; XpXp XX</span></div>
+<div class="c" id="rtl-hebrew" style="left: 95px; top: 30px" dir="rtl"><span class="t">XX&#x5D0;&#x5D1;&#x5D2;&#x5D3;&#x5D4;&#x5D5; X</span></div>
+<div class="c" id="ltr-override-start" style="left: 180px; top: 30px"><span class="t">&#x202E;XXpp&#x202C; XX XpX</span></div>
+<div class="c" id="rtl-ltr-override" style="left: 265px; top: 30px" dir="rtl"><span class="t">pX &#x202D;XpXp&#x202C; XX</span></div>
+</body>
+</html>
