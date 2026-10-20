@@ -27,9 +27,12 @@
 /* 1. Root and body ---------------------------------------------------------------------- */
 
 /* The HTML root is the RML document element (body#htmlui-root). The canvas is transparent:
-   a UI draws over the game, unlike the browser's white page. */
+   a UI draws over the game, unlike the browser's white page. Its direction is ltr, CSS's
+   initial value (RmlUi's own initial value, auto, takes each paragraph's from its first strong
+   character: dir="auto" keeps it); dir="rtl" on <html> overrides it. */
 html {
     display: block;
+    direction: ltr;
     position: absolute;
     left: 0;
     top: 0;

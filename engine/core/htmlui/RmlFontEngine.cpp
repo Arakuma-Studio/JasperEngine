@@ -428,7 +428,10 @@ void RmlFontEngine::GetBidiRuns(Rml::StringView string, const Rml::TextShapingCo
     sequence.stringBuffer = (void*)codepoints.data();
     sequence.stringLength = (SBUInteger)codepoints.size();
     SBAlgorithmRef algorithm = SBAlgorithmCreate(&sequence);
-    SBParagraphRef paragraph = algorithm ? SBAlgorithmCreateParagraph(algorithm, 0, (SBUInteger)codepoints.size(), rtlBase ? 1 : 0) : NULL;
+    // the paragraph's direction as shapeRange takes it: the context's, or (auto) the first strong character's
+    const SBLevel baseLevel = (context.text_direction == Rml::Style::Direction::Rtl) ? 1
+                            : (context.text_direction == Rml::Style::Direction::Ltr) ? 0 : SBLevelDefaultLTR;
+    SBParagraphRef paragraph = algorithm ? SBAlgorithmCreateParagraph(algorithm, 0, (SBUInteger)codepoints.size(), baseLevel) : NULL;
     SBLineRef line = paragraph ? SBParagraphCreateLine(paragraph, 0, SBParagraphGetLength(paragraph)) : NULL;
     if (line){
         const SBUInteger count = SBLineGetRunCount(line);
