@@ -14,6 +14,8 @@ int main(int argc, char* argv[]) {
     // A desktop launcher starts the editor without the user's shell environment,
     // so the build tools go back on PATH before anything can spawn a command.
     editor::ShellEnv::bootstrapPath();
+    // Relative path arguments are relative to the directory the editor started in: read it first
+    editor::CommandLine::invocationDirectory();
 
     // CLI subcommands run before the backend starts, so they never create a window.
     if (argc >= 2 && std::strcmp(argv[1], "export") == 0) {

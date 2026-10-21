@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <filesystem>
+
 namespace jasperengine::editor {
 
     class CommandLine {
@@ -36,6 +38,19 @@ namespace jasperengine::editor {
 
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);
+
+        // The working directory the editor was started in, read once (main() reads it first,
+        // before anything runs). Relative path arguments are the caller's: relative to it.
+        static const std::filesystem::path& invocationDirectory();
+
+        // A path argument (--out, --ops, --doc, ...) as an absolute, normalized path: a relative
+        // one is relative to invocationDirectory(); symlinks and "." / ".." resolved, no trailing
+        // separator. Empty stays empty.
+        static std::filesystem::path absoluteArgPath(const std::filesystem::path& path);
+
+        // A --project argument (a project directory or its project.yaml) as the absolute,
+        // normalized project directory (absoluteArgPath)
+        static std::filesystem::path projectArgPath(const std::filesystem::path& path);
     };
 
 }

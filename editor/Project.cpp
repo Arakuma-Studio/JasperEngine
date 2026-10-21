@@ -5417,13 +5417,18 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     return true;
 }
 
-bool editor::Project::loadProject(const std::filesystem::path path, bool updateLastOpened) {
+bool editor::Project::loadProject(const std::filesystem::path requestedPath, bool updateLastOpened) {
     if (isAnyScenePlaying()) {
         Out::warning("Cannot load a project while a scene is running or stopping.");
         return false;
     }
 
     try {
+        // Absolute: scene and asset paths are project-relative and a relative path is joined to the
+        // project directory, so a relative project directory would be joined twice (the CLI makes its
+        // --project absolute already, against the directory it started in)
+        const std::filesystem::path path =
+            requestedPath.empty() || requestedPath.is_absolute() ? requestedPath : std::filesystem::absolute(requestedPath);
         if (!std::filesystem::exists(path)) {
             Out::error("Project directory does not exist: \"%s\"", path.string().c_str());
             return false;
