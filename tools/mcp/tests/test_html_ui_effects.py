@@ -10,7 +10,8 @@ the project root.
 - set_ui_effect_time pins the clock: every effect region is drawn (its pixels vary) with the
   colours recorded here, a second screenshot is identical, the live clock moves the aurora.
 - inspect_ui lists each element's effects with their parameters (fx:<name> in the outline);
-  list_ui_effects lists the whole catalogue (83 built-in effects) and the project effects, and
+  list_ui_effects lists the whole catalogue (the 101 built-in effects of html-ui-effects.md, the 18
+  stateful ones of phase 6 with cost stateful) and the project effects, and
   filters by name, category (glass: the four glass effects) and kind.
 - In play, the pointer over the button transitions its sheen to the hover intensity.
 - inspect_ui {file} (check --ui) reports effect-unknown, effect-unknown-param and
@@ -31,8 +32,10 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 import time
 
+import harness
 from harness import Editor, TestFailure
 from htmlui_pixels import Shot
 
@@ -265,8 +268,15 @@ async def test_list_ui_effects(ed: Editor):
         ed.check(name in names, f"{name} listed: {names}")
     ed.check_eq(names, sorted(names), "sorted by name")
     builtin = [e for e in everything["effects"] if e["builtin"]]
-    # the whole catalogue (Appendix A: 83 effects), the project's two effects beside it
-    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects listed, the catalogue has 83")
+    # the whole catalogue (phase 5's 83 effects and phase 6's 18 stateful ones: html-ui-effects.md's table), the
+    # project's two effects beside it
+    catalogue = (harness.REPO / "docs" / "mcp" / "guide" / "html-ui-effects.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| \[`([a-z0-9-]+)`\]\(#[a-z0-9-]+\) \| ([\w, ]+) \| ([\w-]+) \| (\w+) \|", catalogue, re.M)
+    ed.check_eq(len(rows), 101, "the catalogue's effects")
+    ed.check_eq(sorted(e["name"] for e in builtin), sorted(r[0] for r in rows), "the built-in effects are the catalogue's")
+    stateful = sorted(e["name"] for e in builtin if e.get("cost") == "stateful")
+    ed.check_eq(len(stateful), 18, f"the stateful effects: {stateful}")
+    ed.check_eq(stateful, sorted(r[0] for r in rows if r[3] == "stateful"), "the stateful effects are the catalogue's")
     ed.check_eq(everything["count"] - len(builtin), 2, "the project effects: tint-wave and spare-glow")
     ed.check(all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
     ed.check(all("params" not in e and "param_names" in e for e in everything["effects"]), "a long list leaves the params out")
@@ -425,6 +435,106 @@ async def test_stateful_splat_in_play(ed: Editor):
         ed.check_eq(reset, [1], "effectReset restarts the simulation")
     finally:
         await ed.call("play", action="stop")
+
+
+PROBE_HTML = """<html>
+<head>
+    <title>a project simulation</title>
+    <link rel="stylesheet" href="probe.css"/>
+</head>
+<body><div id="probe" class="probe"></div></body>
+</html>
+"""
+
+PROBE_CSS = """@effect sim-probe { src: url(fx/sim-probe.frag); }
+
+body { margin: 0; width: 1280px; height: 720px; background-color: #101218; }
+.probe { position: absolute; left: 40px; top: 40px; width: 256px; height: 128px; background-image: effect(sim-probe); }
+"""
+
+
+async def probe_effect(ed: Editor) -> dict:
+    r = await ed.call("inspect_ui", scene=S["probe-scene"], entity=S["probe-entity"], selector=".probe", depth=0)
+    effects = r["elements"][0].get("effects", []) if r["elements"] else []
+    return effects[0] if effects else {}
+
+
+async def probe_steps_until(ed: Editor, predicate, seconds: float = 90.0) -> dict:
+    deadline = time.monotonic() + seconds
+    while True:
+        effect = await probe_effect(ed)
+        state = effect.get("state")
+        if (state and predicate(state)) or time.monotonic() > deadline:
+            return effect
+        await asyncio.sleep(0.25)
+
+
+async def test_stateful_project_effect(ed: Editor):
+    """A project effect with state (phase-6 stateful spec 3.11 and 3.7, the §5 item "project effects with state:
+    compile, check, hot reload restart"; p6-accept): EffectStatefulTest's sim-probe.frag in the project."""
+    frag = (harness.REPO / "engine" / "tests" / "htmlui" / "fixtures" / "effects" / "fx" / "sim-probe.frag").read_text(encoding="utf-8")
+    # write_file checks every form: the paint and filter forms and their step forms
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/sim-probe.frag", "content": frag})
+    ed.check(not raw.is_error, raw.text)
+    results = raw.value.get("shader_check", [])
+    forms = sorted(r.get("form", "") for r in results)
+    ed.check_eq(forms, ["filter", "filter-step", "paint", "paint-step"], f"the forms checked: {results}")
+    ed.check(all(r.get("ok") and r.get("effect") == "sim-probe" for r in results), f"every form compiles: {results}")
+    checked = await ed.call("check_shader", shader="assets/ui/fx/sim-probe.frag", timeout=300)
+    ed.check_eq((checked["failed"], checked["findings"]), (0, []), f"check_shader: {str(checked)[:2000]}")
+
+    write(ed, "assets/ui/probe.html", PROBE_HTML)
+    write(ed, "assets/ui/probe.css", PROBE_CSS)
+    made = await ed.call("create_scene", name="HtmlUiSimProbe", type="UI")
+    S["probe-scene"] = made["scene"]["id"]
+    r = await ed.call("create_ui_document", scene=S["probe-scene"], html="assets/ui/probe.html", name="SimProbe")
+    S["probe-entity"] = r["entity"]["id"]
+    ed.check_eq(r["diagnostics"], [], "the project simulation's document loads clean")
+    await ed.call("save_scene", scene=S["probe-scene"], path="scenes/HtmlUiSimProbe")
+    await ed.call("set_ui_effect_time", time=None)
+    # the live clock steps it (its variants compile on first use)
+    effect = await probe_steps_until(ed, lambda st: st["steps"] > 180)
+    state = effect.get("state") or {}
+    ed.check(effect.get("name") == "sim-probe" and state.get("steps", 0) > 180 and state.get("bytes", 0) > 0 and not state.get("paused"),
+             f"the project simulation steps on the live clock: {effect}")
+    before = state["steps"]
+
+    # a GLSL error in a step pass: only the step forms fail, FX-0015 at the .frag line
+    good_line = "return vec4(s.uv, fract(n.x / 60.0), 1.0);"
+    broken = frag.replace(good_line, "return vec4(s.uv, fract(n.x / 60.0));")
+    ed.check(broken != frag, "the step pass to break")
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/sim-probe.frag", "content": broken})
+    results = raw.value.get("shader_check", [])
+    failed = [r for r in results if not r.get("ok")]
+    line, _ = line_col(broken, "return vec4(s.uv, fract(n.x / 60.0));")
+    ed.check(sorted(r.get("form") for r in failed) == ["filter-step", "paint-step"] and
+             all(r.get("code") == "HTMLUI-FX-0015" for r in failed), f"the step forms fail with effect-shader-compile: {results}")
+    ed.check(all(any(e["line"] == line for e in r.get("errors", [])) for r in failed), f"at the .frag line {line}: {failed}")
+    checked = await ed.call("check_shader", shader="assets/ui/fx/sim-probe.frag", timeout=300)
+    ed.check(checked["failed"] == 2 and checked["findings"] and
+             (checked["findings"][0]["path"], checked["findings"][0]["line"]) == ("assets/ui/fx/sim-probe.frag", line),
+             f"check_shader finds the step forms' error at the .frag line {line}: {str(checked)[:2000]}")
+
+    # a manifest error: a pass that writes a state the manifest does not declare (FX-0014 at its line)
+    bad = frag.replace("// @step       grow field", "// @step       grow fields")
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/sim-probe.frag", "content": bad})
+    results = raw.value.get("shader_check", [])
+    line, _ = line_col(bad, "@step       grow fields")
+    ed.check(results and all(r.get("code") == "HTMLUI-FX-0014" and not r["ok"] for r in results), f"effect-manifest: {results}")
+    ed.check(any(e["line"] == line for e in results[0].get("errors", [])), f"at the manifest line {line}: {results}")
+
+    # fixed with another state layout (the field's size cap): the hot reload restarts the simulation
+    changed = frag.replace("box*0.25 max 64 linear resample", "box*0.25 max 32 linear resample")
+    ed.check(changed != frag, "the state layout to change")
+    raw = await ed.call_raw("write_file", {"path": "assets/ui/fx/sim-probe.frag", "content": changed})
+    ed.check(all(r.get("ok") for r in raw.value.get("shader_check", [])), raw.text)
+    effect = await probe_steps_until(ed, lambda st: 0 < st["steps"] < before)
+    state = effect.get("state") or {}
+    ed.check(0 < state.get("steps", 0) < before, f"the changed manifest restarted the simulation ({before} steps before): {effect}")
+    effect = await probe_steps_until(ed, lambda st: st["steps"] > 60)
+    ed.check((effect.get("state") or {}).get("steps", 0) > 60, f"and it steps again: {effect}")
+    await ed.call("write_file", path="assets/ui/fx/sim-probe.frag", content=frag)
+    await ed.call("set_ui_effect_time", time=1.5)
 
 
 BAD_CSS = """.a { background-image: effect(glassmorphism); }

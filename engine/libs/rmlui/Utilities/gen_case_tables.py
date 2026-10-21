@@ -316,7 +316,9 @@ def write_line_break_test(test_path, chromium_path, version, out_path):
         f.write("static const LineBreakTestCase line_break_test_cases[] = {\n")
         for (codes, marks), measured in zip(tests, chromium):
             inner = "".join("?" if m is None else ("/" if m else "x") for m in measured)
-            f.write('\t{"%s", "%s", "%s"},\n' % (" ".join(codes), marks, marks[0] + inner + marks[-1]))
+            # '?' written as "\?": "??/" would be a trigraph (-Wtrigraphs)
+            measured_marks = (marks[0] + inner + marks[-1]).replace("?", "\\?")
+            f.write('\t{"%s", "%s", "%s"},\n' % (" ".join(codes), marks, measured_marks))
         f.write("};\n")
         with open(chromium_path.replace(".json", "-ascii.json"), encoding="utf-8") as ascii_file:
             ascii_pairs = json.load(ascii_file)

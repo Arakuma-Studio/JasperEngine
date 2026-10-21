@@ -8,6 +8,7 @@
 // and the generated style sheet they rewrite.
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -15,6 +16,7 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace jasperengine::test::compat {
@@ -50,10 +52,16 @@ namespace jasperengine::test::compat {
     // remove any, so the least of several is the closest to the code's own cost; on a quiet
     // host every measurement is that cost and the least is the one measurement the gate took
     // before. A step whose own cost is above the target has no measurement within it.
+    // The measurements after the first are 200 ms apart (sleeping takes no CPU time): taken back
+    // to back, all 15 of a short step (the user-agent sheet's, 15 x 23 rewrites in 0.3 s) fit in
+    // one burst of a virtual machine's neighbours, which slowed every one of them by a quarter
+    // on the test host (p6-accept); spread over 3 s they also see the host outside it.
     inline double gatedCpuMs(const std::function<void()>& work, int repeat, double targetMs){
         double least = medianCpuMs(work, repeat);
-        for (int attempt = 1; attempt < 15 && least > targetMs; attempt++)
+        for (int attempt = 1; attempt < 15 && least > targetMs; attempt++){
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             least = std::min(least, medianCpuMs(work, repeat));
+        }
         return least;
     }
 

@@ -1442,7 +1442,7 @@ static void GatherLineBreakContext(ElementText* text, bool forward, bool decode_
 		else
 		{
 			// the last code points, read from a little before them into a ring
-			if (other_text.size() > 4 * capacity)
+			if (other_text.size() > size_t(4 * capacity))
 			{
 				p = end - 4 * capacity;
 				while (p != end && IsContinuationByte(*p))

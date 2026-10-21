@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <vector>
 
 using namespace jasperengine;
@@ -26,15 +27,31 @@ namespace {
         return text.substr(first, last - first + 1);
     }
 
-    std::string extensionOf(std::string path){
+    // The extension of a path's last segment (before a query or fragment) in lower case, in a buffer: every URL of a
+    // CSS image asks (Rewriters' resolveUrlIn), so no allocation. Empty when there is none or it is longer than any
+    // video extension.
+    struct Extension {
+        char text[8] = {};
+        size_t length = 0;
+        bool is(const char* other) const{ return std::strlen(other) == length && std::memcmp(text, other, length) == 0; }
+    };
+
+    Extension extensionOf(std::string_view path){
+        Extension extension;
         const size_t cut = path.find_first_of("?#");
-        if (cut != std::string::npos)
+        if (cut != std::string_view::npos)
             path = path.substr(0, cut);
         const size_t slash = path.find_last_of("/\\");
         const size_t dot = path.find_last_of('.');
-        if (dot == std::string::npos || (slash != std::string::npos && dot < slash))
-            return std::string();
-        return lower(path.substr(dot + 1));
+        if (dot == std::string_view::npos || (slash != std::string_view::npos && dot < slash))
+            return extension;
+        const std::string_view text = path.substr(dot + 1);
+        if (text.size() >= sizeof(extension.text))
+            return extension;
+        for (size_t i = 0; i < text.size(); i++)
+            extension.text[i] = (char)std::tolower((unsigned char)text[i]);
+        extension.length = text.size();
+        return extension;
     }
 
     // RFC 6381 codec strings of the engine's two codecs
@@ -106,22 +123,35 @@ const char* VideoFormats::toString(CanPlay value){
     return "";
 }
 
+namespace {
+
+    bool playable(const Extension& extension){
+        return extension.is("webm") || extension.is("mkv");
+    }
+
+    bool rejected(const Extension& extension){
+        if (extension.length == 0)
+            return false;
+        for (const char* other : rejectedExtensions){
+            if (extension.is(other))
+                return true;
+        }
+        return false;
+    }
+
+}
+
 bool VideoFormats::isPlayableExtension(const std::string& path){
-    const std::string extension = extensionOf(path);
-    return extension == "webm" || extension == "mkv";
+    return playable(extensionOf(path));
 }
 
 bool VideoFormats::isRejectedExtension(const std::string& path){
-    const std::string extension = extensionOf(path);
-    for (const char* rejected : rejectedExtensions){
-        if (extension == rejected)
-            return true;
-    }
-    return false;
+    return rejected(extensionOf(path));
 }
 
 bool VideoFormats::isVideoPath(const std::string& path){
-    return isPlayableExtension(path) || isRejectedExtension(path);
+    const Extension extension = extensionOf(path);
+    return playable(extension) || rejected(extension);
 }
 
 namespace {

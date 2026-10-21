@@ -495,18 +495,21 @@ A project using `fog` and `time-trail` exports with their step variants and rend
 Desktop player (screenshot regions animate).
 
 ## 5 Acceptance
-- [ ] The 18 effects registered with manifests, goldens (t1, t2) passing on glcore and Vulkan,
+
+All ten items were proved on the combined tree of phase 6 by p6-accept (`phase-6-acceptance.md`, 1.2).
+
+- [x] The 18 effects registered with manifests, goldens (t1, t2) passing on glcore and Vulkan,
       catalogue entries, thumbnails, `stateful` cost rows within budget, MIT attribution.
-- [ ] Step/scatter variants compile on all six backends; `ui-effects --validate` passes.
-- [ ] State images: allocation, pool, resize policy, release on removal/effect change/unload, no
+- [x] Step/scatter variants compile on all six backends; `ui-effects --validate` passes.
+- [x] State images: allocation, pool, resize policy, release on removal/effect change/unload, no
       leaks over 100 cycles.
-- [ ] Pause while not drawn, resume without catch-up; substep cap; pinned clock byte-identical.
-- [ ] Splats (C++, Lua, MCP via `eval_lua`); `effectReset`.
-- [ ] Budgets and diagnostics FX-0017/0018; statistics; `inspect_ui` state fields.
-- [ ] Project effects with state: compile, `check`, hot reload restart.
-- [ ] Export ships the step variants; the Desktop player draws a stateful effect.
-- [ ] Every suite of the assignment passes on the remote host; non-stateful perf unchanged.
-- [ ] Docs: guide, catalogue, CONTRACTS, DESIGN, support matrix.
+- [x] Pause while not drawn, resume without catch-up; substep cap; pinned clock byte-identical.
+- [x] Splats (C++, Lua, MCP via `eval_lua`); `effectReset`.
+- [x] Budgets and diagnostics FX-0017/0018; statistics; `inspect_ui` state fields.
+- [x] Project effects with state: compile, `check`, hot reload restart.
+- [x] Export ships the step variants; the Desktop player draws a stateful effect.
+- [x] Every suite of the assignment passes on the remote host; non-stateful perf unchanged.
+- [x] Docs: guide, catalogue, CONTRACTS, DESIGN, support matrix.
 
 ## 6 As implemented
 

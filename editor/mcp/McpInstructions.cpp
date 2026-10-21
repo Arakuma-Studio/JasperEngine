@@ -240,8 +240,9 @@ Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): cr
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes
 assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_changes reports.
 inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert_ui (text_fits,
-no_overlap, within_viewport...) check layouts; import_files (fonts, icons, from_document) brings
-remote resources; effect(<name>, ...) draws GPU effects (list_ui_effects, set_ui_effect_time).
+no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
+brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
+set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
 ## Pitfalls

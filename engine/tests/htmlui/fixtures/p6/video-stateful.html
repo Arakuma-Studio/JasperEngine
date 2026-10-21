@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<!-- Phase-6 cross-feature page (p6-accept): stateful effects in filter form on <video> elements. The filter form
+     reads the element's content (phase-6 stateful spec 3.9; video spec 3.11: effects read the rendered layer, which
+     holds the converted frame): time-trail sheds the moving square's trail, data-mosh holds and smears macroblocks.
+     A looping, muted, autoplaying test card on the UI clock; #plain is the reference without an effect. -->
+<html><head><style>
+  html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #101218; }
+  video { position: absolute; display: block; width: 160px; height: 90px; }
+  #plain { left: 10px; top: 10px; }
+  #trail { left: 190px; top: 10px; filter: effect(time-trail, trail-length 1s, tint-mode color, tint #33aaff); }
+  #mosh { left: 10px; top: 130px; filter: effect(data-mosh, intensity 0.8, block-size 40, seed 7); }
+  #both { left: 190px; top: 130px; border-radius: 16px; filter: effect(time-trail, trail-length 0.5s) grayscale(0.4); }
+</style></head><body>
+<video id="plain" src="../video/testcard-noaudio.webm" autoplay muted loop></video>
+<video id="trail" src="../video/testcard-noaudio.webm" autoplay muted loop></video>
+<video id="mosh" src="../video/testcard-noaudio.webm" autoplay muted loop></video>
+<video id="both" src="../video/testcard-noaudio.webm" autoplay muted loop></video>
+</body></html>

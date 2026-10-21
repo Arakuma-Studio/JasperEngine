@@ -868,6 +868,9 @@ Linux with zero new warnings; Vulkan configuration; web; Android; the generator,
 Xcode sync `--check`s; `run-rmlui-tests.sh` (unchanged fork); `htmlui-editor-tests`.
 
 ## 6 Acceptance criteria
+
+Proved on the combined tree of phase 6 by p6-accept (`phase-6-acceptance.md`, 1.1).
+
 1. `<video>` with every attribute of 3.4.2 and `<source>` selection behaves as specified, with
    diagnostics of 3.13.
 2. AV1/Opus WebM decodes on Linux (run), Web and Android (compiled and the web build exported and
