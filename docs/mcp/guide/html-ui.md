@@ -1124,7 +1124,8 @@ exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 
 - Size and drawing: `object-fit` (default `contain`, as in browsers) and `object-position` place
   the frame in the content box; `border-radius` clips it; `opacity`, `filter`, `mask-image`,
-  transforms, effects (`filter: effect(...)`) and `backdrop-filter` over a video all work. A video
+  transforms, effects (`filter: effect(...)`, stateful ones such as `time-trail` and `data-mosh`
+  too: they feed on the playing frames) and `backdrop-filter` over a video all work. A video
   cannot be a CSS image (`url(x.webm)` in `background` is `HTMLUI-CSS-0004`): put a `<video>`
   with `object-fit: cover` behind the content (the `video_menu` example).
 - Timing: a video plays on the UI clock. It keeps playing under `Engine.timeScale = 0` (a pause
