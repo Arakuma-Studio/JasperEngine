@@ -740,7 +740,8 @@ async def test_agents_md_section(ed: Editor):
         section = agents.split("## HTML/CSS UI", 1)[1].split("\n## ", 1)[0]
         for phrase in ("check --ui", ".jasperengine/engine-api/html-ui-examples/", "jasper://docs/html-ui",
                        "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/",
-                       "effect(<name>", "jasper://docs/html-ui-effects", "@effect"):
+                       "effect(<name>", "jasper://docs/html-ui-effects", "@effect", "stateful", "<video>", "AV1 + Opus WebM",
+                       "import_files"):
             ed.check(phrase in section, f"the AGENTS.md section mentions {phrase}: {section}")
         ed.check("HTML/CSS UI, C++ build" in agents, "the check bullet names the UI check")
     finally:

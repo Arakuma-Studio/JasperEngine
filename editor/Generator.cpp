@@ -1438,7 +1438,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "check and the hook) reports every construct the engine drops or rewrites, with file:line:col and a fix. "
                      "A page without a background lets the pointer through to the documents below and the game unless it listens for the pointer. "
                      "GPU effects go in CSS as `effect(<name>, <param> <value>, ...)` in `background-image`, `mask-image`, `filter` and "
-                     "`backdrop-filter` (catalogue: `jasper://docs/html-ui-effects`; a project's own effect is a `.frag` declared with `@effect`). "
+                     "`backdrop-filter` (catalogue: `jasper://docs/html-ui-effects`, stateful simulations such as `fog` and `ink-flow` included; a project's own effect is a `.frag` declared with `@effect`). "
+                     "`<video>` plays AV1 + Opus WebM (`import_files` converts other formats with a user-installed FFmpeg). "
                      "Supported CSS: the `jasper://docs/html-ui-support` resource; guide: `jasper://docs/html-ui`; complete examples to copy: `" +
                      (engineApiRelativePath / "html-ui-examples").generic_string() + "/`.\n\n";
     agentsContent += "## Source references\n\n";
