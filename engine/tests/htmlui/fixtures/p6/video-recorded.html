@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- Phase-6 cross-feature page (p6-accept): <video> under RmlRenderer's command recording (phase-1 spec 3.2.10)
+     with a phase-5 filter effect, a stateful filter effect (time-trail) on a video, a backdrop effect over one and a
+     justified, clamped caption over another. TestPhase6Cross.cpp draws it recorded and immediately. -->
+<html><head><style>
+  @font-face { font-family: "Ahem"; src: url("../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #101218; }
+  video { position: absolute; display: block; width: 160px; height: 90px; }
+  #plain { left: 10px; top: 10px; }
+  #fx { left: 190px; top: 10px; filter: effect(chromatic-aberration, strength 0.6); }
+  #trail { left: 10px; top: 130px; filter: effect(time-trail, trail-length 1s); }
+  #under { left: 190px; top: 130px; border-radius: 12px; }
+  #glass { position: absolute; left: 205px; top: 150px; width: 130px; height: 50px; border-radius: 12px;
+           backdrop-filter: effect(frosted-glass, blur 6px); }
+  #caption { position: absolute; left: 10px; top: 104px; width: 160px; font-family: "Ahem"; font-size: 10px; line-height: 12px;
+             color: #f1c40f; text-shadow: 1px 1px 0 #c0392b; text-align: justify; display: -webkit-box;
+             -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+</style></head><body>
+<video id="plain" src="../video/testcard-noaudio.webm"></video>
+<video id="fx" src="../video/testcard-noaudio.webm"></video>
+<video id="trail" src="../video/testcard-noaudio.webm"></video>
+<video id="under" src="../video/testcard-noaudio.webm"></video>
+<div id="glass"></div>
+<div id="caption">A card under a justified caption clamped to one line</div>
+</body></html>
