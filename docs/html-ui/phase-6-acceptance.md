@@ -34,28 +34,28 @@ removed afterwards. The local host was used for editing and git only.
 | §6 item | Evidence on the combined tree | Result |
 |---|---|---|
 | 1. `<video>` with every attribute of 3.4.2 and `<source>` selection behaves as specified, with the diagnostics of 3.13 | `VideoElementTest` (19: load events in Chromium's order, autoplay on the UI clock, `preload`, the poster, `<source>` choice and per-source errors, `src` swaps, `loop`, `muted`/`volume`/`playbackRate`, four videos at once), `VideoLuaTest` (4), `VideoFormats` (3), `CompatHtml.GoldenCases` (the fixture `compat/html/video`: HTMLUI-HTML-0027/0028, `<track>`), `CompatTables.AppendixSamples` (the `video` rows); MCP `test_html_ui_video.py` (`check --ui` on an `.mp4` source reports HTMLUI-HTML-0027) | pass |
-| 2. AV1/Opus WebM decodes on Linux (run), Web and Android (compiled, the web build exported and played); Windows/macOS/iOS wired | Linux: every video test on glcore and Vulkan, `Av1Decoder.AsmDecodesBitExactlyAsC` (dav1d's x86-64 asm bit-exact against C, every frame of every clip); `tools/build.sh web` and `android` built (4.2); the slow `test_html_ui_video_export.py` (the Desktop player plays the test card); `xcode_add_video_libs.py --check` (now in `test_generators.py`, 3.2) | pass (Windows/macOS/iOS not built: 6) |
+| 2. AV1/Opus WebM decodes on Linux (run), Web and Android (compiled, the web build exported and played); Windows/macOS/iOS wired | Linux: every video test on glcore and Vulkan, `Av1Decoder.AsmDecodesBitExactlyAsC` (dav1d's x86-64 asm bit-exact against C, every frame of every clip); `tools/build.sh web` and `android` built (4.2); the slow `test_html_ui_video_export.py` (the Desktop player plays the test card; its source export and resource pack ship the video); `xcode_add_video_libs.py --check` (now in `test_generators.py`, section 3); the web export played (4.4) | pass (Windows/macOS/iOS not built: section 6) |
 | 3. Frame-exact seeking and deterministic playback under the fixture clock; the 5.1 tests pass on glcore and Vulkan, the goldens of 5.2 hold on both | `VideoStream.FrameExactSeeksInAnyOrder`, `VideoElementTest.FrameExactAtEveryFrameTime`, `VideoGoldenTest` (6: frames at 0, 0.5, 1 s, `object-fit`, rounded content, filters and effects, poster, controls) on both backends from one set of goldens | pass |
 | 4. A/V sync within the measured bounds of 3.7 | `VideoAudioSync.Decisions`, `DriftStaysBoundedOnTheFixtureClock`, `VideoElementTest.AudioFollowsThePicture`, `AudioCorrectsAFastMixer`, `OpusAudioDecoder.ToneBurstsAtTheirSamples` | pass |
 | 5. Browser parity with exact boxes and the documented colour tolerance | `P3/BrowserParity` `video_poster`, `video_seeked_contain`, `video_seeked_cover_radius` on glcore and Vulkan; `render-reference.mjs --fixtures all --check` (the references reproduce) | pass |
 | 6. 100 load/unload cycles leak nothing | `VideoElementTest.HundredLoadUnloadCyclesLeakNothing`, `HundredSrcSwapsLeakNothing`, `VideoStream.HundredOpenCloseCyclesLeakNothing`; new: `Phase6Cross.AVideoRemovedWhileItsFrameIsRecorded` (element, stream and texture gone after a removal in the middle of a recorded frame) | pass |
 | 7. Controls work with pointer, keyboard and gamepad | `VideoControlsTest` (6: made and laid out, pointer play/seek/mute, timeline drag, keyboard, gamepad, auto-hide), `VideoControlsFormat`, `VideoGoldenTest.ControlsPausedHoveredFocused`; MCP `test_html_ui_video.py` (play button click, Space, ArrowRight) | pass |
 | 8. The importer converts with FFmpeg and diagnoses without it | `test_html_ui_video.py` (an MP4 made by the host's FFmpeg 6.1 with SVT-AV1, libaom and rav1e is converted; `JASPER_FFMPEG` pointing nowhere gives HTMLUI-IMP-0010): it ran, no skip | pass |
-| 9. MCP, export and slow tests pass; docs, matrix, CONTRACTS, FORK, DESIGN updated | the two MCP runs and the slow tests (4.3); `gen_html_ui_support.py --check`; the consistency audit (5) | pass |
+| 9. MCP, export and slow tests pass; docs, matrix, CONTRACTS, FORK, DESIGN updated | the MCP runs and the slow tests (4.3); `gen_html_ui_support.py --check`; the consistency audit (5) | pass |
 
 ### 1.2 p6-stateful-fx (`phase-6-stateful-effects.md` §5)
 
 | §5 item | Evidence on the combined tree | Result |
 |---|---|---|
-| The 18 effects registered with manifests, goldens (t1, t2) on glcore and Vulkan, catalogue entries, thumbnails, `stateful` cost rows within budget, MIT attribution | `EveryEffect/EffectGoldenTest` (101 effects, invariants I1-I9) on both backends from one set of goldens; `gen_effect_manifests.py --check`, `gen_effects_docs.py --check` (`test_generators.py`); `EffectPerfTest.CostTable` 101 of 101 within their bounds in every run (4.4); `LICENSE.shaders-com.txt` lists all 88 effects whose `@source` is shaders.com (the 18 included), each with its port header, `NOTICE.md`'s paragraph (checked by a script here); `test_html_ui_effects.py::test_list_ui_effects` (now: the 101 built-ins are the catalogue's, 18 with cost `stateful`, 3.2) | pass |
-| Step/scatter variants compile on all six backends; `ui-effects --validate` | `check_effect_shaders.sh` (every variant of `uieffect/all` on GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS and iOS, SPIR-V, then `ui-effects --validate`); `ui-effects --validate` on its own (4.2) | pass |
+| The 18 effects registered with manifests, goldens (t1, t2) on glcore and Vulkan, catalogue entries, thumbnails, `stateful` cost rows within budget, MIT attribution | `EveryEffect/EffectGoldenTest` (101 effects, invariants I1-I9) on both backends from one set of goldens; `gen_effect_manifests.py --check`, `gen_effects_docs.py --check` (`test_generators.py`); `EffectPerfTest.CostTable` 101 of 101 within their bounds in every run (4.5); `LICENSE.shaders-com.txt` lists all 88 effects whose `@source` is shaders.com (the 18 included), each with its port header, `NOTICE.md`'s paragraph (checked by a script here); `test_html_ui_effects.py::test_list_ui_effects` (now: the 101 built-ins are the catalogue's, 18 with cost `stateful`, 3.2) | pass |
+| Step/scatter variants compile on all six backends; `ui-effects --validate` | `check_effect_shaders.sh` (every variant of `uieffect/all` on GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS and iOS, SPIR-V, then `ui-effects --validate`); `ui-effects --validate` on its own (4.4) | pass |
 | State images: allocation, pool, resize policy, release on removal/effect change/unload, no leaks over 100 cycles | `EffectStateful.AllocatesItsImagesFromThePoolAndReusesThem`, `ResizeResamplesLiveAndReplaysPinned`, `HundredEffectSwitchesOnOneElement`, `HundredCyclesLeaveNoImagesBehind`, `EffectLifecycleTest` (2) | pass |
 | Pause while not drawn, resume without catch-up; substep cap; pinned clock byte-identical | `EffectStateful.PausesWhenNotDrawnAndResumesWithoutCatchingUp`, `PausesWhenInvisibleOrClipped`, `FixedStepAndSubstepCap`, `TimeScaleScalesTheSteps`, `PinnedClockReplaysByteIdentically`; new: `Phase6Cross.StatefulEffectsOnAVideo` (pinned twice and in a fresh document byte-identical) | pass |
 | Splats (C++, Lua, MCP via `eval_lua`); `effectReset` | `EffectStateful.SplatsResetsAndReseeds`; `test_html_ui_effects.py::test_stateful_splat_in_play` | pass |
 | Budgets and diagnostics FX-0017/0018; statistics; `inspect_ui` state fields | `EffectStateful.BudgetsAndHardCap`, `UnsupportedFormatIsReported`; `test_stateful_effects` (`inspect_ui` `state`, `list_ui_effects` `state`) | pass |
 | Project effects with state: compile, `check`, hot reload restart | `EffectStatefulTest`'s project effect `sim-probe` (every form compiled); new: `test_html_ui_effects.py::test_stateful_project_effect` (3.2: `write_file` and `check_shader` check the paint, filter and step forms, a step pass's GLSL error is FX-0015 and a manifest error FX-0014 at their lines, the simulation steps on the live clock in the editor and restarts when its state layout changes) | pass |
 | Export ships the step variants; the Desktop player draws a stateful effect | slow `test_html_ui_effects_export.py` (exactly the used variants, step and scatter included; the Desktop player draws `boids`) | pass |
-| Every suite passes on the remote host; non-stateful perf unchanged | 4; the 5.4 gate on documents A and A2 in 10 runs (4.4) | pass |
+| Every suite passes on the remote host; non-stateful perf unchanged | 4; the 5.4 gate on documents A and A2 in 10 runs (4.5) | pass |
 | Docs: guide, catalogue, CONTRACTS, DESIGN, support matrix | the audit (5) | pass |
 
 ### 1.3 p6-justify and p6-line-clamp (`FORK.md` P6-J1, P6-J2, P6-L1, P6-L2; `phase-3-fork-patches.md` §3.10)
@@ -145,7 +145,7 @@ fork fixes the RmlUi tests too); the code is final at `cf004ba1c`, and the last 
 | `htmlui-tests` Vulkan, after the fork fixes | `fc73df57b` | 3311 / 3237 / 0 / 74, 1102 s |
 | `tools/htmlui/run-rmlui-tests.sh --docker` | `ff6a119c0` | 460 test cases, 37,597 assertions, all passed; 144 warnings (section 3) |
 | the same | `377ee5d0c` | 460 / 37,597 passed, 0 warnings |
-| `tools/build.sh htmlui-editor-tests` | `ff6a119c0` | 73 tests, 72 passed, 1 skipped (`GoogleFonts.LiveNetwork` without `HTMLUI_LIVE_NETWORK`); with it: __LIVE__ |
+| `tools/build.sh htmlui-editor-tests` | `ff6a119c0` | 73 tests, 72 passed, 1 skipped (`GoogleFonts.LiveNetwork` without `HTMLUI_LIVE_NETWORK`); with it, at `c76e38613`: 73 passed, the live Google Fonts import included |
 | `htmlui-tests` glcore, the final code | `c76e38613` | 3311 / 3237 / 0 / 74, 1284 s |
 | `htmlui-tests` Vulkan, the final code | `c76e38613` | 3311 / 3237 / 0 / 74, 1078 s |
 | `tools/build.sh web` | `fa3aef32a`, `fc73df57b`, `c76e38613` | exit 0, 0 warnings |
@@ -180,7 +180,8 @@ Slow tests (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 ... -j 1` on the six files 
 (`test_desktop_build_plays_the_video`, 1190 s), the HTML UI export draws its document (1182 s), the effects export
 draws its effects with the stateful `boids` from its exported paint, step and scatter variants (1096 s), the
 plain desktop build (742 s) and TappyPlane driven by `playctl` (804 s); a C++ script's build failure is reported
-in play.
+in play. After `isVideoPath` changed, `test_html_ui_video_export.py` ran again with the slow gates at `c76e38613`: 5
+passed, the Desktop player playing the test card, 1222 s.
 
 ### 4.4 Generators, references, shaders
 
@@ -197,6 +198,7 @@ in play.
 | `tools/htmlui/check_effect_shaders.sh` | `fa3aef32a` | `uieffect/all`: 193 variants x 6 backends, 1158 variant files, then `ui-effects --validate` PASS |
 | `jasperengine-editor ui-effects --validate` | `fa3aef32a` | "101 effects; every effect compiles in every form and matches its manifest" |
 | `shaders --library all --backend all` | `aacbafc78` | "40 library shader(s), 13842 compiles: OK" (0 failed), as the shader library's phase-4 record |
+| A web export of a page with an autoplaying, looping `<video>` (the source export of `test_html_ui_video_export.py`, built by its `jasperengine.py --platform web` in the web build image, served locally and loaded in the pinned headless shell with WebGL2 on SwiftShader) | `c76e38613` | the page loads with "ui/video.html: 0 errors, 0 warnings", the test card fills the canvas and plays: frames 20 and 47 in two screenshots 0.7 s apart, its colour bars exact (looked at) |
 | `jasperengine-editor export --backend all` of a copy of the fixture | `c76e38613` | `shader-library-export` 307, `scene-inputs` 24, `post-processing` 29 variants on each of GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS, MSL 2.1 iOS and SPIR-V, none failed (the library's phase-4 figures). A first attempt with a relative `--project` path failed ("bad file: <project>/<project>/UI.scene": the CLI joins a relative project path twice, an editor bug older than the HTML UI, not fixed here; `smoke-test.sh` passes absolute paths) |
 | the library's fixtures (`tools/smoke-test.sh`: export, build, run the game and the editor, screenshots) | `aacbafc78` to `c76e38613` | 20 of 20 PASS. GL: `shader-library` (all groups), `scene-inputs`, `post-processing`, `stencil`, `extra-pass`, `unified-lighting`, `shader-regressions`, `runtime-shaders`, `prefab-runtime` ("[PRT] PASS"), `shader-library-export`. GLES3 and Vulkan each: `post-processing` (default, `bloom`, `msaa4`, `mobile_full`, `lib_crt`), `scene-inputs`, `shader-library` (`core`, `phase2`, `phase3a`, `phase3b`), `stencil`, `extra-pass`. Screenshots looked at (the CRT tube on GLES3, the water, glass and haze of phase 3B on Vulkan, the library grid on GL) |
 | `tools/fixtures/shader-library-export/check.sh`, GL and Vulkan (`SMOKE_BACKEND=vulkan`) | `c76e38613` | 7 of 7 scenes ok on each: mean difference Lit 0.97, Blend 1.18, 2D 0.23, UI 0.41, Stencil 0.57, Phase3A 0.84, Phase3B 0.47 (limit 4), no cell over its limit: the library's phase-4 figures |
@@ -256,7 +258,9 @@ the sheet's. The cold `compile()` gate (8 ms) moved up too and passed in every r
 
 ### 4.6 The new tests, repeated
 
-`HTMLUI_TEST_ARGS='--gtest_filter=Phase6Cross.* --gtest_repeat=5'` on glcore and Vulkan (__REPEATHEAD__): __REPEAT__
+`HTMLUI_TEST_ARGS='--gtest_filter=Phase6Cross.* --gtest_repeat=5'` on glcore and Vulkan (`c76e38613`): 5 of 5 iterations
+passed on each backend (the five tests each time, the goldens byte for byte within the harness's tolerance), besides
+their run in every suite above.
 
 ## 5 Consistency audit
 
@@ -292,8 +296,9 @@ DESIGN "Compatibility and the fork"); TODO/FIXME added in phase 6 (none).
   (compat, effects, rmlui, lexbor, the video libraries); CMake's Windows branches (dav1d's `win32/thread.c`, MSVC
   atomics, `_wfopen` in the importer), HLSL 5 and MSL 2.1 are compiled only (`check_effect_shaders.sh`,
   `shaders --library all --backend all`, the exports for every backend).
-- **Android** was compiled (the APK, four ABIs, dav1d's aarch64, armv7 and x86-64 asm), not run; the **Web**
-  build was compiled (C dav1d, no pthreads) and its export played by the slow test; neither ran the C++ suites.
+- **Android** was compiled (the APK, four ABIs, dav1d's aarch64, armv7 and x86-64 asm), not run. The **Web** build
+  ran only as the one exported page of 4.4 (C dav1d, no pthreads: the inline decoder; WebGL2 on SwiftShader); the C++
+  suites do not run on the Web.
 - **Real GPUs**: every image here is llvmpipe's (glcore) or lavapipe's (Vulkan); the float render targets of
   the stateful effects were exercised only there.
 - **Audio** through a device: the test machine has none (the engine logs "No audio output available" and mutes);
