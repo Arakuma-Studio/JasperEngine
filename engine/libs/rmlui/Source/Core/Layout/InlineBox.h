@@ -41,6 +41,9 @@ public:
 
 	void Submit(const PlacedFragment& placed_fragment) override;
 
+	// An inline box whose first text goes on with the word before it (fork, P6-L2) opens on the same line.
+	bool IsGluedToPrevious(LayoutOverflowHandle overflow_handle) override;
+
 	String DebugDumpNameValue() const override { return "InlineBox"; }
 
 private:

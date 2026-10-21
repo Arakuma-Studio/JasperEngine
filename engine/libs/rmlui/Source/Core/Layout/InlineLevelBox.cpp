@@ -212,6 +212,12 @@ FragmentConstructor InlineLevelBox_Text::CreateFragment(InlineLayoutMode mode, f
 	return FragmentConstructor{FragmentType::TextRun, line_width, fragment_handle, out_overflow_handle};
 }
 
+bool InlineLevelBox_Text::IsGluedToPrevious(LayoutOverflowHandle overflow_handle)
+{
+	// (the text's start: inside it, its own opportunities end the fragments)
+	return !overflow_handle && !GetTextElement()->IsLineBreakOpportunityBefore();
+}
+
 void InlineLevelBox_Text::Submit(const PlacedFragment& placed_fragment)
 {
 	RMLUI_ASSERT((size_t)placed_fragment.handle < fragments.size());

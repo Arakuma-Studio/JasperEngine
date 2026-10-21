@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>text: after a fallback font, the primary font again</title>
+<style>
+  /* Each character takes the first font of the list that has it, as Chromium falls back per grapheme cluster: the
+     symbols and letters Ahem lacks (rupee, euro, ruble signs, Greek, Cyrillic) are drawn by the fallback font, the
+     digits and Latin letters after them by Ahem again (its squares); a combining accent Ahem lacks takes its base with
+     it, unless the two compose into a letter Ahem has. */
+  @font-face { font-family: "Ahem"; src: url("../../../fonts/Ahem.ttf") format("truetype"); }
+  html, body { margin: 0; }
+  body { font-family: "Ahem"; font-size: 20px; line-height: 1; color: #203050; }
+  p { margin: 0 0 6px 8px; white-space: nowrap; }
+  .s { color: #c03020; }
+</style>
+</head>
+<body>
+<p id="rupee">&#x20B9;12ab &#x20B9; 1,00</p>
+<p id="euro">&#x20AC;9.99X &#x20BD;5X</p>
+<p id="greek">&#x3B1;1&#x3B2;2&#x3B3;X</p>
+<p id="cyrillic">&#x436;7&#x416;X</p>
+<p id="span"><span class="s">&#x20B9;</span>42<span class="s">X&#x3B1;</span>X</p>
+<p id="accents">Xe&#x301;X x&#x301;X</p>
+</body>
+</html>

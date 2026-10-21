@@ -1,0 +1,5 @@
+{
+ "comment": "Font fallback per grapheme cluster, back to the primary font: rupee, euro and ruble signs, Greek and Cyrillic letters the fallback font draws, the digits and Latin letters after them Ahem's again; in spans; a combining accent that composes (é) and one that does not.",
+ "viewport": [300, 170],
+ "boxes": true, "noText": true
+}

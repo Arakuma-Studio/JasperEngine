@@ -34,15 +34,26 @@ namespace jasperengine {
     };
 
     // HarfBuzz + SheenBidi shaping over a fallback chain (moved out of STBText): bidi runs
-    // in visual order, each split again per face (first face covering the codepoint) and per
-    // script, so letters only join inside their own font and script.
+    // in visual order, each split again per face (the first face covering each grapheme
+    // cluster, as Chromium falls back: after a fallback, the primary again) and per script, so
+    // letters only join inside their own font and script.
     class JASPERENGINE_API TextShaper {
     public:
         // faces = chain (primary first), scales[i] = pixels per font unit of face i.
         // A default-ignorable codepoint (zero-width space, joiners, word joiner, soft hyphen,
         // variation selectors, bidi controls) keeps the current face: it draws nothing and
         // takes no space, so a face without a glyph for it is no reason to switch fonts.
+        // Any other codepoint takes the first face in the chain that has it (none: the primary,
+        // its .notdef box).
         static unsigned int selectFace(const std::vector<const FontFace*>& faces, uint32_t codepoint, unsigned int current);
+        // The face of the cluster codepoints[begin, end): the first face that has all of its
+        // visible codepoints (none: the face of its first one); only default-ignorables: `current`.
+        static unsigned int selectClusterFace(const std::vector<const FontFace*>& faces, const std::vector<uint32_t>& codepoints,
+                                              size_t begin, size_t end, unsigned int current);
+        // The end of the grapheme cluster that starts at `begin` (UAX #29's extended grapheme
+        // clusters as font fallback needs them: marks, joiners, variation selectors, emoji
+        // modifiers and ZWJ sequences, flag pairs, Hangul jamo, CR LF), at most `end`.
+        static size_t clusterEnd(const std::vector<uint32_t>& codepoints, size_t begin, size_t end);
         // appends the glyphs of codepoints[offset, offset + length) to `out`, left to right
         static void shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,
                                const std::vector<uint32_t>& codepoints, size_t offset, size_t length,

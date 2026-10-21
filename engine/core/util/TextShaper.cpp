@@ -132,24 +132,38 @@ namespace {
 
         hb_unicode_funcs_t* unicode = hb_unicode_funcs_get_default();
 
+        //a cluster at a time (TextShaper::clusterEnd): it takes the first face that covers all of it, as
+        //Chromium falls back per grapheme cluster, and its script is its first real one
         std::vector<Item> items;
+        const size_t end = offset + length;
         size_t start = offset;
-        unsigned int face = TextShaper::selectFace(faces, codepoints[offset], 0);
+        unsigned int face = 0;
         hb_script_t script = HB_SCRIPT_COMMON;
 
-        for (size_t i = offset; i < offset + length; i++){
-            unsigned int nextFace = TextShaper::selectFace(faces, codepoints[i], face);
+        for (size_t i = offset; i < end;){
+            //(most clusters are one codepoint: nothing below the combining marks extends one but CR LF and a ZWJ)
+            const uint32_t first = codepoints[i];
+            size_t clusterEnd = i + 1;
+            if (clusterEnd < end && (codepoints[clusterEnd] >= 0x0300 || first == 0x200D || first == 0x000D))
+                clusterEnd = TextShaper::clusterEnd(codepoints, i, end);
+            const unsigned int nextFace = (clusterEnd == i + 1) ? TextShaper::selectFace(faces, first, face)
+                                                                : TextShaper::selectClusterFace(faces, codepoints, i, clusterEnd, face);
 
             hb_script_t nextScript = script;
-            hb_script_t charScript = hb_unicode_script(unicode, codepoints[i]);
-            //punctuation, spaces and combining marks take the script around them
-            if (charScript != HB_SCRIPT_COMMON && charScript != HB_SCRIPT_INHERITED && charScript != HB_SCRIPT_UNKNOWN){
-                nextScript = charScript;
+            for (size_t k = i; k < clusterEnd; k++){
+                hb_script_t charScript = hb_unicode_script(unicode, codepoints[k]);
+                //punctuation, spaces and combining marks take the script around them
+                if (charScript != HB_SCRIPT_COMMON && charScript != HB_SCRIPT_INHERITED && charScript != HB_SCRIPT_UNKNOWN){
+                    nextScript = charScript;
+                    break;
+                }
             }
 
-            if (nextFace == face && (nextScript == script || script == HB_SCRIPT_COMMON)){
+            if (i == offset || (nextFace == face && (nextScript == script || script == HB_SCRIPT_COMMON))){
                 //a run that started on neutrals adopts the first real script it meets
+                face = nextFace;
                 script = nextScript;
+                i = clusterEnd;
                 continue;
             }
 
@@ -158,8 +172,9 @@ namespace {
             start = i;
             face = nextFace;
             script = nextScript;
+            i = clusterEnd;
         }
-        items.push_back({start, offset + length - start, face, script});
+        items.push_back({start, end - start, face, script});
 
         //glyphs are emitted left to right, so an RTL run lays its pieces out backwards
         for (size_t i = 0; i < items.size(); i++){
@@ -190,10 +205,7 @@ unsigned int TextShaper::selectFace(const std::vector<const FontFace*>& faces, u
     if (isDefaultIgnorable(codepoint))
         return current < faces.size() ? current : 0;
 
-    if (current < faces.size() && faces[current]->hasCodepoint(codepoint)){
-        return current;
-    }
-
+    //the first face in the chain that has it, as Chromium: after a fallback, the primary again
     for (unsigned int i = 0; i < faces.size(); i++){
         if (faces[i]->hasCodepoint(codepoint)){
             return i;
@@ -202,6 +214,108 @@ unsigned int TextShaper::selectFace(const std::vector<const FontFace*>& faces, u
 
     //uncovered, the primary font draws its .notdef box
     return 0;
+}
+
+namespace {
+
+    bool isRegionalIndicator(uint32_t c){
+        return c >= 0x1F1E6 && c <= 0x1F1FF;
+    }
+
+    //Hangul_Syllable_Type: L, V, T jamo, LV and LVT syllables
+    enum class Hangul { None, L, V, T, LV, LVT };
+    Hangul hangulType(uint32_t c){
+        if ((c >= 0x1100 && c <= 0x115F) || (c >= 0xA960 && c <= 0xA97C))
+            return Hangul::L;
+        if ((c >= 0x1160 && c <= 0x11A7) || (c >= 0xD7B0 && c <= 0xD7C6))
+            return Hangul::V;
+        if ((c >= 0x11A8 && c <= 0x11FF) || (c >= 0xD7CB && c <= 0xD7FB))
+            return Hangul::T;
+        if (c >= 0xAC00 && c <= 0xD7A3)
+            return ((c - 0xAC00) % 28 == 0) ? Hangul::LV : Hangul::LVT;
+        return Hangul::None;
+    }
+
+    //Grapheme_Cluster_Break Extend or SpacingMark (UAX #29 GB9, GB9a): marks, the joiners and variation
+    //selectors, tags, emoji modifiers
+    bool extendsCluster(hb_unicode_funcs_t* unicode, uint32_t c){
+        if (c < 0x0300)
+            return false;
+        if (c == 0x200C || c == 0x200D || (c >= 0xFE00 && c <= 0xFE0F) || (c >= 0xE0020 && c <= 0xE007F) ||
+            (c >= 0xE0100 && c <= 0xE01EF) || (c >= 0x1F3FB && c <= 0x1F3FF))
+            return true;
+        const hb_unicode_general_category_t category = hb_unicode_general_category(unicode, c);
+        return category == HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK || category == HB_UNICODE_GENERAL_CATEGORY_SPACING_MARK ||
+               category == HB_UNICODE_GENERAL_CATEGORY_ENCLOSING_MARK;
+    }
+
+}
+
+size_t TextShaper::clusterEnd(const std::vector<uint32_t>& codepoints, size_t begin, size_t end){
+    hb_unicode_funcs_t* unicode = nullptr;
+    size_t j = begin + 1;
+    for (; j < end; j++){
+        const uint32_t previous = codepoints[j - 1], c = codepoints[j];
+        //most text: nothing below the combining marks extends a cluster but a CR LF pair
+        if (c < 0x0300 && previous != 0x200D){
+            if (previous == 0x000D && c == 0x000A)
+                continue;
+            break;
+        }
+        //GB11: a ZWJ joins what follows (emoji sequences)
+        if (previous == 0x200D)
+            continue;
+        if (!unicode)
+            unicode = hb_unicode_funcs_get_default();
+        if (extendsCluster(unicode, c))
+            continue;
+        //GB12, GB13: regional indicators pair
+        if (isRegionalIndicator(c) && j == begin + 1 && isRegionalIndicator(previous))
+            continue;
+        //GB6-GB8: Hangul syllable sequences
+        const Hangul a = hangulType(previous), b = hangulType(c);
+        if ((a == Hangul::L && b != Hangul::None && b != Hangul::T) || ((a == Hangul::V || a == Hangul::LV) && (b == Hangul::V || b == Hangul::T)) ||
+            ((a == Hangul::T || a == Hangul::LVT) && b == Hangul::T))
+            continue;
+        break;
+    }
+    return j;
+}
+
+unsigned int TextShaper::selectClusterFace(const std::vector<const FontFace*>& faces, const std::vector<uint32_t>& codepoints,
+                                           size_t begin, size_t end, unsigned int current){
+    if (end == begin + 1 || faces.size() <= 1)
+        return selectFace(faces, codepoints[begin], current);
+
+    //the first face that has every visible codepoint of the cluster, or the one codepoint they compose into
+    size_t first = end;
+    for (size_t k = begin; k < end; k++){
+        if (!isDefaultIgnorable(codepoints[k])){
+            first = k;
+            break;
+        }
+    }
+    if (first == end)
+        return current < faces.size() ? current : 0;
+    //a base and marks that compose into one codepoint (HarfBuzz composes them when the face has it)
+    uint32_t composed = codepoints[first];
+    for (size_t k = first + 1; k < end && composed; k++){
+        if (isDefaultIgnorable(codepoints[k]))
+            continue;
+        hb_codepoint_t result = 0;
+        composed = hb_unicode_compose(hb_unicode_funcs_get_default(), composed, codepoints[k], &result) ? result : 0;
+    }
+    for (unsigned int i = 0; i < faces.size(); i++){
+        if (composed && faces[i]->hasCodepoint(composed))
+            return i;
+        bool all = true;
+        for (size_t k = first; k < end && all; k++)
+            all = isDefaultIgnorable(codepoints[k]) || faces[i]->hasCodepoint(codepoints[k]);
+        if (all)
+            return i;
+    }
+    //no face has all of it: the one its first visible codepoint takes
+    return selectFace(faces, codepoints[first], current);
 }
 
 void TextShaper::shapeRange(const std::vector<const FontFace*>& faces, const std::vector<float>& scales,

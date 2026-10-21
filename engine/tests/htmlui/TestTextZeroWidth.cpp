@@ -103,9 +103,53 @@ TEST(TextZeroWidth, IgnorablesKeepTheCurrentFace){
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x200B, 1), 1u);
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x00AD, 0), 0u);
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x200B, 7), 0u);   // out of range: the primary
-    // other codepoints as before: the current face while it covers, else the first that does
+    // other codepoints: the first face that has it, whatever the current one (Chromium's fallback)
     EXPECT_EQ(TextShaper::selectFace(chain.faces, 'H', 0), 0u);
-    EXPECT_EQ(TextShaper::selectFace(chain.faces, 'H', 1), 1u);
+    EXPECT_EQ(TextShaper::selectFace(chain.faces, 'H', 1), 0u);
+    EXPECT_EQ(TextShaper::selectFace(chain.faces, 0x20B9, 0), 1u);
+}
+
+TEST(TextZeroWidth, FallbackReturnsToThePrimaryFace){
+    AhemChain chain(10.0f);
+    ASSERT_TRUE(chain.ahem);
+    ASSERT_FALSE(chain.ahem->hasCodepoint(0x20B9));
+
+    // a rupee sign Ahem lacks is Roboto's, the digits and letters after it Ahem's again (Chromium); one run each
+    const std::vector<ShapedGlyph> glyphs = chain.shape("\xe2\x82\xb9" "12ab \xe2\x82\xac" "9");
+    ASSERT_EQ(glyphs.size(), 8u);
+    const unsigned int expected[] = {1, 0, 0, 0, 0, 0, 1, 0};
+    for (size_t i = 0; i < glyphs.size(); i++)
+        EXPECT_EQ(glyphs[i].face, expected[i]) << i;
+
+    // a cluster takes the first face that has all of it: e with a combining acute is Ahem's (its precomposed é, as
+    // HarfBuzz composes it), x with one (Ahem lacks U+0301, nothing composes) is Roboto's whole
+    for (const ShapedGlyph& glyph : chain.shape("He\xcc\x81H"))
+        EXPECT_EQ(glyph.face, 0u);
+    const std::vector<ShapedGlyph> accented = chain.shape("Hx\xcc\x81H");
+    ASSERT_GE(accented.size(), 3u);
+    EXPECT_EQ(accented.front().face, 0u);
+    EXPECT_EQ(accented.back().face, 0u);
+    for (size_t i = 1; i + 1 < accented.size(); i++)
+        EXPECT_EQ(accented[i].face, 1u) << i;
+}
+
+TEST(TextZeroWidth, GraphemeClustersForFallback){
+    const auto ends = [](const std::string& text){
+        const std::vector<uint32_t> codepoints = decode(text);
+        std::vector<size_t> result;
+        for (size_t i = 0; i < codepoints.size(); i = TextShaper::clusterEnd(codepoints, i, codepoints.size()))
+            result.push_back(TextShaper::clusterEnd(codepoints, i, codepoints.size()));
+        return result;
+    };
+    EXPECT_EQ(ends("ab"), (std::vector<size_t>{1, 2}));
+    EXPECT_EQ(ends("\r\nx"), (std::vector<size_t>{2, 3}));
+    EXPECT_EQ(ends("e\xcc\x81x"), (std::vector<size_t>{2, 3}));                                            // e + U+0301
+    EXPECT_EQ(ends("\xf0\x9f\x87\xab\xf0\x9f\x87\xb7\xf0\x9f\x87\xa9\xf0\x9f\x87\xaa"), (std::vector<size_t>{2, 4})); // two flags
+    EXPECT_EQ(ends("\xf0\x9f\x91\x8d\xf0\x9f\x8f\xbd" "a"), (std::vector<size_t>{2, 3}));                 // thumbs up, skin tone
+    EXPECT_EQ(ends("\xf0\x9f\x91\xa8\xe2\x80\x8d\xf0\x9f\x91\xa9" "a"), (std::vector<size_t>{3, 4}));     // man ZWJ woman
+    EXPECT_EQ(ends("\xe2\x9d\xa4\xef\xb8\x8f" "a"), (std::vector<size_t>{2, 3}));                         // heart + VS16
+    EXPECT_EQ(ends("\xe1\x84\x80\xe1\x85\xa1\xe1\x86\xa8\xea\xb0\x80"), (std::vector<size_t>{3, 4}));     // L V T, then a syllable
+    EXPECT_EQ(ends("\xe2\x80\x8b" "a"), (std::vector<size_t>{1, 2}));                                     // a ZWSP is its own
 }
 
 TEST(TextZeroWidth, IgnorablesAreInvisibleAndZeroWidth){

@@ -1,0 +1,84 @@
+{
+ "fixture": "text/line-break-elements.html",
+ "viewport": [
+  300,
+  130
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "spans",
+    "tag": "div",
+    "x": 10,
+    "y": 10,
+    "w": 45,
+    "h": 40
+   },
+   {
+    "id": "link",
+    "tag": "div",
+    "x": 65,
+    "y": 10,
+    "w": 45,
+    "h": 40
+   },
+   {
+    "id": "padded",
+    "tag": "div",
+    "x": 120,
+    "y": 10,
+    "w": 55,
+    "h": 30
+   },
+   {
+    "id": "letters",
+    "tag": "div",
+    "x": 185,
+    "y": 10,
+    "w": 35,
+    "h": 20
+   },
+   {
+    "id": "spaces",
+    "tag": "div",
+    "x": 230,
+    "y": 10,
+    "w": 35,
+    "h": 40
+   },
+   {
+    "id": "minus",
+    "tag": "div",
+    "x": 10,
+    "y": 70,
+    "w": 25,
+    "h": 30
+   },
+   {
+    "id": "cjk",
+    "tag": "div",
+    "x": 45,
+    "y": 70,
+    "w": 25,
+    "h": 30
+   },
+   {
+    "id": "nested",
+    "tag": "div",
+    "x": 80,
+    "y": 70,
+    "w": 45,
+    "h": 30
+   },
+   {
+    "id": "punctuation",
+    "tag": "div",
+    "x": 140,
+    "y": 70,
+    "w": 35,
+    "h": 40
+   }
+  ]
+ }
+}

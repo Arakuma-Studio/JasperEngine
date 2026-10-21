@@ -1,0 +1,60 @@
+{
+ "fixture": "text/font-fallback-primary.html",
+ "viewport": [
+  300,
+  170
+ ],
+ "browser": "Chromium 153.0.8010.12",
+ "captures": {
+  "": [
+   {
+    "id": "rupee",
+    "tag": "p",
+    "x": 8,
+    "y": 0,
+    "w": 292,
+    "h": 20
+   },
+   {
+    "id": "euro",
+    "tag": "p",
+    "x": 8,
+    "y": 26,
+    "w": 292,
+    "h": 20
+   },
+   {
+    "id": "greek",
+    "tag": "p",
+    "x": 8,
+    "y": 52,
+    "w": 292,
+    "h": 20
+   },
+   {
+    "id": "cyrillic",
+    "tag": "p",
+    "x": 8,
+    "y": 78,
+    "w": 292,
+    "h": 20
+   },
+   {
+    "id": "span",
+    "tag": "p",
+    "x": 8,
+    "y": 104,
+    "w": 292,
+    "h": 20
+   },
+   {
+    "id": "accents",
+    "tag": "p",
+    "x": 8,
+    "y": 130,
+    "w": 292,
+    "h": 20
+   }
+  ]
+ }
+}

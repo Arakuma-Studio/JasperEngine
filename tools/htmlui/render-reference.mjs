@@ -91,6 +91,10 @@ const LAUNCH_ARGS = [
     // determinism: one raster thread (the tiles of a page are rasterized in a fixed order)
     '--num-raster-threads=1',
     '--disable-checker-imaging',
+    // determinism: animations and transitions run on the main thread only. The steps pause and seek them there; an
+    // opacity or transform one the compositor had started could otherwise reach a screenshot at its own time
+    // (paint/opacity-fade-transition: one box in about twenty runs at another opacity than its computed one)
+    '--disable-threaded-animation',
 ];
 
 const NO_TRANSITIONS_CSS = '*,*::before,*::after{transition:none!important}';

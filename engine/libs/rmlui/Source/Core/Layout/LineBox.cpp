@@ -40,6 +40,11 @@ bool LineBox::AddBox(InlineLevelBox* box, InlineLayoutMode layout_mode, LayoutOv
 
 	const float box_placement_cursor = box_cursor + open_spacing_left;
 
+	// A text that goes on with the word before it (no line-break opportunity at the element boundary, fork P6-L2) stays on
+	// the line: its first word may not move to the next one alone.
+	if (layout_mode == InlineLayoutMode::WrapAny && !first_box && box->IsGluedToPrevious(inout_overflow_handle))
+		layout_mode = InlineLayoutMode::WrapAfterContent;
+
 	float available_width = FLT_MAX;
 	if (layout_mode != InlineLayoutMode::Nowrap)
 	{

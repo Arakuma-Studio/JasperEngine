@@ -2,6 +2,7 @@
 #include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/Element.h"
 #include "../../../Include/RmlUi/Core/ElementScroll.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
 #include "../../../Include/RmlUi/Core/Profiling.h"
 #include "../LineClampEllipsis.h"
 #include "FloatedBoxSpace.h"
@@ -432,6 +433,13 @@ bool BlockContainer::FitBesideFloats(Element* child_element, const Box& child_bo
 InlineBoxHandle BlockContainer::AddInlineElement(Element* element, const Box& child_box)
 {
 	RMLUI_ZoneScoped;
+
+	// The texts of its inline formatting context know those around them (fork, P6-L2: line breaking across inline boxes).
+	if (!inline_context_linked)
+	{
+		inline_context_linked = true;
+		ElementText::LinkInlineFormattingContext(this->element);
+	}
 
 	// Inline-level elements need to be added to an inline container, open one if needed.
 	InlineContainer* inline_container = EnsureOpenInlineContainer();

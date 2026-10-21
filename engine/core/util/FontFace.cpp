@@ -180,6 +180,11 @@ bool FontFace::init(int index, std::string* error){
 
     readTables();
 
+    for (uint32_t codepoint = 0; codepoint < 128; codepoint++){
+        if (getGlyphIndex(codepoint) != 0)
+            asciiCoverage[codepoint >> 6] |= uint64_t(1) << (codepoint & 63);
+    }
+
     return true;
 }
 
@@ -299,9 +304,6 @@ uint32_t FontFace::getGlyphIndex(uint32_t codepoint) const{
     return (uint32_t)stbtt_FindGlyphIndex(&info, (int)codepoint);
 }
 
-bool FontFace::hasCodepoint(uint32_t codepoint) const{
-    return getGlyphIndex(codepoint) != 0;
-}
 
 float FontFace::scaleForPixelHeight(float pixels) const{
     return stbtt_ScaleForPixelHeight(&info, pixels);

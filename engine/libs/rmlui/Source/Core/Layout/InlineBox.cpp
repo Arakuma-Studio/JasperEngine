@@ -3,6 +3,8 @@
 #include <cmath>
 #include "../../../Include/RmlUi/Core/Box.h"
 #include "../../../Include/RmlUi/Core/Element.h"
+#include "../../../Include/RmlUi/Core/ElementText.h"
+#include "../../../Include/RmlUi/Core/ComputedValues.h"
 #include "../../../Include/RmlUi/Core/FontMetrics.h"
 
 namespace Rml {
@@ -134,6 +136,33 @@ void InlineBox::Submit(const PlacedFragment& placed_fragment)
 	{
 		element->AddBox(element_box, border_position - element_offset);
 	}
+}
+
+bool InlineBox::IsGluedToPrevious(LayoutOverflowHandle /*overflow_handle*/)
+{
+	// Its first text, through the inline boxes it starts with (an atomic inline or a <br> first: no text to go on).
+	for (Element* element = GetElement(); element;)
+	{
+		Element* first = nullptr;
+		for (int i = 0; i < element->GetNumChildren(); i++)
+		{
+			Element* child = element->GetChild(i);
+			const ComputedValues& computed = child->GetComputedValues();
+			if (computed.display() == Style::Display::None || computed.position() == Style::Position::Absolute ||
+				computed.position() == Style::Position::Fixed || computed.float_() != Style::Float::None)
+				continue;
+			first = child;
+			break;
+		}
+		if (!first)
+			return false;
+		if (auto text = rmlui_dynamic_cast<ElementText*>(first))
+			return !text->GetText().empty() && !text->IsLineBreakOpportunityBefore();
+		if (first->GetDisplay() != Style::Display::Inline || first->GetTagName() == "br")
+			return false;
+		element = first;
+	}
+	return false;
 }
 
 } // namespace Rml
