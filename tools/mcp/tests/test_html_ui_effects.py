@@ -10,7 +10,8 @@ the project root.
 - set_ui_effect_time pins the clock: every effect region is drawn (its pixels vary) with the
   colours recorded here, a second screenshot is identical, the live clock moves the aurora.
 - inspect_ui lists each element's effects with their parameters (fx:<name> in the outline);
-  list_ui_effects lists the whole catalogue (83 built-in effects) and the project effects, and
+  list_ui_effects lists the whole catalogue (the 101 built-in effects of html-ui-effects.md, the 18
+  stateful ones of phase 6 with cost stateful) and the project effects, and
   filters by name, category (glass: the four glass effects) and kind.
 - In play, the pointer over the button transitions its sheen to the hover intensity.
 - inspect_ui {file} (check --ui) reports effect-unknown, effect-unknown-param and
@@ -31,8 +32,10 @@ from __future__ import annotations
 
 import asyncio
 import math
+import re
 import time
 
+import harness
 from harness import Editor, TestFailure
 from htmlui_pixels import Shot
 
@@ -265,8 +268,15 @@ async def test_list_ui_effects(ed: Editor):
         ed.check(name in names, f"{name} listed: {names}")
     ed.check_eq(names, sorted(names), "sorted by name")
     builtin = [e for e in everything["effects"] if e["builtin"]]
-    # the whole catalogue (Appendix A: 83 effects), the project's two effects beside it
-    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects listed, the catalogue has 83")
+    # the whole catalogue (phase 5's 83 effects and phase 6's 18 stateful ones: html-ui-effects.md's table), the
+    # project's two effects beside it
+    catalogue = (harness.REPO / "docs" / "mcp" / "guide" / "html-ui-effects.md").read_text(encoding="utf-8")
+    rows = re.findall(r"^\| \[`([a-z0-9-]+)`\]\(#[a-z0-9-]+\) \| ([\w, ]+) \| ([\w-]+) \| (\w+) \|", catalogue, re.M)
+    ed.check_eq(len(rows), 101, "the catalogue's effects")
+    ed.check_eq(sorted(e["name"] for e in builtin), sorted(r[0] for r in rows), "the built-in effects are the catalogue's")
+    stateful = sorted(e["name"] for e in builtin if e.get("cost") == "stateful")
+    ed.check_eq(len(stateful), 18, f"the stateful effects: {stateful}")
+    ed.check_eq(stateful, sorted(r[0] for r in rows if r[3] == "stateful"), "the stateful effects are the catalogue's")
     ed.check_eq(everything["count"] - len(builtin), 2, "the project effects: tint-wave and spare-glow")
     ed.check(all(e["thumbnail"].startswith("docs/mcp/guide/img/effects/") for e in builtin), "thumbnails")
     ed.check(all("params" not in e and "param_names" in e for e in everything["effects"]), "a long list leaves the params out")
