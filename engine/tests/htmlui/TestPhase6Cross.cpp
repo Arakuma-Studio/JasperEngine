@@ -32,6 +32,7 @@
 #include <RmlUi/Core.h>
 
 #include <algorithm>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -104,10 +105,11 @@ namespace {
         return p[0] == BACKGROUND[0] && p[1] == BACKGROUND[1] && p[2] == BACKGROUND[2];
     }
 
-    // pixels of an area that are not the background, and of those how many are pure white
+    // pixels of an area that are not the background, how many of those are near white, and their colours
     struct Ink {
         size_t painted = 0;
         size_t white = 0;
+        std::set<uint32_t> colours;
     };
 
     Ink inkIn(const TestImage& image, int x0, int y0, int x1, int y1){
@@ -118,8 +120,9 @@ namespace {
                 if (std::abs(p[0] - BACKGROUND[0]) + std::abs(p[1] - BACKGROUND[1]) + std::abs(p[2] - BACKGROUND[2]) <= 12)
                     continue;
                 ink.painted++;
-                if (p[0] == 255 && p[1] == 255 && p[2] == 255)
+                if (p[0] > 245 && p[1] > 245 && p[2] > 245)
                     ink.white++;
+                ink.colours.insert((uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2]);
             }
         }
         return ink;
@@ -372,12 +375,15 @@ TEST(Phase6Cross, ClampedJustifiedTextInsideEffects){
     EXPECT_TRUE(EffectRuntime::get().simulationInfo(scene.element("trail"), "time-trail", 0).exists);
 
     // gradient text: the second line's "filled" and the ellipsis after it (Ahem 20px, its U+2026 one square: x 130-150)
-    // are drawn by the effect's fill, never in the white the text is drawn in for the fill; nothing after the ellipsis
+    // are drawn by the effect's fill (the foil's many colours), not in the white the text is drawn in for the fill;
+    // nothing after the ellipsis
     const Ink word = inkIn(image, 12, 96, 128, 116);
     const Ink ellipsis = inkIn(image, 131, 97, 149, 115);
     EXPECT_GT(word.painted, 1500u);
     EXPECT_GT(ellipsis.painted, 300u) << "the ellipsis of the clamp line is drawn";
-    EXPECT_EQ(word.white + ellipsis.white, 0u) << "the text and its ellipsis take the effect's fill";
+    EXPECT_GT(word.colours.size(), 200u) << "the text takes the effect's fill";
+    EXPECT_GT(ellipsis.colours.size(), 50u) << "the ellipsis takes the effect's fill";
+    EXPECT_LT(ellipsis.white * 10, ellipsis.painted) << "the ellipsis is not drawn white";
     EXPECT_EQ(inkIn(image, 152, 94, 232, 118).painted, 0u) << "the words after the ellipsis are not drawn";
     // and the twin's ellipsis, in the block's colour, at the same place 160px lower
     EXPECT_GT(inkIn(image, 131, 257, 149, 275).painted, 300u);
