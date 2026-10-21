@@ -1444,7 +1444,8 @@ so a change reloads once), `reloadDocument(entity, preserveState)`, `getLoadCoun
 `entity` is the GameObject with the UI Document (omitted: the scene's only one, else the only
 one of the open scenes, or of the running ones in play); a `ref` they return works as a selector
 again; boxes are `[x, y, width, height]` in canvas px (CSS px), origin top left; they wait up to
-5 s for a document to load and report why one did not.
+5 s for a document to load and report why one did not. A `<video>` is inspected like any element
+plus its `media` state; in play with `fixed_fps` it is frame-exact, so its screenshots repeat.
 
 ### `inspect_ui`
 
