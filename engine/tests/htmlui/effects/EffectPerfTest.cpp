@@ -24,7 +24,7 @@
 //   does not have. lavapipe records and validates every command on the thread too, and that share
 //   depends on the machine (its CPU and caches) differently from B's: gating Vulkan's full frame
 //   passed on one host and failed on another (p6-stateful-fx). Both measures are printed.
-// - Cost table: every built-in effect (the 83 of the catalogue, one row each) fills 1024 x 1024,
+// - Cost table: every built-in effect (the 101 of the catalogue, one row each) fills 1024 x 1024,
 //   rendered and read back through the golden harness (its pointer and trail inputs), against a
 //   background-color fill of the same size measured with it: rounds of 8 captures of the fill
 //   then 8 of the effect, the least of at least 3 rounds for both (the process's CPU time: the GL
@@ -722,7 +722,7 @@ TEST(EffectPerfTest, CostTable){
     std::printf("[ effects  ] %zu of the %zu effects of the catalogue measured; the highest low x%.2f, medium x%.2f\n", measured.size(),
                 catalogue.size(), highestLow, highestMedium);
     EXPECT_EQ(measured.size(), catalogue.size()) << "every effect of the catalogue is in the table";
-    EXPECT_GE(catalogue.size(), 83u) << "the phase-5 catalogue (Appendix A) has 83 effects";
+    EXPECT_EQ(catalogue.size(), 101u) << "the catalogue has 101 effects: phase 5's 83 (Appendix A) and phase 6's 18 stateful ones";
     nlohmann::json table = {{"size", 1024}, {"captures_per_round", 8}, {"effects", effects},
 #if defined(SOKOL_VULKAN)
                             {"backend", "vulkan"}

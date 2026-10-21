@@ -337,7 +337,7 @@ async def test_guide_served(ed: Editor):
     catalogue = effects + "".join([await read_text(ed, uri) for uri in parts])
     listed_effects = (await ed.call("list_ui_effects"))["effects"]
     builtin = [e["name"] for e in listed_effects if e["builtin"]]
-    ed.check(len(builtin) >= 83, f"{len(builtin)} built-in effects")
+    ed.check_eq(len(builtin), 101, "the built-in effects (phase 5's 83, phase 6's 18 stateful ones)")
     missing = [name for name in builtin if f"### `{name}`" not in catalogue]
     ed.check(not missing, f"jasper://docs/html-ui-effects lacks {missing}")
 
