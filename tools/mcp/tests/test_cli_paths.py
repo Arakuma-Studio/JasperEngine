@@ -93,7 +93,10 @@ def _ignore_copy(directory: str, names: list[str]) -> set[str]:
 
 def layout() -> Path:
     """The scratch tree, made once:  <tmp>/work/proj, <tmp>/work/games/My Game ü (copies of the fixture)
-    and <tmp>/work/sub (an empty working directory, for the ../ forms). Returns <tmp>/work."""
+    and <tmp>/work/sub/deep (empty working directories, for the ../ forms). Returns <tmp>/work.
+
+    From <tmp>/work/sub, "../proj" joined twice is "../proj/../proj", the same directory: the forms from
+    <tmp>/work/sub/deep ("../../proj" twice is <tmp>/proj) are the ones a doubled join breaks."""
     if "work" in S:
         return S["work"]
     tmp = Path(tempfile.mkdtemp(prefix="jasper-cli-paths-"))
@@ -102,7 +105,7 @@ def layout() -> Path:
     fixture = harness.default_fixture()
     shutil.copytree(fixture, work / "proj", ignore=_ignore_copy, symlinks=True)
     shutil.copytree(fixture, work / UNICODE_DIR, ignore=_ignore_copy, symlinks=True)
-    (work / "sub").mkdir()
+    (work / "sub" / "deep").mkdir(parents=True)
     (tmp / "home").mkdir()
     S["work"] = work
     return work
@@ -138,6 +141,7 @@ def project_forms() -> list[tuple[Path, str]]:
     """(working directory, --project) pairs: every relative form names <work>/proj, or the unicode copy."""
     work = layout()
     sub = work / "sub"
+    deep = sub / "deep"
     return [
         (work, "proj"),
         (work, "./proj"),
@@ -147,8 +151,11 @@ def project_forms() -> list[tuple[Path, str]]:
         (sub, "../proj"),
         (sub, "../sub/../proj/"),
         (sub, "../proj/project.yaml"),
+        (deep, "../../proj"),
+        (deep, "../../sub/../proj/project.yaml"),
         (work, UNICODE_DIR),
         (sub, f"../{UNICODE_DIR}/project.yaml"),
+        (deep, f"../../{UNICODE_DIR}/"),
         (work / "proj", "."),
     ]
 
@@ -173,7 +180,7 @@ def check_export(out: Path, project: Path, what: str) -> None:
 
 def no_doubled_paths() -> None:
     work = layout()
-    for doubled in (work / "proj" / "proj", work / "sub" / "proj", work / UNICODE_DIR / "games"):
+    for doubled in (work / "proj" / "proj", work / "sub" / "proj", work / "sub" / "deep" / "exports", work / UNICODE_DIR / "games"):
         check(not doubled.exists(), f"something was written to {doubled}")
 
 
@@ -200,10 +207,11 @@ async def test_export_relative_project_and_out():
 async def test_export_dotdot_project_yaml_and_out():
     work = layout()
     out = work / "exports" / "dot"
-    ok(run(work / "sub", "export", "--project", "../proj/project.yaml", "--out", "../exports/./dot", "--backend", "opengl"),
-       "export ../proj/project.yaml -> ../exports/./dot")
-    check_export(out, work / "proj", "export --project ../proj/project.yaml --out ../exports/./dot")
-    check(not (work / "sub" / "exports").exists(), "--out is relative to the working directory")
+    ok(run(work / "sub" / "deep", "export", "--project", "../../proj/project.yaml", "--out", "../../exports/./dot", "--backend", "opengl"),
+       "export ../../proj/project.yaml -> ../../exports/./dot")
+    check_export(out, work / "proj", "export --project ../../proj/project.yaml --out ../../exports/./dot")
+    check(not (work / "sub" / "exports").exists() and not (work / "proj" / "exports").exists(),
+          "--out is relative to the working directory")
     no_doubled_paths()
 
 
@@ -226,7 +234,7 @@ def dumped_scenes(path: Path) -> dict[str, int]:
 async def test_scene_dump_relative_paths():
     work = layout()
     sub = work / "sub"
-    ok(run(sub, "scene-dump", "--project", "../proj", "--out", "dump.yaml", timeout=600), "scene-dump ../proj")
+    ok(run(sub / "deep", "scene-dump", "--project", "../../proj", "--out", "../dump.yaml", timeout=600), "scene-dump ../../proj")
     check((sub / "dump.yaml").is_file(), "the dump is written relative to the working directory")
     scenes = dumped_scenes(sub / "dump.yaml")
     check({"Main Scene", "HUD Scene"} <= set(scenes) and all(scenes.values()),
@@ -249,8 +257,8 @@ async def test_benchmark_relative_paths():
     display = xvfb.start()
     try:
         extra = {"DISPLAY": display}
-        r = ok(run(sub, "benchmark", "--project", "../proj", "--frames", "5", "--warmup", "2", "--out", "bench.json",
-                   timeout=600, extra_env=extra), "benchmark ../proj")
+        r = ok(run(sub / "deep", "benchmark", "--project", "../../proj", "--frames", "5", "--warmup", "2", "--out", "../bench.json",
+                   timeout=600, extra_env=extra), "benchmark ../../proj")
         result = json.loads((sub / "bench.json").read_text())
         check(result["scene"] == "Main Scene" and result["frames"] >= 1, f"benchmark of the start scene: {result}")
 
