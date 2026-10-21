@@ -626,8 +626,11 @@ async def play_checks(ed: Editor):
         return d.offsetHeight, d.scrollHeight > d.offsetHeight""")
     ed.check_eq(values, [40, True], "the line-clamp fragment shows two lines")
 
-    # nothing logged, also not by the edit-mode load of the HUD (its model did not exist yet)
-    errors = [m for m in await errors_since(ed) if "[HTML UI]" in m or "Lua" in m or "rror" in m]
+    # nothing logged, also not by the edit-mode load of the HUD (its model did not exist yet); a host without an audio
+    # device (the test machines) gets the engine's one "No audio output available" warning when the Video fragment's
+    # audio track opens the mixer: not the UI's
+    errors = [m for m in await errors_since(ed) if ("[HTML UI]" in m or "Lua" in m or "rror" in m)
+              and not m.startswith("No audio output available")]
     ed.check(not errors, f"errors or warnings while playing the guide's snippets: {errors[:10]}")
 
 
