@@ -79,6 +79,7 @@
   "checks": [{"type": "text_fits", "selector": ".card .name, .card .price"},
              {"type": "no_overlap", "selector": ".card"},
              {"type": "within_parent", "selector": ".card", "container": ".grid"},
+             {"type": "within_parent", "selector": ".card .stats", "container": ".card"},
              {"type": "contrast", "selector": ".price"},
              {"type": "min_size", "selector": ".buy"},
              {"type": "within_viewport", "selector": ".shop"}]},

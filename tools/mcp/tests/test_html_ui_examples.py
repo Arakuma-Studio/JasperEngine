@@ -727,6 +727,12 @@ async def dialogue_after(ed: Editor, n: str) -> None:
 
 
 async def shop_before(ed: Editor, n: str, first: bool) -> None:
+    # the descriptions are clamped to two lines (-webkit-line-clamp, p6-line-clamp): the Ember Blade's runs on past them,
+    # the Iron Helm's is one line
+    long, scroll, short = await lua(ed, f"local d = {doc_lua(n)}; local a = d:querySelector('.card:nth-child(1) .stats'); "
+                                        f"return a.offsetHeight, a.scrollHeight, d:querySelector('.card:nth-child(5) .stats').offsetHeight")
+    check(abs(long - 2 * short) <= 1 and scroll > long + short / 2,
+          f"a long description shows two lines of more ({long}px of {scroll}px), a short one one ({short}px)")
     check(await lua(ed, f"local d = {doc_lua(n)}; return d:querySelector('.card:nth-child(3) .buy'):hasAttribute('disabled'), "
                         f"d:querySelector('.card:nth-child(2) .buy'):hasAttribute('disabled')") == [True, False],
           "a card the purse cannot pay for has its button disabled")
