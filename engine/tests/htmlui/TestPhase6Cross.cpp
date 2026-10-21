@@ -371,15 +371,17 @@ TEST(Phase6Cross, ClampedJustifiedTextInsideEffects){
     }
     EXPECT_TRUE(EffectRuntime::get().simulationInfo(scene.element("trail"), "time-trail", 0).exists);
 
-    // gradient text: the second line's "filled" and the ellipsis after it (Ahem 20px: x 130-190) are drawn by the
-    // effect's fill, never in the white the text is drawn in for the fill
+    // gradient text: the second line's "filled" and the ellipsis after it (Ahem 20px, its U+2026 one square: x 130-150)
+    // are drawn by the effect's fill, never in the white the text is drawn in for the fill; nothing after the ellipsis
     const Ink word = inkIn(image, 12, 96, 128, 116);
-    const Ink ellipsis = inkIn(image, 132, 96, 188, 116);
+    const Ink ellipsis = inkIn(image, 131, 97, 149, 115);
     EXPECT_GT(word.painted, 1500u);
-    EXPECT_GT(ellipsis.painted, 600u) << "the ellipsis of the clamp line is drawn";
+    EXPECT_GT(ellipsis.painted, 300u) << "the ellipsis of the clamp line is drawn";
     EXPECT_EQ(word.white + ellipsis.white, 0u) << "the text and its ellipsis take the effect's fill";
+    EXPECT_EQ(inkIn(image, 152, 94, 232, 118).painted, 0u) << "the words after the ellipsis are not drawn";
     // and the twin's ellipsis, in the block's colour, at the same place 160px lower
-    EXPECT_GT(inkIn(image, 132, 256, 188, 276).painted, 600u);
+    EXPECT_GT(inkIn(image, 131, 257, 149, 275).painted, 300u);
+    EXPECT_EQ(inkIn(image, 152, 254, 232, 278).painted, 0u);
 
     expectGolden("p6/clamp_effects", image);
     EffectRuntime::get().clearTestInput();

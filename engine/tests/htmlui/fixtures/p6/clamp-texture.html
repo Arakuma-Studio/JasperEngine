@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <!-- Phase-6 cross-feature page (p6-accept): justified, indented, clamped text (P6-J1, P6-J2, P6-L1) and a paint
      effect in a texture-mode document (renderMode TEXTURE: its own context and target). TestPhase6Cross.cpp compares
-     the document's texture with the same page drawn as a screen document of the same size. -->
+     the document's texture with the same page drawn as a screen document of the same size. The right-to-left paragraph holds one text, as
+     the p3/text fixtures' do: inline boxes of a right-to-left line are placed left to right (phase-3 spec 2.2). -->
 <html><head><style>
   html, body { margin: 0; width: 320px; height: 200px; overflow: hidden; background: #101218; }
   .c { position: absolute; left: 10px; width: 140px; font-family: sans-serif; font-size: 11px; line-height: 14px; color: #f1c40f;
@@ -17,6 +18,6 @@
 </style></head><body>
 <div class="c" id="a">Indented pp <span>justified</span> text clamped to two lines and more</div>
 <div class="c" id="b">Inter character justified pp text clamped to three lines with more after it</div>
-<div class="c" id="c">Right to left pp <span>justified</span> text clamped to two lines</div>
+<div class="c" id="c">Right to left pp justified text clamped to two lines and more</div>
 <div id="panel"><p id="p">A panel with a paint effect behind a justified paragraph pp clamped to four lines, more words after the clamp</p></div>
 </body></html>

@@ -3,7 +3,7 @@
      elements with effects: a paint effect behind it, a phase-5 filter and a stateful filter over it, gradient text
      filled by an effect (background-clip: text: the ellipsis is text of the line and takes the fill too), and a
      backdrop effect behind it. Each clamped block has an unstyled twin (.twin) in the lower half: the effects change
-     no box. Ahem: every glyph a full square, so the kept characters and the ellipsis's three dots show. -->
+     no box. Ahem: every glyph a full square (its U+2026 too), so the kept characters and the ellipsis show. -->
 <html><head><style>
   @font-face { font-family: "Ahem"; src: url("../../fonts/Ahem.ttf") format("truetype"); }
   html, body { margin: 0; width: 480px; height: 320px; overflow: hidden; background: #101218; }
@@ -15,7 +15,7 @@
   #filter { left: 170px; top: 10px; filter: effect(chromatic-aberration, strength 0.5); }
   #trail { left: 330px; top: 10px; filter: effect(time-trail, trail-length 1s); }
   #fill { left: 10px; top: 70px; width: 220px; font-size: 20px; line-height: 24px; text-indent: 0; color: transparent;
-          background-image: effect(holographic, speed 0, tilt-follows-pointer false); background-clip: text; }
+          background-image: effect(holographic, speed 0, sparkle 0, tilt-follows-pointer false); background-clip: text; }
   #back { position: absolute; left: 250px; top: 64px; width: 220px; height: 70px; background: linear-gradient(90deg, #8e44ad, #16a085); }
   #glass { left: 260px; top: 74px; width: 200px; padding: 4px; border-radius: 8px; backdrop-filter: effect(frosted-glass, blur 4px); }
   #paint-twin { left: 10px; top: 170px; padding: 6px; }
