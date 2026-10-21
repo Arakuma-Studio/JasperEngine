@@ -21,8 +21,11 @@ a time, the perf gates under the three locks with the load average under 1, the 
 clangd 18.1.3 installed (their tests ran), the reference renderer with playwright-core 1.63.0 and the pinned
 Chromium 153.0.8010.12 (headless shell revision 1243, already installed there). The host has no `uv`: the MCP
 scripts ran with a virtual environment of the worktree (`build/mcp-venv`: mcp, pyyaml, pillow, numpy) behind a
-`build/bin/uv` stand-in that runs `uv run ... python <args>` as that environment's `python <args>`; nothing was
-installed on the host. The local host was used for editing and git only.
+`build/bin/uv` stand-in that runs `uv run ... python <args>` as that environment's `python <args>`. Nothing was
+installed on the host outside the worktree but the Docker image `jasperengine/linux-backends`, which
+`tools/smoke-test.sh` builds from `docker/linux-backends.Dockerfile` for its GLES3 and Vulkan runs; the
+comparison with `main` before phase 6 (4.5.2) used a temporary worktree `/root/jasper/wt/p6-accept-before`,
+removed afterwards. The local host was used for editing and git only.
 
 ## 1 The criteria, item by item
 
@@ -108,7 +111,7 @@ fixtures keep one text per right-to-left paragraph for that reason), not a phase
 | Fork bookkeeping | FORK.md missed six fork commits of phase 6 (P6-L1 `120e04c0b`; P6-L2 `9ab5bd754`, `34a7d7696`, `8e4a79372`, `884a94923`, `851347f81`), had two sections named "Phase 6 patches", and said nothing of p6-stateful-fx | follow-ups merged after their rows were written | the rows list them; "Phase 6 patches (line clamping, line breaking)"; a "Phase 6 (stateful effects)" note (no fork patch: its merges change no file of `engine/libs/rmlui`) |
 | Untested criterion | phase-6 stateful §5 "project effects with state: compile, `check`, hot reload restart" had no `check` or hot-reload evidence (only `EffectStatefulTest`'s project effect, compiled) | — | `test_html_ui_effects.py::test_stateful_project_effect` |
 | Weak checks | `list_ui_effects` and `jasper://docs/html-ui-effects` were checked for "at least 83" effects, `EffectPerfTest.CostTable` for "at least 83" (phase 5's count); stateful §4.5 asks for the 18 with `cost: stateful` | phase 5's numbers kept | the catalogue's 101 exactly, the 18 stateful ones by name against `html-ui-effects.md` |
-| Perf gate failed | `CompatCssPerf.UserAgentSheet` failed in the first Vulkan perf run: 1.07 ms against its 1 ms target (load 0.93, the host to itself), while the 50 KB sheet measured just before it in the same process was normal (3.22 ms) | Two causes, measured. (1) Phase 6 made the user-agent sheet's rewrite 13.5 % costlier: 3,822,058 instructions a rewrite before phase 6 (`main` `4958e5f7b`), 4,336,698 on `main` (callgrind, the gate's 23 rewrites); alternating runs of both trees on the quiet host, 5 each: 0.725-0.779 ms before, 0.823-0.914 ms after. The cause is the sheet, not the code: the old code with the new sheet measures the same as the new tree. Section 9b (the `<video>` controls, 2.2 KB) costs 455k instructions, its seven `mask-*` declarations 113k of them (16k each: four `url()`s and the layer machinery); 59k were `VideoFormats::isVideoPath`, which p6-video added to every `url()` of a CSS image and which allocated four strings a call. (2) The test machine is a virtual machine whose neighbours slow it down by up to a quarter for bursts under a second (the same binary measured 0.72 to 0.96 ms in consecutive runs), and `gatedCpuMs` took its 15 retries back to back: for the 0.85 ms user-agent sheet all 15 fit in 0.3 s, inside one burst | `4887ed431`: `isVideoPath` reads the extension into a buffer (4,303,993 instructions a rewrite, -33k); `cf004ba1c`: the gate's retries are 200 ms apart (sleeping costs no CPU time), so the least of 15 measurements also sees the host outside a burst; the targets, the 15 attempts and the estimator's rule (the least measurement) are unchanged, and a step whose own cost is above its target still fails every attempt. Rewriting the controls' masks as one `mask` shorthand saved only 10k instructions and was not done. Not recovered: the controls' rules themselves (about 0.1 ms once per process); the user-agent sheet now runs at 83-91 % of its target on this host (phase 2 asked its own package for 75 %), 4.6.2 |
+| Perf gate failed | `CompatCssPerf.UserAgentSheet` failed in the first Vulkan perf run: 1.07 ms against its 1 ms target (load 0.93, the host to itself), while the 50 KB sheet measured just before it in the same process was normal (3.22 ms) | Two causes, measured. (1) Phase 6 made the user-agent sheet's rewrite 13.5 % costlier: 3,822,058 instructions a rewrite before phase 6 (`main` `4958e5f7b`), 4,336,698 on `main` (callgrind, the gate's 23 rewrites); alternating runs of both trees on the quiet host, 5 each: 0.725-0.779 ms before, 0.823-0.914 ms after. The cause is the sheet, not the code: the old code with the new sheet measures the same as the new tree. Section 9b (the `<video>` controls, 2.2 KB) costs 455k instructions, its seven `mask-*` declarations 113k of them (16k each: four `url()`s and the layer machinery); 59k were `VideoFormats::isVideoPath`, which p6-video added to every `url()` of a CSS image and which allocated four strings a call. (2) The test machine is a virtual machine whose neighbours slow it down by up to a quarter for bursts under a second (the same binary measured 0.72 to 0.96 ms in consecutive runs), and `gatedCpuMs` took its 15 retries back to back: for the 0.85 ms user-agent sheet all 15 fit in 0.3 s, inside one burst | `4887ed431`: `isVideoPath` reads the extension into a buffer (4,303,993 instructions a rewrite, -33k); `cf004ba1c`: the gate's retries are 200 ms apart (sleeping costs no CPU time), so the least of 15 measurements also sees the host outside a burst; the targets, the 15 attempts and the estimator's rule (the least measurement) are unchanged, and a step whose own cost is above its target still fails every attempt. Rewriting the controls' masks as one `mask` shorthand saved only 10k instructions and was not done. Not recovered: the controls' rules themselves (about 0.1 ms once per process); the user-agent sheet now runs at 82-92 % of its target on this host (phase 2 asked its own package for 75 %), 4.5 |
 | Missing generator check | `xcode_add_video_libs.py --check` (p6-video's Xcode sync) was the only Xcode sync no test ran | — | added to `test_generators.py` |
 | Cross-feature gaps | no test drew a video recorded and immediately, removed one mid-frame, put a stateful effect on a video, or clamped text inside effects or a texture document; the guide snippets test played neither the Video fragment nor the clamp box; nothing checked the shop example's clamped descriptions | each package tested its own feature | section 2 |
 | Stale docs | section 5 | | |
@@ -116,10 +119,11 @@ fixtures keep one text per right-to-left paragraph for that reason), not a phase
 ## 4 Runs
 
 All on the remote test machine, in order, one at a time; "head" is the commit the worktree was at. The tree
-changed during the run only by this branch's commits: test and documentation commits, the two fork warning
-fixes (`d4261d83e`, `1ea592132`, after which every C++ suite, the RmlUi tests, web and Android ran again) and
-the effect count of `EffectPerfTest` (`fc73df57b`). The code is final at `fc73df57b`; later commits change tests
-and documentation only.
+changed during the run only by this branch's commits: tests and documentation, the two fork warning fixes
+(`d4261d83e`, `1ea592132`), the effect count of `EffectPerfTest` (`fc73df57b`), `isVideoPath` (`4887ed431`) and the
+perf gates' retries (`cf004ba1c`). After each code change every C++ suite, web and Android ran again (after the
+fork fixes the RmlUi tests too); the code is final at `cf004ba1c`, and the last round of every suite ran at
+`c76e38613` (later commits change documentation only).
 
 ### 4.1 First, `main` as merged (`de3414f70`)
 
@@ -134,7 +138,7 @@ and documentation only.
 
 | Run | Head | Result |
 |---|---|---|
-| `JOBS=10 tools/build.sh linux` | `ff6a119c0`, again `377ee5d0c` | exit 0, 0 warnings in the steps rebuilt (the first build's only warning is `Matrix3.cpp`'s, above); symbol check 0 |
+| `JOBS=10 tools/build.sh linux` | `ff6a119c0`, `377ee5d0c`, `c76e38613` | exit 0, 0 warnings in the steps rebuilt (the first build's only warning is `Matrix3.cpp`'s, above); symbol check 0 |
 | `htmlui-tests` glcore | `ff6a119c0` | 3311 tests (3306 + 5 `Phase6Cross`), 3237 passed, 0 failed, 74 skipped, 1244 s |
 | `htmlui-tests` Vulkan (`HTMLUI_BACKEND=vulkan`, lavapipe) | `ff6a119c0` | 3311 / 3237 / 0 / 74, 1106 s |
 | `htmlui-tests` glcore, after the fork fixes | `377ee5d0c` | 3311 / 3237 / 0 / 74, 1233 s |
@@ -142,8 +146,10 @@ and documentation only.
 | `tools/htmlui/run-rmlui-tests.sh --docker` | `ff6a119c0` | 460 test cases, 37,597 assertions, all passed; 144 warnings (section 3) |
 | the same | `377ee5d0c` | 460 / 37,597 passed, 0 warnings |
 | `tools/build.sh htmlui-editor-tests` | `ff6a119c0` | 73 tests, 72 passed, 1 skipped (`GoogleFonts.LiveNetwork` without `HTMLUI_LIVE_NETWORK`); with it: __LIVE__ |
-| `tools/build.sh web` | `fa3aef32a`, `fc73df57b` | exit 0, 0 warnings |
-| `tools/build.sh android` (under `flock android.lock`) | `fa3aef32a`, `fc73df57b` | exit 0, 0 warnings; `app-debug.apk` (four ABIs) |
+| `htmlui-tests` glcore, the final code | `c76e38613` | 3311 / 3237 / 0 / 74, 1284 s |
+| `htmlui-tests` Vulkan, the final code | `c76e38613` | 3311 / 3237 / 0 / 74, 1078 s |
+| `tools/build.sh web` | `fa3aef32a`, `fc73df57b`, `c76e38613` | exit 0, 0 warnings |
+| `tools/build.sh android` (under `flock android.lock`) | `fa3aef32a`, `fc73df57b`, `c76e38613` | exit 0, 0 warnings; `app-debug.apk` (four ABIs) |
 
 In every suite run: the 218 `P3/BrowserParity` fixtures (the 34 of phase 6 among them: 9 justify, 5 indent, 14
 line clamp, 2 line break, the font fallback, 3 video) and the 1595 Taffy fixtures (73 excluded, 0 known
@@ -152,13 +158,13 @@ glcore and Vulkan goldens from one set of files; no golden changed (the four new
 
 ### 4.3 MCP
 
-`LP_NUM_THREADS=2 JASPER_FIXTURE=/root/jasper/shared/fixture-unity tools/mcp/run-tests.sh -j 4` (63 files):
+`LP_NUM_THREADS=2 JASPER_FIXTURE=/root/jasper/shared/fixture-unity tools/mcp/run-tests.sh -j 4` (62 files):
 
 | Run | Head (editor / tests) | Result |
 |---|---|---|
 | 1 | `377ee5d0c` / `fc73df57b` | 585 passed, 1 failed, 6 skipped, 3878 s. The failure was this branch's own new check: the guide snippets test now plays the Video fragment, whose audio track opens the mixer, and on this host without a sound device the engine logs its one "No audio output available" warning, which the test's "no error" filter caught; fixed in `aacbafc78` (the filter leaves that host message out) |
 | 2 | `377ee5d0c` / `aacbafc78` | 586 passed, 0 failed, 6 skipped, 4002 s |
-| 3 (the final editor, after the guide's last lines) | __MCP3HEAD__ | __MCP3__ |
+| 3 (the final code and editor, the guide's last lines embedded) | `c76e38613` / `c76e38613` | 586 passed, 0 failed, 6 skipped, 3879 s |
 
 The 6 skips of each run are the slow gates, run next: `test_build.py::test_desktop_build_and_run`,
 `test_playctl.py::test_desktop_player_driven`, `test_play.py::test_cpp_build_failure_reported`,
@@ -190,10 +196,10 @@ in play.
 | `node render-reference.mjs --fixtures all --check` | `377ee5d0c` | 575 references: the same (Chromium 153.0.8010.12, headless shell 1243) |
 | `tools/htmlui/check_effect_shaders.sh` | `fa3aef32a` | `uieffect/all`: 193 variants x 6 backends, 1158 variant files, then `ui-effects --validate` PASS |
 | `jasperengine-editor ui-effects --validate` | `fa3aef32a` | "101 effects; every effect compiles in every form and matches its manifest" |
-| `shaders --library all --backend all` | __SLHEAD__ | __SL__ |
-| exports `--backend all` | __SLHEAD__ | __EXPORTS__ |
-| the library's fixtures (`tools/smoke-test.sh`) | __SLHEAD__ | __SMOKE__ |
-| `tools/fixtures/shader-library-export/check.sh`, GL and Vulkan | __SLHEAD__ | __SLX__ |
+| `shaders --library all --backend all` | `aacbafc78` | "40 library shader(s), 13842 compiles: OK" (0 failed), as the shader library's phase-4 record |
+| `jasperengine-editor export --backend all` of a copy of the fixture | `c76e38613` | `shader-library-export` 307, `scene-inputs` 24, `post-processing` 29 variants on each of GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS, MSL 2.1 iOS and SPIR-V, none failed (the library's phase-4 figures). A first attempt with a relative `--project` path failed ("bad file: <project>/<project>/UI.scene": the CLI joins a relative project path twice, an editor bug older than the HTML UI, not fixed here; `smoke-test.sh` passes absolute paths) |
+| the library's fixtures (`tools/smoke-test.sh`: export, build, run the game and the editor, screenshots) | `aacbafc78` to `c76e38613` | 20 of 20 PASS. GL: `shader-library` (all groups), `scene-inputs`, `post-processing`, `stencil`, `extra-pass`, `unified-lighting`, `shader-regressions`, `runtime-shaders`, `prefab-runtime` ("[PRT] PASS"), `shader-library-export`. GLES3 and Vulkan each: `post-processing` (default, `bloom`, `msaa4`, `mobile_full`, `lib_crt`), `scene-inputs`, `shader-library` (`core`, `phase2`, `phase3a`, `phase3b`), `stencil`, `extra-pass`. Screenshots looked at (the CRT tube on GLES3, the water, glass and haze of phase 3B on Vulkan, the library grid on GL) |
+| `tools/fixtures/shader-library-export/check.sh`, GL and Vulkan (`SMOKE_BACKEND=vulkan`) | `c76e38613` | 7 of 7 scenes ok on each: mean difference Lit 0.97, Blend 1.18, 2D 0.23, UI 0.41, Stencil 0.57, Phase3A 0.84, Phase3B 0.47 (limit 4), no cell over its limit: the library's phase-4 figures |
 
 ### 4.5 The perf gates, five runs a backend
 
@@ -201,9 +207,33 @@ in play.
 glcore and Vulkan alternating, each run under the three locks (`lock-a`, `lock-b`, `lock-c`) after the 1-minute
 load average fell under 1 (it was 0.85-0.97 at each start), nothing else running.
 
-#### 4.5.1 The final runs (head __PERFHEAD__)
+#### 4.5.1 The final runs (head `c76e38613`)
 
-__PERF__
+All 10 runs passed all 13 gated tests (`CompatPerf` 5, `CompatCssPerf` 3, `EffectPerfTest` 3,
+`CompatFocusTest.PerFrameCost`, `VideoStream.CostAndMemoryPerResolution`). The spread over the five runs of each
+backend (measure: least-greatest; target or budget):
+
+| Gate | glcore | Vulkan | Target |
+|---|---|---|---|
+| 5.4, document A (the engine's own work, ms) | 0.699-0.763 | 0.325-0.368 | budget 1.211-1.251 |
+| 5.4, document A2 (ms) | 2.106-2.291 | 2.057-2.262 | budget 4.423-4.503 |
+| stateful steady state, six simulations (ms) | 1.086-1.248 | 0.317-0.341 | budget 4.140-4.161 (B + 4 ms) |
+| cost table, highest `low` / `medium` | x2.95-3.24 / x8.64-10.02 | x2.99-3.38 / x6.20-6.95 | 6 / 24 |
+| cost table, the stateful row nearest its bound | 69-75 % of it | 72-85 % of it | measured ratio x 1.5 |
+| user-agent sheet rewrite (ms) | 0.819-0.844 | 0.816-0.924 | 1 |
+| 50 KB sheet / 56 KB sheet of page rules (ms) | 2.979-3.132 / 2.821-2.951 | 3.004-3.511 / 2.833-3.530 | 4 / 4 |
+| HTML stage (ms) | 2.261-2.857 | 2.216-2.724 | 3 |
+| cold `compile()` (ms) | 5.847-6.471 | 6.157-7.847 | 8 |
+| `compile()` cache hit (ms) | 0.025-0.026 | 0.025 | 0.1 |
+| `fragmentToRml` (ms) | 0.104-0.117 | 0.103-0.112 | 0.2 |
+| `FocusTracker::update` (us a frame) | 0.038-0.041 | 0.039-0.042 | 1 |
+| memory kept per compiled document | 3.81 x | 3.81 x | 4 x |
+
+The 5.4 gate has more margin than at phase 5's acceptance (glcore A 0.80-0.95 ms then, 0.70-0.76 now: p6-stateful-fx's
+command recording). The thin margins are the compat gates': the cold `compile()` reached 7.85 ms of 8 once (Vulkan
+run 5; the other nine runs 5.85-6.98 ms), the user-agent sheet 0.92 ms of 1 once (4.5.2 and section 3). The video decoder's measurement
+(`VideoStream.CostAndMemoryPerResolution`, not gated: the 320x180 card 0.14 ms a frame, the `video_menu` loop
+0.97 ms a frame with dav1d's asm, one thread) printed the same in every run.
 
 #### 4.5.2 The first runs, and the user-agent sheet
 
@@ -241,6 +271,8 @@ branch.
 | `AGENTS.md` (generated, `editor/Generator.cpp`) | its HTML/CSS UI section named effects but neither `<video>` nor stateful effects | it names both (the stateful simulations in the catalogue, `<video>` plays AV1 + Opus WebM, `import_files` converts); `test_agents_md_section` checks the phrases |
 | MCP instructions (`McpInstructions.cpp`) | named neither | `import_files (fonts, icons, videos, from_document)`, "GPU effects and simulations"; 16,363 bytes (the cap is 16,384, `test_instructions_name_real_tools`) |
 | `TOOLS.md` | `gen_tool_docs.py`: 140 tools, byte-identical to the committed file | — |
+| Guide index `docs/mcp/guide/README.md` | it said the guide has 16 sections and named neither its "Effects" section (phase 5) nor video, clamping or justification | 17 sections, those named |
+| `docs/mcp/checks.md` | its `--shaders` row listed a project effect's paint and filter forms only | a stateful project effect's step and scatter forms are checked too (`ProjectChecks::uiEffectUses`) |
 | `CONTRACTS.md` | every phase-6 interface against the code | the golden layout names `p6/`; the docs row the phase-6 guide sections; `JASPER_HTMLUI_WRITE_ACTUAL`; the line-clamp row moved from the effects section to the fork section; new rows: `TextBidiRun`/`FontEngineInterface::GetBidiRuns`/`TextJustification::GetClusters`, `TextUnicode::GetLineBreakOpportunities`/`IsAsciiLineBreakOpportunity`/`ElementText::LinkInlineFormattingContext`, `TextShaper::clusterEnd`/`selectClusterFace` (p6-line-clamp's follow-ups had added them to no row) |
 | `FORK.md` | every `rmlui:` commit since `4958e5f7b` against the P6 rows (`git log -- engine/libs/rmlui`), every listed id resolves to a commit on `main`, every listed test exists | section 3 |
 | `DESIGN.md` | names, phases, recorded deviations 10, 16, 20, 24-27 | the specs list and the phases table name all of phase 6 (both specs, the four packages, this record); deviation 10 lists P6-L2 and says p6-video and p6-stateful-fx patch nothing; deviation 16 says `text-indent` and the legacy line clamp are implemented too; the docs row names the phase-6 guide sections; a "Phase 6 acceptance" pointer |
