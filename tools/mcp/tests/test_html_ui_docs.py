@@ -482,6 +482,14 @@ async def test_guide_snippets_play(ed: Editor):
     write(proj, "assets/ui/fonts.html", wrap_page("Fonts", '<h1 class="title score ready">Title 123</h1>\n', "fonts.css")
           .replace('</title>', '</title>\n  <link rel="stylesheet" href="effects.css">'))
     write(proj, "assets/ui/script.html", wrap_page("Script", fragment("html", 'type="text/lua"')))
+    # phase 6 (p6-accept): the Video fragment (the test card as its files) and the line-clamp box
+    write(proj, "assets/ui/video.html", wrap_page("Video", fragment("html", '<video id="intro"')))
+    for name in ("intro.webm", "trailer.webm", "trailer.png"):
+        placeholder_asset(proj / "assets/ui/video" / name)
+    write(proj, "assets/ui/clamp.css", fragment("css", ".item-desc"))
+    write(proj, "assets/ui/clamp.html", wrap_page(
+        "Clamp", '<p class="item-desc" id="desc" style="width: 160px; font-size: 14px; line-height: 20px">A long item description '
+                 'that wraps to many more lines than the two the clamp leaves, the second ending with an ellipsis.</p>\n', "clamp.css"))
 
     await ed.console_since(None, limit=1)
     made = await ed.call("create_scene", name="GuideUI", type="UI")
@@ -494,10 +502,12 @@ async def test_guide_snippets_play(ed: Editor):
     await add_document(ed, "Fonts", "assets/ui/fonts.html", -2)
     await add_document(ed, "Script", "assets/ui/script.html", -3)
     await add_document(ed, "Terminal", "assets/ui/terminal.html", -4, "scripts/Terminal.lua")
+    await add_document(ed, "Video", "assets/ui/video.html", -5)
+    await add_document(ed, "Clamp", "assets/ui/clamp.html", -6)
     await ed.call("save_scene", scene=S["scene"], path="scenes/GuideUI")
 
     # edit mode: the documents load without Lua, with no warning or error
-    for name in ("Menu", "HUD", "Lottie", "Fonts", "Script", "Terminal"):
+    for name in ("Menu", "HUD", "Lottie", "Fonts", "Script", "Terminal", "Video", "Clamp"):
         diags = await lua(ed, f"""local out = {{}}
             for _, d in ipairs(object('{name}', 'UIDocument'):getDiagnostics()) do
                 if d.severity ~= 'info' then out[#out + 1] = d.text end
@@ -605,6 +615,16 @@ async def play_checks(ed: Editor):
         return c.renderMode == UIDocumentRenderMode.TEXTURE, doc:getTargetTexture() ~= nil, doc.loaded,
                doc:getElementById('line').textContent""")
     ed.check_eq(values, [True, True, True, "READY"], "the texture-mode script")
+
+    # the Video fragment: the muted loop plays on the UI clock, the trailer waits on its poster; the clamp box
+    values = await lua(ed, """local doc = object('Video', 'UIDocument')
+        local intro, trailer = doc:getElementById('intro'), doc:querySelector('video[controls]')
+        return intro.paused, intro.muted, intro.loop, intro.currentTime > 0, intro.readyState >= UIElement.HAVE_CURRENT_DATA,
+               trailer.paused, trailer.readyState >= UIElement.HAVE_METADATA, trailer.videoWidth""")
+    ed.check_eq(values, [False, True, True, True, True, True, True, 320], "the Video fragment plays")
+    values = await lua(ed, """local d = object('Clamp', 'UIDocument'):getElementById('desc')
+        return d.offsetHeight, d.scrollHeight > d.offsetHeight""")
+    ed.check_eq(values, [40, True], "the line-clamp fragment shows two lines")
 
     # nothing logged, also not by the edit-mode load of the HUD (its model did not exist yet)
     errors = [m for m in await errors_since(ed) if "[HTML UI]" in m or "Lua" in m or "rror" in m]
