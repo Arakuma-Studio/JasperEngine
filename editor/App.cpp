@@ -7,6 +7,7 @@
 #include "Platform.h"
 #include "Backend.h"
 #include "Engine.h"
+#include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
 #include "external/IconsFontAwesome6.h"
@@ -2146,7 +2147,7 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         const std::string arg = argv[i];
         if (arg == "-p" || arg == "--project") {
             if (const char* value = requireValue(i, "--project"))
-                benchmarkProject = value;
+                benchmarkProject = CommandLine::projectArgPath(value);
         } else if (arg == "-s" || arg == "--scene") {
             if (const char* value = requireValue(i, "--scene"))
                 benchmarkScene = value;
@@ -2167,7 +2168,7 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
                 benchmarkName = value;
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
-                benchmarkOut = value;
+                benchmarkOut = CommandLine::absoluteArgPath(value);
         } else if (arg == "-h" || arg == "--help") {
             continue;
         } else {
@@ -2183,16 +2184,22 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
 
 // the project's start scene unless --scene names another; true once it is the selected one
 bool editor::App::selectBenchmarkScene() {
-    fs::path scenePath = benchmarkScene;
-    if (scenePath.is_relative())
-        scenePath = project.getProjectPath() / scenePath;
+    // a scene file: relative to the working directory (as every path argument), else to the project
+    fs::path scenePath;
+    if (!benchmarkScene.empty()) {
+        std::error_code ec;
+        scenePath = CommandLine::absoluteArgPath(benchmarkScene);
+        if (fs::path(benchmarkScene).is_relative() && !fs::is_regular_file(scenePath, ec))
+            scenePath = CommandLine::absoluteArgPath(project.getProjectPath() / benchmarkScene);
+    }
 
     SceneProject* match = nullptr;
     for (SceneProject& sceneProject : project.getScenes()) {
         const bool wanted = benchmarkScene.empty()
             ? sceneProject.id == project.getStartSceneId()
             : (sceneProject.name == benchmarkScene || sceneProject.filepath.filename() == benchmarkScene ||
-               project.getProjectPath() / sceneProject.filepath == scenePath);
+               (!sceneProject.filepath.empty() &&
+                CommandLine::absoluteArgPath(project.getProjectPath() / sceneProject.filepath) == scenePath));
         if (wanted) {
             match = &sceneProject;
             break;
@@ -2276,11 +2283,8 @@ void editor::App::loadStartupProject() {
         if (benchmarkExit)
             return;
 
-        fs::path projectPath = benchmarkProject;
-        if (fs::is_regular_file(projectPath) && projectPath.filename() == "project.yaml")
-            projectPath = projectPath.parent_path();
-
-        if (!project.loadProject(projectPath, false)) {
+        // absolute already: CommandLine::projectArgPath, while the arguments were parsed
+        if (!project.loadProject(benchmarkProject, false)) {
             failBenchmark("failed to load project '" + benchmarkProject.string() + "'");
             return;
         }

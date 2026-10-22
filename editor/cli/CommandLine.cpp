@@ -272,6 +272,8 @@ static void printUsage(const std::string& commandName) {
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
         << "  -h, --help                  Show this help.\n\n"
+        << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
+        << "are relative to the project (as in project.yaml).\n"
         << "If no --backend is provided, all supported backends are used.\n"
         << "If no --shader is provided, the shaders the scenes and prefabs need are exported, with the\n"
         << "shaders added to or removed from the build in the Build Settings window.\n"
@@ -284,7 +286,8 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "  " << commandName << " benchmark --project <project-dir> --scene <scene> [options]\n\n"
         << "Options:\n"
         << "  -p, --project <path>   Project directory or project.yaml file.\n"
-        << "  -s, --scene <scene>    Scene file or scene name. Default: the project's start scene.\n"
+        << "  -s, --scene <scene>    Scene name or scene file (absolute, relative to the current directory,\n"
+        << "                         else to the project). Default: the project's start scene.\n"
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
@@ -292,6 +295,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
         << "  -h, --help             Show this help.\n\n"
+        << "--project and --out are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
@@ -313,6 +317,7 @@ static void printShadersUsage(const std::string& commandName) {
         << "      --doc <file>            With --library: write the Markdown reference of those shaders\n"
         << "                              (docs/shaders/library.md), generated from their manifests, instead.\n"
         << "  -h, --help                  Show this help.\n\n"
+        << "--out and --doc are absolute or relative to the current directory.\n"
         << "If no --backend is provided, all supported backends are used.\n"
         << "Shader output is written directly to <out>.\n";
 }
@@ -335,10 +340,10 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.help = true;
         } else if (arg == "-p" || arg == "--project") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            options.projectPath = value;
+            options.projectPath = CommandLine::projectArgPath(value);
         } else if (arg == "-o" || arg == "--out" || arg == "--target") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            options.targetDir = value;
+            options.targetDir = CommandLine::absoluteArgPath(value);
         } else if (arg == "--assets") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             options.assetsDir = value;
@@ -394,7 +399,7 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
             options.help = true;
         } else if (arg == "-o" || arg == "--out" || arg == "--target") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            options.targetDir = value;
+            options.targetDir = CommandLine::absoluteArgPath(value);
         } else if (arg == "--format" || arg == "--output-format") {
             if (!requireValue(argc, argv, i, value, error)) return false;
             if (!parseShaderOutputFormat(value, options.outputFormat)) {
@@ -418,7 +423,7 @@ static bool parseShadersArgs(int argc, char** argv, ShaderCliOptions& options, s
             options.libraryShaders.push_back(value);
         } else if (arg == "--doc") {
             if (!requireValue(argc, argv, i, value, error)) return false;
-            options.docFile = value;
+            options.docFile = CommandLine::absoluteArgPath(value);
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -467,11 +472,40 @@ static void expandShaderSpecsAgain(const std::vector<std::string>& specs, std::s
     }
 }
 
-static fs::path normalizeProjectPath(const fs::path& path) {
-    if (path.filename() == "project.yaml") {
-        return path.parent_path();
+// Path arguments are the caller's: a relative one is relative to the working directory the
+// editor was started in. Each is made absolute once, while the arguments are parsed, because the
+// project keeps project-relative paths (scenes, assets) and joins any relative path to its
+// directory: a relative project directory was joined twice ("bad file: proj/proj/UI.scene").
+const fs::path& CommandLine::invocationDirectory() {
+    static const fs::path directory = [] {
+        std::error_code ec;
+        const fs::path current = fs::current_path(ec);
+        return ec ? fs::path() : current;
+    }();
+    return directory;
+}
+
+fs::path CommandLine::absoluteArgPath(const fs::path& path) {
+    if (path.empty()) {
+        return path;
     }
-    return path;
+    fs::path absolute = path.is_absolute() ? path : invocationDirectory() / path;
+    std::error_code ec;
+    const fs::path canonical = fs::weakly_canonical(absolute, ec);
+    absolute = (ec ? absolute : canonical).lexically_normal();
+    // "dir/" names dir: an empty last element would leave the path without a filename
+    if (!absolute.has_filename() && absolute.has_relative_path()) {
+        absolute = absolute.parent_path();
+    }
+    return absolute;
+}
+
+fs::path CommandLine::projectArgPath(const fs::path& path) {
+    const fs::path absolute = absoluteArgPath(path);
+    if (absolute.filename() == "project.yaml") {
+        return absolute.parent_path();
+    }
+    return absolute;
 }
 
 static uint32_t resolveStartSceneId(const Project& project, const std::string& requested) {
@@ -558,8 +592,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
         return builder.buildShader(shaderKey, projectPtr);
     });
 
-    const fs::path projectPath = normalizeProjectPath(options.projectPath);
-    if (!project.loadProject(projectPath, false)) {
+    if (!project.loadProject(options.projectPath, false)) {
         return 1;
     }
 
@@ -1553,12 +1586,13 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     bool save = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = argv[++i];
-        else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = argv[++i];
-        else if (arg == "--ops" && i + 1 < argc) opsPath = argv[++i];
+        if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = CommandLine::projectArgPath(argv[++i]);
+        else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = CommandLine::absoluteArgPath(argv[++i]);
+        else if (arg == "--ops" && i + 1 < argc) opsPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--save") save = true;
         else {
-            std::cerr << commandName << " scene-dump --project <dir> [--out <file>] [--ops <file>] [--save]\n";
+            std::cerr << commandName << " scene-dump --project <dir|project.yaml> [--out <file>] [--ops <file>] [--save]\n"
+                      << "(paths absolute or relative to the current directory)\n";
             return 2;
         }
     }
@@ -1578,8 +1612,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
-    fs::path projectPath = normalizeProjectPath(fs::absolute(projectArg));
-    if (!project.loadProject(projectPath, false)) {
+    if (!project.loadProject(projectArg, false)) {
         return 1;
     }
 
@@ -1590,7 +1623,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
         }
     }
 
-    sceneDumpOpsDir = opsPath.empty() ? fs::path() : fs::absolute(opsPath).parent_path();
+    sceneDumpOpsDir = opsPath.empty() ? fs::path() : opsPath.parent_path();
     if (!opsPath.empty() && !runSceneDumpOps(project, YAML::LoadFile(opsPath.string()))) {
         return 1;
     }
@@ -1640,7 +1673,8 @@ void printCheckUsage(const std::string& commandName) {
         << "Usage:\n"
         << "  " << commandName << " check --project <project-dir|project.yaml> [options]\n\n"
         << "Options:\n"
-        << "  -p, --project <path>     Project directory or project.yaml file.\n"
+        << "  -p, --project <path>     Project directory or project.yaml file (absolute, or relative to the\n"
+        << "                           current directory).\n"
         << "      --lua                Lua scripts: syntax, and the top level run in an isolated Lua state\n"
         << "                           (as the editor reads script properties).\n"
         << "      --shaders            Shader forks: compiled as the editor compiles them.\n"
@@ -1673,7 +1707,7 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
         } else if (arg == "-p" || arg == "--project") {
             std::string value;
             if (!requireValue(argc, argv, i, value, error)) return false;
-            options.project = value;
+            options.project = CommandLine::projectArgPath(value);
         } else if (arg == "--lua") {
             options.lua = true;
         } else if (arg == "--shaders") {
@@ -2086,8 +2120,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     const int usageExit = options.hook ? 1 : 2;
 
-    fs::path root = normalizeProjectPath(fs::absolute(options.project));
-    root = canonicalOr(root);
+    const fs::path root = options.project;
     std::error_code ec;
     if (!fs::is_regular_file(root / "project.yaml", ec)) {
         std::cerr << commandName << " check: no project.yaml in " << root.string() << "\n";
@@ -2100,7 +2133,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool ui = options.ui || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.all) lua = shaders = ui = true;
 
-    fs::path base = fs::current_path(ec);
+    fs::path base = CommandLine::invocationDirectory();
     std::vector<std::string> files = options.files;
     std::string hookTool;
     HookState hookState;
@@ -2338,7 +2371,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
     const std::string commandName = getCommandName(executableName);
     auto usage = [&](std::ostream& out) {
         out << "Usage:\n"
-            << "  " << commandName << " ui-effects [--json] [--validate] [--project <dir>]\n\n"
+            << "  " << commandName << " ui-effects [--json] [--validate] [--project <dir|project.yaml>]\n\n"
             << "Lists the HTML UI effects: the built-in ones, and with --project the project effects\n"
             << "(every .frag of the project with an effect manifest).\n\n"
             << "Options:\n"
@@ -2346,7 +2379,8 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
             << "                          thumbnail path (tools/htmlui/gen_effects_docs.py documents it).\n"
             << "      --validate          Compiles every effect in both forms for glcore and checks its\n"
             << "                          manifest against the shader's reflection; exits 1 on any problem.\n"
-            << "  -p, --project <dir>     Also the effects of this project.\n"
+            << "  -p, --project <dir>     Also the effects of this project (its directory or project.yaml,\n"
+            << "                          absolute or relative to the current directory).\n"
             << "  -h, --help              Show this help.\n";
     };
     bool json = false, validate = false;
@@ -2380,7 +2414,7 @@ int CommandLine::runUiEffectsCommand(int argc, char** argv, const char* executab
     std::vector<std::unique_ptr<fx::EffectManifest>> projectManifests;
     std::map<std::string, std::string> projectSources;
     if (!projectDir.empty()) {
-        project = normalizeProjectPath(fs::path(projectDir));
+        project = CommandLine::projectArgPath(projectDir);
         if (!fs::is_directory(project)) {
             std::cerr << commandName << " ui-effects: not a directory: " << projectDir << "\n";
             return 2;

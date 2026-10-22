@@ -113,8 +113,8 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         }
 
         echo "== export"
-        # Absolute: the exporter resolves scene paths against a relative project twice.
-        "$EDITOR" export --project "$PWD/project" --out "$PWD/export" --backend "$EXPORT_BACKEND" > export.log 2>&1 \
+        # Relative paths, as a user types them (relative to the current directory)
+        "$EDITOR" export --project project --out export --backend "$EXPORT_BACKEND" > export.log 2>&1 \
             || { echo "FAIL: export"; tail -30 export.log; exit 1; }
         check_log export export.log
 
