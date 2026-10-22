@@ -49,3 +49,10 @@ ENV LIBGL_ALWAYS_SOFTWARE=1
 # own, so images built from older copies of this file reuse every layer above.
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
+
+# eMudhra intermediate CA compromise (October 2026): ca-certificates 20260816 distrusts
+# "emSign ECC Root CA - G3". A layer of its own so cached images pick it up; the build
+# fails while the root is still trusted.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && ! test -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
