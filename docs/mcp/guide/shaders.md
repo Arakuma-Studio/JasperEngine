@@ -60,6 +60,35 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
 
 Fork only when no library shader does what you need.
 
+## Stochastic Tiling
+
+Hides the repetition of a tiled texture at run time (Mikkelsen's hex-tiling,
+`includes/stochastic.glsl`): the UV plane is cut into hexagonal cells that each read the maps at
+their own random offset (and turn), blended at the cell borders. No precomputation; up to three
+reads per map where cells meet, one or two over most of a cell. Suits organic surfaces (grass,
+rock, sand, dirt); bricks, tiles and planks lose their grid.
+
+- Library shaders: the `STOCHASTIC` feature ("Stochastic Tiling") of `simple_lit`, `unlit`,
+  `toon`, `vertex_lit`, `fake_lit` and `triplanar` (each projection), e.g. `shaderFeatures:
+  {"STOCHASTIC": true}`. Parameters: `stochasticCellSize` (Cell Size: the cell width in texture
+  repeats, 0.25-4, default 1), `stochasticBlendSharpness` (Blend Sharpness 0-1, default 0.4),
+  `stochasticContrast` (Contrast 0-1, default 0.45; 0 blends linearly, high shows the cell
+  borders), `stochasticRotation` (Rotation 0-1: a random turn per cell, up to +-180 degrees;
+  default 0). The material's other maps (normal, emission) reuse the base map's weights;
+  `unlit`'s alpha clip and its depth program read the same taps.
+- Terrain layers: `set_terrain_maps` `layers: [{index, stochastic_tiling: true, cell_size,
+  blend_sharpness, contrast, rotation}]` (same ranges and defaults), or the paths
+  `surfaceLayers[N].stochasticTiling`, `.stochasticCellSize`, `.stochasticBlendSharpness`,
+  `.stochasticContrast`, `.stochasticRotation` (Lua: the same `TerrainSurfaceLayer` fields).
+  The layer's colour taps weight its normal and surface maps too, in every projection (flat and
+  the triplanar sides); its far tiling break is left out. A layer with it draws with the PBR
+  terrain path.
+- Rotation is for textures without a direction: normal maps are turned back per cell, but
+  stripes, planks or baked light visibly turn.
+- In a fork: `#include "includes/stochastic.glsl"`; its header documents the API
+  (`stochasticSetup`, `stochasticTextureLuminance`, `stochasticTexture`, `stochasticNormal`...).
+  The texture must wrap (REPEAT).
+
 ## Presets, stencil and the extra pass
 
 Outlines, see-through silhouettes, stencil masks (portals, windows, sprite masks) and

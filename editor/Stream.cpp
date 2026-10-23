@@ -5961,6 +5961,14 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["occlusionStrength"] = layer.occlusionStrength;
     node["uvScale"] = encodeVector2(layer.uvScale);
     node["uvOffset"] = encodeVector2(layer.uvOffset);
+    // Stochastic Tiling writes only what differs from the defaults, so a layer without it
+    // saves as it always did
+    static const TerrainSurfaceLayer defaults;
+    if (layer.stochasticTiling != defaults.stochasticTiling) node["stochasticTiling"] = layer.stochasticTiling;
+    if (layer.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = layer.stochasticCellSize;
+    if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = layer.stochasticBlendSharpness;
+    if (layer.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = layer.stochasticContrast;
+    if (layer.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = layer.stochasticRotation;
     return node;
 }
 
@@ -5980,6 +5988,11 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.roughnessFactor = decodeFinite(node["roughnessFactor"], layer.roughnessFactor);
     layer.metallicFactor = decodeFinite(node["metallicFactor"], layer.metallicFactor);
     layer.occlusionStrength = decodeFinite(node["occlusionStrength"], layer.occlusionStrength);
+    if (node["stochasticTiling"]) layer.stochasticTiling = YamlNumbers::as<bool>(node["stochasticTiling"]);
+    layer.stochasticCellSize = decodeFinite(node["stochasticCellSize"], layer.stochasticCellSize);
+    layer.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], layer.stochasticBlendSharpness);
+    layer.stochasticContrast = decodeFinite(node["stochasticContrast"], layer.stochasticContrast);
+    layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
     return layer;
 }
 

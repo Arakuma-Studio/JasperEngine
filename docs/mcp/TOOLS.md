@@ -2235,14 +2235,14 @@ Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row
 
 *Set Terrain Maps*
 
-Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its normal/roughness/metallic/occlusion). Images under the assets dir.
+Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its normal/roughness/metallic/occlusion), stochastic_tiling (hides tiling repetition, up to 3x the reads) and its cell_size/blend_sharpness/contrast/rotation. Images under the assets dir.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `blendmap` | string or object |  |  |
 | `entity` | integer or string |  | Default: the only terrain. |
 | `heightmap` | string or object |  |  |
-| `layers` | array of object {color, height, index, metallic, normal, occlusion, pbr, roughness} |  |  |
+| `layers` | array of object {blend_sharpness, cell_size, color, contrast, height, index, metallic, normal, occlusion, pbr, rotation, roughness, stochastic_tiling} |  |  |
 | `scene` | integer or string |  |  |
 
 

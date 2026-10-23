@@ -152,6 +152,10 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
 | `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
 | `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -163,6 +167,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `ALPHA_CLIP` | off | Alpha clip |
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 ## Lit
 
@@ -185,6 +190,10 @@ Blinn-Phong lighting: diffuse from every light, specular and shadows from the pi
 | `gloss` | range 0 to 1 | 0.5 | Glossiness |
 | `normalStrength` | range 0 to 2 | 1 | Normal strength (with `NORMAL_MAP`) |
 | `emissionColor` | HDR colour | (1, 1, 1, 1) | Emission colour (with `EMISSION`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -197,6 +206,7 @@ Blinn-Phong lighting: diffuse from every light, specular and shadows from the pi
 | `VERTEX_COLOR` | off | Vertex colour |
 | `NORMAL_MAP` | off | Normal map |
 | `EMISSION` | off | Emission |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 <a id="libraryvertex_lit"></a>
 ### Vertex Lit (`library:vertex_lit`)
@@ -214,6 +224,10 @@ Base colour times base map, lit per vertex: the ambient plus the diffuse of the 
 | `baseColor` | colour | (1, 1, 1, 1) | Base colour |
 | `tiling` | vector4 | (1, 1, 0, 0) | Tiling (xy) and offset (zw) |
 | `emissionColor` | HDR colour | (1, 1, 1, 1) | Emission colour (with `EMISSION`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -224,6 +238,7 @@ Base colour times base map, lit per vertex: the ambient plus the diffuse of the 
 |---|---|---|
 | `VERTEX_COLOR` | off | Vertex colour |
 | `EMISSION` | off | Emission |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 ## Stylized
 
@@ -279,6 +294,10 @@ Lighting faked without lights: surfaces facing down and away from the camera ble
 | `fogAxis` | vector3 | (0, 0, -1) | Axis fog direction (world, unit length) (with `AXIS_FOG`) |
 | `fogStart` | float | 6 | Axis fog start (from the camera) (with `AXIS_FOG`) |
 | `fogLength` | float | 20 | Axis fog length (with `AXIS_FOG`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -294,6 +313,7 @@ Lighting faked without lights: surfaces facing down and away from the camera ble
 | `VERTEX_AO` | off | Vertex colour AO (red) |
 | `EMISSION` | off | Emission |
 | `AXIS_FOG` | off | Axis fog |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 <a id="librarymatcap"></a>
 ### Matcap (`library:matcap`)
@@ -353,6 +373,10 @@ Cel shading: the light falls in hard bands (or follows a ramp texture), the unli
 | `rimPower` | range 0.5 to 16 | 4 | Rim power (with `RIM`) |
 | `rimSmoothness` | range 0 to 1 | 0.1 | Rim edge width (with `RIM`) |
 | `rimLitOnly` | toggle | on | Rim on the lit side only (with `RIM`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -364,6 +388,7 @@ Cel shading: the light falls in hard bands (or follows a ramp texture), the unli
 | `RAMP` | off | Ramp texture |
 | `SPECULAR` | off | Specular highlight |
 | `RIM` | off | Rim light |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 <a id="librarytriplanar"></a>
 ### Triplanar (`library:triplanar`)
@@ -385,6 +410,10 @@ Projects a texture along the three axes and blends by the normal, so meshes need
 | `dirtColor` | colour | (0.23, 0.17, 0.11, 1) | Dirt colour (with `NOISE_MASK`) |
 | `dirtStrength` | range 0 to 1 | 0.65 | Dirt strength (with `NOISE_MASK`) |
 | `dirtContrast` | range 0.5 to 8 | 2.5 | Dirt contrast (with `NOISE_MASK`) |
+| `stochasticCellSize` | range 0.25 to 4 | 1 | Cell Size (with `STOCHASTIC`) |
+| `stochasticBlendSharpness` | range 0 to 1 | 0.4 | Blend Sharpness (with `STOCHASTIC`) |
+| `stochasticContrast` | range 0 to 1 | 0.45 | Contrast (with `STOCHASTIC`) |
+| `stochasticRotation` | range 0 to 1 | 0 | Rotation (with `STOCHASTIC`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -397,6 +426,7 @@ Projects a texture along the three axes and blends by the normal, so meshes need
 |---|---|---|
 | `TOP_BOTTOM` | off | Separate floor and ceiling textures |
 | `NOISE_MASK` | off | Dirt overlay |
+| `STOCHASTIC` | off | Stochastic Tiling |
 
 | Keyword group | Values (first is the default) | Description |
 |---|---|---|

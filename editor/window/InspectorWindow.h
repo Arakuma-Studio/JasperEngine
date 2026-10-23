@@ -75,6 +75,8 @@ namespace jasperengine::editor{
         int intMin = 0;
         int intMax = 0;
         bool child = false;
+        // the label indented one step: a setting that belongs to the row above it
+        bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
         bool showColors = true;
@@ -348,7 +350,7 @@ namespace jasperengine::editor{
 
         void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "");
         void endTable();
-        bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false);
+        bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
