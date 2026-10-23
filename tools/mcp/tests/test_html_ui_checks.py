@@ -287,8 +287,8 @@ async def test_cli_usage_ui():
     r = editor_cli("check", "--help")
     check_eq(r.returncode, 0, "check --help")
     check("--ui" in r.stdout, f"check --help documents --ui: {r.stdout}")
-    check("Default: --lua --shaders --ui" in r.stdout, f"the new default is documented: {r.stdout}")
-    check("Lua, shaders, C++ and UI" in r.stdout, f"--all covers UI: {r.stdout}")
+    check("Default: --lua --shaders --ui --textures" in r.stdout, f"the new default is documented: {r.stdout}")
+    check("Lua, shaders, C++, UI and textures" in r.stdout, f"--all covers UI and textures: {r.stdout}")
     for flag in ("-h", "--help"):
         r = editor_cli("ui-support", flag)
         check_eq(r.returncode, 0, f"ui-support {flag}: {r.stderr}")
