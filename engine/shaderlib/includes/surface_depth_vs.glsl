@@ -13,7 +13,8 @@
 // and v_color (SURFACE_COLOR, the vertex colour times the instance colour) for a fragment
 // stage that alpha clips (includes/surface_depth_fs.glsl with SURFACE_DEPTH_DISCARD).
 // SURFACE_SMOOTH_NORMALS gives the hook surfaceSmoothNormal as includes/surface_vs.glsl does,
-// and surfaceFadeVisible (the instance distance fade's scale) is the same too.
+// and surfaceFadeVisible (the instance distance fade's scale) is the same too. The lattices
+// (HAS_LATTICE) deform the vertex as there, before the hook.
 
 // Inputs only the hooks read: without them they are not declared at all, since a GL
 // driver drops an unread attribute and the bind then misses it
@@ -25,8 +26,11 @@
 #endif
 #ifndef SURFACE_DEPTH_INPUTS
     #undef HAS_UV_SET1
-    #undef HAS_VERTEX_COLOR_VEC3
-    #undef HAS_VERTEX_COLOR_VEC4
+    // (a lattice's vertex colour mask reads it)
+    #ifndef HAS_LATTICE
+        #undef HAS_VERTEX_COLOR_VEC3
+        #undef HAS_VERTEX_COLOR_VEC4
+    #endif
 #endif
 #ifndef HAS_UV_SET1
     #undef HAS_TEXTURERECT
@@ -71,13 +75,19 @@ out vec2 v_projZW;
     #include "includes/terrain_vs.glsl"
 #endif
 // as includes/surface_vs.glsl: under SURFACE_NO_VERTEX_COLOR only a hook that reads it
-// (SURFACE_DISPLACE_COLOR) gets the attribute
-#if !defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_DISPLACE_COLOR)
+// (SURFACE_DISPLACE_COLOR) gets the attribute, or a lattice's vertex colour mask
+#if (!defined(SURFACE_NO_VERTEX_COLOR) || defined(SURFACE_DISPLACE_COLOR)) && defined(SURFACE_DEPTH_INPUTS)
     #if defined(HAS_VERTEX_COLOR_VEC3)
         #define SURFACE_VERTEX_COLOR_INPUT
         in vec3 a_color;
     #elif defined(HAS_VERTEX_COLOR_VEC4)
         #define SURFACE_VERTEX_COLOR_INPUT
+        in vec4 a_color;
+    #endif
+#elif defined(HAS_LATTICE)
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
         in vec4 a_color;
     #endif
 #endif
@@ -107,6 +117,7 @@ out vec2 v_projZW;
 #include "includes/skinning.glsl"
 #include "includes/instance_normal.glsl"
 #include "includes/morphtarget.glsl"
+#include "includes/lattice.glsl"
 
 // the object-space smoothed normal the hook may read (SURFACE_SMOOTH_NORMALS)
 vec3 surfaceSmoothNormal;
@@ -122,6 +133,23 @@ void main() {
     mat4 boneTransform = getBoneTransform();
 
     vec3 position = getMorphPosition(a_position);
+    #ifdef HAS_LATTICE
+        // as includes/surface_vs.glsl (no tangent here)
+        float latticeStretchValue = 1.0;
+        vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
+        #ifdef HAS_NORMALS
+            latticeNormal = getMorphNormal(a_normal);
+        #endif
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            vec3 latticeSmoothNormal = a_smoothNormal;
+        #else
+            vec3 latticeSmoothNormal = latticeNormal;
+        #endif
+        vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
+        #ifdef HAS_SKINNING
+            latticeDeformSmooth(0, position, latticeNormal, latticeSmoothNormal, latticeTangent, latticeStretchValue);
+        #endif
+    #endif
     position = getSkinPosition(position, boneTransform);
     #ifdef HAS_TERRAIN
         position = getTerrainPosition(position, depthParams.modelMatrix);
@@ -129,7 +157,11 @@ void main() {
 
     vec3 objectNormal = vec3(0.0, 1.0, 0.0);
     #ifdef HAS_NORMALS
-        objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #ifdef HAS_LATTICE
+            objectNormal = getSkinNormal(latticeNormal, boneTransform);
+        #else
+            objectNormal = getSkinNormal(getMorphNormal(a_normal), boneTransform);
+        #endif
         #ifdef HAS_TERRAIN
             objectNormal = getTerrainNormal(objectNormal, position);
         #endif
@@ -137,7 +169,11 @@ void main() {
     #endif
 
     #ifdef SURFACE_SMOOTH_NORMAL_INPUT
-        vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+        #ifdef HAS_LATTICE
+            vec3 smoothNormal = normalize(getSkinNormal(latticeSmoothNormal, boneTransform));
+        #else
+            vec3 smoothNormal = normalize(getSkinNormal(a_smoothNormal, boneTransform));
+        #endif
     #endif
 
     #ifdef HAS_INSTANCING
@@ -168,6 +204,20 @@ void main() {
         }
         pos.xyz = mix(fadeOrigin, pos.xyz, fadeVisible);
         surfaceFadeVisible = fadeVisible;
+    #endif
+
+    #ifdef HAS_LATTICE
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            vec3 latticeHookNormal = smoothNormal;
+        #else
+            vec3 latticeHookNormal = objectNormal;
+        #endif
+        latticeDeformSmooth(1, pos.xyz, objectNormal, latticeHookNormal, latticeTangent, latticeStretchValue);
+        #ifdef SURFACE_SMOOTH_NORMAL_INPUT
+            surfaceSmoothNormal = latticeHookNormal;
+        #else
+            surfaceSmoothNormal = objectNormal;
+        #endif
     #endif
 
     // the raw vertex colour (the hook's), and times the instance colour (v_color)

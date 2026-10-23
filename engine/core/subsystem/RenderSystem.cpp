@@ -21,7 +21,9 @@
 #include "math/AABB.h"
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/LatticeSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "lattice/LatticeRender.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -59,6 +61,26 @@ namespace {
             render.addTexture(textureSlot, ShaderStageType::VERTEX, &mesh.bonesTexture);
         }
         mesh.needUpdateBones = true;
+        return true;
+    }
+
+    // u_vs_lattice and the record texture of one submesh's draw (includes/lattice.glsl), for a
+    // render loaded with a lattice variant (slot -1: none, or a fork without the include).
+    // False when the record texture could not be made: the draw would miss a binding
+    bool applyLattice(ObjectRender& render, int slot, std::pair<int, int> textureSlot, MeshComponent& mesh,
+                      unsigned int submesh, bool stretch){
+        if (slot == -1 && textureSlot.first == -1)
+            return true;
+        if (textureSlot.first != -1){
+            if (!mesh.lattice.texture.isCreated())
+                return false;
+            render.addTexture(textureSlot, ShaderStageType::VERTEX, &mesh.lattice.texture);
+        }
+        if (slot != -1){
+            Vector4 block[2];
+            LatticeRender::getUniformBlock(mesh.lattice, submesh, stretch, block);
+            render.applyUniformBlock(slot, sizeof(block), block);
+        }
         return true;
     }
 
@@ -3168,6 +3190,8 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // rebuilds the shader nor drops the variant from an export.
     inputs.instanceFade = instmesh && instmesh->distanceFade;
     inputs.mirror = mirror;
+    // LatticeRender::prepare decides it each frame (a terrain is never deformed)
+    inputs.lattice = mesh.lattice.count > 0 && !terrain;
 
     return inputs;
 }
@@ -3321,6 +3345,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // model's +Y in surface_vs.glsl.
     bool p_vertexColorVec3 = inputs.vertexColor3;
     bool p_vertexColorVec4 = inputs.vertexColor4;
+    // the lattice variants ('Ltc' in every pass): a mask channel reads the vertex colour, so
+    // it is an input of each pass whatever the shader asks for
+    const bool p_lattice = inputs.lattice && !inputs.terrain;
     const uint32_t manifestRequire = manifest ? manifest->resolveRequire(inputs.features) : 0;
     if (manifest){
         const uint32_t require = manifestRequire;
@@ -3340,6 +3367,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormal = (requiresNormals || p_punctual || p_vertexLights) && inputs.normal;
         p_hasTangent = p_hasNormal && (require & ShaderRequire_Tangents) && inputs.tangent;
         p_hasNormalMap = false;
+    }
+    if (p_lattice){
+        p_vertexColorVec3 = p_vertexColorVec3 || inputs.vertexColor3;
+        p_vertexColorVec4 = p_vertexColorVec4 || inputs.vertexColor4;
     }
 
     // screen-space AO modulates ambient/indirect light on lit submeshes (Lit's).
@@ -3363,7 +3394,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     environment.fog, inputs.skinning, inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
                     inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
-                    p_vertexLights, lightCapacity);
+                    p_vertexLights, lightCapacity, p_lattice);
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
@@ -3384,12 +3415,16 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             d_vertexColorVec4 = d_color && inputs.vertexColor4 && !inputs.terrain;
             d_uv1 = (require & ShaderRequire_UV1) && (inputs.texCoord1 || inputs.terrain);
         }
+        if (p_lattice){
+            d_vertexColorVec3 = d_vertexColorVec3 || inputs.vertexColor3;
+            d_vertexColorVec4 = d_vertexColorVec4 || inputs.vertexColor4;
+        }
         // the sprite rect the alpha-clip UV goes through (an atlas frame's shadow)
         const bool d_textureRect = inputs.textureRect && !inputs.terrain && (p_depthTexture || d_uv1);
         variant.depthProperties = ShaderPool::getDepthMeshProperties(
             p_depthTexture, inputs.skinning, inputs.morphTarget,
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
-            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect);
+            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect, p_lattice);
     }
 
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
@@ -3399,7 +3434,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         variant.gbufferProperties = ShaderPool::getGBufferMeshProperties(
             inputs.baseColorTexture, inputs.normal, inputs.skinning,
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
-            inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal);
+            inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
+            p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4);
     }
 
     return variant;
@@ -5462,6 +5498,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (mesh.submeshes[i].hasMorphTarget){
             mesh.submeshes[i].slotVSMorphTarget = shaderData.getUniformBlockIndex(UniformBlockType::VS_MORPHTARGET);
         }
+        // the lattice variant ('Ltc'): its block and record texture (none in a fork without
+        // includes/lattice.glsl), bound by drawMesh
+        if (meshProperties & (1u << 5)){
+            mesh.submeshes[i].slotVSLattice = shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE);
+            mesh.submeshes[i].slotVSLatticeTexture = shaderData.getTextureIndex(TextureShaderType::LATTICE);
+        }
         // custom blocks of a forked shader (none in the built-in), with the depth shader's:
         // the material's parameters, the mesh's shader uniforms, the manifest defaults
         mesh.submeshes[i].customVSParams.resolve(shaderData, "u_vs_customParams");
@@ -5650,6 +5692,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (mesh.submeshes[i].hasMorphTarget){
                 mesh.submeshes[i].slotVSDepthMorphTarget = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_MORPHTARGET);
             }
+            if (variant.depthProperties & (1u << 14)){ // 'Ltc'
+                mesh.submeshes[i].slotVSDepthLattice = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_LATTICE);
+                mesh.submeshes[i].slotVSDepthLatticeTexture = depthShaderData.getTextureIndex(TextureShaderType::LATTICE);
+            }
 
             if (p_depthTexture){
                 if (!loadDepthTexture(mesh.submeshes[i].material, depthShaderData, depthRender)){
@@ -5690,7 +5736,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                                 continue;
                             }
-                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1){
+                            // (the colour: a lattice variant's mask reads it)
+                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR){
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
                             if (mesh.submeshes[i].hasSkinning){
@@ -5721,7 +5768,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     }else if (allDepthAttributes){
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                         continue;
-                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1){
+                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR){
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
                     if (mesh.submeshes[i].hasSkinning){
@@ -5797,6 +5844,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (mesh.submeshes[i].hasMorphTarget){
                 mesh.submeshes[i].slotVSGBufferMorphTarget = gbufferShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_MORPHTARGET);
             }
+            if (variant.gbufferProperties & (1u << 10)){ // 'Ltc'
+                mesh.submeshes[i].slotVSGBufferLattice = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_LATTICE);
+                mesh.submeshes[i].slotVSGBufferLatticeTexture = gbufferShaderData.getTextureIndex(TextureShaderType::LATTICE);
+            }
 
             if (!loadGBufferTextures(mesh.submeshes[i].material, gbufferShaderData, gbufferRender)){
                 return false;
@@ -5830,7 +5881,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                         gbufferRender.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
                     }else{
                         for (auto const &attr : buf.second->getAttributes()){
-                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL){
+                            // (the colour: a lattice variant's mask reads it)
+                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
+                                    attr.first == AttributeType::COLOR){
                                 gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
                             if (mesh.submeshes[i].hasSkinning){
@@ -5858,7 +5911,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 if (bufferNameToRender.count(attr.second.getBufferName())){
                     if (attr.first == AttributeType::INDEX){
                         gbufferRender.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
-                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL){
+                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
+                            attr.first == AttributeType::COLOR){
                         gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
                     if (mesh.submeshes[i].hasSkinning){
@@ -5946,6 +6000,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     setGBufferDepthMismatch(entity, (customDepthOpaque && !mesh.transparent) || mesh.splitQueues);
 
     trimSmoothNormals(mesh);
+
+    // the lattice variant as loaded: a change of LatticeMeshState::count > 0 reloads it, and
+    // its record texture is made (again) and uploaded before the first draw
+    mesh.lattice.variantActive = mesh.lattice.count > 0 && !terrain;
+    if (mesh.lattice.variantActive){
+        mesh.lattice.needUpload = true;
+    }else{
+        mesh.lattice.texture.destroyTexture();
+    }
 
     mesh.needReload = false;
     // loaded with the current environment
@@ -6586,6 +6649,8 @@ void RenderSystem::releaseSubmeshExtraPass(Submesh& submesh, bool keepShader){
     if (extra.loaded)
         extra.render.destroy();
     extra.loaded = false;
+    extra.slotVSLattice = -1;
+    extra.slotVSLatticeTexture = {-1, -1};
     extra.libraryBindings.clear();
     extra.customVSParams.clear();
     extra.customFSParams.clear();
@@ -6691,6 +6756,10 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
             return false;
     }
     extra.slotVSMorphTarget = submesh.hasMorphTarget ? shaderData.getUniformBlockIndex(UniformBlockType::VS_MORPHTARGET) : -1;
+    // the lattice variant ('Ltc'), as the submesh's colour render
+    const bool latticeVariant = (properties & (1u << 5)) != 0;
+    extra.slotVSLattice = latticeVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE) : -1;
+    extra.slotVSLatticeTexture = latticeVariant ? shaderData.getTextureIndex(TextureShaderType::LATTICE) : std::pair<int, int>(-1, -1);
 
     // its own parameters, else its manifest's defaults
     extra.customVSParams.resolve(shaderData, "u_vs_customParams");
@@ -6801,6 +6870,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
         }else{
             render.applyUniformBlock(extra.slotVSMorphTarget, sizeof(float) * MAX_MORPHTARGETS / 2, &mesh.morphWeights);
         }
+    }
+    if (!applyLattice(render, extra.slotVSLattice, extra.slotVSLatticeTexture, mesh, submeshIndex, true)){
+        return;
     }
 
     // the material's prefix, the size its variant declares (a fork of Lit reads it)
@@ -7044,11 +7116,13 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
     const Vector3& worldScale = transform.worldScale;
     const float entityScale = std::max(std::abs(worldScale.x), std::max(std::abs(worldScale.y), std::abs(worldScale.z)));
     limitDistance = limitDistance && std::isfinite(instmesh.cullDistance) && instmesh.cullDistance > 0.0f;
+    // as far as the mesh's lattices can move a vertex (world units, spec 5.5)
+    const float latticePadding = (mesh.lattice.count > 0) ? mesh.lattice.worldPadding : 0.0f;
 
     for (unsigned int i = 0; i < count; i++){
         const InstanceBounds& bounds = instanceBounds[i];
         const Vector3 center = transform.modelMatrix * bounds.center;
-        const float radius = bounds.radius * entityScale;
+        const float radius = bounds.radius * entityScale + latticePadding;
         if (instmesh.cullInstances){
             if (!isInsideCamera(cameraFar, frustumPlanes, center, radius))
                 continue;
@@ -7162,6 +7236,24 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
         if (mesh.bonesTexture.isCreated())
             mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size);
         mesh.needUpdateBones = false;
+    }
+
+    // the lattice records (LatticeRender::prepare), while the lattice variant is loaded: whole
+    // rows of RGBA32F, the texture made again when their count changes
+    LatticeMeshState& lattice = mesh.lattice;
+    if (lattice.variantActive && (lattice.needUpload || !lattice.texture.isCreated())){
+        static const Vector4 zeroRow[LATTICE_TEXTURE_WIDTH] = {};
+        const bool empty = lattice.texels.empty();
+        const int rows = empty ? 1 : static_cast<int>(lattice.texels.size() / LATTICE_TEXTURE_WIDTH);
+        if (lattice.texture.isCreated() && lattice.texture.getHeight() != rows)
+            lattice.texture.destroyTexture();
+        if (lattice.texture.isCreated() || lattice.texture.createDynamicTexture("mesh-lattice", LATTICE_TEXTURE_WIDTH, rows)){
+            if (empty)
+                lattice.texture.updateTexture(zeroRow, sizeof(zeroRow));
+            else
+                lattice.texture.updateTexture(lattice.texels.data(), lattice.texels.size() * sizeof(Vector4));
+            lattice.needUpload = false;
+        }
     }
 
     if (!mesh.needUpdateBuffer)
@@ -7391,6 +7483,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             if (!render.beginDraw(pipType, passNoFaceCulling())){
                 mesh.needReload = true;
                 return false;
+            }
+
+            if (!applyLattice(render, mesh.submeshes[i].slotVSLattice, mesh.submeshes[i].slotVSLatticeTexture, mesh, i, true)){
+                continue;
             }
 
             applyFrameBlock(render, libraryBindings);
@@ -7684,6 +7780,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 }else{
                     depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthMorphTarget, sizeof(float) * MAX_MORPHTARGETS / 2, &mesh.morphWeights);
                 }
+            }
+            if (!applyLattice(depthRender, mesh.submeshes[i].slotVSDepthLattice, mesh.submeshes[i].slotVSDepthLatticeTexture, mesh, i, false)){
+                continue;
             }
 
             if (terrain){
@@ -8428,6 +8527,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             }else{
                 gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferMorphTarget, sizeof(float) * MAX_MORPHTARGETS / 2, &mesh.morphWeights);
             }
+        }
+        if (!applyLattice(gbufferRender, mesh.submeshes[i].slotVSGBufferLattice, mesh.submeshes[i].slotVSGBufferLatticeTexture, mesh, i, false)){
+            continue;
         }
 
         if (terrain){
@@ -9286,6 +9388,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSPointShadows = -1;
         submesh.slotVSSkinning = -1;
         submesh.slotVSMorphTarget = -1;
+        submesh.slotVSLattice = -1;
+        submesh.slotVSLatticeTexture = {-1, -1};
         submesh.slotVSTerrain = -1;
         submesh.slotFSTerrainLayers = -1;
 
@@ -9294,6 +9398,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSDepthMaterial = -1;
         submesh.slotVSDepthSkinning = -1;
         submesh.slotVSDepthMorphTarget = -1;
+        submesh.slotVSDepthLattice = -1;
+        submesh.slotVSDepthLatticeTexture = {-1, -1};
         submesh.slotVSDepthTerrain = -1;
         submesh.slotVSDepthSprite = -1;
 
@@ -9301,6 +9407,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSGBufferMaterial = -1;
         submesh.slotVSGBufferSkinning = -1;
         submesh.slotVSGBufferMorphTarget = -1;
+        submesh.slotVSGBufferLattice = -1;
+        submesh.slotVSGBufferLatticeTexture = {-1, -1};
         submesh.slotVSGBufferTerrain = -1;
         submesh.slotFSGBufferTerrainLayers = -1;
 
@@ -9323,6 +9431,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
     releaseSmoothNormals(mesh, preserveAssets);
     mesh.bonesBuffer.destroyBuffer();
     mesh.bonesTexture.destroyTexture();
+    // made again (and its texels uploaded) by a load with the lattice variant
+    mesh.lattice.texture.destroyTexture();
     for (int i = 0; i < mesh.numExternalBuffers; i++){
         if (!preserveAssets){
             mesh.eBuffers[i].clearAll();
@@ -11414,6 +11524,10 @@ void RenderSystem::changeDestroy(void* data){
     delete (check_load_t*)data;
 }
 
+LatticeRenderState& RenderSystem::getLatticeState(){
+    return latticeState;
+}
+
 bool RenderSystem::usesAlphaMask(const Material& material, bool textureShadow){
     return material.alphaMode == MaterialAlphaMode::MASK ||
         (material.alphaMode == MaterialAlphaMode::AUTO && textureShadow);
@@ -12094,6 +12208,11 @@ void RenderSystem::update(double dt){
         }
     }
 
+    // transforms and bones are current: the lattice followers move (and their subtrees with
+    // them), then the bindings are packed into the meshes the loop below loads and bounds
+    scene->getSystem<LatticeSystem>()->lateUpdate();
+    LatticeRender::prepare(scene, latticeState);
+
     updateReflectionProbes(dt);
 
     // the readers loading this frame count from now: what every mesh loads with below (a depth
@@ -12518,6 +12637,13 @@ void RenderSystem::update(double dt){
                 }
                 mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * mesh.aabb)
                                                            : (transform.modelMatrix * mesh.skinnedAABB);
+                // as far as its lattices can move a vertex (spec 5.5), so culling, light
+                // assignment and framing keep the deformed mesh
+                const float latticePadding = (mesh.lattice.count > 0) ? mesh.lattice.worldPadding : 0.0f;
+                if (latticePadding > 0.0f && !mesh.worldAABB.isNull() && mesh.worldAABB.isFinite()){
+                    const Vector3 grow(latticePadding, latticePadding, latticePadding);
+                    mesh.worldAABB.setExtents(mesh.worldAABB.getMinimum() - grow, mesh.worldAABB.getMaximum() + grow);
+                }
 
                 mesh.needUpdateAABB = false;
 
@@ -12528,6 +12654,10 @@ void RenderSystem::update(double dt){
                     TilemapComponent& tilemap = scene->getComponent<TilemapComponent>(entity);
                     for (TilemapChunk& chunk : tilemap.chunks){
                         chunk.worldAABB = transform.modelMatrix * chunk.aabb;
+                        if (latticePadding > 0.0f && !chunk.worldAABB.isNull() && chunk.worldAABB.isFinite()){
+                            const Vector3 grow(latticePadding, latticePadding, latticePadding);
+                            chunk.worldAABB.setExtents(chunk.worldAABB.getMinimum() - grow, chunk.worldAABB.getMaximum() + grow);
+                        }
                     }
                 }
             }

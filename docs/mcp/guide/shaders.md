@@ -119,6 +119,13 @@ editable `includes/` folder beside the fork.
   `customDepthShader`) so shadow maps follow, and SSAO/post-process depth while SSR is off
   (with SSR on they read the G-buffer, which keeps the built-in shader). It reads the same
   `shaderUniforms`.
+- A mesh bound to lattices compiles with `HAS_LATTICE` (variant bit `Ltc`): `mesh.vert` and
+  `depth.vert` run the vertex through `latticeDeform` from `includes/lattice.glsl`. A fork
+  without that call (one made before lattices existed) draws the mesh undeformed; to follow
+  them, include the file after the attributes and call, under `#ifdef HAS_LATTICE`,
+  `latticeDeform(1, pos.xyz, normal, tangent, stretch);` after the instance matrix and before
+  the model matrix (`latticeDeform(0, ...)` before skinning for bind-pose lattices), as
+  `mesh.vert` does (`read_engine_source`), in the depth fork too.
 
 ## Editing a fork
 
