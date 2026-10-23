@@ -27,7 +27,8 @@ uniform u_fs_fluid {
     vec4 texel;     // xy the texel step the pass reads with, zw the source's texel (advection)
     vec4 params;    // x dt, y the pass's value, z aspect (width / height), w splat radius
     vec4 vector;    // splat: xy point; bloom prefilter: xyz curve, w threshold
-    vec4 color;     // splat: rgb value; display: rgb back colour, w 1 transparent
+    vec4 color;     // splat: rgb value; display: rgb back colour, w 0 opaque, 1 transparent
+                    // premultiplied, 2 transparent straight alpha
     vec4 flags;     // display: x shading, y bloom, z sunrays (0 or 1)
 } fluid;
 
@@ -134,10 +135,13 @@ void main(){
         float sunrays = useSunrays ? tex2(p).r : 1.0;
         vec4 display = fluidDisplayFinish(c, bloom, sunrays, fluidDitherNoise(gl_FragCoord.xy), useBloom, useSunrays);
         // an 8-bit target clamps; opaque: over the back colour (his ONE, ONE_MINUS_SRC_ALPHA
-        // blend over drawColor), transparent: premultiplied as it is
+        // blend over drawColor); transparent: premultiplied as it is (his canvas, the screen
+        // composite), or straight alpha for the alpha blending of sprites and meshes
         display = clamp(display, 0.0, 1.0);
         if (fluid.color.w < 0.5)
             display = vec4(display.rgb + fluid.color.rgb * (1.0 - display.a), 1.0);
+        else if (fluid.color.w > 1.5)
+            display.rgb = display.a > 0.0 ? min(display.rgb / display.a, vec3(1.0)) : vec3(0.0);
         frag_color = display;
     }else{
         // PASS_COMPOSITE: the output over a view (premultiplied blend), its top row at the

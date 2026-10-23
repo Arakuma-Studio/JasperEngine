@@ -826,7 +826,10 @@ struct FluidSimulator::Impl {
         const bool shadingOn = c.shading && !manual;
         FluidBlock block{};
         set4(block.texel, 1.0f / (float)outputWidth, 1.0f / (float)outputHeight, 0.0f, 0.0f);
-        set4(block.color, c.backColor.x, c.backColor.y, c.backColor.z, c.transparent ? 1.0f : 0.0f);
+        // (the output's alpha convention, FluidSimulator.h: premultiplied for the SCREEN composite,
+        // straight for the alpha blending of the sprites, images and meshes showing it)
+        const float alphaMode = !c.transparent ? 0.0f : (c.output == FluidOutput::SCREEN ? 1.0f : 2.0f);
+        set4(block.color, c.backColor.x, c.backColor.y, c.backColor.z, alphaMode);
         set4(block.flags, shadingOn ? 1.0f : 0.0f, bloomOn ? 1.0f : 0.0f, sunraysOn ? 1.0f : 0.0f, 0.0f);
         draw(look, output, outputWidth, outputHeight, ColorFormat::RGBA, LOOK_DISPLAY, block, &dye.read().texture(),
              bloomOn ? &bloom->texture() : nullptr, sunraysOn ? &sunrays->texture() : nullptr);
@@ -841,6 +844,7 @@ struct FluidSimulator::Impl {
         h = fnvValue(h, c.bloom);
         h = fnvValue(h, c.sunrays);
         h = fnvValue(h, c.transparent);
+        h = fnvValue(h, c.output);
         h = fnvValue(h, c.backColor.x);
         h = fnvValue(h, c.backColor.y);
         h = fnvValue(h, c.backColor.z);

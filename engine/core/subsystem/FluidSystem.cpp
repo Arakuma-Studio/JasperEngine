@@ -377,7 +377,7 @@ bool FluidSystem::hasMaterialFluids() const{
     return state->materials;
 }
 
-TextureRender* FluidSystem::getMaterialTexture(Entity entity) const{
+TextureRender* FluidSystem::getMaterialTexture(Entity entity, bool* transparent) const{
     if (!state->materials)
         return nullptr;
     auto it = state->entries.find(entity);
@@ -387,6 +387,8 @@ TextureRender* FluidSystem::getMaterialTexture(Entity entity) const{
     if (!fluid || !fluid->simulator || fluid->output != FluidOutput::MATERIAL || !fluid->enabled)
         return nullptr;
     Framebuffer* output = fluid->simulator->getOutputFramebuffer();
+    if (transparent)
+        *transparent = fluid->transparent;
     return output->isCreated() ? &output->getRender().getColorTexture() : nullptr;
 }
 

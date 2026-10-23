@@ -944,7 +944,7 @@ solve with his look (shading, bloom, sunrays) drawn into a texture. `FluidSimula
 makes one; `output` (`FluidOutput.*`) says where it goes: `SCREEN` (over the main camera),
 `MATERIAL` (the entity's Sprite/Image/Mesh texture), `TEXTURE` (only the `fluid|<entity>`
 texture link and `getTexture()`). Positions are fluid coordinates: (0,0) bottom-left, (1,1)
-top-right.
+top-right. Full guide (presets, costs, deterministic runs, MCP): `jasper://docs/fluid`.
 
 rw (the component's fields, Pavel's defaults): `enabled`, `output`, `interactive` (pointer drags
 splat), `aspectRatio` (0 auto); solver `simResolution` (128), `dyeResolution` (1024),
@@ -968,7 +968,7 @@ resolutions, `simulationRate`, `maxSubsteps`, `splatRadius`).
 | `reset()` | restarts at the next frame: zero fields, the seed, the start burst |
 | `applyPreset(id)` / `getPreset()` | `"default"`, `"mobile"`, `"smoke"`, `"ink"`, `"calm-water"`, `"psychedelic"`; sets the solver and look fields only (false: unknown id) |
 | `FluidSimulation.getPresetIds()` | static: the preset ids, in order |
-| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive` |
+| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive`, `manualFiltering`, `compactFormats` (the device fallbacks in use), `outputWidth`, `outputHeight` |
 | `getTexture()` | the output `Texture` (RGBA8) |
 | `getFluidSimulationComponent()` | the raw component (no validation) |
 

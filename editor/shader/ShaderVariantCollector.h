@@ -74,6 +74,10 @@ namespace jasperengine::editor {
         static void scanUiEffects(const std::string& text, bool lua, UiEffectUses& uses);
         // the variants of the uses (unknown names are skipped)
         static void addUiEffectKeys(const UiEffectUses& uses, std::set<ShaderKey>& keys);
+        // the fluid simulation's programs (FluidSimulator, ShaderType::FLUID: the solver, the
+        // look, the solver of devices that cannot filter half floats): a scene or prefab with a
+        // FluidSimulationComponent, or scripts naming FluidSimulation (Project), ship them
+        static void addFluidKeys(std::set<ShaderKey>& keys);
 
         // The PostProcessingSettings switches a script may flip (their camelCase names): the
         // effects of the uber pass, the bloom and blur, the grade (monochrome is part of its

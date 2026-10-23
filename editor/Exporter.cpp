@@ -581,7 +581,6 @@ void editor::Exporter::runExport() {
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!buildAndSaveShaders()) return;
     if (!writeEffectLicense()) return;
-    if (!writeFluidLicense()) return;
     if (config.mode == ExportMode::SourceCode) {
         if (isCancelled()) { setError("Build cancelled"); return; }
         if (!collectSourceResourcePack()) return;
@@ -3416,81 +3415,91 @@ bool editor::Exporter::buildAndSaveShaders() {
     return true;
 }
 
-// ---- the shaders.com notice (phase-5 spec 3.16)
+// ---- third-party notices of the shipped shaders (licenses/)
 
 const char* editor::Exporter::effectLicensePath() {
     return "licenses/shaders.com-LICENSE.txt";
 }
 
+const char* editor::Exporter::fluidLicensePath() {
+    return "licenses/webgl-fluid-simulation-LICENSE.txt";
+}
+
+bool editor::Exporter::shipsFluidComponent() const {
+    // ShaderVariantCollector adds the FLUID programs for every FluidSimulationComponent of the
+    // exported scenes and their prefabs
+    return std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::FLUID;
+    });
+}
+
+bool editor::Exporter::shipsFluidEffect() const {
+    // the HTML UI `fluid` effect runs the same kernels (effects/lib/fam_fluid_*.glsl): any of its
+    // variants (the built-in effect's custom shader "@effects/fluid")
+    return std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::UI_EFFECT &&
+               ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key)) == "@effects/fluid";
+    });
+}
+
+bool editor::Exporter::shipsWebGLFluid() const {
+    return shipsFluidComponent() || shipsFluidEffect();
+}
+
+namespace {
+
+    // the notice at `relative` (under the export's root) when `ship`, copied from `source`;
+    // else removed (and licenses/ with it when empty)
+    bool writeNotice(bool ship, const fs::path& targetDir, const char* relative, const fs::path& source, std::string& error) {
+        const fs::path target = targetDir / relative;
+        std::error_code ec;
+        if (!ship) {
+            fs::remove(target, ec);
+            if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+            return true;
+        }
+        if (!fs::is_regular_file(source, ec)) {
+            error = "missing: " + source.string();
+            return false;
+        }
+        fs::create_directories(target.parent_path(), ec);
+        if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            error = "Failed to write " + target.string() + ": " + ec.message();
+            return false;
+        }
+        return true;
+    }
+
+}
+
 bool editor::Exporter::writeEffectLicense() {
+    // copyEngine put the engine's shaderlib next to the export
+    const fs::path effects = config.targetDir / "shaderlib" / "effects";
+    std::string error;
     // Every UI effect is compiled with the effects include library, which ports functions of
     // the shaders.com kit (engine/shaderlib/effects/LICENSE.shaders-com.txt lists it with the
     // ported effects): a build with any UI effect variant ships the notice
-    const bool effects = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
+    const bool effectVariants = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [](ShaderKey key) {
         return ShaderPool::getShaderTypeFromKey(key) == ShaderType::UI_EFFECT;
     });
-    const fs::path target = config.targetDir / effectLicensePath();
-    std::error_code ec;
-    if (!effects) {
-        fs::remove(target, ec);
-        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
-        return true;
-    }
-    // copyEngine put the engine's shaderlib next to the export
-    const fs::path source = config.targetDir / "shaderlib" / "effects" / "LICENSE.shaders-com.txt";
-    if (!fs::is_regular_file(source, ec)) {
-        setError("The UI effects notice is missing: " + source.string());
+    if (!writeNotice(effectVariants, config.targetDir, effectLicensePath(), effects / "LICENSE.shaders-com.txt", error)) {
+        setError("The UI effects notice: " + error);
         return false;
     }
-    fs::create_directories(target.parent_path(), ec);
-    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        setError("Failed to write " + target.string() + ": " + ec.message());
-        return false;
-    }
-    return true;
-}
-
-// ---- Pavel Dobryakov's WebGL-Fluid-Simulation notice (the native Fluid Simulation, effect(fluid))
-
-const char* editor::Exporter::fluidLicensePath() {
-    return "licenses/WebGL-Fluid-Simulation-LICENSE.txt";
-}
-
-bool editor::Exporter::usesFluidShaders(const std::set<ShaderKey>& keys) {
-    return std::any_of(keys.begin(), keys.end(), [](ShaderKey key) {
-        const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-        if (type == ShaderType::FLUID) return true;
-        return type == ShaderType::UI_EFFECT && ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key)) == "@effects/fluid";
-    });
-}
-
-bool editor::Exporter::writeFluidLicense() {
-    const fs::path target = config.targetDir / fluidLicensePath();
-    std::error_code ec;
-    if (!usesFluidShaders(config.selectedShaderKeys)) {
-        fs::remove(target, ec);
-        if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
-        return true;
-    }
-    const fs::path source = config.targetDir / "shaderlib" / "LICENSE.WebGL-Fluid-Simulation.txt";
-    if (!fs::is_regular_file(source, ec)) {
-        setError("The fluid simulation's notice is missing: " + source.string());
-        return false;
-    }
-    fs::create_directories(target.parent_path(), ec);
-    if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-    if (ec) {
-        setError("Failed to write " + target.string() + ": " + ec.message());
+    // Pavel Dobryakov's WebGL-Fluid-Simulation (engine/shaderlib/fluid.*, effects/lib/fam_fluid_*,
+    // engine/core/fluid; NOTICE.md)
+    if (!writeNotice(shipsWebGLFluid(), config.targetDir, fluidLicensePath(), effects / "LICENSE.webgl-fluid-simulation.txt", error)) {
+        setError("The fluid simulation notice: " + error);
         return false;
     }
     return true;
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* path : {effectLicensePath(), fluidLicensePath()}) {
-        const fs::path source = config.targetDir / path;
-        const fs::path target = config.destinationDir / path;
+    for (const char* relative : {effectLicensePath(), fluidLicensePath()}) {
+        const fs::path source = config.targetDir / relative;
+        const fs::path target = config.destinationDir / relative;
         std::error_code ec;
         if (!fs::is_regular_file(source, ec)) {
             fs::remove(target, ec);

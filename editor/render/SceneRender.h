@@ -317,6 +317,8 @@ namespace jasperengine::editor{
         // The Paint Dye brush's circle under the pointer, in pixels of this view (y down), for
         // SceneWindow to draw over the image (a 2D scene draws sprites over its own lines)
         bool getFluidBrushCircle(std::vector<Vector2>& points);
+        // a world point in pixels of this view (y down) through the editor camera; false behind it
+        bool projectToView(const Vector3& world, Vector2& point);
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen

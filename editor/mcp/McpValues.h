@@ -116,7 +116,10 @@ namespace jasperengine::editor::mcp {
             long index = -1;             // insert (-1: append) / remove
         };
         // [{component, property, value}], [{component, property, insert: v, index?}],
-        // [{component, property, remove: index}], or {component: {property: value}}
+        // [{component, property, remove: index}], or {component: {property: value}}.
+        // A FluidSimulation's "preset" (an id of FluidPresets.h) stands for the preset's fields:
+        // it expands in place (in the object form before the component's other values, which
+        // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
         // component, the custom (YAML) edits first as one component rewrite, then the typed
@@ -214,6 +217,10 @@ namespace jasperengine::editor::mcp {
         // the scene in their current variants (get_entity, get_shader_uniforms): one entry per
         // reader, {component, submesh, reads, extra_pass_reads, error, fix}; empty when none
         static Json entitySceneInputsToJson(Scene* scene, Entity entity);
+        // A FluidSimulation's runtime state (get_entity, get_runtime_entity: "fluid_stats"), read
+        // only: FluidStats in snake_case plus the matching preset, the device's support and the
+        // simulator's last error; null when the entity has no FluidSimulationComponent
+        static Json fluidStatsToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

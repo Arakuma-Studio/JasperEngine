@@ -16,6 +16,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
 #include "util/FluidEditorTools.h"
+#include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
@@ -4317,6 +4318,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             if (ImGui::Button(ICON_FA_DROPLET, texButtonSize)) {
                 ImGui::OpenPopup("fluidtexturepopup");
             }
+            UIProbe::item("texture.fluid." + id);
             ImGui::SetItemTooltip("Fluid Simulation as source (its output, live)");
         }
 
@@ -4373,6 +4375,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                     applyFluidTexture(fluidEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
                     finishProperty = true;
                 }
+                UIProbe::item("texture.fluid.item." + std::to_string(fluidEntity));
                 if (fluid.output != FluidOutput::TEXTURE) {
                     ImGui::SetItemTooltip("Its output; it is also drawn %s. Output Texture draws it only here.",
                                           fluid.output == FluidOutput::SCREEN ? "over the screen" : "on its own GameObject");
@@ -14197,6 +14200,8 @@ void editor::InspectorWindow::show(){
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)
     FluidEditorTools::update(project);
+    // UI tests: what the last frame named (UIProbe, JASPER_UI_PROBE only)
+    UIProbe::flush();
 
     if (!windowOpen) {
         return;
@@ -14217,6 +14222,11 @@ void editor::InspectorWindow::show(){
         return;
     }
     if (nameFocusFrames > 0) nameFocusFrames--;
+    if (UIProbe::enabled()) {
+        // what shows of the window, wherever it is scrolled
+        const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
+        UIProbe::rect("inspector", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
+    }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();

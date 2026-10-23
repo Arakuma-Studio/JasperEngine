@@ -77,8 +77,13 @@ namespace jasperengine{
         void pointerUp(int id);
         void pointerCancelAll();
 
-        // the drawn image (RGBA8, premultiplied by its alpha in transparent mode). The object is
-        // stable for the simulator's lifetime; its version changes when it is recreated
+        // the drawn image: RGBA8 at the dye's size, its first row the fluid's top (top-left
+        // origin, as every framebuffer texture). Its alpha: 1 when opaque (the fluid over
+        // backColor); transparent, alpha = max(r, g, b) and the colour is premultiplied by it
+        // for output SCREEN (FluidSystem's composite blends ONE, ONE_MINUS_SRC_ALPHA) but
+        // straight for MATERIAL and TEXTURE (the alpha blending of sprites, images and meshes,
+        // SRC_ALPHA, ONE_MINUS_SRC_ALPHA, gives the same picture). The object is stable for the
+        // simulator's lifetime; its version changes when it is recreated
         Framebuffer* getOutputFramebuffer();
         Texture& getOutputTexture();
         // the raw fields (current read side): dye RGBA16F (HDR), velocity RG16F (sim texels / s)

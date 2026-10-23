@@ -259,7 +259,7 @@ class Scratch:
 def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch",
                 command: list[str] | None = None, display: str | None = None,
                 headless: bool = True, extra_args: list[str] | None = None,
-                inherit_display: bool = False) -> tuple[list[str], dict[str, str], Path]:
+                inherit_display: bool = False, ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
     """argv, environment and cwd of `<editor> mcp ...` for this scratch dir.
 
     Also used by tests that need a raw subprocess (e.g. the stdout purity test).
@@ -285,6 +285,12 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
+    # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
+    # widgets it names there (Editor.ui_rect)
+    if ui_probe:
+        env["JASPER_UI_PROBE"] = str(scratch.root / "ui-probe.json")
+    else:
+        env.pop("JASPER_UI_PROBE", None)
     return cmd + args, env, scratch.root
 
 
@@ -359,13 +365,15 @@ class Editor:
     startup_timeout  seconds for the editor to answer initialize
     call_timeout     default seconds per tool call
     keep      keep the scratch dir even on success
+    ui_probe  the editor writes the rectangles of the widgets it names (editor/util/UIProbe.h), read
+              by ui_items() / ui_rect(): UI tests click widgets wherever the layout puts them
     """
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  url: str | None = None, token: str | None = None, xvfb: str | None = None,
                  command: list[str] | None = None, fake: bool | None = None,
                  extra_args: list[str] | None = None, startup_timeout: float = 180.0,
-                 call_timeout: float = 300.0, keep: bool | None = None, label: str = ""):
+                 call_timeout: float = 300.0, keep: bool | None = None, label: str = "", ui_probe: bool = False):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
         if fake is None:
@@ -384,6 +392,7 @@ class Editor:
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
         self.label = label
+        self.ui_probe = ui_probe
 
         self.scratch: Scratch | None = None
         self.session: ClientSession | None = None
@@ -436,7 +445,7 @@ class Editor:
                 display = self._xvfb.start()
             argv, env, cwd = launch_spec(
                 self.scratch, create=self.create, name=self.name, command=self.command,
-                display=display, extra_args=self.extra_args, inherit_display=inherit)
+                display=display, extra_args=self.extra_args, inherit_display=inherit, ui_probe=self.ui_probe)
             self.argv = argv
             self._stderr_file = open(self.scratch.stderr_log, "w", buffering=1)
             params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))
@@ -579,6 +588,25 @@ class Editor:
         if mime == "image/png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
             self.fail("screenshot said image/png but the data is not a PNG")
         return data
+
+    def ui_items(self) -> dict[str, list[float]]:
+        """The widgets the editor drew whole in its last frame, {name: [x0, y0, x1, y1]} in editor
+        window pixels (Editor(ui_probe=True); {} before the first frame or without it)."""
+        if not self.scratch:
+            return {}
+        path = self.scratch.root / "ui-probe.json"
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads(path.read_text()).get("items", {})
+        return {}
+
+    async def ui_rect(self, name: str, timeout: float = 10.0) -> list[float] | None:
+        """A widget's rectangle once the editor draws it whole (None after timeout seconds)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            rect = self.ui_items().get(name)
+            if rect or time.monotonic() > deadline:
+                return rect
+            await asyncio.sleep(0.1)
 
     async def console_since(self, since: Any = "last", **args: Any) -> list[dict]:
         """Console entries newer than `since` (a cursor). "last" (default) continues from the previous

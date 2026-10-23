@@ -50,7 +50,8 @@ namespace jasperengine{
 
         // RenderSystem's draws: the image an entity's Sprite, Image or Mesh (submesh 0's base
         // colour) shows instead of its texture, its MATERIAL fluid's output (null: its own)
-        TextureRender* getMaterialTexture(Entity entity) const;
+        // (transparent: set to whether that output is transparent, straight alpha)
+        TextureRender* getMaterialTexture(Entity entity, bool* transparent = nullptr) const;
         bool hasMaterialFluids() const;
 
         // width / height of an entity's fluid: its aspectRatio, else automatic (the canvas in

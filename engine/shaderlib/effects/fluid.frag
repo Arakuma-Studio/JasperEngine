@@ -65,7 +65,7 @@
 
 // A port of Pavel Dobryakov's WebGL-Fluid-Simulation (MIT, Copyright (c) 2017 Pavel Dobryakov;
 // https://github.com/PavelDoGreat/WebGL-Fluid-Simulation; the notice is
-// engine/shaderlib/LICENSE.WebGL-Fluid-Simulation.txt, shipped by exports that use this effect):
+// effects/LICENSE.webgl-fluid-simulation.txt, shipped by exports that use this effect):
 // his solver and look through the kernels the native Fluid Simulation shares
 // (effects/lib/fam_fluid_solver.glsl, effects/lib/fam_fluid_look.glsl).
 //
