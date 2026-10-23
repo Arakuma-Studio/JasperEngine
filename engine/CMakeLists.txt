@@ -15,6 +15,9 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# googletest suite of the pose animation core (engine/tests/pose): pure maths, no GPU or window;
+# builds from the editor top-level build and from the standalone engine build
+option(JASPERENGINE_POSE_TESTS "Build jasperengine-pose-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -815,6 +818,19 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
+    core/pose/HumanBones.cpp
+    core/pose/HumanoidMap.cpp
+    core/pose/HumanoidMapIO.cpp
+    core/pose/PoseAnimationIO.cpp
+    core/pose/PoseDofs.cpp
+    core/pose/PoseFile.cpp
+    core/pose/PoseIK.cpp
+    core/pose/PoseRanges.cpp
+    core/pose/PoseRig.cpp
+    core/pose/PoseSampler.cpp
+    core/pose/PoseSecondary.cpp
+    core/pose/PoseSkin.cpp
+    core/pose/PoseTween.cpp
     core/buffer/Attribute.cpp
     core/buffer/Buffer.cpp
     core/buffer/ExternalBuffer.cpp
@@ -942,12 +958,6 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
-    core/pose/HumanBones.cpp
-    core/pose/HumanoidMapIO.cpp
-    core/pose/PoseAnimationIO.cpp
-    core/pose/PoseDofs.cpp
-    core/pose/PoseFile.cpp
-    core/pose/PoseRanges.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1304,4 +1314,8 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+
+if(JASPERENGINE_POSE_TESTS)
+    add_subdirectory(tests/pose)
 endif()
