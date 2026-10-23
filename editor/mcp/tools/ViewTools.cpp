@@ -1012,11 +1012,14 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "texture_synthesis") {
+        app.getTextureSynthesisWindow()->open();
+        imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
+                   "texture_synthesis.");
         return;
     }
-    (void)app;
     // A window opened just now exists after its next draw
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
@@ -1182,7 +1185,8 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
+                                       "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;

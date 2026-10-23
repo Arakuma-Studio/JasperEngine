@@ -292,7 +292,43 @@ namespace jasperengine::editor::texsynth {
         return parsed;
     }
 
-    std::vector<SourceState> checkRecipeSources(const json& recipe, const fs::path& recipeFile, const fs::path& projectDir) {
+    std::optional<std::string> readRecipeTextHead(const fs::path& path, std::string* error) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file) {
+            if (error) *error = "cannot open " + path.string();
+            return std::nullopt;
+        }
+        static const uint8_t signature[8] = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
+        std::vector<uint8_t> head(8);
+        if (!file.read(reinterpret_cast<char*>(head.data()), 8) || std::memcmp(head.data(), signature, 8) != 0) {
+            if (error) *error = "not a PNG";
+            return std::nullopt;
+        }
+        // the text chunks before IDAT, after the signature: the others are seeked over
+        for (int chunks = 0; chunks < 4096; chunks++) {
+            uint8_t header[8];
+            if (!file.read(reinterpret_cast<char*>(header), 8)) break;
+            const uint32_t length = readU32(header);
+            const bool text = std::memcmp(header + 4, "iTXt", 4) == 0 || std::memcmp(header + 4, "tEXt", 4) == 0;
+            if (std::memcmp(header + 4, "IDAT", 4) == 0 || std::memcmp(header + 4, "IEND", 4) == 0) break;
+            if (text && length < (64u << 20)) {
+                const size_t at = head.size();
+                head.resize(at + 12 + length);
+                std::memcpy(head.data() + at, header, 8);
+                if (!file.read(reinterpret_cast<char*>(head.data() + at + 8), static_cast<std::streamsize>(length) + 4)) {
+                    head.resize(at);
+                    break;
+                }
+            } else {
+                file.seekg(static_cast<std::streamoff>(length) + 4, std::ios::cur);
+                if (!file) break;
+            }
+        }
+        return readRecipeTextFromPng(head.data(), head.size(), error);
+    }
+
+    std::vector<SourceState> checkRecipeSources(const json& recipe, const fs::path& recipeFile, const fs::path& projectDir,
+                                                const std::function<std::string(const fs::path&)>& hashFile) {
         std::vector<SourceState> states;
         const bool fromProject = recipe.value("pathBase", std::string("file")) == "project";
         const fs::path base = fromProject ? projectDir : recipeFile.parent_path();
@@ -308,13 +344,18 @@ namespace jasperengine::editor::texsynth {
             }
             const fs::path recorded = fs::u8path(state.path);
             state.resolved = recorded.is_absolute() ? recorded : base / recorded;
-            std::ifstream file(state.resolved, std::ios::binary);
-            if (!file) {
-                state.state = "missing";
+            std::string hash;
+            if (hashFile) {
+                hash = hashFile(state.resolved);
             } else {
-                const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-                state.state = sha1Hex(bytes.data(), bytes.size()) == entry.value("sha1", std::string()) ? "unchanged" : "changed";
+                std::ifstream file(state.resolved, std::ios::binary);
+                if (file) {
+                    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                    hash = sha1Hex(bytes.data(), bytes.size());
+                }
             }
+            if (hash.empty()) state.state = "missing";
+            else state.state = hash == entry.value("sha1", std::string()) ? "unchanged" : "changed";
             states.push_back(state);
         };
         if (recipe.contains("examples") && recipe["examples"].is_array()) {

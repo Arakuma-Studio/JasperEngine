@@ -604,6 +604,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -626,6 +627,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
@@ -676,6 +678,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp

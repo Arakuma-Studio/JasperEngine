@@ -24,6 +24,7 @@
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
+#include "texsynth/SynthesisRecipe.h"
 
 #include "lua.hpp"
 #include "yaml-cpp/yaml.h"
@@ -1598,4 +1599,201 @@ Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
         }
     }
     return item;
+}
+
+// ======================================================================== texture synthesis recipes
+
+namespace {
+
+int64_t stampTime(const fs::path& path, std::uintmax_t& size, bool& exists) {
+    std::error_code ec;
+    const auto time = fs::last_write_time(path, ec);
+    exists = !ec;
+    size = exists ? fs::file_size(path, ec) : 0;
+    if (ec) exists = false;
+    return exists ? static_cast<int64_t>(time.time_since_epoch().count()) : 0;
+}
+
+// .jasperengine/synthesis-check-cache.json: {"version": 1, "pngs": {rel: [time, size, recipe 0|1]},
+// "hashes": {path: [time, size, sha1]}}
+struct SynthesisCache {
+    fs::path file;
+    Json pngs = Json::object();
+    Json hashes = Json::object();
+    bool dirty = false;
+};
+
+void loadSynthesisCache(SynthesisCache& cache, const fs::path& projectRoot) {
+    const fs::path dir = projectRoot / ".jasperengine";
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return;
+    cache.file = dir / "synthesis-check-cache.json";
+    std::string text;
+    if (!editor::ProjectChecks::readFile(cache.file, text)) return;
+    const Json j = Json::parse(text, nullptr, false);
+    if (!j.is_object() || j.value("version", 0) != 1) return;
+    if (j.contains("pngs") && j["pngs"].is_object()) cache.pngs = j["pngs"];
+    if (j.contains("hashes") && j["hashes"].is_object()) cache.hashes = j["hashes"];
+}
+
+void saveSynthesisCache(const SynthesisCache& cache) {
+    if (cache.file.empty() || !cache.dirty) return;
+    const Json j = {{"version", 1}, {"pngs", cache.pngs}, {"hashes", cache.hashes}};
+    fs::path temporary = cache.file;
+    temporary += ".partial";
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << j.dump();
+    out.close();
+    std::error_code ec;
+    fs::rename(temporary, cache.file, ec);
+    if (ec) fs::remove(temporary, ec);
+}
+
+bool cachedStamp(const Json& entry, int64_t time, std::uintmax_t size) {
+    return entry.is_array() && entry.size() == 3 && entry[0].is_number_integer() && entry[0].get<int64_t>() == time &&
+           entry[1].is_number_unsigned() && entry[1].get<std::uintmax_t>() == size;
+}
+
+std::string lowerExt(const fs::path& path) {
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+}
+
+editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecipes(const fs::path& projectRoot, const std::vector<fs::path>& files) {
+    SynthesisCheck check;
+    SynthesisCache cache;
+    loadSynthesisCache(cache, projectRoot);
+
+    // the recipe text of a PNG, nullopt without one (cached: PNGs without a recipe are not reopened)
+    auto recipeOf = [&](const fs::path& png) -> std::optional<Json> {
+        std::uintmax_t size = 0;
+        bool exists = false;
+        const int64_t time = stampTime(png, size, exists);
+        if (!exists) return std::nullopt;
+        const std::string key = projectRelative(projectRoot, png);
+        check.pngs++;
+        if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png);
+        std::optional<Json> recipe;
+        if (text) {
+            Json parsed = Json::parse(*text, nullptr, false);
+            if (parsed.is_object()) recipe = parsed;
+        }
+        cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
+        cache.dirty = true;
+        return recipe;
+    };
+    // a source's SHA-1 (cached by mtime and size); "" when it is gone
+    auto hashOf = [&](const fs::path& source) -> std::string {
+        std::uintmax_t size = 0;
+        bool exists = false;
+        const int64_t time = stampTime(source, size, exists);
+        if (!exists) return std::string();
+        const std::string key = source.lexically_normal().generic_string();
+        if (cache.hashes.contains(key) && cachedStamp(cache.hashes[key], time, size) && cache.hashes[key][2].is_string()) {
+            return cache.hashes[key][2].get<std::string>();
+        }
+        std::string content;
+        if (!readFile(source, content)) return std::string();
+        const std::string sha1 = editor::texsynth::sha1Hex(reinterpret_cast<const uint8_t*>(content.data()), content.size());
+        cache.hashes[key] = Json::array({time, size, sha1});
+        cache.dirty = true;
+        return sha1;
+    };
+
+    struct Stale {
+        fs::path png;
+        Json recipe;
+    };
+    std::vector<Stale> checked;
+    std::set<std::string> givenSources;   // files mode: changed sources
+    std::set<fs::path> givenPngs;
+    if (files.empty()) {
+        for (const fs::path& png : findProjectFiles(projectRoot, {".png"})) {
+            if (std::optional<Json> recipe = recipeOf(png)) checked.push_back({png, *recipe});
+        }
+    } else {
+        for (const fs::path& file : files) {
+            if (lowerExt(file) == ".png") {
+                if (std::optional<Json> recipe = recipeOf(file)) {
+                    checked.push_back({file, *recipe});
+                    givenPngs.insert(file.lexically_normal());
+                    continue;
+                }
+            }
+            givenSources.insert(file.lexically_normal().generic_string());
+        }
+        if (!givenSources.empty()) {
+            // the textures made from the given files
+            for (const fs::path& png : findProjectFiles(projectRoot, {".png"})) {
+                if (givenPngs.count(png.lexically_normal())) continue;
+                std::optional<Json> recipe = recipeOf(png);
+                if (!recipe) continue;
+                bool uses = false;
+                for (const editor::texsynth::SourceState& s :
+                     editor::texsynth::checkRecipeSources(*recipe, png, projectRoot, [](const fs::path&) { return std::string("-"); })) {
+                    if (givenSources.count(s.resolved.lexically_normal().generic_string())) uses = true;
+                }
+                if (uses) checked.push_back({png, *recipe});
+            }
+        }
+    }
+
+    for (const Stale& item : checked) {
+        const Json& recipe = item.recipe;
+        const std::string role = recipe.value("role", std::string("primary"));
+        // a companion / uncertainty output: its primary output reports the set
+        if (files.empty() && role != "primary" && recipe.contains("outputs") && recipe["outputs"].is_object() &&
+            recipe["outputs"].contains("primary") && recipe["outputs"]["primary"].is_string()) {
+            const fs::path recorded = fs::u8path(recipe["outputs"]["primary"].get<std::string>());
+            const bool fromProject = recipe.value("pathBase", std::string("file")) == "project";
+            const fs::path primary = recorded.is_absolute() ? recorded : (fromProject ? projectRoot : item.png.parent_path()) / recorded;
+            std::error_code ec;
+            if (primary.lexically_normal() != item.png.lexically_normal() && fs::is_regular_file(primary, ec)) continue;
+        }
+        check.recipes++;
+        const std::string rel = projectRelative(projectRoot, item.png);
+        const std::string seed = recipe.contains("seed") ? (recipe["seed"].is_string() ? recipe["seed"].get<std::string>() : recipe["seed"].dump()) : "?";
+        const std::string suggestion =
+            "regenerate it: right-click it in the Project window > Edit Synthesis... > Regenerate > Save, or synthesize_texture with the "
+            "`regenerate` arguments get_asset_info gives (mode " + recipe.value("mode", std::string("?")) + ", seed " + seed + ", overwrite: true)";
+        for (const editor::texsynth::SourceState& s : editor::texsynth::checkRecipeSources(recipe, item.png, projectRoot, hashOf)) {
+            if (s.state != "changed" && s.state != "missing") continue;
+            Finding finding;
+            finding.tool = "texture";
+            finding.path = rel;
+            finding.severity = "warning";
+            const std::string source = s.resolved.empty() ? s.path : projectRelative(projectRoot, s.resolved);
+            if (s.state == "changed") {
+                finding.code = "synthesis-source-changed";
+                finding.message = "synthesized from " + source + " (" + s.role + "), which changed since: the texture no longer matches its source";
+                finding.suggestion = suggestion;
+            } else {
+                finding.code = "synthesis-source-missing";
+                finding.message = "synthesized from " + source + " (" + s.role + "), which no longer exists";
+                finding.suggestion = "restore " + source + " (or Edit Synthesis... and pick another source) before regenerating; the texture "
+                                     "itself still works";
+            }
+            check.findings.push_back(std::move(finding));
+        }
+    }
+    // forget PNGs that are gone (whole-project scans only)
+    if (files.empty()) {
+        for (auto it = cache.pngs.begin(); it != cache.pngs.end();) {
+            std::error_code ec;
+            if (!fs::exists(projectRoot / fs::u8path(it.key()), ec)) {
+                it = cache.pngs.erase(it);
+                cache.dirty = true;
+            } else {
+                ++it;
+            }
+        }
+    }
+    saveSynthesisCache(cache);
+    sortFindings(check.findings);
+    return check;
 }

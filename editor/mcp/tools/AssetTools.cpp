@@ -777,6 +777,16 @@ void getAssetInfoTool(const CallPtr& call) {
             text += " " + std::to_string(w) + "x" + std::to_string(h) + ", " + std::to_string(c) + " channel(s)";
         }
         data["sampler_note"] = "Filtering/wrap are per texture property (set_texture_settings), not per file.";
+        if (extensionOf(file) == ".png") {
+            // a texture written by the synthesis: its recipe, whether its sources changed, and
+            // the synthesize_texture arguments that regenerate it
+            Json synthesis = synthesisAssetInfo(project, file, true);
+            if (!synthesis.is_null()) {
+                data["synthesis"] = synthesis;
+                text += "." + synthesisAssetText(synthesis);
+                text.pop_back();
+            }
+        }
     } else if (kind == "model") {
         std::string error;
         Json info = modelInfo(file, error);
@@ -834,7 +844,7 @@ void getAssetInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ view_asset
 
-void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize) {
+void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json()) {
     int w = 0, h = 0, c = 0;
     unsigned char* pixels = stbi_load(image.string().c_str(), &w, &h, &c, 4);
     if (!pixels) {
@@ -849,9 +859,12 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
         call->fail("Can't encode the preview of " + label + ".");
         return;
     }
+    Json data = {{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}};
+    if (!synthesis.is_null()) data["synthesis"] = synthesis;
     ToolResult result = ToolResult::success(label + " (" + std::to_string(w) + "x" + std::to_string(h) +
-                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ").",
-                                            Json{{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}});
+                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ")." +
+                                                synthesisAssetText(synthesis),
+                                            data);
     result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
 }
@@ -863,7 +876,7 @@ void viewAssetTool(const CallPtr& call) {
     const std::string rel = projectRelative(project, file);
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
-        replyImage(call, file, rel, maxSize);
+        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
         return;
     }
     if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel))) {
@@ -2909,9 +2922,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels; model meshes, materials, animations, nodes; "
-            "WAV format/duration; .material fields, linked submeshes; shader includes, forks using it; Lua syntax; "
-            "scene status; unsaved code editor edits.";
+            "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
+            "regenerate arguments); model meshes, materials, animations, nodes; WAV format/duration; .material fields, "
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
