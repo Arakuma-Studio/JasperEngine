@@ -361,3 +361,16 @@ the figure is approximate; re-measure on an idle host before deciding otherwise.
 - `tools/build.sh htmlui-tests` (AC11, on `libs/googletest` and `engine/tests/support`): 3,237 ran,
   74 skipped (3,311 declared), 0 failed, no golden changed. `tools/build.sh htmlui-editor-tests`:
   72 ran, 1 skipped (the live Google Fonts test), 73 declared.
+
+### After the S03 merge
+
+S03's tests (`engine/tests/core/io`, `editor/tests/data_safety`) run in the same binaries:
+`jasperengine-core-tests` 381, `jasperengine-editor-tests` 247.
+
+- `WERROR=1 tools/build.sh unit-tests`: 381 + 247 ran, 0 failed.
+- `SANITIZE=address,undefined tools/build.sh unit-tests`: 381 + 247 ran, 0 failed, no leak report.
+- `WERROR=1 tools/build.sh linux`, `tools/build.sh web` + `web-gate` (PASS), `tools/build.sh android`: pass.
+- `test_protocol.py` and `test_data_safety.py`: 15 passed. `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`:
+  124 passed, 0 failed, 1 skipped. `tools/smoke-test.sh tools/fixtures/post-processing`: PASS.
+- The unit job's lints: `check_raw_writes.py --self-test` and the tree pass, `check_stream_keys.py`
+  (58 tables) passes; notices, presets and actionlint pass.
