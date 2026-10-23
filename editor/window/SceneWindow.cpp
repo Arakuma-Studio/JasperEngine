@@ -1016,7 +1016,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool handPanEnabled = sceneProject->sceneRender->getCursorSelected() == CursorSelected::HAND;
     GizmoSelected gizmoSelected = sceneProject->sceneRender->getToolsLayer()->getGizmoSelected();
     Gizmo2DSideSelected gizmo2DSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
-    bool gizmoSideActive = sceneProject->sceneRender->isAnyGizmoSideSelected();
+    // The hand tool only pans: a drag on a gizmo handle moves the view, not the handle
+    bool gizmoSideActive = !handPanEnabled && sceneProject->sceneRender->isAnyGizmoSideSelected();
     // Alt + click on a gizmo handle duplicates the target and drags the copy.
     // For the 2D gizmo, only the center move area duplicates; resize handles
     // keep editing the current selection. Alt + click on empty space keeps its
@@ -1040,7 +1041,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             subSelectionClickConsumesRelease[sceneId] = false;
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
@@ -1320,7 +1321,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             sceneProject->sceneRender->mouseHoverEvent(x, y);
         }
 
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;
