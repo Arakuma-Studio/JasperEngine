@@ -244,6 +244,15 @@ negate DOFs whose axis is U or F (`side`, `twist`, `turn`) and keep L-axis DOFs;
 
 `clampToLimits(BodyPose&) -> std::vector<int>` (indices of clamped DOFs). Limits are applied to
 key poses after edits when `humanize.jointLimits` is on, and to the baked frames (section 4.8).
+After the per-DOF clamp, `clampToLimits` also caps the swing: when `|(dof1, dof2)|` (as a vector,
+degrees) exceeds `MAX_SWING_DEGREES` = 179.5 the pair is scaled to that length and both DOFs are
+reported (a swing over 180 is the same rotation as a shorter one the other way, so it cannot
+round-trip, and at exactly 180 the twist is undefined, so a twisted key there would not survive
+the frames' limit pass: the cap is half a degree below; every limit range contains 0, so the
+scaled pair stays within the limits). When limiting frames, a bone whose
+decomposed angles are outside the limits keeps its rotation if the long-form equivalent of its
+swing, `s * (1 - 360/|s|)`, is within the limits (a swing over 180 decomposes to the short form);
+only otherwise is it clamped. (Added in review round 1.)
 
 ### 4.6 Humanoid map and auto-detect (`HumanoidMap.h/.cpp`)
 
@@ -276,6 +285,9 @@ synonyms (first match wins, in this priority):
 Then a structural pass fixes gaps: Hips = the lowest common ancestor of both upper legs if
 unmapped; a required slot still empty -> `validateHumanoid` fails with the list of missing slots.
 Notes report every slot mapped by the structural pass and every ambiguity resolved.
+When a mapped shoulder or upper arm descends from the mapped neck (3ds Max biped: the clavicles
+are children of `Bip01 Neck`), the neck is left unmapped (a note says why): it becomes a rest
+intermediate bone between the chest and the head/arms. (Added in review round 1.)
 Test cases (section 6) cover Mixamo, Blender/Rigify-like, Unreal mannequin, VRM and
 Unity-style names.
 
@@ -352,7 +364,11 @@ realised `HumanPose` per key, the settings and the timeline. Per bone `b` (group
    (`duration *= 1 + 1.5*l`, `overshoot = lerp(overshoot, 0.7, l)`);
    `e = ease(local / max(tr.duration, 1e-4), tr)`; with humanize on and `movingHolds > 0`:
    `hp = hold_s > 1e-4 ? smoothstep(0, 1, (local + hold_s) / hold_s) : (local >= 0 ? 1 : 0)`,
-   `e = movingHolds * hp + (1 - movingHolds) * e`; skip when `e == 0`;
+   `e = movingHolds * hp + (1 - movingHolds) * e`; for the previous cycle (`c = -1`) then
+   `e = e + (1 - e) * smoothstep(0, 1, tau / len)`, so the previous cycle is fully settled
+   (its product is the identity) at `tau = len` and equals the plain `e` at `tau = 0`: the loop is
+   continuous across every bone's wrap time even for loose, high-overshoot springs that have not
+   settled after one cycle (added in review round 1); skip when `e == 0`;
    `r = r * powRotation(key[s].rot[b]^-1 * key[s+1].rot[b], e)`;
    hips (`b == 0`) also `pos += (key[s+1].hipsPosition - key[s].hipsPosition) * e`.
 5. Life (humanize, `life > 0`, `b != hips`, `g != Legs`): `r = r * lifeRotation(b, t, len, life, seed)`:
@@ -379,8 +395,11 @@ motion of segment `i` = mean angle between the poses' bone rotations (degrees) +
 `hold_i = holdBase * clamp((motion_incoming_i / mean)^2, 0.1, 3)`;
 `dur_i = settings.transition.duration * lerp(0.6, 1.6, clamp01(motion_i / mean / 2))`, every pose
 gets a custom transition with that duration; then everything is rescaled so the total length is
-unchanged; with `stepRate > 0` holds and durations snap to the `1/stepRate` grid (minimum one
-step); durations clamp to 0.02..1.0. All-zero motion leaves the timing unchanged.
+unchanged; durations clamp to 0.02..1.0 and holds to 0..5, and what a clamp removes or adds is
+spread over the values still free (the total stays unless every value is at a bound); with
+`stepRate > 0` holds and durations are whole `1/stepRate` steps (minimum one step), rounded so
+their total is the step count nearest the old length (residual at most half a step, when the
+old length is off the grid). All-zero motion leaves the timing unchanged.
 
 ### 4.9 Follow-through (`PoseSecondary.h/.cpp`)
 
@@ -407,10 +426,23 @@ float lowestPoint(const PoseRig&, const HumanPose&);   // model-space height alo
 void ground(const PoseRig&, HumanPose&, float lift /* humanScale units */);   // moves hips along up so lowest = floor + lift*humanScale
 ```
 
-Two-bone IK (A = upper, B = lower, C = end): clamp the reach to
-`[|lab - lbc| + 1e-4, lab + lbc - 1e-4]`; bend axis = `cross(C - A, B - A)`, or when the limb is
-straight `cross(C - A, pole)` with pole = character forward for legs, -forward for arms; rotate B
-by the change of the interior angle about the bend axis, then A by `fromTo(C - A, T - A)`;
+Two-bone IK (A = upper, B = lower, C = end, T = target; revised in review rounds 1 and 2):
+1. Reach: clamp `|T - A|` to `[|lab - lbc| + m, lab + lbc - m]`, `m = 1e-4 * humanScale`.
+2. Bend plane normal (`n = cross(C - A, B - A)` points so that `cross(n, C - A)` is the joint's
+   side). The pole normal is `cross(C - A, pole)` with pole = character forward for legs (knees
+   forward), -forward for arms (elbows back), blending to up / down as the limb turns along the
+   pole. With `sinA` the sine of the angle at A and `c = dot(n_current, n_pole)` (unit normals),
+   the weight of the current plane is `w = smoothstep(0.02, 0.1, sinA) * smoothstep(-1, 0, c)` for
+   `sinA < 0.1` and `w = 1` above; `n = normalize(w * n_current + (1 - w) * n_pole)`. So a straight
+   (or float-noise-bent) limb takes the pole's side, a clearly bent one keeps its plane, the
+   current plane's weight fades as it turns past 90 degrees from the pole plane, and the only
+   discontinuity is at `sinA = 0.1` for a limb bent backwards (it then keeps its own plane).
+3. The plane follows the limb: `n' = fromTo(C - A, T - A) * n` (the shortest rotation, like the
+   original "rotate B, then A by fromTo(C - A, T - A)" order; it never spins when T crosses n).
+4. Solved triangle in that plane: `C* = A + reach * t`, `B* = A + lab * (cos(a) t + sin(a) cross(n', t))`
+   with `t = (T - A) / |T - A|` and `cos(a)` from the law of cosines.
+5. A turns by the rotation taking the pair (`B - A`, `n` projected off `B - A`) to (`B* - A`, `n'`);
+   then B turns by the shortest arc from its (turned) `C - B` to `C* - B*`;
 `keepEndWorldRotation` restores C's world rotation (feet), otherwise C keeps its local rotation
 (hands). Reach beyond the limb clamps (the end stops at full extension along the target line).
 

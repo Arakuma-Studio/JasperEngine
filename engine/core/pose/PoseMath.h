@@ -251,12 +251,13 @@ namespace jasperengine::pose {
     }
 
     // q = swing * twist with twist about `axis` and swing about an axis perpendicular to it
-    // (twist is the identity when q is a 180-degree swing, where it is undefined)
+    // (twist is the identity when q is a 180-degree swing, where it is undefined: within 1e-6 of
+    // it, float noise would pick an arbitrary twist, so the identity is used there too)
     inline void swingTwist(const Quatd& q, const Vec3d& axis, Quatd& swing, Quatd& twist){
         const Vec3d n = axis.normalized();
         const Vec3d proj = n * q.vec().dot(n);
         const Quatd t(q.w, proj.x, proj.y, proj.z);
-        if (t.norm() < 1e-12){
+        if (t.norm() < 1e-6){
             twist = Quatd();
         }else{
             twist = t.normalized();

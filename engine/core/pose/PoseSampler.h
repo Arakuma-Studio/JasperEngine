@@ -14,16 +14,18 @@
 //   (seed << 32) | (bone << 16) | (axis << 8) | k into splitmix64 and takes the top 24 bits.
 // - A one-pose animation is static: every sample is the key (no life). An empty one leaves
 //   `out` untouched and has no frames.
-// - Looping frames always end with a copy of the first frame. In a loop, a time less than 1e-6 s
-//   below a multiple of the length samples that boundary: the two-cycle sum of 4.8 step 4 is
-//   only seamless up to the springs' residual after one cycle (~1e-5 rad), and float times such
-//   as float(length) land just below it.
+// - Looping frames always end with a copy of the first frame. The previous cycle (c = -1) of
+//   4.8 step 4 is blended to fully settled by the end of the loop (e' = e + (1 - e) *
+//   smoothstep(0, 1, tau / len)), so sampling is continuous across every bone's wrap time.
 // - In-betweens on a loop: the warm-up pass ends at frame `count`, the same instant as frame 0,
 //   so the write pass starts from that state at frame 0.
 // - autoTiming: the mean bone angle is over all 22 slots; a non-looping animation's first pose
 //   (no incoming motion) gets the base hold and its last pose (no outgoing segment) the
-//   animation's duration; holds clamp to 0..5 s; the step-grid snap is per value (the total
-//   length may move by up to half a step per value).
+//   animation's duration. Holds clamp to 0..5 s, durations to 0.02..1.0 s; what a clamp removes
+//   or adds is spread over the values still free, so the total length is kept unless every
+//   value is at a bound. With stepRate > 0 every value is a whole number of steps (at least
+//   one) and the total is the step count nearest the old length (unavoidable residual: up to
+//   half a step, when the old length is not on the grid).
 
 #ifndef POSE_SAMPLER_H
 #define POSE_SAMPLER_H
