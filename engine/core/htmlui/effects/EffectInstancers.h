@@ -156,6 +156,10 @@ namespace jasperengine::htmlui {
     JASPERENGINE_INTERNAL EffectSnapshotResult snapshotFromCall(const std::string& arguments, bool filterForm);
     // a snapshot's canonical texts and cache key
     JASPERENGINE_INTERNAL void finishSnapshot(EffectParamsSnapshot& snapshot);
+    // @preset (an effect with an enum parameter `preset`): every parameter the chosen preset lists
+    // that is at its manifest default (its canonical text the default's) takes the preset's value;
+    // a parameter written with another value keeps it. finishSnapshot applies it
+    JASPERENGINE_INTERNAL void applyEffectPreset(const EffectManifest& manifest, std::vector<EffectValue>& values);
 
 }
 

@@ -644,7 +644,7 @@ void EffectRuntime::forgetSimulation(EffectSimulation* simulation){
         simulationObjects--;
 }
 
-int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName){
+int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName, std::optional<double> time){
     auto it = elements.find(element);
     if (it == elements.end())
         return 0;
@@ -660,7 +660,7 @@ int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, co
             continue;
         if (pinnedClock){
             // logged with the pinned time: the replay applies it at its last step
-            simulation->log.push_back({*EffectClock::getFixedTime(), splat});
+            simulation->log.push_back({time ? *time : *EffectClock::getFixedTime(), splat});
             while (simulation->log.size() > 64)
                 simulation->log.erase(simulation->log.begin());
         }else{
@@ -674,6 +674,49 @@ int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, co
     if (taken > 0)
         element->GetContext() ? element->GetContext()->RequestNextUpdate(0) : (void)0;
     return taken;
+}
+
+int EffectRuntime::clearSplats(Rml::Element* element, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    int count = 0;
+    for (auto& entry : it->second.states){
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        EffectSimulation* simulation = entry.second->simulation.get();
+        if (!simulation)
+            continue;
+        if (!simulation->log.empty() || !simulation->pending.empty())
+            simulation->inputGeneration++;
+        simulation->log.clear();
+        simulation->pending.clear();
+        count++;
+    }
+    return count;
+}
+
+int EffectRuntime::setPointerPath(Rml::Element* element, std::vector<Rml::Vector3f> path, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    std::stable_sort(path.begin(), path.end(), [](const Rml::Vector3f& a, const Rml::Vector3f& b){ return a.z < b.z; });
+    int count = 0;
+    for (auto& entry : it->second.states){
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        EffectElementState& state = *entry.second;
+        if (!state.simulation || state.liveInstances <= 0)
+            continue;
+        state.scriptedPath = path;
+        state.simulation->inputGeneration++;
+        count++;
+    }
+    if (count > 0 && element->GetContext())
+        element->GetContext()->RequestNextUpdate(0);
+    return count;
 }
 
 int EffectRuntime::resetSimulations(Rml::Element* element, const std::string& effectName){
@@ -711,6 +754,12 @@ EffectSimulationInfo EffectRuntime::simulationInfo(Rml::Element* element, const 
         info.steps = sim.steps;
         info.time = sim.simTime;
         info.paused = sim.paused || (sim.allocated && sim.lastAdvanceFrame + 1 < frame);
+        for (const EffectSimulation::Images& images : sim.states)
+            info.images += (images.image[0] ? 1 : 0) + (images.image[1] ? 1 : 0);
+        info.replays = sim.replays;
+        info.replaying = sim.replaying;
+        info.splats = (int)(sim.log.size() + sim.pending.size());
+        info.pathSamples = (int)entry.second->scriptedPath.size();
         break;
     }
     return info;

@@ -441,11 +441,41 @@ bool EffectPropertyParser::ParseValue(Rml::Property& property, const Rml::String
 
 // ---- snapshots
 
+void jasperengine::htmlui::applyEffectPreset(const EffectManifest& m, std::vector<EffectValue>& values){
+    if (m.presets.empty())
+        return;
+    const int presetIndex = m.paramIndex("preset");
+    if (presetIndex < 0 || (size_t)presetIndex >= values.size())
+        return;
+    const EffectParamDef& presetDef = m.params[(size_t)presetIndex];
+    const EffectPresetDef* preset = m.findPreset(EffectValueParser::canonical(presetDef, values[(size_t)presetIndex]));
+    if (!preset)
+        return;
+    // a parameter left at its default (its canonical text the default's) takes the preset's value
+    for (const auto& entry : preset->values){
+        const int index = m.paramIndex(entry.first);
+        if (index < 0 || (size_t)index >= values.size() || values[(size_t)index].isVar)
+            continue;
+        const EffectParamDef& def = m.params[(size_t)index];
+        EffectValue fallback, value;
+        std::string reason;
+        if (!EffectValueParser::parse(def, def.defaultText, fallback, reason) ||
+            EffectValueParser::canonical(def, values[(size_t)index]) != EffectValueParser::canonical(def, fallback))
+            continue;
+        if (!EffectValueParser::parse(def, entry.second, value, reason) || value.isVar)
+            continue;
+        EffectValueParser::clamp(def, value);
+        values[(size_t)index] = value;
+    }
+}
+
 void jasperengine::htmlui::finishSnapshot(EffectParamsSnapshot& snapshot){
     snapshot.canonical.clear();
     if (!snapshot.manifest)
         return;
     const EffectManifest& m = *snapshot.manifest;
+    // @preset: the preset's values for the parameters left at their defaults
+    applyEffectPreset(m, snapshot.values);
     for (size_t i = 0; i < m.params.size() && i < snapshot.values.size(); i++)
         snapshot.canonical.push_back({m.params[i].name, EffectValueParser::canonical(m.params[i], snapshot.values[i])});
     const std::vector<EffectParamDef>& universal = EffectSyntax::universalParams();

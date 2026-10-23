@@ -213,8 +213,8 @@ namespace {
     void parseState(const std::string& rest, int line, EffectManifest& out, ErrorFn& error){
         std::vector<std::string> words;
         wordsOf(rest, words);
-        const char* grammar = "@state is '<name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] "
-                              "[clear|resample]'";
+        const char* grammar = "@state is '<name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>]|aspect <short> [max <px>] "
+                              "[linear|nearest] [clamp|repeat] [clear|resample]'";
         if (words.size() < 3){
             error(line, grammar, "@state vel rgba16f 256x256");
             return;
@@ -240,7 +240,31 @@ namespace {
         st.linear = st.format != EffectStateFormat::RGBA32F && st.format != EffectStateFormat::R32F;
         const std::string& size = words[2];
         size_t next = 3;
-        if (size.rfind("box", 0) == 0){
+        auto parseMax = [&]() -> bool {
+            if (next < words.size() && words[next] == "max"){
+                int max = 0;
+                if (next + 1 >= words.size() || !integerOf(words[next + 1], max) || max < 1 || max > 4096){
+                    error(line, "'max' takes the largest side in texels, 1 to 4096", "box max 1024");
+                    return false;
+                }
+                st.boxMax = max;
+                next += 2;
+            }
+            return true;
+        };
+        if (size == "aspect"){
+            // the area's aspect, the shorter side a fixed number of texels
+            int shortSide = 0;
+            if (next >= words.size() || !integerOf(words[next], shortSide) || shortSide < 1 || shortSide > 4096){
+                error(line, "an aspect size is 'aspect <short>': the shorter side in texels, 1 to 4096", "aspect 128 max 512");
+                return;
+            }
+            st.fixedSize = false;
+            st.aspectShort = shortSide;
+            next++;
+            if (!parseMax())
+                return;
+        }else if (size.rfind("box", 0) == 0){
             st.fixedSize = false;
             if (size.size() > 3){
                 float scale = 0.f;
@@ -250,21 +274,14 @@ namespace {
                 }
                 st.boxScale = scale;
             }
-            if (next < words.size() && words[next] == "max"){
-                int max = 0;
-                if (next + 1 >= words.size() || !integerOf(words[next + 1], max) || max < 1 || max > 4096){
-                    error(line, "'max' takes the largest side in texels, 1 to 4096", "box max 1024");
-                    return;
-                }
-                st.boxMax = max;
-                next += 2;
-            }
+            if (!parseMax())
+                return;
         }else{
             const size_t x = size.find('x');
             int w = 0, h = 0;
             if (x == std::string::npos || !integerOf(size.substr(0, x), w) || !integerOf(size.substr(x + 1), h) || w < 1 || h < 1 ||
                 w > 4096 || h > 4096){
-                error(line, "a state size is '<w>x<h>' (1 to 4096 each) or 'box[*<scale>]'", "256x256");
+                error(line, "a state size is '<w>x<h>' (1 to 4096 each), 'box[*<scale>]' or 'aspect <short>'", "256x256");
                 return;
             }
             st.fixedSize = true;
@@ -294,11 +311,14 @@ namespace {
     }
 
     template<typename ErrorFn>
-    void parsePass(const std::string& rest, int line, bool init, EffectManifest& out, std::vector<std::pair<size_t, std::string>>& pendingScatter,
-                   ErrorFn& error){
+    void parsePass(const std::string& rest, int line, bool init, bool frame, EffectManifest& out,
+                   std::vector<std::pair<size_t, std::string>>& pendingScatter, ErrorFn& error){
         std::vector<std::string> words;
         wordsOf(rest, words);
-        const char* grammar = init ? "@init is '<pass> <state>'" : "@step is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'";
+        const char* directive = init ? "@init" : (frame ? "@frame" : "@step");
+        const char* grammar = init ? "@init is '<pass> <state>'"
+                                   : (frame ? "@frame is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'"
+                                            : "@step is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'");
         if (words.size() < 2){
             error(line, grammar);
             return;
@@ -306,6 +326,7 @@ namespace {
         EffectPassDef pass;
         pass.line = line;
         pass.init = init;
+        pass.frame = frame;
         pass.name = words[0];
         if (!isPassName(pass.name)){
             error(line, "'" + pass.name + "' is not a pass name: lower case letters, digits and '-', starting with a letter");
@@ -345,7 +366,7 @@ namespace {
                 // a scatter pass blends its quads
                 pass.additive = true;
             }else{
-                error(line, "unexpected '" + w + "' in @step " + pass.name, grammar);
+                error(line, "unexpected '" + w + "' in " + std::string(directive) + " " + pass.name, grammar);
                 return;
             }
         }
@@ -356,6 +377,61 @@ namespace {
             }
         }
         out.passes.push_back(pass);
+    }
+
+    // @preset <option> <param> <value>[, <param> <value>...] (a value's own commas, inside
+    // parentheses, are kept)
+    template<typename ErrorFn>
+    void parsePreset(const std::string& rest, int line, EffectManifest& out, ErrorFn& error){
+        const char* grammar = "@preset is '<option> <param> <value>[, <param> <value>...]'";
+        size_t i = 0;
+        while (i < rest.size() && !std::isspace((unsigned char)rest[i]))
+            i++;
+        EffectPresetDef preset;
+        preset.line = line;
+        preset.option = rest.substr(0, i);
+        if (!isEffectName(preset.option)){
+            error(line, grammar, "@preset smoke curl 20, splat-radius 0.5");
+            return;
+        }
+        std::vector<std::string> items;
+        std::string item;
+        int depth = 0;
+        for (char c : rest.substr(i) + ","){
+            if (c == '(')
+                depth++;
+            else if (c == ')' && depth > 0)
+                depth--;
+            if (c == ',' && depth == 0){
+                items.push_back(trim(item));
+                item.clear();
+            }else{
+                item += c;
+            }
+        }
+        for (const std::string& entry : items){
+            size_t j = 0;
+            while (j < entry.size() && !std::isspace((unsigned char)entry[j]))
+                j++;
+            const std::string param = entry.substr(0, j);
+            const std::string value = trim(std::string_view(entry).substr(j));
+            if (param.empty() || value.empty()){
+                error(line, "@preset " + preset.option + ": '" + entry + "' is not '<param> <value>'", grammar);
+                return;
+            }
+            preset.values.push_back({param, value});
+        }
+        if (preset.values.empty()){
+            error(line, "@preset " + preset.option + " sets no parameter", grammar);
+            return;
+        }
+        for (const EffectPresetDef& other : out.presets){
+            if (other.option == preset.option){
+                error(line, "@preset " + preset.option + " is declared twice");
+                return;
+            }
+        }
+        out.presets.push_back(std::move(preset));
     }
 
 }
@@ -388,6 +464,22 @@ bool EffectManifest::hasScatter() const{
     return false;
 }
 
+bool EffectManifest::hasFramePasses() const{
+    for (const EffectPassDef& pass : passes){
+        if (pass.frame)
+            return true;
+    }
+    return false;
+}
+
+const EffectPresetDef* EffectManifest::findPreset(const std::string& option) const{
+    for (const EffectPresetDef& preset : presets){
+        if (preset.option == option)
+            return &preset;
+    }
+    return nullptr;
+}
+
 int EffectManifest::stateIndex(const std::string& stateName) const{
     for (size_t i = 0; i < states.size(); i++){
         if (states[i].name == stateName)
@@ -410,12 +502,13 @@ uint64_t EffectManifest::stateSignature() const{
         add(st.name);
         add(std::to_string((int)st.format) + ":" + std::to_string(st.fixedSize) + ":" + std::to_string(st.width) + "x" +
             std::to_string(st.height) + ":" + std::to_string(st.boxScale) + ":" + std::to_string(st.boxMax) + ":" +
-            std::to_string(st.linear) + std::to_string(st.repeat) + std::to_string(st.resample));
+            std::to_string(st.linear) + std::to_string(st.repeat) + std::to_string(st.resample) +
+            (st.aspectShort > 0 ? ":aspect" + std::to_string(st.aspectShort) : std::string()));
     }
     for (const EffectPassDef& pass : passes){
         add(pass.name);
         add(std::to_string(pass.init) + ":" + std::to_string(pass.state) + ":" + std::to_string(pass.repeat) + ":" + pass.repeatParam + ":" +
-            std::to_string(pass.additive) + ":" + std::to_string(pass.scatterState));
+            std::to_string(pass.additive) + ":" + std::to_string(pass.scatterState) + (pass.frame ? ":frame" : ""));
     }
     add(std::to_string(warmupSteps) + ":" + std::to_string(warmupDt) + ":" + std::to_string(rateHz) + ":" + std::to_string(maxSubsteps) + ":" +
         std::to_string(replaySeconds));
@@ -785,8 +878,10 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
             out.params.push_back(def);
         }else if (name == "state"){
             parseState(rest, line, out, error);
-        }else if (name == "init" || name == "step"){
-            parsePass(rest, line, name == "init", out, pendingScatter, error);
+        }else if (name == "init" || name == "step" || name == "frame"){
+            parsePass(rest, line, name == "init", name == "frame", out, pendingScatter, error);
+        }else if (name == "preset"){
+            parsePreset(rest, line, out, error);
         }else if (name == "warmup"){
             std::vector<std::string> words;
             wordsOf(rest, words);
@@ -838,14 +933,14 @@ bool EffectManifestParser::parse(const std::string& source, const std::string& p
         }else{
             error(line, "unknown manifest directive '@" + name + "'",
                   "@effect, @kind, @category, @summary, @source, @cost, @backdrop, @time, @pointer, @prepass, @margin, @geometry, "
-                  "@suggest-for, @param, @state, @init, @step, @warmup, @rate, @replay, @reseed");
+                  "@suggest-for, @param, @state, @init, @step, @frame, @warmup, @rate, @replay, @reseed, @preset");
         }
     }
     for (const auto& pending : pendingScatter){
         EffectPassDef& pass = out.passes[pending.first];
         pass.scatterState = out.stateIndex(pending.second);
         if (pass.scatterState < 0)
-            error(pass.line, "@step " + pass.name + " scatters '" + pending.second + "', which is not a @state");
+            error(pass.line, std::string(pass.frame ? "@frame " : "@step ") + pass.name + " scatters '" + pending.second + "', which is not a @state");
     }
     // a state is one image when every pass writing it is additive (an accumulator)
     for (size_t i = 0; i < out.states.size(); i++){
@@ -982,17 +1077,54 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
     if (m.stateful()){
         bool hasStep = false;
         for (const EffectPassDef& pass : m.passes)
-            hasStep = hasStep || !pass.init;
+            hasStep = hasStep || (!pass.init && !pass.frame);
         if (!hasStep)
             error(m.line, "an effect with @state has at least one @step pass");
     }else if (!m.passes.empty() || m.warmupSteps > 0){
-        error(m.line, "@init, @step and @warmup need a @state");
+        error(m.line, "@init, @step, @frame and @warmup need a @state");
     }
     for (const std::string& param : m.reseedParams){
         if (!m.stateful())
             error(m.line, "@reseed is for effects with @state");
         else if (!m.findParam(param))
             error(m.line, "@reseed names '" + param + "', which is not a parameter");
+    }
+    // @preset: the options of the enum parameter `preset`, each setting other parameters to legal values
+    if (!m.presets.empty()){
+        const EffectParamDef* presetParam = m.findParam("preset");
+        if (!presetParam || presetParam->type != EffectParamType::Enum){
+            error(m.presets[0].line, "@preset needs an enum parameter named 'preset' (its options name the presets)",
+                  "// @param preset enum default default|calm|wild -- The look");
+        }else{
+            for (const EffectPresetDef& preset : m.presets){
+                if (std::find(presetParam->options.begin(), presetParam->options.end(), preset.option) == presetParam->options.end())
+                    error(preset.line, "@preset " + preset.option + ": 'preset' has no option '" + preset.option + "'");
+                std::set<std::string> seen;
+                for (const auto& entry : preset.values){
+                    const EffectParamDef* def = m.findParam(entry.first);
+                    if (!def){
+                        error(preset.line, "@preset " + preset.option + " sets '" + entry.first + "', which is not a parameter");
+                        continue;
+                    }
+                    if (def->name == "preset"){
+                        error(preset.line, "@preset " + preset.option + " cannot set 'preset' itself");
+                        continue;
+                    }
+                    if (!seen.insert(def->name).second)
+                        error(preset.line, "@preset " + preset.option + " sets '" + def->name + "' twice");
+                    EffectValue value;
+                    std::string reason;
+                    if (!EffectValueParser::parse(*def, entry.second, value, reason) || value.isVar){
+                        error(preset.line, "@preset " + preset.option + ": '" + entry.second + "' is not " + EffectValueParser::expected(*def) +
+                              " for '" + def->name + "'" + (reason.empty() ? std::string() : ": " + reason));
+                        continue;
+                    }
+                    EffectValue clamped = value;
+                    if (EffectValueParser::clamp(*def, clamped))
+                        error(preset.line, "@preset " + preset.option + ": '" + entry.second + "' is outside the range of '" + def->name + "'");
+                }
+            }
+        }
     }
     bool hasInit = false;
     for (const EffectPassDef& pass : m.passes)
