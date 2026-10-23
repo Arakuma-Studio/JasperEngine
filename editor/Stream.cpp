@@ -31,6 +31,27 @@
 
 using namespace jasperengine;
 
+// The meaning of a key's property bits changed once since keys were written to files: MESH bit
+// 5 was 'Pcf' (USE_SHADOWS_PCF) until July 2026, then unnamed (stripped as keys were read), and
+// is Stochastic Tiling ('Sto') since October 2026. An editor of the time between could still
+// leave it set in what it wrote, so a key without a version (1) that has it holds a stale 'Pcf':
+// it is cleared as the key is read, or it would turn into a Stochastic Tiling variant. A key
+// written with the bit on carries `keyVersion: 2`; every other key is written as before, so
+// files without such variants keep their bytes.
+namespace {
+    constexpr int SHADER_KEY_VERSION_STOCHASTIC = 2;
+
+    bool hasVersionedBits(ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & shaderPropertyBit(5));
+    }
+
+    ShaderKey stripStaleBits(ShaderKey key, int version) {
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && version < SHADER_KEY_VERSION_STOCHASTIC)
+            key.properties &= ~shaderPropertyBit(5);
+        return key;
+    }
+}
+
 // The customShaderId in a key is a session-local registry index, so a fork is
 // named by its project-relative path instead, the way scenes name theirs.
 YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
@@ -49,6 +70,7 @@ YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
     entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
     if (properties) entry["properties"] = properties;
     if (!customShader.empty()) entry["customShader"] = customShader;
+    if (hasVersionedBits(key)) entry["keyVersion"] = SHADER_KEY_VERSION_STOCHASTIC;
     return entry;
 }
 
@@ -63,7 +85,7 @@ bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) 
         if (!keyNode.IsScalar()) {
             return false;
         }
-        key = ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode)));
+        key = stripStaleBits(ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode))), 1);
         return true;
     }
     ShaderType shaderType;
@@ -78,7 +100,8 @@ bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) 
     }
     // 64 bits; a file written before they were widened holds a 32-bit value
     const uint64_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint64_t>(keyNode["properties"]) : 0;
-    key = ShaderPool::getShaderKey(shaderType, properties, customId);
+    const int version = keyNode["keyVersion"] ? editor::YamlNumbers::as<int>(keyNode["keyVersion"]) : 1;
+    key = stripStaleBits(ShaderPool::getShaderKey(shaderType, properties, customId), version);
     return true;
 }
 

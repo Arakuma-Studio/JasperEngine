@@ -1,7 +1,9 @@
 """Shader variant keys with 64 property bits, end to end (the unit tests are editor/tests/ShaderKeyTest.cpp):
 
 - a scene's shaderKeys: re-saved byte-identical, and the legacy packed form (a bare integer, 32
-  property bits, a custom id that is dropped) still read and written back as a map;
+  property bits, a custom id that is dropped) still read and written back as a map; MESH bit 5 (the
+  retired 'Pcf', Stochastic Tiling since October 2026) read from a key without `keyVersion: 2` is
+  dropped, and kept with it;
 - get_build_info lists keys in the short packed hex they always had; generate_shaders takes those, the
   wide 24-digit form ("0x" customId type properties) and specs, and writes .sdat files of format
   version 2 (the key: u64 properties, u32 type, u32 customId) under the names the variants always had.
@@ -66,9 +68,12 @@ async def test_scene_reads_legacy_keys(ed: Editor):
     indent = match.group(1)
     legacy = [packed(MESH, 0x41), packed(DEPTH, 0x3, 12), packed(MESH, 0x61 | 0x80000000, 3)]  # bit 5: retired
     extra = "".join(f"{indent}- {value}\n" for value in legacy)
-    extra += f"{indent}- type: mesh\n{indent}  properties: 4294967263\n"   # every MESH bit (32-bit value)
+    extra += f"{indent}- type: mesh\n{indent}  properties: 4294967263\n"   # every MESH bit but 5 (32-bit value)
+    # bit 5 in a map: a stale 'Pcf' without keyVersion, Stochastic Tiling with keyVersion 2
+    extra += f"{indent}- type: mesh\n{indent}  properties: 99\n"            # 0x63: Ult, Uv1, Pcf, Nor
+    extra += f"{indent}- type: mesh\n{indent}  properties: 38\n{indent}  keyVersion: 2\n"   # Uv1, Uv2, Sto
     STATE["path"].write_text(text[:match.end(0) - 2 - len(indent)] + extra + text[match.end(0) - 2 - len(indent):])
-    ed.check(len(shader_keys(scene_text())) == len(shader_keys(text)) + 4, "the edit adds four keys")
+    ed.check(len(shader_keys(scene_text())) == len(shader_keys(text)) + 6, "the edit adds six keys")
 
     # read from disk again
     await ed.call("close_scene", scene=sid)
@@ -77,9 +82,11 @@ async def test_scene_reads_legacy_keys(ed: Editor):
     keys = shader_keys(scene_text())
     ed.check(all(isinstance(k, dict) for k in keys), f"legacy integers are written back as maps: {keys}")
     for want in ({"type": "mesh", "properties": 0x41}, {"type": "depth", "properties": 3},
-                 {"type": "mesh", "properties": 0x80000041}, {"type": "mesh", "properties": 0xFFFFFFDF}):
+                 {"type": "mesh", "properties": 0x80000041}, {"type": "mesh", "properties": 0xFFFFFFDF},
+                 {"type": "mesh", "properties": 0x43}, {"type": "mesh", "properties": 0x26, "keyVersion": 2}):
         ed.check_in(want, keys, "decoded legacy key")
-    ed.check(not any(k.get("properties", 0) & 0x20 and k["type"] == "mesh" for k in keys), "the retired bit 5 is dropped")
+    ed.check(not any(k.get("properties", 0) & 0x20 and k["type"] == "mesh" and "keyVersion" not in k for k in keys),
+             "the retired bit 5 is dropped where no keyVersion says it is Stochastic Tiling")
     ed.check(not any("customShader" in k for k in keys), "a legacy key's custom id is not a fork")
     again = shader_keys_text(scene_text())
     await ed.call("save_scene", scene=sid, path="scenes/Keys")
