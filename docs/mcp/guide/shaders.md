@@ -68,6 +68,23 @@ their own random offset (and turn), blended at the cell borders. No precomputati
 reads per map where cells meet, one or two over most of a cell. Suits organic surfaces (grass,
 rock, sand, dirt); bricks, tiles and planks lose their grid.
 
+- The built-in Lit material: `stochasticTiling: true` on the material (Inspector: the
+  **Stochastic Tiling** checkbox at the end of the material's maps, its four values indented
+  below while it is on), with `stochasticCellSize`, `stochasticBlendSharpness`,
+  `stochasticContrast` and `stochasticRotation` (the ranges and defaults below; `set_properties`
+  `submeshes[N].material.stochasticTiling`... or a material object, `.material` files, Lua
+  `material.stochasticTiling` then `mesh:setMaterial(m)`). Every map the variant samples goes
+  through the cells: base colour first (its taps' luminance gives the weights), then
+  metallic-roughness, occlusion, emissive and the normal map with the same weights, one lattice
+  per UV set. The depth pass (shadows, the depth pre-pass; an alpha-masked material's cutout) and
+  the SSR G-buffer read the same taps, so cutouts, shadows and reflections match what is drawn.
+  The variant bits: `Sto` in mesh (bit 5), depth (bit 14) and gbuffer (bit 10) variants, e.g.
+  `mesh:Uv1,Nor,Puc,Sto`. Not applied (the `check` command warns, `stochastic-no-effect`): a
+  material without textures, sprites and tilemaps (an atlas frame's neighbours would show),
+  terrains (their layers have their own) and shaders with a manifest (use their `STOCHASTIC`
+  feature). Unlit, vertex lights, 2D lights (the normal map), instancing, skinning and mirrors
+  (the other maps) keep it; keep it off for instances that draw atlas frames
+  (`InstanceData.textureRect`), which the variant cannot see.
 - Library shaders: the `STOCHASTIC` feature ("Stochastic Tiling") of `simple_lit`, `unlit`,
   `toon`, `vertex_lit`, `fake_lit` and `triplanar` (each projection), e.g. `shaderFeatures:
   {"STOCHASTIC": true}`. Parameters: `stochasticCellSize` (Cell Size: the cell width in texture
@@ -84,7 +101,12 @@ rock, sand, dirt); bricks, tiles and planks lose their grid.
   the triplanar sides); its far tiling break is left out. A layer with it draws with the PBR
   terrain path.
 - Rotation is for textures without a direction: normal maps are turned back per cell, but
-  stripes, planks or baked light visibly turn.
+  stripes, planks or baked light visibly turn. So does a normal map whose average normal leans
+  off +Z (baked on a slope, or with a bias): each turned cell then leans its own way. The
+  Inspector warns under the Rotation row (with "Set Rotation to 0") when the map's mean normal is
+  3 degrees or more off +Z, and `jasperengine-editor check` reports it
+  (`stochastic-tilted-normal-map`, a warning) for materials, terrain layers and library shader
+  materials.
 - In a fork: `#include "includes/stochastic.glsl"`; its header documents the API
   (`stochasticSetup`, `stochasticTextureLuminance`, `stochasticTexture`, `stochasticNormal`...).
   The texture must wrap (REPEAT).
