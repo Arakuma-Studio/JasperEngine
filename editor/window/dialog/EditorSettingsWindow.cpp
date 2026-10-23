@@ -368,14 +368,14 @@ void EditorSettingsWindow::drawGeneralSettings() {
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
 
         sectionRow("Auto Save");
-        if (beginSettingsRow("Auto Save Scenes",
+        if (prefsBeginSettingsRow("Auto Save Scenes",
                              "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
                              "by Save). After a crash, opening the scene offers to restore it.",
                              m_autosaveEnabled != true)) {
             m_autosaveEnabled = true;
         }
         ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
-        if (beginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
+        if (prefsBeginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
                              m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
             m_autosaveInterval = AppSettings::defaultAutosaveInterval;
         }
@@ -384,7 +384,7 @@ void EditorSettingsWindow::drawGeneralSettings() {
         ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
                        AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
         ImGui::EndDisabled();
-        beginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
+        prefsBeginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
         ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
         if (ImGui::Button("Open Backup Folder")) {
             const fs::path folder = SceneBackups::root(m_project->getProjectPath());
