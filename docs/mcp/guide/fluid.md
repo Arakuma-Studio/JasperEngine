@@ -230,6 +230,27 @@ is cleared in another scene) and is bound in exports. Shader texture slots
 (`shaderTextures.<uniform>`) take image files only. In C++ `FluidSimulation::getTexture()` is
 the output texture (its version changes when it is recreated).
 
+## The HTML UI effect
+
+The same look as one line of CSS on any UI element: `background-image: effect(fluid)` (catalogue:
+`jasper://docs/html-ui-effects`, guide: the "Stateful effects" section of `jasper://docs/html-ui`).
+Its parameters are this component's in kebab case (`density-dissipation`, `curl`, `splat-radius`,
+`splat-force`, `bloom-intensity`, `sunrays-weight`, `seed`, `splats-on-start`, ...) with the same
+defaults; `preset` takes the ids of the presets above and gives the parameters you leave at their
+defaults the preset's values (the resolutions excepted: the effect keeps a 128 velocity grid, the
+element's px for the dye, 256 bloom). It is transparent where there is no dye (the element's
+`background` is `backColor`) and paints while the pointer drags over it (`hover on`: any movement).
+
+```css
+.title-screen { background: #000; background-image: effect(fluid, preset psychedelic, seed 7); }
+```
+
+Deterministic captures without Lua: `set_ui_effect_time {time: 1.0, selector: ".title-screen",
+pointer_path: [[x, y, t], ...], splats: [{x, y, dx, dy, radius, color, strength, t}]}` replays a
+drag (element CSS px, effect seconds) and splats exactly at the pinned time; the same call twice
+gives the same screenshot. `inspect_ui` reports the simulation (`state`: bytes, steps, time,
+images, replays, splats, path). Scripts use `el:effectSplat{...}`.
+
 ## Performance
 
 Fullscreen passes (Pavel's pipeline; all half-float targets):

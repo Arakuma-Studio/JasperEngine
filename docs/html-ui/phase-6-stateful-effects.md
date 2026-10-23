@@ -89,9 +89,11 @@ simulation (`element:effectSplat{...}`). The editor, `check`, the exporter, the 
 ```
 // @state   <name> <format> <size> [linear|nearest] [clamp|repeat] [clear|resample]
 //          <format> := rgba8 | rgba16f | rg16f | r16f | rgba32f | r32f
-//          <size>   := <w>x<h> | box[*<scale>] [max <px>]
+//          <size>   := <w>x<h> | box[*<scale>] [max <px>] | aspect <short> [max <px>]    (aspect: 7)
 // @init    <pass> <state>                                  (once, after allocation and every reset)
-// @step    <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+// @step    <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]   (if: 7)
+// @frame   <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]   (7)
+// @preset  <option> <param> <value>[, <param> <value>...]  (7)
 // @warmup  <steps> <dt-seconds>                            (silent steps after @init; default none)
 // @rate    <hz> [max <substeps>]                           (default 60 Hz, max 4)
 // @replay  <seconds>                                       (pinned-clock history window; default 2)
@@ -650,3 +652,59 @@ glcore on llvmpipe, the remote test host (4 threads), `EffectPerfTest` Release:
   HTML UI export with their Desktop players, 12 passed (the player draws `boids` from its exported
   paint, step and scatter variants).
 - Not verified: Windows (HLSL 5 compiled only), macOS and iOS (MSL compiled only).
+
+## 7 After phase 6: the `fluid` effect and what it added (fluid-fx)
+
+The 19th stateful effect, `fluid`, is Pavel Dobryakov's WebGL-Fluid-Simulation (MIT; `@source port
+WebGL-Fluid-Simulation (Pavel Dobryakov, MIT)`, notice `effects/LICENSE.webgl-fluid-simulation.txt`,
+shipped by exports using it; `LICENSE.shaders-com.txt` names it and `fam_fluid_*.glsl` as not
+shaders.com's) on the kernels the native Fluid Simulation shares (`effects/lib/fam_fluid_solver.glsl`,
+`fam_fluid_look.glsl`). Its port notes are in `engine/shaderlib/effects/fluid.frag`. It needed five
+additions to the manifest, all additive (every other effect's manifest, variants and goldens are
+unchanged):
+
+- **`aspect <short> [max <px>]` sizes.** Pavel's grids have a fixed short side (`getResolution`:
+  128 velocity, 256 bloom, 196 sunrays) whatever the canvas size, with square cells: `box` follows
+  the area's px instead, so a card would get a coarse fluid and a screen a slow one. The longer side
+  is `round(short x aspect)`; both are scaled down together past `max` (default 1024).
+- **`@frame` passes.** Bloom (prefilter, `bloom-iterations` blurs down a chain of halves, back up,
+  final) and sunrays (rays, blur across and along) are read only by the draw. As `@step` passes
+  they would run per simulation step (up to 4 a frame, 120 per 2 s replay). An `@frame` pass runs
+  once a drawn frame, after that frame's steps, when the state changed since the last run (a step,
+  a reset, an allocation; a finished pinned replay): two draws at one pinned time run none, so they
+  stay byte-identical. It takes `@step`'s options; the pass index numbering includes it.
+- **`if <param>`** on `@step`/`@frame`: the pass runs only while that boolean or number parameter
+  is not 0 (`bloom off`, `sunrays off`: their 21 passes cost nothing; `@init` passes always run).
+- **`@preset`**: the options of an enum parameter named `preset` each list parameter values; a
+  parameter whose value is its manifest default (canonical text) takes the chosen preset's value,
+  one written with another value keeps it (`applyEffectPreset`, in `finishSnapshot`: every
+  consumer, repeats and `if` included, reads the effective values; `getEffects`/`inspect_ui` show
+  them). `fluid`'s five presets are the native `FluidPresets` ids with their solver and look values
+  (not their resolutions).
+- **`@source port <project> (<author>, <licence>)`**: a third source form, for ports of projects
+  other than shaders.com.
+
+Eight states (the limit): `vel` rg16f, `pressure` r16f, `aux` r16f (curl, then divergence: curl
+is read only by vorticity, before divergence overwrites it) on `aspect 128 max 512`; `dye` rgba16f
+`box max 1024`; `ptr` rgba32f 1x1 (the pointer colour's timer, hue and draw counter); `bloom` and
+`glow` (the bloom levels as one atlas: level 1 at the origin, the deeper ones stacked to its right;
+reads clamped to their level as his separate textures clamp) rgba16f `aspect 256`; `sunrays` r16f
+`aspect 196`. A step is 10 + `pressure-iterations` passes (pointer colour, velocity splats, curl,
+vorticity, divergence, pressure clear, Jacobi, gradient subtract, advect velocity, advect dye: the
+dye splats are evaluated inside the dye advection, a dye-sized pass less); the look 21 passes a frame.
+Shader note: llvmpipe spilled the first version's global arrays (the step's splats) to scratch
+memory in every pass of the uber step variant, 4.5x the cost; the splats are now read from the
+step block.
+
+**Agents' determinism** (`set_ui_effect_time`): `selector` (+ `entity`, `effect`) with
+`pointer_path` `[[x, y, t], ...]` (element border-box CSS px, effect seconds) stores a scripted path
+on the element's simulations (`EffectRuntime::setPointerPath`, `UIElement::effectPointerPath`): a
+pinned replay drags the pointer along it (known and down from its first sample's time to its
+last's, a press on its first step) instead of the recorded pointer, and it is part of the replay key;
+`splats` replace the element's logged splats (`clearSplats`) with ones logged at their `t` (default
+the pinned time; `EffectRuntime::splat(..., time)`, `UIEffectSplat::time`). `inspect_ui`'s `state`
+adds `images`, `replays`, `replaying`, `splats` and `path`.
+
+**Measured** (glcore, llvmpipe, the remote host): `CostTable` x3.85 against the fill (budget 5.8),
+6.4 MB of state at 512 x 512; live 512 x 512 frame 92 ms against `ink-flow`'s 30 (50 passes;
+51 ms with bloom and sunrays off). Goldens `fluid.t0/t1/t2` pass on glcore and Vulkan from one set.
