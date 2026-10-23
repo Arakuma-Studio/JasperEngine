@@ -700,6 +700,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
 
+    ${EDITOR_DIR}/pose/PoseImage.cpp
+
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp
     ${EDITOR_DIR}/command/type/AddChildSceneCmd.cpp
