@@ -79,6 +79,8 @@ namespace jasperengine::editor {
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
         // the Paint Dye brush's circle (splatRadius) over the image, under the pointer
         void drawFluidBrushCursor(SceneProject* sceneProject);
+        // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it
+        void probeSceneView(SceneProject* sceneProject);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);

@@ -29,6 +29,7 @@
 #include "fluid/FluidSimulator.h"
 #include "util/FluidEditorTools.h"
 #include "util/FluidTextureLink.h"
+#include "util/UIProbe.h"
 #include "util/UIUtils.h"
 
 #include <algorithm>
@@ -85,6 +86,14 @@ namespace {
         return values;
     }
 
+    // UI tests (UIProbe): a combo's frame, named before BeginCombo (an open one makes its
+    // popup the last item)
+    void probeFrame(const std::string& name) {
+        if (!editor::UIProbe::enabled()) return;
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        editor::UIProbe::rect(name, at.x, at.y, at.x + ImGui::CalcItemWidth(), at.y + ImGui::GetFrameHeight());
+    }
+
     std::string formatBytes(size_t bytes) {
         char text[32];
         std::snprintf(text, sizeof(text), "%.1f MB", (double)bytes / (1024.0 * 1024.0));
@@ -134,6 +143,7 @@ bool editor::InspectorWindow::fluidRowHeader(const std::string& property, const 
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         reset = ImGui::Button((ICON_FA_ROTATE_LEFT "##reset_" + property).c_str());
+        UIProbe::item("fluid.default." + property);
         ImGui::SetItemTooltip("Reset to the default");
         ImGui::PopStyleColor(2);
         ImGui::PopStyleVar(3);
@@ -255,10 +265,12 @@ void editor::InspectorWindow::drawFluidPreviewBar(SceneProject* sceneProject, co
     if (state == FluidPreviewState::PLAYING) {
         if (ImGui::Button(ICON_FA_PAUSE "##fluid_pause"))
             each([&](Entity entity, FluidSimulationComponent&) { FluidEditorTools::pausePreview(project, sceneId, entity); });
+        UIProbe::item("fluid.preview.pause");
         ImGui::SetItemTooltip("Pause the preview (queued splats still paint)");
     } else {
         if (ImGui::Button(ICON_FA_PLAY "##fluid_play"))
             each([&](Entity entity, FluidSimulationComponent&) { FluidEditorTools::playPreview(project, sceneId, entity); });
+        UIProbe::item("fluid.preview.play");
         ImGui::SetItemTooltip(state == FluidPreviewState::PAUSED ? "Resume the preview"
                                                                  : "Preview the fluid in the Scene view without playing the game");
     }
@@ -266,6 +278,7 @@ void editor::InspectorWindow::drawFluidPreviewBar(SceneProject* sceneProject, co
     ImGui::BeginDisabled(state == FluidPreviewState::STOPPED);
     if (ImGui::Button(ICON_FA_STOP "##fluid_stop"))
         each([&](Entity entity, FluidSimulationComponent&) { FluidEditorTools::stopPreview(project, sceneId, entity); });
+    UIProbe::item("fluid.preview.stop");
     ImGui::SetItemTooltip("Stop the preview: the fluid restarts as the game starts it");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
@@ -281,11 +294,13 @@ void editor::InspectorWindow::drawFluidPreviewBar(SceneProject* sceneProject, co
                 FluidEditorTools::playPreview(project, sceneId, entity);
         });
     }
+    UIProbe::item("fluid.burst");
     ImGui::SetItemTooltip("A burst of random splats (Random Splat Count; 0: Pavel's 5 to 24), as Pavel's space bar. "
                           "Starts the preview in edit mode.");
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_ROTATE_RIGHT "##fluid_reset"))
         each([&](Entity, FluidSimulationComponent& fluid) { fluid.needReset = true; });
+    UIProbe::item("fluid.restart");
     ImGui::SetItemTooltip("Restart the fluid: empty fields, the seed, the start burst");
 
     // Paint Dye: the Scene view's brush on the fluid's Sprite
@@ -300,6 +315,7 @@ void editor::InspectorWindow::drawFluidPreviewBar(SceneProject* sceneProject, co
         if (armed) FluidEditorTools::disarm();
         else FluidEditorTools::arm(project, sceneId, first);
     }
+    UIProbe::item("fluid.paint");
     if (armed) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -328,12 +344,14 @@ void editor::InspectorWindow::drawFluidStats(SceneProject* sceneProject, const s
 
     std::string summary = ICON_FA_GAUGE_HIGH " Stats";
     if (stats.simWidth > 0) {
-        char text[96];
-        std::snprintf(text, sizeof(text), "  %dx%d / %dx%d, %s", stats.simWidth, stats.simHeight, stats.dyeWidth,
-                      stats.dyeHeight, formatBytes(stats.gpuBytes).c_str());
+        char text[128];
+        std::snprintf(text, sizeof(text), "  %dx%d / %dx%d, %s%s%s", stats.simWidth, stats.simHeight, stats.dyeWidth,
+                      stats.dyeHeight, formatBytes(stats.gpuBytes).c_str(), stats.compactFormats ? "" : ", RGBA16F",
+                      stats.manualFiltering ? ", manual filtering" : "");
         summary += text;
     }
     const bool open = ImGui::TreeNodeEx("##fluid_stats", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", summary.c_str());
+    UIProbe::item("fluid.stats");
     ImGui::SetItemTooltip("The simulator of %s as last drawn (velocity grid / dye image, GPU memory)%s",
                           sceneProject->scene->getEntityName(entities[0]).c_str(),
                           entities.size() > 1 ? "; the first of the selection" : "");
@@ -345,8 +363,14 @@ void editor::InspectorWindow::drawFluidStats(SceneProject* sceneProject, const s
     } else {
         ImGui::TextDisabled("Velocity %d x %d, dye %d x %d, %s of GPU memory", stats.simWidth, stats.simHeight,
                             stats.dyeWidth, stats.dyeHeight, formatBytes(stats.gpuBytes).c_str());
+        ImGui::TextDisabled("Output %d x %d", stats.outputWidth, stats.outputHeight);
         ImGui::TextDisabled("%d passes last frame, %llu steps (%.1f s), %llu splats, seed %u", stats.passesLastFrame,
                             (unsigned long long)stats.steps, stats.time, (unsigned long long)stats.splats, stats.seed);
+        ImGui::TextDisabled("Fields %s, %s filtering", stats.compactFormats ? "compact (velocity RG16F, scalars R16F)" : "RGBA16F (Pavel's fallback)",
+                            stats.manualFiltering ? "manual" : "hardware");
+        ImGui::SetItemTooltip("Compact: the velocity in RG16F and the scalar fields in R16F (less memory); else all "
+                              "RGBA16F. Manual filtering: the device cannot filter half floats, so the advection "
+                              "filters by hand and the look passes are skipped.");
         std::string fallbacks;
         auto off = [&](bool asked, bool active, const char* name) {
             if (asked && !active) fallbacks += (fallbacks.empty() ? "" : ", ") + std::string(name);
@@ -392,6 +416,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         const char* shown = (zeroText && value == 0.0f) ? zeroText : format;
         if (UIUtils::sliderFloatInput("##value", &value, sliderMin, sliderMax, shown))
             commitFluidProperty<float>(sceneProject, entities, property, std::clamp(value, hardMin, hardMax), true);
+        UIProbe::item(std::string("fluid.value.") + property);
         if (v.mixed) ImGui::PopStyleColor();
         endEdit();
         ImGui::PopID();
@@ -407,6 +432,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         if (v.mixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
         if (ImGui::Checkbox("##value", &value))
             commitFluidProperty<bool>(sceneProject, entities, property, v.mixed ? true : value, false);
+        UIProbe::item(std::string("fluid.value.") + property);
         if (v.mixed) ImGui::PopItemFlag();
         ImGui::PopID();
     };
@@ -423,10 +449,12 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         for (const auto& choice : choices)
             if (choice.first == v.value) preview = choice.second;
         if (v.mixed) preview = "-";
+        probeFrame(std::string("fluid.value.") + property);
         if (ImGui::BeginCombo("##value", preview.c_str())) {
             for (const auto& choice : choices) {
                 if (ImGui::Selectable(choice.second, !v.mixed && choice.first == v.value) && (v.mixed || choice.first != v.value))
                     commitFluidProperty<unsigned int>(sceneProject, entities, property, choice.first, false);
+                UIProbe::item(std::string("fluid.item.") + property + "." + std::to_string(choice.first));
             }
             ImGui::EndCombo();
         }
@@ -445,6 +473,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         const char* format = (zeroText && value == 0) ? zeroText : "%u";
         if (ImGui::SliderScalar("##value", ImGuiDataType_U32, &value, &minValue, &maxValue, format, ImGuiSliderFlags_AlwaysClamp))
             commitFluidProperty<unsigned int>(sceneProject, entities, property, value, true);
+        UIProbe::item(std::string("fluid.value.") + property);
         if (v.mixed) ImGui::PopStyleColor();
         endEdit();
         ImGui::PopID();
@@ -467,6 +496,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         if (v.mixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
         if (ImGui::Checkbox("##group", &on))
             commitFluidProperty<bool>(sceneProject, entities, property, v.mixed ? false : on, false);
+        UIProbe::item(std::string("fluid.group.") + property);
         if (v.mixed) ImGui::PopItemFlag();
         if (ImGui::IsItemHovered()) wrappedTooltip(help);
         ImGui::PopID();
@@ -496,11 +526,13 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         const char* preview = matched == "-" ? "-" : shownPreset ? shownPreset->name.c_str() : "Custom";
+        probeFrame("fluid.preset");
         if (ImGui::BeginCombo("##fluid_preset", preview)) {
             for (const FluidPreset& preset : getFluidPresets()) {
                 const bool selected = shownPreset == &preset;
                 if (ImGui::Selectable(preset.name.c_str(), selected) && !selected)
                     applyFluidPreset(sceneProject, entities, preset.id);
+                UIProbe::item("fluid.preset." + preset.id);
                 if (ImGui::IsItemHovered())
                     wrappedTooltip(preset.description);
             }
@@ -526,11 +558,13 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
             const char* preview = "-";
             for (const auto& output : outputs)
                 if (!v.mixed && (int)output.first == v.value) preview = output.second;
+            probeFrame("fluid.value.output");
             if (ImGui::BeginCombo("##value", preview)) {
                 for (const auto& output : outputs) {
                     const bool selected = !v.mixed && (int)output.first == v.value;
                     if (ImGui::Selectable(output.second, selected) && !selected)
                         commitFluidProperty<int>(sceneProject, entities, "output", (int)output.first, false);
+                    UIProbe::item(std::string("fluid.item.output.") + output.second);
                 }
                 ImGui::EndCombo();
             }
@@ -601,6 +635,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
             if (ImGui::DragScalar("##value", ImGuiDataType_U32, &value, 1.0f, nullptr, nullptr,
                                   value == 0 ? "0 (random each start)" : "%u"))
                 commitFluidProperty<unsigned int>(sceneProject, entities, "seed", value, true);
+            UIProbe::item("fluid.value.seed");
             if (v.mixed) ImGui::PopStyleColor();
             endEdit();
             ImGui::SameLine();
@@ -636,6 +671,7 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
             if (v.mixed) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             if (ImGui::ColorEdit3("##value", (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel))
                 commitFluidProperty<Vector3>(sceneProject, entities, "backColor", value, true);
+            UIProbe::item("fluid.value.backColor");
             if (v.mixed) ImGui::PopStyleColor();
             endEdit();
             ImGui::PopID();
@@ -665,7 +701,9 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
 
     // ---- Advanced
     ImGui::Spacing();
-    if (ImGui::TreeNodeEx("##fluid_advanced", ImGuiTreeNodeFlags_SpanAvailWidth, "Advanced")) {
+    const bool advancedOpen = ImGui::TreeNodeEx("##fluid_advanced", ImGuiTreeNodeFlags_SpanAvailWidth, "Advanced");
+    UIProbe::item("fluid.advanced");
+    if (advancedOpen) {
         beginTable(cpType, labelWidth, "advanced");
         uintSliderRow("pressureIterations", "Pressure Iterations",
                       "Jacobi iterations of the pressure solve a step: more makes the fluid less compressible and costs "

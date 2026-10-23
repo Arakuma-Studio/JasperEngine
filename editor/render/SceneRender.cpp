@@ -2149,19 +2149,28 @@ bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){
         return false;
     }
 
+    points.reserve(world.size());
+    for (const Vector3& point : world){
+        Vector2 projected;
+        if (!projectToView(point, projected)){
+            points.clear();
+            return false;
+        }
+        points.push_back(projected);
+    }
+    return true;
+}
+
+bool editor::SceneRender::projectToView(const Vector3& world, Vector2& point){
     // through the editor camera the pointer's ray comes from (screenToRay), into its pixels
     const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
     const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
     const CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
-    points.reserve(world.size());
-    for (const Vector3& point : world){
-        Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(point.x, point.y, point.z, 1.0f);
-        if (clip.w <= 0.0f){
-            points.clear();
-            return false;
-        }
-        points.push_back(Vector2((clip.x / clip.w + 1.0f) * 0.5f * width, (1.0f - clip.y / clip.w) * 0.5f * height));
+    const Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+    if (clip.w <= 0.0f){
+        return false;
     }
+    point = Vector2((clip.x / clip.w + 1.0f) * 0.5f * width, (1.0f - clip.y / clip.w) * 0.5f * height);
     return true;
 }
 
