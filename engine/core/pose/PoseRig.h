@@ -136,8 +136,13 @@ namespace jasperengine::pose {
     // Mirror (4.5): left/right triples swapped, centre U/F-axis DOFs negated, offset.x negated
     JASPERENGINE_API BodyPose mirrorBodyPose(const BodyPose& body);
 
-    // Clamps every DOF to the 4.5 joint limits; returns the indices of the clamped DOFs
+    // Clamps every DOF to the 4.5 joint limits, then caps each swing |(dof1, dof2)| at 180 degrees
+    // by scaling the pair; returns the indices of the changed DOFs (ascending)
     JASPERENGINE_API std::vector<int> clampToLimits(BodyPose& body);
+    // the same for one slot's three values; returns a bit mask of the changed DOFs (bit k = dof k)
+    JASPERENGINE_API unsigned clampBoneToLimits(HumanBone bone, float angles[DOFS_PER_BONE]);
+    // every value within its limits and the swing at most 180 degrees long
+    JASPERENGINE_API bool boneWithinLimits(HumanBone bone, const float angles[DOFS_PER_BONE]);
 
 }
 
