@@ -2,7 +2,10 @@
 """Generates the textures of the stochastic-tiling fixture: a tileable pebble field whose
 repetition is easy to spot (a few bright pebbles, one orange), its normal map (OpenGL
 convention: green points up the image) and a packed occlusion/roughness map, plus a
-striped texture whose straight lines show what Rotation does.
+striped texture whose straight lines show what Rotation does. For the built-in Lit material:
+an emission map (the orange pebble glows), a leaf cutout (RGBA, alpha 0 between the leaves) for
+an alpha-masked foliage card, and a normal map whose average normal leans 9 degrees (the check
+and Inspector warning about Rotation).
 
     uv run --no-project --with pillow --with numpy python tools/fixtures/stochastic-tiling/make_assets.py
 
@@ -83,6 +86,51 @@ def stripes():
     return image
 
 
+def emission(color):
+    """The orange pebble glows (the only warm, saturated texels), the rest is black"""
+    r, g, b = color[..., 0], color[..., 1], color[..., 2]
+    glow = ((r > 170) & (r - b > 110)).astype(np.float64)[..., None]
+    return glow * np.array([255.0, 150.0, 60.0])
+
+
+def leaves():
+    """Tileable leaves (alpha 255 on a leaf, 0 between), one large pale leaf that repeats visibly"""
+    leaf_rng = np.random.default_rng(20261024)
+    ys, xs = np.mgrid[0:SIZE, 0:SIZE].astype(np.float64) + 0.5
+    image = np.zeros((SIZE, SIZE, 4))
+    for i in range(26):
+        cx, cy = leaf_rng.uniform(0, SIZE, 2)
+        length = leaf_rng.uniform(26, 44)
+        width = length * leaf_rng.uniform(0.32, 0.42)
+        tone = np.array([leaf_rng.uniform(40, 80), leaf_rng.uniform(110, 160), leaf_rng.uniform(30, 60)])
+        if i == 0:
+            cx, cy, length, width = SIZE * 0.3, SIZE * 0.6, 60.0, 26.0
+            tone = np.array([196.0, 214.0, 96.0])
+        angle = leaf_rng.uniform(0, np.pi)
+        dx = (xs - cx + SIZE / 2) % SIZE - SIZE / 2
+        dy = (ys - cy + SIZE / 2) % SIZE - SIZE / 2
+        u = (dx * np.cos(angle) + dy * np.sin(angle)) / length
+        v = (-dx * np.sin(angle) + dy * np.cos(angle)) / width
+        # a pointed leaf: narrower towards both tips
+        inside = (np.abs(u) < 1.0) & (np.abs(v) < (1.0 - u * u))
+        vein = np.abs(v) < 0.08
+        shade = np.where(vein, 1.25, 0.85 + 0.15 * (1.0 - np.abs(u)))
+        image[inside, :3] = (tone * shade[..., None])[inside]
+        image[inside, 3] = 255.0
+    return image
+
+
+def tilted_normal_map(height, degrees=9.0):
+    """pebbles_normal.png's normals all leaning `degrees` towards +X: an average normal off +Z"""
+    n = normal_map(height) / 255.0 * 2.0 - 1.0
+    a = np.radians(degrees)
+    x = n[..., 0] * np.cos(a) + n[..., 2] * np.sin(a)
+    z = -n[..., 0] * np.sin(a) + n[..., 2] * np.cos(a)
+    n = np.stack([x, n[..., 1], z], axis=-1)
+    n /= np.linalg.norm(n, axis=-1, keepdims=True)
+    return (n * 0.5 + 0.5) * 255.0
+
+
 def main():
     os.makedirs(TEXTURES, exist_ok=True)
     height, color, rough = pebbles()
@@ -92,6 +140,10 @@ def main():
     packed = np.stack([occlusion * 255.0, rough * 255.0, np.zeros_like(rough)], axis=-1)
     save(packed, "pebbles_orm.png")
     save(stripes(), "stripes.png")
+    # (after the ones above, which keep their bytes: the leaves draw from their own generator)
+    save(emission(color), "pebbles_emissive.png")
+    save(leaves(), "leaves.png")
+    save(tilted_normal_map(height), "pebbles_normal_tilted.png")
 
 
 if __name__ == "__main__":
