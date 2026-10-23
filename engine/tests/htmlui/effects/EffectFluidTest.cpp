@@ -278,7 +278,7 @@ TEST(EffectFluidManifest, FramePassesAspectSizesAndPresetsParse){
 // area's px, bloom 256 and sunrays 196 on the short side (Pavel's getResolution), pairs twice
 TEST_F(EffectFluid, GridSizesFollowTheAreasAspect){
     ASSERT_TRUE(load());
-    at(0.5);
+    at(0.05);
     const EffectSimulationInfo sim = info();
     ASSERT_TRUE(sim.exists);
     // 320 x 200: aspect 1.6
@@ -294,40 +294,44 @@ TEST_F(EffectFluid, GridSizesFollowTheAreasAspect){
 TEST_F(EffectFluid, DrawsTheStartBurstAndEvolves){
     ASSERT_TRUE(load());
     const TestImage early = at(0.1);
-    const TestImage later = at(1.0);
+    const TestImage later = at(0.5);
     const auto a = brightness(early), b = brightness(later);
     EXPECT_GT(a.first, 20.0) << "the start burst is not drawn";
     EXPECT_GT(a.second, 200) << "no bright dye (the burst is x10 of a pointer colour)";
     EXPECT_GT(maxDifference(early, later), 40) << "the fluid did not move";
-    EXPECT_EQ(info().steps, 60);
-    const TestImage noBurst = pinned("splats-on-start off", 0.5);
+    EXPECT_EQ(info().steps, 30);
+    const TestImage noBurst = pinned("splats-on-start off, bloom off", 0.1);
     EXPECT_LT(brightness(noBurst).second, 2) << "without the burst and input the fluid is empty";
+    // Pavel's bloom dither over black: a faint grain of at most (1/255 gamma-encoded) ~13 levels
+    const TestImage grain = pinned("splats-on-start off", 0.1);
+    EXPECT_LE(brightness(grain).second, 14);
 }
 
 // a pinned time draws the same bytes twice, after other times, and in a fresh document; @frame
 // passes do not run again for an unchanged pinned frame
 TEST_F(EffectFluid, PinnedClockIsDeterministic){
     ASSERT_TRUE(load());
-    const TestImage first = at(1.25);
+    const TestImage first = at(0.75);
     const uint64_t replays = EffectRuntime::get().stats().replays;
     const uint64_t passes = EffectRuntime::get().stats().stepPasses;
-    const TestImage again = at(1.25);
+    const TestImage again = at(0.75);
     EXPECT_EQ(EffectRuntime::get().stats().replays, replays);
     EXPECT_EQ(EffectRuntime::get().stats().stepPasses, passes) << "an unchanged pinned frame ran passes";
     EXPECT_EQ(maxDifference(first, again), 0);
-    at(3.0);
-    const TestImage back = at(1.25);
+    at(0.25);
+    const TestImage back = at(0.75);
     EXPECT_EQ(maxDifference(first, back), 0) << "t replayed after another time differs";
-    const TestImage reloaded = pinned("", 1.25);
+    const TestImage reloaded = pinned("", 0.75);
     EXPECT_EQ(maxDifference(first, reloaded), 0) << "the pinned state depends on what ran before";
-    const TestImage seeded = pinned("seed 7", 1.25);
+    const TestImage seeded = pinned("seed 7", 0.75);
     EXPECT_GT(maxDifference(first, seeded), 40) << "another seed draws another burst";
 }
 
 // a splat (effectSplat's path) changes the image, at the step its time falls in
 TEST_F(EffectFluid, SplatsChangeTheImage){
-    ASSERT_TRUE(load("splats-on-start off"));
-    const TestImage empty = at(1.0);
+    ASSERT_TRUE(load("splats-on-start off, bloom off"));
+    const TestImage empty = at(0.5);
+    EXPECT_LT(brightness(empty).second, 2);
     EffectSplatData splat;
     splat.position = Rml::Vector2f(160.f, 100.f);
     splat.radius = 30.f;
@@ -337,54 +341,53 @@ TEST_F(EffectFluid, SplatsChangeTheImage){
     splat.color[2] = 0.05f;
     splat.strength = 1.5f;
     ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid"), 1);
-    const TestImage hit = at(1.0);
+    const TestImage hit = at(0.5);
     EXPECT_GT(brightness(hit).second, 150) << "the splat was not painted";
-    // logged at 0.5 s: half a second of its evolution at 1 s
+    // logged at 0.25 s: a quarter second of its evolution at 0.5 s
     ASSERT_EQ(EffectRuntime::get().clearSplats(scene->element("f"), "fluid"), 1);
     EXPECT_EQ(info().splats, 0);
-    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid", 0.5), 1);
-    const TestImage earlier = at(1.0);
+    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid", 0.25), 1);
+    const TestImage earlier = at(0.5);
     EXPECT_GT(maxDifference(hit, earlier), 20) << "the splat's time was ignored";
     EXPECT_GT(brightness(earlier).second, 50);
-    (void)empty;
 }
 
 // a scripted pointer path is a drag: it paints, identically each time, and another path paints elsewhere
 TEST_F(EffectFluid, PointerPathsReplayExactly){
-    ASSERT_TRUE(load("splats-on-start off"));
-    at(1.0);
+    ASSERT_TRUE(load("splats-on-start off, bloom off"));
+    at(0.5);
     std::vector<Rml::Vector3f> path;
     for (int k = 0; k <= 30; k++)
-        path.emplace_back(40.f + 8.f * (float)k, 100.f + 30.f * std::sin((float)k * 0.3f), 0.4f + 0.01f * (float)k);
+        path.emplace_back(40.f + 8.f * (float)k, 100.f + 30.f * std::sin((float)k * 0.3f), 0.1f + 0.01f * (float)k);
     ASSERT_EQ(EffectRuntime::get().setPointerPath(scene->element("f"), path, "fluid"), 1);
     EXPECT_EQ(info().pathSamples, 31);
-    const TestImage painted = at(1.0);
+    const TestImage painted = at(0.5);
     EXPECT_GT(brightness(painted).second, 30) << "the drag did not paint";
-    const TestImage again = at(1.0);
+    const TestImage again = at(0.5);
     EXPECT_EQ(maxDifference(painted, again), 0);
     // the same path set again: the same bytes
     ASSERT_EQ(EffectRuntime::get().setPointerPath(scene->element("f"), path, "fluid"), 1);
-    EXPECT_EQ(maxDifference(painted, at(1.0)), 0);
+    EXPECT_EQ(maxDifference(painted, at(0.5)), 0);
     std::vector<Rml::Vector3f> other = path;
     for (Rml::Vector3f& p : other)
         p.y += 40.f;
     ASSERT_EQ(EffectRuntime::get().setPointerPath(scene->element("f"), other, "fluid"), 1);
-    EXPECT_GT(maxDifference(painted, at(1.0)), 20) << "another path drew the same";
+    EXPECT_GT(maxDifference(painted, at(0.5)), 20) << "another path drew the same";
     ASSERT_EQ(EffectRuntime::get().setPointerPath(scene->element("f"), {}, "fluid"), 1);
-    EXPECT_LT(brightness(at(1.0)).second, 2) << "a cleared path still paints";
+    EXPECT_LT(brightness(at(0.5)).second, 2) << "a cleared path still paints";
 }
 
 // preset mobile is shading, bloom and sunrays off; ink draws differently from the default
 TEST_F(EffectFluid, PresetsDraw){
-    const TestImage plain = pinned("", 1.0);
-    const TestImage mobile = pinned("preset mobile", 1.0);
-    const TestImage explicitOff = pinned("shading off, bloom off, sunrays off", 1.0);
+    const TestImage plain = pinned("", 0.4);
+    const TestImage mobile = pinned("preset mobile", 0.4);
+    const TestImage explicitOff = pinned("shading off, bloom off, sunrays off", 0.4);
     EXPECT_EQ(maxDifference(mobile, explicitOff), 0) << "preset mobile is not its three values";
     EXPECT_GT(maxDifference(plain, mobile), 20);
-    const TestImage ink = pinned("preset ink", 1.0);
+    const TestImage ink = pinned("preset ink", 0.4);
     EXPECT_GT(maxDifference(plain, ink), 20);
     // the look's switches each change the image
-    EXPECT_GT(maxDifference(plain, pinned("bloom off", 1.0)), 10);
-    EXPECT_GT(maxDifference(plain, pinned("sunrays off", 1.0)), 10);
-    EXPECT_GT(maxDifference(plain, pinned("shading off", 1.0)), 2);
+    EXPECT_GT(maxDifference(plain, pinned("bloom off", 0.4)), 10);
+    EXPECT_GT(maxDifference(plain, pinned("sunrays off", 0.4)), 10);
+    EXPECT_GT(maxDifference(plain, pinned("shading off", 0.4)), 2);
 }
