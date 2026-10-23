@@ -42,15 +42,20 @@ namespace jasperengine{ namespace lattice{
     JASPERENGINE_API const char* presetName(LatticePreset preset);
     JASPERENGINE_API std::vector<std::string> presetNames();
 
-    // applies to the selected points (flat indices; empty = all)
+    // applies to the selected points (flat indices; empty = all; invalid or repeated indices count once
+    // or not at all). offsets is resized to the point count first. amount 0 is the rest shape for every
+    // preset: add mode leaves offsets untouched, replace mode zeroes the selected points. toward equal to
+    // axis means the next axis. Squash amount is capped at 0.95, stretch amount floored at -0.95.
     JASPERENGINE_API void applyPreset(int rx, int ry, int rz, std::vector<Vector3>& offsets,
                                       const PresetParams& params, const std::vector<int>& selection = {});
 
-    // offsets of the old grid evaluated (trilinear) at the new grid's rest positions
+    // offsets of the old grid evaluated (trilinear) at the new grid's rest positions; where the grids
+    // coincide the old offsets are copied exactly; entries missing from a short vector count as zero
     JASPERENGINE_API std::vector<Vector3> resample(int oldRx, int oldRy, int oldRz, const std::vector<Vector3>& offsets,
                                                    int newRx, int newRy, int newRz);
 
     // copies one half onto the other, mirrored across the axis plane; the middle plane loses its axis component
+    // (fromPositive: the + half is the source). offsets is resized to the point count first.
     JASPERENGINE_API void mirror(int rx, int ry, int rz, std::vector<Vector3>& offsets, LatticeAxis axis, bool fromPositive);
 
     // selection helpers, flat index lists in ascending order
@@ -61,6 +66,8 @@ namespace jasperengine{ namespace lattice{
     // inclusive ranges; a negative lo means any value on that axis
     JASPERENGINE_API std::vector<int> selectRange(int rx, int ry, int rz, int iLo, int iHi, int jLo, int jHi, int kLo, int kHi);
     JASPERENGINE_API std::vector<int> expandSelection(int rx, int ry, int rz, const std::vector<int>& selection);
+    // shrink is the dual of expand: points with an unselected grid neighbour are dropped (the grid's
+    // outside does not count). Out-of-range indices in the input are ignored.
     JASPERENGINE_API std::vector<int> shrinkSelection(int rx, int ry, int rz, const std::vector<int>& selection);
     JASPERENGINE_API std::vector<int> invertSelection(int rx, int ry, int rz, const std::vector<int>& selection);
     // current point positions (rest + offsets) tested in world space
@@ -69,7 +76,8 @@ namespace jasperengine{ namespace lattice{
     JASPERENGINE_API std::vector<int> selectInWorldSphere(int rx, int ry, int rz, const std::vector<Vector3>& offsets,
                                                           const Matrix4& latticeModel, const Vector3& center, float radius);
 
-    // Lua lines `<var>:setOffset(i, j, k, Vector3(x, y, z))` for the non-zero selected points
+    // Lua lines `<var>:setOffset(i, j, k, Vector3(x, y, z))\n` for the non-zero selected points, in index
+    // order, (i, j, k) 0-based, numbers in the shortest text that reads back as the same float
     JASPERENGINE_API std::string copyAsLua(const std::string& var, int rx, int ry, int rz,
                                            const std::vector<Vector3>& offsets, const std::vector<int>& selection = {});
 

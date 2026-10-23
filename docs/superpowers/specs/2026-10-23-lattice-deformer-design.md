@@ -596,3 +596,96 @@ branches to integrate (the integrator merges into `lattice`).
 ## 12. Implementation notes
 
 (Work packages append here: decisions, deviations, file lists, shortcut choices.)
+
+### 12.x WP-SOLVER (solver, presets, unit tests)
+
+Files: `engine/core/lattice/LatticeSolver.{h,cpp}`, `engine/core/lattice/LatticePresets.{h,cpp}`
+(stubs replaced; headers only gained comments), `engine/tests/lattice/**` (new),
+`engine/CMakeLists.txt` (option `JASPERENGINE_LATTICE_TESTS`, default OFF, and its
+`add_subdirectory` at the end, outside the standalone block). No declarations were added.
+
+Behaviour the other packages rely on (all in the header comments too):
+
+- Resolutions are clamped to [2, 16] everywhere (`pointCount`, `pointIndex`, `restPosition`,
+  grids, presets, selection). Offsets/dynamic offsets shorter than `rx*ry*rz` count the missing
+  entries as zero, longer ones are ignored; nothing reads out of bounds. `buildPaddedGrid`
+  resizes its output (no reallocation when the size is unchanged).
+- `evaluate` is allocation free and returns the rest evaluation (delta 0, I, stretch 1) for a
+  **disabled** lattice, weight 0, a NaN `u`, or a padded grid of the wrong size. So followers,
+  `deformVertex` and bake agree with a `LatticeRender` that skips disabled lattices (WP-RENDER:
+  skip them). `f == 0` (beyond the fade) also returns the rest evaluation.
+- Positions use `p' = p + mat3(Minv) * delta` (equal to `Minv * (M p + delta)` for affine M,
+  exact at rest; the GPU may use either). A vertex the binding does not move (rest
+  evaluation, mask 0) is left bit-identical, normal not renormalized. A normal or tangent whose
+  transformed length is 0 keeps its old value (GPU: guard `normalize(0)` the same way).
+- Mask: `m` = colour channel, or `1 - channel` inverted, **not clamped**; a null colour means
+  `m = 1` for every channel including the inverted ones (WP-RENDER: a mesh without a colour
+  attribute must behave as mask 1, e.g. pack `maskChannel -1` for it).
+- `deformWorldPoint` returns `p + Lm * delta`; `worldJacobian` returns
+  `I + Lm (J - I) Lm^-1` (= `Lm J Lm^-1`, exactly I at rest). A lattice model with a zero or
+  non-finite linear determinant: point unchanged, Jacobian I, and `objectToNormalized`
+  returns an all-NaN matrix (`isValid()` false) so callers can skip it.
+- `findFoldedCells` evaluates det J (weight 1, offsets + dynamicOffsets, ignoring `enabled`)
+  at each cell's 8 corners and centre **inside the cell** (cell index fixed, t = 0/1/0.5, so a
+  sharp lattice uses the cell's own one-sided derivatives) and reports `(i, j, k)` (i in
+  `[0, rx-2]`) when any value is `<= 1e-6` (or NaN). Ascending k, j, i order.
+- Presets: computed in double on the rest positions. Axis `a`, perpendicular axes `a+1, a+2`
+  (cyclic: x -> (y, z), y -> (z, x), z -> (x, y)). Twist is counterclockwise seen from +axis
+  (around +y, +x goes to -z). Squash amount is capped at 0.95, stretch amount floored at
+  -0.95 (scale >= 0.05). `toward == axis` means the next axis. Bend (comment in the code):
+  with `s = a + 0.5`, `theta = amount` in radians, `R = 1/theta`: the line through the centre
+  of the -0.5 end becomes the arc of length 1 starting there tangent to +axis, centred at
+  `(a, b) = (-0.5, R)`; `a' = -0.5 + (R - b) sin(theta s)`, `b' = R - (R - b) cos(theta s)`
+  (computed without the R - R cancellation), third axis unchanged; negative amounts bend
+  toward -toward. Amount 0 (or non-finite) is the rest shape for every preset: add mode leaves
+  offsets bit-identical, replace mode sets the selected points to zero. Invalid/repeated
+  selection indices are ignored/counted once. `applyPreset` and `mirror` resize `offsets` to
+  the point count first.
+- Noise: `pcg_hash` (Jarzynski & Olano 2020) of `(seed, index, attempt)`, rejection sampling
+  of a 2^24 integer grid over `[-1, 1)^3` (integer test), then one exact conversion and one
+  multiply by `amount / 2^23` per component: bit-identical on every platform (no libm). The
+  golden values in `TestLatticePresets.cpp` come from an independent Python implementation.
+  The axis is irrelevant for noise.
+- `resample` computes the old-grid cell and t of each new point in integers, so coincident
+  points copy the old offsets bit for bit (same resolution = identical; 3 -> 5 -> 3 round trips
+  exactly).
+- Selection: `selectRange` with a negative lo is "any", hi is clamped, `hi < lo` is empty.
+  `shrinkSelection` is the dual of expand (points with an unselected in-grid neighbour drop;
+  the outside of the grid does not count, so shrinking everything keeps everything).
+  `selectInWorldBox` accepts swapped min/max, box and sphere tests are inclusive, a negative
+  radius selects nothing.
+- `presetFromName` accepts the lowercase names only. `copyAsLua` writes one
+  `var:setOffset(i, j, k, Vector3(x, y, z))\n` per non-zero selected point in index order,
+  (i, j, k) 0-based (WP-ECS: the Lua `setOffset` indices must be 0-based to match), numbers
+  as the shortest text that reads back as the same float, classic locale, -0 as `0`.
+
+Unit tests (`jasperengine-lattice-tests`, 36 tests, Linux, no GPU/display): they compile only
+`core/math/{Vector2,Vector3,Vector4,Matrix3,Matrix4,Quaternion,AABB,OBB,Plane}.cpp`,
+`core/util/Angle.cpp` and the two lattice sources, plus `EngineStubs.cpp` (defines
+`Engine::isUseDegrees()`, Angle's only engine dependency). googletest comes from
+`libs/yaml-cpp/test/gtest-1.11.0` like the HTML UI tests (skipped if a `gtest` target already
+exists). Coverage: the engine matrix conventions, indexing, padded grid and ghosts,
+mismatched sizes, identity at rest (3 modes x extend/fade with fade 0.25, 0, -1, 2; evaluate,
+world and vertex paths), linear-field reproduction (sharp/cubic everywhere, smooth at the
+points), analytic J vs finite differences (inside, at cell borders, outside with fade and
+extend), world Jacobian vs finite differences, normals for a known shear and rotation,
+normals/tangents/stretch vs object-space finite differences, masks, stacked stretch, fade
+continuity, folded cells, every preset (squash/stretch volumes), resample, mirror, noise
+goldens and ball uniformity, selection helpers, copyAsLua. A mutation pass (26 single-line
+bugs in the solver and presets, e.g. transposes, multiplication order, ghost passes, signs)
+was each caught by at least one test.
+
+Build and run, standalone (seconds):
+
+    cmake -S engine/tests/lattice -B build/lattice-tests -G Ninja -DCMAKE_BUILD_TYPE=Release
+    cmake --build build/lattice-tests -j2
+    build/lattice-tests/jasperengine-lattice-tests
+
+or inside the editor build (the binary lands in the build root):
+
+    cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_LATTICE_TESTS=ON
+    cmake --build build/native --target jasperengine-lattice-tests -j2
+    build/native/jasperengine-lattice-tests
+
+(also from the standalone engine build `cmake -S engine ... -DJASPERENGINE_LATTICE_TESTS=ON`;
+`ctest` runs it where testing is enabled).

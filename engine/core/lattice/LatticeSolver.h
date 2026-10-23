@@ -37,18 +37,23 @@ namespace jasperengine{ namespace lattice{
         float stretch;    // det(jacobian)
     };
 
-    // spec §3.2-3.4 at normalized coordinates u; weight is the binding weight times the vertex mask
+    // spec §3.2-3.4 at normalized coordinates u; weight is the binding weight times the vertex mask.
+    // A disabled lattice, a padded grid of the wrong size or a NaN u give the rest evaluation
+    // (delta 0, identity, stretch 1). Allocation free.
     JASPERENGINE_API Evaluation evaluate(const LatticeComponent& lattice, const std::vector<Vector3>& padded,
                                          const Vector3& u, float weight);
 
-    // world point -> deformed world point through one lattice (latticeModel = its Transform::modelMatrix)
+    // world point -> deformed world point through one lattice (latticeModel = its Transform::modelMatrix);
+    // a lattice with a non-invertible model matrix leaves the point unchanged
     JASPERENGINE_API Vector3 deformWorldPoint(const LatticeComponent& lattice, const std::vector<Vector3>& padded,
                                               const Matrix4& latticeModel, const Vector3& worldPoint, float weight = 1.0f);
-    // world-space Jacobian of deformWorldPoint at worldPoint (followers)
+    // world-space Jacobian of deformWorldPoint at worldPoint (followers): Lm * J * Lm^-1 with Lm the
+    // linear part of latticeModel; identity for a non-invertible model matrix
     JASPERENGINE_API Matrix3 worldJacobian(const LatticeComponent& lattice, const std::vector<Vector3>& padded,
                                            const Matrix4& latticeModel, const Vector3& worldPoint, float weight = 1.0f);
 
-    // object space -> normalized: translate(0.5) * inverse(latticeModel) * objectModel (spec §5.3)
+    // object space -> normalized: translate(0.5) * inverse(latticeModel) * objectModel (spec §5.3);
+    // all NaN (isValid() false) when latticeModel is not invertible
     JASPERENGINE_API Matrix4 objectToNormalized(const Matrix4& latticeModel, const Matrix4& objectModel);
 
     struct JASPERENGINE_API ObjectSpaceLattice{
@@ -61,14 +66,16 @@ namespace jasperengine{ namespace lattice{
     };
 
     // one vertex through one binding (spec §3.4); normal, tangent, stretch, color may be null.
-    // stretch is multiplied (stacked lattices multiply).
+    // stretch is multiplied (stacked lattices multiply). color is RGBA in 0..1; without it the mask is 1.
+    // A vertex the binding does not move is left bit-identical (its normal is not renormalized).
     JASPERENGINE_API void deformVertex(const ObjectSpaceLattice& binding, Vector3& position, Vector3* normal,
                                        Vector3* tangent, float* stretch, const Vector4* color);
 
     // largest |P| over the padded grid (bounds, spec §5.5)
     JASPERENGINE_API float maxPaddedOffset(const std::vector<Vector3>& padded);
 
-    // cells whose Jacobian determinant is <= 0 at a corner or the centre (folded inside out)
+    // cells (i, j, k), i in [0, rx-2], whose Jacobian determinant (weight 1, offsets + dynamicOffsets)
+    // is <= 1e-6 at a corner or the centre (folded inside out or flattened); ignores `enabled`
     JASPERENGINE_API std::vector<std::array<int, 3>> findFoldedCells(const LatticeComponent& lattice);
 
 }}
