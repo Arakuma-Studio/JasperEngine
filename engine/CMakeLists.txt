@@ -15,6 +15,10 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# googletest suite of the lattice math (engine/tests/lattice): math and lattice sources only, no
+# GPU or display; works from the editor build, the standalone engine build or on its own
+# (cmake -S engine/tests/lattice)
+option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1304,4 +1308,8 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+
+if(JASPERENGINE_LATTICE_TESTS)
+    add_subdirectory(tests/lattice)
 endif()
