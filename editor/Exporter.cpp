@@ -3340,7 +3340,7 @@ bool editor::Exporter::buildAndSaveShaders() {
 
     for (const ShaderKey& shaderKey : config.selectedShaderKeys) {
         ShaderType type = ShaderPool::getShaderTypeFromKey(shaderKey);
-        uint32_t props = ShaderPool::getPropertiesFromKey(shaderKey);
+        uint64_t props = ShaderPool::getPropertiesFromKey(shaderKey);
         uint16_t customId = ShaderPool::getCustomIdFromKey(shaderKey);
         std::string shaderStr = ShaderPool::getShaderStr(type, props, customId);
 
@@ -3470,7 +3470,7 @@ bool editor::Exporter::copyLicenses() {
 
 // Static helpers for UI display
 
-std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint32_t properties, uint16_t customId) {
+std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId) {
     std::string name = ShaderPool::getShaderTypeName(type);
 
     // Distinguish forked shaders (same type/props, different source) in the list.
@@ -3483,7 +3483,7 @@ std::string editor::Exporter::getShaderDisplayName(ShaderType type, uint32_t pro
 
     std::string props;
     for (int i = 0; i < propCount; i++) {
-        if (properties & (1u << i)) {
+        if (properties & shaderPropertyBit(i)) {
             if (!props.empty()) props += ", ";
             props += ShaderPool::getShaderPropertyName(type, i, true);
         }

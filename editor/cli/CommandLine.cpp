@@ -2069,7 +2069,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         std::vector<ProjectChecks::ShaderUse> forks = (shadersAll || include) ? ProjectChecks::shaderForksInProject(&project)
                                                                               : ProjectChecks::shaderForksUsingFiles(&project, shaderFiles);
         for (ProjectChecks::ShaderUse& use : forks) {
-            const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
+            const ShaderKey key = ProjectChecks::prepareShaderCheck(&project, use);
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
             // a UI effect's forms (phase 5) share their source: an error is reported once
             for (const ProjectChecks::Finding& finding : check.findings) {

@@ -208,7 +208,7 @@ namespace jasperengine::editor {
         ExportProgress getProgress() const;
         bool isRunning() const;
 
-        static std::string getShaderDisplayName(ShaderType type, uint32_t properties, uint16_t customId = 0);
+        static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
     };

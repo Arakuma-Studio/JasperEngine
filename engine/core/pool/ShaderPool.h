@@ -39,21 +39,27 @@ namespace jasperengine{
         static bool loadPrecompiledShader(ShaderKey shaderKey, const std::string& shaderStr, ShaderData& shaderData);
 
     public:
-        // ShaderKey layout (uint64):
-        //   bits [0..31]  properties bitfield
-        //   bits [32..47] ShaderType
-        //   bits [48..63] customShaderId (0 = built-in). Built-in keys are unchanged
-        //                 (customId 0), so old serialized keys remain valid.
-        static ShaderKey getShaderKey(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        // ShaderKey (shader/ShaderBuildTypes.h): the ShaderType, a 64-bit properties
+        // bitfield and the customShaderId (0 = built-in)
+        static ShaderKey getShaderKey(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
+        // A key in the packed uint64 layout files and tools stored before the properties
+        // were widened to 64 bits (customId << 48 | ShaderType << 32 | 32 property bits)
+        static ShaderKey unpackLegacyKey(uint64_t packed);
+        // The key as text, for tools: the legacy packed hex ("0x10000001f", no leading
+        // zeros) while the properties fit in 32 bits, so a key reads as it always did;
+        // else "0x" and 24 hex digits, customId (4), type (4) and properties (16).
+        // parseShaderKeyText reads both (and a decimal packed key).
+        static std::string getShaderKeyText(ShaderKey key);
+        static bool parseShaderKeyText(const std::string& text, ShaderKey& key);
 
-        static std::shared_ptr<ShaderRender> get(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
-        static void remove(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static std::shared_ptr<ShaderRender> get(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
+        static void remove(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
 
         // True when the last get() attempt failed, either building the source or creating
         // the backend resource, or (a game without the editor's builder) the build does not
         // have the precompiled shader. The pool stops re-invoking the (expensive, error-spamming)
         // builder until the failure is cleared by remove()/destroyCustomShaders().
-        static bool isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static bool isShaderBuildFailed(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
 
         // ---- Warm-up (Unity: ShaderVariantCollection.WarmUp, Shader.WarmupAllShaders) ----
         // A variant is ready once its GPU program exists. Asking for one that is not
@@ -62,10 +68,10 @@ namespace jasperengine{
         // until it reports ready; nothing that draws with it waits for it.
 
         // Requests the variant; true once it is ready
-        static bool warmUp(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static bool warmUp(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
         static bool warmUp(ShaderKey shaderKey);
         // Ready, without requesting it
-        static bool isShaderReady(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static bool isShaderReady(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
         // NotStarted (never requested), Loading, Finished (ready) or Failed (not in the
         // build and not compilable, or it failed to compile or to create)
         static ResourceLoadState getShaderState(ShaderKey shaderKey);
@@ -103,19 +109,19 @@ namespace jasperengine{
         // a UI effect's "<basename>[_<properties>]" (the part of its shader string after
         // "uieffect_") into its custom shader and properties (Flt, Stp, Sct); false when the
         // basename names no effect
-        static bool splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint32_t& properties);
+        static bool splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint64_t& properties);
 
-        static std::string getShaderStr(ShaderType shaderType, uint32_t properties, uint16_t customId = 0);
+        static std::string getShaderStr(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
         static std::string getShaderTypeName(ShaderType shaderType, bool lowerCase = false);
         static bool parseShaderTypeToken(const std::string& typeToken, ShaderType& shaderType);
         static int getShaderPropertyCount(ShaderType shaderType);
         // the variant bit of the post-processing colour (USE_POST_COLOR, includes/post_color.glsl:
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
-        static uint32_t getPostColorProperty(ShaderType shaderType);
+        static uint64_t getPostColorProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
-        static uint32_t getPropertiesFromKey(ShaderKey key);
+        static uint64_t getPropertiesFromKey(ShaderKey key);
         static uint16_t getCustomIdFromKey(ShaderKey key);
 
         // Key used to validate a serialized .sdat/header blob. The customShaderId is a
@@ -127,8 +133,10 @@ namespace jasperengine{
 
         // Bitmask of the property positions that currently map to a real variant for
         // this shader type (derived from getShaderPropertyName, so retired/reserved
-        // bits like MESH bit 5 are excluded). Used to normalize keys.
-        static uint32_t getValidPropertyMask(ShaderType shaderType);
+        // bits like MESH bit 5 are excluded). Used to normalize keys. A new property is
+        // a case in getShaderPropertyName and a getShaderPropertyCount that covers it
+        // (up to SHADER_PROPERTY_BITS); bits 32..63 work like the others.
+        static uint64_t getValidPropertyMask(ShaderType shaderType);
 
         // Strips property bits that no longer map to a variant (retired features,
         // bits beyond the current count). Keeps type + customId. Persisted keys from
@@ -188,7 +196,7 @@ namespace jasperengine{
 
         static void setShaderBuilder(ShaderBuilderFn fn);
 
-        static uint32_t getMeshProperties(bool unlit, bool uv1, bool uv2,
+        static uint64_t getMeshProperties(bool unlit, bool uv1, bool uv2,
 						bool punctual, bool shadows, bool normals, bool normalMap,
 						bool tangents, bool vertexColorVec3, bool vertexColorVec4, bool textureRect,
                         bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
@@ -199,19 +207,19 @@ namespace jasperengine{
                         bool vertexLights = false, int lightCapacity = 8);
         // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires;
         // textureRect: the sprite texture rect its UV (texture or uv1) goes through
-        static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
+        static uint64_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
                                                bool textureRect = false);
-        static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
-        static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
-        static uint32_t getHtmlUIProperties(bool texture);
+        static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
+        static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
+        static uint64_t getHtmlUIProperties(bool texture);
         // HTMLUI_POST: one property bit per (exclusive) variant
-        static uint32_t getHtmlUIPostProperties(HtmlUIPostVariant variant);
+        static uint64_t getHtmlUIPostProperties(HtmlUIPostVariant variant);
         // every built-in variant an HTML UI document draws with (export and Build Settings
         // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
-        static std::vector<std::pair<ShaderType, uint32_t>> getHtmlUIVariants();
-        static uint32_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
-        static uint32_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
+        static std::vector<std::pair<ShaderType, uint64_t>> getHtmlUIVariants();
+        static uint64_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
+        static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
 
 		// necessary for engine shutdown
 		static void clear();

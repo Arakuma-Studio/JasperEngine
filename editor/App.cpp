@@ -3600,6 +3600,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v34: Stochastic Tiling (includes/stochastic.glsl) — u_fs_terrainLayers gains
     //      stochastic[MAX_TERRAIN_LAYERS], read by the PBR terrain path of the color pass and
     //      the G-buffer; library shaders gain the STOCHASTIC feature.
+    //      Also .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
+    //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
 }
 

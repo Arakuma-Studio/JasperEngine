@@ -1299,11 +1299,11 @@ void editor::ProjectChecks::invalidateShaderCaches(Project* project) {
     project->invalidateCustomShaders();
 }
 
-uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
+ShaderKey editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
     if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
     const uint16_t customId = ShaderPool::registerCustomShader(use.base);
     // a UI effect: its form (use.properties)
-    uint32_t properties = use.properties;
+    uint64_t properties = use.properties;
     if (use.shaderType == static_cast<int>(ShaderType::MESH)) {
         // a mesh shader with a manifest: the variant a mesh with UVs, normals and colours
         // draws with in its default lighting mode (lit modes in a scene with lights), so
@@ -1438,7 +1438,7 @@ bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks
 
 } // namespace
 
-editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey) {
+editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey) {
     ShaderCheck check;
     check.use = use;
     const bool effect = isUiEffectUse(use);

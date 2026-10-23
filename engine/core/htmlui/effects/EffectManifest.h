@@ -63,7 +63,7 @@ namespace jasperengine::htmlui {
         // appended as sentences; true when there is none.
         // properties: the variant's (bit 1 Stp, bit 2 Sct: a stateful effect's step or scatter form,
         // which has u_fs_effectStep and may read no parameter at all)
-        static bool checkReflection(const EffectManifest& manifest, ShaderData& shader, std::vector<std::string>& problems, uint32_t properties = 0);
+        static bool checkReflection(const EffectManifest& manifest, ShaderData& shader, std::vector<std::string>& problems, uint64_t properties = 0);
         // the variants a stateful effect has besides its draw forms (Stp, and Sct with a scatter
         // pass), or'd onto a draw form's properties
         static std::vector<uint32_t> passForms(const EffectManifest& manifest, uint32_t drawForm);

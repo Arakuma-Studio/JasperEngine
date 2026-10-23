@@ -958,6 +958,13 @@ if(JASPERENGINE_TEXSYNTH_TESTS)
     include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
 endif()
 
+# jasperengine-editor-tests: unit tests of the editor and the engine core it drives (shader
+# variant keys, .sdat files, scene encoding), built with the editor (tools/build.sh editor-tests)
+option(JASPERENGINE_EDITOR_TESTS "Build jasperengine-editor-tests (editor and engine core unit tests)" OFF)
+if(JASPERENGINE_EDITOR_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
+endif()
+
 # Windows GUI-subsystem executables do not behave like normal CLI programs
 # when launched from cmd.exe/PowerShell. Provide a console-subsystem twin for
 # automation while keeping Unix-like platforms on a single editor binary.

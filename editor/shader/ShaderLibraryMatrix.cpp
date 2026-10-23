@@ -115,8 +115,8 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
     std::shared_ptr<const ShaderManifest> shared = ShaderManifests::get(base);
 
     std::vector<Variant> variants;
-    std::set<std::tuple<int, uint32_t, std::string>> seen;
-    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint32_t properties){
+    std::set<std::tuple<int, uint64_t, std::string>> seen;
+    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint64_t properties){
         if (seen.insert({static_cast<int>(type), properties, reference}).second)
             variants.push_back({label, reference, type, properties});
     };
@@ -281,7 +281,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             add("pass [" + features.first + "]", ShaderReference::getVariantReference(base, features.second), type, 0);
     }else{
         // the variants RenderSystem loads a component of the type with
-        std::vector<std::pair<std::string, uint32_t>> properties;
+        std::vector<std::pair<std::string, uint64_t>> properties;
         if (type == ShaderType::UI){
             properties = {{"plain", ShaderPool::getUIProperties(false, false, false, true)},
                           {"texture", ShaderPool::getUIProperties(true, false, false, true)},
@@ -306,7 +306,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                 add(properties.front().first + " [" + blendLabel(blend) + ", all features]", referenceOf(allOn, blend), type, properties.front().second);
         }
         // the post-processing colour (phase 4): every variant with it, each blend mode with all features
-        const uint32_t postColor = ShaderPool::getPostColorProperty(type);
+        const uint64_t postColor = ShaderPool::getPostColorProperty(type);
         if (postColor){
             for (const auto& variant : properties){
                 add(variant.first + " [post colour]", referenceOf({}), type, variant.second | postColor);

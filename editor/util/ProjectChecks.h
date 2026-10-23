@@ -10,6 +10,7 @@
 #include "script/ScriptProperty.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderData.h"
+#include "shader/ShaderBuildTypes.h"
 
 #include "json.hpp"
 
@@ -207,7 +208,7 @@ namespace jasperengine::editor {
         struct ShaderUse {
             std::string base;
             int shaderType = -1;
-            uint32_t properties = 0;   // UI effects: 1 = the filter form ('Flt')
+            uint64_t properties = 0;   // UI effects: 1 = the filter form ('Flt')
         };
         // The ShaderType a component's customShader is used as (false: no custom shaders)
         static bool shaderTypeForComponent(ComponentType component, ShaderType& out);
@@ -247,13 +248,13 @@ namespace jasperengine::editor {
         // so the checks (and the scenes) compile the files on disk
         static void invalidateShaderCaches(Project* project);
         // Main thread: resolves an unknown type and registers the fork; returns its ShaderKey
-        static uint64_t prepareShaderCheck(Project* project, ShaderUse& use);
+        static ShaderKey prepareShaderCheck(Project* project, ShaderUse& use);
         // Any thread: compiles the fork with the editor's shader builder for the editor's
         // backend (ShaderBuilder::buildShaderForExport), the files read from the project. A UI
         // effect's manifest is checked first (HTMLUI-FX-0014 effect-manifest at its line, no
         // compile then); a compile error is HTMLUI-FX-0015 effect-shader-compile at the .frag
         // line, and the compiled variant is checked against the manifest (its parameter block)
-        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey);
+        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey);
         // {shader, type, ok, errors, log} (log and errors only on failure); a UI effect adds
         // effect, form (paint/filter) and, on failure, code
         static nlohmann::json toJson(const ShaderCheck& check);
