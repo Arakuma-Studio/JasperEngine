@@ -3,6 +3,7 @@
 
 #include "PhysicsSystem.h"
 #include "Scene.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "util/Angle.h"
 
@@ -1342,29 +1343,25 @@ bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& 
             }
         }
 
+        // the samples span the terrain edge to edge, as the rendered surface does
+        const float sampleSpacing = terrain->terrainSize / static_cast<float>(std::max(1u, samplesSize - 1));
         JPH::Vec3 terrainOffset = JPH::Vec3(-terrain->terrainSize / 2.0, 0.0f, -terrain->terrainSize / 2.0);
-        JPH::Vec3 terrainScale = JPH::Vec3(terrain->terrainSize / samplesSize, terrain->maxHeight, terrain->terrainSize / samplesSize);
+        JPH::Vec3 terrainScale = JPH::Vec3(sampleSpacing, terrain->maxHeight, sampleSpacing);
 
         const unsigned char* heightPixels = static_cast<const unsigned char*>(textureData.getData());
+        const int heightWidth = textureData.getWidth();
+        const int heightHeight = textureData.getHeight();
         const int heightChannels = textureData.getChannels();
         const int heightBytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
 
         float* samples = new float[samplesSize * samplesSize];
         for (unsigned int x = 0; x < samplesSize; x++){
             for (unsigned int y = 0; y < samplesSize; y++){
-                int posX = floor(textureData.getWidth() * x / samplesSize);
-                int posY = floor(textureData.getHeight() * y / samplesSize);
-                const size_t texelIndex = (static_cast<size_t>(posY) * textureData.getWidth() + posX);
-                const size_t index = texelIndex * static_cast<size_t>(heightChannels) * static_cast<size_t>(heightBytesPerChannel);
-                float val;
-                if (heightBytesPerChannel >= 2){
-                    const unsigned int raw = static_cast<unsigned int>(heightPixels[index]) |
-                                             (static_cast<unsigned int>(heightPixels[index + 1]) << 8);
-                    val = static_cast<float>(raw) / 65535.0f;
-                }else{
-                    val = heightPixels[index] / 255.0f;
-                }
-                samples[x + (y * samplesSize)] = val;
+                // the terrain vertex shader's lookup: linear filtering at texel centres
+                const float localX = -terrain->terrainSize * 0.5f + sampleSpacing * static_cast<float>(x);
+                const float localZ = -terrain->terrainSize * 0.5f + sampleSpacing * static_cast<float>(y);
+                samples[x + (y * samplesSize)] = MeshSystem::sampleTerrainHeight(heightPixels, heightWidth, heightHeight, heightChannels, heightBytesPerChannel,
+                                                                                 terrain->terrainSize, localX, localZ);
             }
         }
 
