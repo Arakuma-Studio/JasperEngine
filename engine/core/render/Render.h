@@ -332,7 +332,12 @@ namespace jasperengine{
         // SystemRender::getFeatures() before creating one
         RGBA16F,
         RGBA32F,
-        R32F
+        R32F,
+        // half-float two- and one-channel targets (the fluid simulation's velocity and its
+        // pressure, divergence and curl): renderable and filterable where RGBA16F is (same GLES3
+        // extension rules), half the memory of RGBA16F per channel dropped
+        RG16F,
+        R16F
     };
 
     enum class TextureFilter{

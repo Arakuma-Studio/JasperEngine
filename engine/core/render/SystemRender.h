@@ -20,6 +20,8 @@ namespace jasperengine{
         bool renderRGBA16F = false, blendRGBA16F = false, filterRGBA16F = false;
         bool renderRGBA32F = false, blendRGBA32F = false, filterRGBA32F = false;
         bool renderR32F = false, blendR32F = false, filterR32F = false;
+        bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
+        bool renderR16F = false, blendR16F = false, filterR16F = false;
     };
 
     class JASPERENGINE_API SystemRender{
