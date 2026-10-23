@@ -111,29 +111,32 @@ namespace jasperengine::pose {
         const double reach = clampd(dist, minReach, maxReach);
 
         // bend plane normal (n = (C - A) x (B - A), so n x (C - A) points to the joint's side):
-        // the current one for a clearly bent limb, the pole's for a (nearly) straight one, a
-        // smooth blend in between. A slight bend away from the pole side (float noise of a
-        // "straight" rest or neutral limb) takes the pole's side.
+        // the pole's for a (nearly) straight limb, the current one for a clearly bent limb, a
+        // smooth blend in between. The current plane's weight also fades as that plane turns
+        // away from the pole plane past 90 degrees (fully the pole's when opposite), so a slight
+        // bend away from the pole side (float noise of a "straight" rest or neutral limb) takes
+        // the pole's side, continuously; above BENT the limb keeps its own plane whatever its side.
         const Vec3d ac = c - a;
         const Vec3d ab = b - a;
         const Vec3d aim = dist > 1e-12 ? (target - a) / dist : ac.normalized();
-        const Vec3d current = ac.cross(ab);
-        const double bend = current.length() / std::max(ac.length() * lab, 1e-300);   // sine of the angle at A
+        const Vec3d current = ac.cross(ab).normalized();
+        const double bend = ac.cross(ab).length() / std::max(ac.length() * lab, 1e-300);   // sine of the angle at A
         const Vec3d poleNormal = limbPoleNormal(rig, limb, ac.length() > 1e-12 ? ac.normalized() : aim);
-        Vec3d normal;
         const double STRAIGHT = 0.02, BENT = 0.1;   // sines: ~1.1 and ~5.7 degrees
-        if (current.dot(poleNormal) < 0.0 && bend < BENT){
+        double w = 1.0;
+        if (bend < BENT){
+            w = smoothstep(STRAIGHT, BENT, bend) * smoothstep(-1.0, 0.0, current.dot(poleNormal));
+        }
+        Vec3d normal = (current * w + poleNormal * (1.0 - w)).normalized();
+        if (normal.length() < 0.5){
             normal = poleNormal;
-        }else{
-            const double w = smoothstep(STRAIGHT, BENT, bend);
-            normal = (current.normalized() * w + poleNormal * (1.0 - w)).normalized();
-            if (normal.length() < 0.5){
-                normal = poleNormal;
-            }
         }
 
-        // the solved triangle: C* on the target line at the clamped reach, B* on the normal's side
-        Vec3d newNormal = normal - aim * normal.dot(aim);
+        // the solved triangle: C* on the target line at the clamped reach, B* on the normal's
+        // side. The plane follows the limb by the shortest rotation from C - A to T - A (as
+        // fromTo(C - A, T - A) turns it), so it never spins when the target crosses the normal.
+        Vec3d newNormal = fromToRotation(ac.length() > 1e-12 ? ac : aim, aim) * normal;
+        newNormal = newNormal - aim * newNormal.dot(aim);
         if (newNormal.length() < 1e-9){
             newNormal = limbPoleNormal(rig, limb, aim);
         }

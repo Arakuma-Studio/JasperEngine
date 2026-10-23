@@ -245,9 +245,11 @@ negate DOFs whose axis is U or F (`side`, `twist`, `turn`) and keep L-axis DOFs;
 `clampToLimits(BodyPose&) -> std::vector<int>` (indices of clamped DOFs). Limits are applied to
 key poses after edits when `humanize.jointLimits` is on, and to the baked frames (section 4.8).
 After the per-DOF clamp, `clampToLimits` also caps the swing: when `|(dof1, dof2)|` (as a vector,
-degrees) exceeds 180 the pair is scaled to length 180 and both DOFs are reported (a longer swing
-is the same rotation as a shorter one the other way, so it cannot round-trip; every limit range
-contains 0, so the scaled pair stays within the limits). When limiting frames, a bone whose
+degrees) exceeds `MAX_SWING_DEGREES` = 179.5 the pair is scaled to that length and both DOFs are
+reported (a swing over 180 is the same rotation as a shorter one the other way, so it cannot
+round-trip, and at exactly 180 the twist is undefined, so a twisted key there would not survive
+the frames' limit pass: the cap is half a degree below; every limit range contains 0, so the
+scaled pair stays within the limits). When limiting frames, a bone whose
 decomposed angles are outside the limits keeps its rotation if the long-form equivalent of its
 swing, `s * (1 - 360/|s|)`, is within the limits (a swing over 180 decomposes to the short form);
 only otherwise is it clamped. (Added in review round 1.)
@@ -424,17 +426,23 @@ float lowestPoint(const PoseRig&, const HumanPose&);   // model-space height alo
 void ground(const PoseRig&, HumanPose&, float lift /* humanScale units */);   // moves hips along up so lowest = floor + lift*humanScale
 ```
 
-Two-bone IK (A = upper, B = lower, C = end): clamp the reach to
-`[|lab - lbc| + 1e-4, lab + lbc - 1e-4]`; bend axis = `cross(C - A, B - A)`, or when the limb is
-straight `cross(C - A, pole)` with pole = character forward for legs, -forward for arms; rotate B
-by the change of the interior angle about the bend axis, then A by `fromTo(C - A, T - A)`.
-Near-straight rule (review round 1): "straight" is relative, not float-exact. With `sinA` the sine
-of the angle at A, the bend normal is the current one for `sinA >= 0.1` (~5.7 degrees), the
-pole's for `sinA <= 0.02`, a smoothstep blend in between, and the pole's whenever the limb is bent
-less than that the other way (rest and neutral limbs are straight only up to float noise, which
-must not pick the side). The implementation builds the solved triangle in the chosen plane and
-turns A (aligning `B - A` and the plane normal) then B onto it; the reach margin is
-`1e-4 * humanScale`;
+Two-bone IK (A = upper, B = lower, C = end, T = target; revised in review rounds 1 and 2):
+1. Reach: clamp `|T - A|` to `[|lab - lbc| + m, lab + lbc - m]`, `m = 1e-4 * humanScale`.
+2. Bend plane normal (`n = cross(C - A, B - A)` points so that `cross(n, C - A)` is the joint's
+   side). The pole normal is `cross(C - A, pole)` with pole = character forward for legs (knees
+   forward), -forward for arms (elbows back), blending to up / down as the limb turns along the
+   pole. With `sinA` the sine of the angle at A and `c = dot(n_current, n_pole)` (unit normals),
+   the weight of the current plane is `w = smoothstep(0.02, 0.1, sinA) * smoothstep(-1, 0, c)` for
+   `sinA < 0.1` and `w = 1` above; `n = normalize(w * n_current + (1 - w) * n_pole)`. So a straight
+   (or float-noise-bent) limb takes the pole's side, a clearly bent one keeps its plane, the
+   current plane's weight fades as it turns past 90 degrees from the pole plane, and the only
+   discontinuity is at `sinA = 0.1` for a limb bent backwards (it then keeps its own plane).
+3. The plane follows the limb: `n' = fromTo(C - A, T - A) * n` (the shortest rotation, like the
+   original "rotate B, then A by fromTo(C - A, T - A)" order; it never spins when T crosses n).
+4. Solved triangle in that plane: `C* = A + reach * t`, `B* = A + lab * (cos(a) t + sin(a) cross(n', t))`
+   with `t = (T - A) / |T - A|` and `cos(a)` from the law of cosines.
+5. A turns by the rotation taking the pair (`B - A`, `n` projected off `B - A`) to (`B* - A`, `n'`);
+   then B turns by the shortest arc from its (turned) `C - B` to `C* - B*`;
 `keepEndWorldRotation` restores C's world rotation (feet), otherwise C keeps its local rotation
 (hands). Reach beyond the limb clamps (the end stops at full extension along the target line).
 

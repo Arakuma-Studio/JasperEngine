@@ -14,19 +14,19 @@
 using namespace posetest;
 using H = HumanBone;
 
-TEST(PoseLimits, SwingIsCappedAt180){
+TEST(PoseLimits, SwingIsCappedBelow180){
     for (float v : {120.0f, 130.0f, 150.0f}){
         BodyPose body = bodyWith({{"left_upper_arm.raise", v}, {"left_upper_arm.forward", v}});
         const std::vector<int> clamped = clampToLimits(body);
         const float raise = body.angles[dofIndex(H::LeftUpperArm, 0)];
         const float forward = body.angles[dofIndex(H::LeftUpperArm, 1)];
         const double swing = std::sqrt(static_cast<double>(raise) * raise + static_cast<double>(forward) * forward);
-        if (v * std::sqrt(2.0) <= 180.0){
+        if (v * std::sqrt(2.0) <= MAX_SWING_DEGREES){
             EXPECT_TRUE(clamped.empty()) << v;
             EXPECT_EQ(raise, v);
         }else{
             EXPECT_EQ(clamped, (std::vector<int>{dofIndex(H::LeftUpperArm, 0), dofIndex(H::LeftUpperArm, 1)})) << v;
-            EXPECT_NEAR(swing, 180.0, 1e-4) << v;
+            EXPECT_NEAR(swing, MAX_SWING_DEGREES, 1e-4) << v;
             EXPECT_NEAR(raise, forward, 1e-5);   // the direction is kept
         }
     }
@@ -37,12 +37,12 @@ TEST(PoseLimits, SwingIsCappedAt180){
     EXPECT_TRUE(boneWithinLimits(H::RightUpperLeg, leg));
     float hips[3] = {body.angles[0], body.angles[1], 0};
     EXPECT_TRUE(boneWithinLimits(H::Hips, hips));
-    EXPECT_NEAR(std::hypot(hips[0], hips[1]), 180.0, 1e-4);
+    EXPECT_NEAR(std::hypot(hips[0], hips[1]), MAX_SWING_DEGREES, 1e-4);
     EXPECT_TRUE(clampToLimits(body).empty());
 }
 
 TEST(PoseLimits, FramesKeepKeysInsideTheLimits){
-    // reviewer probe 3: raise = forward = 120 / 130 / 150 (130 and 150 are capped to a 180-degree
+    // reviewer probe 3: raise = forward = 120 / 130 / 150 (130 and 150 are capped to a 179.5-degree
     // swing by the key clamp); the frames' limit pass must not turn the key into another pose
     for (const TestRig* t : allRigs()){
         const PoseRig& rig = *t->rig;
@@ -153,4 +153,38 @@ TEST(PoseHumanoidMap, RealBipedClaviclesUnderTheNeck){
     HumanoidMap withNeck = map;
     withNeck.bones[boneIndex(H::Neck)] = "Bip01 Neck";
     EXPECT_FALSE(validateHumanoid(skeleton, withNeck, &error));
+}
+
+TEST(PoseLimits, TwistedKeysAtTheSwingCapSurviveTheFrames){
+    // reviewer probe 8: keys whose swing is capped (179.5 degrees) with twists 0/20/45/90 come
+    // back from frames() unchanged; at exactly 180 the twist is undefined and the frames' limit
+    // pass altered up to 45 of 75 keys by up to 139 degrees
+    int cases = 0;
+    for (H bone : {H::LeftUpperArm, H::RightUpperLeg, H::Hips}){
+        for (float twist : {0.0f, 20.0f, 45.0f, 90.0f}){
+            for (const TestRig* t : allRigs()){
+                const PoseRig& rig = *t->rig;
+                for (int k = 0; k < 72; k++){
+                    const double theta = degToRad(k * 5.0);
+                    float a[3] = {static_cast<float>(300.0 * std::cos(theta)), static_cast<float>(300.0 * std::sin(theta)), twist};
+                    clampBoneToLimits(bone, a);
+                    if (std::hypot(a[0], a[1]) < MAX_SWING_DEGREES - 1e-3){
+                        continue;   // the limits stop this direction before the cap
+                    }
+                    BodyPose body;
+                    for (int j = 0; j < 3; j++) body.angles[dofIndex(bone, j)] = a[j];
+                    PoseAnimationData data = makeAnimation({body}, false, 0.2f);
+                    data.settings.humanize.enabled = true;
+                    data.settings.humanize.life = 0.0f;
+                    data.settings.humanize.movingHolds = 0.0f;
+                    const SamplerInput input = makeSamplerInput(data, realiseKeys(data, rig), &rig);
+                    const std::vector<HumanPose> f = frames(input, 30);
+                    cases++;
+                    EXPECT_LT(radToDeg(rotationError(input.keys[0].rotations[boneIndex(bone)], f[0].rotations[boneIndex(bone)])), 0.1)
+                        << t->label << " " << humanBoneName(bone) << " direction " << k * 5 << " twist " << twist;
+                }
+            }
+        }
+    }
+    EXPECT_GT(cases, 500);
 }

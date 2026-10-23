@@ -563,11 +563,13 @@ namespace jasperengine::pose {
                 changed |= 1u << k;
             }
         }
-        // the swing (dof1, dof2) is at most 180 degrees long: beyond, it is the same rotation as
-        // a shorter swing the other way. Every limit range contains 0, so scaling stays inside.
+        // the swing (dof1, dof2) is at most MAX_SWING_DEGREES long: beyond 180 it is the same
+        // rotation as a shorter swing the other way, and at 180 the twist is undefined (a twisted
+        // key would not survive the frames' limit pass), so the cap is half a degree below.
+        // Every limit range contains 0, so scaling stays inside.
         const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
-        if (swing > 180.0){
-            const double factor = 180.0 / swing;
+        if (swing > MAX_SWING_DEGREES){
+            const double factor = MAX_SWING_DEGREES / swing;
             angles[0] = static_cast<float>(angles[0] * factor);
             angles[1] = static_cast<float>(angles[1] * factor);
             changed |= 3u;
