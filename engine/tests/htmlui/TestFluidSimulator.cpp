@@ -707,3 +707,62 @@ TEST_F(FluidSimulatorTest, SystemKeepsAnExistingSimulator){
     EXPECT_EQ(fluid.simulator->getOutputFramebuffer(), output);
     scene.removeComponent<FluidSimulationComponent>(entity);
 }
+
+TEST_F(FluidSimulatorTest, TransparentMaterialHasNoDarkFringe){
+    TestSystem::get().clearLogs();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    scene.setBackgroundColor(0.6f, 0.6f, 0.6f, 1.0f);
+    Sprite& sprite = fixture.add<Sprite>();
+    sprite.setSize(160, 160);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(320.0f, 180.0f, 0.0f);
+
+    // a soft red splat on a transparent fluid: its edge fades out through every alpha
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::MATERIAL;
+    c.transparent = true;
+    c.paused = true;
+    FluidSplat red = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
+    red.radius = 3.0f;
+    c.pendingSplats.push_back(red);
+    const Entity entity = sprite.getEntity();
+    scene.addComponent<FluidSimulationComponent>(entity, c);
+    FluidSystem* system = scene.getSystem<FluidSystem>().get();
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return system->getMaterialTexture(entity) != nullptr; }));
+    GpuEnvironment::drawFrames(4);
+
+    // the output itself: straight alpha (the colour stays red where alpha fades)
+    Image output = readOutput(*scene.getComponent<FluidSimulationComponent>(entity).simulator);
+    const uint8_t* edge = output.at(0.5f, 0.5f + 0.12f);
+    ASSERT_GT((int)edge[3], 20);
+    ASSERT_LT((int)edge[3], 235);
+    EXPECT_GT((int)edge[0], 240) << "straight alpha: full red at a partial alpha";
+
+    Framebuffer& target = GpuEnvironment::target();
+    const int w = (int)target.getWidth(), h = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
+    PixelProbe probe{rgba, w};
+    const uint8_t* background = probe.at(20, 20);
+    const int bg = background[0];
+    // red over grey never gets darker than the grey (a premultiplied colour blended as straight
+    // alpha would: the dark fringe), nor greener; the centre is red
+    int darkest = 255, greenest = 0;
+    for (int y = 100; y < 260; y += 2){
+        for (int x = 240; x < 400; x += 2){
+            const uint8_t* p = probe.at(x, y);
+            darkest = std::min<int>(darkest, p[0]);
+            greenest = std::max<int>(greenest, p[1]);
+        }
+    }
+    EXPECT_GE(darkest, bg - 2) << "a dark fringe (background red " << bg << ")";
+    EXPECT_LE(greenest, (int)background[1] + 2);
+    const uint8_t* centre = probe.at(320, 180);
+    EXPECT_GT((int)centre[0], 240);
+    EXPECT_LT((int)centre[1], 30);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+    scene.removeComponent<FluidSimulationComponent>(entity);
+}

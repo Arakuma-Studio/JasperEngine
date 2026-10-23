@@ -5527,7 +5527,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         bool blended = false;
         bool transparentQueue = false;
         const ShaderManifestState* manifestState = mesh.submeshes[i].manifest ? &mesh.submeshes[i].manifestState : nullptr;
-        const RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
+        RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
+        // a transparent FluidSimulation output lent to it blends like a transparent texture
+        if (i == 0 && lendsTransparentFluid(entity, mesh.submeshes[i])){
+            blended = true;
+            transparentQueue = true;
+            if (mesh.submeshes[i].material.depthWrite == MaterialDepthWrite::AUTO)
+                colorState.depthWrite = false;
+        }
         mesh.submeshes[i].skipsScreenEffects = colorState.colorWriteMask == 0 && !colorState.depthWrite;
         mesh.submeshes[i].alphaBlend = transparentQueue;
         if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
@@ -9480,6 +9487,16 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     return true;
 }
 
+bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) const{
+    if (!frameFluids || !frameFluids->hasMaterialFluids())
+        return false;
+    // (a material or shader that chose its blending keeps it)
+    if (submesh.manifest || submesh.material.alphaMode != MaterialAlphaMode::AUTO || submesh.material.blendMode != MaterialBlendMode::AUTO)
+        return false;
+    bool transparent = false;
+    return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
+}
+
 bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
@@ -12409,6 +12426,8 @@ void RenderSystem::update(double dt){
                 // the manifest's state as loaded (keyword rules resolved at load, no allocation)
                 resolveSubmeshRenderState(mesh, mesh.submeshes[s], mesh.submeshes[s].manifest ? &mesh.submeshes[s].manifestState : nullptr,
                                           blended, alphaBlend);
+                if (s == 0 && lendsTransparentFluid(entity, mesh.submeshes[s]))
+                    alphaBlend = true;
                 expectedTransparent = expectedTransparent || alphaBlend;
 
                 if (mesh.submeshes[s].alphaBlend != alphaBlend){

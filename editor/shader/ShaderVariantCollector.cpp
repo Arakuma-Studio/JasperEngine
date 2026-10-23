@@ -915,6 +915,13 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){
+    // ShaderType::FLUID bits: 'Lok' 1, 'Mfl' 2
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
@@ -1009,11 +1016,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     bool fluid = hasFluid(sceneContent);
     for (const ShaderVariantContent& prefab : prefabContents)
         fluid = fluid || hasFluid(prefab);
-    if (fluid){
-        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
-        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
-        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
-    }
+    if (fluid)
+        addFluidKeys(keys);
 
     // the UI effects the scene's (and its prefabs') HTML UI documents use
     if (!projectRoot.empty()){
