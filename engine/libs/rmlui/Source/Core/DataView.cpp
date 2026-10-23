@@ -46,6 +46,8 @@ void DataViews::Add(DataViewPtr view)
 
 void DataViews::OnElementRemove(Element* element)
 {
+	element_view_map.erase(element);
+
 	for (auto it = views.begin(); it != views.end();)
 	{
 		auto& view = *it;
@@ -59,7 +61,17 @@ void DataViews::OnElementRemove(Element* element)
 	}
 }
 
-bool DataViews::Update(DataModel& model, const DirtyVariables& dirty_variables)
+void DataViews::CollectRowViews(Element* element, Vector<DataView*>& out) const
+{
+	auto range = element_view_map.equal_range(element);
+	for (auto it = range.first; it != range.second; ++it)
+		out.push_back(it->second);
+	const int num_children = element->GetNumChildren(true);
+	for (int i = 0; i < num_children; i++)
+		CollectRowViews(element->GetChild(i), out);
+}
+
+bool DataViews::Update(DataModel& model, const DirtyVariables& dirty_variables, const SmallUnorderedSet<Element*>& dirty_rows)
 {
 	bool result = false;
 	size_t num_dirty_variables_prev = 0;
@@ -81,6 +93,8 @@ bool DataViews::Update(DataModel& model, const DirtyVariables& dirty_variables)
 				dirty_views.push_back(view.get());
 				for (const String& variable_name : view->GetVariableNameList())
 					name_view_map.emplace(variable_name, view.get());
+				if (Element* element = view->GetElement())
+					element_view_map.emplace(element, view.get());
 
 				views.push_back(std::move(view));
 			}
@@ -92,6 +106,13 @@ bool DataViews::Update(DataModel& model, const DirtyVariables& dirty_variables)
 			auto pair = name_view_map.equal_range(variable_name);
 			for (auto it = pair.first; it != pair.second; ++it)
 				dirty_views.push_back(it->second);
+		}
+
+		// Fork (P7-D): the views under the rows whose aliases changed (once, in the first iteration).
+		if (i == 0)
+		{
+			for (Element* row : dirty_rows)
+				CollectRowViews(row, dirty_views);
 		}
 
 		// Remove duplicate entries

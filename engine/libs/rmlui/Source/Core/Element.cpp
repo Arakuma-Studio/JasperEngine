@@ -48,6 +48,10 @@
 
 namespace Rml {
 
+// Fork (P7-L): the elements that are layout boundaries (SetLayoutBoundary), over every document: while there are none,
+// DirtyLayout looks for no boundary among the ancestors.
+static int num_layout_boundaries = 0;
+
 // Determines how many levels up in the hierarchy the OnChildAdd and OnChildRemove are called (starting at the child itself)
 static constexpr int ChildNotifyLevels = 2;
 
@@ -112,7 +116,7 @@ Element::Element(const String& tag) :
 	local_stacking_context(false), local_stacking_context_forced(false), stacking_context_dirty(false), computed_values_are_default_initialized(true),
 	visible(true), offset_fixed(false), absolute_offset_dirty(true), rounded_main_padding_size_dirty(true), dirty_definition(false),
 	dirty_child_definitions(false), dirty_definition_self(false), dirty_pseudo_elements(false), pseudo_element_type(PseudoElementTypeOfTag(tag)), has_pseudo_elements(false), dirty_animation(false), dirty_transition(false),
-	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), tag(tag),
+	dirty_transform(false), dirty_perspective(false), animation_displayed(true), animations_running(false), display_contents(false), fixed_containing_block(false), absolute_containing_block(false), line_clamp_hidden(false), draws_line_clamp_ellipsis(false), layout_boundary(false), layout_boundary_dirty(false), tag(tag),
 	relative_offset_base(0, 0), relative_offset_position(0, 0), absolute_offset(0, 0), scroll_offset(0, 0)
 {
 	RMLUI_ASSERT(tag == StringUtilities::ToLower(tag));
@@ -139,6 +143,9 @@ Element::~Element()
 	RMLUI_ASSERT(parent == nullptr);
 
 	PluginRegistry::NotifyElementDestroy(this);
+
+	if (layout_boundary)
+		num_layout_boundaries--;
 
 	// A simplified version of RemoveChild() for destruction.
 	for (ElementPtr& child : children)
@@ -2583,8 +2590,39 @@ void Element::OnChildRemove(Element* /*child*/) {}
 
 void Element::DirtyLayout()
 {
-	if (Element* document = GetOwnerDocument())
+	ElementDocument* document = GetOwnerDocument();
+	if (!document)
+		return;
+	// Fork (P7-L): a change inside a layout boundary lays out the boundary alone (the nearest one); the elements
+	// that are no boundary pay one counter test while the document has none.
+	if (num_layout_boundaries > 0)
+	{
+		for (Element* ancestor = parent; ancestor && ancestor != document; ancestor = ancestor->parent)
+		{
+			if (ancestor->layout_boundary)
+			{
+				document->DirtyLayoutBoundary(ancestor);
+				return;
+			}
+		}
+	}
+	document->DirtyLayout();
+}
+
+void Element::SetLayoutBoundary(bool boundary)
+{
+	if (layout_boundary == boundary)
+		return;
+	layout_boundary = boundary;
+	num_layout_boundaries += boundary ? 1 : -1;
+	// The next layout is the document's: the boundary's box comes from its parent's formatting.
+	if (ElementDocument* document = GetOwnerDocument())
 		document->DirtyLayout();
+}
+
+bool Element::IsLayoutBoundary() const
+{
+	return layout_boundary;
 }
 
 bool Element::IsLayoutDirty()

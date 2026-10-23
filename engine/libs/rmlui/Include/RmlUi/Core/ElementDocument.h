@@ -160,6 +160,10 @@ protected:
 	/// Sets whether the document can receive focus when another document is modal.
 	void SetFocusableFromModal(bool focusable);
 
+	/// Fork (P7-L): how many document layouts so far formatted only layout boundaries (Element::SetLayoutBoundary),
+	/// over every document (tests and benchmarks).
+	static int GetBoundaryLayoutCount();
+
 private:
 	bool canvas_background = false;
 	String canvas_body_tag;
@@ -185,6 +189,10 @@ private:
 	/// Updates the layout if necessary.
 	void UpdateLayout();
 
+	/// Fork (P7-L): a layout dirtied inside a layout boundary (Element::SetLayoutBoundary), formatted alone at the
+	/// next UpdateLayout unless the document's whole layout is dirty by then.
+	void DirtyLayoutBoundary(Element* boundary);
+
 	/// Updates the position of the document based on the style properties.
 	void UpdatePosition();
 	/// Sets the dirty flag for document positioning
@@ -209,7 +217,11 @@ private:
 	bool layout_dirty;
 	bool position_dirty;
 
+	// Fork (P7-L): the layout boundaries to format alone at the next UpdateLayout.
+	Vector<ObserverPtr<Element>> dirty_layout_boundaries;
+
 	friend class Rml::Context;
+	friend class Rml::Element;
 	friend class Rml::ElementCascade;
 	friend class Rml::Factory;
 };

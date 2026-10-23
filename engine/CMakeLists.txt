@@ -1015,6 +1015,9 @@ set(JASPERENGINE_SRCS
 # HTML/CSS compatibility layer (phase 2): globbed per directory
 include(core/htmlui/compat/CompatSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${HTMLUI_COMPAT_SRCS})
+# HTML UI widgets (S17): virtual views, tooltips, drag and drop, Markdown
+include(core/htmlui/widgets/WidgetsSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)

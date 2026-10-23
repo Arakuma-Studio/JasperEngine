@@ -28,6 +28,10 @@ XMLParser::XMLParser(Element* root)
 	for (const String& name : Factory::GetStructuralDataViewAttributeNames())
 		RegisterInnerXMLAttribute(name);
 
+	// Fork (P7-T): a <template> without 'src' is an inert element holding its content as RML (the row template of the
+	// engine's virtual views); with 'src' it injects a template file, as upstream.
+	RegisterInnerXMLTag("template", "src");
+
 	// Add the first frame.
 	ParseFrame frame;
 	frame.element = root;

@@ -705,6 +705,15 @@ protected:
 	/// Returns true if the element has been marked as needing a re-layout.
 	virtual bool IsLayoutDirty();
 
+	/// Fork (P7-L): makes the element a layout boundary, or a normal element again. A boundary is a box whose size its
+	/// descendants cannot change (the owner decides: a positioned scroll container of a definite width and height, as
+	/// the engine's virtual list views are): a layout dirtied inside it formats the boundary alone, again in its
+	/// current box, instead of the whole document (ElementDocument::UpdateLayout). A change of the boundary itself or
+	/// outside it lays the document out as before.
+	void SetLayoutBoundary(bool boundary);
+	/// Fork (P7-L): true when the element is a layout boundary.
+	bool IsLayoutBoundary() const;
+
 	/// Returns the RML of this element and all children.
 	/// @param[out] content The content of this element and those under it, in XML form.
 	virtual void GetRML(String& content);
@@ -832,6 +841,9 @@ private:
 	bool line_clamp_hidden : 1;
 	// It draws a line-clamp ellipsis itself as a block container (ElementMeta::line_clamp_ellipsis, fork P6-L1).
 	bool draws_line_clamp_ellipsis : 1;
+	// A layout boundary (fork P7-L, SetLayoutBoundary), and queued for a layout of its own by its document.
+	bool layout_boundary : 1;
+	bool layout_boundary_dirty : 1;
 
 	OwnedElementList children;
 	int num_non_dom_children;

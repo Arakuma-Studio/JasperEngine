@@ -34,6 +34,10 @@ public:
 	/// @note In particular, this behavior is useful for some data-binding views.
 	void RegisterInnerXMLAttribute(const String& attribute_name);
 
+	/// Fork (P7-T): the content of a tag with this name is treated as data, as for RegisterInnerXMLAttribute, unless the
+	/// tag carries the attribute `unless_attribute` (empty: always). The element of the tag gets it as InnerXML data.
+	void RegisterInnerXMLTag(const String& tag, const String& unless_attribute);
+
 	/// Parses the given stream as an XML file, and calls the handlers when
 	/// interesting phenomena are encountered.
 	void Parse(Stream* stream);
@@ -103,6 +107,7 @@ private:
 
 	SmallUnorderedSet<String> cdata_tags;
 	SmallUnorderedSet<String> attributes_for_inner_xml_data;
+	SmallUnorderedMap<String, String> tags_for_inner_xml_data; // fork (P7-T): tag -> the attribute that turns it off
 };
 
 } // namespace Rml
