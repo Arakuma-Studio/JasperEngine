@@ -18,8 +18,13 @@ Runs in a new empty project; the tests share one editor and run in order (state 
 
 import json
 import shutil
+import sys
+from pathlib import Path
 
 from harness import Editor
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 TIMEOUT = 900
 EDITOR = {"create": True}
@@ -173,7 +178,8 @@ async def test_mcp_fill_merge_and_errors(ed: Editor):
     ed.check_eq(t["points"], [4, 22, 13], "a new point column")
     ed.check_eq(t["times"], [0.0, 1.0, 1.5, 2.0], "inserted key")
     check_close(ed, t["values"][1], [[0, 0.3, 0], [0, -0.2, 0], ZERO], "t=1: 4 replaced, 22 kept, 13 current")
-    check_close(ed, t["values"][2], [[0, 0.35, 0], [0, -0.2, 0], [0.1, 0, 0]], "t=1.5: 4 sampled from the track")
+    # 4 between 0.3 (t=1) and 0.4 (t=2) through that segment's quad_in: 0.3 + 0.25 * 0.1
+    check_close(ed, t["values"][2], [[0, 0.325, 0], [0, -0.2, 0], [0.1, 0, 0]], "t=1.5: 4 sampled from the track")
     check_close(ed, t["values"][0][2], ZERO, "t=0: the new point at its current offset")
     await ed.call("undo", scene=sid)
     t = await tracks_of(ed, track)
@@ -255,15 +261,19 @@ async def test_preview_evaluates_and_restores(ed: Editor):
     s = await setup(ed)
     sid = s["scene"]
     await set_offsets(ed, {13: [0, 0, 0.05]})
-    r = await ed.call("preview_animation", scene=sid, animation=S["squash"], action="seek", time=0.5)
+    r = await ed.call("preview_animation", scene=sid, animation=S["squash"], action="seek", time=0)
     ed.check(r["previewing"] is True, f"previewing: {r}")
+    rest = await ed.screenshot("scene", path=ed.scratch.root / "anim_rest.png" if ed.scratch else None)
+    await ed.call("preview_animation", scene=sid, animation=S["squash"], action="seek", time=0.5)
     off = await offsets(ed)
     # the seek steps 1/60 s at a time: the last step samples up to one step before 0.5
     ed.check(0.4 * (0.5 - 2 / 60) - 1e-4 <= off[4][1] <= 0.2 + 1e-4, f"point 4 at 0.5 s: {off[4]}")
     ed.check(close(off[22], [0, -off[4][1], 0]), f"point 22 mirrors it: {off[22]}")
     check_close(ed, off[13], [0, 0, 0.05], "a point no key names keeps its offset")
-    shot = await ed.screenshot("scene", path=None)
-    ed.check(len(shot) > 1000, "scene view screenshot mid-preview")
+    # the GPU deforms the bound box mid-animation: the Scene view changes
+    mid = await ed.screenshot("scene", path=ed.scratch.root / "anim_mid.png" if ed.scratch else None)
+    same, fraction, _ = pngdiff.compare(pngdiff.decode(rest), pngdiff.decode(mid), max_fraction=0.002)
+    ed.check(not same, f"the deformed box shows in the Scene view ({fraction:.4f} of the pixels changed)")
     await ed.call("preview_animation", scene=sid, animation=S["squash"], action="stop")
     off = await offsets(ed)
     check_close(ed, off[4], ZERO, "stop restores the authored offsets")

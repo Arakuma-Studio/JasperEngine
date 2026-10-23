@@ -4531,10 +4531,10 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- animation
     add("edit_animation", "Edit Animation",
-        "Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: "
-        "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs "
-        "middle keys) or morph weights; lattice: points {\"index\": [x,y,z]} or [[[i,j,k],[x,y,z]],...] offsets, or "
-        "\"current\" (as editor keying); ease to the next key: linear, step, "
+        "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
+        "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys), "
+        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]],...] or \"current\": as "
+        "editor keying); ease to the next key: linear, step, "
         "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
         "indices from before the call.",
