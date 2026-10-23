@@ -13,6 +13,7 @@
 
 #include "Scene.h"
 #include "object/GameObject.h"
+#include "object/FluidSimulation.h"
 #include "object/Bone.h"
 #include "object/Camera.h"
 #include "object/Light.h"
@@ -129,7 +130,7 @@ namespace {
     using Wrappers = ::testing::Types<
         EntityHandle, GameObject, Mesh, Model, Primitive, Mirror, MeshPolygon, Sprite, Terrain, Tilemap,
         Light, Light2D, Camera, Points, LineRenderer, ShadowCaster2D, Bone,
-        Fog, Skybox, ReflectionProbe, AudioSource,
+        Fog, Skybox, ReflectionProbe, AudioSource, FluidSimulation,
         RectTransform, Image, Button, Panel, Scrollbar, Progressbar, InputField, LayoutGroup, Polygon, Text, UIDocument,
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2D, Joint2D,
@@ -147,7 +148,7 @@ namespace {
             const char* names[] = {
                 "EntityHandle", "GameObject", "Mesh", "Model", "Primitive", "Mirror", "MeshPolygon", "Sprite", "Terrain", "Tilemap",
                 "Light", "Light2D", "Camera", "Points", "LineRenderer", "ShadowCaster2D", "Bone",
-                "Fog", "Skybox", "ReflectionProbe", "AudioSource",
+                "Fog", "Skybox", "ReflectionProbe", "AudioSource", "FluidSimulation",
                 "RectTransform", "Image", "Button", "Panel", "Scrollbar", "Progressbar", "InputField", "LayoutGroup", "Polygon", "Text", "UIDocument",
 #ifdef JASPERENGINE_PHYSICS_2D
                 "Rigidbody2D", "Joint2D",

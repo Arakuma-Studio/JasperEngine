@@ -3,10 +3,55 @@
 
 #include "FluidSimulation.h"
 #include "fluid/FluidPresets.h"
+#include "Log.h"
 
+#include <cmath>
 #include <memory>
 
 using namespace jasperengine;
+
+namespace {
+
+    // Setters reject what the solver cannot use (logged, the value kept): NaN and infinity,
+    // negatives, and zero where it divides or sizes a target. Other values are kept as given
+    // (resolutions outside Pavel's sets included: the simulator sizes its targets from them).
+
+    bool checkNonNegative(const char* field, float value){
+        if (std::isfinite(value) && value >= 0.0f)
+            return true;
+        Log::error("FluidSimulation: %s must be a finite number >= 0 (got %g)", field, (double)value);
+        return false;
+    }
+
+    bool checkPositive(const char* field, float value){
+        if (std::isfinite(value) && value > 0.0f)
+            return true;
+        Log::error("FluidSimulation: %s must be a finite number > 0 (got %g)", field, (double)value);
+        return false;
+    }
+
+    bool checkPositive(const char* field, unsigned int value){
+        if (value > 0)
+            return true;
+        Log::error("FluidSimulation: %s must be > 0", field);
+        return false;
+    }
+
+    bool checkFinite(const char* what, const Vector2& v){
+        if (std::isfinite(v.x) && std::isfinite(v.y))
+            return true;
+        Log::error("FluidSimulation: %s must be finite", what);
+        return false;
+    }
+
+    bool checkNonNegative(const char* what, const Vector3& v){
+        if (std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z) && v.x >= 0.0f && v.y >= 0.0f && v.z >= 0.0f)
+            return true;
+        Log::error("FluidSimulation: %s must be finite and >= 0", what);
+        return false;
+    }
+
+}
 
 FluidSimulation::FluidSimulation(Scene* scene): GameObject(scene){
     addComponent<FluidSimulationComponent>();
@@ -27,6 +72,14 @@ FluidSimulationComponent& FluidSimulation::getComponent() const{
     return GameObject::getComponent<FluidSimulationComponent>();
 }
 
+void FluidSimulation::setEnabled(bool value){
+    getComponent().enabled = value;
+}
+
+bool FluidSimulation::isEnabled() const{
+    return getComponent().enabled;
+}
+
 void FluidSimulation::setOutput(FluidOutput value){
     getComponent().output = value;
 }
@@ -44,6 +97,7 @@ bool FluidSimulation::isInteractive() const{
 }
 
 void FluidSimulation::setAspectRatio(float value){
+    if (!checkNonNegative("aspectRatio", value)) return;
     getComponent().aspectRatio = value;
 }
 
@@ -52,6 +106,7 @@ float FluidSimulation::getAspectRatio() const{
 }
 
 void FluidSimulation::setSimResolution(unsigned int value){
+    if (!checkPositive("simResolution", value)) return;
     getComponent().simResolution = value;
 }
 
@@ -60,6 +115,7 @@ unsigned int FluidSimulation::getSimResolution() const{
 }
 
 void FluidSimulation::setDyeResolution(unsigned int value){
+    if (!checkPositive("dyeResolution", value)) return;
     getComponent().dyeResolution = value;
 }
 
@@ -68,6 +124,7 @@ unsigned int FluidSimulation::getDyeResolution() const{
 }
 
 void FluidSimulation::setDensityDissipation(float value){
+    if (!checkNonNegative("densityDissipation", value)) return;
     getComponent().densityDissipation = value;
 }
 
@@ -76,6 +133,7 @@ float FluidSimulation::getDensityDissipation() const{
 }
 
 void FluidSimulation::setVelocityDissipation(float value){
+    if (!checkNonNegative("velocityDissipation", value)) return;
     getComponent().velocityDissipation = value;
 }
 
@@ -84,6 +142,7 @@ float FluidSimulation::getVelocityDissipation() const{
 }
 
 void FluidSimulation::setPressure(float value){
+    if (!checkNonNegative("pressure", value)) return;
     getComponent().pressure = value;
 }
 
@@ -100,6 +159,7 @@ unsigned int FluidSimulation::getPressureIterations() const{
 }
 
 void FluidSimulation::setCurl(float value){
+    if (!checkNonNegative("curl", value)) return;
     getComponent().curl = value;
 }
 
@@ -108,6 +168,7 @@ float FluidSimulation::getCurl() const{
 }
 
 void FluidSimulation::setGradientScale(float value){
+    if (!checkNonNegative("gradientScale", value)) return;
     getComponent().gradientScale = value;
 }
 
@@ -116,6 +177,7 @@ float FluidSimulation::getGradientScale() const{
 }
 
 void FluidSimulation::setSimulationRate(float value){
+    if (!checkPositive("simulationRate", value)) return;
     getComponent().simulationRate = value;
 }
 
@@ -124,6 +186,7 @@ float FluidSimulation::getSimulationRate() const{
 }
 
 void FluidSimulation::setMaxSubsteps(unsigned int value){
+    if (!checkPositive("maxSubsteps", value)) return;
     getComponent().maxSubsteps = value;
 }
 
@@ -132,6 +195,7 @@ unsigned int FluidSimulation::getMaxSubsteps() const{
 }
 
 void FluidSimulation::setTimeScale(float value){
+    if (!checkNonNegative("timeScale", value)) return;
     getComponent().timeScale = value;
 }
 
@@ -148,6 +212,7 @@ bool FluidSimulation::isPaused() const{
 }
 
 void FluidSimulation::setSplatRadius(float value){
+    if (!checkPositive("splatRadius", value)) return;
     getComponent().splatRadius = value;
 }
 
@@ -156,6 +221,7 @@ float FluidSimulation::getSplatRadius() const{
 }
 
 void FluidSimulation::setSplatForce(float value){
+    if (!checkNonNegative("splatForce", value)) return;
     getComponent().splatForce = value;
 }
 
@@ -172,6 +238,7 @@ bool FluidSimulation::isColorful() const{
 }
 
 void FluidSimulation::setColorUpdateSpeed(float value){
+    if (!checkNonNegative("colorUpdateSpeed", value)) return;
     getComponent().colorUpdateSpeed = value;
 }
 
@@ -212,6 +279,7 @@ bool FluidSimulation::isShading() const{
 }
 
 void FluidSimulation::setBackColor(Vector3 value){
+    if (!checkNonNegative("backColor", value)) return;
     getComponent().backColor = value;
 }
 
@@ -244,6 +312,7 @@ unsigned int FluidSimulation::getBloomIterations() const{
 }
 
 void FluidSimulation::setBloomResolution(unsigned int value){
+    if (!checkPositive("bloomResolution", value)) return;
     getComponent().bloomResolution = value;
 }
 
@@ -252,6 +321,7 @@ unsigned int FluidSimulation::getBloomResolution() const{
 }
 
 void FluidSimulation::setBloomIntensity(float value){
+    if (!checkNonNegative("bloomIntensity", value)) return;
     getComponent().bloomIntensity = value;
 }
 
@@ -260,6 +330,7 @@ float FluidSimulation::getBloomIntensity() const{
 }
 
 void FluidSimulation::setBloomThreshold(float value){
+    if (!checkNonNegative("bloomThreshold", value)) return;
     getComponent().bloomThreshold = value;
 }
 
@@ -268,6 +339,7 @@ float FluidSimulation::getBloomThreshold() const{
 }
 
 void FluidSimulation::setBloomSoftKnee(float value){
+    if (!checkNonNegative("bloomSoftKnee", value)) return;
     getComponent().bloomSoftKnee = value;
 }
 
@@ -284,6 +356,7 @@ bool FluidSimulation::isSunrays() const{
 }
 
 void FluidSimulation::setSunraysResolution(unsigned int value){
+    if (!checkPositive("sunraysResolution", value)) return;
     getComponent().sunraysResolution = value;
 }
 
@@ -292,6 +365,7 @@ unsigned int FluidSimulation::getSunraysResolution() const{
 }
 
 void FluidSimulation::setSunraysWeight(float value){
+    if (!checkNonNegative("sunraysWeight", value)) return;
     getComponent().sunraysWeight = value;
 }
 
@@ -304,6 +378,8 @@ void FluidSimulation::setBackColor(const float r, const float g, const float b){
 }
 
 void FluidSimulation::splat(Vector2 position, Vector2 velocity, Vector3 color, float radius){
+    if (!checkFinite("splat position", position) || !checkFinite("splat velocity", velocity)) return;
+    if (!checkNonNegative("splat color", color) || !checkNonNegative("splat radius", radius)) return;
     FluidSplat splat;
     splat.position = position;
     splat.velocity = velocity;
@@ -335,6 +411,13 @@ bool FluidSimulation::applyPreset(const std::string& id){
 
 std::string FluidSimulation::getPreset() const{
     return matchFluidPreset(getComponent());
+}
+
+std::vector<std::string> FluidSimulation::getPresetIds(){
+    std::vector<std::string> ids;
+    for (const FluidPreset& preset : getFluidPresets())
+        ids.push_back(preset.id);
+    return ids;
 }
 
 Texture& FluidSimulation::getTexture() const{
