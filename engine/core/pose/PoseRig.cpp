@@ -413,7 +413,8 @@ namespace jasperengine::pose {
     void PoseRig::setSkin(std::shared_ptr<PoseSkin> skin){
         skinPtr = std::move(skin);
         if (built){
-            computeGrounding(nullptr);
+            // a skin that puts the floor above the neutral hips invalidates the rig
+            built = computeGrounding(nullptr);
         }
     }
 

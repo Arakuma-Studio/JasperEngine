@@ -19,7 +19,8 @@
 // - fromBodyPose ignores BodyPose::offset.y. Its skin argument overrides the rig's skin for
 //   grounding; nullptr uses the rig's skin (setSkin) and, without one, the sole estimate.
 // - setSkin may be called before or after build; it recomputes the floor, the sole offsets,
-//   the neutral hips height and humanScale.
+//   the neutral hips height and humanScale (valid() turns false if the skin makes the rig
+//   degenerate). A skin without samples falls back to the sole estimate.
 
 #ifndef POSE_RIG_H
 #define POSE_RIG_H
