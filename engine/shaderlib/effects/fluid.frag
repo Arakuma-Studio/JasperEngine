@@ -225,6 +225,8 @@ vec4 fx_level_sample(int k, vec2 uv){
     return glow_sample((vec2(fx_level_origin(k)) + px) / vec2(glow_size()));
 }
 
+vec4 fluidSunraysMask(vec4 c);   // fam_fluid_look.glsl
+
 vec4 fx_look(vec2 uv){
     if (g_look == 0)
         return fluidSunraysMask(dye_sample(uv));

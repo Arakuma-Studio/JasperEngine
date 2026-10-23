@@ -397,7 +397,8 @@ namespace {
         std::vector<std::string> items;
         std::string item;
         int depth = 0;
-        for (char c : rest.substr(i) + ","){
+        const std::string list = trim(std::string_view(rest).substr(i));
+        for (char c : list.empty() ? std::string() : list + ","){
             if (c == '(')
                 depth++;
             else if (c == ')' && depth > 0)
