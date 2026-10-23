@@ -403,6 +403,7 @@ vec4 jfx_step(JfxStep s){
         vec2 velTexel = 1.0 / vec2(vel_size());
         return fluidAdvect(uv, velTexel, texel, s.dt, params.densityDissipation);
     }
+#if 0
     // ---- @frame: the look
     if (s.pass == JFX_PASS_BLOOM_PREFILTER || s.pass == JFX_PASS_BLOOM_FINAL){
         if (params.bloom < 0.5)
@@ -459,6 +460,9 @@ vec4 jfx_step(JfxStep s){
     // the blur: across, then along
     g_look = 3;
     return fluidBlur(uv, s.iteration == 0 ? vec2(texel.x, 0.0) : vec2(0.0, texel.y));
+#else
+    return vec4(0.0);
+#endif
 }
 #endif
 
