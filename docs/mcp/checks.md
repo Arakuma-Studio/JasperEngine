@@ -1,12 +1,13 @@
 # Project checks: `jasperengine-editor check`
 
-The checks the MCP tools run (`check_script`, `check_shader`, `compile_scripts`, and the HTML/CSS
-UI diagnostics the automatic pick-up reports) are also a CLI subcommand, so an agent that edits
+The checks the MCP tools run (`check_script`, `check_shader`, `compile_scripts`, the HTML/CSS
+UI diagnostics the automatic pick-up reports, and the synthesized textures' source state that
+`get_asset_info` shows) are also a CLI subcommand, so an agent that edits
 files with its own tools, a shell, a CI job or an agent hook gets the same findings without an
 editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -17,8 +18,9 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--shaders` | Every shader fork: the forks the scenes, prefabs and scene settings use, and every `.vert`/`.frag` pair no scene uses yet (its type guessed from the fragment shader). Compiled with the engine's shader compiler for the editor's backend, exactly as `check_shader` does, includes resolved as the engine resolves them. Also an error for each material of the scenes and prefabs whose shader (or extra pass) reads the scene depth or colour (`@require scenedepth` / `scenecolor`) while it draws in the opaque queue, at the scene or prefab file. A project UI effect (a `.frag` whose manifest, the comment lines after `#version 450`, starts with `// @effect`; declared with `@effect` or not) is checked as one: its manifest (`HTMLUI-FX-0014` at the line, a built-in's name `HTMLUI-FX-0012`), then a compile in each of its forms (paint effects: paint and filter; an effect with state, phase 6, also the step and scatter forms of each; errors `HTMLUI-FX-0015` at the `.frag` or include line), then its parameter block against the manifest (`HTMLUI-FX-0014` at the `@param` line); the two forms of a paint effect report an error once. |
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
-| `--all` | All four. Without `--lua/--shaders/--cpp/--ui/--all`: `--lua --shaders --ui` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
+| `--all` | All five. Without `--lua/--shaders/--cpp/--ui/--textures/--all`: `--lua --shaders --ui --textures` (C++ only when asked, since it builds). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -66,14 +68,16 @@ JSON (`--format json`):
 }
 ```
 
-`tool` is `lua`, `shader`, `cpp` or `ui`; `path` is project-relative (absolute for a file outside the
+`tool` is `lua`, `shader`, `cpp`, `ui` or `texture`; `path` is project-relative (absolute for a file outside the
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
 when there is a fix, `suggestion`; so do the shader findings of a UI effect (`code`
-`HTMLUI-FX-0012` to `HTMLUI-FX-0015`); the other findings have exactly the six keys above.
+`HTMLUI-FX-0012` to `HTMLUI-FX-0015`) and the texture findings (`synthesis-source-changed`,
+`synthesis-source-missing`); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
-stylesheets checked on their own).
+stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
+sources were checked).
 
 Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (bad option, no
 `project.yaml`, the project fails to load).
@@ -140,6 +144,30 @@ diagnostics: [{code, name, severity, by_case, summary, help}]}`; `kind` is `elem
 `fallback`, `unsupported` or `ignored`, with the fork features of this build), and
 `tools/mcp/gen_html_ui_support.py` renders it (`--check` fails when the committed matrix is stale).
 
+## What the texture check runs
+
+Every PNG the texture synthesis writes (the primary output, its companion maps, an uncertainty
+map) records how it was made, including the path and SHA-1 of every source image: examples,
+sample masks, guides, companion sources, the inpaint mask, the target guide
+(`editor/texsynth/SynthesisRecipe.h`). The check hashes those sources again:
+
+```
+assets/textures/rock_tile.png: warning: synthesized from assets/textures/rock_albedo.png (examples[0]), which changed since: the texture no longer matches its source (fix: regenerate it: right-click it in the Project window > Edit Synthesis... > Regenerate > Save, or synthesize_texture with the `regenerate` arguments get_asset_info gives (mode tileable, seed 7, overwrite: true)) [synthesis-source-changed]
+assets/textures/rock_tile.png: warning: synthesized from assets/textures/rock_height.png (companions.height[0]), which no longer exists (fix: restore assets/textures/rock_height.png (or Edit Synthesis... and pick another source) before regenerating; the texture itself still works) [synthesis-source-missing]
+```
+
+- Severity **warning**, tool `texture`, one finding per changed or missing source, at the PNG.
+- A companion or uncertainty output whose primary output exists is covered by the primary's
+  findings (the set was made together); named with `--files`, it is reported itself.
+- Fast on large projects: for each PNG only the chunks before `IDAT` are read (where the recipe
+  sits), and a PNG without a recipe is remembered by its mtime and size, as are the sources'
+  hashes, in `.jasperengine/synthesis-check-cache.json` (written when `.jasperengine/` exists).
+  A source is hashed only when a recipe names it.
+- Regenerating with the recipe's settings and seed reproduces the texture exactly when the
+  sources are unchanged; after a change it gives the up-to-date texture. MCP: `get_asset_info`
+  on the PNG returns `synthesis.sources` (each `unchanged`, `changed` or `missing`) and
+  `synthesis.regenerate`, the `synthesize_texture` arguments to write it again.
+
 ## Examples
 
 ```sh
@@ -151,6 +179,10 @@ jasperengine-editor check --project . --files scripts/Enemy.lua shaders/Water.fr
 
 # only the HTML/CSS UI
 jasperengine-editor check --project . --ui
+
+# synthesized textures whose sources changed (after repainting an example: --files it)
+jasperengine-editor check --project . --textures
+jasperengine-editor check --project . --files assets/textures/rock_albedo.png
 
 # CI: all checks, machine-readable
 jasperengine-editor check --project . --all --format json > check.json
