@@ -5259,6 +5259,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
+        // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            submeshLoads[i].shaderInputs.baseColorTexture = true;
         submeshLoads[i].variant = getSubmeshShaderVariant(shaderEnvironment, submeshLoads[i].shaderInputs);
         const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
         const SubmeshShaderVariant& variant = submeshLoads[i].variant;
@@ -10867,7 +10870,9 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& m
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
         const Submesh& submesh = mesh.submeshes[i];
-        const SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            inputs.baseColorTexture = true;
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
                          ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader))) && allReady;

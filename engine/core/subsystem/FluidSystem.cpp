@@ -56,6 +56,8 @@ namespace {
                 ui->needReload = true;
         }else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
             mesh->submeshes[0].needUpdateTexture = true;
+            if (mesh->submeshes[0].material.baseColorTexture.empty())
+                mesh->needReload = true;
         }
     }
 
@@ -313,11 +315,17 @@ void FluidSystem::renderFluids(){
         // MATERIAL: lent at draw time (getMaterialTexture) while there is an image to lend
         const bool lending = fluid.output == FluidOutput::MATERIAL && drawn && output->isCreated();
         if (entry.lending != lending){
-            // an Image without a texture of its own has no texture to sample: loaded again
-            // with one (RenderSystem::loadUI asks getMaterialTexture), and again without
+            // an untextured Image or Mesh has no texture to sample: loaded again with one
+            // (RenderSystem's loads ask getMaterialTexture), and again without
             UIComponent* ui = scene->findComponent<UIComponent>(entity);
-            if (ui && ui->texture.empty() && scene->findComponent<ImageComponent>(entity))
-                ui->needReload = true;
+            if (ui && scene->findComponent<ImageComponent>(entity)){
+                if (ui->texture.empty())
+                    ui->needReload = true;
+            }else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                // an untextured mesh's variant has no texture coordinates: the lent one has
+                if (mesh->submeshes[0].material.baseColorTexture.empty())
+                    mesh->needReload = true;
+            }
         }
         if (entry.lending && !lending)
             rebindOwnTexture(scene, entity);
