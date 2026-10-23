@@ -812,6 +812,7 @@ set(JASPERENGINE_SRCS
     core/action/SpriteAnimation.cpp
     core/action/Tween.cpp
     core/action/keyframe/MorphTracks.cpp
+    core/action/keyframe/LatticeTracks.cpp
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
@@ -906,6 +907,7 @@ set(JASPERENGINE_SRCS
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
+    core/object/Lattice.cpp
     core/object/Model.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
@@ -980,6 +982,10 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/LatticeSystem.cpp
+    core/lattice/LatticeSolver.cpp
+    core/lattice/LatticePresets.cpp
+    core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp

@@ -21,6 +21,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
 #include "math/Rect.h"
+#include "lattice/LatticeTypes.h"
 #include <deque>
 #include <map>
 #include <memory>
@@ -338,6 +339,10 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+
+        // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
+        // LatticeRender::prepare, uploaded and bound by RenderSystem
+        LatticeMeshState lattice;
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances
