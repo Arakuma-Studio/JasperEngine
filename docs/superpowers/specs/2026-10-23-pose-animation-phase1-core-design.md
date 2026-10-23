@@ -71,7 +71,10 @@ Key engine facts:
 | Feel | the transition settings (curve, snap time, overshoot, wind-up, choppiness, overlap, looseness) |
 | Humanize | joint limits, moving holds, in-betweens, life, follow-through |
 
-C++ namespace: `jasperengine::pose`. Files: `engine/core/pose/*.{h,cpp}`. Every class/struct
+C++ namespace: `jasperengine::pose`. Files: `engine/core/pose/*.{h,cpp}`. Written up front as the
+shared contract (do not change them; additive changes only, recorded in this spec): `HumanBones.{h,cpp}`
+(table 4.1), `PoseTypes.h` (4.2) and `PoseDofs.{h,cpp}` (the 4.5 tables: neutral directions, DOF
+axes/signs/names, limits; right side derived from left). Every class/struct
 that phase 2+ uses from the editor is exported with `JASPERENGINE_API`.
 
 ## 4. Contracts
