@@ -4,6 +4,7 @@
 #pragma once
 
 #include "imgui.h"
+#include "json.hpp"
 
 #include "EditorHost.h"
 #include "PlatformMenu.h"
@@ -128,6 +129,8 @@ namespace jasperengine::editor{
         float footerDeltaMs = 0.0f;
 
         bool benchmarkEnabled = false;
+        std::vector<float> frameTimes;
+        std::chrono::steady_clock::time_point lastFrameTime{};
         bool benchmarkExit = false;
         bool benchmarkFailed = false;
         // `mcp --project` on a project another editor holds: project_locked, exit code 3
@@ -275,7 +278,9 @@ namespace jasperengine::editor{
         void renderGameViewPass(SceneProject& sceneProject);
         void renderGameViewSecondary(SceneProject& sceneProject);
         void renderRunningScene(SceneProject& sceneProject);
-        void pollHtmlUI();
+        void pollExternalChanges();
+        // main-thread time for the file watcher's batches per loop iteration (S05 R22)
+        static constexpr double PUMP_BUDGET_MS = 1.0;
         bool wantsHtmlUIRedraw(const SceneProject& sceneProject);
         void renderSceneBesideGame(SceneProject& sceneProject);
 
@@ -357,6 +362,10 @@ namespace jasperengine::editor{
         bool hasPendingMainThreadTasks();
         // Main thread only: keeps the loop drawing while a worker thread drives the UI.
         void requestRedraw();
+        // The editor's drawn frames since the last call (editor_status frame_ms, S05 R31):
+        // {median, p99, max, frames} in ms between consecutive frames (a pause over 1 s in
+        // between is idling, not a frame)
+        nlohmann::json takeFrameStats();
         bool consumeRedrawRequest();
         // One frame, without waking the loop: for animation that runs while idle.
         void requestFrame();
@@ -390,7 +399,7 @@ namespace jasperengine::editor{
         InspectorWindow* getInspectorWindow() const override;
         CodeEditor* getCodeEditor() const override;
         ImageViewerWindow* getImageViewerWindow() const override;
-        ProjectWindow* getProjectWindow() const;
+        ProjectWindow* getProjectWindow() const override;
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;

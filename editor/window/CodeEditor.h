@@ -27,12 +27,11 @@ namespace jasperengine::editor {
         SyntaxLanguage languageType;
         fs::file_time_type lastWriteTime;
         bool isModified;
-        double lastCheckTime;
         int savedUndoIndex;
         int propertyInsertUndoIndex; // undo index after a drag-drop insertion, -1 if none pending
         bool pendingWindowFocus; // focus the window when it is drawn next
 
-        EditorInstance() : isOpen(true), languageType(SyntaxLanguage::None), isModified(false), lastCheckTime(0.0), savedUndoIndex(0), propertyInsertUndoIndex(-1), pendingWindowFocus(false) {}
+        EditorInstance() : isOpen(true), languageType(SyntaxLanguage::None), isModified(false), savedUndoIndex(0), propertyInsertUndoIndex(-1), pendingWindowFocus(false) {}
     };
 
     class CodeEditor {
@@ -46,9 +45,6 @@ namespace jasperengine::editor {
 
         std::unordered_map<std::string, EditorInstance> editors;
         std::vector<PendingFileChange> changedFilesQueue;
-        // Script files referenced by entities but not open here, project-relative path -> last seen mtime
-        std::unordered_map<std::string, fs::file_time_type> watchedScriptFiles;
-        double lastScriptWatchTime;
         bool isFileChangePopupOpen;
         bool windowFocused;
         EditorInstance* lastFocused;
@@ -65,11 +61,9 @@ namespace jasperengine::editor {
         std::string pendingEventFile;
         size_t pendingEvent = 0;
 
-        void checkFileChanges(EditorInstance& instance);
-        // Drops the compiled forks of a shader source after it is written or reloaded
-        void invalidateShadersForFile(const EditorInstance& instance);
-        // Re-parses properties of script files edited outside the editor (e.g. in nano)
-        void checkExternalScriptChanges();
+        // The file changed on disk: an unmodified buffer reloads (true), a modified one gets
+        // the Files Changed prompt
+        bool reloadIfChangedOnDisk(EditorInstance& instance);
         bool loadFileContent(EditorInstance& instance);
         bool save(EditorInstance& instance);
         void handleFileChangePopup();
@@ -130,16 +124,14 @@ namespace jasperengine::editor {
         // Opens (or focuses) a file and puts the cursor at line/column (1-based, 0 = keep)
         void openFileAt(const std::string& filepath, int line, int column);
         std::vector<BufferState> getBufferStates() const;
-        // Checks every open buffer against the disk now (instead of on the next 1 s tick):
-        // unmodified buffers reload, modified ones get the "Files Changed" prompt and are
-        // listed in `conflicts`.
+        // Files changed on disk (the hot reload tells it, S05): their unmodified buffers
+        // reload, modified ones get the "Files Changed" prompt and are listed in `conflicts`
+        void onFilesChanged(const std::vector<fs::path>& files, std::vector<std::string>& reloaded, std::vector<std::string>& conflicts);
+        // The same for every open buffer (a full sync)
         void syncWithDisk(std::vector<std::string>& reloaded, std::vector<std::string>& conflicts);
         bool saveFile(const std::string& filepath);
         // Discards the buffer's unsaved edits and loads the file from disk
         bool reloadFile(const std::string& filepath);
-        // These script files (absolute) were just re-parsed by MCP's file sync: the 1 s watch
-        // of referenced scripts takes their current mtime instead of re-parsing them again
-        void markScriptFilesCurrent(const std::vector<fs::path>& files);
 
         void show();
     };

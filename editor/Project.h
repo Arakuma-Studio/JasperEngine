@@ -17,11 +17,11 @@
 #include "SceneBackup.h"
 #include "io/ScopedFileLock.h"
 #include <optional>
+#include "io/watch/FileWatcher.h"
 #include "util/AssetDatabase.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
-#include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
 
 #include "yaml-cpp/yaml.h"
@@ -32,6 +32,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <span>
 #include <tuple>
 #include <atomic>
 #include <mutex>
@@ -687,7 +688,6 @@ namespace jasperengine::editor{
 
         // Prefab Mode: the open prefab stages, bottom first (editor/PrefabStage.cpp)
         std::vector<std::unique_ptr<PrefabStage>> prefabStages;
-        HtmlUIWatcher htmlUIWatcher;
         bool prefabAutoSave = true;
         PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
         // Saved from a stage while a scene played: the scene restored by Stop follows them then
@@ -807,7 +807,6 @@ namespace jasperengine::editor{
 
         // GUID <-> path of the prefab files (and later other asset types)
         AssetDatabase assetDatabase;
-        std::chrono::steady_clock::time_point lastAssetRefreshTime;
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
 
@@ -1290,12 +1289,9 @@ namespace jasperengine::editor{
         void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
         //=== HTML UI hot reload ===
-        // The scenes whose documents the HtmlUIWatcher checks: the loaded scenes, Prefab Mode
+        // The scenes whose HTML UI documents hot reload (editor/reload): the loaded scenes, Prefab Mode
         // stages and the playing copies of child scenes
         std::vector<SceneProject*> getHtmlUIScenes();
-        HtmlUIWatcher& getHtmlUIWatcher();
-        // the code editor saved a file: the watcher checks now (any file; it filters itself)
-        void notifyHtmlUIFileSaved(const std::filesystem::path& path);
 
         void updateGeneratedSources();
         void markGeneratedSourcesDirty();
@@ -1352,6 +1348,10 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
+        // The open scene (or prefab stage) is read again from its file, its unsaved changes
+        // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
+        // while a scene plays or when the file cannot be read (the open copy stays).
+        bool reloadSceneFromDisk(uint32_t sceneId, std::string* error = nullptr);
         void removeScene(uint32_t sceneId);
 
         //=== Non-interactive scene and project APIs (MCP server, CLI) ===
@@ -1568,9 +1568,14 @@ namespace jasperengine::editor{
         // false when missing. pathChanged reports a path the GUID moved.
         bool resolvePrefabReference(PrefabComponent& component, bool* pathChanged = nullptr);
         // External changes to prefab files (moved, copied, deleted or edited outside the
-        // editor). Called every frame, looks at most every two seconds unless forced; does
-        // nothing while a scene plays.
-        void refreshAssetDatabase(bool force = false);
+        // editor), by a full look at the project (Assets > Refresh, sync_files full; the file
+        // watcher's changes go through applyFileChanges). Does nothing while a scene plays.
+        void refreshAssetDatabase();
+        // Files added, removed, renamed or edited on disk by another program (the file
+        // watcher, S05 R14): a renamed prefab keeps its GUID (moveAssets), a removed one leaves
+        // Missing Prefab instances, an added one relinks them, an edited one's instances follow.
+        // False while a scene plays (nothing applied: refreshAssetDatabase after Play).
+        bool applyFileChanges(std::span<const FileChange> changes);
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);

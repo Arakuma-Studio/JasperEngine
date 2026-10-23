@@ -5,6 +5,7 @@
 
 #include "handlers/ReloadHandlers.h"
 
+#include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "Project.h"
@@ -73,6 +74,43 @@ HotReloadService& HotReloadService::get() {
 }
 
 // ------------------------------------------------------------------ lifetime
+
+namespace {
+
+    bool watcherOverrideSet = false;
+    WatchBackendKind watcherOverride = WatchBackendKind::Auto;
+
+}
+
+void HotReloadService::setWatcherOverride(WatchBackendKind kind) {
+    watcherOverrideSet = true;
+    watcherOverride = kind;
+}
+
+bool HotReloadService::getWatcherOverride(WatchBackendKind& kind) {
+    if (!watcherOverrideSet) return false;
+    kind = watcherOverride;
+    return true;
+}
+
+void HotReloadService::startWatching(Project& projectIn) {
+    detach();
+    FileWatchService& watcher = FileWatchService::get();
+    WatchBackendKind kind = WatchBackendKind::Auto;
+    if (!getWatcherOverride(kind)) parseWatchBackendKind(AppSettings::getFileWatcher(), kind);
+    // an idle editor loop wakes when changes wait for it (R9)
+    watcher.setMainThreadWaker([]() { getEditorHost().enqueueMainThreadTask([]() {}); });
+    const auto interval = std::chrono::milliseconds(static_cast<int64_t>(AppSettings::getPollingInterval() * 1000.0f));
+    watcher.start(projectIn.getProjectPath(), kind, interval);
+    autoRefresh = AppSettings::getAutoRefresh();
+    logReloads = AppSettings::getLogReloads();
+    attach(projectIn);
+}
+
+void HotReloadService::stopWatching() {
+    detach();
+    FileWatchService::get().stop();
+}
 
 void HotReloadService::attach(Project& projectIn) {
     detach();
@@ -240,6 +278,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;
+        // reloaded already (by the watcher, a tool's own sync, another call's pick-up): reported,
+        // not done again (the shared applied-stamp table, R29)
+        if (!options.force && !options.full && isCurrent(change.path) && kind != "scene" && kind != "project") {
+            Record record;
+            if (change.origin == ChangeOrigin::External && lastRecordOf(relPath, record)) {
+                result.reloaded.push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
+            }
+            continue;
+        }
         if (change.origin == ChangeOrigin::Editor) {
             if (kind == "material" || kind == "texture") editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
@@ -248,12 +295,6 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (kind == "scene" || kind == "prefab" || kind == "project") {
             if (change.kind == FileChangeKind::Modified) openDocuments.push_back(change.path);
             if (kind != "prefab") continue;
-        }
-        // reloaded already (by the watcher, or another call's sync): reported, not done again
-        if (!options.force && !options.full && isCurrent(change.path)) {
-            Record record;
-            if (lastRecordOf(relPath, record)) result.reloaded.push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
-            continue;
         }
         external[kind].push_back(change.path);
         if (kind != "ui" && reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
@@ -289,8 +330,10 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::noteOpenDocuments(ctx, openDocuments, externallyChangedScenes, projectFileChanged);
     reload::applyAssetChanges(ctx, changes);
 
-    for (const auto& [kind, list] : external) {
-        for (const fs::path& path : list) stamp(path);
+    for (const auto* map : {&external, &editorWritten}) {
+        for (const auto& [kind, list] : *map) {
+            for (const fs::path& path : list) stamp(path);
+        }
     }
     for (const std::shared_ptr<Job>& job : jobs) {
         if (job->batch == batchId) result.pending.push_back(relative(job->path));
@@ -301,6 +344,16 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
 }
 
 // ------------------------------------------------------------------ jobs
+
+std::future<HotReloadService::AdoptFn> HotReloadService::launch(WorkFn work) {
+    return ThreadPoolManager::getInstance().enqueue([work]() {
+        // the idle editor loop wakes to adopt it
+        struct Wake {
+            ~Wake() { getEditorHost().enqueueMainThreadTask([]() {}); }
+        } wake;
+        return work();
+    });
+}
 
 void HotReloadService::startJob(const std::string& kind, const fs::path& path, WorkFn work, uint64_t texelBytes) {
     if (currentBatch == 0) {
@@ -326,23 +379,22 @@ void HotReloadService::startJob(const std::string& kind, const fs::path& path, W
     job->work = std::move(work);
     job->started = Clock::now();
     job->texelBytes = texelBytes;
-    WorkFn run = job->work;
-    job->future = ThreadPoolManager::getInstance().enqueue([run]() { return run(); });
+    job->future = launch(job->work);
     batches[currentBatch].outstanding++;
     jobs.push_back(job);
 }
 
-void HotReloadService::update() {
-    if (!project) return;
+bool HotReloadService::update() {
+    if (!project) return false;
     const auto start = Clock::now();
+    bool adopted = false;
     uint64_t texels = 0;
     for (auto it = jobs.begin(); it != jobs.end();) {
         Job& job = **it;
         if (job.waitingRetry) {
             if (Clock::now() >= job.retryAt) {
                 job.waitingRetry = false;
-                WorkFn run = job.work;
-                job.future = ThreadPoolManager::getInstance().enqueue([run]() { return run(); });
+                job.future = launch(job.work);
             }
             ++it;
             continue;
@@ -364,6 +416,13 @@ void HotReloadService::update() {
             error = e.what();
         }
         texels += job.texelBytes;
+        if (ok && !error.empty()) {
+            // left out on purpose (a model whose hierarchy changed): a warning, kept as it was
+            std::shared_ptr<Job> done = *it;
+            it = jobs.erase(it);
+            finishJob(*done, false, error, msSince(done->started), true);
+            continue;
+        }
         if (!ok && !job.retried) {
             // a partial write: once more, a little later
             job.retried = true;
@@ -375,6 +434,7 @@ void HotReloadService::update() {
         std::shared_ptr<Job> done = *it;
         it = jobs.erase(it);
         finishJob(*done, ok, error, msSince(done->started));
+        adopted = true;
     }
 
     if (!project->isAnyScenePlaying()) {
@@ -388,12 +448,13 @@ void HotReloadService::update() {
         }
         if (assetRefreshAfterPlay) {
             assetRefreshAfterPlay = false;
-            project->refreshAssetDatabase(true);
+            project->refreshAssetDatabase();
         }
     }
+    return adopted;
 }
 
-void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, double ms) {
+void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning) {
     Record record;
     record.path = relative(job.path);
     record.kind = job.kind;
@@ -404,9 +465,13 @@ void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, do
     if (ok) {
         notify(job.path, job.kind, Event::Reloaded);
         notify(job.path, job.kind, Event::Content);
+    } else if (warning) {
+        Out::warning("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
+        lateProblems.push_back({{"path", record.path}, {"severity", "warning"}, {"message", error}});
     } else {
         Out::error("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
-        lateProblems.push_back({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
+        // a shader reports its compile errors with their lines itself
+        if (job.kind != "shader") lateProblems.push_back({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
         // a later save of the same bytes would not be tried again otherwise
         applied.erase(key(job.path));
     }
@@ -481,6 +546,12 @@ bool HotReloadService::idle() const {
 
 size_t HotReloadService::reloadingCount() const {
     return jobs.size();
+}
+
+void HotReloadService::deferScripts(const std::vector<fs::path>& paths) {
+    for (const fs::path& path : paths) {
+        if (std::find(deferredScripts.begin(), deferredScripts.end(), path) == deferredScripts.end()) deferredScripts.push_back(path);
+    }
 }
 
 Json HotReloadService::takeLateProblems() {

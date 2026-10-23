@@ -43,6 +43,8 @@
 #include "util/Util.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
+#include "reload/HotReloadService.h"
+#include "reload/handlers/ReloadHandlers.h"
 #include "window/dialog/ScriptCreateDialog.h"
 
 #include "lua.hpp"
@@ -294,121 +296,6 @@ void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths,
     }
 }
 
-// Where an entry's file lives (absolute): the Lua file, or the C++ header (the properties)
-fs::path entryPropertyFile(Project* project, const ScriptEntry& entry) {
-    if (entry.type == ScriptType::LUA) {
-        return entry.path.empty() ? fs::path() : project->resolveLuaPath(entry.path).lexically_normal();
-    }
-    if (entry.headerPath.empty()) return {};
-    fs::path header = entry.headerPath;
-    if (header.is_relative()) header = project->getProjectPath() / header;
-    return header.lexically_normal();
-}
-
-fs::path entrySourceFile(Project* project, const ScriptEntry& entry) {
-    if (entry.type == ScriptType::LUA) return entryPropertyFile(project, entry);
-    if (entry.path.empty()) return {};
-    fs::path source = entry.path;
-    if (source.is_relative()) source = project->getProjectPath() / source;
-    return source.lexically_normal();
-}
-
-int reloadTextures(Project* project, const std::set<std::string>& images) {
-    if (images.empty()) return 0;
-    int count = 0;
-    auto matches = [&](const Texture& texture) {
-        const std::string path = texture.getPath(0);
-        if (path.empty()) return false;
-        return images.count(McpValues::assetPathToJson(project, path)) > 0;
-    };
-    auto reload = [&](Texture& texture) {
-        texture.invalidateRender();
-        TextureDataPool::remove(texture.getId());
-        texture.destroy();
-        count++;
-    };
-    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-        if (!sceneProject->scene) continue;
-        bool touched = false;
-        for (Entity entity : sceneProject->entities) {
-            for (ComponentType component : Catalog::findComponents(sceneProject->scene, entity)) {
-                for (auto& [name, property] : Catalog::findEntityProperties(sceneProject->scene, entity, component)) {
-                    if (!property.ref) continue;
-                    if (property.type == PropertyType::Texture) {
-                        Texture* texture = static_cast<Texture*>(property.ref);
-                        if (matches(*texture)) {
-                            reload(*texture);
-                            touched = true;
-                        }
-                    } else if (property.type == PropertyType::Material) {
-                        Material* material = static_cast<Material*>(property.ref);
-                        for (Texture* texture : {&material->baseColorTexture, &material->emissiveTexture,
-                                                 &material->metallicRoughnessTexture, &material->occlusionTexture,
-                                                 &material->normalTexture}) {
-                            if (matches(*texture)) {
-                                reload(*texture);
-                                touched = true;
-                            }
-                        }
-                    } else if (property.type == PropertyType::Custom && name.size() >= 14 &&
-                               name.compare(name.size() - 14, 14, "shaderTextures") == 0) {
-                        // shader library textures, of a submesh material or a component; which
-                        // textures it binds is resolved when it loads
-                        bool reloaded = false;
-                        for (auto& shaderTexture : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
-                            if (matches(shaderTexture.second)) {
-                                reload(shaderTexture.second);
-                                reloaded = true;
-                            }
-                        }
-                        if (reloaded) {
-                            Catalog::updateEntity(sceneProject->scene, entity, property.updateFlags);
-                            touched = true;
-                        }
-                    }
-                }
-            }
-        }
-        // the scene's post-processing images (phase 4): the user passes' textures and the LUT
-        // strip, which the renderer caches by path
-        bool postImages = false;
-        std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
-        for (PostProcessPass& pass : passes) {
-            for (auto& entry : pass.textures) {
-                if (matches(entry.second)) {
-                    // the GPU texture is held by the chain's copies, not by the scene's: the
-                    // pool entry is marked stale for them to rebuild it from the new pixels
-                    TexturePool::invalidate(entry.second.getId());
-                    reload(entry.second);
-                    postImages = true;
-                }
-            }
-        }
-        // the scene keeps the released textures (no pixels held), so the chain's reload below
-        // reads the file again; same paths, so this is no edit (and no undo step)
-        if (postImages) sceneProject->scene->setPostProcessPasses(passes);
-        const std::string lut = sceneProject->scene->getPostProcessing().lutTexture;
-        if (!lut.empty() && images.count(McpValues::assetPathToJson(project, lut)) > 0) {
-            count++;
-            postImages = true;
-        }
-        if (postImages) {
-            if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
-                render->invalidatePostProcessTextures();
-            touched = true;
-        }
-
-        if (touched) sceneProject->needUpdateRender = true;
-    }
-    return count;
-}
-
-std::vector<std::string> propertyNames(const ScriptEntry& entry) {
-    std::vector<std::string> names;
-    for (const ScriptProperty& prop : entry.properties) names.push_back(prop.name);
-    return names;
-}
-
 } // namespace
 
 void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready) {
@@ -427,135 +314,15 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
 }
 
 bool isHtmlUiFile(const std::string& path) {
-    if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
-    const std::string ext = extensionOf(FileUtils::pathFromUtf8(path));
-    // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
-    // declaring it read (phase 5)
-    return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
+    return reload::isHtmlUiFile(path);
 }
 
 Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
-    Json reloadedOut = Json::array();
-    Json problems = Json::array();
-    int current = 0;
-    Project* project = ctx.project();
-    if (!project || project->getProjectPath().empty()) {
-        return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
-    }
-    const fs::path projectRoot = project->getProjectPath().lexically_normal();
-    const fs::path assets = project->getAssetsPath().lexically_normal();
-
-    // asset-relative, as UIDocumentSystem names files
-    std::vector<std::string> assetPaths;
-    std::set<std::string> changedAssets;
-    for (const fs::path& path : changed) {
-        const fs::path rel = path.lexically_normal().lexically_relative(assets);
-        if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        const std::string assetPath = jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel));
-        if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
-    }
-    if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
-
-    std::set<std::string> problemKeys;
-    auto addProblem = [&](const ProjectChecks::Finding& finding) {
-        const std::string key = finding.path + "\n" + std::to_string(finding.line) + "\n" + std::to_string(finding.col) + "\n" +
-                                finding.severity + "\n" + finding.code + "\n" + finding.message;
-        if (!problemKeys.insert(key).second) return;
-        problems.push_back({{"path", finding.path}, {"line", finding.line}, {"col", finding.col}, {"severity", finding.severity},
-                            {"code", finding.code}, {"message", finding.message}, {"suggestion", finding.suggestion}});
-    };
-    auto shown = [&](const std::string& assetPath) {
-        return projectRelative(project, (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
-    };
-
-    std::set<std::string> covered;   // changed files a live document reads
-    for (SceneProject* sceneProject : project->getHtmlUIScenes()) {
-        Scene* scene = sceneProject->scene;
-        if (!scene || !scene->isComponentRegistered<UIDocumentComponent>()) continue;
-        auto components = scene->getComponentArray<UIDocumentComponent>();
-        if (components->size() == 0) continue;
-        UIDocumentSystem* system = scene->getSystem<UIDocumentSystem>().get();
-        if (!system) continue;
-
-        // the documents reading a changed file, found before the reload changes their files
-        struct Document {
-            Entity entity;
-            std::string filename;
-        };
-        std::vector<Document> documents;
-        for (size_t i = 0; i < components->size(); i++) {
-            const UIDocumentComponent& component = components->getComponentFromIndex(i);
-            if (component.filename.empty()) continue;
-            const Entity entity = components->getEntity(i);
-            Document document{entity, jasperengine::normalizeHtmlUIPath(component.filename)};
-            bool reads = false;
-            std::vector<std::string> files = system->getDocumentFiles(entity);
-            files.push_back(document.filename);
-            for (const std::string& file : files) {
-                const std::string normal = jasperengine::normalizeHtmlUIPath(file);
-                if (changedAssets.count(normal)) {
-                    covered.insert(normal);
-                    reads = true;
-                }
-            }
-            if (reads) documents.push_back(document);
-        }
-        if (documents.empty()) continue;
-
-        const std::vector<UIDocumentSystem::Reloaded> reloaded = system->reloadChangedFiles(assetPaths);
-        if (!reloaded.empty()) sceneProject->needUpdateRender = true;
-        for (const UIDocumentSystem::Reloaded& entry : reloaded) {
-            const UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entry.entity);
-            const std::string filename = component ? jasperengine::normalizeHtmlUIPath(component->filename) : std::string();
-            reloadedOut.push_back({{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entry.entity)},
-                                   {"html", shown(filename)}, {"stylesheet_only", entry.stylesheetOnly}});
-            Out::info("[HTML UI] %s %s in scene '%s'", entry.stylesheetOnly ? "Restyled" : "Reloaded", filename.c_str(),
-                      sceneProject->name.c_str());
-        }
-        for (const Document& document : documents) {
-            const bool wasReloaded = std::any_of(reloaded.begin(), reloaded.end(),
-                                                 [&](const UIDocumentSystem::Reloaded& entry) { return entry.entity == document.entity; });
-            // the editor's poller saw the change first: reloaded already, nothing to do but report
-            if (!wasReloaded) current++;
-            for (const jasperengine::htmlui::compat::Diagnostic& diagnostic : system->getDiagnostics(document.entity)) {
-                if (diagnostic.severity == jasperengine::htmlui::compat::Severity::Info) continue;
-                if (!changedAssets.count(jasperengine::normalizeHtmlUIPath(diagnostic.file))) continue;
-                addProblem(ProjectChecks::uiFinding(projectRoot, assets, diagnostic));
-            }
-            std::error_code ec;
-            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / FileUtils::pathFromUtf8(document.filename), ec)) {
-                ProjectChecks::Finding missing;
-                missing.tool = "ui";
-                missing.path = shown(document.filename);
-                missing.severity = "error";
-                missing.code = jasperengine::htmlui::compat::codes::FileNotFound.id();
-                missing.message = "the document file is missing: '" + scene->getEntityName(document.entity) + "' shows nothing";
-                missing.suggestion = "restore the file or set the UI Document's filename to an existing .html";
-                addProblem(missing);
-            }
-        }
-    }
-
-    // changed .html/.htm/.css no live document reads: checked on their own
-    std::vector<fs::path> unused;
-    for (const std::string& assetPath : assetPaths) {
-        std::error_code ec;
-        const fs::path file = (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal();
-        if (!covered.count(assetPath) && ProjectChecks::isUiFile(assetPath) && fs::is_regular_file(file, ec)) unused.push_back(file);
-    }
-    if (!unused.empty()) {
-        std::set<std::string> changedShown;
-        for (const std::string& assetPath : assetPaths) changedShown.insert(shown(assetPath));
-        for (const ProjectChecks::Finding& finding : ProjectChecks::checkUiFiles(projectRoot, unused).findings) {
-            if (changedShown.count(finding.path)) addProblem(finding);
-        }
-    }
-    return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
+    return reload::syncHtmlUi(ctx.project(), changed);
 }
 
-Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full) {
+Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full, bool force, bool rebuildModels) {
     Project* project = ctx.project();
-    Json problems = Json::array();
     Json notes = Json::array();
     Json added = Json::array(), modified = Json::array(), removed = Json::array();
 
@@ -596,170 +363,32 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     } else {
         updateSnapshotEntries(project, changedIn, &added, &modified, &removed);
     }
+    const bool firstFull = full && !notes.empty();
+    if (firstFull) project->invalidateCustomShaders();
 
-    bool anyShader = false, anyMaterial = false;
-    std::set<std::string> images;
-    std::vector<std::string> changedRel;
-    for (const fs::path& path : changed) {
-        const std::string rel = projectRelative(project, path);
-        changedRel.push_back(rel);
-        if (Util::isShaderFile(rel)) anyShader = true;
-        if (Util::isMaterialFile(rel)) anyMaterial = true;
-        if (Util::isImageFile(rel)) images.insert(rel);
-    }
-    bool firstFull = full && !notes.empty();
+    // the one reload funnel (S05 D3): the watcher, Ctrl+R and McpAutoSync come here too
+    ApplyOptions options;
+    options.full = firstFull;
+    options.fromMcp = true;
+    options.force = force;
+    options.rebuildModels = rebuildModels;
+    const ApplyResult applied = HotReloadService::get().apply(ChangeSet::fromPaths(std::vector<fs::path>(changed.begin(), changed.end())), options);
 
-    // Code editor buffers
-    Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};
-    if (CodeEditor* editor = ctx.codeEditor()) {
-        std::vector<std::string> reloaded, conflicts;
-        editor->syncWithDisk(reloaded, conflicts);
-        codeEditor["reloaded"] = reloaded;
-        codeEditor["conflicts"] = conflicts;
-        for (const std::string& path : conflicts) {
-            problems.push_back({{"path", path}, {"message",
-                "Changed on disk while the code editor has unsaved edits of it: the editor shows a Files Changed prompt. "
-                "Resolve with code_editor (action reload = take the disk version, save = keep the buffer)."}});
-        }
-    }
-
-    // Script properties of every GameObject using a changed (or, on a full sync, any) script
-    Json scriptChanges = Json::array();
-    std::set<fs::path> checkedLua;
-    if (project->isAnyScenePlaying()) {
-        notes.push_back("A scene is playing: script properties are re-parsed after Play stops.");
-    } else {
-        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-            if (!sceneProject->scene) continue;
-            for (Entity entity : sceneProject->entities) {
-                ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-                if (!component || component->scripts.empty()) continue;
-
-                bool relevant = full;
-                for (const ScriptEntry& entry : component->scripts) {
-                    if (changed.count(entryPropertyFile(project, entry)) || changed.count(entrySourceFile(project, entry))) relevant = true;
-                }
-                if (!relevant) continue;
-
-                std::vector<ScriptEntry> scripts = component->scripts;
-                for (const ScriptEntry& entry : scripts) {
-                    const fs::path file = entryPropertyFile(project, entry);
-                    std::error_code ec;
-                    if (file.empty()) continue;
-                    if (!fs::exists(file, ec)) {
-                        problems.push_back({{"path", projectRelative(project, file)},
-                                            {"entity", McpRefs::entityJson(sceneProject, entity)},
-                                            {"message", "Script file of " + entry.className + " is missing."}});
-                        continue;
-                    }
-                    if (entry.type == ScriptType::LUA && checkedLua.insert(file).second) {
-                        std::string code;
-                        if (ProjectChecks::readFile(file, code)) {
-                            ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, file));
-                            if (!syntax.ok) {
-                                problems.push_back({{"path", projectRelative(project, file)}, {"line", syntax.line},
-                                                    {"message", "Lua syntax error: " + syntax.message +
-                                                                " (the Inspector keeps the last properties it could read)."}});
-                            }
-                        }
-                    }
-                }
-
-                std::vector<std::vector<std::string>> before;
-                for (const ScriptEntry& entry : scripts) before.push_back(propertyNames(entry));
-                if (project->updateScriptProperties(sceneProject, entity, scripts)) {
-                    PropertyCmd<std::vector<ScriptEntry>> refresh(project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", scripts);
-                    refresh.execute();
-                    for (size_t i = 0; i < scripts.size(); i++) {
-                        std::vector<std::string> after = propertyNames(scripts[i]);
-                        Json plus = Json::array(), minus = Json::array();
-                        for (const std::string& name : after) {
-                            if (std::find(before[i].begin(), before[i].end(), name) == before[i].end()) plus.push_back(name);
-                        }
-                        for (const std::string& name : before[i]) {
-                            if (std::find(after.begin(), after.end(), name) == after.end()) minus.push_back(name);
-                        }
-                        Json item = {{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entity)},
-                                     {"script_index", i}, {"script", scripts[i].className}, {"properties", after}};
-                        if (!plus.empty()) item["added"] = plus;
-                        if (!minus.empty()) item["removed"] = minus;
-                        scriptChanges.push_back(item);
-                    }
-                }
-            }
-        }
-    }
-
-    // Lua files changed but attached nowhere still get a syntax check
-    for (const fs::path& path : changed) {
-        if (!Util::isLuaFile(path.string()) || checkedLua.count(path)) continue;
-        std::string code;
-        std::error_code ec;
-        if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, code)) continue;
-        ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, projectRelative(project, path));
-        if (!syntax.ok) {
-            problems.push_back({{"path", projectRelative(project, path)}, {"line", syntax.line},
-                                {"message", "Lua syntax error: " + syntax.message}});
-        }
-    }
-
-    // lua-language-server's classes of the changed scripts (of every script on a full sync)
-    std::vector<fs::path> changedLua;
-    for (const fs::path& path : changed) {
-        if (Util::isLuaFile(path.string())) changedLua.push_back(path);
-    }
-    if (full || !changedLua.empty()) {
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(),
-                                       full ? std::vector<fs::path>() : changedLua);
-    }
-
-    if (anyMaterial || firstFull) project->refreshLinkedMaterials(true);
-    if (anyShader || firstFull) project->invalidateCustomShaders();
-    const int texturesReloaded = reloadTextures(project, images);
-
-    // HTML UI documents reading a changed file reload now (edit mode and play alike)
-    Json uiReloaded = Json::array();
-    int uiCurrent = 0;
-    std::vector<fs::path> uiChanged;
-    for (const fs::path& path : changed) {
-        if (isHtmlUiFile(FileUtils::genericPathToUtf8(path))) uiChanged.push_back(path);
-    }
-    if (!uiChanged.empty()) {
-        const Json ui = syncHtmlUi(ctx, uiChanged);
-        uiReloaded = ui["reloaded"];
-        uiCurrent = ui.value("current", 0);
-        for (const Json& problem : ui["problems"]) problems.push_back(problem);
-    }
-
-    for (const std::string& rel : changedRel) {
-        if (!(Util::isSceneFile(rel) || Util::isPrefabFile(rel) || rel == "project.yaml")) continue;
-        bool open = rel == "project.yaml";
-        for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-            if (!sceneProject->filepath.empty() && projectRelative(project, sceneProject->filepath) == rel && sceneProject->scene) open = true;
-        }
-        if (open) {
-            notes.push_back(rel + " changed on disk but the editor has it loaded: its in-memory copy wins and is written "
-                            "back on the next save. Edit scenes, prefabs and settings with the editor tools instead.");
-        }
-    }
-
-    project->refreshAssetDatabase(true);
-    if (ProjectWindow* window = ctx.projectWindow()) {
-        for (const fs::path& path : changed) window->notifyResourceFileChanged(path);
-        window->refreshCurrentDirectory();
-    }
-
+    Json allNotes = notes;
+    for (const Json& note : applied.notes) allNotes.push_back(note);
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
-        {"code_editor", codeEditor},
-        {"script_properties", scriptChanges},
-        {"problems", problems},
-        {"notes", notes}
+        {"code_editor", applied.codeEditor},
+        {"script_properties", applied.scriptProperties},
+        {"problems", applied.problems},
+        {"notes", allNotes},
+        {"reloaded", applied.reloaded},
+        {"pending", applied.pending}
     };
-    if (texturesReloaded > 0) result["textures_reloaded"] = texturesReloaded;
-    if (anyShader) result["shaders_invalidated"] = true;
-    if (!uiReloaded.empty()) result["ui_reloaded"] = uiReloaded;
-    if (uiCurrent > 0) result["ui_current"] = uiCurrent;
+    if (applied.texturesReloaded > 0) result["textures_reloaded"] = applied.texturesReloaded;
+    if (applied.shadersInvalidated) result["shaders_invalidated"] = true;
+    if (!applied.uiReloaded.empty()) result["ui_reloaded"] = applied.uiReloaded;
+    if (applied.uiCurrent > 0) result["ui_current"] = applied.uiCurrent;
     // Handled now: not an external change for the automatic pick-up before the next call
     McpAutoSync::get().filesSynced(ctx, std::vector<fs::path>(changed.begin(), changed.end()), full);
     return result;
@@ -1561,22 +1190,59 @@ void syncFilesTool(const CallPtr& call) {
             paths.push_back(abs.lexically_normal());
         }
     }
-    const bool full = args.value("full", true);
-    Json result = syncFiles(call->ctx(), paths, full);
-    const Json& changed = result["changed"];
-    std::string text = "Synced: " + std::to_string(changed["added"].size()) + " added, " +
-                       std::to_string(changed["modified"].size()) + " modified, " + std::to_string(changed["removed"].size()) +
-                       " removed; " + std::to_string(result["code_editor"]["reloaded"].size()) + " editor buffer(s) reloaded; " +
-                       std::to_string(result["script_properties"].size()) + " script(s) with new properties.";
-    if (!result["problems"].empty()) {
-        text += " PROBLEMS:";
-        for (const Json& problem : result["problems"]) {
-            text += "\n- " + problem.value("path", std::string()) +
-                    (problem.contains("line") ? ":" + std::to_string(problem["line"].get<int>()) : std::string()) + ": " +
-                    problem.value("message", std::string());
-        }
+    // Auto Refresh (Edit > Preferences > Asset Pipeline): off, external changes wait for a
+    // call or Assets > Refresh
+    if (args.contains("auto_refresh") && args["auto_refresh"].is_boolean()) {
+        AppSettings::setAutoRefresh(args["auto_refresh"].get<bool>());
+        AppSettings::saveSettings();
+        HotReloadService::get().setAutoRefresh(args["auto_refresh"].get<bool>());
     }
-    call->ok(text, result);
+    const bool full = args.value("full", true);
+    const bool wait = args.value("wait", true);
+    const bool rebuildModels = args.value("rebuild_models", false);
+    HotReloadService& reloads = HotReloadService::get();
+    const uint64_t serial = reloads.lastSerial();
+    reloads.takeLateProblems();
+    auto result = std::make_shared<Json>(syncFiles(call->ctx(), paths, full, !paths.empty(), rebuildModels));
+
+    auto finish = [call, result, serial](bool timedOut) {
+        HotReloadService& reloads = HotReloadService::get();
+        Json& out = *result;
+        // what finished on a worker: reloaded, or a problem (the old version is kept)
+        Json stillPending = Json::array();
+        for (const Json& path : out["pending"]) {
+            HotReloadService::Record record;
+            const bool done = reloads.lastRecordOf(path.get<std::string>(), record) && record.serial > serial;
+            if (!done) stillPending.push_back(path);
+            else if (record.ok) out["reloaded"].push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
+        }
+        out["pending"] = stillPending;
+        for (const Json& problem : reloads.takeLateProblems()) out["problems"].push_back(problem);
+        const Json& changed = out["changed"];
+        std::string text = "Synced: " + std::to_string(changed["added"].size()) + " added, " +
+                           std::to_string(changed["modified"].size()) + " modified, " + std::to_string(changed["removed"].size()) +
+                           " removed; " + std::to_string(out["code_editor"]["reloaded"].size()) + " editor buffer(s) reloaded; " +
+                           std::to_string(out["script_properties"].size()) + " script(s) with new properties; " +
+                           std::to_string(out["reloaded"].size()) + " file(s) reloaded.";
+        if (!stillPending.empty()) text += " Still reloading" + std::string(timedOut ? " after 30 s" : "") + ": " + std::to_string(stillPending.size()) + ".";
+        if (!out["problems"].empty()) {
+            text += " PROBLEMS:";
+            for (const Json& problem : out["problems"]) {
+                text += "\n- " + problem.value("path", std::string()) +
+                        (problem.contains("line") ? ":" + std::to_string(problem["line"].get<int>()) : std::string()) + ": " +
+                        problem.value("message", std::string());
+            }
+        }
+        call->ok(text, out);
+    };
+    if (!wait || (*result)["pending"].empty()) {
+        finish(false);
+        return;
+    }
+    // the reloads it started run on workers: the reply waits for them (R32, at most 30 s)
+    std::vector<fs::path> pending;
+    for (const Json& path : (*result)["pending"]) pending.push_back((project->getProjectPath() / path.get<std::string>()).lexically_normal());
+    call->waitUntil([pending]() { return HotReloadService::get().idleFor(pending); }, 30000, finish);
 }
 
 // ------------------------------------------------------------------ compile_scripts
@@ -1915,7 +1581,10 @@ void registerScriptTools(McpRegistry& registry) {
             "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
-            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
+            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)},
+            {"wait", withDefault(boolean("Return after the reloads it started finish (30 s max)."), true)},
+            {"rebuild_models", withDefault(boolean("Rebuild a model whose node hierarchy changed (its GameObjects are made again)."), false)},
+            {"auto_refresh", boolean("Set Auto Refresh: off, external edits wait for a call or Assets > Refresh.")}
         });
         tool.annotations.idempotent = true;
         tool.handler = syncFilesTool;

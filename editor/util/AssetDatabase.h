@@ -60,6 +60,9 @@ namespace jasperengine::editor {
         // What changed on disk since the last look (files moved, copied, deleted or edited
         // outside the editor), applied to the database and returned
         std::vector<Change> refresh();
+        // The same for one file the file watcher saw change (S05): Modified when it is still
+        // the asset it was, Removed + Added when another asset took its place
+        std::vector<Change> refreshFile(const std::filesystem::path& path);
 
         // Empty when unknown
         std::filesystem::path getPath(const std::string& guid) const;

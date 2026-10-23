@@ -554,6 +554,46 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
     return changes;
 }
 
+std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refreshFile(const fs::path& path) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    std::vector<Change> changes;
+    if (!isOpen() || !isTrackedFile(path)) {
+        return changes;
+    }
+    const std::string relative = key(path);
+    auto it = byPath.find(relative);
+    if (it == byPath.end()) {
+        return fileExists(relative) ? importAssets(path) : changes;
+    }
+    if (!fileExists(relative)) {
+        return removeAssets(path);
+    }
+    Entry current;
+    stat(relative, current);
+    if (current.writeTime == it->second.writeTime && current.size == it->second.size) {
+        return changes;
+    }
+    const std::string guid = readGuid(projectPath / relative);
+    if (guid == it->second.guid) {
+        it->second.writeTime = current.writeTime;
+        it->second.size = current.size;
+        changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
+    } else if (guid.empty()) {
+        // written again without its GUID (by another tool): it is still the same asset
+        writeGuid(projectPath / relative, it->second.guid);
+        stat(relative, it->second);
+        changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
+    } else {
+        // another asset now (a checkout replaced it)
+        changes.push_back({Change::Type::Removed, it->second.guid, relative, {}});
+        erase(relative);
+        std::vector<Change> added = importAssets(path);
+        changes.insert(changes.end(), added.begin(), added.end());
+    }
+    saveCache();
+    return changes;
+}
+
 bool editor::AssetDatabase::isOpen() const {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     return !projectPath.empty();

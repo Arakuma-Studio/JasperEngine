@@ -801,10 +801,10 @@ void FileWatchService::deliverWorkers() {
     }
 }
 
-void FileWatchService::deliverMain(double budgetMs) {
+bool FileWatchService::deliverMain(double budgetMs) {
     const auto start = Clock::now();
     auto spent = [&]() { return std::chrono::duration<double, std::milli>(Clock::now() - start).count(); };
-    bool progress = true;
+    bool progress = true, delivered = false;
     while (progress) {
         progress = false;
         std::vector<std::shared_ptr<Subscriber>> mains;
@@ -817,7 +817,7 @@ void FileWatchService::deliverMain(double budgetMs) {
         }
         for (const auto& subscriber : mains) {
             if (spent() >= budgetMs) break;
-            if (deliverOne(subscriber, MAIN_BATCH_MAX)) progress = true;
+            if (deliverOne(subscriber, MAIN_BATCH_MAX)) progress = delivered = true;
         }
         if (spent() >= budgetMs) break;
     }
@@ -831,13 +831,14 @@ void FileWatchService::deliverMain(double budgetMs) {
     }
     // the rest waits for the next frame: make sure there is one
     if (left) wakeMain();
+    return delivered;
 }
 
-void FileWatchService::pump(double budgetMs) {
-    if (!shared) return;
+bool FileWatchService::pump(double budgetMs) {
+    if (!shared) return false;
     if (shared->mainThread.load() == std::thread::id()) shared->mainThread = std::this_thread::get_id();
-    if (!shared->mainPending) return;   // idle: nothing to do, nothing locked (S05 R21)
-    deliverMain(budgetMs);
+    if (!shared->mainPending) return false;   // idle: nothing to do, nothing locked (S05 R21)
+    return deliverMain(budgetMs);
 }
 
 bool FileWatchService::flush(std::chrono::milliseconds timeout) {

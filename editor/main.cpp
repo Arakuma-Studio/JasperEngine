@@ -4,13 +4,58 @@
 #include "Backend.h"
 #include "cli/CommandLine.h"
 #include "mcp/McpLaunch.h"
+#include "reload/HotReloadService.h"
 #include "util/ShellEnv.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
 
 using namespace jasperengine;
 
+// --file-watcher=auto|native|polling|off (or "--file-watcher <kind>") and the env
+// JASPER_FILE_WATCHER, the flag winning (S05 R33): taken out of argv before a command reads it.
+// False for a value that is none of them.
+static bool takeFileWatcherOption(int& argc, char* argv[]) {
+    WatchBackendKind kind = WatchBackendKind::Auto;
+    if (const char* env = std::getenv("JASPER_FILE_WATCHER"); env && *env) {
+        if (!parseWatchBackendKind(env, kind)) {
+            std::fprintf(stderr, "JASPER_FILE_WATCHER must be auto, native, polling or off (got \"%s\")\n", env);
+            return false;
+        }
+        editor::HotReloadService::setWatcherOverride(kind);
+    }
+    for (int i = 1; i < argc; i++) {
+        const std::string arg = argv[i];
+        std::string value;
+        int consumed = 0;
+        if (arg.rfind("--file-watcher=", 0) == 0) {
+            value = arg.substr(15);
+            consumed = 1;
+        } else if (arg == "--file-watcher" && i + 1 < argc) {
+            value = argv[i + 1];
+            consumed = 2;
+        }
+        if (consumed == 0) continue;
+        if (!parseWatchBackendKind(value, kind)) {
+            std::fprintf(stderr, "--file-watcher must be auto, native, polling or off (got \"%s\")\n", value.c_str());
+            return false;
+        }
+        editor::HotReloadService::setWatcherOverride(kind);
+        // argv[argc] (the null) moves down too
+        for (int j = i; j + consumed <= argc; j++) argv[j] = argv[j + consumed];
+        argc -= consumed;
+        i--;
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
+    if (!takeFileWatcherOption(argc, argv)) {
+        return 2;
+    }
+
     // A desktop launcher starts the editor without the user's shell environment,
     // so the build tools go back on PATH before anything can spawn a command.
     editor::ShellEnv::bootstrapPath();

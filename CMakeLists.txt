@@ -632,6 +632,17 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/reload/HotReloadService.cpp
+    ${EDITOR_DIR}/reload/handlers/Assets.cpp
+    ${EDITOR_DIR}/reload/handlers/Audio.cpp
+    ${EDITOR_DIR}/reload/handlers/Common.cpp
+    ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
+    ${EDITOR_DIR}/reload/handlers/Materials.cpp
+    ${EDITOR_DIR}/reload/handlers/Models.cpp
+    ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/Shaders.cpp
+    ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
@@ -639,7 +650,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
-    ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp

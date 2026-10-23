@@ -139,9 +139,9 @@ void HtmlUiAutoImport::applyBatch(Project* project, const ImportQueue::Batch& ba
     if (imported == 0)
         return;
 
-    // the runtime resolves through the new manifest; the Project window sees the new files
+    // the runtime resolves through the new manifest (the Project window and the asset
+    // database get the new files from the file watcher: they are the editor's writes)
     ImportManifest::reload();
-    project->refreshAssetDatabase();
     Out::info("[HTML UI] imported %zu remote resource%s; reloading the documents that use them", imported, imported == 1 ? "" : "s");
 
     for (SceneProject* sceneProject : project->getHtmlUIScenes()){

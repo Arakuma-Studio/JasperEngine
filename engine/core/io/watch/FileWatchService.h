@@ -114,9 +114,9 @@ namespace jasperengine {
         [[nodiscard]] FileWatchSubscription subscribe(WatchFilter filter, FileChangeBatchFn fn,
                                                       DeliverOn on = DeliverOn::MainThread, int priority = 0);
 
-        // Main thread, every frame (App::engineRender): main-thread batches until budgetMs
-        // is spent; the rest waits for the next call (R9, R22)
-        void pump(double budgetMs);
+        // Main thread, every editor loop iteration: main-thread batches until budgetMs is
+        // spent; the rest waits for the next call (R9, R22). True when it delivered some.
+        bool pump(double budgetMs);
         // R7 barrier: when it returns true, every change that completed on disk before the
         // call has been delivered (main-thread subscribers too when called on the main
         // thread), the quiet window bypassed. False: no watcher, or the timeout passed.
@@ -178,7 +178,7 @@ namespace jasperengine {
         void processLocked(std::vector<FileChange>& changes);
         void emitLocked(FileChange change);
         void deliverWorkers();
-        void deliverMain(double budgetMs);
+        bool deliverMain(double budgetMs);
         bool deliverOne(const std::shared_ptr<Subscriber>& subscriber, size_t maxBatch);
         void wakeMain();
         bool onMainThread() const;

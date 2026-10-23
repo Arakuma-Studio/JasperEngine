@@ -134,21 +134,70 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
     }
 }
 
-void editor::Project::refreshAssetDatabase(bool force) {
-    const auto now = std::chrono::steady_clock::now();
-    if (!force && now - lastAssetRefreshTime < std::chrono::seconds(2)) {
-        return;
-    }
+void editor::Project::refreshAssetDatabase() {
     // Not while a scene plays or saves (a background save writes prefab files)
     if (!assetDatabase.isOpen() || isAnyScenePlaying()) {
         return;
     }
-    lastAssetRefreshTime = now;
     std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
     pendingAssetChanges.clear();
     std::vector<AssetDatabase::Change> found = assetDatabase.refresh();
     changes.insert(changes.end(), found.begin(), found.end());
     applyAssetChanges(changes);
+}
+
+bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges) {
+    if (!assetDatabase.isOpen() || projectPath.empty()) {
+        return true;
+    }
+    if (isAnyScenePlaying()) {
+        return false;
+    }
+    // what resolving references found meanwhile
+    std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
+    pendingAssetChanges.clear();
+    applyAssetChanges(changes);
+
+    // a folder's rename moves what it holds: the entries under it are not moved again
+    std::vector<fs::path> movedFolders;
+    for (const FileChange& change : fileChanges) {
+        if (change.kind == FileChangeKind::Moved && change.directory) movedFolders.push_back(change.oldPath.lexically_normal());
+    }
+    auto underMovedFolder = [&](const fs::path& path) {
+        for (const fs::path& folder : movedFolders) {
+            std::string rel;
+            if (path != folder && watch::relativeTo(folder, path, rel)) return true;
+        }
+        return false;
+    };
+
+    for (const FileChange& change : fileChanges) {
+        const bool tracked = change.directory || AssetDatabase::isTrackedFile(change.path) ||
+                             (change.kind == FileChangeKind::Moved && AssetDatabase::isTrackedFile(change.oldPath));
+        if (!tracked) continue;
+        switch (change.kind) {
+            case FileChangeKind::Moved:
+                if (!underMovedFolder(change.oldPath)) remapPrefabFilePath(change.oldPath, change.path);
+                break;
+            case FileChangeKind::Removed:
+                applyAssetChanges(assetDatabase.removeAssets(change.path));
+                break;
+            case FileChangeKind::Added:
+                applyAssetChanges(assetDatabase.importAssets(change.path));
+                break;
+            case FileChangeKind::Modified: {
+                if (change.directory) break;
+                // re-read: its instances follow (unsaved edits in the editor win)
+                const std::vector<AssetDatabase::Change> found = assetDatabase.refreshFile(change.path);
+                applyAssetChanges(found);
+                break;
+            }
+            case FileChangeKind::Rescan:
+                applyAssetChanges(assetDatabase.refresh());
+                break;
+        }
+    }
+    return true;
 }
 
 void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool copy, std::map<std::string, std::string>* copyGuids) {

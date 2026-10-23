@@ -142,7 +142,6 @@ void HtmlUiImportPanel::draw(Project* project, SceneProject* sceneProject, Entit
                           result.removedUrls.size() == 1 ? "" : "s", result.deletedFiles.size(), result.deletedFiles.size() == 1 ? "" : "s");
                 if (!result.removedUrls.empty()){
                     compat::ImportManifest::reload();
-                    project->refreshAssetDatabase();
                 }
             }
             cache().clear();

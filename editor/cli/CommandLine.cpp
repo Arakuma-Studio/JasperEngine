@@ -256,6 +256,9 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
+        << "With any of them (and the env JASPER_FILE_WATCHER; the flag wins):\n"
+        << "  --file-watcher=auto|native|polling|off   How the editor finds files changed on disk (default: the\n"
+        << "                                           Asset Pipeline preference, auto).\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -984,7 +987,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             continue;
         }
         if (name == "refreshAssets") {
-            project.refreshAssetDatabase(true);
+            project.refreshAssetDatabase();
             continue;
         }
         if (name == "playStart" || name == "playStop") {

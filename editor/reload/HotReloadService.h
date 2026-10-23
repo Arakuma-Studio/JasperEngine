@@ -74,7 +74,18 @@ namespace jasperengine::editor {
     public:
         static HotReloadService& get();
 
-        // Project open: subscribes to the file watcher (FileWatchService::start comes first)
+        // Project open (Project::loadProject and the other places a project root is set):
+        // starts the file watcher on its folder with the Asset Pipeline preferences (or the
+        // --file-watcher / JASPER_FILE_WATCHER choice) and attaches
+        void startWatching(Project& project);
+        // Before a project switch, and at exit: detaches and stops the watcher
+        void stopWatching();
+        // --file-watcher=auto|native|polling|off (or JASPER_FILE_WATCHER): wins over the
+        // preference for this run (R33)
+        static void setWatcherOverride(WatchBackendKind kind);
+        static bool getWatcherOverride(WatchBackendKind& kind);
+
+        // Subscribes to the file watcher (FileWatchService::start comes first)
         void attach(Project& project);
         // Before a project switch: in-flight reloads are dropped
         void detach();
@@ -82,9 +93,10 @@ namespace jasperengine::editor {
 
         ApplyResult apply(const ChangeSet& changes, const ApplyOptions& options);
 
-        // Every editor frame (App::engineRender): adopts finished reloads within the frame
-        // budget (2 ms, at most 16 MiB of texels), runs retries, writes the Console lines
-        void update();
+        // Every editor loop iteration: adopts finished reloads within the frame budget (2 ms,
+        // at most 16 MiB of texels), runs retries, writes the Console lines. True when it
+        // adopted something (the views redraw).
+        bool update();
 
         // Nothing of `paths` (absolute) is still reloading
         bool idleFor(const std::vector<std::filesystem::path>& paths) const;
@@ -148,17 +160,26 @@ namespace jasperengine::editor {
         // (editor/reload/handlers/*.cpp)
 
         // Starts a reload on a worker. `work` decodes and returns the step that adopts it on
-        // the main thread (false + error: it failed, the old one stays); a throw is a failure.
-        // A failure is retried once after 500 ms (a file still being written).
+        // the main thread (false + error: it failed, the old one stays; true + error: it was
+        // left out on purpose, a warning, no retry); a throw is a failure. A failure is retried
+        // once after 500 ms (a file still being written).
         using AdoptFn = std::function<bool(std::string& error)>;
         using WorkFn = std::function<AdoptFn()>;
         void startJob(const std::string& kind, const std::filesystem::path& path, WorkFn work, uint64_t texelBytes = 0);
         // A reload done on the main thread now (scripts, UI, prefabs)
         void recordDone(const std::string& kind, const std::filesystem::path& path, double ms, bool ok = true, const std::string& error = {});
         void notify(const std::filesystem::path& path, const std::string& kind, Event event);
+        // A Lua script changed while a scene plays: S23's hook took it (true), or not
+        bool handleScriptInPlay(const std::filesystem::path& path) { return scriptChangedHook && scriptChangedHook(path); }
+        // Scripts whose properties wait for Play to stop
+        void deferScripts(const std::vector<std::filesystem::path>& paths);
+        // The asset database looks at the project again once Play stops
+        void refreshAssetsAfterPlay() { assetRefreshAfterPlay = true; }
         std::string relative(const std::filesystem::path& path) const;
-        // Problems reported after apply() returned (failed reloads): McpAutoSync collects them
+        // Problems reported after apply() returned (failed reloads): McpAutoSync collects them.
+        // A kind that reports its own (shaders: {path, line, message}) adds them here.
         Json takeLateProblems();
+        void addLateProblem(const Json& problem) { lateProblems.push_back(problem); }
 
     private:
         HotReloadService() = default;
@@ -212,9 +233,10 @@ namespace jasperengine::editor {
         Json lateProblems = Json::array();
 
         void onWatcherBatch(std::span<const FileChange> batch);
+        static std::future<AdoptFn> launch(WorkFn work);
         bool isCurrent(const std::filesystem::path& path) const;
         void stamp(const std::filesystem::path& path);
-        void finishJob(Job& job, bool ok, const std::string& error, double ms);
+        void finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning = false);
         void closeBatchIfDone(uint64_t id);
         void writeBatchLine(const Batch& batch);
         void pushRecord(Record record);

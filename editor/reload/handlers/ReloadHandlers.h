@@ -38,6 +38,10 @@ namespace jasperengine::editor::reload {
     void reloadMaterials(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Shader forks whose sources or includes are among `files`, compiled before they swap
     void reloadShaders(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // The problems of fork checks (ProjectChecks::toJson results): {path, line, message, code?}
+    // at the file the compiler names, else the changed file of the fork (UI effect forms share
+    // their errors: reported once)
+    Json shaderProblems(Project* project, const Json& results, const std::vector<std::string>& changedFiles);
     // gltf/glb/obj/fbx: meshes, skins, morphs, animations of an unchanged hierarchy
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays

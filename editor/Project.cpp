@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "reload/HotReloadService.h"
 #include "io/AtomicFile.h"
 #include "Factory.h"
 #include "Workspace.h"
@@ -1546,15 +1547,6 @@ std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
         }
     }
     return result;
-}
-
-editor::HtmlUIWatcher& editor::Project::getHtmlUIWatcher() {
-    return htmlUIWatcher;
-}
-
-void editor::Project::notifyHtmlUIFileSaved(const std::filesystem::path& path) {
-    (void)path;
-    htmlUIWatcher.requestCheck();
 }
 
 std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
@@ -3702,6 +3694,48 @@ void editor::Project::openSceneInternal(fs::path filepath, uint32_t sceneToClose
     );
 }
 
+bool editor::Project::reloadSceneFromDisk(uint32_t sceneId, std::string* error) {
+    auto fail = [error](const std::string& message) {
+        if (error) *error = message;
+        return false;
+    };
+    if (isAnyScenePlaying()) return fail("A scene is playing: stop it to reload a file from disk.");
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || sceneProject->filepath.empty()) return fail("The scene has no file to reload.");
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) fullPath = getProjectPath() / fullPath;
+
+    if (getPrefabStage(sceneId)) {
+        // Prefab Mode: the stage is left without saving and opened on the file again
+        const fs::path prefab = fullPath;
+        const size_t depth = getPrefabStageDepth(sceneId);
+        closePrefabStages(depth > 0 ? depth - 1 : 0, [this, prefab](bool closed) {
+            if (closed) openPrefabStage(prefab);
+        }, 2);
+        return true;
+    }
+
+    // read it first: a file that does not parse leaves the open copy as it is
+    try {
+        DocumentFiles::read(fullPath, DocumentKind::Scene);
+    } catch (const std::exception& e) {
+        return fail(std::string("Cannot reload ") + sceneProject->name + ": " + e.what());
+    }
+    const bool selected = selectedScene == sceneId;
+    editor::getEditorHost().clearSceneWindowState(sceneId);
+    deleteSceneProject(sceneProject);
+    if (!loadScene(fullPath, true, false)) return fail("Cannot reload " + fullPath.filename().string() + ": it did not load (see the Console).");
+    sceneProject = getScene(sceneId);
+    if (sceneProject) {
+        sceneProject->isModified = false;
+        sceneProject->needUpdateRender = true;
+    }
+    if (selected) setSelectedSceneId(sceneId);
+    markParentScenesNeedUpdate(sceneId);
+    Out::info("Reloaded \"%s\" from disk", fullPath.filename().string().c_str());
+    return true;
+}
+
 void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     auto it = std::find_if(scenes.begin(), scenes.end(),
         [sceneId](const SceneProject& scene) { return scene.id == sceneId; });
@@ -4597,6 +4631,8 @@ void editor::Project::resetConfigs() {
     loadingSettings = {};
     terrainEditorSettings = {};
     simulateTouch = false;
+    // nothing reloads into a project that is going (S05)
+    HotReloadService::get().stopWatching();
     projectPath.clear();
     assetDatabase.close();
     pendingAssetChanges.clear();
@@ -5146,6 +5182,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             modelLoaded = true;
             assetDatabase.open(projectPath);
+            HotReloadService::get().startWatching(*this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -5433,6 +5470,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
         assetDatabase.open(projectPath);
+        HotReloadService::get().startWatching(*this);
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -5516,6 +5554,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // upgrade of files written before them) and references resolve through it
         editor::getEditorHost().reportLoadingProgress("Scanning assets...");
         assetDatabase.open(projectPath);
+        // what changes on disk from now on reloads (S05)
+        HotReloadService::get().startWatching(*this);
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 

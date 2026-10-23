@@ -10,7 +10,10 @@
 #include "render/preview/PrefabRender.h"
 
 #include <iostream>
+#include "io/watch/FileWatcher.h"
+
 #include <filesystem>
+#include <span>
 #include <string>
 #include <vector>
 #include <thread>
@@ -158,8 +161,6 @@ namespace jasperengine::editor {
 
         bool isCreatingNewDirectory;
 
-        std::filesystem::file_time_type lastWriteTime;
-        float timeSinceLastCheck;
 
         // Children of each folder-tree node: renderDirectoryTree() runs every frame,
         // and enumerating there was the tree's whole cost. Re-read only when the
@@ -322,6 +323,11 @@ namespace jasperengine::editor {
         void cleanupThumbnails();
 
         void refreshCurrentDirectory();
+        // Files changed on disk (the file watcher, through the hot reload; S05 R14): the open
+        // folder lists again only when the changes touch it (selection, scroll and a rename in
+        // progress kept), the folder tree when folders changed, thumbnails of changed files
+        // are made again
+        void onFilesChanged(std::span<const FileChange> changes);
         // videos the engine does not play, converted into targetDir by FFmpeg on a worker (phase 6)
         static void importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir);
         fs::path getCurrentPath() const { return currentPath; }
