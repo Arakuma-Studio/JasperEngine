@@ -4933,6 +4933,12 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
         layers.slices[i] = Vector4((float)i,
                                    detail ? (float)detail->normalSlice[i] : -1.0f,
                                    detail ? (float)detail->surfaceSlice[i] : -1.0f, 0.0f);
+        // The user values as they are (includes/stochastic.glsl maps them), a cell size of 0
+        // turning the layer's stochastic branch off
+        layers.stochastic[i] = (present && layer.stochasticTiling)
+            ? Vector4(std::clamp(layer.stochasticCellSize, 0.01f, 64.0f), std::clamp(layer.stochasticBlendSharpness, 0.0f, 1.0f),
+                      std::clamp(layer.stochasticContrast, 0.0f, 1.0f), std::clamp(layer.stochasticRotation, 0.0f, 1.0f))
+            : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     }
 
     render.applyUniformBlock(slot, sizeof(fs_terrain_layers_t), &layers);
