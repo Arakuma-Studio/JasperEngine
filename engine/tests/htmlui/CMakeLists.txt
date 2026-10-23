@@ -23,6 +23,9 @@ file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/effects/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/property/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/video/*.cpp
+    # CPU tests of the renderer's shadow units: here until S02's jasperengine-core-tests target
+    # (engine/tests/core/) lands, which takes them over
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/render/*.cpp
 )
 
 # editor logic without ImGui or editor state, tested here because the editor has no

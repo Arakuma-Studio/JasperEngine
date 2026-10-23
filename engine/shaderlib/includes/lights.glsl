@@ -35,15 +35,14 @@
 //     ambientLight when USE_PUNCTUAL is off (vertex mode: the fragment stage has no lights
 //     block). Add it as is: light += v_vertexLight.
 //   - USE_SHADOWS (pixel lights that receive shadows): call lightShadow for the pixel
-//     lights, which reads the v_lightProjPos[] varyings surface_vs.glsl writes (an unread
-//     varying fails the cross-compile).
+//     lights; it computes the shadow coordinates from the world position (no varyings).
 //
 // Fragment stage: with USE_PUNCTUAL, spot lights with a projected mask apply it
-// (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps are declared here and
-// lightShadow reads the v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS] varyings the vertex stage
-// writes (includes/surface_vs.glsl) and the frame block (included here; the built-in Lit
-// reads its own camera block, includes/lit_frame.glsl, instead). Vertex lights are
-// diffuse only: no specular, no shadows and no mask (the cone still applies).
+// (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps and their blocks are
+// declared here (includes/shadow_data.glsl) and lightShadow samples them
+// (includes/shadow_sampling.glsl). Call lightShadow in uniform control flow (as the loop above
+// does): it takes the derivatives of the position for the receiver-plane bias. Vertex lights
+// are diffuse only: no specular, no shadows and no mask (the cone still applies).
 
 #ifndef LIGHT_CAPACITY
     // the variant's capacity tier: 4, 8 or 16 lights (mesh property bits 'Lc4' / 'L16')
@@ -101,41 +100,18 @@ uniform u_fs_objectLights {
 #endif
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-    // the camera the cascades are picked by: the built-in Lit's own block, else the frame block
-    #ifdef LIT_FRAME_DECLARED
-        #define LIGHTS_CAMERA_POSITION litFrame.cameraPosition_fogEnd.xyz
-        #define LIGHTS_CAMERA_FORWARD litFrame.cameraForward_pcf.xyz
-    #else
-        #ifndef FRAME_FS
-            #define FRAME_FS
-        #endif
-        #include "includes/frame.glsl"
-        #define LIGHTS_CAMERA_POSITION frame.cameraPosition.xyz
-        #define LIGHTS_CAMERA_FORWARD frame.cameraDirection.xyz
+    #define SHADOW_DATA_POINT
+    // PCSS reads raw depths through a second view of the atlas: a texture unit GLES3/WebGL2
+    // (16 units) and the painted terrain (at 16 textures already) cannot spare; they filter
+    // the Ultra tier with the High tier's Vogel disk
+    #if !defined(IS_GLES) && !defined(HAS_TERRAIN_PBR)
+        #define SHADOW_DATA_RAW
     #endif
-
-    uniform u_fs_shadows {
-        vec4 bias_texSize_nearFar[MAX_SHADOW_ATLAS_SLOTS];
-        vec4 atlasRect[MAX_SHADOW_ATLAS_SLOTS];
-    } uShadows;
-
-    uniform u_fs_point_shadows {
-        vec4 bias_texSize_nearFar[MAX_POINT_SHADOW_ATLAS_SLOTS];
-        vec4 atlasRect[MAX_POINT_SHADOW_ATLAS_SLOTS];
-    } uPointShadows;
-
-    in vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
-
-    uniform texture2D u_shadowAtlas;
-    uniform samplerShadow u_shadowAtlas_smp;
-    uniform texture2D u_shadowPointAtlas;
-    uniform sampler u_shadowPointAtlas_smp;
 #endif
 
 #include "includes/punctual.glsl"
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-    #include "includes/depth_util.glsl"
-    #include "includes/shadows.glsl"
+    #include "includes/shadow_sampling.glsl"
 #endif
 
 struct LightSample {
@@ -270,20 +246,101 @@ vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
 // 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit
 float lightShadow(int index, vec3 worldPosition, vec3 worldNormal){
+    // the receiver plane's derivatives, before any branch on the fragment
+    vec3 dpdx = dFdx(worldPosition);
+    vec3 dpdy = dFdy(worldPosition);
+
     Light light = getLightData(index);
     if (!light.shadows){
         return 1.0;
     }
 
-    vec3 pointToLight = getLightVector(light, worldPosition);
-    float NdotL = clamp(dot(worldNormal, normalize(pointToLight)), 0.0, 1.0);
-    if (light.type == LightType_Spot){
-        return 1.0 - shadowCalculationPCF(light.shadowMapIndex, NdotL);
-    }else if (light.type == LightType_Directional){
-        float viewDepth = dot(LIGHTS_CAMERA_FORWARD, worldPosition - LIGHTS_CAMERA_POSITION);
-        return 1.0 - shadowCascadedCalculationPCF(light.shadowMapIndex, light.numShadowCascades, viewDepth, NdotL);
+    vec3 towardsLight = normalize(getLightVector(light, worldPosition));
+    if (light.type == LightType_Directional){
+        return shadowDirectional(light.shadowMapIndex, light.numShadowCascades, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+    }else if (light.type == LightType_Spot){
+        return shadowSpot(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }
-    return 1.0 - shadowCubeCalculationPCF(light.shadowMapIndex, -pointToLight, NdotL);
+    return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+}
+
+// The shadow debug views of the Scene view (shadowData.header.w): a colour replacing the
+// shaded one, alpha 1 when a view is on. 1 cascades (tinted, the blend band hatched), 2 the
+// shadow factor of the main light (grey), 3 the texel density (a checker of its shadow
+// texels), 4 the cache (green skipped, yellow restored, red redrawn this frame). The main
+// light: the main directional light, else the object's first shadowed pixel light.
+vec4 shadowDebugColor(vec3 worldPosition, vec3 worldNormal){
+    int view = int(shadowData.header.w + 0.5);
+    if (view == 0){
+        return vec4(0.0);
+    }
+
+    int lightIndex = -1;
+    for (int i = 0; i < LIGHT_CAPACITY; i++){
+        if (i >= pixelLightCount()) break;
+        Light candidate = getLightData(i);
+        if (!candidate.shadows) continue;
+        if (lightIndex < 0 || (candidate.type == LightType_Directional && candidate.shadowMapIndex == int(shadowData.header.x + 0.5))){
+            lightIndex = i;
+        }
+    }
+    if (lightIndex < 0){
+        return vec4(vec3(1.0), 1.0);
+    }
+    float factor = lightShadow(lightIndex, worldPosition, worldNormal);
+    if (view == 2){
+        return vec4(vec3(factor), 1.0);
+    }
+
+    Light light = getLightData(lightIndex);
+    int slot = light.shadowMapIndex;
+    float blendBand = 0.0;
+    vec3 tint = vec3(1.0);
+    if (light.type == LightType_Directional){
+        int cascade = shadowCascadeOf(slot, light.numShadowCascades, shadowViewDepth(worldPosition));
+        if (cascade < 0){
+            return vec4(vec3(0.85), 1.0);
+        }
+        slot += cascade;
+        const vec3 cascadeTints[4] = vec3[4](vec3(1.0, 0.25, 0.25), vec3(0.25, 1.0, 0.25), vec3(0.3, 0.45, 1.0), vec3(1.0, 1.0, 0.25));
+        tint = cascadeTints[cascade];
+        float viewDepth = shadowViewDepth(worldPosition);
+        if (cascade + 1 < light.numShadowCascades && viewDepth > shadowData.split[slot].z){
+            blendBand = 1.0;
+        }
+    }
+
+    if (view == 1){
+        // diagonal hatching over the blend band, in screen space
+        float hatch = (blendBand > 0.0 && mod(floor((gl_FragCoord.x + gl_FragCoord.y) / 6.0), 2.0) < 1.0) ? 0.55 : 1.0;
+        return vec4(tint * (0.35 + 0.65 * factor) * hatch, 1.0);
+    }
+    if (view == 3){
+        vec2 texels = vec2(0.0);
+        if (light.type == LightType_Point){
+            #ifdef SHADOW_DATA_POINT
+            vec3 v = worldPosition - light.position;
+            int face = shadowCubeFace(v);
+            int pointLight = slot / SHADOW_CUBE_FACES;
+            vec3 coord = shadowCubeFaceCoord(shadowCubeFaceSpace(v, face), pointShadowData.projection[pointLight]);
+            texels = coord.xy * pointShadowData.bias[pointLight].w;
+            #endif
+        }else{
+            vec4 clip = shadowData.lightVP[slot] * vec4(worldPosition, 1.0);
+            texels = (clip.xy / clip.w * 0.5 + 0.5) * shadowData.split[slot].w;
+        }
+        float checker = mod(floor(texels.x) + floor(texels.y), 2.0);
+        return vec4(tint * mix(0.35, 0.9, checker), 1.0);
+    }
+    // the cache path of the light's slot this frame
+    float path = (light.type == LightType_Point) ? 0.0 : shadowData.fade[slot].z;
+    #ifdef SHADOW_DATA_POINT
+    if (light.type == LightType_Point){
+        path = pointShadowData.state[slot / SHADOW_CUBE_FACES].x;
+    }
+    #endif
+    vec3 pathColor = (path < 0.5) ? vec3(0.2, 0.85, 0.25) : ((path < 1.5) ? vec3(0.95, 0.85, 0.15) : vec3(0.95, 0.2, 0.15));
+    return vec4(pathColor * (0.35 + 0.65 * factor), 1.0);
 }
 #endif
 

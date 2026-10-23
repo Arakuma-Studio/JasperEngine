@@ -592,6 +592,8 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
         args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
     }
     if (shaderType == ShaderType::GBUFFER){
         // suppresses the terrain texture-coordinate varyings in the shared includes
@@ -672,7 +674,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
-            std::to_string(SPOT_MASK_ATLAS_TILES));
+            std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(MAX_POINT_SHADOW_LIGHTS) + "," +
+            std::to_string(SHADOW_CUBE_FACES));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;
