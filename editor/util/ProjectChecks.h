@@ -192,6 +192,26 @@ namespace jasperengine::editor {
         // features present)
         static nlohmann::json uiSupportJson();
 
+        // ---- texture synthesis recipes
+
+        // PNGs written by the texture synthesis carry their recipe (texsynth/SynthesisRecipe.h):
+        // the sources' SHA-1s at synthesis time. A source changed or deleted since makes the
+        // texture stale: a warning (tool "texture") at the PNG, code synthesis-source-changed or
+        // synthesis-source-missing, with how to regenerate it. Fast on large projects: only the
+        // chunks before IDAT are read, sources are hashed only for PNGs with a recipe, and both
+        // are cached by mtime and size in .jasperengine/synthesis-check-cache.json (when that
+        // directory exists).
+        struct SynthesisCheck {
+            std::vector<Finding> findings;
+            size_t recipes = 0;   // PNGs with a recipe that were checked
+            size_t pngs = 0;      // PNGs looked at
+        };
+        // files empty: every PNG of the project outside skipped directories; a companion or
+        // uncertainty output whose primary output exists is covered by the primary's findings.
+        // files given (absolute): those PNGs, plus every project PNG whose recipe names one of the
+        // files as a source (an edited example reports the textures made from it).
+        static SynthesisCheck checkSynthesisRecipes(const std::filesystem::path& projectRoot, const std::vector<std::filesystem::path>& files);
+
         // ---- HTML UI effects (phase 5)
 
         // An effect as `ui-effects --json` and MCP list_ui_effects give it: every manifest field
