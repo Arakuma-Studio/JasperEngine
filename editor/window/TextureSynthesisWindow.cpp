@@ -486,7 +486,8 @@ void TextureSynthesisWindow::loadExampleForDisplay() {
     std::string error;
     if (!ts::resolveProjectFile(project->getProjectPath(), path, absolute, error)) return;
     ts::Image image;
-    if (!ts::loadImage(absolute, image, error)) return;
+    // an image the synthesis would refuse (over 8192 per side) is not decoded for display either
+    if (!ts::loadImage(absolute, image, error, nullptr, ts::kMaxImageSide)) return;
     exampleRgba = ts::toRgba8(image);
     updateGpuImage(exampleGpu, fitRgba8(exampleRgba, 2048), 1);
     if (maskCanvas && (maskCanvas->width != exampleRgba.width || maskCanvas->height != exampleRgba.height)) {
