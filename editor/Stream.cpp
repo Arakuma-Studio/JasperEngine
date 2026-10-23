@@ -4119,6 +4119,14 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
     if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
 
+    // Stochastic Tiling the same way: each value only away from its default
+    static const Material defaults = Material();
+    if (material.stochasticTiling) node["stochasticTiling"] = true;
+    if (material.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = YamlNumbers::text(finiteOr(material.stochasticCellSize));
+    if (material.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = YamlNumbers::text(finiteOr(material.stochasticBlendSharpness));
+    if (material.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = YamlNumbers::text(finiteOr(material.stochasticContrast));
+    if (material.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = YamlNumbers::text(finiteOr(material.stochasticRotation));
+
     // Phase 2, the same way: stencil, colour write and the extra pass when set
     encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
@@ -4174,6 +4182,12 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
     material.lighting = node["lighting"] ? stringToMaterialLighting(node["lighting"].as<std::string>()) : MaterialLighting::AUTO;
+    static const Material defaults = Material();
+    material.stochasticTiling = node["stochasticTiling"] ? YamlNumbers::as<bool>(node["stochasticTiling"]) : false;
+    material.stochasticCellSize = decodeFinite(node["stochasticCellSize"], defaults.stochasticCellSize);
+    material.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], defaults.stochasticBlendSharpness);
+    material.stochasticContrast = decodeFinite(node["stochasticContrast"], defaults.stochasticContrast);
+    material.stochasticRotation = decodeFinite(node["stochasticRotation"], defaults.stochasticRotation);
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
 

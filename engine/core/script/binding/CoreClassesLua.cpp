@@ -1244,6 +1244,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
         .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
+        // Stochastic Tiling of the built-in Lit's maps (no repetition); the four values shape it
+        .addProperty("stochasticTiling", &Material::stochasticTiling, &Material::stochasticTiling)
+        .addProperty("stochasticCellSize", &Material::stochasticCellSize, &Material::stochasticCellSize)
+        .addProperty("stochasticBlendSharpness", &Material::stochasticBlendSharpness, &Material::stochasticBlendSharpness)
+        .addProperty("stochasticContrast", &Material::stochasticContrast, &Material::stochasticContrast)
+        .addProperty("stochasticRotation", &Material::stochasticRotation, &Material::stochasticRotation)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)

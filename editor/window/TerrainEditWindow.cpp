@@ -24,6 +24,7 @@
 #include "util/TerrainMapFileWriter.h"
 #include "util/TerrainMapUtils.h"
 #include "util/TerrainErosion.h"
+#include "util/NormalMapTilt.h"
 #include "util/TerrainNoise.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
@@ -2736,7 +2737,26 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
         stochasticRow("Contrast", "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high "
                       "shows the cell borders. 0 blends linearly", &TerrainSurfaceLayer::stochasticContrast, 0.0f, 1.0f, ImGuiSliderFlags_None);
         stochasticRow("Rotation", "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a "
-                      "direction (planks, stripes, light baked in)", &TerrainSurfaceLayer::stochasticRotation, 0.0f, 1.0f, ImGuiSliderFlags_None);
+                      "direction (planks, stripes, light baked in) and for normal maps whose average normal leans",
+                      &TerrainSurfaceLayer::stochasticRotation, 0.0f, 1.0f, ImGuiSliderFlags_None);
+        // a normal map leaning on average looks tilted cell by cell once the cells turn (its
+        // tilt measured once per file, off this thread)
+        const std::string normalPath = layer.pbr && !layer.normalTexture.empty() ? layer.normalTexture.getPath(0) : std::string();
+        if (layer.stochasticRotation > 0.0f && !normalPath.empty()){
+            const fs::path normalFile = project->resolveAssetPath(fs::u8path(normalPath));
+            const NormalMapTiltResult tilt = NormalMapTilt::request(normalFile);
+            if (tilt.ready && tilt.valid && tilt.degrees >= NormalMapTilt::WARNING_DEGREES){
+                ImGui::TableNextRow();
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
+                ImGui::TableSetColumnIndex(1);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+                ImGui::TextWrapped("%s: rotated tiles will look tilted. Keep Rotation at 0.", NormalMapTilt::describe(normalFile, tilt.degrees).c_str());
+                ImGui::PopStyleColor();
+                if (ImGui::SmallButton("Set Rotation to 0##stochastic_rotation")){
+                    edit([&](TerrainSurfaceLayer& target){ target.stochasticRotation = 0.0f; });
+                }
+            }
+        }
     }
 }
 

@@ -1478,7 +1478,7 @@ Create a shared .material file (linked submeshes follow its edits) from defaults
 | `path` | string | yes | New .material path. |
 | `scene` | integer or string |  |  |
 | `submesh` | integer (0..1024) |  | Default: `0`. |
-| `values` | object |  | baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, foliageTransmission, *Texture (path\|null), *TexCoord; shader ("library:<name>"), shaderParams {member: value}, shaderTextures {uniform: path}, shaderFeatures [defines]\|{define: bool}, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders). |
+| `values` | object |  | baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, foliageTransmission, *Texture (path\|null), *TexCoord, stochasticTiling (Lit: hides tiling repetition, up to 3x the reads) with stochasticCellSize (0.25-4) / BlendSharpness / Contrast / Rotation (0-1); shader ("library:<name>"), shaderParams {member: value}, shaderTextures {uniform: path}, shaderFeatures [defines]\|{define: bool}, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders). |
 
 
 ### `delete_asset`
