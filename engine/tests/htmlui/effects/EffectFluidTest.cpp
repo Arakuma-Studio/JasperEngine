@@ -420,13 +420,17 @@ TEST(EffectFluidProfile, LiveCost){
             scene.capture(image);
         }
         const uint64_t passes = EffectRuntime::get().stats().stepPasses;
+        const EffectStats before = EffectRuntime::get().stats();
         const auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < 6; i++){
             HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
             scene.capture(image);
         }
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 6.0;
-        std::printf("[ fluid    ] %-100s %8.1f ms a capture, %.1f passes\n", declaration, ms,
-                    (double)(EffectRuntime::get().stats().stepPasses - passes) / 6.0);
+        const EffectStats after = EffectRuntime::get().stats();
+        std::printf("[ fluid    ] %-100s %8.1f ms a capture, %.1f passes; pipelines %llu, compiles %llu, images %llu, replays %llu\n", declaration, ms,
+                    (double)(EffectRuntime::get().stats().stepPasses - passes) / 6.0,
+                    (unsigned long long)(after.pipelinesCreated - before.pipelinesCreated), (unsigned long long)(after.compileCalls - before.compileCalls),
+                    (unsigned long long)(after.stateImagesCreated - before.stateImagesCreated), (unsigned long long)(after.replays - before.replays));
     }
 }
