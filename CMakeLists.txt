@@ -531,7 +531,8 @@ include_directories (${EDITOR_DIR})
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
 
 # The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md), also
-# built alone into jasperengine-texsynth-tests (-DJASPERENGINE_TEXSYNTH_TESTS=ON)
+# built alone into jasperengine-texsynth-tests (-DJASPERENGINE_TEXSYNTH_TESTS=ON); its CLI is
+# SynthesisCli.cpp (CommandLine)
 set(JASPERENGINE_TEXSYNTH_SOURCES
     ${EDITOR_DIR}/texsynth/SynthImage.cpp
     ${EDITOR_DIR}/texsynth/Synthesizer.cpp
@@ -624,6 +625,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
+    ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
