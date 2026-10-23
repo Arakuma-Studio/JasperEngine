@@ -290,6 +290,7 @@ std::vector<Contact2D> Rigidbody2D::getBodyContacts(){
     std::vector<Contact2D> contacts;
 
     int bodyContactCapacity = b2Body_GetContactCapacity(body.body);
+    if (bodyContactCapacity == 0) return contacts;
     std::vector<b2ContactData> contactData(bodyContactCapacity);
     int bodyContactCount = b2Body_GetContactData(body.body, &contactData.front(), bodyContactCapacity);
 
@@ -307,6 +308,7 @@ std::vector<Contact2D> Rigidbody2D::getColliderContacts(size_t index){
 
     if (index >= 0 && index < body.numColliders && body.colliders[index].type != Collider2DType::CHAIN){
         int shapeContactCapacity = b2Shape_GetContactCapacity(body.colliders[index].shape);
+        if (shapeContactCapacity == 0) return contacts;
         std::vector<b2ContactData> contactData(shapeContactCapacity);
         int shapeContactCount = b2Shape_GetContactData(body.colliders[index].shape, &contactData.front(), shapeContactCapacity);
 
