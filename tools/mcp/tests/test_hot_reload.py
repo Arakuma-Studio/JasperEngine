@@ -263,30 +263,38 @@ async def test_external_add_delete_rename(ed: Editor):
 
 
 async def test_reload_hitch(ed: Editor):
-    """AC19: a 2048x2048 PNG reloaded 20 times while the view redraws: no frame more than
-    16 ms over the median, each reload within 500 ms."""
+    """AC19: a 2048x2048 PNG reloaded 20 times at 200 ms intervals while the view redraws
+    continuously (the scene plays): no frame more than 16 ms over the median, each reload within
+    500 ms."""
+    ed.require_tools("play", "set_properties")
     big = ed.project / "assets/hr/big.png"
     safe_save(big, png_bytes(RED, 2048))
     await ed.call("set_properties", scene=STATE["scene"], entity=STATE["sprite"],
                   values={"mesh": {"submeshes[0].material.baseColorTexture": "assets/hr/big.png"}})
     await status(ed)
-    await status(ed)   # frame_ms from here on
+    r = await ed.call_raw("play", {"action": "start", "scene": STATE["scene"], "timeout_seconds": 300})
+    ed.check(not r.is_error, f"play failed: {r.text[:500]}")
     latencies = []
-    for i in range(20):
-        before = watcher(await status(ed))["reloads"]
-        t0 = time.monotonic()
-        safe_save(big, png_bytes(GREEN if i % 2 == 0 else RED, 2048))
-        while time.monotonic() - t0 < 5.0:
-            fw = (await ed.call("editor_status"))["file_watcher"]
-            if fw["reloads"] > before:
-                break
-            time.sleep(0.02)
-        latencies.append(time.monotonic() - t0)
-        time.sleep(0.2)
-    frames = (await ed.call("editor_status"))["frame_ms"]
-    ed.check(frames["frames"] > 0, f"frames were drawn: {frames!r}")
+    try:
+        await ed.call("editor_status")   # frame_ms from here on
+        for i in range(20):
+            before = (await ed.call("editor_status"))["file_watcher"]["reloads"]
+            t0 = time.monotonic()
+            safe_save(big, png_bytes(GREEN if i % 2 == 0 else RED, 2048))
+            while time.monotonic() - t0 < 5.0:
+                fw = (await ed.call("editor_status"))["file_watcher"]
+                if fw["reloads"] > before:
+                    break
+                time.sleep(0.02)
+            latencies.append(time.monotonic() - t0)
+            time.sleep(0.2)
+        frames = (await ed.call("editor_status"))["frame_ms"]
+    finally:
+        await ed.call("play", action="stop")
+    print(f"     [hitch] frames {frames!r}, reload latency max {max(latencies) * 1000:.0f} ms")
+    ed.check(frames["frames"] >= 40, f"the view redrew continuously: {frames!r}")
     ed.check(frames["max"] - frames["median"] <= 16.0, f"a frame hitched: {frames!r}")
-    # the status calls' own round trip is part of each measure: the reload itself is shorter
+    # each measure includes the status calls' own round trips
     ed.check(max(latencies) <= 0.5 + 0.25, f"reload latencies (s): {latencies!r}")
 
 

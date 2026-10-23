@@ -142,6 +142,7 @@ bool EditorFrame::run(EditorFrameState& state){
 
     if (frameSubmitted){
         renderer->present();
+        app->recordFrameTime((monotonicSeconds() - frameStart) * 1000.0);
     }
     renderer->purgeTextures();
 

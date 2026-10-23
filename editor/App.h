@@ -131,7 +131,6 @@ namespace jasperengine::editor{
 
         bool benchmarkEnabled = false;
         std::vector<float> frameTimes;
-        std::chrono::steady_clock::time_point lastFrameTime{};
         bool benchmarkExit = false;
         bool benchmarkFailed = false;
         // `mcp --project` on a project another editor holds: project_locked, exit code 3
@@ -365,9 +364,10 @@ namespace jasperengine::editor{
         // Main thread only: keeps the loop drawing while a worker thread drives the UI.
         void requestRedraw();
         // The editor's drawn frames since the last call (editor_status frame_ms, S05 R31):
-        // {median, p99, max, frames} in ms between consecutive frames (a pause over 1 s in
-        // between is idling, not a frame)
+        // {median, p99, max, frames}, each frame's time from its start to its present (an idle
+        // loop draws on demand: the time between two frames would be the idling)
         nlohmann::json takeFrameStats();
+        void recordFrameTime(double ms);
         bool consumeRedrawRequest();
         // One frame, without waking the loop: for animation that runs while idle.
         void requestFrame();

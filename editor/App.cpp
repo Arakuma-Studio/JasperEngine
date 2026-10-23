@@ -2549,12 +2549,6 @@ void editor::App::engineRender(){
         return;
     }
 
-    const auto frameStart = std::chrono::steady_clock::now();
-    if (lastFrameTime != std::chrono::steady_clock::time_point{}) {
-        const float ms = std::chrono::duration<float, std::milli>(frameStart - lastFrameTime).count();
-        if (ms < 1000.0f && frameTimes.size() < 100000) frameTimes.push_back(ms);
-    }
-    lastFrameTime = frameStart;
 
     processMainThreadTasks();
     project.updateGeneratedSources();
@@ -3241,6 +3235,10 @@ bool editor::App::hasPendingMainThreadTasks() {
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
 // last request: enough for ImGui to auto-resize a window whose content just grew.
+void editor::App::recordFrameTime(double ms) {
+    if (frameTimes.size() < 100000) frameTimes.push_back(static_cast<float>(ms));
+}
+
 nlohmann::json editor::App::takeFrameStats() {
     std::vector<float> times;
     times.swap(frameTimes);
