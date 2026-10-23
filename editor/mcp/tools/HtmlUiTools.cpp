@@ -701,7 +701,9 @@ Json elementJson(const hui::InspectElement& e, const std::vector<hui::InspectSty
                           {"params", params}};
             // phase 6: a stateful effect's simulation
             if (effect.stateful)
-                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused}};
+                entry["state"] = {{"bytes", effect.stateBytes}, {"steps", effect.steps}, {"time", effect.simTime}, {"paused", effect.paused},
+                                  {"images", effect.stateImages}, {"replays", effect.replays}, {"replaying", effect.replaying},
+                                  {"splats", effect.splats}, {"path", effect.pathSamples}};
             effects.push_back(std::move(entry));
         }
         out["effects"] = effects;

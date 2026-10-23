@@ -19,7 +19,7 @@ namespace jasperengine::htmlui {
     //   // @kind       paint | filter
     //   // @category   gradient | noise | pattern | light | energy | space | interactive | glass | blur | stylize | color | distort | transition
     //   // @summary    <one line, at most 100 characters>
-    //   // @source     shaders.com <Name>[ + <Name>] [(adapted: <text>)] | original [(<text>)]
+    //   // @source     shaders.com <Name>[ + <Name>] [(adapted: <text>)] | original [(<text>)] | port <project> (<author>, <licence>)
     //   // @cost       low | medium | high
     //   // @backdrop   yes | no                                   (filter kind; default no)
     //   // @time       <param>[, <param>]                          (at most 4 rate parameters)
@@ -30,13 +30,15 @@ namespace jasperengine::htmlui {
     //   // @suggest-for <word> [<word> ...]
     //   // @param      <name> <type> <default> [<min> <max>] [<opt>|<opt>|...] -- <description>
     //   phase 6 (stateful effects, docs/html-ui/phase-6-stateful-effects.md 3.2; @cost stateful):
-    //   // @state      <name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
+    //   // @state      <name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>]|aspect <short> [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
     //   // @init       <pass> <state>
     //   // @step       <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    //   // @frame      <pass> <state> [x<count>|x<param>] [add] [scatter <state>]   (once a drawn frame, after its steps)
     //   // @warmup     <steps> <dt>
     //   // @rate       <hz> [max <substeps>]
     //   // @replay     <seconds>
     //   // @reseed     <param>[, <param>]
+    //   // @preset     <option> <param> <value>[, <param> <value>...]   (options of the enum parameter `preset`)
     //   <scaled> := <param>[*<number>][+<number>px] | <number>px
     //
     // A default with spaces is double-quoted; ranges carry units. Diagnostics are

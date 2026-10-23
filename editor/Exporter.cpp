@@ -581,6 +581,7 @@ void editor::Exporter::runExport() {
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!buildAndSaveShaders()) return;
     if (!writeEffectLicense()) return;
+    if (!writeFluidLicense()) return;
     if (config.mode == ExportMode::SourceCode) {
         if (isCancelled()) { setError("Build cancelled"); return; }
         if (!collectSourceResourcePack()) return;
@@ -3450,20 +3451,58 @@ bool editor::Exporter::writeEffectLicense() {
     return true;
 }
 
-bool editor::Exporter::copyLicenses() {
-    const fs::path source = config.targetDir / effectLicensePath();
-    const fs::path target = config.destinationDir / effectLicensePath();
+// ---- Pavel Dobryakov's WebGL-Fluid-Simulation notice (the native Fluid Simulation, effect(fluid))
+
+const char* editor::Exporter::fluidLicensePath() {
+    return "licenses/WebGL-Fluid-Simulation-LICENSE.txt";
+}
+
+bool editor::Exporter::usesFluidShaders(const std::set<ShaderKey>& keys) {
+    return std::any_of(keys.begin(), keys.end(), [](ShaderKey key) {
+        const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
+        if (type == ShaderType::FLUID) return true;
+        return type == ShaderType::UI_EFFECT && ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(key)) == "@effects/fluid";
+    });
+}
+
+bool editor::Exporter::writeFluidLicense() {
+    const fs::path target = config.targetDir / fluidLicensePath();
     std::error_code ec;
-    if (!fs::is_regular_file(source, ec)) {
+    if (!usesFluidShaders(config.selectedShaderKeys)) {
         fs::remove(target, ec);
         if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
         return true;
     }
+    const fs::path source = config.targetDir / "shaderlib" / "LICENSE.WebGL-Fluid-Simulation.txt";
+    if (!fs::is_regular_file(source, ec)) {
+        setError("The fluid simulation's notice is missing: " + source.string());
+        return false;
+    }
     fs::create_directories(target.parent_path(), ec);
     if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
     if (ec) {
-        setError("Failed to copy " + target.filename().string() + ": " + ec.message());
+        setError("Failed to write " + target.string() + ": " + ec.message());
         return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::copyLicenses() {
+    for (const char* path : {effectLicensePath(), fluidLicensePath()}) {
+        const fs::path source = config.targetDir / path;
+        const fs::path target = config.destinationDir / path;
+        std::error_code ec;
+        if (!fs::is_regular_file(source, ec)) {
+            fs::remove(target, ec);
+            if (!ec) fs::remove(target.parent_path(), ec);   // only when empty
+            continue;
+        }
+        fs::create_directories(target.parent_path(), ec);
+        if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy " + target.filename().string() + ": " + ec.message());
+            return false;
+        }
     }
     return true;
 }

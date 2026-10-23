@@ -176,6 +176,12 @@ namespace jasperengine::editor {
         bool copyLicenses();
         // the path the export writes the shaders.com notice to, relative to its root
         static const char* effectLicensePath();
+        // licenses/WebGL-Fluid-Simulation-LICENSE.txt (Pavel Dobryakov's MIT notice) when the
+        // shaders contain the native fluid (ShaderType::FLUID) or the UI effect `fluid`; removed
+        // when they do not. copyLicenses copies it with the shaders.com notice
+        bool writeFluidLicense();
+        static const char* fluidLicensePath();
+        static bool usesFluidShaders(const std::set<ShaderKey>& keys);
 
         // Aggregates SceneMaxValues across all project scenes and builds the
         // add_definitions() block that sizes the engine's fixed-capacity

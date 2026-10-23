@@ -3,9 +3,11 @@
 
 // HTML/CSS UI effects (phase-5 spec 3.13): list_ui_effects (the catalogue `jasperengine-editor
 // ui-effects --json` prints, filtered, with the project's effects) and set_ui_effect_time (the
-// effect clock pinned for deterministic images, or live again). inspect_ui reports the effects an
-// element uses (HtmlUiTools.cpp).
+// effect clock pinned for deterministic images, or live again; for stateful effects also a
+// scripted pointer path and splats on one element, replayed exactly at the pinned clock).
+// inspect_ui reports the effects an element uses (HtmlUiTools.cpp).
 #include "McpTools.h"
+#include "HtmlUiShared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -16,6 +18,7 @@
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "object/ui/UIDocument.h"
+#include "object/ui/UIElement.h"
 #include "util/ProjectChecks.h"
 
 #include <algorithm>
@@ -168,20 +171,116 @@ void setUiEffectTimeTool(const CallPtr& call) {
         }
         time = value.get<double>();
     }
+    // stateful effects' scripted input: a pointer path and splats on one element (pinned clock only)
+    const bool scripted = args.contains("pointer_path") || args.contains("splats");
+    const std::string selector = args.value("selector", std::string());
+    const std::string effect = args.value("effect", std::string());
+    std::vector<Vector3> path;
+    std::vector<UIEffectSplat> splats;
+    if (scripted) {
+        if (!time) {
+            call->fail("pointer_path and splats replay at a pinned clock: give time in seconds.");
+            return;
+        }
+        if (selector.empty()) {
+            call->fail("selector is required with pointer_path or splats: the element whose effect takes them.");
+            return;
+        }
+        auto finite = [](const Json& v) { return v.is_number() && std::isfinite(v.get<double>()); };
+        if (args.contains("pointer_path")) {
+            const Json& points = args["pointer_path"];
+            if (!points.is_array() || points.size() > 512) {
+                call->fail("pointer_path must be an array of at most 512 [x, y, t] (element CSS px, effect seconds), or [] to clear it.");
+                return;
+            }
+            for (const Json& point : points) {
+                if (!point.is_array() || point.size() != 3 || !finite(point[0]) || !finite(point[1]) || !finite(point[2])) {
+                    call->fail("pointer_path points are [x, y, t]: x, y in the element's CSS px (border box), t in effect seconds.");
+                    return;
+                }
+                path.emplace_back(point[0].get<float>(), point[1].get<float>(), point[2].get<float>());
+            }
+        }
+        if (args.contains("splats")) {
+            const Json& list = args["splats"];
+            if (!list.is_array() || list.size() > 64) {
+                call->fail("splats must be an array of at most 64 objects {x, y, dx, dy, radius, color, strength, t}.");
+                return;
+            }
+            for (const Json& item : list) {
+                if (!item.is_object() || !finite(item.value("x", Json())) || !finite(item.value("y", Json()))) {
+                    call->fail("each splat needs x and y (the effect area's CSS px); dx, dy px/s, radius px, color CSS, strength, t s optional.");
+                    return;
+                }
+                UIEffectSplat splat;
+                splat.x = item["x"].get<float>();
+                splat.y = item["y"].get<float>();
+                splat.dx = item.value("dx", 0.0f);
+                splat.dy = item.value("dy", 0.0f);
+                splat.radius = item.value("radius", 24.0f);
+                splat.strength = item.value("strength", 1.0f);
+                splat.color = item.value("color", std::string("#ffffff"));
+                splat.time = item.contains("t") && finite(item["t"]) ? std::max(0.0, item["t"].get<double>()) : *time;
+                splat.effect = effect;
+                splats.push_back(splat);
+            }
+        }
+    }
     UIDocument::setEffectTime(time);
     // the edit and play views draw again with it (an idle view draws only when flagged)
-    if (Project* project = call->ctx().project()) {
+    Project* project = call->ctx().project();
+    if (project) {
         for (SceneProject* sceneProject : project->getHtmlUIScenes()) sceneProject->needUpdateRender = true;
     }
     const double clock = UIDocument::getEffectTime();
+    Json data{{"time", time ? Json(*time) : Json(nullptr)}, {"clock", clock}};
     std::ostringstream text;
+    if (scripted) {
+        double x = 0, y = 0;
+        std::string error;
+        Json found;
+        if (!htmlui_mcp::elementCenter(call->ctx(), args.value("entity", Json()), selector, x, y, error, &found)) {
+            call->fail(error + ".");
+            return;
+        }
+        SceneProject* sp = project ? project->getScene(found["scene"].get<uint32_t>()) : nullptr;
+        if (!sp || !sp->scene) {
+            call->fail("the document's scene is not loaded.");
+            return;
+        }
+        UIDocument document(sp->scene, found["entity"]["id"].get<Entity>());
+        UIElement element = document.querySelector(found.value("ref", selector));
+        int simulations = 0;
+        if (args.contains("pointer_path")) simulations = std::max(simulations, element.effectPointerPath(path, effect));
+        if (args.contains("splats")) {
+            int cleared = element.effectClearSplats(effect);
+            for (const UIEffectSplat& splat : splats) cleared = std::max(cleared, element.effectSplat(splat));
+            simulations = std::max(simulations, cleared);
+        }
+        if (simulations == 0) {
+            call->fail("\"" + selector + "\" has no " + (effect.empty() ? std::string("stateful effect") : "'" + effect + "'") +
+                       " simulation yet: a stateful effect starts at its first draw (show the element, take a screenshot), then call again.");
+            return;
+        }
+        sp->needUpdateRender = true;
+        data["element"] = found.value("ref", selector);
+        data["simulations"] = simulations;
+        data["path"] = path.size();
+        data["splats"] = splats.size();
+    }
     if (time) {
         text << "UI effect clock pinned at " << *time << " s in every view: renders are deterministic (pointer state aside). "
              << "set_ui_effect_time {time: null} makes it live again.";
+        if (scripted) {
+            text << " " << data["element"].get<std::string>() << ": " << (args.contains("pointer_path") ? std::to_string(path.size()) + "-point pointer path" : std::string(""))
+                 << (args.contains("pointer_path") && args.contains("splats") ? ", " : "")
+                 << (args.contains("splats") ? std::to_string(splats.size()) + " splat(s)" : std::string(""))
+                 << " on " << data["simulations"].get<int>() << " simulation(s), replayed from the effect's reset at every pinned time (kept until replaced; [] clears).";
+        }
     } else {
         text << "UI effect clock live again (now " << clock << " s).";
     }
-    call->ok(text.str(), Json{{"time", time ? Json(*time) : Json(nullptr)}, {"clock", clock}});
+    call->ok(text.str(), data);
 }
 
 } // namespace
@@ -215,10 +314,15 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.name = "set_ui_effect_time";
         tool.title = "Set UI Effect Time";
         tool.description =
-            "Pin the clock of the HTML/CSS UI effects (edit and play views) so screenshots are identical, or make it live "
-            "again with null.";
+            "Pin the HTML/CSS UI effect clock (edit and play views) so screenshots are identical, or null: live. "
+            "Stateful effects of selector's element replay pointer_path (a drag) and splats exactly at every pinned time.";
         tool.inputSchema = object({
-            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds, or null: live."}}}
+            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds, or null: live."}}},
+            {"entity", entityRef("UI Document (default: topmost match).")},
+            {"selector", string("")},
+            {"effect", string("Default: all its stateful effects.")},
+            {"pointer_path", array(vec3(""), "[[x,y,t]..]: element px, s. []: clear.")},
+            {"splats", array(Json{{"type", "object"}}, "{x,y,dx,dy,radius,color,strength,t}: area px, px/s; replace earlier ones.")}
         }, {"time"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = true;

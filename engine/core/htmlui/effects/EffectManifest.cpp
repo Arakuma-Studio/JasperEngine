@@ -992,8 +992,8 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
         error(m.line, "@summary is longer than 100 characters");
     if (m.builtin && m.source.empty())
         error(m.line, "the manifest has no @source", "@source original (or shaders.com <Name>)");
-    if (!m.source.empty() && m.source.rfind("shaders.com ", 0) != 0 && m.source.rfind("original", 0) != 0)
-        error(m.line, "@source starts with 'shaders.com <Name>' or 'original'");
+    if (!m.source.empty() && m.source.rfind("shaders.com ", 0) != 0 && m.source.rfind("original", 0) != 0 && m.source.rfind("port ", 0) != 0)
+        error(m.line, "@source starts with 'shaders.com <Name>', 'original' or 'port <project> (<author>, <licence>)'");
     if (m.kind == EffectKind::Paint){
         if (m.backdrop)
             error(m.line, "@backdrop is for filter effects");

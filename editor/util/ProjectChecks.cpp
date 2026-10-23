@@ -1012,6 +1012,8 @@ namespace {
                 std::string size;
                 if (st.fixedSize) {
                     size = std::to_string(st.width) + "x" + std::to_string(st.height);
+                } else if (st.aspectShort > 0) {
+                    size = "aspect " + std::to_string(st.aspectShort) + " max " + std::to_string(st.boxMax);
                 } else {
                     char scale[32];
                     std::snprintf(scale, sizeof(scale), "%g", st.boxScale);
@@ -1024,6 +1026,7 @@ namespace {
             nlohmann::json passes = nlohmann::json::array();
             for (const fx::EffectPassDef& pass : m.passes) {
                 nlohmann::json p = {{"name", pass.name}, {"state", m.states[(size_t)pass.state].name}, {"init", pass.init}};
+                if (pass.frame) p["frame"] = true;
                 if (!pass.repeatParam.empty()) p["repeat"] = pass.repeatParam;
                 else if (pass.repeat > 1) p["repeat"] = pass.repeat;
                 if (pass.additive) p["add"] = true;
@@ -1035,6 +1038,16 @@ namespace {
             if (m.warmupSteps > 0)
                 state["warmup"] = {{"steps", m.warmupSteps}, {"dt", m.warmupDt}};
             entry["state"] = std::move(state);
+        }
+        // @preset: the options of the `preset` parameter and the values each one sets
+        if (!m.presets.empty()) {
+            nlohmann::json presets = nlohmann::json::object();
+            for (const fx::EffectPresetDef& preset : m.presets) {
+                nlohmann::json values = nlohmann::json::object();
+                for (const auto& value : preset.values) values[value.first] = value.second;
+                presets[preset.option] = std::move(values);
+            }
+            entry["presets"] = std::move(presets);
         }
         return entry;
     }
