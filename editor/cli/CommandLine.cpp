@@ -2088,6 +2088,12 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // with files those drawing with the forks checked
         const std::vector<ProjectChecks::Finding> sceneInputs = ProjectChecks::sceneInputFindings(&project, shadersAll ? nullptr : &forks);
         run.findings.insert(run.findings.end(), sceneInputs.begin(), sceneInputs.end());
+        // Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect): the
+        // scenes' materials and terrain layers, when every shader is checked
+        if (shadersAll) {
+            const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
+            run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+        }
         run.checked.push_back({"shaders", forks.size()});
     }
 

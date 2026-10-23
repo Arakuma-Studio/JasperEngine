@@ -10,13 +10,20 @@ Main Scene.scene (cameras, the main one first):
                a steep mound in the middle distance (the triplanar side projections)
   PlaneCam     a 12 m quad with library:simple_lit (NORMAL_MAP, the pebble maps tiled 6x6), a
                library:triplanar box and a library:unlit quad with the striped texture
-  A low sun from the side (normal-map relief) and the ambient.
+  LitCam       the built-in Lit material (x = -120): a 30 m ground plane tiled 10x10 with every
+               map (pebbles base colour, normal, metallic-roughness and occlusion from the packed
+               map, the glowing orange pebble as emission), a 3 m box with the same material, and
+               an alpha-masked foliage card (leaves cutout, double-sided) casting the shadow of a
+               spot light onto the ground
+  A low sun from the side (normal-map relief), the spot light (shadows) and the ambient.
 
     uv run --no-project --with mcp --with pyyaml python tools/fixtures/stochastic-tiling/generate.py [out dir]
+    uv run --no-project --with mcp --with pyyaml python tools/fixtures/stochastic-tiling/generate.py --add-lit [out dir]
 
 (out dir defaults to this directory; JASPER_EDITOR selects the editor: generate it with an editor
-built without Stochastic Tiling, e.g. main's, so the scene is an old one). The textures come from
-make_assets.py.
+built without Stochastic Tiling, e.g. main's, so the scene is an old one; --add-lit opens the
+fixture as it is and adds only the Lit part, which an editor with the feature saves as an old one
+too while the feature is off: off writes nothing). The textures come from make_assets.py.
 """
 import asyncio
 import shutil
@@ -50,6 +57,51 @@ async def library_mesh(ed, scene, type_, name, position, values, rotation=None, 
     await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": {M + "shader": values[M + "shader"]}})
     await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": values})
     return eid
+
+
+async def lit_mesh(ed, scene, type_, name, position, geometry, material, rotation=None, extra=None):
+    """a built-in Lit mesh: generated geometry (tiled UVs), then its material"""
+    args = {"scene": scene, "type": type_, "name": name, "position": position, "select": False}
+    if rotation:
+        args["rotation"] = rotation
+    eid = (await ed.call("create_entity", **args))["entity_id"]
+    await ed.call("set_mesh_geometry", scene=scene, entity=eid, **geometry)
+    values = {M + key: value for key, value in material.items()}
+    values.update(extra or {})
+    await ed.call("set_properties", scene=scene, entity=eid, values={"mesh": values})
+    return eid
+
+
+async def build_lit(ed, scene):
+    """the built-in Lit material's part (x = -120)"""
+    pebbles = {
+        "baseColorTexture": T + "pebbles.png",
+        "normalTexture": T + "pebbles_normal.png",
+        "metallicRoughnessTexture": T + "pebbles_orm.png",
+        "occlusionTexture": T + "pebbles_orm.png",
+        "emissiveTexture": T + "pebbles_emissive.png",
+        "emissiveFactor": [1.0, 1.0, 1.0],
+        "metallicFactor": 1.0,
+        "roughnessFactor": 0.7,
+    }
+    await lit_mesh(ed, scene, "plane", "LitGround", [-120.0, 0.0, 0.0], {"shape": "plane", "width": 30, "depth": 30, "tiles": 10},
+                   pebbles)
+    await lit_mesh(ed, scene, "cube", "LitBox", [-113.0, 1.5, 3.0], {"shape": "box", "width": 3, "height": 3, "depth": 3, "tiles": 2},
+                   pebbles)
+    await lit_mesh(ed, scene, "wall", "LitFoliage", [-124.0, 2.0, 2.0], {"shape": "wall", "width": 8, "height": 4, "tiles": 2}, {
+        "baseColorTexture": T + "leaves.png",
+        "alphaMode": "MASK",
+        "alphaCutoff": 0.5,
+        "roughnessFactor": 0.8,
+        "metallicFactor": 0.0,
+    }, extra={"submeshes[0].faceCulling": False})
+    # behind the card, its leaves' shadow falling towards the camera
+    spot = (await ed.call("create_entity", scene=scene, type="spot_light", name="LitSpot", position=[-124.0, 8.0, 10.0],
+                          select=False))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=spot, values={"light": {
+        "intensity": 1000.0, "range": 40.0, "shadows": True, "direction": [0.0, -0.6, -0.8],
+        "innerConeCos": 0.85, "outerConeCos": 0.7}})
+    await camera(ed, scene, "LitCam", [-120.0, 7.0, -14.0], [-120.0, 0.5, 4.0])
 
 
 async def build(ed, scene):
@@ -94,6 +146,21 @@ async def build(ed, scene):
         M + "shaderTextures": {"u_baseTexture": T + "stripes.png"},
     }, rotation={"euler": [-90, 0, 0]}, scale=[0.5, 1, 0.5])
     await camera(ed, scene, "PlaneCam", [120.0, 11.0, -16.0], [120.0, 1.0, 3.0])
+    await build_lit(ed, scene)
+
+
+async def add_lit(out: Path) -> None:
+    """the Lit part added to the fixture as it is (its terrain maps and the rest untouched)"""
+    async with Editor(project=HERE) as ed:
+        textures = ed.project / "assets" / "textures"
+        for png in sorted((HERE / "assets" / "textures").glob("*.png")):
+            shutil.copy(png, textures / png.name)
+        await ed.call("sync_files")
+        scene = (await ed.call("list_scenes"))["scenes"][0]["id"]
+        await build_lit(ed, scene)
+        await ed.call("save_scene", scene=scene)
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ed.project / "Main Scene.scene", out / "Main Scene.scene")
 
 
 async def main(out: Path) -> None:
@@ -132,4 +199,6 @@ async def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(Path(sys.argv[1]) if len(sys.argv) > 1 else HERE))
+    args = [a for a in sys.argv[1:] if a != "--add-lit"]
+    target = Path(args[0]) if args else HERE
+    asyncio.run(add_lit(target) if "--add-lit" in sys.argv[1:] else main(target))

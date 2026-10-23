@@ -509,8 +509,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 32;
-        case ShaderType::DEPTH:  return 14;
-        case ShaderType::GBUFFER: return 10;
+        case ShaderType::DEPTH:  return 15;
+        case ShaderType::GBUFFER: return 11;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -540,7 +540,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // case 5 reserved (was 'Pcf'; the PCF filter is uniform-driven now)
+            // Stochastic Tiling of the material's maps (USE_STOCHASTIC_TILING). Until October
+            // 2026 bit 5 was reserved, the retired 'Pcf' (July 2026): keys files hold from
+            // before have it stripped as they are read (editor::Stream::decodeShaderKey)
+            case 5:  return shortName ? "Sto" : "Stochastic Tiling";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -588,6 +591,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 12: return shortName ? "Uv1" : "UV1";
             // the sprite texture rect the alpha-clip UV goes through
             case 13: return shortName ? "Txr" : "Texture Rect";
+            // the alpha clip reads the base colour as the colour pass's Stochastic Tiling does
+            case 14: return shortName ? "Sto" : "Stochastic Tiling";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -601,6 +606,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 7: return shortName ? "Ist" : "Instancing";
             case 8: return shortName ? "Mrt" : "MetalRough Texture";
             case 9: return shortName ? "Tpb" : "Terrain PBR";
+            // base colour and metallic-roughness read as the colour pass's Stochastic Tiling does
+            case 10: return shortName ? "Sto" : "Stochastic Tiling";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1308,8 +1315,9 @@ ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
 }
 
 uint64_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit (e.g. MESH bit 5, the
-    // old 'Pcf') is excluded automatically: it has no short name ("?").
+    // Derived from the property-name table so a retired bit is excluded automatically: it
+    // has no short name ("?"). (MESH bit 5, the old 'Pcf', is Stochastic Tiling again: the
+    // stale ones of old files are stripped where those are read, editor::Stream.)
     uint64_t mask = 0;
     const int propCount = std::min(getShaderPropertyCount(shaderType), SHADER_PROPERTY_BITS);
     for (int i = 0; i < propCount; i++) {
@@ -1331,7 +1339,7 @@ uint64_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity){
+    bool vertexLights, int lightCapacity, bool stochasticTiling){
     uint64_t prop = 0;
 
     prop |= unlit            ? shaderPropertyBit(0) : 0;
@@ -1339,8 +1347,9 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= uv2              ? shaderPropertyBit(2) : 0;
     prop |= punctual         ? shaderPropertyBit(3) : 0;
     prop |= shadows          ? shaderPropertyBit(4) : 0;
-    // bit 5 was USE_SHADOWS_PCF; the PCF filter is uniform-driven now (Scene
-    // shadowQuality). Kept reserved so the other bit positions stay stable.
+    // bit 5 was USE_SHADOWS_PCF until July 2026 (the PCF filter is uniform-driven now); since
+    // October 2026 it is Stochastic Tiling (see getShaderPropertyName)
+    prop |= stochasticTiling ? shaderPropertyBit(5) : 0;
     prop |= normals          ? shaderPropertyBit(6) : 0;
     prop |= normalMap        ? shaderPropertyBit(7) : 0;
     prop |= tangents         ? shaderPropertyBit(8) : 0;
@@ -1372,7 +1381,8 @@ uint64_t ShaderPool::getMeshProperties(
 }
 
 uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
-                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect){
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
+                                            bool stochasticTiling){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
@@ -1389,11 +1399,13 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= vertexColorVec4  ? shaderPropertyBit(11) : 0;
     prop |= uv1              ? shaderPropertyBit(12) : 0;
     prop |= textureRect      ? shaderPropertyBit(13) : 0;
+    prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
 
     return prop;
 }
 
-uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR){
+uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
+                                              bool stochasticTiling){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1406,6 +1418,7 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= instanced               ? shaderPropertyBit(7) : 0;
     prop |= metallicRoughnessTexture ? shaderPropertyBit(8) : 0;
     prop |= terrainPBR              ? shaderPropertyBit(9) : 0;
+    prop |= stochasticTiling        ? shaderPropertyBit(10) : 0;
 
     return prop;
 }

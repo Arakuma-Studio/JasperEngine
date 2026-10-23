@@ -103,7 +103,22 @@ uniform u_fs_pbrParams {
         vec3 emissiveFactor;
         float foliageTransmission;
     #endif
+    #ifdef USE_STOCHASTIC_TILING
+        #ifdef MATERIAL_UNLIT
+            // up to the offset of the values in the CPU Material prefix (48 bytes)
+            #ifndef ALPHA_MASK
+                vec4 stochasticPadding0;
+            #endif
+            vec4 stochasticPadding1;
+        #endif
+        // Stochastic Tiling: cell size, blend sharpness, contrast, rotation (includes/pbr.glsl)
+        vec4 stochastic;
+    #endif
 } pbrParams;
+
+#ifdef USE_STOCHASTIC_TILING
+    #define LIT_STOCHASTIC_PARAMS pbrParams.stochastic
+#endif
 
 // Lit reads the camera (eye, ambient, environment, viewport, fog) from its own camera block
 // (includes/lit_frame.glsl, the part of the engine frame block it needs), and its lights

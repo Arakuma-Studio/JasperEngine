@@ -516,6 +516,7 @@ Json materialToJson(Project* project, const Material& material) {
         {"emissiveFactor", McpValues::toJson(material.emissiveFactor)},
         {"foliageTransmission", material.foliageTransmission}
     };
+    McpValues::materialStochasticToJson(material, data);
     for (const auto& [name, member] : materialTextures()) {
         const Texture& texture = material.*member;
         data[name] = texture.empty() ? Json(nullptr) : Json(McpValues::assetPathToJson(project, texture.getPath(0)));
@@ -572,6 +573,8 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
             material.alphaMode = found->second;
         } else if (McpValues::isMaterialShaderLibraryKey(key)) {
             // applied together below, the shader first
+        } else if (McpValues::isMaterialStochasticKey(key)) {
+            // applied together below
         } else {
             handled = false;
         }
@@ -609,12 +612,14 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
         if (!handled) {
             error = "Unknown material field \"" + key + "\". Fields: baseColorFactor, metallicFactor, roughnessFactor, alphaCutoff, "
                     "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
-                    "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
+                    "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
+                    "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
     }
+    if (!McpValues::materialStochasticFromJson(values, material, error)) return false;
     return McpValues::materialShaderLibraryFromJson(project, nullptr, values, material, error);
 }
 
@@ -2486,8 +2491,13 @@ void checkShaderTool(const CallPtr& call) {
         }
     }
     // with every shader in use: the materials reading the scene from the opaque queue (phase 3)
-    const std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
+    std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
         ? std::vector<ProjectChecks::Finding>() : ProjectChecks::sceneInputFindings(project);
+    // and Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect)
+    if (!args.contains("shader")) {
+        const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
+        stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+    }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
         size_t failed = 0;
@@ -3059,7 +3069,8 @@ void registerAssetTools(McpRegistry& registry) {
 
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
-        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
+        "foliageTransmission, *Texture (path|null), *TexCoord, stochasticTiling (Lit: hides tiling repetition, up to 3x the "
+        "reads) with stochasticCellSize (0.25-4) / BlendSharpness / Contrast / Rotation (0-1); shader (\"library:<name>\"), shaderParams {member: value}, "
         "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
         "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
         "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");

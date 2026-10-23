@@ -3613,7 +3613,12 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      the G-buffer; library shaders gain the STOCHASTIC feature.
     //      Also .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
     //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
+    // v35: Stochastic Tiling of the built-in Lit material — MESH bit 5 'Sto' (USE_STOCHASTIC_TILING:
+    //      includes/pbr.glsl, u_fs_pbrParams gains a vec4), DEPTH bit 14 and GBUFFER bit 10 'Sto'
+    //      (u_fs_depthMaterial / u_fs_gbufferMaterial gain one); lighting2d.glsl's normal map.
+    //      Also supersedes v34, which two branches each bumped to (the terrain/library Stochastic
+    //      Tiling and the 64-bit shader keys): a v34 cache from either could be trusted by the other.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
 }
 
 void editor::App::pushTabNotificationStyle(){

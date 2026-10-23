@@ -254,8 +254,10 @@ namespace jasperengine::editor {
         // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
         // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
         // customShader (a fork's project-relative path: the session-local id is not written;
-        // a null node for an id without a name). decodeShaderKey also reads the legacy
-        // packed integer (32 property bits, customId dropped). Neither normalizes.
+        // a null node for an id without a name), and keyVersion 2 on a MESH key with bit 5 (Stochastic
+        // Tiling): decodeShaderKey clears that bit of a key without it, a stale 'Pcf' (retired
+        // July 2026) of a file written before. decodeShaderKey also reads the legacy packed integer
+        // (32 property bits, customId dropped; bit 5 cleared). Neither normalizes.
         static YAML::Node encodeShaderKey(ShaderKey key);
         static bool decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key);
         // A list of them, normalized both ways (ShaderPool::normalizeKey) so a since-retired

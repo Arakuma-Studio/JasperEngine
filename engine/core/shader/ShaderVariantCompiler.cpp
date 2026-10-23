@@ -365,7 +365,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
     if (prop & shaderPropertyBit(3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
     if (prop & shaderPropertyBit(4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
-    // bit 5 reserved (was USE_SHADOWS_PCF; the PCF filter is uniform-driven now)
+    if (prop & shaderPropertyBit(5))  defs.push_back({"USE_STOCHASTIC_TILING", "1"});     // 'Sto' (was 'Pcf' until July 2026)
     if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
     if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
@@ -409,6 +409,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
     if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
+    if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -422,6 +423,7 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
     if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"USE_STOCHASTIC_TILING", "1"});         // 'Sto'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

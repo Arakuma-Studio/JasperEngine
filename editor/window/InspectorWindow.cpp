@@ -65,6 +65,7 @@
 #include "component/PanelComponent.h"
 #include "util/SHA1.h"
 #include "util/ProjectUtils.h"
+#include "util/NormalMapTilt.h"
 #include "Stream.h"
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
@@ -3582,7 +3583,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::DragFloat(("##input_float_"+id).c_str(), &newValue, settings.stepSize, v_min, v_max, newFormat.c_str())){
+        const bool slider = type != RowPropertyType::HalfCone && settings.floatMin < settings.floatMax;
+        bool edited = false;
+        if (slider){
+            ImGuiSliderFlags flags = ImGuiSliderFlags_AlwaysClamp | (settings.logarithmic ? ImGuiSliderFlags_Logarithmic : 0);
+            edited = ImGui::SliderFloat(("##input_float_"+id).c_str(), &newValue, settings.floatMin, settings.floatMax, newFormat.c_str(), flags);
+        }else{
+            edited = ImGui::DragFloat(("##input_float_"+id).c_str(), &newValue, settings.stepSize, v_min, v_max, newFormat.c_str());
+        }
+        if (edited){
             for (Entity& entity : entities){
                 if (type == RowPropertyType::HalfCone){
                     cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, cos(Angle::defaultToRad(newValue / 2)), settings.onValueChanged);
@@ -5741,6 +5750,34 @@ editor::InspectorWindow::ShaderUniformRows editor::InspectorWindow::resolveShade
     return rows;
 }
 
+void editor::InspectorWindow::drawStochasticRotationWarning(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                           const std::string& rotationProperty, float rotation, const Texture& normalTexture,
+                                                           const std::function<void()>& onValueChanged){
+    if (!(rotation > 0.0f) || normalTexture.empty() || normalTexture.isFramebuffer())
+        return;
+    const std::string path = normalTexture.getPath(0);
+    if (path.empty())
+        return;
+    const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(path));
+    // measured once per file (and modification), off this thread
+    const NormalMapTiltResult tilt = NormalMapTilt::request(file);
+    if (!tilt.ready || !tilt.valid || tilt.degrees < NormalMapTilt::WARNING_DEGREES)
+        return;
+
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(1);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+    ImGui::TextWrapped("%s: rotated tiles will look tilted. Keep Rotation at 0.", NormalMapTilt::describe(file, tilt.degrees).c_str());
+    ImGui::PopStyleColor();
+    if (ImGui::SmallButton(("Set Rotation to 0##" + rotationProperty).c_str())){
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        for (const Entity& entity : entities){
+            multiCmd->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, rotationProperty, 0.0f, onValueChanged);
+        }
+        CommandHandle::get(sceneProject->id)->addCommand(multiCmd);
+    }
+}
+
 void editor::InspectorWindow::drawShaderUniformWarnings(const std::vector<std::string>& warnings){
     for (const std::string& warning : warnings) {
         ImGui::TableNextRow();
@@ -6816,6 +6853,38 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
+
+            // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
+            const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
+            RowSettings settingsStochastic = settingsMaterial;
+            settingsStochastic.help = "Hides the repetition of the material's tiled maps: hexagonal cells each read them at a random offset "
+                                      "and blend at their borders, every map alike (shadows and reflections too). Up to three reads per "
+                                      "map where cells meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid. "
+                                      "The textures must repeat. Not on sprites, tilemaps or terrains (their layers have their own).";
+            propertyRow(RowPropertyType::Bool, cpType, materialPrefix + "stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
+            const Material& firstMaterial = sceneProject->scene->getComponent<MeshComponent>(entities[0]).submeshes[s].material;
+            if (firstMaterial.stochasticTiling){
+                RowSettings settingsParam = settingsFactor;
+                settingsParam.indent = true;
+                settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+                // the ranges MCP takes: 0.25-4, the others 0-1
+                settingsParam.floatMin = 0.25f;
+                settingsParam.floatMax = 4.0f;
+                settingsParam.logarithmic = true;
+                propertyRow(RowPropertyType::FloatPositive, cpType, materialPrefix + "stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+                settingsParam.floatMin = 0.0f;
+                settingsParam.floatMax = 1.0f;
+                settingsParam.logarithmic = false;
+                settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
+                settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
+                settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in) "
+                                     "and for normal maps whose average normal leans.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, materialPrefix + "stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+                drawStochasticRotationWarning(cpType, sceneProject, entities, materialPrefix + "stochasticRotation", firstMaterial.stochasticRotation,
+                                              firstMaterial.normalTexture, settingsMaterial.onValueChanged);
+            }
             endTable();
             }
 
@@ -8757,13 +8826,23 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
                 settingsParam.indent = true;
                 settingsParam.stepSize = 0.01f;
                 settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+                // the ranges of the Terrain window and set_terrain_maps: 0.25-4, the others 0-1
+                settingsParam.floatMin = 0.25f;
+                settingsParam.floatMax = 4.0f;
+                settingsParam.logarithmic = true;
                 propertyRow(RowPropertyType::FloatPositive, cpType, property + ".stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+                settingsParam.floatMin = 0.0f;
+                settingsParam.floatMax = 1.0f;
+                settingsParam.logarithmic = false;
                 settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
                 propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
                 settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
                 propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
                 settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in).";
                 propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+                // (a layer's normal map is read by its PBR surface only)
+                drawStochasticRotationWarning(cpType, sceneProject, entities, property + ".stochasticRotation", terrain.surfaceLayers[i].stochasticRotation,
+                                              terrain.surfaceLayers[i].pbr ? terrain.surfaceLayers[i].normalTexture : Texture(), nullptr);
             }
             endTable();
             ImGui::PopID();

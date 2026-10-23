@@ -619,6 +619,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp

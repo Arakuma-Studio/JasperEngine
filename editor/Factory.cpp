@@ -1177,6 +1177,18 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].material.occlusionTexCoord = " << formatInt(submeshMaterial.occlusionTexCoord) << ";\n";
         if (submeshMaterial.normalTexCoord != 0)
             code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
+        // Stochastic Tiling, away from its defaults
+        static const Material defaultMaterial = Material();
+        if (submeshMaterial.stochasticTiling)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticTiling = true;\n";
+        if (submeshMaterial.stochasticCellSize != defaultMaterial.stochasticCellSize)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticCellSize = " << formatFloat(submeshMaterial.stochasticCellSize) << ";\n";
+        if (submeshMaterial.stochasticBlendSharpness != defaultMaterial.stochasticBlendSharpness)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticBlendSharpness = " << formatFloat(submeshMaterial.stochasticBlendSharpness) << ";\n";
+        if (submeshMaterial.stochasticContrast != defaultMaterial.stochasticContrast)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticContrast = " << formatFloat(submeshMaterial.stochasticContrast) << ";\n";
+        if (submeshMaterial.stochasticRotation != defaultMaterial.stochasticRotation)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticRotation = " << formatFloat(submeshMaterial.stochasticRotation) << ";\n";
         // shader library: the shader, its values and the render state, when set
         code << formatMaterialShaderLibrary(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
