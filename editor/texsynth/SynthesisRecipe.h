@@ -35,6 +35,7 @@
 #include "json.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -75,6 +76,10 @@ namespace jasperengine::editor::texsynth {
     std::optional<std::string> readRecipeText(const std::filesystem::path& path, std::string* error = nullptr);
     // readRecipeText parsed: nullopt also when the text is not a JSON object
     std::optional<nlohmann::json> readRecipe(const std::filesystem::path& path, std::string* error = nullptr);
+    // Fast form for scanning many files: reads only the chunks before the first IDAT (where
+    // writePngWithRecipe puts the recipe), seeking over the others; a recipe placed after the
+    // image data is not seen. nullopt for no recipe, not a PNG or a garbled chunk (`error`).
+    std::optional<std::string> readRecipeTextHead(const std::filesystem::path& path, std::string* error = nullptr);
 
     // Each source a recipe names, hashed again
     struct SourceState {
@@ -84,8 +89,10 @@ namespace jasperengine::editor::texsynth {
         std::string state;                // "unchanged", "changed", "missing", "unknown" (no path recorded)
     };
     // `recipeFile` is the PNG the recipe came from (pathBase "file"), `projectDir` the project
-    // (pathBase "project")
+    // (pathBase "project"). `hashFile` (optional) gives a file's SHA-1, "" when it can't be read
+    // (a caching hasher for scans); the default reads and hashes the file.
     std::vector<SourceState> checkRecipeSources(const nlohmann::json& recipe, const std::filesystem::path& recipeFile,
-                                                const std::filesystem::path& projectDir);
+                                                const std::filesystem::path& projectDir,
+                                                const std::function<std::string(const std::filesystem::path&)>& hashFile = nullptr);
 
 }

@@ -626,6 +626,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
