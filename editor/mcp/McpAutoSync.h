@@ -7,6 +7,7 @@
 #include "McpJson.h"
 
 #include <chrono>
+#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -100,6 +101,10 @@ namespace jasperengine::editor::mcp {
         // are current. `full`: the whole project was rescanned and picked up.
         void filesSynced(McpContext& ctx, const std::vector<std::filesystem::path>& paths, bool full);
 
+        // With Auto Refresh off: the external changes the journal held when this call started
+        // (its pick-up applied them since; editor_status counts them as pending)
+        size_t heldAtCallStart() const { return heldAtCall; }
+
         // Adds `report` to a tools/call result (structuredContent.external_changes + one text item)
         static void attach(Json& result, const Json& report);
 
@@ -140,7 +145,9 @@ namespace jasperengine::editor::mcp {
 
         int writingCalls = 0;                      // callStarted() without afterCall yet
         uint64_t journalCursor = 1;                // the file watcher's journal, next to read
+        std::deque<std::pair<int64_t, int64_t>> toolWindows;   // recent writing calls' [start, end] (ns)
         std::string lastSource = "scan";           // what the last pick-up read: watcher or scan
+        size_t heldAtCall = 0;
         std::chrono::steady_clock::time_point lastCallStart{};
         std::filesystem::path root;                // project folder of the baseline; empty = none
         int64_t serverStartNs = 0;                 // serverStarted(), ns since the Unix epoch

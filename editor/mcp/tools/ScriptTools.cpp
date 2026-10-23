@@ -321,7 +321,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     return reload::syncHtmlUi(ctx.project(), changed);
 }
 
-Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full, bool force, bool rebuildModels) {
+Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full, const SyncOptions& sync) {
     Project* project = ctx.project();
     Json notes = Json::array();
     Json added = Json::array(), modified = Json::array(), removed = Json::array();
@@ -370,8 +370,10 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     ApplyOptions options;
     options.full = firstFull;
     options.fromMcp = true;
-    options.force = force;
-    options.rebuildModels = rebuildModels;
+    options.force = sync.force;
+    options.rebuildModels = sync.rebuildModels;
+    // a tool's own writes reload what reads them, quietly
+    options.quiet = !sync.external;
     const ApplyResult applied = HotReloadService::get().apply(ChangeSet::fromPaths(std::vector<fs::path>(changed.begin(), changed.end())), options);
 
     Json allNotes = notes;
@@ -1203,7 +1205,11 @@ void syncFilesTool(const CallPtr& call) {
     HotReloadService& reloads = HotReloadService::get();
     const uint64_t serial = reloads.lastSerial();
     reloads.takeLateProblems();
-    auto result = std::make_shared<Json>(syncFiles(call->ctx(), paths, full, !paths.empty(), rebuildModels));
+    SyncOptions sync;
+    sync.force = !paths.empty();
+    sync.rebuildModels = rebuildModels;
+    sync.external = true;
+    auto result = std::make_shared<Json>(syncFiles(call->ctx(), paths, full, sync));
 
     auto finish = [call, result, serial](bool timedOut) {
         HotReloadService& reloads = HotReloadService::get();

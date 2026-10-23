@@ -13,6 +13,9 @@
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
 #include "SettingsCategoryList.h"
+
+#include <cstring>
+#include "reload/HotReloadService.h"
 #include "htmlui/VideoImporter.h"
 
 #include <algorithm>
@@ -44,6 +47,7 @@ namespace {
     enum class PreferencesCategory {
         General,
         CodeEditor,
+        AssetPipeline,
         ExternalTools,
         ShaderCache,
         Count
@@ -53,6 +57,7 @@ namespace {
     const settingsui::Category preferencesCategories[] = {
         {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
         {"Code Editor", "", "font size"},
+        {"Asset Pipeline", "", "auto refresh watcher reload polling interval hot reload log reloads file changes"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
         {"Shader Cache", "", "clear shader cache"},
     };
@@ -170,10 +175,15 @@ namespace {
     }
 }
 
-void EditorSettingsWindow::open(Project* project) {
+void EditorSettingsWindow::open(Project* project, const char* category) {
     m_isOpen = true;
     m_project = project;
     m_cacheStatus.clear();
+    if (category) {
+        for (int i = 0; i < preferencesCategoryCount; i++) {
+            if (std::strcmp(preferencesCategories[i].name, category) == 0) m_category = i;
+        }
+    }
 
     m_availableKits = Generator::detectAvailableKits();
     m_cmakeKitIndex = 0;
@@ -200,6 +210,10 @@ void EditorSettingsWindow::open(Project* project) {
     m_autosaveEnabled = AppSettings::isAutosaveEnabled();
     m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
+    m_autoRefresh = AppSettings::getAutoRefresh();
+    m_fileWatcher = AppSettings::getFileWatcher() == "native" ? 1 : AppSettings::getFileWatcher() == "polling" ? 2 : 0;
+    m_pollingInterval = AppSettings::getPollingInterval();
+    m_logReloads = AppSettings::getLogReloads();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
@@ -286,6 +300,7 @@ void EditorSettingsWindow::drawSettings() {
     switch (static_cast<PreferencesCategory>(m_category)) {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
+        case PreferencesCategory::AssetPipeline: drawAssetPipelineSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
@@ -421,6 +436,50 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
         ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
                          AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    });
+}
+
+void EditorSettingsWindow::drawAssetPipelineSettings() {
+    drawSettingsPanel("##EditorAssetPipelinePanel", [this]() {
+        if (beginSettingsRow("Auto Refresh",
+                             "Reload textures, models, materials, shaders, audio, fonts, scripts and HTML UI when they change on "
+                             "disk. Off: the status bar counts the changes and Assets > Refresh (Ctrl+R) applies them.",
+                             m_autoRefresh != true)) {
+            m_autoRefresh = true;
+        }
+        ImGui::Checkbox("##AssetAutoRefresh", &m_autoRefresh);
+
+        WatchBackendKind forced;
+        const bool overridden = HotReloadService::getWatcherOverride(forced);
+        if (beginSettingsRow("Watcher",
+                             overridden ? "How the editor finds changed files. --file-watcher (or JASPER_FILE_WATCHER) decides it for "
+                                          "this run."
+                                        : "How the editor finds changed files. Auto: the system's file notifications, and polling where "
+                                          "they do not arrive (network drives, WSL, containers).",
+                             m_fileWatcher != 0)) {
+            m_fileWatcher = 0;
+        }
+        static const char* const watchers[] = {"Auto", "Native", "Polling"};
+        ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+        ImGui::BeginDisabled(overridden);
+        ImGui::Combo("##AssetWatcher", &m_fileWatcher, watchers, IM_ARRAYSIZE(watchers));
+        ImGui::EndDisabled();
+
+        // only polling has an interval
+        if (m_fileWatcher == 2) {
+            if (beginSettingsRow("Polling Interval", "Seconds between two looks at the project's files.",
+                                 std::fabs(m_pollingInterval - 1.0f) > 1e-4f)) {
+                m_pollingInterval = 1.0f;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragFloat("##AssetPollingInterval", &m_pollingInterval, 0.05f, 0.25f, 10.0f, "%.2f s", ImGuiSliderFlags_AlwaysClamp);
+        }
+
+        if (beginSettingsRow("Log Reloads", "Write a [Hot Reload] line to the Console for what reloaded (failures always are).",
+                             m_logReloads != true)) {
+            m_logReloads = true;
+        }
+        ImGui::Checkbox("##AssetLogReloads", &m_logReloads);
     });
 }
 
@@ -616,6 +675,18 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setAutosaveEnabled(m_autosaveEnabled);
     AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
+    // the watcher starts again on the project when how it watches changed
+    static const char* const watcherNames[] = {"auto", "native", "polling"};
+    const bool watcherChanged = AppSettings::getFileWatcher() != watcherNames[m_fileWatcher] ||
+                                std::fabs(AppSettings::getPollingInterval() - m_pollingInterval) > 1e-4f;
+    AppSettings::setAutoRefresh(m_autoRefresh);
+    AppSettings::setFileWatcher(watcherNames[m_fileWatcher]);
+    AppSettings::setPollingInterval(m_pollingInterval);
+    AppSettings::setLogReloads(m_logReloads);
+    HotReloadService& reloads = HotReloadService::get();
+    reloads.setAutoRefresh(m_autoRefresh);
+    reloads.setLogReloads(m_logReloads);
+    if (watcherChanged && m_project && reloads.getProject() == m_project) reloads.startWatching(*m_project);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);

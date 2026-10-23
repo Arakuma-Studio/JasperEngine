@@ -40,6 +40,11 @@ namespace jasperengine::editor {
         int m_autosaveInterval = 60;
         static void openInFileManager(const std::filesystem::path& folder);
         bool m_htmlUiAutoImport = true;
+        // Asset Pipeline (S05 R26)
+        bool m_autoRefresh = true;
+        int m_fileWatcher = 0;            // 0 Auto, 1 Native, 2 Polling
+        float m_pollingInterval = 1.0f;   // seconds
+        bool m_logReloads = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
@@ -55,6 +60,7 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawGeneralSettings();
         void drawCodeEditorSettings();
+        void drawAssetPipelineSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.
         void drawCMakeSettings();
@@ -64,7 +70,8 @@ namespace jasperengine::editor {
         bool applySettings();
 
     public:
-        void open(Project* project);
+        // `category`: the page to show ("Asset Pipeline"...), else the last one
+        void open(Project* project, const char* category = nullptr);
         void show();
         bool isOpen() const { return m_isOpen; }
     };

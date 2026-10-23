@@ -78,6 +78,7 @@ bool editor::CopyFileCmd::execute(){
                     const auto options = fs::copy_options::overwrite_existing |
                         (isDir ? fs::copy_options::recursive : fs::copy_options::none);
                     fs::copy(sourceFs, destFs, options);
+                    FileUtils::reportWritten(destFs);
                     // copied prefabs are new assets: new GUIDs, the same ones on a redo
                     if (project && (isDir || Util::isPrefabFile(extension))) {
                         project->importPrefabFiles(destFs, true, &copyGuids);
@@ -120,6 +121,7 @@ void editor::CopyFileCmd::undo(){
                     }else{
                         fs::remove(sourceFs);
                     }
+                    FileUtils::reportRemoved(sourceFs);
                     // instances of the copies made since become Missing Prefabs
                     if (project && (isDir || Util::isPrefabFile(extension))) {
                         project->cleanupPrefabFilePath(sourceFs);

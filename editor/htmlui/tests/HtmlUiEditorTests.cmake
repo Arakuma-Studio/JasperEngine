@@ -25,15 +25,8 @@ jasperengine_apply_cxx_standard(gtest gtest_main)
 set(HTMLUI_EDITOR_TEST_EDITOR_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(REMOVE_ITEM HTMLUI_EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
 
-# The tests themselves see googletest; the editor sources keep the editor's command lines.
-# Also the file watcher and hot reload tests (S05), where S02's layout puts them, until S02's
-# jasperengine-core-tests and jasperengine-editor-tests targets take them over.
-file(GLOB HTMLUI_EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_LIST_DIR}/*.cpp
-    ${CMAKE_SOURCE_DIR}/engine/tests/core/io/watch/*.cpp
-    ${CMAKE_SOURCE_DIR}/engine/tests/core/pool/*.cpp
-    ${CMAKE_SOURCE_DIR}/editor/tests/reload/*.cpp
-)
+# The tests themselves see googletest; the editor sources keep the editor's command lines
+file(GLOB HTMLUI_EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
 add_library(jasperengine-htmlui-editor-tests-objects OBJECT ${HTMLUI_EDITOR_TEST_SOURCES})
 target_link_libraries(jasperengine-htmlui-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp)
 target_include_directories(jasperengine-htmlui-editor-tests-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})

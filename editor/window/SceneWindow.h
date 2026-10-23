@@ -54,6 +54,8 @@ namespace jasperengine::editor {
         // Prefab Mode's bar over its Scene view: breadcrumbs, Save, Auto Save, Context
         // (PrefabStageBar.cpp)
         void drawPrefabStageBar(SceneProject& sceneProject);
+        // a scene, prefab or project.yaml another program changed on disk: Reload / Keep Mine (S05)
+        void drawExternalChangeBar(SceneProject& sceneProject);
         std::string getPrefabStageWindowTitle(const SceneProject& sceneProject) const;
         // Leaves Prefab Mode down to `depth` stages, asking to save (deferred to the next frame)
         void requestExitPrefabStages(size_t depth);

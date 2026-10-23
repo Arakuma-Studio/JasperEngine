@@ -277,7 +277,7 @@ Json fileWatcherJson() {
         {"coalesced", stats.coalesced},
         {"echoes_suppressed", stats.echoesSuppressed},
         {"overflows", stats.overflows},
-        {"pending", stats.pending + reloads.pendingExternalChanges()},
+        {"pending", stats.pending + reloads.pendingExternalChanges() + McpAutoSync::get().heldAtCallStart()},
         {"reloading", reloads.reloadingCount()},
         {"reloads", reloads.reloadCount()},
         {"last_reload", reloads.lastReloadJson()},

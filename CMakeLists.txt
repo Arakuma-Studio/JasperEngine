@@ -633,6 +633,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
+    ${EDITOR_DIR}/window/StatusBar.cpp
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
@@ -692,6 +693,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
+    ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp

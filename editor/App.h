@@ -21,6 +21,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
+#include "window/StatusBar.h"
 #include "window/PlayInput.h"
 
 #include "window/LoadingWindow.h"
@@ -178,6 +179,7 @@ namespace jasperengine::editor{
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
+        StatusBar* statusBar;
 
         LoadingWindow* loadingWindow;
 

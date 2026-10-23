@@ -52,6 +52,8 @@ constexpr size_t REPORT_PATHS_MAX = 50;
 // Filesystem timestamps come from a coarse clock that can lag the real time by a tick: a
 // write made just after a call started may be stamped slightly before it.
 constexpr int64_t SETTLE_SLACK_NS = 15'000'000;
+// the writing calls whose run the journal pick-up remembers
+constexpr size_t TOOL_WINDOWS_MAX = 32;
 
 struct FileStat {
     int64_t mtime = 0;
@@ -547,6 +549,7 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes) {
         paths.push_back((root / fs::path(change.rel)).lexically_normal());
         if (change.report) reportable.insert(change.rel);
     }
+    // quiet: the call's result reports it (the Console lines are the watcher's)
     Json result = w4::syncFiles(ctx, paths, false);
     if (reportable.empty()) return nullptr;
 
@@ -596,6 +599,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     std::vector<Change> found;
     // the file watcher's journal when it runs; the stat scan when it is off, degraded, behind
     // (an overflow) or its flush timed out (R29)
+    heldAtCall = 0;
     const std::string source = takeJournal(found) ? "watcher" : "scan";
     if (source == "scan") {
         bool complete = true;
@@ -742,8 +746,14 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
     for (const FileChange& change : journal) {
         // fell behind the ring: everything may have changed, the scan looks
         if (change.kind == FileChangeKind::Rescan && change.path == watcher.getRoot()) return false;
-        // the editor's own writes are not external (the tools handled theirs)
+        // the editor's own writes are not external (the tools handled theirs), nor what a
+        // writing call stamped while it ran (a tool writing past the atomic writer)
         if (change.kind == FileChangeKind::Rescan || change.directory || change.origin == ChangeOrigin::Editor) continue;
+        if (change.kind != FileChangeKind::Removed && std::any_of(toolWindows.begin(), toolWindows.end(), [&](const auto& window) {
+                return change.mtimeNs >= window.first && change.mtimeNs <= window.second;
+            })) {
+            continue;
+        }
         auto add = [&](const fs::path& path, char kind) {
             const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
             if (rel.empty() || rel.is_absolute()) return;
@@ -768,12 +778,17 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
         markHot(change.rel);
     }
     found.insert(found.end(), taken.begin(), taken.end());
+    // Auto Refresh off: what waited in the journal for this call (editor_status pending)
+    heldAtCall = HotReloadService::get().getAutoRefresh() ? 0 : taken.size();
     return true;
 }
 
 void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start,
                             std::chrono::system_clock::time_point end) {
     if (writingCalls > 0) writingCalls--;
+    // the journal's safety net: what a writing call stamped inside its run is its own
+    toolWindows.emplace_back(toNs(start) - SETTLE_SLACK_NS, toNs(end) + SETTLE_SLACK_NS / 5);
+    while (toolWindows.size() > TOOL_WINDOWS_MAX) toolWindows.pop_front();
     bool rebased = false;
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
 

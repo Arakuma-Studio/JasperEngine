@@ -14,6 +14,7 @@
 #include "htmlui/HtmlUIDependencies.h"
 #include "mcp/McpRefs.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -27,7 +28,7 @@ namespace fs = std::filesystem;
 
 bool reload::isHtmlUiFile(const std::string& path) {
     if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
-    const std::string ext = extensionOf(FileUtils::pathFromUtf8(path));
+    const std::string ext = watch::lowerExtension(FileUtils::pathFromUtf8(path));
     // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
     // declaring it read (phase 5)
     return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";

@@ -79,7 +79,12 @@ namespace jasperengine::editor::mcp {
         // project for changes since the last sync; `force` reloads even what is current.
         // Returns {changed, code_editor, script_properties, problems, notes, reloaded, pending}:
         // `pending` are still reloading on a worker (HotReloadService::idleFor).
-        Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changed, bool full, bool force = false, bool rebuildModels = false);
+        struct SyncOptions {
+            bool force = false;          // reload even what is current (sync_files paths)
+            bool rebuildModels = false;  // sync_files rebuild_models
+            bool external = false;       // changes another program made (Console lines); else a tool's own writes
+        };
+        Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changed, bool full, const SyncOptions& options = {});
         // HTML UI documents using changed files (.html/.htm/.css and the images, svg, fonts,
         // json/lottie they read). Every open scene, prefab stage and running Play scene:
         // UIDocumentSystem::reloadChangedFiles (its stamps make a change reload once, whoever

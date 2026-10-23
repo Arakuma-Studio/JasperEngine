@@ -110,6 +110,7 @@ editor::App::App(){
     sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
     mainToolbar = new MainToolbar(&project);
+    statusBar = new StatusBar([this]() { editorSettingsWindow.open(&project, "Asset Pipeline"); });
     inspectorWindow->setSceneWindow(sceneWindow);
     hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
@@ -543,7 +544,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
-        menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
+        menuShortcut(AppMenuCommand::AssetsRefresh, "Refresh", "Ctrl+R"),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
@@ -881,6 +882,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             projectWindow->assetsImport();
             break;
         case AppMenuCommand::AssetsRefresh:
+            // what changed on disk (the journal with Auto Refresh off), then the open folder
+            HotReloadService::get().refresh();
             projectWindow->assetsRefresh();
             break;
         case AppMenuCommand::About:
@@ -1936,6 +1939,7 @@ void editor::App::show(){
                 executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
             };
             if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
+            if (chord(true, false, false, ImGuiKey_R)) run(AppMenuCommand::AssetsRefresh);
             if (chord(true, true, false, ImGuiKey_N)) {
                 const auto& entries = HierarchyWindow::getCreateMenuEntries();
                 for (size_t i = 0; i < entries.size(); i++) {
@@ -2024,6 +2028,7 @@ void editor::App::show(){
 
     showMenu();
     mainToolbar->show();
+    statusBar->show();
     showFooter();
 
     isInitialized = true;
