@@ -6,15 +6,16 @@
 #include "stb_image.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <fstream>
-#include <future>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <system_error>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -22,44 +23,113 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Entry {
-        fs::file_time_type modified;
+    using editor::NormalMapTiltResult;
+
+    // One measure of one version of a file, shared by the cache entry, the thread computing it
+    // and whoever waits for it. The cache drops its reference when the file changes, without
+    // waiting: the thread keeps the job alive until it has finished into it.
+    struct Job {
+        std::mutex mutex;
+        std::condition_variable done;
         bool ready = false;
-        jasperengine::editor::NormalMapTiltResult result;
-        std::shared_future<jasperengine::editor::NormalMapTiltResult> pending;
+        NormalMapTiltResult result;
+
+        void finish(const NormalMapTiltResult& value) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                result = value;
+                ready = true;
+            }
+            done.notify_all();
+        }
+
+        bool poll(NormalMapTiltResult& value) {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!ready)
+                return false;
+            value = result;
+            return true;
+        }
+
+        NormalMapTiltResult wait() {
+            std::unique_lock<std::mutex> lock(mutex);
+            done.wait(lock, [this] { return ready; });
+            return result;
+        }
     };
 
-    std::mutex& cacheMutex() {
-        static std::mutex mutex;
-        return mutex;
+    // the version of a file a result belongs to
+    struct Version {
+        fs::file_time_type modified;
+        std::uintmax_t size = 0;
+
+        bool operator==(const Version& other) const { return modified == other.modified && size == other.size; }
+    };
+
+    struct Entry {
+        Version version;
+        std::shared_ptr<Job> job;
+    };
+
+    struct Cache {
+        std::mutex mutex;
+        std::map<std::string, Entry> entries;
+        editor::NormalMapTilt::MeasureFunction measure;
+    };
+
+    // Never destroyed: a lookup from a static destructor still finds it (measure threads do
+    // not touch it, only their Job)
+    Cache& cache() {
+        static Cache* const instance = new Cache();
+        return *instance;
     }
 
-    std::map<std::string, Entry>& cache() {
-        static std::map<std::string, Entry> entries;
-        return entries;
+    // the file's version now; false when it is not a readable file
+    bool currentVersion(const fs::path& file, Version& version) {
+        std::error_code ec;
+        version.modified = fs::last_write_time(file, ec);
+        if (ec)
+            return false;
+        version.size = fs::file_size(file, ec);
+        return !ec;
     }
 
-    jasperengine::editor::NormalMapTiltResult measured(const fs::path& file) {
-        jasperengine::editor::NormalMapTiltResult result;
+    NormalMapTiltResult measured(const editor::NormalMapTilt::MeasureFunction& function, const fs::path& file) {
+        NormalMapTiltResult result;
         result.ready = true;
-        result.valid = jasperengine::editor::NormalMapTilt::measureFile(file, result.degrees);
+        try {
+            result.valid = function ? function(file, result.degrees) : editor::NormalMapTilt::measureFile(file, result.degrees);
+        } catch (...) {
+            result.valid = false;
+        }
+        if (!result.valid)
+            result.degrees = 0.0f;
         return result;
     }
 
-    // The entry of the file as it is now (a changed file is measured again); null when it is
-    // not there
-    Entry* currentEntry(const fs::path& file, std::string& key) {
-        std::error_code ec;
-        const fs::file_time_type modified = fs::last_write_time(file, ec);
-        if (ec)
-            return nullptr;
-        key = file.lexically_normal().generic_string();
-        auto found = cache().find(key);
-        if (found != cache().end() && found->second.modified != modified)
-            cache().erase(found);
-        Entry& entry = cache()[key];
-        entry.modified = modified;
-        return &entry;
+    // The job of the file's version: the cached one, else a new one the caller runs (created),
+    // with the measure function to run it with. Only the map is touched under the lock; an
+    // entry of an older version lets go of its job (whose thread, if any, still holds it).
+    std::shared_ptr<Job> findJob(const fs::path& file, const Version& version, bool& created,
+                                 editor::NormalMapTilt::MeasureFunction& function) {
+        const std::string key = file.lexically_normal().generic_string();
+        std::shared_ptr<Job> previous;
+        std::shared_ptr<Job> job;
+        {
+            Cache& c = cache();
+            std::lock_guard<std::mutex> lock(c.mutex);
+            Entry& entry = c.entries[key];
+            created = !entry.job || !(entry.version == version);
+            if (created) {
+                previous = std::move(entry.job);
+                entry.version = version;
+                entry.job = std::make_shared<Job>();
+                function = c.measure;
+            }
+            job = entry.job;
+        }
+        // (previous goes here, outside the lock)
+        return job;
     }
 
 }
@@ -110,48 +180,59 @@ bool editor::NormalMapTilt::measureFile(const fs::path& file, float& degrees, st
 }
 
 editor::NormalMapTiltResult editor::NormalMapTilt::request(const fs::path& file) {
-    std::lock_guard<std::mutex> lock(cacheMutex());
-    std::string key;
-    Entry* entry = currentEntry(file, key);
-    if (!entry)
+    Version version;
+    if (!currentVersion(file, version))
         return NormalMapTiltResult{true, false, 0.0f};
-    if (entry->ready)
-        return entry->result;
-    if (!entry->pending.valid()) {
-        entry->pending = std::async(std::launch::async, measured, file).share();
+    bool created = false;
+    MeasureFunction function;
+    std::shared_ptr<Job> job = findJob(file, version, created, function);
+    if (created) {
+        try {
+            // detached: it owns what it uses (the job, the function, the path)
+            std::thread([job, function, file]() { job->finish(measured(function, file)); }).detach();
+        } catch (const std::system_error&) {
+            // no thread to measure it with: no warning rather than a wait
+            job->finish(NormalMapTiltResult{true, false, 0.0f});
+        }
     }
-    if (entry->pending.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        entry->result = entry->pending.get();
-        entry->ready = true;
-        entry->pending = {};
-        return entry->result;
-    }
+    NormalMapTiltResult result;
+    if (job->poll(result))
+        return result;
     return NormalMapTiltResult();
 }
 
 editor::NormalMapTiltResult editor::NormalMapTilt::measure(const fs::path& file) {
-    std::shared_future<NormalMapTiltResult> pending;
-    {
-        std::lock_guard<std::mutex> lock(cacheMutex());
-        std::string key;
-        Entry* entry = currentEntry(file, key);
-        if (!entry)
-            return NormalMapTiltResult{true, false, 0.0f};
-        if (entry->ready)
-            return entry->result;
-        if (!entry->pending.valid()) {
-            entry->result = measured(file);
-            entry->ready = true;
-            return entry->result;
-        }
-        pending = entry->pending;
+    Version version;
+    if (!currentVersion(file, version))
+        return NormalMapTiltResult{true, false, 0.0f};
+    bool created = false;
+    MeasureFunction function;
+    std::shared_ptr<Job> job = findJob(file, version, created, function);
+    if (created) {
+        // decoded here, without the cache's lock: other files' lookups go on meanwhile
+        job->finish(measured(function, file));
     }
-    // one a request started: its result
-    return pending.get();
+    // one a request (or another measure) started: its result
+    return job->wait();
 }
 
 std::string editor::NormalMapTilt::describe(const fs::path& file, float degrees) {
     char text[64];
     std::snprintf(text, sizeof(text), "%.0f", degrees);
     return file.filename().generic_string() + "'s average normal is " + text + "\xC2\xB0 off +Z";
+}
+
+void editor::NormalMapTilt::setMeasureFunction(MeasureFunction function) {
+    Cache& c = cache();
+    std::lock_guard<std::mutex> lock(c.mutex);
+    c.measure = std::move(function);
+}
+
+void editor::NormalMapTilt::clearCache() {
+    std::map<std::string, Entry> dropped;
+    {
+        Cache& c = cache();
+        std::lock_guard<std::mutex> lock(c.mutex);
+        dropped.swap(c.entries);
+    }
 }

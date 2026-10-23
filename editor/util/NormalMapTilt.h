@@ -4,6 +4,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <string>
 
 namespace jasperengine::editor {
@@ -16,8 +17,14 @@ namespace jasperengine::editor {
     // (stochastic-tilted-normal-map) when the tilt is at least WARNING_DEGREES.
     //
     // The mean of the decoded texel normals (rgb * 2 - 1, each made unit length; large images
-    // are sampled on a grid of at most 512 x 512), measured once per file and kept by its path
-    // and modification time.
+    // are sampled on a grid of at most 512 x 512), measured once per file and kept by its path,
+    // modification time and size.
+    //
+    // Thread-safe. Nothing decodes while holding the cache's lock, and a file that changes while
+    // its old version is still being measured never waits for that measure: each measure has
+    // its own shared state, which the thread computing it keeps alive (and the cache drops), so
+    // the UI thread never blocks on a decode, and a measure still running at exit touches no
+    // static the exit destroys.
     struct NormalMapTiltResult {
         bool ready = false;     // measured (request: false while it is being measured)
         bool valid = false;     // the file could be read as an image
@@ -32,7 +39,8 @@ namespace jasperengine::editor {
         // Without waiting: the cached result, else ready = false while a background thread
         // measures it (call again on a later frame)
         static NormalMapTiltResult request(const std::filesystem::path& file);
-        // Waiting for the measure (cached too)
+        // Waiting for the measure (cached too): measured on the calling thread, or the result of
+        // the measure a request already started for this version of the file
         static NormalMapTiltResult measure(const std::filesystem::path& file);
 
         // the measure itself, uncached: false when the file is not an image
@@ -40,6 +48,12 @@ namespace jasperengine::editor {
 
         // e.g. "rock_normal.png's average normal is 9° off +Z"
         static std::string describe(const std::filesystem::path& file, float degrees);
+
+        // Tests: the measure request and measure run (empty: measureFile), and forgetting every
+        // cached result (measures still running finish into nothing)
+        using MeasureFunction = std::function<bool(const std::filesystem::path& file, float& degrees)>;
+        static void setMeasureFunction(MeasureFunction function);
+        static void clearCache();
     };
 
 }
