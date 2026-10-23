@@ -26,6 +26,7 @@
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "component/MeshComponent.h"
@@ -1047,6 +1048,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<UIDocumentComponent>(entity, Stream::decodeUIDocumentComponent(componentNode));
             }
             break;
+        case ComponentType::FluidSimulationComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<FluidSimulationComponent>(entity, {});
+            }else{
+                registry->addComponent<FluidSimulationComponent>(entity, Stream::decodeFluidSimulationComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1502,6 +1510,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeUIDocumentComponent(registry->getComponent<UIDocumentComponent>(entity));
             }
             registry->removeComponent<UIDocumentComponent>(entity);
+            break;
+        case ComponentType::FluidSimulationComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeFluidSimulationComponent(registry->getComponent<FluidSimulationComponent>(entity));
+            }
+            registry->removeComponent<FluidSimulationComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){
@@ -2172,6 +2186,9 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
+    // FluidSimulation is FluidSimulation(scene, entity) there)
+    if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");

@@ -89,6 +89,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 
 #include "ecs/ComponentArray.h"
 #include "ecs/ComponentManager.h"
@@ -164,6 +165,7 @@
 #include "object/ui/RectTransform.h"
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIElement.h"
+#include "object/FluidSimulation.h"
 
 #include "pool/ShaderPool.h"
 #include "pool/SoundPool.h"

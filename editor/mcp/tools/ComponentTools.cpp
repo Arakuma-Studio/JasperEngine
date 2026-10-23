@@ -815,8 +815,7 @@ void listComponentTypesTool(const CallPtr& call) {
     }
     Json list = Json::array();
     std::string text;
-    const int last = static_cast<int>(ComponentType::UIDocumentComponent);
-    for (int i = 0; i <= last; i++) {
+    for (int i = 0; i < ComponentTypeCount; i++) {
         const ComponentType type = static_cast<ComponentType>(i);
         const std::string name = McpRefs::componentName(type);
         if (name.empty()) continue;

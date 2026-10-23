@@ -28,6 +28,8 @@
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "component/FluidSimulationComponent.h"
 #include "util/EntityClipboard.h"
 #include "util/Util.h"
 
@@ -297,6 +299,15 @@ const EnumOptions& uiDocumentRenderModeOptions() {
     static const EnumOptions options = {
         {(int)UIDocumentRenderMode::SCREEN, "screen", "Screen"},
         {(int)UIDocumentRenderMode::TEXTURE, "texture", "Texture"}
+    };
+    return options;
+}
+
+const EnumOptions& fluidOutputOptions() {
+    static const EnumOptions options = {
+        {(int)FluidOutput::SCREEN, "screen", "Screen"},
+        {(int)FluidOutput::MATERIAL, "material", "Material"},
+        {(int)FluidOutput::TEXTURE, "texture", "Texture"}
     };
     return options;
 }
@@ -907,6 +918,9 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::UIDocumentComponent:
             if (name == "renderMode") return &uiDocumentRenderModeOptions();
             break;
+        case ComponentType::FluidSimulationComponent:
+            if (name == "output") return &fluidOutputOptions();
+            break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();
             if (name == "framebufferFilter") return &framebufferFilterOptions();
@@ -1248,6 +1262,10 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
     if (camera != NULL_ENTITY) {
         return Json{{"camera", entityToJson(scene, camera)}};
     }
+    const Entity fluid = FluidTextureLink::parse(texture.getId());
+    if (fluid != NULL_ENTITY) {
+        return Json{{"fluid", entityToJson(scene, fluid)}};
+    }
     if (texture.empty() || texture.isFramebuffer()) return nullptr;
 
     static const Texture defaults;
@@ -1313,6 +1331,20 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
         out = Texture();
         return true;
     }
+    // a link id as a scene file keeps it: "camera|<entity id>", "fluid|<entity id>"
+    if (value.is_string()) {
+        const std::string text = value.get<std::string>();
+        if (text.rfind("camera|", 0) == 0 || text.rfind("fluid|", 0) == 0) {
+            const Entity linked = CameraTextureLink::parseLink(text);
+            if (linked == NULL_ENTITY) {
+                error = "\"" + text + "\" is not a texture link; one is \"camera|<entity id>\" or \"fluid|<entity id>\".";
+                return false;
+            }
+            Json link = Json::object();
+            link[text[0] == 'c' ? "camera" : "fluid"] = linked;
+            return textureFromJson(project, scene, link, out, camera, error);
+        }
+    }
     if (value.is_string()) {
         std::string stored;
         if (!storedPath(value, stored)) return false;
@@ -1321,17 +1353,32 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [6 paths] or \"path\"} or {\"camera\": <entity>}.";
+                "{\"cube\": [6 paths] or \"path\"}, {\"camera\": <entity>} or {\"fluid\": <entity>}.";
         return false;
     }
-    static const std::set<std::string> keys = {"path", "cube", "camera", "id", "min_filter", "mag_filter", "wrap_u",
+    static const std::set<std::string> keys = {"path", "cube", "camera", "fluid", "id", "min_filter", "mag_filter", "wrap_u",
                                                "wrap_v", "alpha_border", "svg_scale"};
     for (auto it = value.begin(); it != value.end(); ++it) {
         if (!keys.count(it.key())) {
-            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, min_filter, mag_filter, "
+            error = "unknown texture key \"" + it.key() + "\"; valid: path, cube, camera, fluid, min_filter, mag_filter, "
                     "wrap_u, wrap_v, alpha_border, svg_scale.";
             return false;
         }
+    }
+    if (value.contains("fluid")) {
+        if (!scene || !scene->scene) {
+            error = "a fluid texture needs a loaded scene.";
+            return false;
+        }
+        Entity fluidEntity = NULL_ENTITY;
+        if (!entityFromJson(scene, value["fluid"], fluidEntity, error)) return false;
+        if (fluidEntity == NULL_ENTITY || !scene->scene->isEntityCreated(fluidEntity) ||
+            !scene->scene->findComponent<FluidSimulationComponent>(fluidEntity)) {
+            error = "the fluid of a fluid texture must be a GameObject with a FluidSimulation component.";
+            return false;
+        }
+        out = FluidTextureLink::make(scene->scene, fluidEntity);
+        return true;
     }
     if (value.contains("camera")) {
         if (!scene || !scene->scene) {

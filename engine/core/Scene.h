@@ -281,6 +281,16 @@ namespace jasperengine{
             return system;
         }
 
+        // the registered system of that type, or nullptr (getSystem asserts it exists)
+        template<typename T>
+        std::shared_ptr<T> findSystem(){
+            const char* typeName = typeid(T).name();
+
+            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+
+            return it != systems.end() ? std::dynamic_pointer_cast<T>(it->second) : nullptr;
+        }
+
         template<typename T>
         std::shared_ptr<T> getSystem(){
             const char* typeName = typeid(T).name();

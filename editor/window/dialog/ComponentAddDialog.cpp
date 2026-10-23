@@ -75,6 +75,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::FluidSimulationComponent, "GPU fluid with dye, bloom and sunrays, drawn on the sprite or mesh"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},

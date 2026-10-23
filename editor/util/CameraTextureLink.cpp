@@ -4,7 +4,9 @@
 #include "CameraTextureLink.h"
 
 #include "Catalog.h"
+#include "FluidTextureLink.h"
 #include "component/CameraComponent.h"
+#include "component/FluidSimulationComponent.h"
 
 using namespace jasperengine;
 
@@ -31,6 +33,26 @@ bool editor::CameraTextureLink::isCameraTexture(const Texture& texture){
     return parse(texture.getId()) != NULL_ENTITY;
 }
 
+Entity editor::CameraTextureLink::parseLink(const std::string& textureId){
+    Entity entity = parse(textureId);
+    if (entity == NULL_ENTITY)
+        entity = FluidTextureLink::parse(textureId);
+    return entity;
+}
+
+bool editor::CameraTextureLink::isLinkTexture(const Texture& texture){
+    return parseLink(texture.getId()) != NULL_ENTITY;
+}
+
+Framebuffer* editor::CameraTextureLink::linkFramebuffer(EntityRegistry* registry, const std::string& textureId, Entity entity){
+    if (!registry || entity == NULL_ENTITY)
+        return nullptr;
+    if (FluidTextureLink::parse(textureId) != NULL_ENTITY)
+        return FluidTextureLink::outputFramebuffer(registry, entity);
+    CameraComponent* camera = registry->findComponent<CameraComponent>(entity);
+    return camera ? camera->framebuffer : nullptr;
+}
+
 Texture editor::CameraTextureLink::make(EntityRegistry* registry, Entity cameraEntity){
     Texture texture;
 
@@ -44,6 +66,10 @@ Texture editor::CameraTextureLink::make(EntityRegistry* registry, Entity cameraE
 }
 
 void editor::CameraTextureLink::retarget(EntityRegistry* registry, Texture& texture, Entity cameraEntity){
+    if (FluidTextureLink::isFluidTexture(texture)){
+        FluidTextureLink::retarget(registry, texture, cameraEntity);
+        return;
+    }
     if (cameraEntity == NULL_ENTITY){
         texture = Texture();
         return;
@@ -99,9 +125,10 @@ bool editor::CameraTextureLink::resolve(EntityRegistry* registry){
 }
 
 bool editor::CameraTextureLink::resolve(EntityRegistry* registry, const std::vector<Entity>& entities){
-    // A camera among them may be what textures anywhere name
+    // A camera or a fluid among them may be what textures anywhere name
     for (Entity entity : entities){
-        if (registry->isEntityCreated(entity) && registry->findComponent<CameraComponent>(entity)){
+        if (registry->isEntityCreated(entity) && (registry->findComponent<CameraComponent>(entity) ||
+                                                  registry->findComponent<FluidSimulationComponent>(entity))){
             return resolve(registry);
         }
     }
@@ -128,12 +155,17 @@ bool resolveEntity(EntityRegistry* registry, Entity entity){
                 continue;
 
             Texture* texture = static_cast<Texture*>(prop.ref);
+            Framebuffer* target = nullptr;
             Entity cameraEntity = CameraTextureLink::parse(texture->getId());
-            if (cameraEntity == NULL_ENTITY)
-                continue;
-
-            CameraComponent* camera = registry->findComponent<CameraComponent>(cameraEntity);
-            Framebuffer* target = camera ? camera->framebuffer : nullptr;
+            if (cameraEntity != NULL_ENTITY){
+                CameraComponent* camera = registry->findComponent<CameraComponent>(cameraEntity);
+                target = camera ? camera->framebuffer : nullptr;
+            }else{
+                Entity fluidEntity = FluidTextureLink::parse(texture->getId());
+                if (fluidEntity == NULL_ENTITY)
+                    continue;
+                target = FluidTextureLink::outputFramebuffer(registry, fluidEntity);
+            }
 
             if (texture->getFramebuffer() != target){
                 std::string textureId = texture->getId();
