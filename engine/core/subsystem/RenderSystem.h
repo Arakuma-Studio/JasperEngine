@@ -1807,6 +1807,9 @@ namespace jasperengine{
 		// a copy of a chain target into a destination framebuffer (the last pass below full size)
 		void renderPostProcessCopy(TextureRender* source, FramebufferRender* destination);
 
+		// submesh 0 shows a transparent FluidSimulation output (straight alpha) under the legacy
+		// blending: drawn in the transparent queue, as with a transparent texture
+		bool lendsTransparentFluid(Entity entity, const Submesh& submesh) const;
 		// textureOverride: shown instead of the UI's texture (a FluidSimulation's MATERIAL output)
 		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr);
 		void destroyUI(Entity entity, UIComponent& ui);

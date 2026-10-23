@@ -3256,6 +3256,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+    // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
+    if (scriptsMention("FluidSimulation"))
+        ShaderVariantCollector::addFluidKeys(keys);
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
