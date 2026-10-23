@@ -560,15 +560,36 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
 - **Physics defer scopes**: the Jolt contact listener runs on Jolt's threads, serialized by its
   callback mutex, while the main thread waits in `PhysicsSystem::Update`; its scope is opened
   with `anyThread` so those callbacks' structural calls are deferred too.
-- **AC14 round trip runs through the editor binary** (`tools/mcp/tests/test_ecs_roundtrip.py`:
+- **AC14 round trip runs through the editor binaries** (`tools/mcp/tests/test_ecs_roundtrip.py`:
   `scene-dump --save` for every scene, Prefab Mode save for every prefab of `tools/fixtures/*`
-  and the MCP fixture), because the editor has no unit-test target for `Stream` before S02.
-  The repository has no other example or template scene files.
-- **Unit tests** are in `engine/tests/core/ecs` in a minimal `jasperengine-core-tests` target
-  (`-DJASPERENGINE_TESTS=ON`, `tools/build.sh unit-tests`) that S02's framework replaces.
-  `SchedulerTest.AccessCheckFires` is compiled only where `JASPERENGINE_ECS_ACCESS_CHECKS` is on
-  (builds without `NDEBUG`), so a Release run has no skipped test.
+  and the MCP fixture). The fixtures are hand-written, so "byte-identical" is checked against
+  an editor built from the revision before S07 (`JASPER_BASELINE_EDITOR`: identical for all 20
+  scenes and 3 prefabs, first and second save) and, without it, as stability across a second
+  save (a prefab's `nextEntity` counter, which every Prefab Mode session raises before S07 as
+  after it, left out). The repository has no other example or template scene files.
+- **Unit tests** are in `engine/tests/core/ecs`, in S03's `jasperengine-core-tests` target
+  (`tools/build.sh unit-tests`); `engine/tests/core/support/TestEngine` initialises the engine
+  once for the process (a gtest environment, with a log-capturing `CoreTestSystem` that
+  S03's `UserSettingsTest` also uses for its user data directory). `SchedulerTest.AccessCheckFires`
+  is compiled only where `JASPERENGINE_ECS_ACCESS_CHECKS` is on (builds without `NDEBUG`), so a
+  Release run has no skipped test; the Debug ASan/UBSan run covers it.
 - **The Systems window** is not part of the saved panel visibility (it opens closed).
 - **`move_branch` benchmark**: the 100-entity branch moves under a top-level GameObject about a
   thousand entities before it (a typical reparent); a move across the whole array is bounded by
   the Transform rotation itself, the same before and after S07.
+- **R25 absolute budgets were not met on the shared build servers.** The benchmark ran on
+  server B with a load average of 20-36 (three other streams compiling); every relative
+  budget (R26) and memory budget (R27) is met there, which shows the S07 gains, while the
+  absolute times are 1.1-4x over R25, mostly at 100k where the loops are memory-bound
+  (random lookups 65 ns/op, index loop 3.7 ms). `run-ecs-bench.py` keeps the R25 thresholds
+  and fails on them; it has to be run on the quiet S02 benchmark server for R25. Last run
+  (median of 7): destroy 10k 3.7 ms (295x faster than before), metadata get at 100k 57 ns
+  (7.9x), index loop 0.085 / 3.7 ms (1.12x / 1.25x the baseline's speed), view 0.094 / 4.1 ms
+  (1.45x / 1.16x the baseline index loop), 17.3 B per component and 76 B per entity at 100k,
+  20 empty systems 3-4 us per frame. The pre-S07 engine is measured only for what R26
+  compares: its one-by-one destroy at 100k is quadratic (hours).
+- **AC10's manual ASan check** (a sample project destroying the other body in a collision
+  callback for 1000 frames) was not run: S02's ASan preset is not on `oe-port`. The unit tests
+  (DeferScopeTest included) pass under ASan+UBSan in a Debug build; ASan needs
+  `alloc_dealloc_mismatch=0` because ThorVG replaces `operator new` with `malloc` in the static
+  engine.
