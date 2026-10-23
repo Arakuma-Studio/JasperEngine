@@ -49,16 +49,18 @@ bool reload::shaderSourcesReach(Project* project, const std::string& base, int s
     const fs::path assetsRoot = project->getAssetsPath();
     // a project UI effect is named by its asset path (ShaderBuilder::resolveCustomSources)
     const bool fragmentOnly = base.find('|') == std::string::npos && base.size() > 5 && base.compare(base.size() - 5, 5, ".frag") == 0;
+    // the files the resolution reads, by the path it read them at (an include's key is relative
+    // to its entry point's folder first)
+    bool reached = false;
     auto reader = [&](const std::string& relativePath, std::string& content) {
         const fs::path path = fragmentOnly ? Project::findShaderFile(assetsRoot, projectRoot, relativePath)
                                            : Project::findShaderFile(projectRoot, assetsRoot, relativePath);
-        return !path.empty() && readText(path, content);
+        if (path.empty() || !readText(path, content)) return false;
+        if (changed.count(fs::path(relativePath).lexically_normal().generic_string())) reached = true;
+        return true;
     };
     const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(base, reader, static_cast<ShaderType>(std::max(shaderType, 0)));
-    if (changed.count(sources.vertFile) || changed.count(sources.fragFile)) return true;
-    for (const auto& [file, content] : sources.files) {
-        if (changed.count(file)) return true;
-    }
+    if (reached || changed.count(sources.vertFile) || changed.count(sources.fragFile)) return true;
     // an entry point that does not resolve any more (renamed away) still names its fork
     return !sources.valid;
 }

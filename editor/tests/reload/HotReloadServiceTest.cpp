@@ -61,9 +61,10 @@ namespace {
 
         void SetUp() override {
             test::ensureEngine();
-            Engine::setAsyncLoading(false);
             std::string error;
             ASSERT_TRUE(project.createProjectAt(dir.path / "HotReload", "HotReload", &error)) << error;
+            // (a project resets the engine's settings: textures load on this thread from here)
+            Engine::setAsyncLoading(false);
             service.attach(project);
         }
         void TearDown() override {
