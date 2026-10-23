@@ -75,7 +75,7 @@ static double measure(CustomTextEditor& editor, bool after, int firstLine) {
             list.rectangles.clear();
             if (after) editor.after(&list, ImVec2(), firstLine, firstLine + 40);
             else editor.before(&list, ImVec2(), firstLine, firstLine + 40);
-            sink += list.rectangles.size();
+            sink = sink + list.rectangles.size();
         }
         samples.push_back(1.0e6 * (std::clock() - start) / CLOCKS_PER_SEC / 1000);
     }
@@ -115,7 +115,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="jasper-text-search-perf-") as directory:
         cpp, binary = Path(directory) / "benchmark.cpp", Path(directory) / "benchmark"
         cpp.write_text(fixture)
-        command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", str(cpp), "-o", str(binary)]
+        command = [os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-Wall", "-Wextra", str(cpp), "-o", str(binary)]
         if args.sanitize:
             command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run(command, check=True)

@@ -125,7 +125,7 @@ template<class Window, class Type> static double measure(const std::string& mess
         const auto start = std::clock();
         for (int i = 0; i < count; ++i) window.addLog(static_cast<Type>(i % 5), message);
         samples.push_back(1.0e6 * (std::clock() - start) / CLOCKS_PER_SEC / count);
-        sink += window.logs.size() + window.severityCounts[0];
+        sink = sink + window.logs.size() + window.severityCounts[0];
     }
     std::sort(samples.begin(), samples.end());
     return samples[samples.size() / 2];
@@ -157,7 +157,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="jasper-console-perf-") as directory:
         cpp, binary = Path(directory) / "benchmark.cpp", Path(directory) / "benchmark"
         cpp.write_text(fixture)
-        command = [os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-ffunction-sections", "-fdata-sections",
+        command = [os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-ffunction-sections", "-fdata-sections",
                    "-I", str(ROOT / "libs/imgui"), str(cpp), str(ROOT / "libs/imgui/imgui.cpp"),
                    "-Wl,--gc-sections", "-o", str(binary)]
         if args.sanitize:

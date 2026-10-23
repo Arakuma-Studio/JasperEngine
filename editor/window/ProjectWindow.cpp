@@ -2566,7 +2566,7 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
 // main thread when a file is written. An existing output is not replaced.
 void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
     for (const fs::path& video : videos)
-        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", video.filename().u8string().c_str());
+        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", editor::FileUtils::pathToUtf8(video.filename()).c_str());
     std::thread([videos, targetDir]() {
         for (const fs::path& video : videos) {
             const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);

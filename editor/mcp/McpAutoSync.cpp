@@ -10,6 +10,7 @@
 #include "Project.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -614,7 +615,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         std::vector<fs::path> uiPaths, imagePaths;
         bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
-            const fs::path path = (root / fs::u8path(rel)).lexically_normal();
+            const fs::path path = (root / FileUtils::pathFromUtf8(rel)).lexically_normal();
             // a project UI effect's .frag (or one that is gone) and the includes effects may read
             // reload their documents now too (phase 5)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||

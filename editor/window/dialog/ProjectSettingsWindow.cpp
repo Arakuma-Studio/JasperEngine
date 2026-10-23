@@ -10,6 +10,7 @@
 #include "SettingsCategoryList.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <cfloat>
@@ -39,9 +40,22 @@ static const char* windowModeNames[] = { "Windowed", "Maximized", "Fullscreen" }
 static const WindowMode windowModeValues[] = { WindowMode::WINDOWED, WindowMode::MAXIMIZED, WindowMode::FULLSCREEN };
 static const int windowModeCount = sizeof(windowModeValues) / sizeof(windowModeValues[0]);
 
-static const char* cxxStandardNames[] = { "C++17", "C++20", "C++23" };
-static const int cxxStandardCount = sizeof(cxxStandardNames) / sizeof(cxxStandardNames[0]);
-static_assert(std::size(cxxStandardNames) == std::size(cxxStandards));
+static constexpr int cxxStandardCount = static_cast<int>(std::size(cxxStandards));
+
+// "C++20", "C++23", ...: the combo labels of cxxStandards
+static const char* const* cxxStandardNames() {
+    static const auto labels = [] {
+        std::array<std::string, std::size(cxxStandards)> result;
+        for (size_t i = 0; i < result.size(); i++) result[i] = "C++" + std::to_string(cxxStandards[i]);
+        return result;
+    }();
+    static const auto names = [] {
+        std::array<const char*, std::size(cxxStandards)> result;
+        for (size_t i = 0; i < result.size(); i++) result[i] = labels[i].c_str();
+        return result;
+    }();
+    return names.data();
+}
 
 static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
 static const AndroidOrientation androidOrientationValues[] = {
@@ -1496,11 +1510,14 @@ void ProjectSettingsWindow::drawScriptingSettings() {
         );
         drawScriptDirsSetting(m_project, m_scriptDirs);
 
-        drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames, cxxStandardCount, m_cxxStandardIndex,
+        drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames(), cxxStandardCount, m_cxxStandardIndex,
             findCxxStandardIndex(Project::defaultCxxStandard),
             "Language standard for C++ scripts in Play and exported games. Saved with the project. "
             "Exports also compile the engine with this standard. "
-            "Choose a compatible compiler in Preferences > External Tools.");
+            "Choose a compatible compiler in Preferences > External Tools: GCC " JASPERENGINE_CXX_FLOOR_GNU
+            ", Clang " JASPERENGINE_CXX_FLOOR_CLANG ", Apple Clang " JASPERENGINE_CXX_FLOOR_APPLECLANG
+            " or MSVC " JASPERENGINE_CXX_FLOOR_MSVC
+            " (Visual Studio 2022) or newer. C++23 exports to Xcode need Xcode 16 or newer.");
     });
 }
 

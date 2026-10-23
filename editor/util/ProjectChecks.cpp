@@ -27,6 +27,7 @@
 
 #include "lua.hpp"
 #include "yaml-cpp/yaml.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -525,14 +526,14 @@ namespace compat = jasperengine::htmlui::compat;
 std::string assetRelative(const fs::path& assetsRoot, const fs::path& absolute) {
     const fs::path rel = absolute.lexically_normal().lexically_relative(assetsRoot.lexically_normal());
     if (rel.empty() || rel == "." || *rel.begin() == "..") return {};
-    return rel.generic_u8string();
+    return editor::FileUtils::genericPathToUtf8(rel);
 }
 
 // compat's asset-relative path under the assets directory; empty when it is absolute or climbs
 // out of it
 fs::path assetFile(const fs::path& assetsRoot, const std::string& assetPath) {
     if (assetPath.empty() || assetPath[0] == '/' || assetPath[0] == '\\') return {};
-    const fs::path rel = fs::u8path(assetPath);
+    const fs::path rel = editor::FileUtils::pathFromUtf8(assetPath);
     if (rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) return {};
     const fs::path normal = rel.lexically_normal();
     if (normal.empty() || normal == "." || *normal.begin() == "..") return {};
@@ -552,7 +553,7 @@ YAML::Node loadProjectYaml(const fs::path& projectRoot) {
 fs::path webShellFile(const fs::path& projectRoot, const YAML::Node& node) {
     try {
         if (node && node["web"] && node["web"]["customHtmlShell"]) {
-            const fs::path shell = fs::u8path(node["web"]["customHtmlShell"].as<std::string>());
+            const fs::path shell = editor::FileUtils::pathFromUtf8(node["web"]["customHtmlShell"].as<std::string>());
             if (!shell.empty()) return (shell.is_absolute() ? shell : projectRoot / shell).lexically_normal();
         }
     } catch (const std::exception&) {
@@ -616,7 +617,7 @@ bool startsWith(std::string_view text, std::string_view prefix) {
 } // namespace
 
 bool editor::ProjectChecks::isUiFile(const std::string& path) {
-    const std::string ext = lowerExtension(fs::u8path(path));
+    const std::string ext = lowerExtension(editor::FileUtils::pathFromUtf8(path));
     return ext == ".html" || ext == ".htm" || ext == ".css";
 }
 
@@ -627,7 +628,7 @@ fs::path editor::ProjectChecks::assetsRootFromProjectFile(const fs::path& projec
         if (node && node["assetsDir"]) assetsDir = node["assetsDir"].as<std::string>();
     } catch (const std::exception&) {
     }
-    const fs::path dir = fs::u8path(assetsDir);
+    const fs::path dir = editor::FileUtils::pathFromUtf8(assetsDir);
     fs::path out;
     if (dir.empty() || dir == ".") out = projectRoot;
     else if (dir.is_absolute()) out = dir;
@@ -1153,7 +1154,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             continue;
         }
         // a UI effect: its own forms (not a fork's half)
-        if (ext == ".frag" && isUiEffectFile(project->getProjectPath() / fs::u8path(file))) {
+        if (ext == ".frag" && isUiEffectFile(project->getProjectPath() / editor::FileUtils::pathFromUtf8(file))) {
             addUses(uiEffectUses(project, file));
             continue;
         }
@@ -1210,7 +1211,7 @@ bool editor::ProjectChecks::isUiEffectFile(const fs::path& absolute) {
 
 std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::uiEffectUses(Project* project, const std::string& relativeFile) {
     const fs::path root = project->getProjectPath();
-    const fs::path file = (root / fs::u8path(relativeFile)).lexically_normal();
+    const fs::path file = (root / editor::FileUtils::pathFromUtf8(relativeFile)).lexically_normal();
     // the name @effect registers: the asset path
     std::string base = fs::path(relativeFile).generic_string();
     const fs::path inAssets = file.lexically_relative(project->getAssetsPath().lexically_normal());
@@ -1243,9 +1244,9 @@ std::vector<std::string> editor::ProjectChecks::uiEffectFiles(Project* project) 
 
 fs::path editor::ProjectChecks::uiEffectFile(Project* project, const std::string& base) {
     std::error_code ec;
-    const fs::path inAssets = (project->getAssetsPath() / fs::u8path(base)).lexically_normal();
+    const fs::path inAssets = (project->getAssetsPath() / editor::FileUtils::pathFromUtf8(base)).lexically_normal();
     if (fs::is_regular_file(inAssets, ec)) return inAssets;
-    return (project->getProjectPath() / fs::u8path(base)).lexically_normal();
+    return (project->getProjectPath() / editor::FileUtils::pathFromUtf8(base)).lexically_normal();
 }
 
 int editor::ProjectChecks::guessShaderType(Project* project, const std::string& base) {
@@ -1395,8 +1396,8 @@ std::string uiEffectSourcePath(editor::Project* project, const editor::ProjectCh
     if (!ShaderVariantCompiler::isSafeRelativePath(source)) return source;
     std::error_code ec;
     for (const fs::path& dir : {frag.parent_path(), root, project->getAssetsPath()}) {
-        if (fs::is_regular_file(dir / fs::u8path(source), ec)) {
-            return editor::ProjectChecks::projectRelative(root, (dir / fs::u8path(source)).lexically_normal());
+        if (fs::is_regular_file(dir / editor::FileUtils::pathFromUtf8(source), ec)) {
+            return editor::ProjectChecks::projectRelative(root, (dir / editor::FileUtils::pathFromUtf8(source)).lexically_normal());
         }
     }
     if (ShaderVariantCompiler::getLibrarySources().count(source)) return "engine/shaderlib/" + source;

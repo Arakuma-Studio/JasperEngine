@@ -1,8 +1,15 @@
-# Mirrored by cxxStandards in editor/util/CxxStandards.h. Covers the engine, the editor
-# and the exported game; Play plugins read the project setting (editor/Generator.cpp).
-set(JASPERENGINE_CXX_STANDARDS 17 20 23)
+# The C++ standard of the engine, the editor and the exported game, and the source of
+# cxxStandards in the editor (JASPERENGINE_CXX_STANDARD_LIST); Play plugins read the project
+# setting (editor/Generator.cpp). The first entry is the default.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEngineToolchain.cmake)
+set(JASPERENGINE_CXX_STANDARDS 20 23)
 if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
-    set(JASPERENGINE_CXX_STANDARD 17 CACHE STRING "C++ standard for the engine, editor and project")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project")
+    set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
+elseif("$CACHE{JASPERENGINE_CXX_STANDARD}" STREQUAL "17")
+    # a build tree configured before C++17 was dropped
+    message(WARNING "JASPERENGINE_CXX_STANDARD 17 is no longer supported; using 20")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project" FORCE)
     set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
 endif()
 
@@ -629,6 +636,25 @@ endif() # End standalone project setup
 # Always runs (both standalone and when included by the editor).
 # =============================================================
 
+jasperengine_check_cxx_toolchain()
+# Checked after the project settings marker, so the value the Exporter injects is validated too
+if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
+    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
+    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
+endif()
+message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
+# The default of every target created from here on, the vendored libraries included;
+# jasperengine_apply_cxx_standard below overrides the ones that set their own
+set(CMAKE_CXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# MSVC reports __cplusplus as 199711L without it, and header-only libraries (nlohmann json,
+# LuaBridge3) would pick their pre-C++20 code paths
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+
 option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
 
 if(JASPERENGINE_SHARED)
@@ -776,6 +802,17 @@ foreach(lib IN ITEMS
     dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
+
+# One C++ standard for every object of the binary: libc++ template definitions instantiated
+# at two standards across a library boundary (tinygltf and RmlUi pass std containers into
+# engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
+jasperengine_apply_cxx_standard(
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS})
+if(JASPERENGINE_RUNTIME_SHADERS)
+    # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
+    jasperengine_apply_cxx_standard_in_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler)
+endif()
 
 if(JASPERENGINE_HTMLUI_TESTS)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -1129,25 +1166,6 @@ if(JASPERENGINE_RUNTIME_SHADERS)
     target_link_libraries(jasperengine PRIVATE shadercompiler)
 endif()
 
-# Checked after the marker above, so the value the Exporter injects is validated too
-if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
-    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
-    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
-endif()
-message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
-
-# tinygltf shares STL containers with the engine; libc++ template definitions
-# must use the same C++ standard on both sides of that boundary.
-set_target_properties(tinygltf PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
-# Same for RmlUi: Rml::String and Rml::Vector are std types crossing into engine code
-set_target_properties(rmlui PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
-
 set_target_properties(
     jasperengine
 
@@ -1298,4 +1316,8 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    jasperengine_check_cxx_standards()
 endif()

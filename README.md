@@ -58,7 +58,8 @@ The editor ends up in `build/linux/editor-install/bin/jasperengine-editor`.
 
 ### Natively
 
-All platforms need a C++17 compiler (MSVC, GCC, or Clang), CMake 3.27 or newer, and Python 3.
+All platforms need a C++20 compiler (GCC 11, Clang 16, Apple Clang 15 from Xcode 15, or MSVC 19.30 from
+Visual Studio 2022, or newer), CMake 3.27 or newer, and Python 3.
 
 **Linux** (Ubuntu 26.04; on 22.04 get CMake from apt.kitware.com, see `docker/linux.Dockerfile`):
 

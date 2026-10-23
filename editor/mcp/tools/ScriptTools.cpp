@@ -45,6 +45,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 
 #include "lua.hpp"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -425,7 +426,7 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
 
 bool isHtmlUiFile(const std::string& path) {
     if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
-    const std::string ext = extensionOf(fs::u8path(path));
+    const std::string ext = extensionOf(FileUtils::pathFromUtf8(path));
     // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
     // declaring it read (phase 5)
     return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
@@ -448,7 +449,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     for (const fs::path& path : changed) {
         const fs::path rel = path.lexically_normal().lexically_relative(assets);
         if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        const std::string assetPath = jasperengine::normalizeHtmlUIPath(rel.generic_u8string());
+        const std::string assetPath = jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel));
         if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
     }
     if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
@@ -462,7 +463,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
                             {"code", finding.code}, {"message", finding.message}, {"suggestion", finding.suggestion}});
     };
     auto shown = [&](const std::string& assetPath) {
-        return projectRelative(project, (assets / fs::u8path(assetPath)).lexically_normal());
+        return projectRelative(project, (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
     };
 
     std::set<std::string> covered;   // changed files a live document reads
@@ -520,7 +521,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
                 addProblem(ProjectChecks::uiFinding(projectRoot, assets, diagnostic));
             }
             std::error_code ec;
-            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / fs::u8path(document.filename), ec)) {
+            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / FileUtils::pathFromUtf8(document.filename), ec)) {
                 ProjectChecks::Finding missing;
                 missing.tool = "ui";
                 missing.path = shown(document.filename);
@@ -537,7 +538,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     std::vector<fs::path> unused;
     for (const std::string& assetPath : assetPaths) {
         std::error_code ec;
-        const fs::path file = (assets / fs::u8path(assetPath)).lexically_normal();
+        const fs::path file = (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal();
         if (!covered.count(assetPath) && ProjectChecks::isUiFile(assetPath) && fs::is_regular_file(file, ec)) unused.push_back(file);
     }
     if (!unused.empty()) {
@@ -719,7 +720,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     int uiCurrent = 0;
     std::vector<fs::path> uiChanged;
     for (const fs::path& path : changed) {
-        if (isHtmlUiFile(path.generic_u8string())) uiChanged.push_back(path);
+        if (isHtmlUiFile(FileUtils::genericPathToUtf8(path))) uiChanged.push_back(path);
     }
     if (!uiChanged.empty()) {
         const Json ui = syncHtmlUi(ctx, uiChanged);

@@ -82,6 +82,14 @@ jobs:
       - name: Set version
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
+      # The portable C++20 subset (docs/specs/S01-cxx20.md, D7), the compiler floors and the
+      # one-standard check of engine/cmake/JasperEngineToolchain.cmake
+      - name: Check C++ standard and toolchain rules
+        run: |
+          python3 tools/check-cxx-subset.py
+          cmake -P tools/tests/check_toolchain_floor.cmake
+          cmake -P tools/tests/cxx-standard-check/run.cmake
+
       - name: Build editor
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \

@@ -160,6 +160,9 @@ namespace jasperengine::editor {
         // those (absolute paths; a deleted script drops its class).
         static void writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
                                         const std::vector<fs::path>& changedFiles = {});
+        // CMake that fails a plugin configure below the compiler floors of the engine build
+        // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
+        static std::string getToolchainFloorCheck();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();

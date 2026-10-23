@@ -12,7 +12,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 
 - **C++20** is the engine/editor/project standard (S01 lands first). Use C++20 freely (concepts,
   `std::span`, designated initializers, `<bit>`, ranges where they compile on all our toolchains:
-  GCC 13, Clang/Xcode, MSVC, Android NDK, Emscripten).
+  GCC 11 (the Ubuntu 22.04 container), Clang/Xcode, MSVC, Android NDK, Emscripten).
 - **Platforms are non-negotiable.** Everything that runs in a game must work on all our graphics
   backends (GL 3.3 core, GLES3/WebGL2, Metal, D3D11, Vulkan via sokol-gfx) and all export targets
   (Windows, Linux, macOS, Android, iOS, HTML5). No feature may *require* compute shaders, SSBOs,
