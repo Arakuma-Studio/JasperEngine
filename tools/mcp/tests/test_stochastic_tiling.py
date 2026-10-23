@@ -13,6 +13,7 @@ old scene re-saved byte-identically once the feature is toggled back off."""
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -374,6 +375,119 @@ async def test_lit_variants(ed: Editor):
     ed.check(expected <= written, f"compiled {sorted(expected)}: {sorted(written)}")
     await lit_on(ed, sid, on=False)
     await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": False})
+
+
+def variant_bits(name: str) -> list[str]:
+    """the property names of a display name, "Mesh [shaders/x] (Uv1, Puc, Sto)" -> [Uv1, Puc, Sto]"""
+    return name[name.rfind("(") + 1:-1].split(", ") if name.endswith(")") else []
+
+
+def old_style_fork(source: str) -> str:
+    """a fork of mesh.frag as it was before Stochastic Tiling: no 'stochastic' member in
+    u_fs_pbrParams and no LIT_STOCHASTIC_PARAMS"""
+    start = source.index("    #ifdef USE_STOCHASTIC_TILING\n        #ifdef MATERIAL_UNLIT")
+    end = source.index("} pbrParams;", start)
+    old = source[:start] + source[end:]
+    define = re.compile(r"#ifdef USE_STOCHASTIC_TILING\s*\n\s*#define LIT_STOCHASTIC_PARAMS[^\n]*\n\s*#endif\n")
+    old, count = define.subn("", old, count=1)
+    assert count == 1, "mesh.frag names LIT_STOCHASTIC_PARAMS"
+    return old
+
+
+async def foliage_variants(ed: Editor, fork: str) -> dict:
+    """the variants the build collects for the alpha-masked leaf card (the only Lit mesh with
+    Stochastic Tiling on, drawn with the fork): its colour variants (the fork's), and the
+    alpha-clip depth and G-buffer variants (built-in shaders)"""
+    await ed.call("wait", frames=10)
+    shaders = (await ed.call("get_build_info", include_shaders=True))["shaders"]
+    names = [s["name"] for s in shaders]
+    return {
+        "keys": {s["name"]: s["key"] for s in shaders},
+        "mesh": sorted(n for n in names if n.startswith(f"Mesh [{fork}] (")),
+        "depth": sorted(n for n in names if n.startswith("Depth (") and "Ams" in variant_bits(n) and "Tex" in variant_bits(n)),
+        "gbuffer": sorted(n for n in names if n.startswith("GBuffer (")),
+        "sto": sorted(n for n in names if "Sto" in variant_bits(n)),
+    }
+
+
+async def test_lit_fork_passes_agree(ed: Editor):
+    """a fork of Lit made before Stochastic Tiling (no LIT_STOCHASTIC_PARAMS) on the alpha-masked
+    leaf card with the feature on: its colour, depth (the shadow's alpha clip) and G-buffer variants
+    agree, none with 'Sto', and `check` says the fork predates the feature; the same fork brought up
+    to date (as fork_shader writes it now) takes 'Sto' in all three, and they compile"""
+    ed.require_tools("fork_shader", "write_file", "get_build_info", "generate_shaders")
+    sid = await scene_id(ed)
+    await lit_on(ed, sid, on=False)
+    foliage = await entity(ed, sid, "LitFoliage")
+    await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": True})
+    try:
+        await ed.call("edit_build_scenes", action="add", scene=sid)
+    except Exception:
+        pass  # already in the build (test_lit_variants)
+    before = await foliage_variants(ed, "none")
+    ed.check(not before["sto"], f"no Sto variant while it is off: {before['sto']}")
+
+    forked = await ed.call("fork_shader", scene=sid, entity=foliage, name="OldLeaves")
+    fork, frag = forked["custom_shader"], forked["frag_path"]
+    current = (ed.project / frag).read_text()
+    ed.check("#define LIT_STOCHASTIC_PARAMS" in current, "a fork made now names the values")
+    w = await ed.call("write_file", path=frag, content=old_style_fork(current), timeout=300)
+    ed.check(all(c.get("ok", True) for c in w.get("shader_check", [])), f"the old-style fork compiles: {w.get('shader_check')!r}")
+    await ed.call("set_properties", scene=sid, entity=foliage, values={"mesh": {M + "stochasticTiling": True}})
+
+    old = await foliage_variants(ed, fork)
+    ed.check(old["mesh"], f"the fork's colour variants: {sorted(old['keys'])}")
+    ed.check(any("Ams" in variant_bits(n) for n in old["mesh"]), f"its alpha-masked colour variant: {old['mesh']}")
+    ed.check(old["depth"], f"its alpha clip depth variant (the spot light's shadow): {sorted(old['keys'])}")
+    ed.check(old["gbuffer"], f"G-buffer variants (SSR): {sorted(old['keys'])}")
+    ed.check(not old["sto"], f"an old fork: no pass takes Sto (colour, depth and G-buffer agree): {old['sto']}")
+
+    # check: the fork predates the feature, with a fix
+    await ed.call("save_scene", scene=sid)
+    data = run_check_json(ed.project)
+    found = [f for f in data["findings"] if f.get("code") == "stochastic-no-effect" and "LitFoliage" in f["message"]]
+    ed.check(len(found) == 1, f"one stochastic-no-effect finding for the leaf card: {data['findings']}")
+    if found:
+        f = found[0]
+        ed.check_in(f"the material's custom shader {fork} predates Stochastic Tiling", f["message"])
+        ed.check_in("update the fork (see docs) or turn the feature off", f["message"])
+        ed.check(f["severity"] == "warning" and f["path"] == SCENE_FILE, f"{f!r}")
+        ed.check("LIT_STOCHASTIC_PARAMS" in f.get("suggestion", ""), f"the suggestion says how: {f!r}")
+
+    # the fork brought up to date: Sto in every pass
+    await ed.console_since(None)
+    w = await ed.call("write_file", path=frag, content=current, timeout=300)
+    ed.check(all(c.get("ok", True) for c in w.get("shader_check", [])), f"the fork compiles: {w.get('shader_check')!r}")
+    new = await foliage_variants(ed, fork)
+    sto_mesh = [n for n in new["mesh"] if "Sto" in variant_bits(n)]
+    sto_depth = [n for n in new["depth"] if "Sto" in variant_bits(n)]
+    sto_gbuffer = [n for n in new["gbuffer"] if "Sto" in variant_bits(n)]
+    ed.check(sto_mesh and any("Ams" in variant_bits(n) for n in sto_mesh), f"the fork's alpha-masked colour variant has Sto: {new['mesh']}")
+    ed.check(sto_depth, f"its alpha clip depth variant has Sto: {new['depth']}")
+    ed.check(sto_gbuffer, f"its G-buffer variant has Sto: {new['gbuffer']}")
+    await ed.call("save_scene", scene=sid)
+    data = run_check_json(ed.project)
+    ed.check(not [f for f in data["findings"] if f.get("code") == "stochastic-no-effect" and "LitFoliage" in f["message"]],
+             f"no finding once the fork names the values: {data['findings']}")
+
+    # the fork's Sto variant builds where the editor draws it (generate_shaders builds no forks:
+    # they need the project), the built-in depth and G-buffer ones through generate_shaders
+    await ed.call("configure_game_view", aspect="16:9")
+    await ed.call("set_main_camera", scene=sid, entity=await entity(ed, sid, "LitCam"))
+    shots = ed.scratch.root / "shots" if ed.scratch else Path("/tmp/stochastic-shots")
+    await ed.screenshot(view="game", path=shots / "LitCam-fork-sto.png", max_width=960)
+    problems = [e for e in await ed.console_since() if e.get("type") == "error" or "OldLeaves" in e.get("message", "")]
+    ed.check(not problems, f"the fork's Sto variants build and draw: {problems[:5]!r}")
+    keys = [new["keys"][n] for n in sto_depth + sto_gbuffer]
+    out = ed.scratch.root / "sto-fork-shaders"
+    r = await ed.call("generate_shaders", output_dir=str(out), backends=["opengl"], format="binary", shaders=keys,
+                      timeout_seconds=900)
+    ed.check_eq(r["status"], "succeeded", f"the depth and G-buffer Sto variants compile: {r}")
+
+    # back as it was (later tests take the fixture's scene)
+    await ed.call("set_properties", scene=sid, entity=foliage, values={"mesh": {M + "stochasticTiling": False, "customShader": ""}})
+    await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": False})
+    await ed.call("save_scene", scene=sid)
 
 
 async def lit_shots(ed: Editor, tag: str, shots: Path, settings=None) -> bytes:

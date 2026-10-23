@@ -81,8 +81,9 @@ rock, sand, dirt); bricks, tiles and planks lose their grid.
   The variant bits: `Sto` in mesh (bit 5), depth (bit 14) and gbuffer (bit 10) variants, e.g.
   `mesh:Uv1,Nor,Puc,Sto`. Not applied (the `check` command warns, `stochastic-no-effect`): a
   material without textures, sprites and tilemaps (an atlas frame's neighbours would show),
-  terrains (their layers have their own) and shaders with a manifest (use their `STOCHASTIC`
-  feature). Unlit, vertex lights, 2D lights (the normal map), instancing, skinning and mirrors
+  terrains (their layers have their own), shaders with a manifest (use their `STOCHASTIC`
+  feature) and forks of Lit that do not opt in (see Forking: none of the submesh's passes take
+  it then, so its shadows, cutouts and SSR match its plain colour). Unlit, vertex lights, 2D lights (the normal map), instancing, skinning and mirrors
   (the other maps) keep it; keep it off for instances that draw atlas frames
   (`InstanceData.textureRect`), which the variant cannot see.
 - Library shaders: the `STOCHASTIC` feature ("Stochastic Tiling") of `simple_lit`, `unlit`,
@@ -170,6 +171,39 @@ editable `includes/` folder beside the fork.
   `customDepthShader`) so shadow maps follow, and SSAO/post-process depth while SSR is off
   (with SSR on they read the G-buffer, which keeps the built-in shader). It reads the same
   `shaderUniforms`.
+- Stochastic Tiling (the material's `stochasticTiling`) in a Mesh fork: a fork opts in by
+  naming the material's four values for `includes/pbr.glsl`, as the engine's `mesh.frag` does.
+  A fork made before the feature (October 2026) does not: its submeshes then draw without it in
+  every pass (the colour, depth and G-buffer variants carry no `Sto`), and `check` warns
+  (`stochastic-no-effect`, "... predates Stochastic Tiling"). To opt in, in the fork's
+  `.frag` (the entry point itself, not an include: the editor and the exported game read it
+  there), end its `u_fs_pbrParams` block with the member and define the name after the block:
+
+  ```glsl
+  uniform u_fs_pbrParams {
+      ...                          // the members it has, unchanged
+      #ifdef USE_STOCHASTIC_TILING
+          #ifdef MATERIAL_UNLIT
+              // up to the offset of the values in the CPU Material prefix (48 bytes)
+              #ifndef ALPHA_MASK
+                  vec4 stochasticPadding0;
+              #endif
+              vec4 stochasticPadding1;
+          #endif
+          vec4 stochastic;         // cell size, blend sharpness, contrast, rotation
+      #endif
+  } pbrParams;
+
+  #ifdef USE_STOCHASTIC_TILING
+      #define LIT_STOCHASTIC_PARAMS pbrParams.stochastic
+  #endif
+  ```
+
+  (copy the block from `read_engine_source` `mesh.frag` when the fork's members differ). The
+  `#define LIT_STOCHASTIC_PARAMS` line is the signal: with it the submesh takes the `Sto`
+  variants in its colour, depth and G-buffer passes; the fork must then include the engine's
+  `includes/pbr.glsl` (or a copy of it from after the feature) before its `main()`. A fork with
+  `fork_includes` copies of the includes made before the feature needs them copied again.
 
 ## Editing a fork
 

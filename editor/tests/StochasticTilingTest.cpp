@@ -229,6 +229,118 @@ TEST(StochasticTilingVariant, LeftOffWhereItDoesNotApply) {
     }
 }
 
+// ---- (b2) forks of Lit: only one that names the values (LIT_STOCHASTIC_PARAMS) takes it, in
+// every pass, so the depth clip and the G-buffer never differ from the colour it draws
+
+TEST(StochasticTilingFork, DefineIsTheSignal) {
+    EXPECT_TRUE(ShaderManifest::definesLitStochasticParams("#define LIT_STOCHASTIC_PARAMS pbrParams.stochastic\n"));
+    EXPECT_TRUE(ShaderManifest::definesLitStochasticParams(
+        "uniform u_fs_pbrParams { vec4 stochastic; } pbrParams;\n#ifdef USE_STOCHASTIC_TILING\n    #  define   LIT_STOCHASTIC_PARAMS pbrParams.stochastic // values\n#endif\n"));
+    EXPECT_TRUE(ShaderManifest::definesLitStochasticParams("\t#define LIT_STOCHASTIC_PARAMS(x) x\r\n"));
+    // in comments, another name, or only used
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams("//   #define LIT_STOCHASTIC_PARAMS pbrParams.stochastic\n"));
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams("/* old:\n#define LIT_STOCHASTIC_PARAMS pbrParams.stochastic\n*/\nvoid main(){}\n"));
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams("#define LIT_STOCHASTIC_PARAMS_OLD 1\n"));
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams("#defineLIT_STOCHASTIC_PARAMS 1\n"));
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams("#ifdef LIT_STOCHASTIC_PARAMS\n#endif\n"));
+    EXPECT_FALSE(ShaderManifest::definesLitStochasticParams(""));
+}
+
+TEST(StochasticTilingFork, NoPassTakesItWhenTheColourShaderDoesNot) {
+    SubmeshShaderInputs inputs = texturedInputs();
+    inputs.metallicRoughnessTexture = true;
+    inputs.alphaMode = MaterialAlphaMode::MASK;
+    const SubmeshShaderVariant supported = RenderSystem::getSubmeshShaderVariant(litEnvironment(), inputs);
+    ASSERT_NE(supported.properties & meshSto, 0u);
+    ASSERT_NE(supported.depthProperties & depthSto, 0u);
+    ASSERT_NE(supported.gbufferProperties & gbufferSto, 0u);
+
+    inputs.stochasticShader = false;
+    const SubmeshShaderVariant old = RenderSystem::getSubmeshShaderVariant(litEnvironment(), inputs);
+    EXPECT_EQ(old.properties, supported.properties & ~meshSto);
+    ASSERT_TRUE(old.depth);
+    EXPECT_EQ(old.depthProperties, supported.depthProperties & ~depthSto);
+    ASSERT_TRUE(old.gbuffer);
+    EXPECT_EQ(old.gbufferProperties, supported.gbufferProperties & ~gbufferSto);
+    // nor without lights, nor on the 2D light path
+    MeshShaderEnvironment lights2D;
+    lights2D.lights2D = true;
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), inputs).properties & meshSto, 0u);
+    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(lights2D, inputs).properties & meshSto, 0u);
+}
+
+TEST(StochasticTilingFork, InputsReadTheForkSource) {
+    // the forks as the project (editor) or the asset root (game) holds them
+    const std::string oldFrag =
+        "#version 450\n"
+        "uniform u_fs_pbrParams {\n    vec4 baseColorFactor;\n} pbrParams;\n"
+        "// Lit's Stochastic Tiling: #define LIT_STOCHASTIC_PARAMS is not here\n"
+        "#include \"includes/pbr.glsl\"\nvoid main(){}\n";
+    const std::string newFrag =
+        "#version 450\n"
+        "uniform u_fs_pbrParams {\n    vec4 baseColorFactor;\n    #ifdef USE_STOCHASTIC_TILING\n        vec4 stochastic;\n    #endif\n} pbrParams;\n"
+        "#ifdef USE_STOCHASTIC_TILING\n    #define LIT_STOCHASTIC_PARAMS pbrParams.stochastic\n#endif\n"
+        "#include \"includes/pbr.glsl\"\nvoid main(){}\n";
+    ShaderManifests::setForkReader([&](const std::string& path, std::string& content) {
+        if (path == "shaders/OldLit.frag") { content = oldFrag; return true; }
+        if (path == "shaders/NewLit.frag") { content = newFrag; return true; }
+        if (path == "shaders/OldLit.vert" || path == "shaders/NewLit.vert") { content = "#version 450\nvoid main(){}\n"; return true; }
+        return false;
+    });
+
+    EXPECT_TRUE(RenderSystem::supportsStochasticTiling(""));
+    EXPECT_FALSE(RenderSystem::supportsStochasticTiling("shaders/OldLit"));
+    EXPECT_TRUE(RenderSystem::supportsStochasticTiling("shaders/NewLit"));
+    EXPECT_TRUE(RenderSystem::supportsStochasticTiling("shaders/NewLit#A"));
+    // (a fork whose files cannot be read does not either: ShaderManifests::get logs it, which needs the
+    // platform System these tests run without)
+    EXPECT_FALSE(RenderSystem::supportsStochasticTiling("library:simple_lit"));
+
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    Submesh& submesh = mesh.submeshes[0];
+    submesh.hasTexCoord1 = true;
+    submesh.hasNormal = true;
+    submesh.material.baseColorTexture = Texture("leaves.png");
+    submesh.material.alphaMode = MaterialAlphaMode::MASK;
+    submesh.material.stochasticTiling = true;
+
+    struct Case { const char* meshShader; const char* materialShader; const char* sceneShader; bool takesIt; };
+    const Case cases[] = {
+        {"", "", "", true},                          // the built-in Lit
+        {"shaders/OldLit", "", "", false},           // the mesh's fork, made before
+        {"shaders/NewLit", "", "", true},            // one that names the values
+        {"", "shaders/OldLit", "", false},           // the material's
+        {"shaders/NewLit", "shaders/OldLit", "", false},
+        {"", "", "shaders/OldLit", false},           // the scene's default mesh shader
+        {"", "", "shaders/NewLit", true},
+    };
+    for (const Case& c : cases) {
+        mesh.customShader = c.meshShader;
+        submesh.material.shader = c.materialShader;
+        const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, nullptr, nullptr, false, c.sceneShader);
+        EXPECT_EQ(inputs.stochasticShader, c.takesIt) << c.meshShader << " | " << c.materialShader << " | " << c.sceneShader;
+        const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(litEnvironment(), inputs);
+        // all three agree
+        EXPECT_EQ((variant.properties & meshSto) != 0, c.takesIt) << c.meshShader << " | " << c.materialShader;
+        EXPECT_EQ((variant.depthProperties & depthSto) != 0, c.takesIt) << c.meshShader << " | " << c.materialShader;
+        EXPECT_EQ((variant.gbufferProperties & gbufferSto) != 0, c.takesIt) << c.meshShader << " | " << c.materialShader;
+    }
+
+    // an extra pass drawing with the old fork does not take it either
+    MaterialPass pass;
+    pass.shader = "shaders/OldLit";
+    mesh.customShader.clear();
+    submesh.material.shader.clear();
+    const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, nullptr, nullptr, false, "");
+    EXPECT_FALSE(RenderSystem::getExtraPassShaderInputs(inputs, pass).stochasticShader);
+    pass.shader = "shaders/NewLit";
+    EXPECT_TRUE(RenderSystem::getExtraPassShaderInputs(inputs, pass).stochasticShader);
+
+    // back to the game's assets reader (forgets these forks)
+    ShaderManifests::setForkReader(nullptr);
+}
+
 // ---- (c) keys in files: the stale MESH bit 5
 
 TEST(StochasticTilingStaleKeys, OldFilesLoseBitFive) {
