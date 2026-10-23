@@ -1742,9 +1742,9 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
                 if (std::optional<Json> recipe = recipeOf(file)) {
                     checked.push_back({file, *recipe});
                     givenPngs.insert(file.lexically_normal());
-                    continue;
                 }
             }
+            // a synthesized PNG may be the source of others too (synthesized from a synthesized one)
             givenSources.insert(file.lexically_normal().generic_string());
         }
         if (!givenSources.empty()) {
