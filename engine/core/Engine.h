@@ -456,8 +456,8 @@ namespace jasperengine {
         static void clearUnusedPools();
 
         static void clearAllSubscriptions(bool includeLifecycle);
-        // Callbacks scripts left on a scene's components. Needed before the code behind them
-        // goes away, like the editor unloading the project library
+        // Callbacks scripts left on a scene's components and physics events. Needed before the
+        // code behind them goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
         static void removeSubscriptionsByTag(const std::string& substring);
 

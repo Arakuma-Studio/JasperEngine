@@ -155,6 +155,8 @@ namespace jasperengine{
 		void setGravity(float x, float y);
 		void setGravity(float x, float y, float z);
 
+		// Removes every event callback, as before the code behind them goes away
+		void clearSubscriptions();
 		// Removes the event callbacks with the substring in their tag
 		void removeSubscriptionsByTag(const std::string& substring);
 

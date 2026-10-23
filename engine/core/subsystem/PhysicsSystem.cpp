@@ -451,6 +451,26 @@ void PhysicsSystem::setGravity(float x, float y, float z){
     setGravity(Vector3(x, y, z));
 }
 
+void PhysicsSystem::clearSubscriptions(){
+#ifdef JASPERENGINE_PHYSICS_2D
+    beginContact2D.clear();
+    endContact2D.clear();
+    beginSensorContact2D.clear();
+    endSensorContact2D.clear();
+    hitContact2D.clear();
+    preSolve2D.clear();
+    shouldCollide2D.clear();
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+    onBodyActivated3D.clear();
+    onBodyDeactivated3D.clear();
+    onContactAdded3D.clear();
+    onContactPersisted3D.clear();
+    onContactRemoved3D.clear();
+    shouldCollide3D.clear();
+#endif
+}
+
 void PhysicsSystem::removeSubscriptionsByTag(const std::string& substring){
 #ifdef JASPERENGINE_PHYSICS_2D
     beginContact2D.removeByTagSubstring(substring);

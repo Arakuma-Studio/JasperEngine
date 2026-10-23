@@ -10,6 +10,7 @@
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -976,6 +977,9 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         action.onStop.clear();
         action.onStep.clear();
     }
+
+    // contact and activation events a script subscribed to on the scene's physics
+    scene->getSystem<PhysicsSystem>()->clearSubscriptions();
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
