@@ -132,17 +132,19 @@ void latticeAxis(float x, int r, int interpolation, out int first, out vec4 w, o
 // A^-1 delta, which is Minv (M p + delta) without the round trip.
 void latticeDeformSmooth(int stage, inout vec3 position, inout vec3 normal, inout vec3 smoothNormal, inout vec3 tangent, inout float stretch){
     int count = int(latticeParams.x + 0.5);
-    int active = int(latticeParams.y + 0.5);
+    int deforming = int(latticeParams.y + 0.5);
     bool wantStretch = latticeParams.z > 0.5;
     vec4 color = latticeVertexColor();
 
     for (int b = 0; b < LATTICE_MAX_PER_MESH; b++){
         if (b >= count)
             break;
-        if ((active & (1 << b)) == 0)
+        if ((deforming & (1 << b)) == 0)
             continue;
 
-        int start = int(latticeStarts[b] + 0.5);
+        // (no dynamic index into the block: GL flattens it into a vec4 array)
+        float recordStart = (b == 0) ? latticeStarts.x : ((b == 1) ? latticeStarts.y : ((b == 2) ? latticeStarts.z : latticeStarts.w));
+        int start = int(recordStart + 0.5);
         vec4 binding = latticeTexel(start + 9); // stage, weight, outside, fade distance
         #ifdef HAS_SKINNING
             if (int(binding.x + 0.5) != stage)
