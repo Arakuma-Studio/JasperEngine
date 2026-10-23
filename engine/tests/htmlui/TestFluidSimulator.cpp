@@ -595,6 +595,8 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     ensureFluidComponent(scene);
     Sprite& sprite = fixture.add<Sprite>();
     sprite.setSize(120, 60);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(200.0f, 150.0f, 0.0f);
 
     // red over the whole fluid (a wide splat), no steps
     FluidSimulationComponent c = plainFluid();
@@ -624,13 +626,13 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     EXPECT_GE(fluid.revision, 1u);
     EXPECT_FALSE(system->hasScreenFluids());
 
-    // drawn: the sprite (top-left 120 x 60 of the UI camera's view) shows the red fluid
+    // drawn: the sprite (120 x 60 around (200, 150) of the UI camera's view) shows the red fluid
     Framebuffer& target = GpuEnvironment::target();
     const int w = (int)target.getWidth(), h = (int)target.getHeight();
     std::vector<uint8_t> rgba;
     ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
     PixelProbe probe{rgba, w};
-    const uint8_t* inside = probe.at(60, 30);
+    const uint8_t* inside = probe.at(200, 150);
     EXPECT_GT((int)inside[0], 150) << "the sprite shows the fluid";
     EXPECT_LT((int)inside[1], 60);
     EXPECT_TRUE(probe.isBackground(400, 300));
@@ -653,7 +655,7 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(system->getMaterialTexture(entity), nullptr);
     ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
-    EXPECT_GT((int)probe.at(60, 30)[1], 150) << "the sprite's own (white) look is back";
+    EXPECT_GT((int)probe.at(200, 150)[1], 150) << "the sprite's own (white) look is back";
     fluid.output = FluidOutput::MATERIAL;
     GpuEnvironment::drawFrames(2);
 
