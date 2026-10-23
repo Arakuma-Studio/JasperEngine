@@ -6,13 +6,21 @@
 
 // The script and C++ face of a FluidSimulationComponent (GameObject > Effects > Fluid
 // Simulation). Setters of a value the targets depend on (resolutions) recreate them at the next
-// frame; reset() restarts the simulation.
+// frame; reset() restarts the simulation. setSeed() takes effect at the next (re)start.
+//
+// Validation: setters reject (Log::error, the old value kept) NaN/infinite floats and negative
+// values; resolutions, simulationRate, maxSubsteps and splatRadius must also be > 0. Other values
+// are kept as given: resolutions outside Pavel's sets (sim 32/64/128/256, dye 128/256/512/1024)
+// work, the simulator sizes its targets from them (short side, the long side from the aspect).
+// splat() rejects non-finite positions/velocities and negative or non-finite colours/radii.
+// Fields set directly on the component (Inspector, MCP, Lua component access) are not checked.
 
 #include "object/GameObject.h"
 #include "component/FluidSimulationComponent.h"
 #include "fluid/FluidSimulator.h"
 
 #include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -29,6 +37,10 @@ namespace jasperengine{
 
         using GameObject::getComponent;
         FluidSimulationComponent& getComponent() const;
+
+        // the component's `enabled`: a disabled fluid neither steps nor draws (its state is kept)
+        void setEnabled(bool enabled);
+        bool isEnabled() const;
 
         void setOutput(FluidOutput output);
         FluidOutput getOutput() const;
@@ -103,19 +115,22 @@ namespace jasperengine{
         void setSunraysWeight(float weight);
         float getSunraysWeight() const;
 
-        // a splat at the next step (fluid coordinates, Pavel's force, HDR colour; radius 0: the
-        // component's)
+        // a splat at the next step, also while paused (fluid coordinates, Pavel's force, HDR
+        // colour; radius 0: the component's splatRadius)
         void splat(Vector2 position, Vector2 velocity, Vector3 color, float radius = 0.0f);
         void splat(const float x, const float y, const float dx, const float dy, const float r, const float g, const float b);
-        // a random burst (0: Pavel's random 5-24 splats), seeded
+        // a random burst at the next step (0: Pavel's random 5-24 splats), from the seeded source
         void randomSplats(unsigned int count = 0);
+        // restarts at the next frame: zero fields, the seed, the start burst (splatsOnStart)
         void reset();
-        // runs `steps` fixed steps now (deterministic stepping; tests and tools)
+        // queues `steps` fixed steps run at the next frame, also while paused
+        // (deterministic stepping; tests and tools); steps <= 0 do nothing
         void step(int steps = 1);
 
         // the preset ids of getFluidPresets(); false: no such preset
         bool applyPreset(const std::string& id);
         std::string getPreset() const;      // the matching preset, "" when none
+        static std::vector<std::string> getPresetIds();    // getFluidPresets()' ids, in order
 
         // the output (RGBA8); its version changes when it is recreated
         Texture& getTexture() const;
