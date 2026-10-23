@@ -30,6 +30,7 @@
 #include "shader/ShaderBuildTypes.h"
 #include "shader/ShaderManifest.h"
 #include "util/PostColorLut.h"
+#include "render/DynamicResolutionController.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -249,6 +250,14 @@ namespace jasperengine{
 		Vector4 vignetteLutScan;     // x, y vignette falloff, z grade LUT side, w scanline period (output pixels)
 		Vector4 bloomBlur;           // rgb bloom tint * intensity (linear), a blur mix
 		Vector4 sampling;            // x 1: the source is a NEAREST target, its UV snaps to texel centres
+		Vector4 vhs0;                // x intensity, y wobble, z tracking, w colour bleed
+		Vector4 vhs1;                // x tape noise, y chroma streaks, z dropouts, w scanlines
+		Vector4 vhs2;                // x interference, y glitches, z tape time (s)
+		Vector4 halation;            // rgb tint * intensity (linear), a radius
+		Vector4 film;                // x grain size, y coloured grain, z film frame, w dust size
+		Vector4 damage;              // x strength, y hair, z scratch, w dust candidates
+		Vector4 gateWeave;           // xy offset (output pixels), z cos, w sin of the rotation
+		Vector4 gateMask;            // xy half size, z corner radius, w feather (output pixels); x 0: none
 	} fs_uber_t;
 
 	// the bloom and blur chain's passes (shaderlib/bloom.vert, bloom.frag)
@@ -337,7 +346,12 @@ namespace jasperengine{
 		UBER_BLOOM        = 1u << 10, // 'Blm' bloom composite (u_bloomTexture, the bloom chain's)
 		UBER_BLUR         = 1u << 11, // 'Blr' blur composite (u_blurTexture, the blur chain's)
 		UBER_UPSCALE      = 1u << 12, // 'Scl' none of the above: the plain upscale of a render scale below 1
-		UBER_FEATURE_COUNT = 13
+		UBER_VHS          = 1u << 13, // 'Vhs' VHS tape (replaces the scene tap; never with FXAA or sharpen)
+		UBER_HALATION     = 1u << 14, // 'Hal' halation composite (two levels of the bloom chain, or its own)
+		UBER_FILM_DAMAGE  = 1u << 15, // 'Fdm' film damage: hairs, scratches, dust, gate weave and mask
+		UBER_GRAIN_LENS   = 1u << 16, // 'Gln' the Lens film grain (with UBER_GRAIN)
+		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
+		UBER_FEATURE_COUNT = 18
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -353,9 +367,15 @@ namespace jasperengine{
 		bool uber = false;
 		// its BLIT variant bits (RenderSystem::UberFeature)
 		uint32_t uberFeatures = 0;
-		// the 3D scene's resolution scale (uber only) and MSAA samples (1, 2, 4)
+		// the 3D scene's resolution scale (uber only) and MSAA samples (1, 2, 4); with dynamic
+		// resolution on, renderScale is its upper bound and the applied scale the controller's
+		// (RenderSystem::getAppliedRenderScale)
 		float renderScale = 1.0f;
 		int msaaSamples = 1;
+		// halation without bloom runs its own two-pass chain (with bloom it reads bloom's levels)
+		bool halationChain = false;
+		// dynamic resolution drives the scale (S13): the uber pass stays on at any scale
+		bool dynamicResolution = false;
 	};
 
 	// What the shader variant of a submesh depends on in its mesh and GameObject
@@ -530,6 +550,14 @@ namespace jasperengine{
 		// (edit-mode viewports render native; play mode re-enables it). Defaults
 		// to false and is never set at runtime, so exported games are unaffected.
 		bool disableFixedResolution = false;
+
+		// Editor-only override that keeps dynamic resolution off (edit mode: the controller runs
+		// in Play and in exported games only); the editor's default, never set at runtime
+#ifdef JASPERENGINE_EDITOR
+		bool disableDynamicResolution = true;
+#else
+		bool disableDynamicResolution = false;
+#endif
 
 		static uint32_t pixelsWhite[64];
 		static uint32_t pixelsBlack[64];
@@ -831,6 +859,7 @@ namespace jasperengine{
 			unsigned int sourceWidth = 0;
 			unsigned int sourceHeight = 0;
 			int levels = -1;              // the down levels below the first that exist
+			bool upLevels = true;         // the way up exists (halation's chain has none)
 			void destroy();
 			bool isCreated() const{ return levels >= 0; }
 		};
@@ -882,9 +911,10 @@ namespace jasperengine{
 			};
 			std::vector<std::unique_ptr<PostScaledTargets>> postScaledTargets;
 
-			// the bloom and blur chains (phase 4)
+			// the bloom and blur chains (phase 4), and halation's own two levels without bloom (S13)
 			PostChainTargets bloomTargets;
 			PostChainTargets blurTargets;
+			PostChainTargets halationTargets;
 			// the multisampled scene target of the post-processed camera (PostProcessingSettings::
 			// msaaSamples): its colour pass draws into it and resolves into its usual target
 			Framebuffer msaaFramebuffer;
@@ -1222,6 +1252,8 @@ namespace jasperengine{
 		std::pair<int, int> uberSlotLut = {-1, -1};
 		std::pair<int, int> uberSlotBloom = {-1, -1};
 		std::pair<int, int> uberSlotBlur = {-1, -1};
+		std::pair<int, int> uberSlotHalation = {-1, -1};
+		std::pair<int, int> uberSlotHalationWide = {-1, -1};
 		vs_uber_t vs_uber;
 		fs_uber_t fs_uber;
 		// what the uber pass composites (the bloom chain's output and its blurred copy, phase 4
@@ -1229,6 +1261,9 @@ namespace jasperengine{
 		// feature compiles and draws without them
 		TextureRender* uberBloomTexture = nullptr;
 		TextureRender* uberBlurTexture = nullptr;
+		// halation's two levels (1/4 and 1/8: the bloom chain's way down, or its own chain)
+		TextureRender* uberHalationTexture = nullptr;
+		TextureRender* uberHalationWideTexture = nullptr;
 		// The bloom and blur chain (phase 4, T2; shaderlib/bloom.frag): one program per pass kind
 		enum BloomProgramKind{
 			BLOOM_PREFILTER_THRESHOLD,   // 'Pre,Thr' the bloom's prefilter
@@ -1310,9 +1345,33 @@ namespace jasperengine{
 		// the uber pass's grade LUT (display domain), side postGradeLutSize
 		TextureRender postGradeLut;
 		int postGradeLutSize = 0;
-		// the user's LUT strip (PostProcessingSettings::lutTexture), loaded from postLutStripPath
-		std::string postLutStripPath;
-		PostColorLut::Strip postLutStrip;
+		// Dynamic resolution (S13): the controller of the post-processed main camera's render
+		// scale, ticked once per frame (drawFramePasses) while the settings enable it and fixed
+		// resolution is off, in the frame's own view only; its scale replaces the tiers' render
+		// scale there (getAppliedRenderScale) and is never written to the settings
+		DynamicResolutionController dynamicResolution;
+		bool dynamicResolutionRunning = false;
+		float dynamicResolutionScale = 1.0f;
+		// what the controller is configured with, and the view it measured (a change resets it)
+		DynamicResolutionConfig dynamicResolutionConfig;
+		unsigned int dynamicResolutionViewWidth = 0;
+		unsigned int dynamicResolutionViewHeight = 0;
+		uint64_t dynamicResolutionFrame = 0;
+		// the last frame's uber pass rendered the scene at the applied scale (the sample is valid)
+		bool dynamicResolutionConnected = false;
+		// > 0: the applied scale pinned (Lua setDynamicResolutionOverride, MCP force_render_scale)
+		float dynamicResolutionOverride = 0.0f;
+		// > 0: GPU milliseconds given to the controller in place of a measurement (MCP fake_gpu_ms)
+		float dynamicResolutionFakeGpuMs = 0.0f;
+		// >= 0: the uber pass's time pinned, seconds (MCP set_post_processing_debug time_seconds)
+		double postDebugTime = -1.0;
+		// the controller's tick for the frame
+		void updateDynamicResolution();
+
+		// the user's LUT (PostProcessingSettings::lutTexture: a .cube, its cooked .jlut or a PNG
+		// strip), shared through the CubeLut cache by path; null when none or it failed to load
+		std::string postLutPath;
+		std::shared_ptr<const CubeLut> postLut;
 		// the bake buffer, kept between bakes
 		std::vector<uint8_t> postLutPixels;
 		bool postProcessKeepsOriginal = false; // a pass after the first reads the original scene
@@ -1463,6 +1522,9 @@ namespace jasperengine{
 		// scene target, and the pass from source (sourceWidth x sourceHeight) into destination
 		// (null: the view's target or the swapchain) at viewport
 		bool loadUber(uint32_t features);
+		// the S13 effects' uber parameters (VHS, halation, film grain and damage) at that time,
+		// for an output viewport of that size
+		void fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight);
 		void destroyUber();
 		bool ensurePostSceneFramebuffer(unsigned int width, unsigned int height);
 		// whether the variants the loaded points, lines and sky take with the current colour bit
@@ -1472,7 +1534,7 @@ namespace jasperengine{
 		bool loadBloomProgram(BloomProgramKind kind);
 		void destroyBloomPrograms();
 		// the chain's targets for a source size and down levels (0..3), made or resized
-		bool ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels);
+		bool ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels, bool upLevels = true);
 		// one pass of the chain: source (and level, a mixed upsample's) into target; the source
 		// through samplerOf's sampler when given (a NEAREST target, see linearSampler)
 		void renderBloomPass(BloomProgramKind kind, const char* label, TextureRender* source, unsigned int sourceWidth,
@@ -1484,6 +1546,10 @@ namespace jasperengine{
 		// is a NEAREST target, which the prefilter's 2x2 averages read through a linear sampler
 		TextureRender* renderBloomChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
 		TextureRender* renderBlurChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
+		// Halation without bloom (S13): its threshold prefilter to 1/4 and one dual-filter level
+		// to 1/8 (two passes) into halationTargets; false while its programs build. With bloom on
+		// it reads bloom's down[0] and down[1] instead
+		bool renderHalationChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource);
 		// a texture whose sampler is linear and clamped (its image is never read), made when a
 		// pass first reads a NEAREST target bilinear (the fixed resolution's, NEAREST by default)
 		TextureRender* linearSampler();
@@ -1845,6 +1911,24 @@ namespace jasperengine{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
+		void setDisableDynamicResolution(bool disableDynamicResolution);
+
+		// Dynamic resolution (S13, PostProcessingSettings::dynamicResolution*): the render scale
+		// the post-processed main camera draws at (the controller's while it runs, the pinned
+		// one, else the settings'), whether the controller runs, and its state
+		float getAppliedRenderScale() const;
+		bool isDynamicResolutionRunning() const { return dynamicResolutionRunning; }
+		const DynamicResolutionController& getDynamicResolution() const { return dynamicResolution; }
+		// pins the applied scale (0.5..1) while the uber pass runs; 0 or below releases it
+		void setDynamicResolutionOverride(float scale);
+		float getDynamicResolutionOverride() const { return dynamicResolutionOverride; }
+		// GPU milliseconds the controller takes as each frame's measurement (tests); 0 releases
+		void setDynamicResolutionFakeGpuMs(float milliseconds);
+		float getDynamicResolutionFakeGpuMs() const { return dynamicResolutionFakeGpuMs; }
+		// pins the time the uber pass's effects animate with (grain, VHS, film damage), seconds;
+		// below 0 releases it (deterministic captures)
+		void setPostProcessingDebugTime(double seconds);
+		double getPostProcessingDebugTime() const { return postDebugTime; }
 		// the frame's own view draws without the scene's post-processing (the editor's edit-mode
 		// Scene view): the colour passes bypass the post colour (no variant change), no uber pass
 		void setDisablePostProcessing(bool disablePostProcessing);
@@ -1994,11 +2078,15 @@ namespace jasperengine{
 		void invalidatePostProcessTextures();
 		// what a set of post-processing settings turns on (the export collector and the editor
 		// use it to pick the same variants), and what the renderer applies now
+		// The user LUT is read through the CubeLut cache to know its stage (a scene-stage .cube
+		// changes the curve, not the grade); the second form takes the loaded one (null: none)
 		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings);
+		static PostProcessingTiers getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut);
 		// the k of the in-shader LUT's shaper s = sqrt(x / (x + k)) for a LUT of that side
 		// (PostColorLut::bake, includes/post_color.glsl): 1, or with tone mapping NONE the
 		// one putting the clip point (2^-exposure) on a texel, so whites reach 255 at any side
-		static float getPostColorShaper(const PostProcessingSettings& settings, int lutSide);
+		// (a scene-stage LUT moves the clip, so it keeps k = 1 too)
+		static float getPostColorShaper(const PostProcessingSettings& settings, int lutSide, const CubeLut* lut = nullptr);
 		const PostProcessingTiers& getActivePostProcessingTiers() const { return postTiers; }
 		void needReloadUIs();
 		void needReloadSky();

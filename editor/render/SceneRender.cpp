@@ -775,6 +775,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // Fixed game resolution only applies while playing: edit-mode viewports stay
     // at native resolution (gizmos and overlays would otherwise mismatch).
     scene->getSystem<RenderSystem>()->setDisableFixedResolution(!isPlaying);
+    // and so does dynamic resolution (S13): never in edit mode
+    scene->getSystem<RenderSystem>()->setDisableDynamicResolution(!isPlaying);
     // The scene's post-processing (phase 4) is the game's: off in the edit-mode Scene view unless
     // its display setting shows it or a scene camera is previewed; the Game view's pass (this
     // frame drawn through the game camera) has it (free to toggle: the colour passes bypass the

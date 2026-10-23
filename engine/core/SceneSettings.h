@@ -55,6 +55,37 @@ namespace jasperengine{
         SEPIA
     };
 
+    // The pattern of the film grain (PostProcessingSettings::filmGrainType): the uber pass's
+    // classic per-pixel hash, or one of the film simulation's (S13), held per film frame
+    enum class FilmGrainType : int {
+        CLASSIC,    // a new hash per pixel and frame (the original grain)
+        LENS,       // FidelityFX Lens-derived simplex cells of filmGrainSize pixels
+        FILMIC      // a 5x5 lattice of grain particles (desktop / high-end)
+    };
+
+    // The frame of the film gate (PostProcessingSettings::filmGateMask): the image's aspect
+    // ratio inside the output, black outside it, with a feathered edge
+    enum class FilmGateMask : int {
+        NONE,
+        ROUNDED,         // the output's frame with rounded corners
+        ACADEMY_137,     // 1.37:1
+        WIDESCREEN_185,  // 1.85:1
+        ANAMORPHIC_239   // 2.39:1
+    };
+
+    // What the colour of a .cube LUT's input is (PostProcessingSettings::lutInputEncoding).
+    // Display encodings apply the LUT to the graded display colour, scene encodings to the
+    // exposed linear scene colour before the tone mapping (CubeLut.h)
+    enum class LutInputEncoding : int {
+        AUTO,                   // proposed from the LUT's title and input range
+        SRGB,                   // display: sRGB / Rec. 709
+        LINEAR,                 // display with an input range up to 1, else scene-linear
+        LOGC3,                  // scene: ARRI LogC3 (EI 800), ARRI Wide Gamut 3
+        ACESCCT,                // scene: ACEScct, AP1
+        CINEON,                 // scene: Cineon film log, Rec. 709 primaries
+        DAVINCI_INTERMEDIATE    // scene: DaVinci Intermediate, DaVinci Wide Gamut
+    };
+
     // Fast post-processing of the main camera (shader library phase 4). Every effect has an
     // enable flag (or a neutral value: exposure 0, tonemap NONE, render scale 1, MSAA 1) and
     // costs nothing while off; a default-constructed struct draws exactly what the engine drew
@@ -86,6 +117,9 @@ namespace jasperengine{
         Vector3 gain = Vector3(1.0f, 1.0f, 1.0f);
         std::string lutTexture;
         float lutContribution = 1.0f;
+        // what a .cube LUT's input is (AUTO: from its title and input range); a PNG strip is
+        // always display colour
+        LutInputEncoding lutInputEncoding = LutInputEncoding::AUTO;
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
         int lutSize = 32;
@@ -131,6 +165,42 @@ namespace jasperengine{
         bool filmGrainEnabled = false;
         float filmGrainIntensity = 0.2f;            // 0..1
         float filmGrainResponse = 0.8f;             // 0..1, less grain in bright areas
+        // the film simulation's grain (S13): LENS and FILMIC are cells of about filmGrainSize
+        // pixels, held for a film frame (filmFrameRate, shared with the film damage), and never
+        // push a pixel past black or white; FILMIC may be coloured (one grain per channel)
+        FilmGrainType filmGrainType = FilmGrainType::CLASSIC;
+        float filmGrainSize = 1.5f;                 // 0.25..8 pixels
+        bool filmGrainColored = false;
+        float filmFrameRate = 24.0f;                // 1..120 film frames per second
+
+        // VHS tape (T1, S13): replaces the scene tap with the tape's colour bleed, warps the
+        // lines (wobble, tracking) and adds tape noise, chroma streaks, dropouts and scanlines;
+        // FXAA and sharpen do not run with it. Each part 0..2 (1 the tape's own amount),
+        // intensity 0..1 mixes the whole, speed 0..4 scales its animation
+        bool vhsEnabled = false;
+        float vhsIntensity = 1.0f;
+        float vhsWobble = 0.5f;
+        float vhsTracking = 0.5f;
+        float vhsColorBleed = 1.0f;
+        float vhsTapeNoise = 0.6f;
+        float vhsChromaStreaks = 0.4f;
+        float vhsDropouts = 0.3f;
+        float vhsScanlines = 0.5f;
+        float vhsInterference = 0.0f;
+        float vhsGlitches = 0.0f;
+        float vhsSpeed = 1.0f;
+
+        // film damage (T1, S13): hairs, scratches and dust (each up to 8 candidates per film
+        // frame, 0 none), the gate's weave (0..1 of a projector's) and its mask
+        bool filmDamageEnabled = false;
+        float filmDamageIntensity = 1.0f;           // 0..4
+        float filmHairAmount = 0.1f;
+        float filmScratchAmount = 0.25f;
+        float filmDustAmount = 2.5f;
+        float filmDustSize = 3.0f;                  // 0.5..24 pixels
+        float filmGateWeave = 0.3f;
+        FilmGateMask filmGateMask = FilmGateMask::NONE;
+        float filmGateMaskFeather = 3.0f;           // 0..256 pixels
 
         bool sharpenEnabled = false;
         float sharpenIntensity = 0.5f;              // 0..1
@@ -152,6 +222,15 @@ namespace jasperengine{
         float blurRadius = 1.0f;
         float blurIntensity = 1.0f;
 
+        // T2 (S13): halation, the red-orange glow film shows around bright highlights.
+        // threshold on the display brightness (0..1; bloom's when bloom is on, whose chain it
+        // reuses), radius 0..1 mixes the 1/4 and 1/8 levels, tint sRGB. LDR like bloom
+        bool halationEnabled = false;
+        float halationIntensity = 0.6f;             // 0..2
+        float halationThreshold = 0.85f;
+        float halationRadius = 0.5f;
+        Vector3 halationTint = Vector3(1.0f, 0.25f, 0.08f);
+
         // resolution of the 3D scene, 0.5..1 of the output, upscaled by the uber pass (UI the main
         // camera draws is part of its image and scales too; a layer scene's HUD stays at the
         // output's resolution)
@@ -160,6 +239,14 @@ namespace jasperengine{
         // has): resolved at the end of the scene pass into the target the effects read; with
         // nothing else offscreen an exported game blits that target to the screen (one pass)
         int msaaSamples = 1;
+
+        // dynamic resolution (S13): in Play and exported games the main camera's render scale
+        // moves between dynamicResolutionMinScale and renderScale to hold the target frame
+        // rate (0: the display's refresh rate, else 60). Off with fixed resolution; the scale
+        // it applies is never written back here
+        bool dynamicResolutionEnabled = false;
+        float dynamicResolutionMinScale = 0.6f;     // 0.5..1
+        int dynamicResolutionTargetFps = 0;         // 0..240
 
         bool operator==(const PostProcessingSettings& o) const;
         bool operator!=(const PostProcessingSettings& o) const { return !(*this == o); }

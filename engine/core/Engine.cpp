@@ -80,6 +80,8 @@ bool Engine::ignoreEventsHandledByUI = true;
 bool Engine::uiEventReceived = false;
 
 uint64_t Engine::lastTime = 0;
+double Engine::framePeriod = 0.0;
+double Engine::frameCpuTime = 0.0;
 double Engine::updateTimeCount = 0;
 
 double Engine::deltatime = 0;
@@ -606,6 +608,14 @@ bool Engine::isOpenGL(){
 
 float Engine::getFramerate(){
     return framerate;
+}
+
+double Engine::getFramePeriod(){
+    return framePeriod;
+}
+
+double Engine::getFrameCpuTime(){
+    return frameCpuTime;
 }
 
 float Engine::getDeltatime(){
@@ -1221,7 +1231,9 @@ void Engine::systemDraw(){
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
+    const uint64_t frameStart = lastTime;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
+    framePeriod = rawDelta;
 
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively
@@ -1316,6 +1328,7 @@ void Engine::systemDraw(){
     endCompositeFramebuffer();
 
     SystemRender::commit();
+    frameCpuTime = stm_sec(stm_since(frameStart));
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);

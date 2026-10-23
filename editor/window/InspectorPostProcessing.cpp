@@ -76,9 +76,11 @@ namespace {
                 {"Color Grading", "color_grading_enabled",
                  {{"temperature", "Temperature"}, {"tint", "Tint"}, {"contrast", "Contrast"}, {"saturation", "Saturation"},
                   {"lift", "Lift"}, {"gamma", "Gamma"}, {"gain", "Gain"}, {"lut_texture", "LUT Texture"},
-                  {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
-                 "White balance, contrast, lift/gamma/gain, saturation and an optional LUT strip (an N*N x N image, "
-                 "Unity's layout), baked with the curve into one small colour LUT whenever a value changes.",
+                  {"lut_input_encoding", "LUT Input Encoding"}, {"lut_contribution", "LUT Contribution"}, {"lut_size", "LUT Size"}},
+                 "White balance, contrast, lift/gamma/gain, saturation and an optional LUT: an image strip (N*N x N, "
+                 "Unity's layout) or a .cube file (1D, 3D or both, from Resolve and other grading tools), baked with the "
+                 "curve into one small colour LUT whenever a value changes (no GPU cost). A .cube in a log encoding applies "
+                 "before the tone mapping; prefer LUT Size 32 with a .cube.",
                  [](PostProcessingSettings& s) { s.colorGradingEnabled = true; s.contrast = 1.2f; }, nullptr},
                 {"Monochrome", "monochrome_enabled", {{"monochrome_mode", "Mode"}, {"monochrome_intensity", "Intensity"}},
                  "Grayscale or sepia, baked into the colour LUT (free once any colour effect is on).",
@@ -98,9 +100,21 @@ namespace {
                  "stays antialiased where the shift is under a pixel; a stronger fringe at the edges is a shifted "
                  "copy, not antialiased again.",
                  [](PostProcessingSettings& s) { s.chromaticAberrationEnabled = true; }, nullptr},
-                {"Film Grain", "film_grain_enabled", {{"film_grain_intensity", "Intensity"}, {"film_grain_response", "Response"}},
-                 "Animated noise, weaker in bright areas (Response).",
+                {"Film Grain", "film_grain_enabled",
+                 {{"film_grain_type", "Type"}, {"film_grain_intensity", "Intensity"}, {"film_grain_response", "Response"},
+                  {"film_grain_size", "Size"}, {"film_grain_colored", "Colored"}, {"film_frame_rate", "Frame Rate"}},
+                 "Animated noise, weaker in bright areas (Response). Classic: a new hash per pixel and frame. Lens: "
+                 "FidelityFX Lens-style cells of Size pixels. Filmic: a 5x5 lattice of soft grains (desktop / high-end; "
+                 "Colored grains per channel). Lens and Filmic change once per film frame (Frame Rate) and never push a "
+                 "pixel past black or white.",
                  [](PostProcessingSettings& s) { s.filmGrainEnabled = true; }, nullptr},
+                {"Halation", "halation_enabled",
+                 {{"halation_intensity", "Intensity"}, {"halation_threshold", "Threshold"}, {"halation_radius", "Radius"},
+                  {"halation_tint", "Tint"}},
+                 "The red-orange glow film shows around bright highlights (light scattered back through the film base). "
+                 "With Bloom on it reuses bloom's chain (no pass, bloom's Threshold); without, two small passes. LDR like "
+                 "bloom: a white wall halates too.",
+                 [](PostProcessingSettings& s) { s.halationEnabled = true; }, nullptr},
             }},
             {"Anti-aliasing", {
                 {"FXAA", "fxaa_enabled", {},
@@ -134,6 +148,22 @@ namespace {
                 {"Sharpen", "sharpen_enabled", {{"sharpen_intensity", "Intensity"}},
                  "Crisper detail (shares FXAA's taps); pairs well with a render scale below 1.",
                  [](PostProcessingSettings& s) { s.sharpenEnabled = true; }, nullptr},
+                {"VHS", "vhs_enabled",
+                 {{"vhs_intensity", "Intensity"}, {"vhs_wobble", "Wobble"}, {"vhs_tracking", "Tracking"},
+                  {"vhs_color_bleed", "Color Bleed"}, {"vhs_tape_noise", "Tape Noise"}, {"vhs_chroma_streaks", "Chroma Streaks"},
+                  {"vhs_dropouts", "Dropouts"}, {"vhs_scanlines", "Scanlines"}, {"vhs_interference", "Interference"},
+                  {"vhs_glitches", "Glitches"}, {"vhs_speed", "Speed"}},
+                 "A played video tape: colour bleed and trails of its narrow chroma, line wobble, tracking bands, tape "
+                 "noise, chroma streaks, dropouts, interference, glitches and scanlines. It replaces the scene tap (9 "
+                 "taps), so FXAA and Sharpen do not run with it.",
+                 [](PostProcessingSettings& s) { s.vhsEnabled = true; }, nullptr},
+                {"Film Damage", "film_damage_enabled",
+                 {{"film_damage_intensity", "Intensity"}, {"film_hair_amount", "Hairs"}, {"film_scratch_amount", "Scratches"},
+                  {"film_dust_amount", "Dust"}, {"film_dust_size", "Dust Size"}, {"film_gate_weave", "Gate Weave"},
+                  {"film_gate_mask", "Gate Mask"}, {"film_gate_mask_feather", "Gate Mask Feather"}, {"film_frame_rate", "Frame Rate"}},
+                 "A projected film print: hairs, scratches and dust (up to 8 of each per film frame), the gate's weave "
+                 "and its frame (Academy 1.37, widescreen 1.85, anamorphic 2.39 or rounded corners).",
+                 [](PostProcessingSettings& s) { s.filmDamageEnabled = true; }, nullptr},
             }},
             {"Bloom", {
                 {"Bloom", "bloom_enabled",
@@ -158,6 +188,13 @@ namespace {
                  "by a layer scene stays at full resolution. Point sprites keep their size in pixels of the scaled "
                  "image (larger on screen), as with fixed resolution.",
                  [](PostProcessingSettings& s) { s.renderScale = 0.75f; }, nullptr},
+                {"Dynamic Resolution", "dynamic_resolution_enabled",
+                 {{"dynamic_resolution_min_scale", "Min Scale"}, {"dynamic_resolution_target_fps", "Target FPS"}},
+                 "In Play and in the exported game, the render scale moves between Min Scale and Render Scale to hold the "
+                 "Target FPS (0: 60): it drops quickly on missed frames and probes upward slowly. Without GPU timing it "
+                 "reads the frame period, so it cannot help a CPU-bound game. Never in edit mode; off with Fixed Resolution. "
+                 "Each change resizes the scene targets (a step of 0.05, at most twice a second).",
+                 [](PostProcessingSettings& s) { s.dynamicResolutionEnabled = true; }, nullptr},
             }},
         };
         return table;
@@ -249,6 +286,14 @@ namespace {
             if (name == "aces") return "ACES";
             if (name == "agx") return "AgX";
             if (name == "neutral") return "Neutral (Khronos PBR)";
+        } else if (std::strcmp(f.enumType, "LutInputEncoding") == 0) {
+            return editor::getLutInputEncodingName((LutInputEncoding)index);
+        } else if (std::strcmp(f.enumType, "FilmGateMask") == 0) {
+            if (name == "academy_137") return "Academy (1.37)";
+            if (name == "widescreen_185") return "Widescreen (1.85)";
+            if (name == "anamorphic_239") return "Anamorphic (2.39)";
+        } else if (std::strcmp(f.enumType, "FilmGrainType") == 0) {
+            if (name == "filmic") return "Filmic (desktop / high-end)";
         }
         std::string label = name;
         if (!label.empty()) label[0] = (char)std::toupper((unsigned char)label[0]);
@@ -291,6 +336,12 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     const std::string property = std::string("post_processing.") + f.snakeName;
     const std::string id = "##pp_" + std::string(f.snakeName);
 
+    // rows that apply only with some values, and rows inactive because of another effect
+    const PostProcessingRowState state = getPostProcessingRowState(
+        settings, f.snakeName, Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled"));
+    if (!state.shown)
+        return;
+
     ImGui::PushID(f.snakeName);
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
@@ -298,7 +349,8 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label);
     if (ImGui::IsItemHovered())
-        wrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help));
+        wrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help) +
+                       (state.inactiveReason.empty() ? std::string() : "\n\n" + state.inactiveReason));
     if (!fieldIsDefault(settings, f)) {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
         ImGui::SameLine();
@@ -320,6 +372,9 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
 
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1);
+    // still editable (the value is kept), greyed with the reason
+    if (!state.inactiveReason.empty())
+        ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * ImGui::GetStyle().DisabledAlpha);
 
     // a changed value: one command, merged while the widget is held (cmd: the inspector's
     // pending command, closed below when the widget is released)
@@ -394,6 +449,14 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
                 }
                 ImGui::EndCombo();
             }
+            if (std::strcmp(f.name, "lutInputEncoding") == 0) {
+                // what the .cube's encoding resolves to (Auto: the proposal from its title and range)
+                const std::shared_ptr<const CubeLut> lut = getCachedColorLut(settings.lutTexture);
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("%s", describeLutInputEncoding(settings.lutInputEncoding, lut.get(),
+                                                                   getCachedColorLutError(settings.lutTexture)).c_str());
+                ImGui::PopTextWrapPos();
+            }
             break;
         }
         case FT::String: {
@@ -415,22 +478,23 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             ImGui::Button((shown + "##slot").c_str(), ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - buttons), 0));
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s%sDrop an image here", current.c_str(), current.empty() ? "" : "\n");
+                ImGui::SetTooltip("%s%sDrop an image strip or a .cube file here", current.c_str(), current.empty() ? "" : "\n");
             if (ImGui::BeginDragDropTarget()) {
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
                     std::vector<std::string> received = editor::Util::getStringsFromPayload(payload);
-                    if (!received.empty() && editor::Util::isImageFile(received[0]))
+                    if (!received.empty() && (editor::Util::isImageFile(received[0]) || editor::Util::isColorLutFile(received[0])))
                         assign(received[0]);
                 }
                 ImGui::EndDragDropTarget();
             }
             ImGui::SameLine();
             if (ImGui::Button(ICON_FA_FOLDER_OPEN "##pick")) {
-                const std::string selected = FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_IMAGE);
+                const std::string selected = FileDialogs::openFileDialog(project->getAssetsPath().string(),
+                                                                         FILE_DIALOG_IMAGE | FILE_DIALOG_COLOR_LUT);
                 if (!selected.empty())
                     assign(selected);
             }
-            ImGui::SetItemTooltip("Pick an image");
+            ImGui::SetItemTooltip("Pick an image strip or a .cube LUT");
             if (!current.empty()) {
                 ImGui::SameLine();
                 if (ImGui::Button(ICON_FA_XMARK "##clear"))
@@ -439,6 +503,11 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             }
             break;
         }
+    }
+    if (!state.inactiveReason.empty()) {
+        ImGui::PopStyleVar();
+        if (ImGui::IsItemHovered())
+            wrappedTooltip(state.inactiveReason);
     }
 
     if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
@@ -633,9 +702,19 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                         wrappedTooltip(help);
                     ImGui::TableSetColumnIndex(1);
                     ImGui::AlignTextToFramePadding();
-                    ImGui::TextDisabled("%s", tierTag(effect));
-                    if (ImGui::IsItemHovered())
-                        wrappedTooltip(help);
+                    // an effect another one turns off (FXAA and Sharpen with VHS, Dynamic Resolution
+                    // with Fixed Resolution) says so instead of its tier
+                    const PostProcessingRowState state = getPostProcessingRowState(
+                        settings, enable.snakeName, Catalog::getSceneProperty<bool>(sceneProject->scene, "fixed_resolution_enabled"));
+                    if (state.inactiveReason.empty()) {
+                        ImGui::TextDisabled("%s", tierTag(effect));
+                        if (ImGui::IsItemHovered())
+                            wrappedTooltip(help);
+                    } else {
+                        ImGui::TextColored(Theme::Colors::WarningText, "%s", state.inactiveTag.c_str());
+                        if (ImGui::IsItemHovered())
+                            wrappedTooltip(state.inactiveReason);
+                    }
                     if (isOn) {
                         for (const ParamDef& param : effect.params) {
                             drawn.insert(param.field);
