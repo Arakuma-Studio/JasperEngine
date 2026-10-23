@@ -3623,7 +3623,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      (u_fs_depthMaterial / u_fs_gbufferMaterial gain one); lighting2d.glsl's normal map.
     //      Also supersedes v34, which two branches each bumped to (the terrain/library Stochastic
     //      Tiling and the 64-bit shader keys): a v34 cache from either could be trusted by the other.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
+    // v36: terrain triplanar: the vertex normal from central differences, the three projections
+    //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
+    //      projections under 2% skipped.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v36";
 }
 
 void editor::App::pushTabNotificationStyle(){
