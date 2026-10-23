@@ -171,7 +171,7 @@ TEST(EffectFluidManifest, TheEffect){
     for (const EffectPassDef& pass : m.passes)
         (pass.init ? init : (pass.frame ? frames : steps))++;
     EXPECT_EQ(init, 3);
-    EXPECT_EQ(steps, 9);
+    EXPECT_EQ(steps, 10);
     EXPECT_EQ(frames, 6);
     EXPECT_TRUE(m.hasFramePasses());
     const EffectParamDef* preset = m.findParam("preset");

@@ -554,6 +554,7 @@ namespace {
          "// @init       start-dye dye\n"
          "// @init       start-ptr ptr\n"
          "// @step       pointer ptr\n"
+         "// @step       splat-vel vel\n"
          "// @step       curl aux\n"
          "// @step       vorticity vel\n"
          "// @step       divergence aux\n"

@@ -17,6 +17,7 @@
 // @init       start-dye dye
 // @init       start-ptr ptr
 // @step       pointer ptr
+// @step       splat-vel vel
 // @step       curl aux
 // @step       vorticity vel
 // @step       divergence aux
@@ -74,12 +75,12 @@
 //   most 1024: Pavel's 1024 dye on a page); bloom at 256 and sunrays at 196 on the short side.
 //   The presets set the solver and the look, not these sizes (the native ones also change the
 //   sim and dye resolutions).
-// - A step (60 Hz, the effect clock's fixed step, at most 4 a frame): the pointer colour, curl,
+// - A step (60 Hz, the effect clock's fixed step, at most 4 a frame): the pointer colour, splats, curl,
 //   vorticity, divergence, pressure clear, Jacobi x pressure-iterations, gradient subtract,
 //   advect the velocity, advect the dye (Pavel's step()). His splats (applyInputs before the
-//   step) are folded into the passes that read them: the velocity splat into curl and vorticity
-//   (read at texel centres: the same values), the dye splat into the dye advection (the Gaussian
-//   evaluated where the advection samples). curl and divergence share the state `aux` (curl is
+//   step) are a velocity pass (splat-vel, all of the step's splats summed: his splats add) and,
+//   for the dye, folded into the dye advection (the Gaussian evaluated where the advection
+//   samples: one dye-sized pass a step less). curl and divergence share the state `aux` (curl is
 //   read only by vorticity, before divergence overwrites it).
 // - The look runs once a drawn frame after the steps (@frame): bloom prefilter, bloom-iterations
 //   blurs down a chain of halves, back up adding each level, the final blur x intensity; the
@@ -140,43 +141,59 @@ JFX_STATE(bloom)
 JFX_STATE(glow)
 JFX_STATE(sunrays)
 
-// ---- the splats of the current step, folded into the passes that read the fields (set by jfx_step)
-const int FX_MAX_SPLATS = 9;       // the pointer's and 8 scripted ones
-int g_splatCount = 0;
-vec2 g_splatPoint[FX_MAX_SPLATS];
-vec2 g_splatForce[FX_MAX_SPLATS];
-vec3 g_splatColor[FX_MAX_SPLATS];
-float g_splatRadius[FX_MAX_SPLATS];
+// ---- the step's splats (fx_gather_splats): the pointer's, then the scripted ones (jfx_splat)
 float g_aspect = 1.0;
-bool g_velocitySplats = false;     // FLUID_VELOCITY adds the step's velocity splats (curl, vorticity)
+vec2 g_size = vec2(1.0);
+float g_dt = 0.0;
+bool g_pointerSplat = false;
+vec2 g_pointerPoint = vec2(0.0);
+vec2 g_pointerForce = vec2(0.0);
+vec3 g_pointerColor = vec3(0.0);
+float g_pointerRadius = 1.0;
+int g_splats = 0;
 int g_source = 0;                  // FLUID_SOURCE: 0 the velocity, 1 the dye with the step's dye splats
 
-vec2 fx_velocity(vec2 uv){
-    vec2 v = vel_sample(uv).xy;
-    if (g_velocitySplats){
-        for (int i = 0; i < FX_MAX_SPLATS; i++){
-            if (i >= g_splatCount)
-                break;
-            v += exp(-dot((uv - g_splatPoint[i]) * vec2(g_aspect, 1.0), (uv - g_splatPoint[i]) * vec2(g_aspect, 1.0)) / g_splatRadius[i]) * g_splatForce[i];
+float fx_weight(vec2 uv, vec2 point, float radius){
+    vec2 p = (uv - point) * vec2(g_aspect, 1.0);
+    return exp(-dot(p, p) / radius);
+}
+
+// the sum of the step's splats at uv: their force (velocity) or their colour (the dye)
+vec3 fx_splats(vec2 uv, bool velocity){
+    vec3 sum = vec3(0.0);
+    if (g_pointerSplat)
+        sum += fx_weight(uv, g_pointerPoint, g_pointerRadius) * (velocity ? vec3(g_pointerForce, 0.0) : g_pointerColor);
+#ifdef JFX_STEP_FORM
+    for (int i = 0; i < 8; i++){
+        if (i >= g_splats)
+            break;
+        JfxSplat sp = jfx_splat(i);
+        float radius = max(sp.radius, 0.5) / g_size.y;
+        float w = fx_weight(uv, sp.pos / g_size, radius * radius);
+        if (velocity){
+            vec2 move = sp.vel * g_dt / g_size;
+            if (g_aspect < 1.0)
+                move.x *= g_aspect;
+            if (g_aspect > 1.0)
+                move.y /= g_aspect;
+            sum.xy += w * move * params.splatForce;
+        }else{
+            sum += w * jfx_linear_to_srgb(clamp(sp.color.rgb, 0.0, 1.0)) * sp.strength;
         }
     }
-    return v;
+#endif
+    return sum;
 }
 
 vec4 fx_source(vec2 uv){
     if (g_source == 0)
         return vec4(vel_sample(uv).xy, 0.0, 1.0);
     vec4 d = dye_sample(uv);
-    for (int i = 0; i < FX_MAX_SPLATS; i++){
-        if (i >= g_splatCount)
-            break;
-        vec2 p = (uv - g_splatPoint[i]) * vec2(g_aspect, 1.0);
-        d.rgb += exp(-dot(p, p) / g_splatRadius[i]) * g_splatColor[i];
-    }
+    d.rgb += fx_splats(uv, false);
     return d;
 }
 
-#define FLUID_VELOCITY(uv) fx_velocity(uv)
+#define FLUID_VELOCITY(uv) vel_sample(uv).xy
 #define FLUID_CURL(uv) aux_sample(uv).x
 #define FLUID_DIVERGENCE(uv) aux_sample(uv).x
 #define FLUID_PRESSURE(uv) pressure_sample(uv).x
@@ -286,39 +303,21 @@ float fx_random(JfxStep s, uint stream, uint index){
 // the step's splats: the pointer's (a drag, or any move with hover; none on a press's step: his
 // press resets the delta), then the scripted ones
 void fx_gather_splats(JfxStep s){
-    vec2 size = max(s.c.size, vec2(1.0));
-    g_aspect = size.x / size.y;
-    g_splatCount = 0;
-    float pointerRadius = fluidSplatRadius(params.splatRadius, g_aspect);
+    g_size = max(s.c.size, vec2(1.0));
+    g_aspect = g_size.x / g_size.y;
+    g_dt = s.dt;
+    g_splats = s.splatCount;
     bool painting = s.pointerKnown && s.pointerInside && (s.pointerDown || params.hover > 0.5) && !s.pressed;
-    vec2 delta = (s.pointer - s.pointerPrev) / size;
-    if (painting && (delta.x != 0.0 || delta.y != 0.0)){
-        if (g_aspect < 1.0)
-            delta.x *= g_aspect;
-        if (g_aspect > 1.0)
-            delta.y /= g_aspect;
-        g_splatPoint[0] = s.pointer / size;
-        g_splatForce[0] = delta * params.splatForce;
-        g_splatColor[0] = fluidGenerateColor(ptr_fetch(ivec2(0)).y);
-        g_splatRadius[0] = pointerRadius;
-        g_splatCount = 1;
-    }
-    for (int i = 0; i < 8; i++){
-        if (i >= s.splatCount)
-            break;
-        JfxSplat sp = jfx_splat(i);
-        vec2 move = sp.vel * s.dt / size;
-        if (g_aspect < 1.0)
-            move.x *= g_aspect;
-        if (g_aspect > 1.0)
-            move.y /= g_aspect;
-        float radius = max(sp.radius, 0.5) / size.y;
-        g_splatPoint[g_splatCount] = sp.pos / size;
-        g_splatForce[g_splatCount] = move * params.splatForce;
-        g_splatColor[g_splatCount] = jfx_linear_to_srgb(clamp(sp.color.rgb, 0.0, 1.0)) * sp.strength;
-        g_splatRadius[g_splatCount] = radius * radius;
-        g_splatCount++;
-    }
+    vec2 delta = (s.pointer - s.pointerPrev) / g_size;
+    g_pointerSplat = painting && (delta.x != 0.0 || delta.y != 0.0);
+    if (g_aspect < 1.0)
+        delta.x *= g_aspect;
+    if (g_aspect > 1.0)
+        delta.y /= g_aspect;
+    g_pointerPoint = s.pointer / g_size;
+    g_pointerForce = delta * params.splatForce;
+    g_pointerColor = fluidGenerateColor(ptr_fetch(ivec2(0)).y);
+    g_pointerRadius = fluidSplatRadius(params.splatRadius, g_aspect);
 }
 
 // his multipleSplats at the start: velocity (true) or dye
@@ -375,16 +374,14 @@ vec4 jfx_step(JfxStep s){
         }
         return p;
     }
-    if (s.pass == JFX_PASS_CURL){
+    if (s.pass == JFX_PASS_SPLAT_VEL){
         fx_gather_splats(s);
-        g_velocitySplats = true;
+        return vec4(vel_sample(uv).xy + fx_splats(uv, true).xy, 0.0, 1.0);
+    }
+    if (s.pass == JFX_PASS_CURL)
         return vec4(fluidCurl(uv, texel), 0.0, 0.0, 1.0);
-    }
-    if (s.pass == JFX_PASS_VORTICITY){
-        fx_gather_splats(s);
-        g_velocitySplats = true;
+    if (s.pass == JFX_PASS_VORTICITY)
         return vec4(fluidVorticity(uv, texel, params.curl, s.dt), 0.0, 1.0);
-    }
     if (s.pass == JFX_PASS_DIVERGENCE)
         return vec4(fluidDivergence(uv, texel), 0.0, 0.0, 1.0);
     if (s.pass == JFX_PASS_PRESSURE_CLEAR)
