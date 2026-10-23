@@ -19,6 +19,7 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/MultiPropertyCmd.h"
 #include "util/GraphicUtils.h"
 #include "window/TerrainEditWindow.h"
+#include "util/FluidEditorTools.h"
 
 #include <algorithm>
 #include <cmath>
@@ -890,7 +891,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     syncObject2DGizmoMode();
 
+    // the terrain and Paint Dye brushes take the left button: no gizmo to grab
     bool terrainEditing = isTerrainEditing();
+    bool fluidPainting = isFluidPainting();
 
     totalSelBB.setHalfExtents(totalSelBB.getHalfExtents() + Vector3(selectionOffset));
 
@@ -1031,7 +1034,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
     }
 
-    if (terrainEditing){
+    if (terrainEditing || fluidPainting){
         tools.setGizmoVisible(false);
     }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D && !sameRotation){
         tools.setGizmoVisible(false);
@@ -1063,6 +1066,13 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
             updateTerrainBrushCursor();
             return;
         }
+    }
+
+    // Paint Dye: a press on the fluid's Sprite starts a stroke; elsewhere it does nothing
+    // (the brush holds the left button until Esc or its toggle)
+    if (FluidEditorTools::isPainting(scene)){
+        FluidEditorTools::beginStroke(scene, ownerMouseRay);
+        return;
     }
 
     // the tools work on the edit layer's selection while one is set
@@ -1243,6 +1253,7 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
+    FluidEditorTools::endStroke();
 
     mouseClicked = false;
 
@@ -1309,6 +1320,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
             updateTerrainBrushCursor();
             return;
         }
+    }
+
+    if (FluidEditorTools::isPainting(scene)){
+        FluidEditorTools::paintStroke(scene, ownerMouseRay);
+        return;
     }
 
     // the box selects while playing too, as on release (Project::selectObjectsByRect)
@@ -2071,6 +2087,10 @@ bool editor::SceneRender::isAnyGizmoSideSelected() const{
     return (tools.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || tools.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
 }
 
+bool editor::SceneRender::isFluidPainting() const{
+    return FluidEditorTools::isPainting(scene);
+}
+
 bool editor::SceneRender::isTerrainEditing() const{
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         return terrainEditWindow->isEditingScene(scene);
@@ -2120,6 +2140,29 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
 
     terrainBrushLines->setVisible(true);
+}
+
+bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){
+    points.clear();
+    std::vector<Vector3> world;
+    if (!FluidEditorTools::cursorCircle(scene, ownerMouseRay, world) || world.size() < 2){
+        return false;
+    }
+
+    // through the editor camera the pointer's ray comes from (screenToRay), into its pixels
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    const CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    points.reserve(world.size());
+    for (const Vector3& point : world){
+        Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(point.x, point.y, point.z, 1.0f);
+        if (clip.w <= 0.0f){
+            points.clear();
+            return false;
+        }
+        points.push_back(Vector2((clip.x / clip.w + 1.0f) * 0.5f * width, (1.0f - clip.y / clip.w) * 0.5f * height));
+    }
+    return true;
 }
 
 TextureRender& editor::SceneRender::getTexture(){
