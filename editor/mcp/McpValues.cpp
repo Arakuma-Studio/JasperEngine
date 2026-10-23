@@ -30,6 +30,8 @@
 #include "util/CameraTextureLink.h"
 #include "util/FluidTextureLink.h"
 #include "component/FluidSimulationComponent.h"
+#include "fluid/FluidPresets.h"
+#include "fluid/FluidSimulator.h"
 #include "util/EntityClipboard.h"
 #include "util/Util.h"
 
@@ -2327,6 +2329,40 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
     return nullptr;
 }
 
+namespace {
+
+// A FluidSimulation's "preset" pseudo-property (parseChanges): the preset's fields as changes,
+// their values read from the preset as get_entity reads them
+bool appendFluidPresetChanges(const Json& value, std::vector<McpValues::Change>& out, std::string& error) {
+    const FluidPreset* preset = value.is_string() ? findFluidPreset(value.get<std::string>()) : nullptr;
+    if (!preset) {
+        std::string ids;
+        for (const FluidPreset& item : getFluidPresets()) ids += (ids.empty() ? "" : ", ") + item.id;
+        error = "unknown fluid preset " + value.dump() + "; the presets: " + ids + " (jasper://docs/fluid).";
+        return false;
+    }
+    FluidSimulationComponent values = preset->values;
+    const std::map<std::string, PropertyData> properties = Catalog::getProperties(ComponentType::FluidSimulationComponent, &values);
+    McpValues::ReadContext ctx;
+    ctx.component = ComponentType::FluidSimulationComponent;
+    for (const std::string& name : preset->fields) {
+        auto it = properties.find(name);
+        if (it == properties.end()) continue;
+        McpValues::Change change;
+        change.component = ComponentType::FluidSimulationComponent;
+        change.property = name;
+        change.value = McpValues::readProperty(ctx, name, it->second);
+        out.push_back(change);
+    }
+    return true;
+}
+
+bool isFluidPreset(const McpValues::Change& change) {
+    return change.component == ComponentType::FluidSimulationComponent && change.property == "preset";
+}
+
+}
+
 bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std::string& error) {
     out.clear();
     if (changes.is_object()) {
@@ -2338,10 +2374,15 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
                 error = "values[\"" + it.key() + "\"] must be an object {property: value}.";
                 return false;
             }
+            // a fluid's preset first: the values named with it override its fields
+            if (base.component == ComponentType::FluidSimulationComponent && it.value().contains("preset")) {
+                if (!appendFluidPresetChanges(it.value()["preset"], out, error)) return false;
+            }
             for (auto prop = it.value().begin(); prop != it.value().end(); ++prop) {
                 Change change = base;
                 change.property = prop.key();
                 change.value = prop.value();
+                if (isFluidPreset(change)) continue;
                 out.push_back(change);
             }
         }
@@ -2390,6 +2431,17 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
             }
             change.index = static_cast<long>(integralValue(item["remove"]));
         }
+        if (isFluidPreset(change)) {
+            if (change.op != "set") {
+                error = where + ": a fluid's preset takes value: <preset id>.";
+                return false;
+            }
+            if (!appendFluidPresetChanges(change.value, out, error)) {
+                error = where + ": " + error;
+                return false;
+            }
+            continue;
+        }
         out.push_back(change);
     }
     if (out.empty()) {
@@ -2397,6 +2449,38 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
         return false;
     }
     return true;
+}
+
+Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return nullptr;
+    FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
+    if (!fluid) return nullptr;
+    const std::string preset = matchFluidPreset(*fluid);
+    Json out = {{"preset", preset.empty() ? Json(nullptr) : Json(preset)}};
+    std::string reason;
+    out["supported"] = FluidSimulator::isSupported(&reason);
+    if (!reason.empty()) out["unsupported_reason"] = reason;
+    // the simulator exists once a frame ran the fluid (enabled, active, a view drawing the scene)
+    out["running"] = fluid->simulator != nullptr && fluid->simulator->getStats().outputWidth > 0;
+    if (!fluid->simulator) return out;
+    const FluidStats& stats = fluid->simulator->getStats();
+    out["steps"] = stats.steps;
+    out["time"] = stats.time;
+    out["splats"] = stats.splats;
+    out["seed"] = stats.seed;
+    out["sim_size"] = Json::array({stats.simWidth, stats.simHeight});
+    out["dye_size"] = Json::array({stats.dyeWidth, stats.dyeHeight});
+    out["output_size"] = Json::array({stats.outputWidth, stats.outputHeight});
+    out["gpu_bytes"] = stats.gpuBytes;
+    out["passes_last_frame"] = stats.passesLastFrame;
+    out["shading_active"] = stats.shadingActive;
+    out["bloom_active"] = stats.bloomActive;
+    out["sunrays_active"] = stats.sunraysActive;
+    out["manual_filtering"] = stats.manualFiltering;
+    out["compact_formats"] = stats.compactFormats;
+    const std::string& error = fluid->simulator->getError();
+    if (!error.empty()) out["error"] = error;
+    return out;
 }
 
 std::string McpValues::propertyNamesText(SceneProject* scene, Entity entity, ComponentType component, size_t max) {

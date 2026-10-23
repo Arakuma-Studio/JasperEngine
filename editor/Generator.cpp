@@ -1427,6 +1427,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- C++ API: the headers in `" + engineApiRelativePath.generic_string() + "/`; `.clangd` (with `" + (relativeInternalPath / "clangd").generic_string() +
                      "/compile_commands.json`) lets clangd resolve them, e.g. `clangd --check=scripts/Player.cpp`. "
                      "C++ scripts build when a scene plays, or with the `compile_scripts` tool.\n";
+    agentsContent += "- Features with their own reference (`jasper://docs` lists them all), e.g. the GPU fluid simulation (Fluid Simulation component: "
+                     "`create_entity` type `fluid_simulation`, presets, seeded deterministic runs, Lua `FluidSimulation`; `jasper://docs/fluid`) "
+                     "and post-processing (`jasper://docs/post-processing`).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
