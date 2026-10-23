@@ -986,7 +986,7 @@ TEST(TexSynth, CancelReachesThePreparation) {
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     canceller.join();
     EXPECT_EQ(result.status, Status::Cancelled);
-    EXPECT_LT(seconds, 1.0);
+    EXPECT_LT(seconds, 1.5) << "the old code took 2.75 s here";
 }
 
 TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {

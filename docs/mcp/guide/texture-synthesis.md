@@ -47,9 +47,14 @@ when you want another size or more variation.
 3. Call again with the **same arguments, the chosen `seed` and `output`**: the synthesis is
    deterministic (same inputs, parameters and seed give identical pixels, whatever the thread
    count), so the file is exactly the preview. The outputs (primary + companions) are one undo
-   step (`undo` with scope `project`), refused when they exist unless `overwrite: true`.
+   step (`undo` with scope `project`), refused when they exist unless `overwrite: true` (checked
+   again when the run finishes: a file another call wrote meanwhile is not replaced). The set is
+   written whole or not at all: if one file can't be written, the others keep their content.
+   Seeds are 0..2^53 as numbers; larger ones (from the CLI or a recipe) are decimal strings.
+   Opening another project cancels a run; its job fails and nothing is written.
 
-Output paths must be inside the assets directory (`.png`). The texture is then a normal asset:
+Output paths (`output`, companion `output`s, `uncertainty_output`) must be inside the assets
+directory and outside hidden directories (`.png`). The texture is then a normal asset:
 put it on a material (`set_properties submeshes[0].material.baseColorTexture`...), a terrain
 layer, a sprite. For tiling surfaces, the library shaders' `STOCHASTIC` feature hides the
 repetition of any tiling texture further (jasper://docs/shaders).

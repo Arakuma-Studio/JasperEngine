@@ -33,7 +33,13 @@ namespace ts = texsynth;
 
 namespace {
 
-constexpr double MAX_SEED = 9007199254740992.0;   // 2^53: exact in JSON numbers
+constexpr uint64_t MAX_NUMBER_SEED = 9007199254740992ULL;   // 2^53: exact in JSON numbers; above: a decimal string
+
+// A seed for JSON: a number up to 2^53, a decimal string above (as the recipes write it), so every
+// seed the CLI, the window or a recipe can hold round-trips through synthesize_texture
+Json seedJson(uint64_t seed) {
+    return seed <= MAX_NUMBER_SEED ? Json(seed) : Json(std::to_string(seed));
+}
 
 std::string fixed(double v, int digits) {
     char buffer[64];
@@ -106,6 +112,27 @@ bool numberArg(const Json& params, const char* key, double minimum, double maxim
         return false;
     }
     out = v.get<double>();
+    return true;
+}
+
+// An output path argument: as pathArg, and inside the assets directory, outside hidden directories
+// (no component could use it there, and .jasperengine/ is the editor's)
+bool outputArg(Project* project, const Json& value, const std::string& field, std::string& out, std::string& error) {
+    if (!pathArg(project, value, field, false, out, error)) return false;
+    const fs::path root = project->getProjectPath();
+    const fs::path absolute = root / fs::u8path(out);
+    if (!project->isInsideAssetsPath(absolute)) {
+        error = field + " \"" + out + "\" is outside the assets directory (\"" + ts::projectRelative(root, project->getAssetsPath()) +
+                "\"), so no component could use it.";
+        return false;
+    }
+    for (const fs::path& part : fs::u8path(out)) {
+        const std::string name = part.u8string();
+        if (name.size() > 1 && name[0] == '.' && name != "..") {
+            error = field + " \"" + out + "\" is in a hidden directory (" + name + "): write it to a visible folder of the assets.";
+            return false;
+        }
+    }
     return true;
 }
 
@@ -200,7 +227,7 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
                     }
                     companion.name = item["name"].get<std::string>();
                 }
-                if (item.contains("output") && !pathArg(project, item["output"], field + ".output", false, companion.output, error)) return false;
+                if (item.contains("output") && !outputArg(project, item["output"], field + ".output", companion.output, error)) return false;
             } else {
                 error = field + " must be a path string or {path | paths, name?, output?}.";
                 return false;
@@ -351,11 +378,20 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
     seedGiven = args.contains("seed") && !args["seed"].is_null();
     if (seedGiven) {
         const Json& seed = args["seed"];
-        if (!seed.is_number_integer() || seed.get<double>() < 0 || seed.get<double>() > MAX_SEED) {
-            error = "seed must be a whole number from 0 to 2^53 (got " + seed.dump() + ").";
+        const std::string usage = "seed must be a whole number from 0 to 2^53, or a decimal string up to 18446744073709551615 (got " + seed.dump() + ").";
+        if (seed.is_number_unsigned() && seed.get<uint64_t>() <= MAX_NUMBER_SEED) {
+            spec.seed = seed.get<uint64_t>();
+        } else if (seed.is_string()) {
+            const std::optional<uint64_t> parsed = ts::recipeSeed(Json{{"seed", seed}});
+            if (!parsed) {
+                error = usage;
+                return false;
+            }
+            spec.seed = *parsed;
+        } else {
+            error = usage;
             return false;
         }
-        spec.seed = seed.get<uint64_t>();
     } else {
         std::random_device device;
         spec.seed = std::uniform_int_distribution<uint64_t>(0, 2147483647ULL)(device);
@@ -363,20 +399,14 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
 
     // outputs
     if (args.contains("output") && !args["output"].is_null()) {
-        if (!pathArg(project, args["output"], "output", false, spec.output, error)) return false;
-        fs::path absolute = project->getProjectPath() / fs::u8path(spec.output);
-        if (!project->isInsideAssetsPath(absolute)) {
-            error = "output \"" + spec.output + "\" is outside the assets directory (\"" +
-                    ts::projectRelative(root, project->getAssetsPath()) + "\"), so no component could use it.";
-            return false;
-        }
+        if (!outputArg(project, args["output"], "output", spec.output, error)) return false;
     }
     if (args.contains("uncertainty_output")) {
         if (spec.output.empty()) {
             error = "uncertainty_output needs output too (a preview-only call writes nothing).";
             return false;
         }
-        if (!pathArg(project, args["uncertainty_output"], "uncertainty_output", false, spec.uncertaintyOutput, error)) return false;
+        if (!outputArg(project, args["uncertainty_output"], "uncertainty_output", spec.uncertaintyOutput, error)) return false;
     }
     return true;
 }
@@ -465,7 +495,7 @@ Json toolArguments(const ts::SynthesisSpec& spec) {
     if (p.guideDecay != preset.guideDecay) params["guide_decay"] = p.guideDecay;
     if (!params.empty()) args["params"] = params;
     if (spec.mode == ts::Mode::MakeTileable && p.borderFraction != preset.borderFraction) args["border"] = rounded(p.borderFraction, 6);
-    args["seed"] = spec.seed;
+    args["seed"] = seedJson(spec.seed);
     if (!spec.output.empty()) args["output"] = spec.output;
     if (!spec.uncertaintyOutput.empty()) args["uncertainty_output"] = spec.uncertaintyOutput;
     return args;
@@ -494,7 +524,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
     ts::SynthesisRun& run = *state->run;
     const ts::Result& result = run.result();
     const ts::SynthesisSpec& spec = state->spec;
-    Json data = {{"mode", ts::toString(spec.mode)}, {"quality", ts::toString(spec.quality)}, {"seed", spec.seed}};
+    Json data = {{"mode", ts::toString(spec.mode)}, {"quality", ts::toString(spec.quality)}, {"seed", seedJson(spec.seed)}};
     // another project was opened meanwhile (the run was cancelled then): nothing goes into it
     Project* project = ctx.project();
     if (state->generation != ts::projectGeneration() || !project || project->getProjectPath() != state->root) {
@@ -516,12 +546,31 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
     // write
     Json outputs = Json::array();
     if (!spec.output.empty()) {
+        // checked again now: another call (wait: false) or a human may have written one of the
+        // files while this one ran (the check when the call started is not enough)
+        if (!state->overwrite) {
+            std::vector<std::string> existing;
+            std::error_code ec;
+            for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
+                if (fs::exists(state->root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+            }
+            if (!existing.empty()) {
+                std::string list;
+                for (const std::string& p : existing) list += (list.empty() ? "" : ", ") + p;
+                data["existing"] = existing;
+                job->fail("The synthesis finished but " + list + " appeared while it ran (another call or the editor wrote it): nothing "
+                          "was written. Call again with overwrite: true to replace it (one undo step puts it back), or choose another output.",
+                          data);
+                return;
+            }
+        }
         std::string error;
         std::vector<std::string> written;
         TextureSynthesisWindow* window = ctx.app().getTextureSynthesisWindow();
         bool ok = false;
         if (state->showInEditor && window && window->currentRun() == state->run) {
-            ok = window->save(true, written, error);   // existence was checked when the call started
+            // the tool's own output paths, not the window's (editable while the run went on)
+            ok = window->save(state->overwrite, written, error, &spec);
         } else {
             std::vector<ts::OutputFile> files;
             ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
@@ -815,7 +864,12 @@ void registerSynthesisTools(McpRegistry& registry) {
                            {"cauchy_dispersion", number("Low: hard patch edges.", 0.0001, 1)}, {"backtrack_percent", number("", 0, 0.95)},
                            {"backtrack_stages", integer("", 0, 10)}, {"guide_alpha", number("", 0, 1)}, {"guide_decay", boolean("")}}))},
         {"border", withDefault(number("make_tileable band per edge.", 0.0001, 0.5), 0.125)},
-        {"seed", integer("0..2^53. Default random (returned).")},
+        {"seed", [] {
+             Json j;
+             j["description"] = "0..2^53, or a decimal string up to 2^64-1. Default random (returned).";
+             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});
+             return j;
+         }()},
         {"output", string("A .png in the assets dir; omitted = preview only.")},
         {"overwrite", withDefault(boolean(""), false)},
         {"uncertainty_output", string("")},
