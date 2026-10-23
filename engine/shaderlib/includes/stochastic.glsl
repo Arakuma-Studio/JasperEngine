@@ -60,12 +60,13 @@
 //     turned back by their cell's rotation, blended with st.weights and made a unit normal
 //     again whose xy are then scaled by strength, as the plain
 //     `n = texture(...).rgb * 2.0 - 1.0; n.xy *= strength;` (which it equals for one tap).
-//     greenSign is the map's convention, which decides the way a rotation turns the slopes
-//     back (a tap must read as the texel a turned copy of the map would hold):
-//       STOCHASTIC_NORMAL_GL (-1): green points up the image (OpenGL style), against +v since
-//         images load top row first. The engine's convention: Lit, the library shaders and
-//         the terrain layers all take such maps.
-//       STOCHASTIC_NORMAL_DX (+1): green points down the image (DirectX style).
+//     greenSign is the way the caller's tangent frame reads green against +v, which decides
+//     the way a rotation turns the slopes back (a tap must read as the texel a turned copy of
+//     the map would hold):
+//       STOCHASTIC_NORMAL_GL (-1): green read against +v. Lit and the library shaders (their
+//         bitangent points up the image while images load top row first).
+//       STOCHASTIC_NORMAL_DX (+1): green read along +v. The terrain layers, whose whiteout
+//         blend takes green as +v on the flat and side projections.
 //     Rotation 0 makes it irrelevant (the taps are not turned).
 //
 // Lower level, for maps decoded another way (two-channel normals, packed channels):

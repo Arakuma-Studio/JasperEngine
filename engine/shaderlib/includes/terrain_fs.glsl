@@ -282,19 +282,19 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
         vec3 normal = vec3(0.0);
 
         if (terrainSideAmount < 1.0){
-            vec3 flatNormal = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling, strength, STOCHASTIC_NORMAL_GL);
+            vec3 flatNormal = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling, strength, STOCHASTIC_NORMAL_DX);
             normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy * (1.0 - terrainSideAmount);
         }
 
         if (terrainSideAmount > 0.0){
             vec3 sideNormal = vec3(0.0);
             if (terrainSideWeight.x > 0.0){
-                vec3 sideX = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX, strength, STOCHASTIC_NORMAL_GL);
+                vec3 sideX = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX, strength, STOCHASTIC_NORMAL_DX);
                 sideX.x *= terrainFaceX;
                 sideNormal += vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx * terrainSideWeight.x;
             }
             if (terrainSideWeight.y > 0.0){
-                vec3 sideZ = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ, strength, STOCHASTIC_NORMAL_GL);
+                vec3 sideZ = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ, strength, STOCHASTIC_NORMAL_DX);
                 sideZ.x *= terrainFaceZ;
                 sideNormal += vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz * terrainSideWeight.y;
             }
