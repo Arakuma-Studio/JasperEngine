@@ -5,14 +5,14 @@
 // @summary    Pavel Dobryakov's WebGL fluid: drag to paint glowing, swirling dye with bloom and sunrays
 // @source     port WebGL-Fluid-Simulation (Pavel Dobryakov, MIT)
 // @cost       stateful
-// @state      vel rgba16f aspect 128 max 512 linear
-// @state      pressure rgba16f aspect 128 max 512 nearest
-// @state      aux rgba16f aspect 128 max 512 nearest
+// @state      vel rg16f aspect 128 max 512 linear
+// @state      pressure r16f aspect 128 max 512 nearest
+// @state      aux r16f aspect 128 max 512 nearest
 // @state      dye rgba16f box max 1024 linear
 // @state      ptr rgba32f 1x1 nearest
 // @state      bloom rgba16f aspect 256 max 1024 linear
 // @state      glow rgba16f aspect 256 max 1024 linear
-// @state      sunrays rgba16f aspect 196 max 1024 linear
+// @state      sunrays r16f aspect 196 max 1024 linear
 // @init       start-vel vel
 // @init       start-dye dye
 // @init       start-ptr ptr
@@ -324,7 +324,6 @@ void fx_gather_splats(JfxStep s){
 // his multipleSplats at the start: velocity (true) or dye
 vec4 fx_burst(JfxStep s, bool velocity){
     vec4 sum = vec4(0.0, 0.0, 0.0, 1.0);
-    return sum;
     if (params.splatsOnStart < 0.5)
         return sum;
     vec2 size = max(s.c.size, vec2(1.0));
@@ -404,7 +403,6 @@ vec4 jfx_step(JfxStep s){
         vec2 velTexel = 1.0 / vec2(vel_size());
         return fluidAdvect(uv, velTexel, texel, s.dt, params.densityDissipation);
     }
-#if 0
     // ---- @frame: the look
     if (s.pass == JFX_PASS_BLOOM_PREFILTER || s.pass == JFX_PASS_BLOOM_FINAL){
         if (params.bloom < 0.5)
@@ -461,9 +459,6 @@ vec4 jfx_step(JfxStep s){
     // the blur: across, then along
     g_look = 3;
     return fluidBlur(uv, s.iteration == 0 ? vec2(texel.x, 0.0) : vec2(0.0, texel.y));
-#else
-    return vec4(0.0);
-#endif
 }
 #endif
 
