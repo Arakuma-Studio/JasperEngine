@@ -65,6 +65,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
     registerComponent<UIDocumentComponent>();
+    registerComponent<PoseAnimatorComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

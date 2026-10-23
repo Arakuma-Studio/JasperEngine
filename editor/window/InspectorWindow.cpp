@@ -70,6 +70,8 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "pose/PoseAnimatorRuntime.h"
+#include "pose/PoseInspectorHooks.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
 #include "yaml-cpp/yaml.h"
@@ -9267,6 +9269,163 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     ImGui::EndChild();
 }
 
+void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    PoseAnimatorComponent& animator = sceneProject->scene->getComponent<PoseAnimatorComponent>(entities[0]);
+
+    RowSettings animationSettings;
+    animationSettings.help = "Pose animation file (.poseanim), relative to the assets folder.";
+
+    RowSettings autoplaySettings;
+    autoplaySettings.help = "Plays when the game starts. Off: a script calls play() or goToPose().";
+
+    RowSettings speedSettings;
+    speedSettings.secondColSize = 6 * ImGui::GetFontSize();
+    speedSettings.help = "Playback speed: 1 = authored timing, negative plays backwards.";
+
+    RowSettings weightSettings;
+    weightSettings.secondColSize = 6 * ImGui::GetFontSize();
+    weightSettings.help = "Blend over the Model's animation clips (or its rest pose): 0 = the clips only, 1 = the pose animation only.";
+
+    beginTable(cpType, getLabelSize("Animation"));
+
+    if (entities.size() == 1) {
+        Entity entity = entities[0];
+
+        auto setAnimationPath = [&](const std::filesystem::path& selectedPath) -> bool {
+            std::filesystem::path assetsPath = std::filesystem::absolute(project->getAssetsPath()).lexically_normal();
+            std::filesystem::path filePath = std::filesystem::absolute(project->resolveAssetPath(selectedPath)).lexically_normal();
+
+            std::error_code errorCode;
+            std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
+            const std::string relativePath = relative.generic_string();
+            if (errorCode || relative.empty() || *relative.begin() == ".." || !Util::isPoseAnimationFile(relativePath)) {
+                ImGui::OpenPopup("Pose Animation Error");
+                return false;
+            }
+
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "animation", relativePath)
+            );
+            return true;
+        };
+
+        const std::string currentPath = animator.animation;
+
+        prefabRowProperty = "animation";
+        if (propertyHeader("Animation", -1, !currentPath.empty())) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "animation", "")
+            );
+        }
+
+        const std::string displayName = currentPath.empty() ? "< Not set >" : std::filesystem::path(currentPath).filename().string();
+        const float availWidth = ImGui::GetContentRegionAvail().x;
+        const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2;
+
+        ImGui::BeginGroup();
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
+        ImGui::BeginChild("poseanimatorfile", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
+            false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+        const float childAvail = ImGui::GetContentRegionAvail().x;
+        ImGui::SetCursorPosX(std::max(0.0f, childAvail - textWidth - 2));
+        ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
+        if (currentPath.empty())
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::Text("%s", displayName.c_str());
+        if (currentPath.empty())
+            ImGui::PopStyleColor();
+        ImGui::EndChild();
+        if (!currentPath.empty()){
+            ImGui::SetItemTooltip("%s", currentPath.c_str());
+        }
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN "##poseanimator_load")) {
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_POSE_ANIMATION);
+            if (!path.empty()) {
+                setAnimationPath(path);
+            }
+        }
+
+        ImGui::EndGroup();
+
+        if (sceneProject->playState == ScenePlayState::STOPPED) {
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                    std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
+                    if (!receivedStrings.empty() && Util::isPoseAnimationFile(receivedStrings[0]) && payload->IsDelivery()) {
+                        if (setAnimationPath(std::filesystem::path(receivedStrings[0]))) {
+                            ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        if (ImGui::BeginPopupModal("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Selected file must be a .poseanim file within the assets directory.");
+            ImGui::Separator();
+            const float buttonModalWidth = 120;
+            ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
+            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }else{
+        propertyRow(RowPropertyType::String, cpType, "animation", "Animation", sceneProject, entities, animationSettings);
+    }
+
+    propertyRow(RowPropertyType::Bool, cpType, "autoplay", "Autoplay", sceneProject, entities, autoplaySettings);
+    propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "weight", "Weight", sceneProject, entities, weightSettings);
+
+    // Bake (pose baker) and Open (Pose Animation window): shown once the editor tasks hook them in
+    const PoseInspectorHooks& hooks = poseInspectorHooks();
+    if (entities.size() == 1 && (hooks.bake || hooks.open)) {
+        const Entity entity = entities[0];
+        const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
+        propertyHeader("");
+        ImGui::BeginDisabled(animator.animation.empty());
+        if (hooks.open) {
+            if (ImGui::Button(ICON_FA_PERSON_RUNNING " Open##poseanimator_open")) {
+                hooks.open(project, sceneProject->id, entity, animator.animation);
+            }
+            ImGui::SetItemTooltip("Edit the pose animation in the Pose Animation window");
+            if (hooks.bake) ImGui::SameLine();
+        }
+        if (hooks.bake) {
+            ImGui::BeginDisabled(!stopped);
+            if (ImGui::Button(ICON_FA_FILM " Bake##poseanimator_bake")) {
+                hooks.bake(project, sceneProject->id, entity, animator.animation);
+            }
+            ImGui::SetItemTooltip("Bake the pose animation into an Animation clip of this Model (one undo step)");
+            ImGui::EndDisabled();
+        }
+        ImGui::EndDisabled();
+    }
+
+    endTable();
+
+    // what the animator does while playing
+    if (entities.size() == 1 && sceneProject->playState != ScenePlayState::STOPPED) {
+        const pose::PoseAnimatorRuntime* runtime = animator.runtime.get();
+        if (runtime && runtime->failed) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", runtime->error.c_str());
+        }else if (runtime && runtime->isLoaded()) {
+            ImGui::TextDisabled("%s  %.2f / %.2f s", animator.playing ? "Playing" : (runtime->transitionActive ? "Go to pose" : "Stopped"),
+                                animator.time, runtime->length);
+        }else if (!animator.animation.empty()) {
+            ImGui::TextDisabled("Loading...");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ReflectionProbeComponent& probe = sceneProject->scene->getComponent<ReflectionProbeComponent>(entities[0]);
 
@@ -14309,6 +14468,8 @@ void editor::InspectorWindow::show(){
                     drawReflectionProbeComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::UIDocumentComponent){
                     drawUIDocumentComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::PoseAnimatorComponent){
+                    drawPoseAnimatorComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

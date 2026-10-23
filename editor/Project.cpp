@@ -38,6 +38,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/PoseAnimatorSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -639,6 +640,13 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
                 text.needReloadAtlas = true;
                 changed = true;
             }
+        }
+    });
+
+    visitComponents(registry->getComponentArray<PoseAnimatorComponent>(), [&](PoseAnimatorComponent& animator) {
+        if (!animator.animation.empty() && transform(animator.animation)) {
+            animator.needsLoad = true;
+            changed = true;
         }
     });
 
@@ -3404,6 +3412,8 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     }
 
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
+    // play reuses the edit-time scene: the animators start from their beginning
+    entry.runtime->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
 
     entry.runtime->scene->getSystem<UISystem>()->clearAnchorReferenceSize();
     entry.runtime->scene->getSystem<UIDocumentSystem>()->clearReferenceSize();
@@ -4651,6 +4661,7 @@ std::vector<editor::SceneScriptSource> editor::Project::collectAllSceneCppScript
 void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
+    scene->getSystem<PoseAnimatorSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
 }
 
@@ -4972,6 +4983,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Stop scene audio before restoring snapshot to prevent stale SoLoud handles on the next play
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
+        // what the animators played (and the bone poses they remember) goes with Play
+        sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is

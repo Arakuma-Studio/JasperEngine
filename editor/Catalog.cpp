@@ -8,6 +8,7 @@
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
 #include "external/IconsFontAwesome6.h"
+#include "pose/PoseAnimatorRuntime.h"
 
 #include <algorithm>
 #include <cctype>
@@ -606,6 +607,14 @@ namespace {
         makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::textureHeight>("textureHeight", PropertyType::Int, UpdateFlags_UIDocument_Reload),
         makeFastProperty<UIDocumentComponent, Entity, &UIDocumentComponent::inputSurface>("inputSurface", PropertyType::Entity, UpdateFlags_None),
         makeFastProperty<UIDocumentComponent, float, &UIDocumentComponent::pixelRatio>("pixelRatio", PropertyType::Float, UpdateFlags_UIDocument_Reload),
+    };
+
+    static const FastPropertyDescriptor kPoseAnimatorProperties[] = {
+        makeFastProperty<PoseAnimatorComponent, std::string, &PoseAnimatorComponent::animation>("animation", PropertyType::String, UpdateFlags_PoseAnimator_Reload),
+        makeFastProperty<PoseAnimatorComponent, bool, &PoseAnimatorComponent::autoplay>("autoplay", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<PoseAnimatorComponent, float, &PoseAnimatorComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
+        // clamped to 0..1 by updateEntity
+        makeFastProperty<PoseAnimatorComponent, float, &PoseAnimatorComponent::weight>("weight", PropertyType::Float, UpdateFlags_PoseAnimator_Reload),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
@@ -1587,6 +1596,10 @@ namespace {
 
     PropertyData resolveUIDocumentPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<UIDocumentComponent*>(comp), propertyName, kUIDocumentProperties);
+    }
+
+    PropertyData resolvePoseAnimatorPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<PoseAnimatorComponent*>(comp), propertyName, kPoseAnimatorProperties);
     }
 
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
@@ -2575,6 +2588,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kUIDocumentProperties);
     }
 
+    void enumeratePoseAnimatorProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kPoseAnimatorProperties);
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3289,6 +3306,7 @@ namespace {
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
         {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
+        {ComponentType::PoseAnimatorComponent, &findComponentPtr<PoseAnimatorComponent>, &resolvePoseAnimatorPropertyFast, &enumeratePoseAnimatorProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -3488,6 +3506,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "ReflectionProbeComponent";
     }else if(component == ComponentType::UIDocumentComponent){
         name = "UIDocumentComponent";
+    }else if(component == ComponentType::PoseAnimatorComponent){
+        name = "PoseAnimatorComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3628,6 +3648,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
         case ComponentType::UIDocumentComponent: return "UI Document";
+        case ComponentType::PoseAnimatorComponent: return "Pose Animator";
     }
     return getComponentName(component);
 }
@@ -3687,6 +3708,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
         case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
+        case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3736,6 +3758,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<ReflectionProbeComponent>();
         case ComponentType::UIDocumentComponent:
             return registry->getComponentId<UIDocumentComponent>();
+        case ComponentType::PoseAnimatorComponent:
+            return registry->getComponentId<PoseAnimatorComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -3842,6 +3866,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::ReflectionProbeComponent;
     }else if(normalizedName == "uidocument"){
         return ComponentType::UIDocumentComponent;
+    }else if(normalizedName == "poseanimator"){
+        return ComponentType::PoseAnimatorComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4035,6 +4061,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<ModelComponent>(entity)){
         ret.push_back(ComponentType::ModelComponent);
+    }
+    if (registry->findComponent<PoseAnimatorComponent>(entity)){
+        ret.push_back(ComponentType::PoseAnimatorComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -4897,6 +4926,15 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             document->needReload = true;
         }
     }
+    if (updateFlags & UpdateFlags_PoseAnimator_Reload){
+        if (PoseAnimatorComponent* animator = registry->findComponent<PoseAnimatorComponent>(entity)){
+            animator->weight = std::clamp(animator->weight, 0.0f, 1.0f);
+            // the same path keeps what is loaded (a weight change); a new one loads
+            if (!animator->runtime || animator->runtime->path != animator->animation){
+                animator->needsLoad = true;
+            }
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -5049,6 +5087,14 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeUIDocumentComponent(sourceRegistry->getComponent<UIDocumentComponent>(sourceEntity));
             UIDocumentComponent& target = targetRegistry->getComponent<UIDocumentComponent>(targetEntity);
             target = Stream::decodeUIDocumentComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::PoseAnimatorComponent: {
+            // decoded over the target's own: what it plays stays unless the animation changes
+            YAML::Node encoded = Stream::encodePoseAnimatorComponent(sourceRegistry->getComponent<PoseAnimatorComponent>(sourceEntity));
+            PoseAnimatorComponent& target = targetRegistry->getComponent<PoseAnimatorComponent>(targetEntity);
+            target = Stream::decodePoseAnimatorComponent(encoded, &target);
             break;
         }
 

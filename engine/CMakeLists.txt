@@ -907,6 +907,7 @@ set(JASPERENGINE_SRCS
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/Model.cpp
+    core/object/PoseAnimator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -946,6 +947,7 @@ set(JASPERENGINE_SRCS
     core/pose/HumanoidMapIO.cpp
     core/pose/PoseAnimationIO.cpp
     core/pose/PoseDofs.cpp
+    core/pose/PoseAnimatorRuntime.cpp
     core/pose/PoseFile.cpp
     core/pose/PoseRanges.cpp
     core/registry/EntityCloner.cpp
@@ -984,6 +986,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/PhysicsSystem.cpp
