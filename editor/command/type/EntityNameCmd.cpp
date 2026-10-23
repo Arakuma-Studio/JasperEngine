@@ -28,9 +28,8 @@ bool editor::EntityNameCmd::execute(){
     // name is its own anyway)
     if (oldName != newName){
         project->recordPrefabStateEdit(sceneId, entity, PrefabObjectOverrides::StateName);
+        sceneProject->isModified = true;
     }
-
-    sceneProject->isModified = true;
 
     return true;
 }

@@ -604,6 +604,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
@@ -702,6 +703,10 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp
+    ${EDITOR_DIR}/command/CommandGroup.cpp
+    ${EDITOR_DIR}/command/CommandNames.cpp
+    ${EDITOR_DIR}/command/UndoOrigin.cpp
+    ${EDITOR_DIR}/command/UndoTimeline.cpp
     ${EDITOR_DIR}/command/type/AddChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/AddComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
@@ -723,6 +728,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
     ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
+    ${EDITOR_DIR}/command/type/SelectionCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp

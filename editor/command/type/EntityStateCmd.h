@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/EntityEdit.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include <cstdint>
@@ -26,7 +28,7 @@ namespace jasperengine::editor{
     };
 
     // Sets one GameObject field on one or more entities as a single undo step
-    class EntityStateCmd: public Command{
+    class EntityStateCmd: public Command, public EntityEdit{
 
     private:
         Project* project;
@@ -35,6 +37,7 @@ namespace jasperengine::editor{
         EntityStateValue newValue;
         std::map<Entity, EntityStateValue> oldValues;
         bool wasModified = false;
+        bool differs = false;   // the last execute changed a GameObject
         // Unity: a prefab instance's GameObject state edited is an override of it
         PrefabEditUndo prefabUndo;
 
@@ -101,6 +104,7 @@ namespace jasperengine::editor{
             wasModified = sceneProject->isModified;
 
             bool changed = false;
+            differs = false;
             for (auto& [entity, oldValue] : oldValues){
                 // a Play-created entity is gone after Stop
                 if (!sceneProject->scene->isEntityCreated(entity)){
@@ -110,16 +114,17 @@ namespace jasperengine::editor{
                 prefabUndo.capture(project, sceneId, entity);
                 write(sceneProject->scene, entity, newValue);
                 const EntityStateValue now = read(sceneProject->scene, entity);
-                const bool differs = (field == EntityStateField::Active && now.active != oldValue.active) ||
+                const bool entityDiffers = (field == EntityStateField::Active && now.active != oldValue.active) ||
                     (field == EntityStateField::Tag && now.tag != oldValue.tag) ||
                     (field == EntityStateField::Layer && now.layer != oldValue.layer);
-                if (differs){
+                if (entityDiffers){
                     project->recordPrefabStateEdit(sceneId, entity, stateBit());
+                    differs = true;
                 }
                 changed = true;
             }
 
-            if (changed){
+            if (differs){
                 sceneProject->isModified = true;
             }
 
@@ -146,6 +151,34 @@ namespace jasperengine::editor{
         bool affectsStructure() const override{
             return field == EntityStateField::Active;
         }
+
+        // "Set Active (Player)", "Set Tag (3 Objects)", "Set Layer (Sun)"
+        std::string describe() const override{
+            return "Set " + editedLabel() + " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+        }
+        const char* typeName() const override{ return "EntityStateCmd"; }
+        bool isNoOp() const override{ return !differs; }
+
+        Project* editedProject() const override{ return project; }
+        uint32_t editedSceneId() const override{ return sceneId; }
+        std::vector<Entity> editedEntities() const override{
+            std::vector<Entity> entities;
+            entities.reserve(oldValues.size());
+            for (auto const& [entity, value] : oldValues){
+                entities.push_back(entity);
+            }
+            return entities;
+        }
+        std::string editedLabel() const override{
+            switch (field){
+                case EntityStateField::Active: return "Active";
+                case EntityStateField::Tag: return "Tag";
+                case EntityStateField::Layer: return "Layer";
+            }
+            return "State";
+        }
+
+        EntityStateField getField() const{ return field; }
     };
 
 }

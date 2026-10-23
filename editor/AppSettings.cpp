@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "AppSettings.h"
+
+#include "Project.h"
+#include "command/CommandHistory.h"
 #include "Out.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
@@ -76,6 +79,10 @@ bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 bool AppSettings::htmlUiAutoImport = true;
+int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+bool AppSettings::undoRecordSelection = true;
+bool AppSettings::undoReviewPlayChanges = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
@@ -269,6 +276,15 @@ bool AppSettings::loadSettings() {
         }
         UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
 
+        if (settingsData["undo"]) {
+            auto undoNode = settingsData["undo"];
+            if (undoNode["max_steps"]) undoMaxSteps = undoNode["max_steps"].as<int>();
+            if (undoNode["memory_limit_mb"]) undoMemoryLimitMB = undoNode["memory_limit_mb"].as<int>();
+            if (undoNode["record_selection"]) undoRecordSelection = undoNode["record_selection"].as<bool>();
+            if (undoNode["review_play_changes"]) undoReviewPlayChanges = undoNode["review_play_changes"].as<bool>();
+        }
+        applyUndoSettings();
+
         return true;
     } catch (const std::exception& e) {
         Out::error("Failed to load settings: %s", e.what());
@@ -399,6 +415,13 @@ bool AppSettings::saveSettings() {
         htmlUiNode["auto_import"] = htmlUiAutoImport;
         htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
         settingsData["html_ui"] = htmlUiNode;
+
+        YAML::Node undoNode;
+        undoNode["max_steps"] = undoMaxSteps;
+        undoNode["memory_limit_mb"] = undoMemoryLimitMB;
+        undoNode["record_selection"] = undoRecordSelection;
+        undoNode["review_play_changes"] = undoReviewPlayChanges;
+        settingsData["undo"] = undoNode;
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
         // Save to file
@@ -613,6 +636,41 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+int AppSettings::getUndoMaxSteps() {
+    return undoMaxSteps;
+}
+
+int AppSettings::getUndoMemoryLimitMB() {
+    return undoMemoryLimitMB;
+}
+
+bool AppSettings::getUndoRecordSelection() {
+    return undoRecordSelection;
+}
+
+bool AppSettings::getUndoReviewPlayChanges() {
+    return undoReviewPlayChanges;
+}
+
+void AppSettings::setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges) {
+    undoMaxSteps = maxSteps;
+    undoMemoryLimitMB = memoryLimitMB;
+    undoRecordSelection = recordSelection;
+    undoReviewPlayChanges = reviewPlayChanges;
+    applyUndoSettings();
+}
+
+void AppSettings::applyUndoSettings() {
+    undoMaxSteps = std::clamp(undoMaxSteps, minUndoMaxSteps, maxUndoMaxSteps);
+    // 0 = unlimited, else within the range
+    if (undoMemoryLimitMB != 0) {
+        undoMemoryLimitMB = std::clamp(undoMemoryLimitMB, minUndoMemoryLimitMB, maxUndoMemoryLimitMB);
+    }
+    CommandHistory::maxEntries = static_cast<size_t>(undoMaxSteps);
+    CommandHistory::memoryLimit = static_cast<size_t>(undoMemoryLimitMB) * 1024 * 1024;
+    Project::recordSelectionInUndo = undoRecordSelection;
 }
 
 bool AppSettings::getHtmlUiAutoImport() {

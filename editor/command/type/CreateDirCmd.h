@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include <string>
 #include <filesystem>
 
@@ -22,6 +23,9 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Create Folder " + CommandNames::file(directory); }
+        const char* typeName() const override { return "CreateDirCmd"; }
 
     };
 

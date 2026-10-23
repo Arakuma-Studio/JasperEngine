@@ -8,6 +8,7 @@
 #include "EditorHost.h"
 #include "PlatformMenu.h"
 #include "Project.h"
+#include "command/UndoTimeline.h"
 
 #include "window/InspectorWindow.h"
 #include "window/HierarchyWindow.h"
@@ -243,6 +244,12 @@ namespace jasperengine::editor{
         void pasteSelection(bool asChild);
 
         PlatformMenuModel buildMenuModel();
+        // Where Ctrl+Z and Edit > Undo go now (UndoTimeline::resolveTarget)
+        UndoTimeline::Target undoTarget() const;
+        // Edit > Undo/Redo and Ctrl+Z/Ctrl+Y: the Code editor's own, or one timeline step
+        void undoRedo(bool undo);
+        // Esc and Ctrl+Z in a drag, popups and focus loss (S24 R12)
+        void handleInteractiveEdits(bool popupOpen);
         void executeMenuCommand(const PlatformMenuCommand& command);
         void showImGuiMenuItems(const std::vector<PlatformMenuItem>& items);
         void showImGuiMenu(const PlatformMenuModel& menu);

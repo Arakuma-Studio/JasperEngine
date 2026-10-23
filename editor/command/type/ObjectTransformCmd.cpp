@@ -3,6 +3,8 @@
 
 #include "ObjectTransformCmd.h"
 
+#include "command/CommandNames.h"
+
 using namespace jasperengine;
 
 editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId, Entity entity, Matrix4 localMatrix){
@@ -35,8 +37,11 @@ bool editor::ObjectTransformCmd::execute(){
     if (!sceneProject){
         return false;
     }
+    bool anyChanged = false;
     for (auto& [entity, property] : props){
+        property.applied = false;
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
+            property.applied = true;
             property.oldPosition = transform->position;
             property.oldRotation = transform->rotation;
             property.oldScale = transform->scale;
@@ -56,11 +61,15 @@ bool editor::ObjectTransformCmd::execute(){
             if (property.newScale != property.oldScale) changed.push_back("scale");
             if (!changed.empty()){
                 project->recordPrefabEdit(sceneId, entity, ComponentType::Transform, changed);
+                anyChanged = true;
             }
         }
     }
 
-    sceneProject->isModified = true;
+    // the same TRS again is no edit (the history drops the command)
+    if (anyChanged){
+        sceneProject->isModified = true;
+    }
 
     return true;
 }
@@ -94,6 +103,7 @@ bool editor::ObjectTransformCmd::mergeWith(editor::Command* otherCommand){
                     props[otherEntity].oldPosition = otherProperty.oldPosition;
                     props[otherEntity].oldRotation = otherProperty.oldRotation;
                     props[otherEntity].oldScale = otherProperty.oldScale;
+                    props[otherEntity].applied = props[otherEntity].applied || otherProperty.applied;
                 }else{
                     props[otherEntity] = otherProperty;
                 }
@@ -107,4 +117,43 @@ bool editor::ObjectTransformCmd::mergeWith(editor::Command* otherCommand){
     }
 
     return false;
+}
+
+std::string editor::ObjectTransformCmd::describe() const{
+    bool position = false;
+    bool rotation = false;
+    bool scale = false;
+    for (auto const& [entity, property] : props){
+        if (!property.applied){
+            continue;
+        }
+        position = position || property.newPosition != property.oldPosition;
+        rotation = rotation || property.newRotation != property.oldRotation;
+        scale = scale || property.newScale != property.oldScale;
+    }
+    const int changed = (position ? 1 : 0) + (rotation ? 1 : 0) + (scale ? 1 : 0);
+    const char* verb = "Set Transform";
+    if (changed == 1){
+        verb = position ? "Move" : (rotation ? "Rotate" : "Scale");
+    }
+    return CommandNames::verb(verb, CommandNames::entities(project, (uint32_t)sceneId, editedEntities()));
+}
+
+bool editor::ObjectTransformCmd::isNoOp() const{
+    for (auto const& [entity, property] : props){
+        if (property.applied && (property.newPosition != property.oldPosition ||
+            property.newRotation != property.oldRotation || property.newScale != property.oldScale)){
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<Entity> editor::ObjectTransformCmd::editedEntities() const{
+    std::vector<Entity> entities;
+    entities.reserve(props.size());
+    for (auto const& [entity, property] : props){
+        entities.push_back(entity);
+    }
+    return entities;
 }

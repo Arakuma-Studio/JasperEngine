@@ -595,6 +595,9 @@ void createEntityTool(const CallPtr& call) {
                 return true;
             }
             void undo() override { inner->undo(); }
+            std::string describe() const override { return inner->describe(); }
+            const char* typeName() const override { return inner->typeName(); }
+            size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
         };
         why = "The GameObject could not be created.";
         return new Capture(cmd, created);

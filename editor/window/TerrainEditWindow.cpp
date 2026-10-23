@@ -9,6 +9,7 @@
 #include "Stream.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
+#include "command/CommandNames.h"
 #include "command/PrefabEditUndo.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -1002,6 +1003,23 @@ public:
     void undo() override{
         apply(beforeSnapshot, true);
     }
+
+    // "Sculpt Terrain (Island)", "Paint Terrain (Island)", "Paint Details (Island)"
+    std::string describe() const override{
+        const char* verb = ref.target == TerrainMapTarget::HeightMap ? "Sculpt Terrain" :
+            (ref.target == TerrainMapTarget::BlendMap ? "Paint Terrain" : "Paint Details");
+        return std::string(verb) + " (" + editor::CommandNames::entity(project, sceneId, entity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainTextureEditCmd"; }
+
+    // Off-thread release: the destructor only frees map snapshots and override records; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + beforeSnapshot.pixels.capacity() + afterSnapshot.pixels.capacity() +
+            beforeSnapshot.path.size() + afterSnapshot.path.size();
+    }
 };
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
@@ -1197,6 +1215,18 @@ public:
     bool affectsStructure() const override{
         return createHostCmd != nullptr;
     }
+
+    // "Paint Trees (Island)"
+    std::string describe() const override{
+        return "Paint Trees (" + editor::CommandNames::entity(project, sceneId, terrainEntity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstancePlaceCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + assetPath.size() + (createHostCmd ? createHostCmd->memoryBytes() : 0) +
+            (loadHostCmd ? loadHostCmd->memoryBytes() : 0) + (mergeHostCmd ? mergeHostCmd->memoryBytes() : 0);
+    }
 };
 
 class editor::TerrainEditWindow::TerrainInstanceEraseCmd: public editor::Command{
@@ -1261,6 +1291,20 @@ public:
     bool affectsStructure() const override{
         return false;
     }
+
+    // "Erase Trees (Rock)": the instanced GameObject they are erased from
+    std::string describe() const override{
+        return "Erase Trees (" + editor::CommandNames::entity(project, sceneId, host) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstanceEraseCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + indices.capacity() * sizeof(size_t) + removed.capacity() * sizeof(InstanceData);
+    }
+
+    // Off-thread release: the destructor only frees index and instance vectors; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
 };
 
 // One undo step per stroke: each stamp merges into the previous one while the stroke id
@@ -1326,6 +1370,21 @@ public:
             }
         }
         return false;
+    }
+
+    // A stroke's stamps are all of one kind: named by the first
+    std::string describe() const override{
+        return commands.empty() ? std::string("Paint Trees") : commands.front()->describe();
+    }
+
+    const char* typeName() const override{ return "TerrainObjectStrokeCmd"; }
+
+    size_t memoryBytes() const override{
+        size_t bytes = sizeof(*this) + commands.capacity() * sizeof(editor::Command*);
+        for (const editor::Command* command : commands){
+            bytes += command->memoryBytes();
+        }
+        return bytes;
     }
 };
 

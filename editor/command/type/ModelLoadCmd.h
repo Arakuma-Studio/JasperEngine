@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "Project.h"
@@ -110,6 +112,11 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Load Model robot.glb (Robot)"; a GameObject made for it: "Create Model robot.glb"
+        std::string describe() const override;
+        const char* typeName() const override { return "ModelLoadCmd"; }
+        size_t memoryBytes() const override;
 
 
         // Whether a load into this Model is still running on a worker

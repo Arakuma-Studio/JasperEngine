@@ -3,6 +3,8 @@
 
 #include "DeleteEntityCmd.h"
 
+#include "command/CommandMemory.h"
+
 #include "Stream.h"
 #include "Out.h"
 #include "util/CameraTextureLink.h"
@@ -533,6 +535,14 @@ void editor::DeleteEntityCmd::destroyEntities(EntityRegistry* registry,
 bool editor::DeleteEntityCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
+    if (deletedNames.empty() && sceneProject && sceneProject->scene) {
+        for (Entity requested : requestedEntities) {
+            if (sceneProject->scene->isEntityCreated(requested)) {
+                deletedNames.push_back(CommandNames::entity(project, sceneId, requested));
+            }
+        }
+    }
+
     // Prefab Mode: a prefab has its root (Unity refuses to delete it there)
     for (Entity requested : requestedEntities) {
         if (project->isPrefabStageRoot(sceneId, requested)) {
@@ -900,6 +910,7 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
                     requestedEntities.push_back(entity);
                 }
             }
+            deletedNames.insert(deletedNames.begin(), otherCmd->deletedNames.begin(), otherCmd->deletedNames.end());
             for (const PrefabInstanceSnapshot& instance : otherCmd->prefabInstanceSnapshots) {
                 if (std::find_if(prefabInstanceSnapshots.begin(), prefabInstanceSnapshots.end(), [&](const PrefabInstanceSnapshot& saved) {
                         return saved.path == instance.path && saved.rootEntity == instance.rootEntity;
@@ -915,4 +926,23 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
     }
 
     return false;
+}
+
+size_t editor::DeleteEntityCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + entities.capacity() * sizeof(DeleteEntityData) +
+        (requestedEntities.capacity() + preservedEntities.capacity() + lastSelected.capacity() +
+         survivingEntities.capacity() + trackedBeforeDelete.capacity()) * sizeof(Entity);
+    for (const DeleteEntityData& entityData : entities) {
+        bytes += yamlFootprint(entityData.data) + CommandMemory::of(entityData.recoveryPrefabData);
+        if (!entityData.removedFromInstance.node.IsNull() && entityData.removedFromInstance.node.IsDefined()) {
+            bytes += CommandMemory::of(entityData.removedFromInstance);
+        }
+    }
+    for (const auto& [entity, node] : preEncoded) {
+        bytes += yamlFootprint(node);
+    }
+    for (const PrefabInstanceSnapshot& instance : prefabInstanceSnapshots) {
+        bytes += sizeof(instance) + instance.members.size() * sizeof(Prefab::EntityMember);
+    }
+    return bytes;
 }

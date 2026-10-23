@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 
 #include <cstddef>
@@ -85,6 +86,8 @@ namespace jasperengine::editor{
         std::unordered_map<Entity, YAML::Node> preEncoded;
         // The snapshots are such encodes: nodes of a copy the clipboard may still be writing out
         bool snapshotsShared = false;
+        // The requested GameObjects' names, read by the first execute (the step's name)
+        std::vector<std::string> deletedNames;
 
         bool appendEntityData(Entity entity);
         std::vector<size_t> prepareDeleteSet();
@@ -116,6 +119,17 @@ namespace jasperengine::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Delete Player", "Delete 3 Objects"
+        std::string describe() const override { return "Delete " + CommandNames::objects(deletedNames); }
+        const char* typeName() const override { return "DeleteEntityCmd"; }
+        size_t memoryBytes() const override;
+        // Off-thread release: the destructor only frees YAML snapshots and prefab records (the
+        // snapshots through BackgroundRelease); no editor/engine/GPU state (S24 R8).
+        bool releaseOffThread() const override { return true; }
+
+        uint32_t getSceneId() const { return sceneId; }
+        const std::vector<Entity>& getRequestedEntities() const { return requestedEntities; }
     };
 
 }

@@ -124,6 +124,14 @@ private:
     static bool htmlUiAutoImport;
     static bool htmlUiVerboseDiagnostics;
 
+    // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
+    // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
+    // Changes review on Stop
+    static int undoMaxSteps;
+    static int undoMemoryLimitMB;
+    static bool undoRecordSelection;
+    static bool undoReviewPlayChanges;
+
     // Private methods
     static void ensureConfigDirectory();
 
@@ -230,6 +238,20 @@ public:
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
+
+    // Undo settings, applied to CommandHistory/Project when set or loaded (clamped to their ranges)
+    static constexpr int minUndoMaxSteps = 50;
+    static constexpr int maxUndoMaxSteps = 10000;
+    static constexpr int defaultUndoMaxSteps = 1000;
+    static constexpr int minUndoMemoryLimitMB = 64;
+    static constexpr int maxUndoMemoryLimitMB = 8192;
+    static constexpr int defaultUndoMemoryLimitMB = 512;
+    static int getUndoMaxSteps();
+    static int getUndoMemoryLimitMB();
+    static bool getUndoRecordSelection();
+    static bool getUndoReviewPlayChanges();
+    static void setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges);
+    static void applyUndoSettings();
 
     // Load and save settings
     static bool loadSettings();

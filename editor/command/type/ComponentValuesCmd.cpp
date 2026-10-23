@@ -4,6 +4,8 @@
 #include "ComponentValuesCmd.h"
 
 #include "Stream.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
 #include "command/type/ModelLoadCmd.h"
@@ -242,6 +244,7 @@ bool editor::ComponentValuesCmd::execute(){
 
     wasModified = sceneProject->isModified;
     bool changed = false;
+    differs = false;
 
     YAML::Node defaults;
     if (!clip && type != ComponentType::ScriptComponent) {
@@ -281,6 +284,10 @@ bool editor::ComponentValuesCmd::execute(){
         before[Catalog::getComponentName(type, true)] = target.before;
         project->recordPrefabComponentEdit(sceneId, target.entity, type, before);
         changed = true;
+        // the same values again are no edit (the history then drops the command)
+        if (!differs) {
+            differs = YAML::Dump(EntityClipboard::encodeComponent(scene, target.entity, type)) != YAML::Dump(target.before);
+        }
     }
 
     if (!changed) {
@@ -290,8 +297,44 @@ bool editor::ComponentValuesCmd::execute(){
     if (type == ComponentType::CameraComponent) {
         CameraTextureLink::resolve(scene);
     }
-    sceneProject->isModified = true;
+    if (differs) {
+        sceneProject->isModified = true;
+    }
     return true;
+}
+
+std::string editor::ComponentValuesCmd::describe() const{
+    const std::string subject = " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+    if (!clip) {
+        return "Reset " + editedLabel() + subject;
+    }
+    const bool ownValues = targets.size() == 1 && targets.front().entity == clip->entity && clip->sceneId == sceneId &&
+        clip->project == EntityClipboard::projectKey(project);
+    return (ownValues ? "Set " : "Paste Component Values ") + editedLabel() + subject;
+}
+
+size_t editor::ComponentValuesCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + targets.capacity() * sizeof(Target);
+    for (const Target& target : targets) {
+        bytes += yamlFootprint(target.before);
+    }
+    if (clip) {
+        bytes += yamlFootprint(clip->value);
+    }
+    return bytes;
+}
+
+std::vector<Entity> editor::ComponentValuesCmd::editedEntities() const{
+    std::vector<Entity> entities;
+    entities.reserve(targets.size());
+    for (const Target& target : targets) {
+        entities.push_back(target.entity);
+    }
+    return entities;
+}
+
+std::string editor::ComponentValuesCmd::editedLabel() const{
+    return CommandNames::component(type);
 }
 
 void editor::ComponentValuesCmd::undo(){

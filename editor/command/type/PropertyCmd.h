@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/EntityEdit.h"
 #include "command/PrefabEditUndo.h"
 #include "Scene.h"
 #include "math/Vector3.h"
@@ -49,6 +51,7 @@ namespace jasperengine::editor{
         T oldValue;
         T newValue;
         uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
+        bool applied = false;           // the entity had the property when it ran
     };
 
     // Component types the Hierarchy tree reads nothing from: it caches names, signature
@@ -84,7 +87,7 @@ namespace jasperengine::editor{
     }
 
     template<typename T>
-    class PropertyCmd: public Command{
+    class PropertyCmd: public Command, public EntityEdit{
 
     private:
         Project* project;
@@ -116,14 +119,17 @@ namespace jasperengine::editor{
             if (!sceneProject){
                 return false;
             }
+            bool changed = false;
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
                 // script properties are per entity, a selection may not share all of them
                 if (!valueRef){
+                    value.applied = false;
                     continue;
                 }
 
+                value.applied = true;
                 value.oldValue = T(*valueRef);
                 prefabUndo.capture(project, sceneId, entity);
                 *valueRef = value.newValue;
@@ -149,9 +155,13 @@ namespace jasperengine::editor{
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
                 project->recordPrefabEdit(sceneId, entity, type, {propertyName});
+                changed = true;
             }
 
-            sceneProject->isModified = true;
+            // a value set to what it was is no edit (the history drops the command)
+            if (changed){
+                sceneProject->isModified = true;
+            }
 
             if (onValueChanged) {
                 onValueChanged();
@@ -201,6 +211,49 @@ namespace jasperengine::editor{
             return !isNonStructuralProperty(type, propertyName);
         }
 
+        std::string describe() const override{
+            return "Set " + editedLabel() + " (" + CommandNames::entities(project, sceneId, editedEntities()) + ")";
+        }
+
+        const char* typeName() const override{ return "PropertyCmd"; }
+
+        // Every entity it reached kept its value (a value type without == always counts as an edit)
+        bool isNoOp() const override{
+            for (auto const& [entity, value] : values){
+                if (!value.applied){
+                    continue;
+                }
+                if constexpr (has_equality_operator_v<T>) {
+                    if (!(value.oldValue == value.newValue)){
+                        return false;
+                    }
+                }else{
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        std::vector<Entity> editedEntities() const override{
+            std::vector<Entity> entities;
+            entities.reserve(values.size());
+            for (auto const& [entity, value] : values){
+                entities.push_back(entity);
+            }
+            return entities;
+        }
+
+        std::string editedLabel() const override{
+            return CommandNames::property(propertyName);
+        }
+
+        Project* editedProject() const override{ return project; }
+        uint32_t editedSceneId() const override{ return sceneId; }
+
+        uint32_t getSceneId() const{ return sceneId; }
+        ComponentType getComponentType() const{ return type; }
+        const std::string& getPropertyName() const{ return propertyName; }
+
         bool mergeWith(editor::Command* otherCommand) override{
             PropertyCmd* otherCmd = dynamic_cast<PropertyCmd*>(otherCommand);
             if (otherCmd != nullptr){
@@ -210,6 +263,7 @@ namespace jasperengine::editor{
                             // The older command holds the state a single undo has to restore.
                             values[otherEntity].oldValue = otherValue.oldValue;
                             values[otherEntity].oldOverrideFields = otherValue.oldOverrideFields;
+                            values[otherEntity].applied = values[otherEntity].applied || otherValue.applied;
                         }else{
                             values[otherEntity] = otherValue;
                         }
