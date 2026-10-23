@@ -477,6 +477,12 @@ void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & (1 << 3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
 }
 
+// FluidSimulator's programs: the solver (none), the look passes, the solver without linear filtering
+void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+    if (prop & (1 << 0))  defs.push_back({"FLUID_LOOK", "1"});               // 'Lok'
+    if (prop & (1 << 1))  defs.push_back({"FLUID_MANUAL_FILTERING", "1"});   // 'Mfl'
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     if (prop & (1 << 0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -578,6 +584,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
             args.defines.push_back({"JFX_STEP_FORM", "1"});
         if (scatterForm)
             args.defines.push_back({"JFX_SCATTER_FORM", "1"});
+    }else if (shaderType == ShaderType::FLUID){
+        args.vert_file = "fluid.vert";
+        args.frag_file = "fluid.frag";
+        addFluidPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }
