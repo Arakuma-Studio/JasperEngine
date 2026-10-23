@@ -8,6 +8,7 @@
 #include "util/Angle.h"
 #include "math/Interpolation.h"
 #include "subsystem/MeshSystem.h"
+#include "lattice/LatticeSolver.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -1463,9 +1464,66 @@ void ActionSystem::morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTra
     }
 }
 
+void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, LatticeTracksComponent& latticetracks, Entity target, LatticeComponent& latticecomp, float weight){
+    if (weight <= 0.0f || !trackIndexValid(keyframe, latticetracks))
+        return;
+
+    const std::vector<Vector3>& previous = latticetracks.values[(keyframe.index > 0) ? keyframe.index - 1 : 0];
+    const std::vector<Vector3>& next = latticetracks.values[keyframe.index];
+
+    // a key with fewer values than points (hand-edited data) animates only the points both
+    // keys of the segment have
+    size_t count = std::min(latticetracks.points.size(), std::min(previous.size(), next.size()));
+    if (count == 0)
+        return;
+
+    bool cubic = hasCubicSplineTangents(keyframe, latticetracks.values, latticetracks.inTangents, latticetracks.outTangents) &&
+                 latticetracks.outTangents[keyframe.index-1].size() == previous.size() &&
+                 latticetracks.inTangents[keyframe.index].size() == next.size();
+    float td = cubic ? keyframe.times[keyframe.index] - keyframe.times[keyframe.index-1] : 0;
+
+    int pointCount = lattice::pointCount(latticecomp.resolutionX, latticecomp.resolutionY, latticecomp.resolutionZ);
+
+    LatticeBlendAccum& accum = latticeBlend[target];
+    if (!accum.active){
+        accum.sums.assign(pointCount, Vector3(0, 0, 0));
+        accum.weights.assign(pointCount, 0.0f);
+        accum.active = true;
+    }else if (accum.sums.size() < (size_t)pointCount){
+        accum.sums.resize(pointCount, Vector3(0, 0, 0));
+        accum.weights.resize(pointCount, 0.0f);
+    }
+
+    for (size_t n = 0; n < count; n++){
+        int point = latticetracks.points[n];
+        // points out of range for the target's current resolution are ignored (spec §7)
+        if (point < 0 || point >= pointCount)
+            continue;
+
+        Vector3 value;
+        if (cubic){
+            value = Interpolation::cubicSpline(keyframe.interpolation, td,
+                    previous[n], latticetracks.outTangents[keyframe.index-1][n],
+                    next[n], latticetracks.inTangents[keyframe.index][n]);
+        }else{
+            value = previous[n] + keyframe.interpolation * (next[n] - previous[n]);
+        }
+        accum.sums[point] += value * weight;
+        accum.weights[point] += weight;
+    }
+}
+
 void ActionSystem::clearPoseBlend(){
     transformBlend.clear();
     morphBlend.clear();
+    for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
+        if (!scene->isEntityCreated(it->first)){
+            it = latticeBlend.erase(it);
+        }else{
+            it->second.active = false;
+            ++it;
+        }
+    }
 }
 
 void ActionSystem::flushPoseBlend(){
@@ -1513,6 +1571,38 @@ void ActionSystem::flushPoseBlend(){
             if (accum.weights[i] > 0.0f){
                 mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
             }
+        }
+    }
+
+    for (auto& entry : latticeBlend){
+        Entity target = entry.first;
+        LatticeBlendAccum& accum = entry.second;
+
+        if (!accum.active || !scene->isEntityCreated(target))
+            continue;
+
+        LatticeComponent* latticecomp = scene->findComponent<LatticeComponent>(target);
+        if (!latticecomp)
+            continue;
+
+        // points no running track animates keep their offsets
+        size_t pointCount = (size_t)lattice::pointCount(latticecomp->resolutionX, latticecomp->resolutionY, latticecomp->resolutionZ);
+        size_t count = std::min(pointCount, accum.weights.size());
+        bool changed = false;
+        for (size_t i = 0; i < count; i++){
+            if (accum.weights[i] > 0.0f){
+                Vector3 value = accum.sums[i] / accum.weights[i];
+                if (latticecomp->offsets.size() < pointCount){
+                    latticecomp->offsets.resize(pointCount, Vector3(0, 0, 0));
+                }
+                if (latticecomp->offsets[i] != value){
+                    latticecomp->offsets[i] = value;
+                    changed = true;
+                }
+            }
+        }
+        if (changed){
+            latticecomp->revision++;
         }
     }
 
@@ -1744,6 +1834,16 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
 
             if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 morphTracksUpdate(keyframe, morpthtracks, action.target, action.weight);
+            }
+        }
+
+        if (signature.test(scene->getComponentId<LatticeTracksComponent>())){
+            LatticeTracksComponent& latticetracks = scene->getComponent<LatticeTracksComponent>(entity);
+
+            if (targetSignature.test(scene->getComponentId<LatticeComponent>())){
+                LatticeComponent& latticecomp = scene->getComponent<LatticeComponent>(action.target);
+
+                latticeTracksUpdate(keyframe, latticetracks, action.target, latticecomp, action.weight);
             }
         }
 
