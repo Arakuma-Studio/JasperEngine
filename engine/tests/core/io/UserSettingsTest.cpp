@@ -76,8 +76,9 @@ TEST_F(UserSettingsTest, AtomicOnCrash){
     EXPECT_EQ(TestTempDir::read(file), saved);
     EXPECT_EQ(UserSettings::getIntegerForKey("level"), 3);
     EXPECT_EQ(UserSettings::getStringForKey("player"), "Ada");
-    for (const auto& entry : fs::directory_iterator(dir.path()))
+    for (const auto& entry : fs::directory_iterator(dir.path())){
         EXPECT_FALSE(io::isTemporarySiblingName(entry.path().filename().string())) << entry.path();
+    }
 
     UserSettings::setIntegerForKey("level", 5);
     EXPECT_EQ(UserSettings::getIntegerForKey("level"), 5);
