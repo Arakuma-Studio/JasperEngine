@@ -415,7 +415,13 @@ namespace jasperengine{
 		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
 	};
 
+	class FluidSystem;
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
+		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
+		// null until then or without one)
+		FluidSystem* frameFluids = nullptr;
+
 	private:
 		enum class TransparentRenderType{
 			MESH,
@@ -1801,7 +1807,8 @@ namespace jasperengine{
 		// a copy of a chain target into a destination framebuffer (the last pass below full size)
 		void renderPostProcessCopy(TextureRender* source, FramebufferRender* destination);
 
-		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType);
+		// textureOverride: shown instead of the UI's texture (a FluidSimulation's MATERIAL output)
+		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr);
 		void destroyUI(Entity entity, UIComponent& ui);
 
 		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);

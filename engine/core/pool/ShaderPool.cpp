@@ -134,6 +134,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "fluid") {
+        shaderType = ShaderType::FLUID;
+        return true;
+    }
 
     return false;
 }
@@ -489,6 +493,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::FLUID:  return lowerCase ? "fluid"  : "Fluid";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -525,6 +530,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        // Lok (the look program), Mfl (the solver with manual filtering)
+        case ShaderType::FLUID:  return 2;
         default:                 return 0;
     }
 }
@@ -669,6 +676,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Thr" : "Threshold";
             case 2: return shortName ? "Ups" : "Upsample";
             case 3: return shortName ? "Mix" : "Mix Level";
+        }
+    } else if (shaderType == ShaderType::FLUID) {
+        // FluidSimulator's programs (fluid.frag): 0 is the solver
+        switch (bit) {
+            case 0: return shortName ? "Lok" : "Look";
+            case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     }
     return shortName ? "?" : "Unknown";

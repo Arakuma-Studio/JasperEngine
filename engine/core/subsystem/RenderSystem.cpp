@@ -22,6 +22,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -5258,6 +5259,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
+        // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            submeshLoads[i].shaderInputs.baseColorTexture = true;
         submeshLoads[i].variant = getSubmeshShaderVariant(shaderEnvironment, submeshLoads[i].shaderInputs);
         const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
         const SubmeshShaderVariant& variant = submeshLoads[i].variant;
@@ -7387,6 +7391,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     mesh.submeshes[i].needUpdateTexture = false;
                 }
             }
+            // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
+            // base colour, lent for the draw (the material keeps its own texture)
+            if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
+                if (TextureRender* fluidTexture = frameFluids->getMaterialTexture(entity))
+                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
+            }
 
             if (!render.beginDraw(pipType, passNoFaceCulling())){
                 mesh.needReload = true;
@@ -9363,7 +9373,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     render.beginLoad(ui.primitiveType);
 
-    bool hasUITexture = !ui.texture.empty();
+    // (an Image showing a FluidSimulation's output samples it even without a texture of its own)
+    bool hasUITexture = !ui.texture.empty() || (!isText && frameFluids && frameFluids->getMaterialTexture(entity));
 
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
@@ -9469,7 +9480,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     return true;
 }
 
-bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType){
+bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
@@ -9481,6 +9492,8 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                     ui.needUpdateTexture = false;
                 }
         }
+        if (textureOverride && textureOverride->isCreated())
+            ui.render.addTexture(ui.shader.get()->shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureOverride);
         if (!ui.libraryBindings.textures.empty() && (ui.needUpdateTexture || shaderTexturesOutdated(ui.libraryBindings, ui.shaderTextures))){
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
@@ -10857,7 +10870,9 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& m
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
         const Submesh& submesh = mesh.submeshes[i];
-        const SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            inputs.baseColorTexture = true;
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
                          ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
@@ -13318,6 +13333,12 @@ void RenderSystem::drawFramePasses(){
     frameShadows.pointKey.epoch = hasShadows ? shadowEpoch : 0;
     render2DShadows();
 
+    // the fluid simulations step and draw their outputs before any camera samples them (as a
+    // material or a texture link) or composites them (SCREEN)
+    frameFluids = scene->findSystem<FluidSystem>().get();
+    if (frameFluids)
+        frameFluids->renderFluids();
+
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
@@ -14375,7 +14396,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
             if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
-                drawUI(ui, transform, colorPip);
+                drawUI(ui, transform, colorPip,
+                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -14494,6 +14516,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the resolved multisampled scene, onto the swapchain
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
+    }
+
+    // SCREEN fluid simulations over the view's final image (after post-processing), in the
+    // game's views (not the editor's Scene view, which they would cover)
+    bool compositeFluids = isMainCamera && !pass.renderToTexture;
+#ifdef JASPERENGINE_EDITOR
+    compositeFluids = compositeFluids && !passDrawsOverlays;
+#endif
+    if (compositeFluids){
+        FluidSystem* fluids = scene->getSystem<FluidSystem>().get();
+        if (fluids->hasScreenFluids()){
+            Framebuffer* destination = targetFramebuffer();
+            if (destination && !destination->isCreated())
+                destination->create();
+            // offscreen targets are drawn Y-flipped on GL (isRenderingFlipped), the swapchain is not
+            fluids->compositeScreen(destination ? &destination->getRender() : nullptr, viewRect, destination && Engine::isOpenGL());
+        }
     }
 }
 

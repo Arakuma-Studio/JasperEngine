@@ -14,6 +14,7 @@
 
 #include "Export.h"
 #include "component/FluidSimulationComponent.h"
+#include "render/PipelineState.h"
 #include "texture/Framebuffer.h"
 #include "texture/Texture.h"
 
@@ -32,6 +33,19 @@ namespace jasperengine{
         int passesLastFrame = 0;        // fullscreen passes drawn in the last frame
         uint32_t seed = 0;              // the seed in use
         bool shadingActive = false, bloomActive = false, sunraysActive = false;  // after fallbacks
+        // the device's fallbacks in use: the advection filters by hand (no linear filtering of
+        // half floats: shading, bloom and sunrays off); compact: velocity RG16F and the scalar
+        // fields R16F (else RGBA16F, Pavel's fallback)
+        bool manualFiltering = false, compactFormats = false;
+        int outputWidth = 0, outputHeight = 0;
+    };
+
+    // FluidSimulator::setDisabledFeaturesForTesting: device features reported missing
+    enum FluidTestFeature : uint32_t {
+        FLUID_TEST_NO_FLOAT_TARGETS = 1u << 0,     // no renderable half floats: not supported
+        FLUID_TEST_NO_RG16F = 1u << 1,             // RG16F neither renderable nor filterable
+        FLUID_TEST_NO_R16F = 1u << 2,              // R16F neither renderable nor filterable
+        FLUID_TEST_NO_LINEAR_FILTER = 1u << 3      // half floats not filterable: manual filtering
     };
 
     class JASPERENGINE_API FluidSimulator{
@@ -75,7 +89,18 @@ namespace jasperengine{
         const std::string& getError() const;
 
         // frees every GPU resource (a view loss, removal); the next update recreates them
+        // (restarted: the fields are gone)
         void release();
+
+        // Draws the output over the target of the render pass open now (a premultiplied
+        // fullscreen triangle in its viewport; FluidSystem's SCREEN composite). state: the
+        // pass's target format (its blend is set here); flipY: the target is drawn Y-flipped
+        // (GL offscreen targets, RenderSystem::isRenderingFlipped). False: nothing drawn
+        bool drawComposite(const PipelineState& state, bool flipY);
+
+        // tests: device features reported missing (FluidTestFeature bits, 0: none), for every
+        // simulator; their targets are made again at the next update
+        static void setDisabledFeaturesForTesting(uint32_t features);
 
     private:
         struct Impl;
