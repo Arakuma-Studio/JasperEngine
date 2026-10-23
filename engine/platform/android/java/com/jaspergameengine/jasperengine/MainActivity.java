@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager.LayoutParams;
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -25,6 +26,8 @@ public class MainActivity extends GameActivity {
 	private UserSettings userSettings;
 	private AdMobWrapper admobWrapper;
 	private ClipboardManager clipboard;
+
+	private native void onBackPressedNative();
 
 	private void hideSystemUI() {
 		// This will put the game behind any cutouts and waterfalls on devices which have
@@ -54,6 +57,14 @@ public class MainActivity extends GameActivity {
 		userSettings = new UserSettings(this);
 		admobWrapper = new AdMobWrapper(this);
 		clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+
+		// Games get Back as Escape. A callback, since Android 16 no longer sends it as a key
+		getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+			@Override
+			public void handleOnBackPressed() {
+				onBackPressedNative();
+			}
+		});
 
 		super.onCreate(savedInstanceState);
 	}
