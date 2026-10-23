@@ -638,7 +638,15 @@ void synthesizeTextureTool(const CallPtr& call) {
         getEditorHost().enqueueMainThreadTask([context, state, job]() {
             // the run may finish before start() returned to the handler
             if (!state->run) return;
-            finishSynthesis(*context, state, job);
+            // whatever goes wrong, the job ends (the main-thread loop would swallow an exception
+            // and leave it running forever)
+            try {
+                finishSynthesis(*context, state, job);
+            } catch (const std::exception& e) {
+                if (job->status() == JobStatus::Running) job->fail(std::string("The synthesis finished but its result could not be handled: ") + e.what());
+            } catch (...) {
+                if (job->status() == JobStatus::Running) job->fail("The synthesis finished but its result could not be handled.");
+            }
         });
     };
     if (state->showInEditor) {
@@ -694,9 +702,12 @@ Json synthesisAssetInfo(Project* project, const fs::path& file, bool full) {
         if (!readError.empty()) return Json{{"error", readError}};
         return Json();
     }
+    // a garbled recipe (another writer, a hand edit) is reported as such, the rest of the asset info stays
+    std::string invalid;
+    if (!ts::validateRecipe(*recipe, invalid)) return Json{{"error", "garbled jasper.synthesis recipe: " + invalid}};
     const fs::path root = project->getProjectPath();
-    Json info = {{"role", recipe->value("role", std::string("primary"))}, {"mode", recipe->value("mode", std::string())},
-                 {"quality", recipe->value("quality", std::string())}};
+    Json info = {{"role", ts::jsonString(*recipe, "role", "primary")}, {"mode", ts::jsonString(*recipe, "mode")},
+                 {"quality", ts::jsonString(*recipe, "quality")}};
     if (recipe->contains("seed")) info["seed"] = (*recipe)["seed"];
     if (recipe->contains("size")) info["size"] = (*recipe)["size"];
     Json sources = Json::array();
@@ -727,6 +738,9 @@ Json synthesisAssetInfo(Project* project, const fs::path& file, bool full) {
 }
 
 std::string synthesisAssetText(const Json& info) {
+    if (info.is_object() && info.contains("error") && info["error"].is_string()) {
+        return " Its synthesis recipe can't be used (" + info["error"].get<std::string>() + ").";
+    }
     if (!info.is_object() || !info.contains("mode")) return std::string();
     std::string text = " Synthesized (" + info.value("mode", std::string()) + ", " + info.value("quality", std::string()) + ", seed " +
                        (info.contains("seed") ? info["seed"].dump() : std::string("?")) + ", role " + info.value("role", std::string()) + ")";

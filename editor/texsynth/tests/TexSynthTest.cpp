@@ -731,3 +731,106 @@ TEST(TexSynthRecipe, RoundTripAndGarbledChunks) {
     EXPECT_EQ(readRecipeTextFromPng(withText.data(), withText.size(), &error).value_or(""), "{\"format\":1}");
     fs::remove_all(dir);
 }
+
+// ---- recipe text: file names that are not UTF-8, garbled recipes (never an exception)
+
+TEST(TexSynthRecipe, NonUtf8PathsAreReportedNotThrown) {
+    EXPECT_TRUE(isValidUtf8("assets/rock_albedo.png"));
+    EXPECT_TRUE(isValidUtf8("assets/caf\xC3\xA9.png"));            // é in UTF-8
+    EXPECT_TRUE(isValidUtf8("\xF0\x9F\x99\x82"));                  // U+1F642
+    EXPECT_FALSE(isValidUtf8("assets/caf\xE9.png"));               // é in Latin-1
+    EXPECT_FALSE(isValidUtf8("\xC0\xAF"));                         // overlong '/'
+    EXPECT_FALSE(isValidUtf8("\xED\xA0\x80"));                     // a surrogate
+    EXPECT_FALSE(isValidUtf8("\xF4\x90\x80\x80"));                 // beyond U+10FFFF
+    EXPECT_FALSE(isValidUtf8("\xE2\x82"));                         // truncated
+    EXPECT_EQ(printableUtf8("caf\xE9-\xC3\xA9.png"), "caf\\xE9-\xC3\xA9.png");
+
+    const nlohmann::json bad = {{"examples", nlohmann::json::array({{{"path", "caf\xE9.png"}}})}};
+    std::string text, error;
+    EXPECT_FALSE(jsonText(bad, text, error));
+    EXPECT_NE(error.find("caf\\xE9.png"), std::string::npos) << error;
+    EXPECT_NE(error.find("examples[0].path"), std::string::npos) << error;
+    EXPECT_FALSE(recipeText(bad, text, error));
+    EXPECT_NE(error.find("rename"), std::string::npos) << error;
+    EXPECT_NE(jsonTextLossy(bad).find("\xEF\xBF\xBD"), std::string::npos);   // U+FFFD
+
+    // a finished synthesis whose example has a Latin-1 name: the recipe can't be written, an error says so
+    const fs::path dir = tempDir();
+    Request r = basicRequest(Mode::Extend, 16, 16, 16);
+    const Result result = synthesize(r);
+    ASSERT_EQ(result.status, Status::Ok);
+    r.examples[0].image.path = dir / "caf\xE9.png";
+    RecipePaths paths;
+    paths.projectDir = dir;
+    paths.outputs["primary"] = dir / "out.png";
+    const nlohmann::json recipe = makeRecipe(r, result, "primary", paths);
+    EXPECT_FALSE(isValidUtf8(recipePath(r.examples[0].image.path, paths)));
+    std::vector<uint8_t> png;
+    EXPECT_FALSE(encodePngWithRecipe(result.primary, recipe, png, error));
+    EXPECT_FALSE(writePngWithRecipe(dir / "out.png", result.primary, recipe, error));
+    EXPECT_NE(error.find("caf\\xE9.png"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(dir / "out.png"));
+    fs::remove_all(dir);
+}
+
+TEST(TexSynthRecipe, GarbledRecipesAreReportedNotThrown) {
+    using nlohmann::json;
+    const json good = json::parse(R"({"format":1,"mode":"tileable","role":"primary","pathBase":"project","seed":"18446744073709551615",
+        "size":[64,64],"params":{"nearestNeighbors":20,"cauchyDispersion":1.0,"guideDecay":true},
+        "examples":[{"path":"a.png","sha1":"x","sampleable":true,"sampleMask":{"path":"m.png","sha1":"y"}}],
+        "companions":[{"name":"normal","sources":[{"path":"n.png","sha1":"z"}]}],
+        "inpaintMask":{"source":"alpha","invert":false},"outputs":{"primary":"o.png"}})");
+    std::string error;
+    EXPECT_TRUE(validateRecipe(good, error)) << error;
+    EXPECT_EQ(recipeSeed(good).value_or(0), 18446744073709551615ULL);
+    EXPECT_EQ(jsonString(good, "mode"), "tileable");
+    EXPECT_EQ(jsonString(good, "size", "?"), "?");          // another type: the fallback
+    EXPECT_EQ(jsonString(json(5), "mode", "f"), "f");       // not an object
+    EXPECT_TRUE(jsonBool(good["examples"][0], "sampleable", false));
+
+    const std::vector<std::pair<std::string, std::string>> garbled = {
+        {R"({"format":1,"examples":[{"path":5}]})", "examples[0].path is a number, expected a string"},
+        {R"({"format":1,"examples":[{"path":"a.png","sha1":7}]})", "examples[0].sha1"},
+        {R"({"format":1,"examples":[5]})", "examples[0] is a number, expected an object"},
+        {R"({"format":1,"examples":{"path":"a.png"}})", "examples is an object, expected an array"},
+        {R"({"format":1,"pathBase":3})", "pathBase is a number"},
+        {R"({"format":1,"role":[]})", "role is an array"},
+        {R"({"format":"1"})", "format is a string"},
+        {R"({"mode":"tileable"})", "format is missing"},
+        {R"({"format":1,"seed":-3})", "seed"},
+        {R"({"format":1,"seed":1.5})", "seed"},
+        {R"({"format":1,"seed":"12x"})", "seed"},
+        {R"({"format":1,"seed":"99999999999999999999"})", "seed"},
+        {R"({"format":1,"size":[1]})", "size"},
+        {R"({"format":1,"size":["a",2]})", "size.width"},
+        {R"({"format":1,"params":{"nearestNeighbors":1.5}})", "params.nearestNeighbors"},
+        {R"({"format":1,"params":{"cauchyDispersion":"x"}})", "params.cauchyDispersion is a string"},
+        {R"({"format":1,"params":{"cauchyDispersion":1e300}})", "params.cauchyDispersion"},
+        {R"({"format":1,"params":{"guideDecay":1}})", "params.guideDecay"},
+        {R"({"format":1,"params":7})", "params is a number"},
+        {R"({"format":1,"companions":[{"name":1}]})", "companions[0].name"},
+        {R"({"format":1,"companions":[{"name":"n","sources":[{"path":false}]}]})", "companions[0].sources[0].path"},
+        {R"({"format":1,"companions":[{"name":"n","sources":{}}]})", "companions[0].sources is an object"},
+        {R"({"format":1,"inpaintMask":{"invert":"yes"}})", "inpaintMask.invert"},
+        {R"({"format":1,"targetGuide":"g.png"})", "targetGuide is a string"},
+        {R"({"format":1,"outputs":{"primary":3}})", "outputs.primary is a number"},
+        {R"([1,2])", "the recipe is an array"},
+    };
+    for (const auto& [text, needle] : garbled) {
+        const json recipe = json::parse(text);
+        error.clear();
+        EXPECT_FALSE(validateRecipe(recipe, error)) << text;
+        EXPECT_NE(error.find(needle), std::string::npos) << text << " -> " << error;
+        // the readers never throw on it
+        EXPECT_NO_THROW(checkRecipeSources(recipe, "/tmp/x.png", "/tmp", [](const fs::path&) { return std::string("h"); })) << text;
+        EXPECT_NO_THROW(recipeSeed(recipe)) << text;
+    }
+    // what checkRecipeSources makes of the wrong types: no path -> "unknown", a sha1 of another type -> "changed"
+    const std::vector<SourceState> states =
+        checkRecipeSources(json::parse(R"({"format":1,"pathBase":3,"examples":[{"path":5},{"path":"a.png","sha1":7}]})"), "/p/x.png", "/p",
+                           [](const fs::path&) { return std::string("h"); });
+    ASSERT_EQ(states.size(), 2u);
+    EXPECT_EQ(states[0].state, "unknown");
+    EXPECT_EQ(states[1].state, "changed");
+    EXPECT_EQ(states[1].resolved, fs::path("/p/a.png"));   // pathBase of another type: "file", the PNG's directory
+}

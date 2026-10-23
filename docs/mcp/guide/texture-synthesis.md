@@ -79,8 +79,12 @@ stored; it survives copies and renames, and game builds ignore it.
 - When a source changed (an artist repainted the example), regenerate with those arguments to
   bring the texture up to date; with unchanged sources they reproduce the file exactly.
 - `jasperengine-editor check` (and `check --textures`) warns `synthesis-source-changed` /
-  `synthesis-source-missing` for every synthesized texture whose sources changed or disappeared
-  (docs: `docs/mcp/checks.md`).
+  `synthesis-source-missing` for every synthesized texture whose sources changed or disappeared,
+  and `synthesis-recipe-invalid` for a garbled recipe (docs: `docs/mcp/checks.md`); then
+  `get_asset_info` returns `synthesis: {error}` instead of the recipe.
+- Recipes record paths as JSON (UTF-8) text: an example, companion or output whose file name is
+  not valid UTF-8 (raw Latin-1 bytes) is refused with an error saying to rename it, and such a
+  companion next to an example is left out of `companions: "auto"` with a warning.
 - Humans: right-click the PNG in the Project window > **Edit Synthesis...** reopens the window
   with everything restored (a notice lists changed sources); Regenerate, then Save.
 

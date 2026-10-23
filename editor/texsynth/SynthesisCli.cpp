@@ -496,6 +496,23 @@ namespace jasperengine::editor::texsynth {
             for (const std::string& path : existing) err << prefix << path << " exists (pass --overwrite to replace it)\n";
             return 2;
         }
+        // every path the recipes record must be UTF-8 text (JSON): refused before the synthesis
+        // runs, not found out when the first recipe is written
+        {
+            RecipePaths recorded;
+            recorded.projectDir = o.project;
+            for (const std::string& role : roles) {
+                recorded.outputDir = outputs[role].parent_path();
+                std::vector<fs::path> named(inputs.begin(), inputs.end());
+                for (const std::string& other : roles) named.push_back(outputs[other]);
+                for (const fs::path& path : named) {
+                    if (isValidUtf8(recipePath(path, recorded))) continue;
+                    err << prefix << printableUtf8(path.u8string()) << ": the file name is not valid UTF-8, so the recipe (JSON text) could not "
+                        << "record it; rename it\n";
+                    return 2;
+                }
+            }
+        }
 
         // the request
         Request request;
@@ -625,7 +642,8 @@ namespace jasperengine::editor::texsynth {
             for (const Problem& problem : writeErrors) errs.push_back({{"field", "output"}, {"path", problem.field}, {"message", problem.message}});
             j["errors"] = errs;
             j["warnings"] = result.warnings;
-            out << j.dump(1) << std::endl;
+            // lossy only where a message quotes a path that is not UTF-8 (never throws)
+            out << jsonTextLossy(j, 1) << std::endl;
         } else {
             for (const Problem& problem : errors) out << location(problem.field) << ": error: " << problem.message << "\n";
             for (const Problem& problem : writeErrors) out << problem.field << ": error: " << problem.message << "\n";

@@ -72,6 +72,11 @@ namespace jasperengine::editor::texsynth {
             problems.push_back({field, message});
         }
 
+        // Recipes record paths as JSON text: a file name that is not UTF-8 can't be recorded
+        std::string notUtf8(const std::string& path) {
+            return printableUtf8(path) + ": the file name is not valid UTF-8, so the recipe could not record it; rename the file";
+        }
+
         std::string fixed(double v, int digits) {
             char buffer[64];
             std::snprintf(buffer, sizeof(buffer), "%.*f", digits, v);
@@ -115,7 +120,10 @@ namespace jasperengine::editor::texsynth {
         j["quality"] = toString(quality);
         j["params"] = paramsToJson(resolveParams(quality, overrides));
         j["seed"] = std::to_string(seed);
-        return j.dump();
+        // CBOR: compared, never shown. Unlike dump() it never throws: a path that is not valid UTF-8
+        // (a Latin-1 file name picked in the window) stays byte-exact instead of aborting the frame
+        const std::vector<uint8_t> bytes = json::to_cbor(j);
+        return std::string(bytes.begin(), bytes.end());
     }
 
     // ------------------------------------------------------------------ modes
@@ -233,7 +241,14 @@ namespace jasperengine::editor::texsynth {
         std::vector<std::pair<int, int>> sizes;
         for (const ExampleSpec& ex : spec.examples) {
             std::map<std::string, CompanionCandidate> byName;
-            for (const CompanionCandidate& c : findCompanions(projectDir, ex.path)) byName.emplace(c.name, c);
+            for (const CompanionCandidate& c : findCompanions(projectDir, ex.path)) {
+                if (!isValidUtf8(c.path)) {
+                    // the recipe could not name it (JSON is UTF-8)
+                    warnings.push_back("companion " + printableUtf8(c.path) + " left out: its name is not valid UTF-8 (rename it)");
+                    continue;
+                }
+                byName.emplace(c.name, c);
+            }
             perExample.push_back(byName);
             fs::path abs;
             std::string error;
@@ -297,6 +312,10 @@ namespace jasperengine::editor::texsynth {
         auto source = [&](const std::string& field, const std::string& rel, int* w = nullptr, int* h = nullptr) {
             fs::path abs;
             std::string error;
+            if (!isValidUtf8(rel)) {
+                add(problems, field, notUtf8(rel));
+                return;
+            }
             if (!resolveProjectFile(projectDir, rel, abs, error)) {
                 add(problems, field, error);
                 return;
@@ -393,6 +412,10 @@ namespace jasperengine::editor::texsynth {
         std::set<std::string> written;
         for (const PlannedOutput& out : plannedOutputs(spec)) {
             const std::string field = out.role == "primary" ? "output" : "output." + out.role;
+            if (!isValidUtf8(out.path)) {
+                add(problems, field, notUtf8(out.path));
+                continue;
+            }
             if (!isPng(out.path)) {
                 add(problems, field, "the " + out.role + " output must be a .png file: " + out.path);
                 continue;
@@ -513,7 +536,9 @@ namespace jasperengine::editor::texsynth {
                 return false;
             }
             paths.outputDir = file.absolute.parent_path();
-            if (!insertRecipeChunk(png, makeRecipe(request, result, out.role, paths).dump(), withRecipe, error)) return false;
+            std::string text;
+            if (!recipeText(makeRecipe(request, result, out.role, paths), text, error)) return false;
+            if (!insertRecipeChunk(png, text, withRecipe, error)) return false;
             file.bytes.assign(withRecipe.begin(), withRecipe.end());
             files.push_back(std::move(file));
         }
@@ -582,24 +607,29 @@ namespace jasperengine::editor::texsynth {
 
     bool specFromRecipe(const json& recipe, const fs::path& pngFile, const fs::path& projectDir, SynthesisSpec& spec,
                         std::vector<std::string>& notes, std::string& error) {
-        if (!recipe.is_object() || recipe.value("format", 0) < 1) {
-            error = "not a texture synthesis recipe";
+        // every type read below is checked first: a garbled recipe is an error, never an exception
+        std::string invalid;
+        if (!validateRecipe(recipe, invalid)) {
+            error = recipe.is_object() && recipe.contains("format") ? "the recipe is garbled (" + invalid + ")" : "not a texture synthesis recipe";
             return false;
         }
         spec = SynthesisSpec();
-        if (!parseMode(recipe.value("mode", std::string()), spec.mode)) {
-            error = "the recipe's mode \"" + recipe.value("mode", std::string()) + "\" is unknown";
+        const std::string mode = jsonString(recipe, "mode");
+        if (!parseMode(mode, spec.mode)) {
+            error = "the recipe's mode \"" + printableUtf8(mode) + "\" is unknown";
             return false;
         }
-        if (!parseQuality(recipe.value("quality", std::string("balanced")), spec.quality)) spec.quality = Quality::Balanced;
-        const bool fromProject = recipe.value("pathBase", std::string("file")) == "project";
+        if (!parseQuality(jsonString(recipe, "quality", "balanced"), spec.quality)) spec.quality = Quality::Balanced;
+        const bool fromProject = jsonString(recipe, "pathBase", "file") == "project";
         const fs::path base = fromProject ? projectDir : pngFile.parent_path();
         auto rel = [&](const json& entry) -> std::string {
-            if (!entry.is_object() || !entry.contains("path") || !entry["path"].is_string()) return std::string();
-            const fs::path recorded = fs::u8path(entry["path"].get<std::string>());
+            const std::string recordedText = jsonString(entry, "path");
+            if (recordedText.empty()) return std::string();
+            const fs::path recorded = fs::u8path(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
-        if (recipe.contains("params") && recipe["params"].is_object()) {
+        if (recipe.contains("params")) {
+            // validateRecipe: an object, integers within +-1e6 and numbers where read
             const json& p = recipe["params"];
             ParamOverrides& o = spec.overrides;
             if (p.contains("nearestNeighbors")) o.nearestNeighbors = p["nearestNeighbors"].get<int>();
@@ -621,16 +651,13 @@ namespace jasperengine::editor::texsynth {
             if (o.guideDecay == preset.guideDecay) o.guideDecay.reset();
             if (o.borderFraction && std::abs(*o.borderFraction - preset.borderFraction) < 1e-6f) o.borderFraction.reset();
         }
-        if (recipe.contains("seed")) {
-            const json& seed = recipe["seed"];
-            if (seed.is_number_unsigned() || seed.is_number_integer()) spec.seed = seed.get<uint64_t>();
-            else if (seed.is_string()) spec.seed = std::strtoull(seed.get<std::string>().c_str(), nullptr, 10);
-        }
-        if (recipe.contains("size") && recipe["size"].is_array() && recipe["size"].size() == 2) {
+        if (const std::optional<uint64_t> seed = recipeSeed(recipe)) spec.seed = *seed;
+        if (recipe.contains("size")) {
+            // validateRecipe: [width, height], each 0..65535
             spec.width = recipe["size"][0].get<int>();
             spec.height = recipe["size"][1].get<int>();
         }
-        const json examples = recipe.value("examples", json::array());
+        const json examples = recipe.contains("examples") ? recipe["examples"] : json::array();
         for (size_t i = 0; i < examples.size(); i++) {
             ExampleSpec ex;
             ex.path = rel(examples[i]);
@@ -638,7 +665,7 @@ namespace jasperengine::editor::texsynth {
                 error = "the recipe's example " + std::to_string(i + 1) + " was given in memory (no file): it can't be restored";
                 return false;
             }
-            ex.sampleable = examples[i].value("sampleable", true);
+            ex.sampleable = jsonBool(examples[i], "sampleable", true);
             if (examples[i].contains("sampleMask")) ex.sampleMask = rel(examples[i]["sampleMask"]);
             if (examples[i].contains("guide")) ex.guide = rel(examples[i]["guide"]);
             spec.examples.push_back(ex);
@@ -647,19 +674,22 @@ namespace jasperengine::editor::texsynth {
             error = "the recipe names no example";
             return false;
         }
-        const json outputs = recipe.value("outputs", json::object());
+        const json outputs = recipe.contains("outputs") ? recipe["outputs"] : json::object();
         auto outputPath = [&](const std::string& role) -> std::string {
-            if (!outputs.contains(role) || !outputs[role].is_string()) return std::string();
-            const fs::path recorded = fs::u8path(outputs[role].get<std::string>());
+            const std::string recordedText = jsonString(outputs, role.c_str());
+            if (recordedText.empty()) return std::string();
+            const fs::path recorded = fs::u8path(recordedText);
             return projectRelative(projectDir, recorded.is_absolute() ? recorded : base / recorded);
         };
         spec.output = outputPath("primary");
         if (spec.output.empty()) spec.output = projectRelative(projectDir, pngFile);
         spec.uncertaintyOutput = outputPath("uncertainty");
-        for (const json& c : recipe.value("companions", json::array())) {
+        const json companions = recipe.contains("companions") ? recipe["companions"] : json::array();
+        for (const json& c : companions) {
             CompanionSpec companion;
-            companion.name = c.value("name", std::string());
-            for (const json& source : c.value("sources", json::array())) companion.paths.push_back(rel(source));
+            companion.name = jsonString(c, "name");
+            const json sources = c.contains("sources") ? c["sources"] : json::array();
+            for (const json& source : sources) companion.paths.push_back(rel(source));
             if (std::any_of(companion.paths.begin(), companion.paths.end(), [](const std::string& p) { return p.empty(); })) {
                 notes.push_back("companion '" + companion.name + "' had a source given in memory: left out");
                 continue;
@@ -678,21 +708,21 @@ namespace jasperengine::editor::texsynth {
             }
         }
         if (spec.mode == Mode::Inpaint) {
-            const json mask = recipe.value("inpaintMask", json::object());
-            if (mask.value("source", std::string()) == "alpha") {
+            const json mask = recipe.contains("inpaintMask") ? recipe["inpaintMask"] : json::object();
+            if (jsonString(mask, "source") == "alpha") {
                 spec.maskSource = MaskSource::Alpha;
             } else if (!rel(mask).empty()) {
                 spec.maskSource = MaskSource::Image;
                 spec.maskPath = rel(mask);
-                parseMaskChannel(mask.value("channel", std::string("luma")), spec.maskChannel);
+                parseMaskChannel(jsonString(mask, "channel", "luma"), spec.maskChannel);
             } else {
                 spec.maskSource = MaskSource::Painted;
                 notes.push_back("the inpaint mask was painted and not saved: paint the region again");
             }
-            spec.maskInvert = mask.value("invert", false);
+            spec.maskInvert = jsonBool(mask, "invert", false);
         }
         if (spec.mode == Mode::Guided) {
-            spec.targetGuide = rel(recipe.value("targetGuide", json::object()));
+            spec.targetGuide = rel(recipe.contains("targetGuide") ? recipe["targetGuide"] : json::object());
             if (spec.targetGuide.empty()) notes.push_back("the target guide was given in memory: pick it again");
         }
         if (keepsExampleSize(spec.mode)) {

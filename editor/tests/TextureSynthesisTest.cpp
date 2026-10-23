@@ -1,0 +1,238 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// The editor side of the texture synthesis (texsynth/SynthesisSession, the recipe check of
+// util/ProjectChecks): what the core tests (editor/texsynth/tests) can't reach. File names that
+// are not UTF-8 and garbled recipes are reported, never thrown.
+
+#include <gtest/gtest.h>
+
+#include "texsynth/SynthesisRecipe.h"
+#include "texsynth/SynthesisSession.h"
+#include "util/ProjectChecks.h"
+
+#include "json.hpp"
+
+#include <unistd.h>
+
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <vector>
+
+using namespace jasperengine::editor;
+namespace ts = jasperengine::editor::texsynth;
+namespace fs = std::filesystem;
+using nlohmann::json;
+
+namespace {
+
+    fs::path tempProject(const std::string& name) {
+        const fs::path dir = fs::temp_directory_path() / ("jasper-synthesis-test-" + name + "-" + std::to_string(::getpid()));
+        fs::remove_all(dir);
+        fs::create_directories(dir / "assets");
+        fs::create_directories(dir / ".jasperengine");
+        std::ofstream(dir / "project.yaml") << "name: test\n";
+        return dir;
+    }
+
+    ts::Image smallImage(int size, uint8_t seed) {
+        ts::Image image = ts::Image::make(size, size, 3, 8);
+        for (size_t i = 0; i < image.data.size(); i++) image.data[i] = static_cast<uint8_t>((i * 37 + seed * 11) % 251);
+        return image;
+    }
+
+    void writeBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    }
+
+    // A PNG carrying `recipeText` as its jasper.synthesis chunk (valid CRC)
+    void writePngWithText(const fs::path& path, const std::string& recipeText) {
+        std::vector<uint8_t> png, out;
+        ASSERT_TRUE(ts::encodePng(smallImage(8, 1), png));
+        std::string error;
+        ASSERT_TRUE(ts::insertRecipeChunk(png, recipeText, out, error)) << error;
+        writeBytes(path, out);
+    }
+
+    std::vector<ProjectChecks::Finding> findingsWithCode(const std::vector<ProjectChecks::Finding>& findings, const std::string& code) {
+        std::vector<ProjectChecks::Finding> out;
+        for (const ProjectChecks::Finding& f : findings) {
+            if (f.code == code) out.push_back(f);
+        }
+        return out;
+    }
+
+}
+
+// ---- file names that are not UTF-8
+
+TEST(TextureSynthesisSession, FingerprintOfNonUtf8PathsNeitherThrowsNorLosesBytes) {
+    ts::SynthesisSpec a;
+    a.examples.push_back({"assets/caf\xE9.png", "", "", true});
+    a.output = "assets/out.png";
+    ts::SynthesisSpec b = a;
+    b.examples[0].path = "assets/caf\xE8.png";   // another Latin-1 byte: replaced by U+FFFD both would compare equal
+    std::string fa, fb;
+    EXPECT_NO_THROW(fa = a.fingerprint());
+    EXPECT_NO_THROW(fb = b.fingerprint());
+    EXPECT_NE(fa, fb);
+    EXPECT_EQ(fa, a.fingerprint());
+}
+
+TEST(TextureSynthesisSession, CheckSpecRefusesNonUtf8Paths) {
+    const fs::path root = tempProject("utf8");
+    std::vector<uint8_t> png;
+    ASSERT_TRUE(ts::encodePng(smallImage(16, 2), png));
+    writeBytes(root / "assets" / "caf\xE9.png", png);
+    writeBytes(root / "assets" / "rock.png", png);
+
+    ts::SynthesisSpec spec;
+    spec.mode = ts::Mode::Tileable;
+    spec.width = spec.height = 32;
+    spec.examples.push_back({"assets/caf\xE9.png", "", "", true});
+    spec.output = "assets/tile.png";
+    bool found = false;
+    for (const ts::Problem& p : ts::checkSpec(root, spec)) {
+        if (p.field == "examples[0].path" && p.message.find("not valid UTF-8") != std::string::npos &&
+            p.message.find("caf\\xE9.png") != std::string::npos) {
+            found = true;
+        }
+        EXPECT_TRUE(ts::isValidUtf8(p.message)) << "messages are printable: " << p.message;
+    }
+    EXPECT_TRUE(found);
+
+    spec.examples[0].path = "assets/rock.png";
+    spec.output = "assets/til\xE9.png";
+    found = false;
+    for (const ts::Problem& p : ts::checkSpec(root, spec)) found = found || (p.field == "output" && p.message.find("not valid UTF-8") != std::string::npos);
+    EXPECT_TRUE(found);
+
+    // a companion found next to the example whose name is not UTF-8: left out with a warning
+    writeBytes(root / "assets" / "rock_normal_\xE9.png", png);
+    std::vector<std::string> warnings;
+    ts::autoCompanions(root, spec, warnings);
+    EXPECT_TRUE(spec.companions.empty());
+    ASSERT_EQ(warnings.size(), 1u);
+    EXPECT_NE(warnings[0].find("not valid UTF-8"), std::string::npos) << warnings[0];
+    fs::remove_all(root);
+}
+
+TEST(TextureSynthesisSession, EncodeOutputsReportsANonUtf8SourceInsteadOfThrowing) {
+    const fs::path root = tempProject("encode");
+    ts::Request request;
+    request.mode = ts::Mode::Extend;
+    request.width = request.height = 16;
+    request.quality = ts::Quality::Draft;
+    request.examples.push_back(ts::Example::fromImage(smallImage(16, 3)));
+    const ts::Result result = ts::synthesize(request);
+    ASSERT_EQ(result.status, ts::Status::Ok);
+    request.examples[0].image.path = root / "assets" / "caf\xE9.png";   // recorded in the recipe
+    ts::SynthesisSpec spec;
+    spec.examples.push_back({"assets/caf\xE9.png", "", "", true});
+    spec.output = "assets/out.png";
+    std::vector<ts::OutputFile> files;
+    std::string error;
+    bool ok = true;
+    EXPECT_NO_THROW(ok = ts::encodeOutputs(root, spec, request, result, files, error));
+    EXPECT_FALSE(ok);
+    EXPECT_NE(error.find("not valid UTF-8"), std::string::npos) << error;
+    fs::remove_all(root);
+}
+
+// ---- garbled recipes
+
+TEST(TextureSynthesisSession, SpecFromAGarbledRecipeIsAnErrorNotACrash) {
+    const fs::path root = "/tmp/project";
+    const std::vector<std::string> garbled = {
+        R"({"format":1,"mode":"tileable","examples":[{"path":5}]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"params":{"nearestNeighbors":"many"}})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"params":[1,2]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"size":{"w":1}})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"size":[1.5,2]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png","sampleable":"no"}]})",
+        R"({"format":1,"mode":"tileable","examples":[7]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"companions":[{"name":2,"sources":[]}]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"companions":"normal"})",
+        R"({"format":1,"mode":"inpaint","examples":[{"path":"a.png"}],"inpaintMask":{"channel":4}})",
+        R"({"format":1,"mode":"guided","examples":[{"path":"a.png"}],"targetGuide":[1]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"outputs":{"primary":["o.png"]}})",
+        R"({"format":1,"mode":3,"examples":[{"path":"a.png"}]})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"pathBase":false})",
+        R"({"format":1,"mode":"tileable","examples":[{"path":"a.png"}],"seed":{"v":1}})",
+    };
+    for (const std::string& text : garbled) {
+        ts::SynthesisSpec spec;
+        std::vector<std::string> notes;
+        std::string error;
+        bool ok = true;
+        EXPECT_NO_THROW(ok = ts::specFromRecipe(json::parse(text), root / "assets" / "t.png", root, spec, notes, error)) << text;
+        EXPECT_FALSE(ok) << text;
+        EXPECT_NE(error.find("garbled"), std::string::npos) << text << " -> " << error;
+    }
+    // a good one still restores
+    ts::SynthesisSpec spec;
+    std::vector<std::string> notes;
+    std::string error;
+    ASSERT_TRUE(ts::specFromRecipe(json::parse(R"({"format":1,"mode":"tileable","quality":"draft","seed":"18446744073709551615","size":[48,32],
+        "pathBase":"project","examples":[{"path":"assets/a.png","sha1":"x"}],"outputs":{"primary":"assets/t.png"}})"),
+                                   root / "assets" / "t.png", root, spec, notes, error))
+        << error;
+    EXPECT_EQ(spec.seed, 18446744073709551615ULL);
+    EXPECT_EQ(spec.width, 48);
+    EXPECT_EQ(spec.examples[0].path, "assets/a.png");
+}
+
+TEST(TextureSynthesisChecks, Latin1NamesAndGarbledRecipesAreReportedNotFatal) {
+    const fs::path root = tempProject("check");
+    const fs::path assets = root / "assets";
+    // a plain PNG with a Latin-1 name (the check used to abort writing its cache key)
+    std::vector<uint8_t> png;
+    ASSERT_TRUE(ts::encodePng(smallImage(8, 4), png));
+    writeBytes(assets / "caf\xE9.png", png);
+    // a recipe with a valid CRC but wrong types
+    writePngWithText(assets / "garbled.png", R"({"format":1,"mode":"tileable","role":"primary","pathBase":"project","examples":[{"path":5}]})");
+    writePngWithText(assets / "role.png", R"({"format":1,"mode":"tileable","role":7,"examples":[{"path":"assets/x.png","sha1":"s"}]})");
+    // not JSON at all
+    writePngWithText(assets / "text.png", "not json");
+    // a CRC mismatch: one byte of the recipe flipped
+    {
+        std::vector<uint8_t> out;
+        std::string error;
+        ASSERT_TRUE(ts::insertRecipeChunk(png, R"({"format":1,"mode":"tileable"})", out, error));
+        out[60] ^= 0x01;
+        writeBytes(assets / "crc.png", out);
+    }
+    for (int pass = 0; pass < 2; pass++) {   // the second pass runs on the cache
+        ProjectChecks::SynthesisCheck check;
+        EXPECT_NO_THROW(check = ProjectChecks::checkSynthesisRecipes(root, {})) << "pass " << pass;
+        const std::vector<ProjectChecks::Finding> invalid = findingsWithCode(check.findings, "synthesis-recipe-invalid");
+        std::vector<std::string> paths;
+        for (const ProjectChecks::Finding& f : invalid) paths.push_back(f.path);
+        std::sort(paths.begin(), paths.end());
+        EXPECT_EQ(paths, (std::vector<std::string>{"assets/crc.png", "assets/garbled.png", "assets/role.png", "assets/text.png"})) << "pass " << pass;
+        for (const ProjectChecks::Finding& f : invalid) {
+            EXPECT_EQ(f.severity, "warning");
+            EXPECT_EQ(f.tool, "texture");
+        }
+        const auto garbledFinding = std::find_if(invalid.begin(), invalid.end(), [](const ProjectChecks::Finding& f) { return f.path == "assets/garbled.png"; });
+        ASSERT_NE(garbledFinding, invalid.end());
+        EXPECT_NE(garbledFinding->message.find("examples[0].path is a number"), std::string::npos) << garbledFinding->message;
+        // the cache was written, as valid JSON, without the key it could not hold
+        std::ifstream cacheFile(root / ".jasperengine" / "synthesis-check-cache.json");
+        const std::string text((std::istreambuf_iterator<char>(cacheFile)), std::istreambuf_iterator<char>());
+        const json cache = json::parse(text, nullptr, false);
+        ASSERT_TRUE(cache.is_object()) << text;
+        EXPECT_TRUE(cache["pngs"].contains("assets/garbled.png"));
+        for (auto it = cache["pngs"].begin(); it != cache["pngs"].end(); ++it) EXPECT_TRUE(ts::isValidUtf8(it.key()));
+    }
+    // a cache file of another shape is ignored, not fatal
+    std::ofstream(root / ".jasperengine" / "synthesis-check-cache.json", std::ios::trunc) << R"({"version":"1","pngs":[]})";
+    EXPECT_NO_THROW(ProjectChecks::checkSynthesisRecipes(root, {}));
+    // files mode with the Latin-1 PNG and a garbled one
+    EXPECT_NO_THROW(ProjectChecks::checkSynthesisRecipes(root, {assets / "caf\xE9.png", assets / "garbled.png"}));
+    fs::remove_all(root);
+}
