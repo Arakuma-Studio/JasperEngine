@@ -32,6 +32,10 @@
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeTracksComponent.h"
 
 using namespace jasperengine;
 
@@ -121,6 +125,49 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("Hemisphere", ParticleEmitterShape::Hemisphere)
         .addVariable("Circle", ParticleEmitterShape::Circle)
         .addVariable("Cone", ParticleEmitterShape::Cone)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LatticeInterpolation")
+        .addVariable("SHARP", LatticeInterpolation::SHARP)
+        .addVariable("SMOOTH", LatticeInterpolation::SMOOTH)
+        .addVariable("CUBIC", LatticeInterpolation::CUBIC)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LatticeOutside")
+        .addVariable("EXTEND", LatticeOutside::EXTEND)
+        .addVariable("FADE", LatticeOutside::FADE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LatticeJiggleAnchor")
+        .addVariable("NONE", LatticeJiggleAnchor::NONE)
+        .addVariable("NEGATIVE_X", LatticeJiggleAnchor::NEGATIVE_X)
+        .addVariable("POSITIVE_X", LatticeJiggleAnchor::POSITIVE_X)
+        .addVariable("NEGATIVE_Y", LatticeJiggleAnchor::NEGATIVE_Y)
+        .addVariable("POSITIVE_Y", LatticeJiggleAnchor::POSITIVE_Y)
+        .addVariable("NEGATIVE_Z", LatticeJiggleAnchor::NEGATIVE_Z)
+        .addVariable("POSITIVE_Z", LatticeJiggleAnchor::POSITIVE_Z)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LatticeStage")
+        .addVariable("BEFORE_SKINNING", LatticeStage::BEFORE_SKINNING)
+        .addVariable("AFTER_SKINNING", LatticeStage::AFTER_SKINNING)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LatticeMaskChannel")
+        .addVariable("NONE", LatticeMaskChannel::NONE)
+        .addVariable("RED", LatticeMaskChannel::RED)
+        .addVariable("GREEN", LatticeMaskChannel::GREEN)
+        .addVariable("BLUE", LatticeMaskChannel::BLUE)
+        .addVariable("ALPHA", LatticeMaskChannel::ALPHA)
+        .addVariable("INVERTED_RED", LatticeMaskChannel::INVERTED_RED)
+        .addVariable("INVERTED_GREEN", LatticeMaskChannel::INVERTED_GREEN)
+        .addVariable("INVERTED_BLUE", LatticeMaskChannel::INVERTED_BLUE)
+        .addVariable("INVERTED_ALPHA", LatticeMaskChannel::INVERTED_ALPHA)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -737,6 +784,78 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("color", &InstanceData::color, &InstanceData::color)
         .addProperty("textureRect", &InstanceData::textureRect, &InstanceData::textureRect)
         .addProperty("visible", &InstanceData::visible, &InstanceData::visible)
+        .endClass();
+
+    // Lattice components (spec lattice §8). The std::vector fields are copies when read (a
+    // Lua table): change points with the Lattice methods (setOffset...), not through them.
+    // Setting a LatticeComponent setting here bumps its revision, so the change is drawn.
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LatticePose>("LatticePose")
+        .addConstructor <void (*) (void)> ()
+        .addProperty("name", &LatticePose::name, &LatticePose::name)
+        .addProperty("offsets", &LatticePose::offsets, &LatticePose::offsets)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LatticeComponent>("LatticeComponent")
+        .addProperty("enabled", [] (const LatticeComponent* self) { return self->enabled; }, [] (LatticeComponent* self, bool value) { self->enabled = value; self->revision++; })
+        // read only, Lattice:setResolution changes it (and resamples the offsets):
+        .addProperty("resolutionX", &LatticeComponent::resolutionX)
+        .addProperty("resolutionY", &LatticeComponent::resolutionY)
+        .addProperty("resolutionZ", &LatticeComponent::resolutionZ)
+        .addProperty("offsets", &LatticeComponent::offsets)
+        .addProperty("interpolation", [] (const LatticeComponent* self) { return self->interpolation; }, [] (LatticeComponent* self, LatticeInterpolation value) { self->interpolation = value; self->revision++; })
+        .addProperty("outside", [] (const LatticeComponent* self) { return self->outside; }, [] (LatticeComponent* self, LatticeOutside value) { self->outside = value; self->revision++; })
+        .addProperty("fadeDistance", [] (const LatticeComponent* self) { return self->fadeDistance; }, [] (LatticeComponent* self, float value) { self->fadeDistance = value; self->revision++; })
+        .addProperty("poses", &LatticeComponent::poses)
+        .addProperty("jiggle", &LatticeComponent::jiggle, &LatticeComponent::jiggle)
+        .addProperty("jiggleStiffness", &LatticeComponent::jiggleStiffness, &LatticeComponent::jiggleStiffness)
+        .addProperty("jiggleDamping", &LatticeComponent::jiggleDamping, &LatticeComponent::jiggleDamping)
+        .addProperty("jiggleInertia", &LatticeComponent::jiggleInertia, &LatticeComponent::jiggleInertia)
+        .addProperty("jiggleAnchor", &LatticeComponent::jiggleAnchor, &LatticeComponent::jiggleAnchor)
+        .addProperty("jiggleMaxOffset", &LatticeComponent::jiggleMaxOffset, &LatticeComponent::jiggleMaxOffset)
+        .addProperty("dynamicOffsets", &LatticeComponent::dynamicOffsets)
+        .addProperty("jiggleSleeping", &LatticeComponent::jiggleSleeping)
+        .addProperty("tweening", &LatticeComponent::tweening)
+        .addProperty("revision", &LatticeComponent::revision, &LatticeComponent::revision)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LatticeBinding>("LatticeBinding")
+        .addConstructor <void (*) (void)> ()
+        .addProperty("lattice", &LatticeBinding::lattice, &LatticeBinding::lattice)
+        .addProperty("weight", &LatticeBinding::weight, &LatticeBinding::weight)
+        .addProperty("stage", &LatticeBinding::stage, &LatticeBinding::stage)
+        .addProperty("submesh", &LatticeBinding::submesh, &LatticeBinding::submesh)
+        .addProperty("mask", &LatticeBinding::mask, &LatticeBinding::mask)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        // bindings: read a copy, edit it, assign it back (m.bindings = list)
+        .beginClass<LatticeModifierComponent>("LatticeModifierComponent")
+        .addProperty("enabled", &LatticeModifierComponent::enabled, &LatticeModifierComponent::enabled)
+        .addProperty("bindings", &LatticeModifierComponent::bindings, &LatticeModifierComponent::bindings)
+        .addProperty("includeChildren", &LatticeModifierComponent::includeChildren, &LatticeModifierComponent::includeChildren)
+        .addProperty("subdivisions", &LatticeModifierComponent::subdivisions, &LatticeModifierComponent::subdivisions)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LatticeFollowerComponent>("LatticeFollowerComponent")
+        .addProperty("enabled", &LatticeFollowerComponent::enabled, &LatticeFollowerComponent::enabled)
+        .addProperty("lattice", &LatticeFollowerComponent::lattice, &LatticeFollowerComponent::lattice)
+        .addProperty("rest", &LatticeFollowerComponent::rest, &LatticeFollowerComponent::rest)
+        .addProperty("applyPosition", &LatticeFollowerComponent::applyPosition, &LatticeFollowerComponent::applyPosition)
+        .addProperty("applyRotation", &LatticeFollowerComponent::applyRotation, &LatticeFollowerComponent::applyRotation)
+        .addProperty("applyScale", &LatticeFollowerComponent::applyScale, &LatticeFollowerComponent::applyScale)
+        .addProperty("weight", &LatticeFollowerComponent::weight, &LatticeFollowerComponent::weight)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LatticeTracksComponent>("LatticeTracksComponent")
+        .addProperty("points", &LatticeTracksComponent::points, &LatticeTracksComponent::points)
+        .addProperty("values", &LatticeTracksComponent::values, &LatticeTracksComponent::values)
+        .addProperty("inTangents", &LatticeTracksComponent::inTangents, &LatticeTracksComponent::inTangents)
+        .addProperty("outTangents", &LatticeTracksComponent::outTangents, &LatticeTracksComponent::outTangents)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS
