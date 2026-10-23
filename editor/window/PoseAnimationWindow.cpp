@@ -172,7 +172,31 @@ void editor::PoseAnimationWindow::requestFocus(){
 }
 
 void editor::PoseAnimationWindow::selectTab(const std::string& name){
+    // tab names are matched without case (MCP passes "feel")
     requestedTab = name;
+    std::vector<std::string> names = {"Pose", "Feel", "Humanize"};
+    for (const Tab& tab : extraTabs()) names.push_back(tab.name);
+    for (const std::string& candidate : names){
+        if (candidate.size() == name.size() && std::equal(candidate.begin(), candidate.end(), name.begin(),
+                [](char a, char b){ return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })){
+            requestedTab = candidate;
+        }
+    }
+}
+
+bool editor::PoseAnimationWindow::openMappingFor(std::string* error){
+    const uint32_t sceneId = session.bound() ? session.sceneId() : candidateScene;
+    const Entity entity = session.bound() ? session.model() : candidateEntity;
+    if (entity == NULL_ENTITY){
+        if (error) *error = "no character: bind a model first";
+        return false;
+    }
+    openMappingPopup(sceneId, entity);
+    if (!mappingInfo){
+        if (error) *error = "the character's model has no rig information";
+        return false;
+    }
+    return true;
 }
 
 // ---- helpers ----

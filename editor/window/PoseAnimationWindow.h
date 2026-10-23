@@ -61,6 +61,8 @@ namespace jasperengine::editor{
         void openFromAsset(const std::string& path, uint32_t sceneId = 0, Entity entity = NULL_ENTITY);
         // shows a tab by name ("Pose", "Feel", "Humanize" or an added one) on the next draw
         void selectTab(const std::string& name);
+        // opens the humanoid mapping popup for the Character field's model (Map Bones...)
+        bool openMappingFor(std::string* error);
 
         // The shortcuts of spec 3.3. The window runs them while it has focus; the App runs them
         // for the Scene view while it poses this window's model.

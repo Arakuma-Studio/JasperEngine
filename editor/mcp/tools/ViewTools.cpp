@@ -980,13 +980,13 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
     const Json& args = call->args();
     const Json& pose = args["pose"];
     if (!pose.is_object()) {
-        call->fail("pose must be an object {entity, path, index, play}.");
+        call->fail("pose must be an object {entity, path, index, play, tab}.");
         return false;
     }
     for (auto it = pose.begin(); it != pose.end(); ++it) {
         const std::string& key = it.key();
-        if (key != "entity" && key != "path" && key != "index" && key != "play") {
-            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play).");
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab") {
+            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
             return false;
         }
     }
@@ -1034,6 +1034,21 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
         }
         if (pose["play"].get<bool>()) window->play();
         else window->stop();
+    }
+    if (pose.contains("tab")) {
+        if (!pose["tab"].is_string()) {
+            call->fail("pose.tab: Pose, Feel, Humanize or map_bones (the bone mapping popup).");
+            return false;
+        }
+        const std::string tab = pose["tab"].get<std::string>();
+        if (tab == "map_bones") {
+            if (!window->openMappingFor(&error)) {
+                call->fail("pose.tab: " + error);
+                return false;
+            }
+        } else {
+            window->selectTab(tab);
+        }
     }
     return true;
 }
@@ -1270,10 +1285,11 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "focus_window";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
-        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview)}; the result has the
-        // window's state. Budget-neutral with the pose_animation window added.
+        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
+        // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
+        // state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Show an editor panel (not needed before screenshot). pose_animation: pose {entity, path, index, play}.";
+            "Show an editor panel (not needed for screenshot). pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp"})},
