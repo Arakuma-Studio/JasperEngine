@@ -192,6 +192,11 @@ the hips, one key per frame at `f / frame_rate`, step easing when `stepRate > 0`
 and replaces its tracks' keys in place (same entities, so references and the Animation window
 selection survive). Everything goes through editor commands as **one scene undo step**. The
 result plays with `Model:playAnimation(name)` and in the Animation window.
+(Implemented: the keys sit at the frames' own sample times `f * length / count`, which is
+`f / frame_rate` up to the rounding of `count = round(length * fps)`, so the last key is exactly at
+the length and loops close; the Animation is a child of the model and its tracks children of the
+Animation, each track targeting its bone; tracks of slots the rig no longer maps are deleted on
+re-bake.)
 
 ## 5. Editor document and undo (`editor/pose/PoseAnimationDocument.{h,cpp}`)
 
@@ -218,6 +223,10 @@ public:
 - The editor loads preview models off-scene (like `editor/render/preview/ModelRender`) to build
   rigs for the preview model: `PoseRigProvider` returns a rig (and skin) for a model file path,
   cached, rebuilt when the file or sidecar changes.
+- (Implemented: `WriteFilesCmd` moved to `editor/command/type/WriteFilesCmd` (`w4::WriteFilesCmd` is
+  an alias) and gained a merge key; `commit` takes optional extra files (the sidecar) for the same
+  step; `.poseanim`/`.humanoid` are McpAutoSync-tracked; the file stores `preview_model` relative to
+  the assets folder (like model file names), the MCP tools show project-relative paths.)
 
 ## 6. MCP tools
 
