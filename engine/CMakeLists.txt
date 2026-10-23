@@ -22,6 +22,8 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# googletest unit tests of engine core (engine/tests/core, tools/build.sh unit-tests)
+option(JASPERENGINE_TESTS "Build jasperengine-core-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -922,6 +924,8 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
+    core/io/AtomicFile.cpp
+    core/io/ScopedFileLock.cpp
     core/math/AABB.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
@@ -1316,6 +1320,9 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(tests/core)
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

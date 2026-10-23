@@ -5,8 +5,27 @@
 #include "Log.h"
 #include "io/File.h"
 #include "io/FileData.h"
+#include "io/AtomicFile.h"
+#include "System.h"
 
 using namespace jasperengine;
+
+bool XMLUtils::saveDocument(const char* XMLFilePath, tinyxml2::XMLDocument& doc){
+    tinyxml2::XMLPrinter printer;
+    doc.Print(&printer);
+    // CStrSize counts the terminating null
+    const std::string_view bytes(printer.CStr(), printer.CStrSize() > 0 ? (size_t)printer.CStrSize() - 1 : 0);
+
+    // a crash or a full disk mid-save keeps the previous settings readable
+    const std::string systemPath = FileData::getSystemPath(XMLFilePath);
+    const io::WriteResult result = io::writeFileAtomic(systemPath, bytes);
+    if (!result.ok()) {
+        Log::error("Can't save XML file '%s': %s", systemPath.c_str(), io::describeWriteError(result).c_str());
+        return false;
+    }
+    System::instance().syncFileSystem();
+    return true;
+}
 
 tinyxml2::XMLElement* XMLUtils::getNodeForKey(const char* XMLFilePath, const char* rootName, const char* key, tinyxml2::XMLElement** rootNode, tinyxml2::XMLDocument* doc){
     *rootNode = NULL;
@@ -93,12 +112,7 @@ void XMLUtils::setValueForKey(const char* XMLFilePath, const char* rootName, con
             }
         }
 
-        File file;
-        if (file.open(XMLFilePath, true) == FileErrors::FILEDATA_OK) {
-            doc.SaveFile(file.getFilePtr());
-        } else {
-            Log::error("Can't save XML file: %s. Does dir '%s' exist?", XMLFilePath, FileData::getSystemPath(XMLFilePath).c_str());
-        }
+        saveDocument(XMLFilePath, doc);
     }
 }
 
@@ -119,12 +133,7 @@ void XMLUtils::removeKey(const char* XMLFilePath, const char* rootName, const ch
         if (node){
             doc.DeleteNode(node);
 
-            File file;
-            if (file.open(XMLFilePath, true) == FileErrors::FILEDATA_OK) {
-                doc.SaveFile(file.getFilePtr());
-            } else {
-                Log::error("Can't save XML file: %s. Does dir '%s' exist?", XMLFilePath, FileData::getSystemPath(XMLFilePath).c_str());
-            }
+            saveDocument(XMLFilePath, doc);
         }
 
     }

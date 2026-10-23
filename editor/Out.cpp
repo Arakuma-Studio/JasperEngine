@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Out.h"
+#include "io/AtomicFile.h"
 #include "EditorHost.h"
 #include "EditorVersion.h"
 #include <algorithm>
@@ -107,7 +108,7 @@ void Out::setLogFile(const std::filesystem::path& path) {
         std::filesystem::path rotated = path;
         rotated += ".1";
         std::filesystem::remove(rotated, ec);
-        std::filesystem::rename(path, rotated, ec);
+        io::renameWithRetry(path, rotated, ec);
     }
 
     logFileStream.open(path, std::ios::out | std::ios::app);

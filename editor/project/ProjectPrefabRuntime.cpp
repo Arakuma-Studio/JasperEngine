@@ -6,6 +6,7 @@
 // properties), and Play's PrefabManager factories, which copy a template imported once.
 
 #include "Project.h"
+#include "DocumentFile.h"
 #include "Factory.h"
 #include "Out.h"
 #include "PrefabManager.h"
@@ -126,7 +127,7 @@ std::vector<editor::PrefabSceneInfo> editor::Project::collectAllPrefabs() const 
         Prefab loaded;
         if (!registry) {
             try {
-                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / path).string()), path.stem().string());
+                loaded.loadRegistry(DocumentFiles::read(getProjectPath() / path, DocumentKind::Prefab).root, path.stem().string());
                 registry = loaded.registry.get();
             } catch (const std::exception& e) {
                 Out::error("Failed to read prefab %s: %s", path.string().c_str(), e.what());
@@ -170,7 +171,7 @@ void editor::Project::appendPrefabCppScripts(std::vector<SceneScriptSource>& scr
         Prefab loaded;
         if (!registry) {
             try {
-                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / info.prefabPath).string()), info.prefabPath.stem().string());
+                loaded.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root, info.prefabPath.stem().string());
                 registry = loaded.registry.get();
             } catch (const std::exception&) {
                 continue; // collectAllPrefabs reported it

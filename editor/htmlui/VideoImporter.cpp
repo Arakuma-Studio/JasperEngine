@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoImporter.h"
+#include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 
 #include "htmlui/media/VideoFormats.h"
 #include "util/CommandRunner.h"
@@ -191,7 +193,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
             result.message = pathString(result.output.filename()) + " already exists";
             return result;
         }
-        fs::copy_file(input, result.output, fs::copy_options::overwrite_existing, ec);
+        FileUtils::copyFileAtomic(input, result.output, ec);
         result.ok = !ec;
         result.copied = !ec;
         result.message = ec ? "could not copy " + name + ": " + ec.message() : name + " is AV1/Opus WebM: copied";
@@ -215,7 +217,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
         // copied as it is; the engine will not play it until it is converted
         const fs::path copy = targetDir / input.filename();
         if (!fs::exists(copy, ec) || overwrite)
-            fs::copy_file(input, copy, fs::copy_options::overwrite_existing, ec);
+            FileUtils::copyFileAtomic(input, copy, ec);
         result.output = copy;
         result.copied = !ec;
         result.ok = false;
@@ -300,10 +302,9 @@ ImportedResource RemoteVideoImporter::run(const std::string& url, const std::str
                                                           std::to_string(std::random_device{}()));
     fs::create_directories(scratch / "out", ec);
     const fs::path downloaded = scratch / (name + "." + sniffed.extension());
-    {
-        std::ofstream out(downloaded, std::ios::binary);
-        out.write(body.data(), (std::streamsize)body.size());
-    }
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(downloaded, body, options);
     importer.progress("[HTML UI] " + url + ": " + sniffed.name() + (VideoImporter::isPlayable(downloaded) ? "" : ", converting with FFmpeg"));
     const VideoImportResult converted = VideoImporter::importFile(downloaded, scratch / "out", true);
 

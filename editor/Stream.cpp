@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "StreamSchema.h"
+#include "StreamPreserved.h"
+#include "StreamMigrations.h"
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
@@ -112,25 +115,9 @@ namespace {
     }
 
     std::string androidOrientationToString(editor::AndroidOrientation orientation) {
-        switch (orientation) {
-            case editor::AndroidOrientation::Portrait: return "portrait";
-            case editor::AndroidOrientation::Landscape: return "landscape";
-            case editor::AndroidOrientation::SensorPortrait: return "sensorPortrait";
-            case editor::AndroidOrientation::SensorLandscape: return "sensorLandscape";
-            case editor::AndroidOrientation::FullSensor: return "fullSensor";
-            case editor::AndroidOrientation::Unspecified:
-            default: return "unspecified";
-        }
+        return editor::StreamSchema::androidOrientation().toString(orientation);
     }
 
-    editor::AndroidOrientation stringToAndroidOrientation(const std::string& value) {
-        if (value == "portrait") return editor::AndroidOrientation::Portrait;
-        if (value == "landscape") return editor::AndroidOrientation::Landscape;
-        if (value == "sensorPortrait") return editor::AndroidOrientation::SensorPortrait;
-        if (value == "sensorLandscape") return editor::AndroidOrientation::SensorLandscape;
-        if (value == "fullSensor") return editor::AndroidOrientation::FullSensor;
-        return editor::AndroidOrientation::Unspecified;
-    }
 }
 
 std::string editor::Stream::makeEmbeddedTextureId(){
@@ -209,8 +196,48 @@ float editor::Stream::positiveFiniteOr(float value, float fallback) {
     return std::isfinite(fallback) && fallback > 0.0f ? fallback : 1.0f;
 }
 
+namespace {
+
+    // A scalar that reads as a number (.nan and .inf included)
+    bool isNumber(const YAML::Node& node) {
+        if (!node || !node.IsScalar()) {
+            return false;
+        }
+        double value;
+        if (editor::YamlNumbers::readPlain(node.Scalar(), value)) {
+            return true;
+        }
+        try {
+            (void)node.as<double>();
+            return true;
+        } catch (const YAML::Exception&) {
+            return false;
+        }
+    }
+
+    // A sequence of at least `count` numbers. Anything else is reported (and kept by the load
+    // report's preservation) before the decoder falls back to its default; null is no value.
+    bool numberSequence(const YAML::Node& node, size_t count) {
+        if (!node || node.IsNull()) {
+            return false;
+        }
+        bool valid = node.IsSequence() && node.size() >= count;
+        for (size_t i = 0; valid && i < count; i++) {
+            valid = isNumber(node[i]);
+        }
+        if (!valid) {
+            editor::StreamLoad::invalidValue(node, std::to_string(count) + " numbers");
+        }
+        return valid;
+    }
+
+}
+
 float editor::Stream::decodeFinite(const YAML::Node& node, float fallback) {
     if (!node || !node.IsScalar()) {
+        if (node && !node.IsNull()) {
+            StreamLoad::invalidValue(node, "a number");
+        }
         return finiteOr(fallback);
     }
 
@@ -223,12 +250,16 @@ float editor::Stream::decodeFinite(const YAML::Node& node, float fallback) {
         float value = node.as<float>();
         return finiteOr(value, fallback);
     } catch (const YAML::Exception&) {
+        StreamLoad::invalidValue(node, "a number");
         return finiteOr(fallback);
     }
 }
 
 double editor::Stream::decodeFiniteDouble(const YAML::Node& node, double fallback) {
     if (!node || !node.IsScalar()) {
+        if (node && !node.IsNull()) {
+            StreamLoad::invalidValue(node, "a number");
+        }
         return finiteOr(fallback);
     }
 
@@ -241,6 +272,7 @@ double editor::Stream::decodeFiniteDouble(const YAML::Node& node, double fallbac
         double value = node.as<double>();
         return finiteOr(value, fallback);
     } catch (const YAML::Exception&) {
+        StreamLoad::invalidValue(node, "a number");
         return finiteOr(fallback);
     }
 }
@@ -314,123 +346,27 @@ Vector3 editor::Stream::decodeFiniteVector3(const YAML::Node& node, const Vector
 }
 
 std::string editor::Stream::sceneTypeToString(editor::SceneType type){
-    switch (type) {
-        case SceneType::SCENE_3D: return "scene_3d";
-        case SceneType::SCENE_2D: return "scene_2d";
-        case SceneType::SCENE_UI: return "scene_ui";
-        default: return "scene_3d";
-    }
+    return StreamSchema::sceneType().toString(type);
 }
 
 editor::SceneType editor::Stream::stringToSceneType(const std::string& str){
-    if (str == "scene_3d") return SceneType::SCENE_3D;
-    if (str == "scene_2d") return SceneType::SCENE_2D;
-    if (str == "scene_ui") return SceneType::SCENE_UI;
-    return SceneType::SCENE_3D; // Default
+    return StreamSchema::sceneType().fromString(str);
 }
 
 std::string editor::Stream::primitiveTypeToString(PrimitiveType type) {
-    switch (type) {
-        case PrimitiveType::TRIANGLES: return "triangles";
-        case PrimitiveType::TRIANGLE_STRIP: return "triangle_strip";
-        case PrimitiveType::POINTS: return "points";
-        case PrimitiveType::LINES: return "lines";
-        default: return "triangles";
-    }
+    return StreamSchema::primitiveType().toString(type);
 }
 
 PrimitiveType editor::Stream::stringToPrimitiveType(const std::string& str) {
-    if (str == "triangles") return PrimitiveType::TRIANGLES;
-    if (str == "triangle_strip") return PrimitiveType::TRIANGLE_STRIP;
-    if (str == "points") return PrimitiveType::POINTS;
-    if (str == "lines") return PrimitiveType::LINES;
-    return PrimitiveType::TRIANGLES; // Default
+    return StreamSchema::primitiveType().fromString(str);
 }
 
 std::string editor::Stream::easeTypeToString(EaseType type) {
-    switch (type) {
-        case EaseType::LINEAR: return "LINEAR";
-        case EaseType::QUAD_IN: return "QUAD_IN";
-        case EaseType::QUAD_OUT: return "QUAD_OUT";
-        case EaseType::QUAD_IN_OUT: return "QUAD_IN_OUT";
-        case EaseType::CUBIC_IN: return "CUBIC_IN";
-        case EaseType::CUBIC_OUT: return "CUBIC_OUT";
-        case EaseType::CUBIC_IN_OUT: return "CUBIC_IN_OUT";
-        case EaseType::QUART_IN: return "QUART_IN";
-        case EaseType::QUART_OUT: return "QUART_OUT";
-        case EaseType::QUART_IN_OUT: return "QUART_IN_OUT";
-        case EaseType::QUINT_IN: return "QUINT_IN";
-        case EaseType::QUINT_OUT: return "QUINT_OUT";
-        case EaseType::QUINT_IN_OUT: return "QUINT_IN_OUT";
-        case EaseType::SINE_IN: return "SINE_IN";
-        case EaseType::SINE_OUT: return "SINE_OUT";
-        case EaseType::SINE_IN_OUT: return "SINE_IN_OUT";
-        case EaseType::EXPO_IN: return "EXPO_IN";
-        case EaseType::EXPO_OUT: return "EXPO_OUT";
-        case EaseType::EXPO_IN_OUT: return "EXPO_IN_OUT";
-        case EaseType::CIRC_IN: return "CIRC_IN";
-        case EaseType::CIRC_OUT: return "CIRC_OUT";
-        case EaseType::CIRC_IN_OUT: return "CIRC_IN_OUT";
-        case EaseType::ELASTIC_IN: return "ELASTIC_IN";
-        case EaseType::ELASTIC_OUT: return "ELASTIC_OUT";
-        case EaseType::ELASTIC_IN_OUT: return "ELASTIC_IN_OUT";
-        case EaseType::BACK_IN: return "BACK_IN";
-        case EaseType::BACK_OUT: return "BACK_OUT";
-        case EaseType::BACK_IN_OUT: return "BACK_IN_OUT";
-        case EaseType::BOUNCE_IN: return "BOUNCE_IN";
-        case EaseType::BOUNCE_OUT: return "BOUNCE_OUT";
-        case EaseType::BOUNCE_IN_OUT: return "BOUNCE_IN_OUT";
-        case EaseType::STEP: return "STEP";
-        case EaseType::CUSTOM: return "CUSTOM";
-        default: return "LINEAR";
-    }
+    return StreamSchema::easeType().toString(type);
 }
 
 EaseType editor::Stream::stringToEaseType(const std::string& str) {
-    std::string normalized;
-    normalized.reserve(str.size());
-    for (char ch : str) {
-        if (ch == '-') {
-            normalized.push_back('_');
-        } else {
-            normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-        }
-    }
-
-    if (normalized == "LINEAR") return EaseType::LINEAR;
-    if (normalized == "QUAD_IN") return EaseType::QUAD_IN;
-    if (normalized == "QUAD_OUT") return EaseType::QUAD_OUT;
-    if (normalized == "QUAD_IN_OUT") return EaseType::QUAD_IN_OUT;
-    if (normalized == "CUBIC_IN") return EaseType::CUBIC_IN;
-    if (normalized == "CUBIC_OUT") return EaseType::CUBIC_OUT;
-    if (normalized == "CUBIC_IN_OUT") return EaseType::CUBIC_IN_OUT;
-    if (normalized == "QUART_IN") return EaseType::QUART_IN;
-    if (normalized == "QUART_OUT") return EaseType::QUART_OUT;
-    if (normalized == "QUART_IN_OUT") return EaseType::QUART_IN_OUT;
-    if (normalized == "QUINT_IN") return EaseType::QUINT_IN;
-    if (normalized == "QUINT_OUT") return EaseType::QUINT_OUT;
-    if (normalized == "QUINT_IN_OUT") return EaseType::QUINT_IN_OUT;
-    if (normalized == "SINE_IN") return EaseType::SINE_IN;
-    if (normalized == "SINE_OUT") return EaseType::SINE_OUT;
-    if (normalized == "SINE_IN_OUT") return EaseType::SINE_IN_OUT;
-    if (normalized == "EXPO_IN") return EaseType::EXPO_IN;
-    if (normalized == "EXPO_OUT") return EaseType::EXPO_OUT;
-    if (normalized == "EXPO_IN_OUT") return EaseType::EXPO_IN_OUT;
-    if (normalized == "CIRC_IN") return EaseType::CIRC_IN;
-    if (normalized == "CIRC_OUT") return EaseType::CIRC_OUT;
-    if (normalized == "CIRC_IN_OUT") return EaseType::CIRC_IN_OUT;
-    if (normalized == "ELASTIC_IN") return EaseType::ELASTIC_IN;
-    if (normalized == "ELASTIC_OUT") return EaseType::ELASTIC_OUT;
-    if (normalized == "ELASTIC_IN_OUT") return EaseType::ELASTIC_IN_OUT;
-    if (normalized == "BACK_IN") return EaseType::BACK_IN;
-    if (normalized == "BACK_OUT") return EaseType::BACK_OUT;
-    if (normalized == "BACK_IN_OUT") return EaseType::BACK_IN_OUT;
-    if (normalized == "BOUNCE_IN") return EaseType::BOUNCE_IN;
-    if (normalized == "BOUNCE_OUT") return EaseType::BOUNCE_OUT;
-    if (normalized == "BOUNCE_IN_OUT") return EaseType::BOUNCE_IN_OUT;
-    if (normalized == "STEP") return EaseType::STEP;
-    if (normalized == "CUSTOM") return EaseType::CUSTOM;
-    return EaseType::LINEAR;
+    return StreamSchema::easeType().fromString(str);
 }
 
 YAML::Node editor::Stream::encodeEase(const Ease& ease) {
@@ -445,7 +381,7 @@ Ease editor::Stream::decodeEase(const YAML::Node& node, const Ease* oldEase) {
         ease = *oldEase;
     }
 
-    EaseType type = node.IsScalar() ? stringToEaseType(node.as<std::string>()) : EaseType::LINEAR;
+    EaseType type = decodeEnumValue(node, StreamSchema::easeType());
 
     if (type == EaseType::CUSTOM) {
         if (!oldEase || oldEase->getType() != EaseType::CUSTOM) {
@@ -460,406 +396,146 @@ Ease editor::Stream::decodeEase(const YAML::Node& node, const Ease* oldEase) {
 }
 
 std::string editor::Stream::bufferTypeToString(BufferType type) {
-    switch (type) {
-        case BufferType::VERTEX_BUFFER: return "vertex_buffer";
-        case BufferType::INDEX_BUFFER: return "index_buffer";
-        case BufferType::STORAGE_BUFFER: return "storage_buffer";
-        default: return "vertex_buffer";
-    }
+    return StreamSchema::bufferType().toString(type);
 }
 
 BufferType editor::Stream::stringToBufferType(const std::string& str) {
-    if (str == "vertex_buffer") return BufferType::VERTEX_BUFFER;
-    if (str == "index_buffer") return BufferType::INDEX_BUFFER;
-    if (str == "storage_buffer") return BufferType::STORAGE_BUFFER;
-    return BufferType::VERTEX_BUFFER; // Default
+    return StreamSchema::bufferType().fromString(str);
 }
 
 // BufferUsage enum conversion
 std::string editor::Stream::bufferUsageToString(BufferUsage usage) {
-    switch (usage) {
-        case BufferUsage::IMMUTABLE: return "immutable";
-        case BufferUsage::DYNAMIC: return "dynamic";
-        case BufferUsage::STREAM: return "stream";
-        default: return "immutable"; // Default
-    }
+    return StreamSchema::bufferUsage().toString(usage);
 }
 
 BufferUsage editor::Stream::stringToBufferUsage(const std::string& str) {
-    if (str == "immutable") return BufferUsage::IMMUTABLE;
-    if (str == "dynamic") return BufferUsage::DYNAMIC;
-    if (str == "stream") return BufferUsage::STREAM;
-    return BufferUsage::IMMUTABLE; // Default
+    return StreamSchema::bufferUsage().fromString(str);
 }
 
 // AttributeType enum conversion
 std::string editor::Stream::attributeTypeToString(AttributeType type) {
-    switch (type) {
-        case AttributeType::INDEX: return "index";
-        case AttributeType::POSITION: return "position";
-        case AttributeType::TEXCOORD1: return "texcoord1";
-        case AttributeType::TEXCOORD2: return "texcoord2";
-        case AttributeType::NORMAL: return "normal";
-        case AttributeType::TANGENT: return "tangent";
-        case AttributeType::COLOR: return "color";
-        case AttributeType::POINTSIZE: return "pointsize";
-        case AttributeType::POINTROTATION: return "pointrotation";
-        case AttributeType::TEXTURERECT: return "texturerect";
-        case AttributeType::BONEWEIGHTS: return "boneweights";
-        case AttributeType::BONEIDS: return "boneids";
-        case AttributeType::MORPHTARGET0: return "morphtarget0";
-        case AttributeType::MORPHTARGET1: return "morphtarget1";
-        case AttributeType::MORPHTARGET2: return "morphtarget2";
-        case AttributeType::MORPHTARGET3: return "morphtarget3";
-        case AttributeType::MORPHTARGET4: return "morphtarget4";
-        case AttributeType::MORPHTARGET5: return "morphtarget5";
-        case AttributeType::MORPHTARGET6: return "morphtarget6";
-        case AttributeType::MORPHTARGET7: return "morphtarget7";
-        case AttributeType::MORPHNORMAL0: return "morphnormal0";
-        case AttributeType::MORPHNORMAL1: return "morphnormal1";
-        case AttributeType::MORPHNORMAL2: return "morphnormal2";
-        case AttributeType::MORPHNORMAL3: return "morphnormal3";
-        case AttributeType::MORPHTANGENT0: return "morphtangent0";
-        case AttributeType::MORPHTANGENT1: return "morphtangent1";
-        case AttributeType::INSTANCEMATRIXCOL1: return "instancematrixcol1";
-        case AttributeType::INSTANCEMATRIXCOL2: return "instancematrixcol2";
-        case AttributeType::INSTANCEMATRIXCOL3: return "instancematrixcol3";
-        case AttributeType::INSTANCEMATRIXCOL4: return "instancematrixcol4";
-        case AttributeType::INSTANCECOLOR: return "instancecolor";
-        case AttributeType::INSTANCETEXTURERECT: return "instancetexturerect";
-        case AttributeType::TERRAINNODEPOSITION: return "terrainnodeposition";
-        case AttributeType::TERRAINNODESIZE: return "terrainnodesize";
-        case AttributeType::TERRAINNODERANGE: return "terrainnoderange";
-        case AttributeType::TERRAINNODERESOLUTION: return "terrainnoderesolution";
-        case AttributeType::SMOOTHNORMAL: return "smoothnormal";
-        default: return "position"; // Default
-    }
+    return StreamSchema::attributeType().toString(type);
 }
 
 AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
-    if (str == "index") return AttributeType::INDEX;
-    if (str == "position") return AttributeType::POSITION;
-    if (str == "texcoord1") return AttributeType::TEXCOORD1;
-    if (str == "texcoord2") return AttributeType::TEXCOORD2;
-    if (str == "normal") return AttributeType::NORMAL;
-    if (str == "tangent") return AttributeType::TANGENT;
-    if (str == "color") return AttributeType::COLOR;
-    if (str == "pointsize") return AttributeType::POINTSIZE;
-    if (str == "pointrotation") return AttributeType::POINTROTATION;
-    if (str == "texturerect") return AttributeType::TEXTURERECT;
-    if (str == "boneweights") return AttributeType::BONEWEIGHTS;
-    if (str == "boneids") return AttributeType::BONEIDS;
-    if (str == "morphtarget0") return AttributeType::MORPHTARGET0;
-    if (str == "morphtarget1") return AttributeType::MORPHTARGET1;
-    if (str == "morphtarget2") return AttributeType::MORPHTARGET2;
-    if (str == "morphtarget3") return AttributeType::MORPHTARGET3;
-    if (str == "morphtarget4") return AttributeType::MORPHTARGET4;
-    if (str == "morphtarget5") return AttributeType::MORPHTARGET5;
-    if (str == "morphtarget6") return AttributeType::MORPHTARGET6;
-    if (str == "morphtarget7") return AttributeType::MORPHTARGET7;
-    if (str == "morphnormal0") return AttributeType::MORPHNORMAL0;
-    if (str == "morphnormal1") return AttributeType::MORPHNORMAL1;
-    if (str == "morphnormal2") return AttributeType::MORPHNORMAL2;
-    if (str == "morphnormal3") return AttributeType::MORPHNORMAL3;
-    if (str == "morphtangent0") return AttributeType::MORPHTANGENT0;
-    if (str == "morphtangent1") return AttributeType::MORPHTANGENT1;
-    if (str == "instancematrixcol1") return AttributeType::INSTANCEMATRIXCOL1;
-    if (str == "instancematrixcol2") return AttributeType::INSTANCEMATRIXCOL2;
-    if (str == "instancematrixcol3") return AttributeType::INSTANCEMATRIXCOL3;
-    if (str == "instancematrixcol4") return AttributeType::INSTANCEMATRIXCOL4;
-    if (str == "instancecolor") return AttributeType::INSTANCECOLOR;
-    if (str == "instancetexturerect") return AttributeType::INSTANCETEXTURERECT;
-    if (str == "terrainnodeposition") return AttributeType::TERRAINNODEPOSITION;
-    if (str == "terrainnodesize") return AttributeType::TERRAINNODESIZE;
-    if (str == "terrainnoderange") return AttributeType::TERRAINNODERANGE;
-    if (str == "terrainnoderesolution") return AttributeType::TERRAINNODERESOLUTION;
-    if (str == "smoothnormal") return AttributeType::SMOOTHNORMAL;
-    return AttributeType::POSITION; // Default
+    return StreamSchema::attributeType().fromString(str);
 }
 
 // AttributeDataType enum conversion
 std::string editor::Stream::attributeDataTypeToString(AttributeDataType type) {
-    switch (type) {
-        case AttributeDataType::BYTE: return "byte";
-        case AttributeDataType::UNSIGNED_BYTE: return "unsigned_byte";
-        case AttributeDataType::SHORT: return "short";
-        case AttributeDataType::UNSIGNED_SHORT: return "unsigned_short";
-        case AttributeDataType::INT: return "int";
-        case AttributeDataType::UNSIGNED_INT: return "unsigned_int";
-        case AttributeDataType::FLOAT: return "float";
-        default: return "float"; // Default
-    }
+    return StreamSchema::attributeDataType().toString(type);
 }
 
 AttributeDataType editor::Stream::stringToAttributeDataType(const std::string& str) {
-    if (str == "byte") return AttributeDataType::BYTE;
-    if (str == "unsigned_byte") return AttributeDataType::UNSIGNED_BYTE;
-    if (str == "short") return AttributeDataType::SHORT;
-    if (str == "unsigned_short") return AttributeDataType::UNSIGNED_SHORT;
-    if (str == "int") return AttributeDataType::INT;
-    if (str == "unsigned_int") return AttributeDataType::UNSIGNED_INT;
-    if (str == "float") return AttributeDataType::FLOAT;
-    return AttributeDataType::FLOAT; // Default
+    return StreamSchema::attributeDataType().fromString(str);
 }
 
 // CullingMode enum conversion
 std::string editor::Stream::cullingModeToString(CullingMode mode) {
-    switch (mode) {
-        case CullingMode::BACK: return "back";
-        case CullingMode::FRONT: return "front";
-        default: return "back";
-    }
+    return StreamSchema::cullingMode().toString(mode);
 }
 
 CullingMode editor::Stream::stringToCullingMode(const std::string& str) {
-    if (str == "back") return CullingMode::BACK;
-    if (str == "front") return CullingMode::FRONT;
-    return CullingMode::BACK;
+    return StreamSchema::cullingMode().fromString(str);
 }
 
 // WindingOrder enum conversion
 std::string editor::Stream::windingOrderToString(WindingOrder order) {
-    switch (order) {
-        case WindingOrder::CCW: return "ccw";
-        case WindingOrder::CW: return "cw";
-        default: return "ccw";
-    }
+    return StreamSchema::windingOrder().toString(order);
 }
 
 WindingOrder editor::Stream::stringToWindingOrder(const std::string& str) {
-    if (str == "ccw") return WindingOrder::CCW;
-    if (str == "cw") return WindingOrder::CW;
-    return WindingOrder::CCW;
+    return StreamSchema::windingOrder().fromString(str);
 }
 
 // TextureFilter enum conversion
 std::string editor::Stream::textureFilterToString(TextureFilter filter) {
-    switch (filter) {
-        case TextureFilter::NEAREST: return "nearest";
-        case TextureFilter::LINEAR: return "linear";
-        case TextureFilter::NEAREST_MIPMAP_NEAREST: return "nearest_mipmap_nearest";
-        case TextureFilter::NEAREST_MIPMAP_LINEAR: return "nearest_mipmap_linear";
-        case TextureFilter::LINEAR_MIPMAP_NEAREST: return "linear_mipmap_nearest";
-        case TextureFilter::LINEAR_MIPMAP_LINEAR: return "linear_mipmap_linear";
-        default: return "linear";
-    }
+    return StreamSchema::textureFilter().toString(filter);
 }
 
 TextureFilter editor::Stream::stringToTextureFilter(const std::string& str) {
-    if (str == "nearest") return TextureFilter::NEAREST;
-    if (str == "linear") return TextureFilter::LINEAR;
-    if (str == "nearest_mipmap_nearest") return TextureFilter::NEAREST_MIPMAP_NEAREST;
-    if (str == "nearest_mipmap_linear") return TextureFilter::NEAREST_MIPMAP_LINEAR;
-    if (str == "linear_mipmap_nearest") return TextureFilter::LINEAR_MIPMAP_NEAREST;
-    if (str == "linear_mipmap_linear") return TextureFilter::LINEAR_MIPMAP_LINEAR;
-    return TextureFilter::LINEAR;
+    return StreamSchema::textureFilter().fromString(str);
 }
 
 // TextureWrap enum conversion
 std::string editor::Stream::textureWrapToString(TextureWrap wrap) {
-    switch (wrap) {
-        case TextureWrap::REPEAT: return "repeat";
-        case TextureWrap::MIRRORED_REPEAT: return "mirrored_repeat";
-        case TextureWrap::CLAMP_TO_EDGE: return "clamp_to_edge";
-        case TextureWrap::CLAMP_TO_BORDER: return "clamp_to_border";
-        default: return "repeat";
-    }
+    return StreamSchema::textureWrap().toString(wrap);
 }
 
 TextureWrap editor::Stream::stringToTextureWrap(const std::string& str) {
-    if (str == "repeat") return TextureWrap::REPEAT;
-    if (str == "mirrored_repeat") return TextureWrap::MIRRORED_REPEAT;
-    if (str == "clamp_to_edge") return TextureWrap::CLAMP_TO_EDGE;
-    if (str == "clamp_to_border") return TextureWrap::CLAMP_TO_BORDER;
-    return TextureWrap::REPEAT;
+    return StreamSchema::textureWrap().fromString(str);
 }
 
 std::string editor::Stream::textureAlphaBorderToString(TextureAlphaBorder alphaBorder) {
-    switch (alphaBorder) {
-        case TextureAlphaBorder::FIX: return "fix";
-        case TextureAlphaBorder::KEEP: return "keep";
-        default: return "auto";
-    }
+    return StreamSchema::textureAlphaBorder().toString(alphaBorder);
 }
 
 TextureAlphaBorder editor::Stream::stringToTextureAlphaBorder(const std::string& str) {
-    if (str == "fix") return TextureAlphaBorder::FIX;
-    if (str == "keep") return TextureAlphaBorder::KEEP;
-    return TextureAlphaBorder::AUTO;
+    return StreamSchema::textureAlphaBorder().fromString(str);
 }
 
 std::string editor::Stream::anchorPresetToString(AnchorPreset preset) {
-    switch (preset) {
-        case AnchorPreset::NONE: return "NONE";
-        case AnchorPreset::TOP_LEFT: return "TOP_LEFT";
-        case AnchorPreset::TOP_RIGHT: return "TOP_RIGHT";
-        case AnchorPreset::BOTTOM_LEFT: return "BOTTOM_LEFT";
-        case AnchorPreset::BOTTOM_RIGHT: return "BOTTOM_RIGHT";
-        case AnchorPreset::CENTER_LEFT: return "CENTER_LEFT";
-        case AnchorPreset::CENTER_TOP: return "CENTER_TOP";
-        case AnchorPreset::CENTER_RIGHT: return "CENTER_RIGHT";
-        case AnchorPreset::CENTER_BOTTOM: return "CENTER_BOTTOM";
-        case AnchorPreset::CENTER: return "CENTER";
-        case AnchorPreset::LEFT_WIDE: return "LEFT_WIDE";
-        case AnchorPreset::TOP_WIDE: return "TOP_WIDE";
-        case AnchorPreset::RIGHT_WIDE: return "RIGHT_WIDE";
-        case AnchorPreset::BOTTOM_WIDE: return "BOTTOM_WIDE";
-        case AnchorPreset::VERTICAL_CENTER_WIDE: return "VERTICAL_CENTER_WIDE";
-        case AnchorPreset::HORIZONTAL_CENTER_WIDE: return "HORIZONTAL_CENTER_WIDE";
-        case AnchorPreset::FULL_LAYOUT: return "FULL_LAYOUT";
-        default: return "NONE";
-    }
+    return StreamSchema::anchorPreset().toString(preset);
 }
 
 AnchorPreset editor::Stream::stringToAnchorPreset(const std::string& str) {
-    if (str == "NONE") return AnchorPreset::NONE;
-    if (str == "TOP_LEFT") return AnchorPreset::TOP_LEFT;
-    if (str == "TOP_RIGHT") return AnchorPreset::TOP_RIGHT;
-    if (str == "BOTTOM_LEFT") return AnchorPreset::BOTTOM_LEFT;
-    if (str == "BOTTOM_RIGHT") return AnchorPreset::BOTTOM_RIGHT;
-    if (str == "CENTER_LEFT") return AnchorPreset::CENTER_LEFT;
-    if (str == "CENTER_TOP") return AnchorPreset::CENTER_TOP;
-    if (str == "CENTER_RIGHT") return AnchorPreset::CENTER_RIGHT;
-    if (str == "CENTER_BOTTOM") return AnchorPreset::CENTER_BOTTOM;
-    if (str == "CENTER") return AnchorPreset::CENTER;
-    if (str == "LEFT_WIDE") return AnchorPreset::LEFT_WIDE;
-    if (str == "TOP_WIDE") return AnchorPreset::TOP_WIDE;
-    if (str == "RIGHT_WIDE") return AnchorPreset::RIGHT_WIDE;
-    if (str == "BOTTOM_WIDE") return AnchorPreset::BOTTOM_WIDE;
-    if (str == "VERTICAL_CENTER_WIDE") return AnchorPreset::VERTICAL_CENTER_WIDE;
-    if (str == "HORIZONTAL_CENTER_WIDE") return AnchorPreset::HORIZONTAL_CENTER_WIDE;
-    if (str == "FULL_LAYOUT") return AnchorPreset::FULL_LAYOUT;
-    return AnchorPreset::NONE;
+    return StreamSchema::anchorPreset().fromString(str);
 }
 
 std::string editor::Stream::materialAlphaModeToString(MaterialAlphaMode mode) {
-    switch (mode) {
-        case MaterialAlphaMode::AUTO: return "AUTO";
-        case MaterialAlphaMode::ALPHA_OPAQUE: return "ALPHA_OPAQUE";
-        case MaterialAlphaMode::MASK: return "MASK";
-        case MaterialAlphaMode::BLEND: return "BLEND";
-        default: return "AUTO";
-    }
+    return StreamSchema::materialAlphaMode().toString(mode);
 }
 
 MaterialAlphaMode editor::Stream::stringToMaterialAlphaMode(const std::string& str) {
-    if (str == "AUTO") return MaterialAlphaMode::AUTO;
-    if (str == "ALPHA_OPAQUE") return MaterialAlphaMode::ALPHA_OPAQUE;
-    if (str == "MASK") return MaterialAlphaMode::MASK;
-    if (str == "BLEND") return MaterialAlphaMode::BLEND;
-    return MaterialAlphaMode::AUTO;
+    return StreamSchema::materialAlphaMode().fromString(str);
 }
 
 std::string editor::Stream::materialBlendModeToString(MaterialBlendMode mode) {
-    switch (mode) {
-        case MaterialBlendMode::AUTO: return "AUTO";
-        case MaterialBlendMode::NONE: return "NONE";
-        case MaterialBlendMode::ALPHA: return "ALPHA";
-        case MaterialBlendMode::PREMULTIPLIED: return "PREMULTIPLIED";
-        case MaterialBlendMode::ADDITIVE: return "ADDITIVE";
-        case MaterialBlendMode::MULTIPLY: return "MULTIPLY";
-    }
-    return "AUTO";
+    return StreamSchema::materialBlendMode().toString(mode);
 }
 
 MaterialBlendMode editor::Stream::stringToMaterialBlendMode(const std::string& str) {
-    if (str == "NONE" || str == "OPAQUE") return MaterialBlendMode::NONE;
-    if (str == "ALPHA") return MaterialBlendMode::ALPHA;
-    if (str == "PREMULTIPLIED") return MaterialBlendMode::PREMULTIPLIED;
-    if (str == "ADDITIVE") return MaterialBlendMode::ADDITIVE;
-    if (str == "MULTIPLY") return MaterialBlendMode::MULTIPLY;
-    return MaterialBlendMode::AUTO;
+    return StreamSchema::materialBlendMode().fromString(str);
 }
 
 std::string editor::Stream::materialCullModeToString(MaterialCullMode mode) {
-    switch (mode) {
-        case MaterialCullMode::AUTO: return "AUTO";
-        case MaterialCullMode::BACK: return "BACK";
-        case MaterialCullMode::FRONT: return "FRONT";
-        case MaterialCullMode::OFF: return "OFF";
-    }
-    return "AUTO";
+    return StreamSchema::materialCullMode().toString(mode);
 }
 
 MaterialCullMode editor::Stream::stringToMaterialCullMode(const std::string& str) {
-    if (str == "BACK") return MaterialCullMode::BACK;
-    if (str == "FRONT") return MaterialCullMode::FRONT;
-    if (str == "OFF") return MaterialCullMode::OFF;
-    return MaterialCullMode::AUTO;
+    return StreamSchema::materialCullMode().fromString(str);
 }
 
 std::string editor::Stream::materialDepthWriteToString(MaterialDepthWrite mode) {
-    switch (mode) {
-        case MaterialDepthWrite::AUTO: return "AUTO";
-        case MaterialDepthWrite::ENABLED: return "ENABLED";
-        case MaterialDepthWrite::DISABLED: return "DISABLED";
-    }
-    return "AUTO";
+    return StreamSchema::materialDepthWrite().toString(mode);
 }
 
 MaterialDepthWrite editor::Stream::stringToMaterialDepthWrite(const std::string& str) {
-    if (str == "ENABLED") return MaterialDepthWrite::ENABLED;
-    if (str == "DISABLED") return MaterialDepthWrite::DISABLED;
-    return MaterialDepthWrite::AUTO;
+    return StreamSchema::materialDepthWrite().fromString(str);
 }
 
 std::string editor::Stream::materialDepthTestToString(MaterialDepthTest mode) {
-    switch (mode) {
-        case MaterialDepthTest::AUTO: return "AUTO";
-        case MaterialDepthTest::LESS: return "LESS";
-        case MaterialDepthTest::LESS_EQUAL: return "LESS_EQUAL";
-        case MaterialDepthTest::EQUAL: return "EQUAL";
-        case MaterialDepthTest::GREATER_EQUAL: return "GREATER_EQUAL";
-        case MaterialDepthTest::GREATER: return "GREATER";
-        case MaterialDepthTest::NOT_EQUAL: return "NOT_EQUAL";
-        case MaterialDepthTest::ALWAYS: return "ALWAYS";
-    }
-    return "AUTO";
+    return StreamSchema::materialDepthTest().toString(mode);
 }
 
 MaterialDepthTest editor::Stream::stringToMaterialDepthTest(const std::string& str) {
-    if (str == "LESS") return MaterialDepthTest::LESS;
-    if (str == "LESS_EQUAL") return MaterialDepthTest::LESS_EQUAL;
-    if (str == "EQUAL") return MaterialDepthTest::EQUAL;
-    if (str == "GREATER_EQUAL") return MaterialDepthTest::GREATER_EQUAL;
-    if (str == "GREATER") return MaterialDepthTest::GREATER;
-    if (str == "NOT_EQUAL") return MaterialDepthTest::NOT_EQUAL;
-    if (str == "ALWAYS") return MaterialDepthTest::ALWAYS;
-    return MaterialDepthTest::AUTO;
+    return StreamSchema::materialDepthTest().fromString(str);
 }
 
 std::string editor::Stream::materialLightingToString(MaterialLighting mode) {
-    switch (mode) {
-        case MaterialLighting::AUTO: return "AUTO";
-        case MaterialLighting::PIXEL: return "PIXEL";
-        case MaterialLighting::VERTEX: return "VERTEX";
-        case MaterialLighting::MIXED: return "MIXED";
-        case MaterialLighting::NONE: return "NONE";
-    }
-    return "AUTO";
+    return StreamSchema::materialLighting().toString(mode);
 }
 
 MaterialLighting editor::Stream::stringToMaterialLighting(const std::string& str) {
-    if (str == "PIXEL") return MaterialLighting::PIXEL;
-    if (str == "VERTEX") return MaterialLighting::VERTEX;
-    if (str == "MIXED") return MaterialLighting::MIXED;
-    if (str == "NONE") return MaterialLighting::NONE;
-    return MaterialLighting::AUTO;
+    return StreamSchema::materialLighting().fromString(str);
 }
 
 std::string editor::Stream::lightShadingToString(LightShading shading) {
-    switch (shading) {
-        case LightShading::BOTH: return "BOTH";
-        case LightShading::PIXEL: return "PIXEL";
-        case LightShading::VERTEX: return "VERTEX";
-    }
-    return "BOTH";
+    return StreamSchema::lightShading().toString(shading);
 }
 
 LightShading editor::Stream::stringToLightShading(const std::string& str) {
-    if (str == "PIXEL") return LightShading::PIXEL;
-    if (str == "VERTEX") return LightShading::VERTEX;
-    return LightShading::BOTH;
+    return StreamSchema::lightShading().fromString(str);
 }
 
 void editor::Stream::encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
@@ -879,70 +555,32 @@ void editor::Stream::decodeComponentShaderLibrary(const YAML::Node& node, std::v
     // not merged: an absent key is the default
     textures = decodeShaderTextures(node["shaderTextures"]);
     features = decodeShaderFeatures(node["shaderFeatures"]);
-    if (blendMode) *blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
-    if (depthWrite) *depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
+    if (blendMode) *blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
+    if (depthWrite) *depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
 }
 
 std::string editor::Stream::materialStencilCompareToString(MaterialStencilCompare compare) {
-    switch (compare) {
-        case MaterialStencilCompare::AUTO: return "AUTO";
-        case MaterialStencilCompare::DISABLED: return "DISABLED";
-        case MaterialStencilCompare::NEVER: return "NEVER";
-        case MaterialStencilCompare::LESS: return "LESS";
-        case MaterialStencilCompare::EQUAL: return "EQUAL";
-        case MaterialStencilCompare::LESS_EQUAL: return "LESS_EQUAL";
-        case MaterialStencilCompare::GREATER: return "GREATER";
-        case MaterialStencilCompare::NOT_EQUAL: return "NOT_EQUAL";
-        case MaterialStencilCompare::GREATER_EQUAL: return "GREATER_EQUAL";
-        case MaterialStencilCompare::ALWAYS: return "ALWAYS";
-    }
-    return "AUTO";
+    return StreamSchema::materialStencilCompare().toString(compare);
 }
 
 MaterialStencilCompare editor::Stream::stringToMaterialStencilCompare(const std::string& str) {
-    if (str == "DISABLED") return MaterialStencilCompare::DISABLED;
-    if (str == "NEVER") return MaterialStencilCompare::NEVER;
-    if (str == "LESS") return MaterialStencilCompare::LESS;
-    if (str == "EQUAL") return MaterialStencilCompare::EQUAL;
-    if (str == "LESS_EQUAL") return MaterialStencilCompare::LESS_EQUAL;
-    if (str == "GREATER") return MaterialStencilCompare::GREATER;
-    if (str == "NOT_EQUAL") return MaterialStencilCompare::NOT_EQUAL;
-    if (str == "GREATER_EQUAL") return MaterialStencilCompare::GREATER_EQUAL;
-    if (str == "ALWAYS") return MaterialStencilCompare::ALWAYS;
-    return MaterialStencilCompare::AUTO;
+    return StreamSchema::materialStencilCompare().fromString(str);
 }
 
 std::string editor::Stream::materialStencilOpToString(MaterialStencilOp op) {
-    switch (op) {
-        case MaterialStencilOp::KEEP: return "KEEP";
-        case MaterialStencilOp::ZERO: return "ZERO";
-        case MaterialStencilOp::REPLACE: return "REPLACE";
-        case MaterialStencilOp::INCR_CLAMP: return "INCR_CLAMP";
-        case MaterialStencilOp::DECR_CLAMP: return "DECR_CLAMP";
-        case MaterialStencilOp::INVERT: return "INVERT";
-        case MaterialStencilOp::INCR_WRAP: return "INCR_WRAP";
-        case MaterialStencilOp::DECR_WRAP: return "DECR_WRAP";
-    }
-    return "KEEP";
+    return StreamSchema::materialStencilOp().toString(op);
 }
 
 MaterialStencilOp editor::Stream::stringToMaterialStencilOp(const std::string& str) {
-    if (str == "ZERO") return MaterialStencilOp::ZERO;
-    if (str == "REPLACE") return MaterialStencilOp::REPLACE;
-    if (str == "INCR_CLAMP") return MaterialStencilOp::INCR_CLAMP;
-    if (str == "DECR_CLAMP") return MaterialStencilOp::DECR_CLAMP;
-    if (str == "INVERT") return MaterialStencilOp::INVERT;
-    if (str == "INCR_WRAP") return MaterialStencilOp::INCR_WRAP;
-    if (str == "DECR_WRAP") return MaterialStencilOp::DECR_WRAP;
-    return MaterialStencilOp::KEEP;
+    return StreamSchema::materialStencilOp().fromString(str);
 }
 
 std::string editor::Stream::materialPassOrderToString(MaterialPassOrder order) {
-    return order == MaterialPassOrder::BEFORE ? "BEFORE" : "AFTER";
+    return StreamSchema::materialPassOrder().toString(order);
 }
 
 MaterialPassOrder editor::Stream::stringToMaterialPassOrder(const std::string& str) {
-    return str == "BEFORE" ? MaterialPassOrder::BEFORE : MaterialPassOrder::AFTER;
+    return StreamSchema::materialPassOrder().fromString(str);
 }
 
 std::string editor::Stream::colorWriteToString(int colorWrite) {
@@ -970,16 +608,17 @@ YAML::Node editor::Stream::encodeStencil(const MaterialStencil& stencil) {
 }
 
 MaterialStencil editor::Stream::decodeStencil(const YAML::Node& node) {
+    StreamLoad::checkNestedKeys(node, NestedKind::Stencil);
     // not merged: encodeStencil omits the defaults
     MaterialStencil stencil;
     if (!node || !node.IsMap()) return stencil;
-    if (node["compare"]) stencil.compare = stringToMaterialStencilCompare(node["compare"].as<std::string>());
+    if (node["compare"]) stencil.compare = decodeEnum(node, "compare", StreamSchema::materialStencilCompare());
     if (node["ref"]) stencil.ref = YamlNumbers::as<int>(node["ref"]);
     if (node["readMask"]) stencil.readMask = YamlNumbers::as<int>(node["readMask"]);
     if (node["writeMask"]) stencil.writeMask = YamlNumbers::as<int>(node["writeMask"]);
-    if (node["pass"]) stencil.pass = stringToMaterialStencilOp(node["pass"].as<std::string>());
-    if (node["fail"]) stencil.fail = stringToMaterialStencilOp(node["fail"].as<std::string>());
-    if (node["depthFail"]) stencil.depthFail = stringToMaterialStencilOp(node["depthFail"].as<std::string>());
+    if (node["pass"]) stencil.pass = decodeEnum(node, "pass", StreamSchema::materialStencilOp());
+    if (node["fail"]) stencil.fail = decodeEnum(node, "fail", StreamSchema::materialStencilOp());
+    if (node["depthFail"]) stencil.depthFail = decodeEnum(node, "depthFail", StreamSchema::materialStencilOp());
     return stencil;
 }
 
@@ -1015,6 +654,7 @@ YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool emb
 }
 
 MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
+    StreamLoad::checkNestedKeys(node, NestedKind::MaterialPass);
     // not merged: encodeMaterialPass omits the defaults
     MaterialPass pass;
     if (!node || !node.IsMap()) return pass;
@@ -1022,14 +662,14 @@ MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
     pass.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
-    if (node["blendMode"]) pass.blendMode = stringToMaterialBlendMode(node["blendMode"].as<std::string>());
-    if (node["cullMode"]) pass.cullMode = stringToMaterialCullMode(node["cullMode"].as<std::string>());
-    if (node["depthWrite"]) pass.depthWrite = stringToMaterialDepthWrite(node["depthWrite"].as<std::string>());
-    if (node["depthTest"]) pass.depthTest = stringToMaterialDepthTest(node["depthTest"].as<std::string>());
+    if (node["blendMode"]) pass.blendMode = decodeEnum(node, "blendMode", StreamSchema::materialBlendMode());
+    if (node["cullMode"]) pass.cullMode = decodeEnum(node, "cullMode", StreamSchema::materialCullMode());
+    if (node["depthWrite"]) pass.depthWrite = decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite());
+    if (node["depthTest"]) pass.depthTest = decodeEnum(node, "depthTest", StreamSchema::materialDepthTest());
     pass.depthOffsetFactor = decodeFinite(node["depthOffsetFactor"], 0.0f);
     pass.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     decodeStencilAndColorWrite(node, pass.stencil, pass.colorWrite);
-    if (node["order"]) pass.order = stringToMaterialPassOrder(node["order"].as<std::string>());
+    if (node["order"]) pass.order = decodeEnum(node, "order", StreamSchema::materialPassOrder());
     return pass;
 }
 
@@ -1073,447 +713,171 @@ std::vector<std::string> editor::Stream::decodeShaderFeatures(const YAML::Node& 
 }
 
 std::string editor::Stream::scriptPropertyTypeToString(ScriptPropertyType type) {
-    switch (type) {
-        case ScriptPropertyType::Bool: return "Bool";
-        case ScriptPropertyType::Int: return "Int";
-        case ScriptPropertyType::Float: return "Float";
-        case ScriptPropertyType::String: return "String";
-        case ScriptPropertyType::Vector2: return "Vector2";
-        case ScriptPropertyType::Vector3: return "Vector3";
-        case ScriptPropertyType::Vector4: return "Vector4";
-        case ScriptPropertyType::Color3: return "Color3";
-        case ScriptPropertyType::Color4: return "Color4";
-        case ScriptPropertyType::EntityReference: return "EntityReference";
-        case ScriptPropertyType::Prefab: return "Prefab";
-        default: return "Bool";
-    }
+    return StreamSchema::scriptPropertyType().toString(type);
 }
 
 ScriptPropertyType editor::Stream::stringToScriptPropertyType(const std::string& str) {
-    if (str == "Bool") return ScriptPropertyType::Bool;
-    if (str == "Int") return ScriptPropertyType::Int;
-    if (str == "Float") return ScriptPropertyType::Float;
-    if (str == "String") return ScriptPropertyType::String;
-    if (str == "Vector2") return ScriptPropertyType::Vector2;
-    if (str == "Vector3") return ScriptPropertyType::Vector3;
-    if (str == "Vector4") return ScriptPropertyType::Vector4;
-    if (str == "Color3") return ScriptPropertyType::Color3;
-    if (str == "Color4") return ScriptPropertyType::Color4;
-    if (str == "EntityReference") return ScriptPropertyType::EntityReference;
-    if (str == "Prefab") return ScriptPropertyType::Prefab;
-    return ScriptPropertyType::Bool;
+    return StreamSchema::scriptPropertyType().fromString(str);
 }
 
 std::string editor::Stream::particleEmitterShapeToString(ParticleEmitterShape shape) {
-    switch (shape) {
-        case ParticleEmitterShape::Box: return "Box";
-        case ParticleEmitterShape::Sphere: return "Sphere";
-        case ParticleEmitterShape::Hemisphere: return "Hemisphere";
-        case ParticleEmitterShape::Circle: return "Circle";
-        case ParticleEmitterShape::Cone: return "Cone";
-        default: return "Box";
-    }
+    return StreamSchema::particleEmitterShape().toString(shape);
 }
 
 ParticleEmitterShape editor::Stream::stringToParticleEmitterShape(const std::string& str) {
-    if (str == "Box") return ParticleEmitterShape::Box;
-    if (str == "Sphere") return ParticleEmitterShape::Sphere;
-    if (str == "Hemisphere") return ParticleEmitterShape::Hemisphere;
-    if (str == "Circle") return ParticleEmitterShape::Circle;
-    if (str == "Cone") return ParticleEmitterShape::Cone;
-    return ParticleEmitterShape::Box;
+    return StreamSchema::particleEmitterShape().fromString(str);
 }
 
 namespace {
 
 std::string terrainBrushModeToString(editor::TerrainBrushMode mode) {
-    switch (mode) {
-        case editor::TerrainBrushMode::Raise: return "Raise";
-        case editor::TerrainBrushMode::Lower: return "Lower";
-        case editor::TerrainBrushMode::Smooth: return "Smooth";
-        case editor::TerrainBrushMode::Flatten: return "Flatten";
-        case editor::TerrainBrushMode::Sharpen: return "Sharpen";
-        case editor::TerrainBrushMode::Noise: return "Noise";
-        case editor::TerrainBrushMode::Terrace: return "Terrace";
-        case editor::TerrainBrushMode::Stamp: return "Stamp";
-        case editor::TerrainBrushMode::Erode: return "Erode";
-        case editor::TerrainBrushMode::Ramp: return "Ramp";
-        case editor::TerrainBrushMode::PaintBase: return "PaintBase";
-        case editor::TerrainBrushMode::PaintLayer: return "PaintLayer";
-        case editor::TerrainBrushMode::PaintDensity: return "PaintDensity";
-        case editor::TerrainBrushMode::EraseDensity: return "EraseDensity";
-        case editor::TerrainBrushMode::PlaceObject: return "PlaceObject";
-        case editor::TerrainBrushMode::EraseObject: return "EraseObject";
-        default: return "Raise";
-    }
-}
-
-editor::TerrainBrushMode stringToTerrainBrushMode(const std::string& str) {
-    if (str == "Raise") return editor::TerrainBrushMode::Raise;
-    if (str == "Lower") return editor::TerrainBrushMode::Lower;
-    if (str == "Smooth") return editor::TerrainBrushMode::Smooth;
-    if (str == "Flatten") return editor::TerrainBrushMode::Flatten;
-    if (str == "Sharpen") return editor::TerrainBrushMode::Sharpen;
-    if (str == "Noise") return editor::TerrainBrushMode::Noise;
-    if (str == "Terrace") return editor::TerrainBrushMode::Terrace;
-    if (str == "Stamp") return editor::TerrainBrushMode::Stamp;
-    if (str == "Erode") return editor::TerrainBrushMode::Erode;
-    if (str == "Ramp") return editor::TerrainBrushMode::Ramp;
-    if (str == "PaintBase") return editor::TerrainBrushMode::PaintBase;
-    if (str == "PaintLayer") return editor::TerrainBrushMode::PaintLayer;
-    // Backward compatibility: the three channel brushes became one layer brush with an
-    // index. Remove this branch once those editor versions are no longer supported.
-    if (str == "PaintRed" || str == "PaintGreen" || str == "PaintBlue") return editor::TerrainBrushMode::PaintLayer;
-    if (str == "PaintDensity") return editor::TerrainBrushMode::PaintDensity;
-    if (str == "EraseDensity") return editor::TerrainBrushMode::EraseDensity;
-    if (str == "PlaceObject") return editor::TerrainBrushMode::PlaceObject;
-    if (str == "EraseObject") return editor::TerrainBrushMode::EraseObject;
-    return editor::TerrainBrushMode::Raise;
+    return editor::StreamSchema::terrainBrushMode().toString(mode);
 }
 
 std::string terrainBrushShapeToString(editor::TerrainBrushShape shape) {
-    switch (shape) {
-        case editor::TerrainBrushShape::Circle: return "Circle";
-        case editor::TerrainBrushShape::Square: return "Square";
-        default: return "Circle";
-    }
-}
-
-editor::TerrainBrushShape stringToTerrainBrushShape(const std::string& str) {
-    if (str == "Circle") return editor::TerrainBrushShape::Circle;
-    if (str == "Square") return editor::TerrainBrushShape::Square;
-    return editor::TerrainBrushShape::Circle;
+    return editor::StreamSchema::terrainBrushShape().toString(shape);
 }
 
 std::string terrainBrushFalloffToString(editor::TerrainBrushFalloff falloff) {
-    switch (falloff) {
-        case editor::TerrainBrushFalloff::Smooth: return "Smooth";
-        case editor::TerrainBrushFalloff::Linear: return "Linear";
-        case editor::TerrainBrushFalloff::Constant: return "Constant";
-        default: return "Smooth";
-    }
-}
-
-editor::TerrainBrushFalloff stringToTerrainBrushFalloff(const std::string& str) {
-    if (str == "Smooth") return editor::TerrainBrushFalloff::Smooth;
-    if (str == "Linear") return editor::TerrainBrushFalloff::Linear;
-    if (str == "Constant") return editor::TerrainBrushFalloff::Constant;
-    return editor::TerrainBrushFalloff::Smooth;
+    return editor::StreamSchema::terrainBrushFalloff().toString(falloff);
 }
 
 } // namespace
 
 std::string editor::Stream::layoutGroupTypeToString(LayoutGroupType type) {
-    switch (type) {
-        case LayoutGroupType::VERTICAL: return "vertical";
-        case LayoutGroupType::HORIZONTAL: return "horizontal";
-        case LayoutGroupType::VERTICAL_WRAP: return "vertical_wrap";
-        case LayoutGroupType::HORIZONTAL_WRAP: return "horizontal_wrap";
-        default: return "vertical";
-    }
+    return StreamSchema::layoutGroupType().toString(type);
 }
 
 LayoutGroupType editor::Stream::stringToLayoutGroupType(const std::string& str) {
-    if (str == "vertical") return LayoutGroupType::VERTICAL;
-    if (str == "horizontal") return LayoutGroupType::HORIZONTAL;
-    if (str == "vertical_wrap") return LayoutGroupType::VERTICAL_WRAP;
-    if (str == "horizontal_wrap") return LayoutGroupType::HORIZONTAL_WRAP;
-    return LayoutGroupType::VERTICAL;
+    return StreamSchema::layoutGroupType().fromString(str);
 }
 
 std::string editor::Stream::scrollbarTypeToString(ScrollbarType type) {
-    switch (type) {
-        case ScrollbarType::VERTICAL: return "vertical";
-        case ScrollbarType::HORIZONTAL: return "horizontal";
-        default: return "vertical";
-    }
+    return StreamSchema::scrollbarType().toString(type);
 }
 
 ScrollbarType editor::Stream::stringToScrollbarType(const std::string& str) {
-    if (str == "horizontal") return ScrollbarType::HORIZONTAL;
-    return ScrollbarType::VERTICAL;
+    return StreamSchema::scrollbarType().fromString(str);
 }
 
 std::string editor::Stream::progressbarTypeToString(ProgressbarType type) {
-    switch (type) {
-        case ProgressbarType::VERTICAL: return "vertical";
-        case ProgressbarType::HORIZONTAL: return "horizontal";
-        default: return "horizontal";
-    }
+    return StreamSchema::progressbarType().toString(type);
 }
 
 ProgressbarType editor::Stream::stringToProgressbarType(const std::string& str) {
-    if (str == "vertical") return ProgressbarType::VERTICAL;
-    return ProgressbarType::HORIZONTAL;
+    return StreamSchema::progressbarType().fromString(str);
 }
 
 std::string editor::Stream::scalingModeToString(Scaling mode) {
-    switch (mode) {
-        case Scaling::FITWIDTH: return "fitwidth";
-        case Scaling::FITHEIGHT: return "fitheight";
-        case Scaling::LETTERBOX: return "letterbox";
-        case Scaling::CROP: return "crop";
-        case Scaling::STRETCH: return "stretch";
-        case Scaling::NATIVE: return "native";
-        default: return "fitwidth";
-    }
+    return StreamSchema::scalingMode().toString(mode);
 }
 
 Scaling editor::Stream::stringToScalingMode(const std::string& str) {
-    if (str == "fitwidth") return Scaling::FITWIDTH;
-    if (str == "fitheight") return Scaling::FITHEIGHT;
-    if (str == "letterbox") return Scaling::LETTERBOX;
-    if (str == "crop") return Scaling::CROP;
-    if (str == "stretch") return Scaling::STRETCH;
-    if (str == "native") return Scaling::NATIVE;
-    return Scaling::FITWIDTH;
+    return StreamSchema::scalingMode().fromString(str);
 }
 
 std::string editor::Stream::textureStrategyToString(TextureStrategy strategy) {
-    switch (strategy) {
-        case TextureStrategy::FIT: return "fit";
-        case TextureStrategy::RESIZE: return "resize";
-        case TextureStrategy::NONE: return "none";
-        default: return "none";
-    }
+    return StreamSchema::textureStrategy().toString(strategy);
 }
 
 TextureStrategy editor::Stream::stringToTextureStrategy(const std::string& str) {
-    if (str == "fit") return TextureStrategy::FIT;
-    if (str == "resize") return TextureStrategy::RESIZE;
-    return TextureStrategy::NONE;
+    return StreamSchema::textureStrategy().fromString(str);
 }
 
 std::string editor::Stream::windowModeToString(WindowMode mode) {
-    switch (mode) {
-        case WindowMode::WINDOWED: return "windowed";
-        case WindowMode::MAXIMIZED: return "maximized";
-        case WindowMode::FULLSCREEN: return "fullscreen";
-        default: return "windowed";
-    }
+    return StreamSchema::windowMode().toString(mode);
 }
 
 editor::WindowMode editor::Stream::stringToWindowMode(const std::string& str) {
-    if (str == "windowed") return WindowMode::WINDOWED;
-    if (str == "maximized") return WindowMode::MAXIMIZED;
-    if (str == "fullscreen") return WindowMode::FULLSCREEN;
-    return WindowMode::WINDOWED;
+    return StreamSchema::windowMode().fromString(str);
 }
 
 std::string editor::Stream::lightTypeToString(LightType type) {
-    switch (type) {
-        case LightType::DIRECTIONAL: return "directional";
-        case LightType::POINT: return "point";
-        case LightType::SPOT: return "spot";
-        default: return "directional";
-    }
+    return StreamSchema::lightType().toString(type);
 }
 
 LightType editor::Stream::stringToLightType(const std::string& str) {
-    if (str == "directional") return LightType::DIRECTIONAL;
-    if (str == "point") return LightType::POINT;
-    if (str == "spot") return LightType::SPOT;
-    return LightType::DIRECTIONAL; // Default
+    return StreamSchema::lightType().fromString(str);
 }
 
 std::string editor::Stream::fogTypeToString(FogType type) {
-    switch (type) {
-        case FogType::LINEAR: return "linear";
-        case FogType::EXPONENTIAL: return "exponential";
-        case FogType::EXPONENTIALSQUARED: return "exponential_squared";
-        default: return "linear";
-    }
+    return StreamSchema::fogType().toString(type);
 }
 
 FogType editor::Stream::stringToFogType(const std::string& str) {
-    if (str == "linear") return FogType::LINEAR;
-    if (str == "exponential") return FogType::EXPONENTIAL;
-    if (str == "exponential_squared" || str == "exponentialsquared" || str == "exponentialSquared") return FogType::EXPONENTIALSQUARED;
-    return FogType::LINEAR;
+    return StreamSchema::fogType().fromString(str);
 }
 
 static std::string shadowQualityToString(ShadowQuality quality) {
-    switch (quality) {
-        case ShadowQuality::NONE: return "none";
-        case ShadowQuality::LOW: return "low";
-        case ShadowQuality::MEDIUM: return "medium";
-        case ShadowQuality::HIGH: return "high";
-    }
-    return "low";
-}
-
-static ShadowQuality stringToShadowQuality(const std::string& str) {
-    if (str == "none") return ShadowQuality::NONE;
-    if (str == "medium") return ShadowQuality::MEDIUM;
-    if (str == "high") return ShadowQuality::HIGH;
-    return ShadowQuality::LOW; // Default
+    return editor::StreamSchema::shadowQuality().toString(quality);
 }
 
 static std::string sceneColorScaleToString(SceneColorScale scale) {
-    switch (scale) {
-        case SceneColorScale::FULL: return "full";
-        case SceneColorScale::HALF: return "half";
-    }
-    return "half";
-}
-
-static SceneColorScale stringToSceneColorScale(const std::string& str) {
-    if (str == "full") return SceneColorScale::FULL;
-    return SceneColorScale::HALF; // Default
+    return editor::StreamSchema::sceneColorScale().toString(scale);
 }
 
 std::string editor::Stream::lightStateToString(LightState state) {
-    switch (state) {
-        case LightState::OFF: return "off";
-        case LightState::ON: return "on";
-        case LightState::AUTO: return "auto";
-        default: return "auto";
-    }
+    return StreamSchema::lightState().toString(state);
 }
 
 LightState editor::Stream::stringToLightState(const std::string& str) {
-    if (str == "off") return LightState::OFF;
-    if (str == "on") return LightState::ON;
-    if (str == "auto") return LightState::AUTO;
-    return LightState::AUTO; // Default
+    return StreamSchema::lightState().fromString(str);
 }
 
 std::string editor::Stream::audioSourceStateToString(AudioSourceState state) {
-    switch (state) {
-        case AudioSourceState::Playing: return "playing";
-        case AudioSourceState::Paused: return "paused";
-        case AudioSourceState::Stopped: return "stopped";
-        default: return "stopped";
-    }
+    return StreamSchema::audioSourceState().toString(state);
 }
 
 AudioSourceState editor::Stream::stringToAudioSourceState(const std::string& str) {
-    if (str == "playing") return AudioSourceState::Playing;
-    if (str == "paused") return AudioSourceState::Paused;
-    if (str == "stopped") return AudioSourceState::Stopped;
-    return AudioSourceState::Stopped;
+    return StreamSchema::audioSourceState().fromString(str);
 }
 
 std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mode) {
-    switch (mode) {
-        case UIDocumentRenderMode::TEXTURE: return "texture";
-        case UIDocumentRenderMode::SCREEN:
-        default: return "screen";
-    }
+    return StreamSchema::uiDocumentRenderMode().toString(mode);
 }
 
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
-    if (str == "texture") return UIDocumentRenderMode::TEXTURE;
-    return UIDocumentRenderMode::SCREEN;
+    return StreamSchema::uiDocumentRenderMode().fromString(str);
 }
 
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
-    switch (attenuation) {
-        case AudioSourceAttenuation::NO_ATTENUATION: return "no_attenuation";
-        case AudioSourceAttenuation::INVERSE_DISTANCE: return "inverse_distance";
-        case AudioSourceAttenuation::LINEAR_DISTANCE: return "linear_distance";
-        case AudioSourceAttenuation::EXPONENTIAL_DISTANCE: return "exponential_distance";
-        default: return "no_attenuation";
-    }
+    return StreamSchema::audioSourceAttenuation().toString(attenuation);
 }
 
 AudioSourceAttenuation editor::Stream::stringToAudioSourceAttenuation(const std::string& str) {
-    if (str == "no_attenuation") return AudioSourceAttenuation::NO_ATTENUATION;
-    if (str == "inverse_distance") return AudioSourceAttenuation::INVERSE_DISTANCE;
-    if (str == "linear_distance") return AudioSourceAttenuation::LINEAR_DISTANCE;
-    if (str == "exponential_distance") return AudioSourceAttenuation::EXPONENTIAL_DISTANCE;
-    return AudioSourceAttenuation::NO_ATTENUATION;
+    return StreamSchema::audioSourceAttenuation().fromString(str);
 }
 
 std::string editor::Stream::uiEventStateToString(UIEventState state) {
-    switch (state) {
-        case UIEventState::NOT_SET: return "not_set";
-        case UIEventState::ENABLED: return "true";
-        case UIEventState::DISABLED: return "false";
-        default: return "not_set";
-    }
+    return StreamSchema::uiEventState().toString(state);
 }
 
 UIEventState editor::Stream::stringToUIEventState(const std::string& str) {
-    if (str == "not_set") return UIEventState::NOT_SET;
-    if (str == "true") return UIEventState::ENABLED;
-    if (str == "false") return UIEventState::DISABLED;
-    return UIEventState::NOT_SET; // Default
+    return StreamSchema::uiEventState().fromString(str);
 }
 
 std::string editor::Stream::cameraTypeToString(CameraType type) {
-    switch (type) {
-        case CameraType::CAMERA_UI: return "camera_ui";
-        case CameraType::CAMERA_ORTHO: return "camera_ortho";
-        case CameraType::CAMERA_PERSPECTIVE: return "camera_perspective";
-        default: return "camera_perspective";
-    }
+    return StreamSchema::cameraType().toString(type);
 }
 
 CameraType editor::Stream::stringToCameraType(const std::string& str) {
-    if (str == "camera_ui") return CameraType::CAMERA_UI;
-    if (str == "camera_ortho") return CameraType::CAMERA_ORTHO;
-    if (str == "camera_perspective") return CameraType::CAMERA_PERSPECTIVE;
-    return CameraType::CAMERA_PERSPECTIVE;
+    return StreamSchema::cameraType().fromString(str);
 }
 
 std::string editor::Stream::pivotPresetToString(PivotPreset preset) {
-    switch (preset) {
-        case PivotPreset::CENTER:
-            return "center";
-        case PivotPreset::TOP_CENTER:
-            return "top_center";
-        case PivotPreset::BOTTOM_CENTER:
-            return "bottom_center";
-        case PivotPreset::LEFT_CENTER:
-            return "left_center";
-        case PivotPreset::RIGHT_CENTER:
-            return "right_center";
-        case PivotPreset::TOP_LEFT:
-            return "top_left";
-        case PivotPreset::BOTTOM_LEFT:
-            return "bottom_left";
-        case PivotPreset::TOP_RIGHT:
-            return "top_right";
-        case PivotPreset::BOTTOM_RIGHT:
-            return "bottom_right";
-        default:
-            return "bottom_left";
-    }
+    return StreamSchema::pivotPreset().toString(preset);
 }
 
 PivotPreset editor::Stream::stringToPivotPreset(const std::string& str) {
-    if (str == "center") return PivotPreset::CENTER;
-    if (str == "top_center") return PivotPreset::TOP_CENTER;
-    if (str == "bottom_center") return PivotPreset::BOTTOM_CENTER;
-    if (str == "left_center") return PivotPreset::LEFT_CENTER;
-    if (str == "right_center") return PivotPreset::RIGHT_CENTER;
-    if (str == "top_left") return PivotPreset::TOP_LEFT;
-    if (str == "bottom_left") return PivotPreset::BOTTOM_LEFT;
-    if (str == "top_right") return PivotPreset::TOP_RIGHT;
-    if (str == "bottom_right") return PivotPreset::BOTTOM_RIGHT;
-    return PivotPreset::BOTTOM_LEFT;
+    return StreamSchema::pivotPreset().fromString(str);
 }
 
 std::string editor::Stream::scriptTypeToString(ScriptType type) {
-    switch (type) {
-        case ScriptType::CPP: return "cpp";
-        case ScriptType::LUA: return "lua";
-        default:              return "cpp";
-    }
+    return StreamSchema::scriptType().toString(type);
 }
 
 ScriptType editor::Stream::stringToScriptType(const std::string& str) {
-    if (str == "lua") return ScriptType::LUA;
-    if (str == "cpp") return ScriptType::CPP;
-
-    // Backward compatibility: projects saved before ScriptType was reduced to
-    // CPP/LUA used these three values. Remove these branches once support for
-    // scenes written by those editor versions is intentionally dropped.
-    if (str == "script_lua") return ScriptType::LUA;
-    if (str == "subclass" || str == "script_class") return ScriptType::CPP;
-
-    return ScriptType::CPP;
+    return StreamSchema::scriptType().fromString(str);
 }
 
 YAML::Node editor::Stream::encodeVector2(const Vector2& vec){
@@ -1525,7 +889,7 @@ YAML::Node editor::Stream::encodeVector2(const Vector2& vec){
 }
 
 Vector2 editor::Stream::decodeVector2(const YAML::Node& node) {
-    if (!node || !node.IsSequence() || node.size() < 2) {
+    if (!numberSequence(node, 2)) {
         return Vector2();
     }
 
@@ -1542,7 +906,7 @@ YAML::Node editor::Stream::encodeVector3(const Vector3& vec) {
 }
 
 Vector3 editor::Stream::decodeVector3(const YAML::Node& node) {
-    if (!node || !node.IsSequence() || node.size() < 3) {
+    if (!numberSequence(node, 3)) {
         return Vector3();
     }
 
@@ -1560,7 +924,7 @@ YAML::Node editor::Stream::encodeVector4(const Vector4& vec){
 }
 
 Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
-    if (!node || !node.IsSequence() || node.size() < 4) {
+    if (!numberSequence(node, 4)) {
         return Vector4();
     }
 
@@ -1598,7 +962,7 @@ YAML::Node editor::Stream::encodeQuaternion(const Quaternion& quat) {
 }
 
 Quaternion editor::Stream::decodeQuaternion(const YAML::Node& node) {
-    if (!node || !node.IsSequence() || node.size() < 4) {
+    if (!numberSequence(node, 4)) {
         return Quaternion::IDENTITY;
     }
 
@@ -1616,7 +980,7 @@ YAML::Node editor::Stream::encodeRect(const Rect& rect) {
 }
 
 Rect editor::Stream::decodeRect(const YAML::Node& node) {
-    if (!node || !node.IsSequence() || node.size() < 4) {
+    if (!numberSequence(node, 4)) {
         return Rect();
     }
 
@@ -1734,6 +1098,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
 }
 
 Texture editor::Stream::decodeTexture(const YAML::Node& node) {
+    StreamLoad::checkNestedKeys(node, NestedKind::Texture);
     Texture texture;
     if (node.IsMap()) { // Check if node has data
         const std::string textureType = node["textureType"] ? node["textureType"].as<std::string>() : std::string();
@@ -1791,13 +1156,13 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
             }
         }
 
-        if (node["minFilter"]) texture.setMinFilter(stringToTextureFilter(node["minFilter"].as<std::string>()));
-        if (node["magFilter"]) texture.setMagFilter(stringToTextureFilter(node["magFilter"].as<std::string>()));
-        if (node["wrapU"]) texture.setWrapU(stringToTextureWrap(node["wrapU"].as<std::string>()));
-        if (node["wrapV"]) texture.setWrapV(stringToTextureWrap(node["wrapV"].as<std::string>()));
+        if (node["minFilter"]) texture.setMinFilter(decodeEnum(node, "minFilter", StreamSchema::textureFilter()));
+        if (node["magFilter"]) texture.setMagFilter(decodeEnum(node, "magFilter", StreamSchema::textureFilter()));
+        if (node["wrapU"]) texture.setWrapU(decodeEnum(node, "wrapU", StreamSchema::textureWrap()));
+        if (node["wrapV"]) texture.setWrapV(decodeEnum(node, "wrapV", StreamSchema::textureWrap()));
         // Old scenes carry the scale inside the path ("?svgScale=N"), absorbed by setPath()
         if (node["svgScale"]) texture.setSvgScale(YamlNumbers::as<float>(node["svgScale"]));
-        if (node["alphaBorder"]) texture.setAlphaBorder(stringToTextureAlphaBorder(node["alphaBorder"].as<std::string>()));
+        if (node["alphaBorder"]) texture.setAlphaBorder(decodeEnum(node, "alphaBorder", StreamSchema::textureAlphaBorder()));
 
         if (node["releaseDataAfterLoad"]) texture.setReleaseDataAfterLoad(YamlNumbers::as<bool>(node["releaseDataAfterLoad"]));
     }
@@ -1845,8 +1210,8 @@ void editor::Stream::decodeBuffer(Buffer& buffer, const YAML::Node& node) {
     if (!node.IsMap()) return;
 
     // Decode buffer properties
-    buffer.setType(stringToBufferType(node["type"].as<std::string>()));
-    buffer.setUsage(stringToBufferUsage(node["usage"].as<std::string>()));
+    buffer.setType(decodeEnum(node, "type", StreamSchema::bufferType()));
+    buffer.setUsage(decodeEnum(node, "usage", StreamSchema::bufferUsage()));
     buffer.setStride(YamlNumbers::as<unsigned int>(node["stride"]));
     buffer.setSize(YamlNumbers::as<size_t>(node["size"]));
     buffer.setCount(YamlNumbers::as<unsigned int>(node["count"]));
@@ -1856,8 +1221,8 @@ void editor::Stream::decodeBuffer(Buffer& buffer, const YAML::Node& node) {
     // Decode attributes
     if (node["attributes"]) {
         for (const auto& attrNode : node["attributes"]) {
-            AttributeType type = stringToAttributeType(attrNode["type"].as<std::string>());
-            AttributeDataType dataType = stringToAttributeDataType(attrNode["dataType"].as<std::string>());
+            AttributeType type = decodeEnum(attrNode, "type", StreamSchema::attributeType());
+            AttributeDataType dataType = decodeEnum(attrNode, "dataType", StreamSchema::attributeDataType());
             std::string bufferName = attrNode["bufferName"].as<std::string>();
             unsigned int elements = YamlNumbers::as<unsigned int>(attrNode["elements"]);
             size_t offset = YamlNumbers::as<size_t>(attrNode["offset"]);
@@ -1954,6 +1319,7 @@ YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextu
 }
 
 Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh) {
+    StreamLoad::checkNestedKeys(node, NestedKind::Submesh);
     Submesh submesh;
     if (oldSubmesh) {
         submesh = *oldSubmesh;
@@ -1962,7 +1328,7 @@ Submesh editor::Stream::decodeSubmesh(const YAML::Node& node, const Submesh* old
     // All optional: an absent key keeps the value the submesh already has
     if (node["material"]) submesh.material = decodeMaterial(node["material"], &submesh.material);
     if (node["textureRect"]) submesh.textureRect = decodeRect(node["textureRect"]);
-    if (node["primitiveType"]) submesh.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
+    if (node["primitiveType"]) submesh.primitiveType = decodeEnum(node, "primitiveType", StreamSchema::primitiveType());
     if (node["vertexCount"]) submesh.vertexCount = YamlNumbers::as<uint32_t>(node["vertexCount"]);
     if (node["faceCulling"]) submesh.faceCulling = YamlNumbers::as<bool>(node["faceCulling"]);
     if (node["textureShadow"]) submesh.textureShadow = YamlNumbers::as<bool>(node["textureShadow"]);
@@ -2093,9 +1459,9 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
     TerrainEditorSettings ts;
     if (!tn.IsMap()) return ts;
 
-    if (tn["brushMode"].IsDefined())          ts.brushMode          = static_cast<int>(stringToTerrainBrushMode(tn["brushMode"].as<std::string>()));
-    if (tn["brushShape"].IsDefined())         ts.brushShape         = static_cast<int>(stringToTerrainBrushShape(tn["brushShape"].as<std::string>()));
-    if (tn["brushFalloff"].IsDefined())       ts.brushFalloff       = static_cast<int>(stringToTerrainBrushFalloff(tn["brushFalloff"].as<std::string>()));
+    if (tn["brushMode"].IsDefined())          ts.brushMode          = static_cast<int>(decodeEnum(tn, "brushMode", StreamSchema::terrainBrushMode()));
+    if (tn["brushShape"].IsDefined())         ts.brushShape         = static_cast<int>(decodeEnum(tn, "brushShape", StreamSchema::terrainBrushShape()));
+    if (tn["brushFalloff"].IsDefined())       ts.brushFalloff       = static_cast<int>(decodeEnum(tn, "brushFalloff", StreamSchema::terrainBrushFalloff()));
     if (tn["brushSize"].IsDefined())          ts.brushSize          = decodePositiveFinite(tn["brushSize"], ts.brushSize);
     if (tn["brushStrength"].IsDefined())      ts.brushStrength      = decodeFinite(tn["brushStrength"], ts.brushStrength);
     if (tn["brushRotation"].IsDefined())      ts.brushRotation      = decodeFinite(tn["brushRotation"], ts.brushRotation);
@@ -2200,6 +1566,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
 YAML::Node editor::Stream::encodeProject(Project* project) {
     YAML::Node root;
 
+    root[StreamMigrations::versionKey(DocumentKind::Project)] = StreamMigrations::currentVersion(DocumentKind::Project);
     root["name"] = project->getName();
 
     root["canvasWidth"] = project->getCanvasWidth();
@@ -2526,6 +1893,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
 void editor::Stream::decodeProject(Project* project, const YAML::Node& node, const Workspace& workspace) {
     if (!node.IsMap()) return;
 
+    // unknown root keys survive saves through the file overlay (Project::saveProjectFile);
+    // an enum value this editor does not name cannot, it is reported as dropped
+    StreamLoad::reportRootKeys(node, RootKind::Project);
+    StreamLoad::BlockScope block(nullptr, "", node, RootKind::Project);
+
     if (node["name"]) {
         project->setName(node["name"].as<std::string>());
     }
@@ -2542,11 +1914,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["scalingMode"]) {
-        project->setScalingMode(stringToScalingMode(node["scalingMode"].as<std::string>()));
+        project->setScalingMode(decodeEnum(node, "scalingMode", StreamSchema::scalingMode()));
     }
 
     if (node["textureStrategy"]) {
-        project->setTextureStrategy(stringToTextureStrategy(node["textureStrategy"].as<std::string>()));
+        project->setTextureStrategy(decodeEnum(node, "textureStrategy", StreamSchema::textureStrategy()));
     }
 
     if (node["vsync"].IsDefined()) {
@@ -2558,7 +1930,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["windowMode"]) {
-        project->setWindowMode(stringToWindowMode(node["windowMode"].as<std::string>()));
+        project->setWindowMode(decodeEnum(node, "windowMode", StreamSchema::windowMode()));
     }
 
     if (node["windowWidth"] && node["windowHeight"]) {
@@ -2808,7 +2180,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["adaptiveIconBackground"]) android.adaptiveIconBackground = androidNode["adaptiveIconBackground"].as<std::string>();
         if (androidNode["minSdk"]) android.minSdk = std::max(1u, YamlNumbers::as<unsigned int>(androidNode["minSdk"]));
         if (androidNode["targetSdk"]) android.targetSdk = std::max(android.minSdk, YamlNumbers::as<unsigned int>(androidNode["targetSdk"]));
-        if (androidNode["orientation"]) android.orientation = stringToAndroidOrientation(androidNode["orientation"].as<std::string>());
+        if (androidNode["orientation"]) android.orientation = decodeEnum(androidNode, "orientation", StreamSchema::androidOrientation());
 
         if (androidNode["architectures"] && androidNode["architectures"].IsMap()) {
             const YAML::Node& abiNode = androidNode["architectures"];
@@ -2960,9 +2332,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
     YAML::Node root;
+    root[StreamMigrations::versionKey(DocumentKind::Scene)] = StreamMigrations::currentVersion(DocumentKind::Scene);
     root["id"] = sceneProject->id;
     root["name"] = sceneProject->name;
-    root["scene"] = encodeScene(sceneProject->scene);
+    YAML::Node sceneNode = encodeScene(sceneProject->scene);
+    StreamSave::applyBlock(sceneProject->scene, kSceneSettingsBlock, sceneNode);
+    root["scene"] = sceneNode;
     root["sceneType"] = sceneTypeToString(sceneProject->sceneType);
     root["mainCamera"] = sceneProject->mainCamera;
 
@@ -3065,6 +2440,9 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
 
     root["entities"] = entitiesNode;
 
+    // the root keys of the file this editor does not know, after its own
+    StreamSave::applyRootKeys(sceneProject->scene, NULL_ENTITY, root);
+
     return root;
 }
 
@@ -3072,9 +2450,20 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     if (node["id"]) sceneProject->id = YamlNumbers::as<uint32_t>(node["id"]);
     if (node["name"]) sceneProject->name = node["name"].as<std::string>();
     if (loadScene){
-        if (node["scene"]) sceneProject->scene = decodeScene(sceneProject->scene, node["scene"]);
+        if (node["scene"]) {
+            if (!sceneProject->scene) {
+                sceneProject->scene = new Scene();
+            }
+            // the settings block keeps what it does not read like a component does
+            StreamLoad::BlockScope block(sceneProject->scene, kSceneSettingsBlock, node["scene"], RootKind::SceneSettings);
+            decodeScene(sceneProject->scene, node["scene"]);
+            block.finish(encodeScene(sceneProject->scene));
+        }
+        if (sceneProject->scene) {
+            StreamLoad::preserveRootKeys(sceneProject->scene, NULL_ENTITY, node, RootKind::Scene);
+        }
     }
-    if (node["sceneType"]) sceneProject->sceneType = stringToSceneType(node["sceneType"].as<std::string>());
+    if (node["sceneType"]) sceneProject->sceneType = decodeEnum(node, "sceneType", StreamSchema::sceneType());
     if (node["mainCamera"]) sceneProject->mainCamera = YamlNumbers::as<Entity>(node["mainCamera"]);
 
     sceneProject->maxValues = {};
@@ -3301,7 +2690,7 @@ void editor::Stream::decodeEditorCamera(Camera* camera, const YAML::Node& node, 
     Scene* scene = camera->getScene();
     CameraComponent& camComp = scene->getComponent<CameraComponent>(camEntity);
     Transform& camTransform = scene->getComponent<Transform>(camEntity);
-    if (node["type"]) camComp.type = stringToCameraType(node["type"].as<std::string>());
+    if (node["type"]) camComp.type = decodeEnum(node, "type", StreamSchema::cameraType());
     camComp.target = decodeFiniteVector3(node["target"], camComp.target);
     camComp.up = decodeFiniteVector3(node["up"], camComp.up);
     camComp.yfov = decodePositiveFinite(node["yfov"], camComp.yfov);
@@ -3462,7 +2851,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
 
     if (node["shadowQuality"]) {
-        scene->setShadowQuality(stringToShadowQuality(node["shadowQuality"].as<std::string>()));
+        scene->setShadowQuality(decodeEnum(node, "shadowQuality", StreamSchema::shadowQuality()));
     }
     if (node["meshLodEnabled"]) {
         scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
@@ -3474,10 +2863,10 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }
     // absent = the default (half): it is only written when it differs
-    scene->setSceneColorScale(node["sceneColorScale"] ? stringToSceneColorScale(node["sceneColorScale"].as<std::string>()) : SceneSettings().sceneColorScale);
+    scene->setSceneColorScale(node["sceneColorScale"] ? decodeEnum(node, "sceneColorScale", StreamSchema::sceneColorScale()) : SceneSettings().sceneColorScale);
 
     if (node["lightState"]) {
-        scene->setLightState(stringToLightState(node["lightState"].as<std::string>()));
+        scene->setLightState(decodeEnum(node, "lightState", StreamSchema::lightState()));
     }
 
     if (node["globalIlluminationIntensity"] && node["globalIlluminationColor"]) {
@@ -3506,7 +2895,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
 
     if (node["shadow2DQuality"]) {
-        scene->setShadow2DQuality(stringToShadowQuality(node["shadow2DQuality"].as<std::string>()));
+        scene->setShadow2DQuality(decodeEnum(node, "shadow2DQuality", StreamSchema::shadowQuality()));
     }
 
     if (node["ssaoEnabled"]) {
@@ -3554,11 +2943,11 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
         scene->setFixedResolutionHeight(YamlNumbers::as<unsigned int>(node["fixedResolutionHeight"]));
     }
     if (node["fixedResolutionFilter"]) {
-        scene->setFixedResolutionFilter(stringToTextureFilter(node["fixedResolutionFilter"].as<std::string>()));
+        scene->setFixedResolutionFilter(decodeEnum(node, "fixedResolutionFilter", StreamSchema::textureFilter()));
     }
 
     if (node["enableUIEvents"]) {
-        scene->setEnableUIEvents(stringToUIEventState(node["enableUIEvents"].as<std::string>()));
+        scene->setEnableUIEvents(decodeEnum(node, "enableUIEvents", StreamSchema::uiEventState()));
     }
 
     // absent key clears the default so decoding into a reused scene (play restore) is exact
@@ -3765,6 +3154,10 @@ YAML::Node editor::Stream::encodeEntityAux(const Entity entity, const EntityRegi
         }
     }
 
+    if (entityNode.IsMap()) {
+        StreamSave::applyRootKeys(registry, entity, entityNode);
+    }
+
     return entityNode;
 }
 
@@ -3864,7 +3257,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
 
     if (node["name"]) prop.name = node["name"].as<std::string>();
     if (node["displayName"]) prop.displayName = node["displayName"].as<std::string>();
-    if (node["type"]) prop.type = stringToScriptPropertyType(node["type"].as<std::string>());
+    if (node["type"]) prop.type = decodeEnum(node, "type", StreamSchema::scriptPropertyType());
 
     // Restore ptrTypeName if it exists
     if (node["ptrTypeName"]) {
@@ -3981,6 +3374,13 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
         registry->setEntityName(entity, name);
         decodeEntityState(entity, registry, entityNode);
 
+        // the node is the whole entity: what was preserved for it before (a live entity
+        // restored by undo) is replaced by what this node holds
+        if (PreservedStore* store = findPreservedStore(registry)) {
+            store->reset(entity);
+        }
+        StreamLoad::EntityScope scope(registry, entity);
+
         if (entityNode["components"]){
             // yaml-cpp only names the key it failed on, so point at the entity holding it
             try {
@@ -3989,6 +3389,7 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
                 throw std::runtime_error("entity '" + name + "' (id " + std::to_string(entity) + "): " + e.what());
             }
         }
+        StreamLoad::preserveRootKeys(registry, entity, entityNode, RootKind::Entity);
 
         // Components added to a live entity after it was encoded, like a script calling
         // getRigidbody(), are not removed by decodeComponents
@@ -4012,6 +3413,9 @@ std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, E
                 std::copy(childEntities.begin(), childEntities.end(), std::back_inserter(allEntities));
             }
         }
+    } else {
+        // the next save leaves it out
+        StreamLoad::unknownEntityType(entityNode, registry, parent);
     }
 
     return allEntities;
@@ -4090,6 +3494,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
 }
 
 Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* oldMaterial) {
+    StreamLoad::checkNestedKeys(node, NestedKind::Material);
     Material material;
     if (oldMaterial) {
         material = *oldMaterial;
@@ -4102,7 +3507,7 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.alphaCutoff = decodeFinite(node["alphaCutoff"], material.alphaCutoff);
     material.foliageTransmission = std::clamp(decodeFinite(node["foliageTransmission"], material.foliageTransmission), 0.0f, 1.0f);
     if (node["alphaMode"]) {
-        material.alphaMode = stringToMaterialAlphaMode(node["alphaMode"].as<std::string>());
+        material.alphaMode = decodeEnum(node, "alphaMode", StreamSchema::materialAlphaMode());
     }
     if (node["emissiveFactor"]) material.emissiveFactor = decodeVector3(node["emissiveFactor"]);
 
@@ -4129,14 +3534,14 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
-    material.blendMode = node["blendMode"] ? stringToMaterialBlendMode(node["blendMode"].as<std::string>()) : MaterialBlendMode::AUTO;
-    material.cullMode = node["cullMode"] ? stringToMaterialCullMode(node["cullMode"].as<std::string>()) : MaterialCullMode::AUTO;
-    material.depthWrite = node["depthWrite"] ? stringToMaterialDepthWrite(node["depthWrite"].as<std::string>()) : MaterialDepthWrite::AUTO;
-    material.depthTest = node["depthTest"] ? stringToMaterialDepthTest(node["depthTest"].as<std::string>()) : MaterialDepthTest::AUTO;
+    material.blendMode = node["blendMode"] ? decodeEnum(node, "blendMode", StreamSchema::materialBlendMode()) : MaterialBlendMode::AUTO;
+    material.cullMode = node["cullMode"] ? decodeEnum(node, "cullMode", StreamSchema::materialCullMode()) : MaterialCullMode::AUTO;
+    material.depthWrite = node["depthWrite"] ? decodeEnum(node, "depthWrite", StreamSchema::materialDepthWrite()) : MaterialDepthWrite::AUTO;
+    material.depthTest = node["depthTest"] ? decodeEnum(node, "depthTest", StreamSchema::materialDepthTest()) : MaterialDepthTest::AUTO;
     material.depthOffsetFactor = decodeFinite(node["depthOffsetFactor"], 0.0f);
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
-    material.lighting = node["lighting"] ? stringToMaterialLighting(node["lighting"].as<std::string>()) : MaterialLighting::AUTO;
+    material.lighting = node["lighting"] ? decodeEnum(node, "lighting", StreamSchema::materialLighting()) : MaterialLighting::AUTO;
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
 
@@ -4196,6 +3601,14 @@ bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature sig
 }
 
 YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature) {
+    YAML::Node compNode = encodeComponentsLive(entity, registry, signature);
+    // what the file held that this editor could not read goes back in; whole unknown
+    // components only with a full encode (a single component's copy leaves them out)
+    StreamSave::applyToComponents(registry, entity, compNode, signature == registry->getSignature(entity));
+    return compNode;
+}
+
+YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature) {
     YAML::Node compNode;
 
     if (signature.test(registry->getComponentId<Transform>())) {
@@ -4478,14 +3891,15 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
 }
 
 void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode){
-    std::string compName;
-
     Signature signature = registry->getSignature(entity);
 
-    compName = Catalog::getComponentName(ComponentType::Transform, true);
-    if (compNode[compName]) {
+    // Each component through StreamLoad::decodeComponent: a value that does not decode, or a
+    // key or component this editor does not know, is kept (StreamPreserved.h) instead of
+    // failing the load or vanishing on the next save
+
+    StreamLoad::decodeComponent(ComponentType::Transform, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         Transform* existing = registry->findComponent<Transform>(entity);
-        Transform transform = decodeTransform(compNode[compName], existing);
+        Transform transform = decodeTransform(componentNode, existing);
         transform.parent = parent;
         if (!signature.test(registry->getComponentId<Transform>())){
             registry->addComponent<Transform>(entity, std::move(transform));
@@ -4495,12 +3909,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Transform>(entity) = std::move(transform);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::MeshComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::MeshComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         MeshComponent* existing = registry->findComponent<MeshComponent>(entity);
-        MeshComponent mesh = decodeMeshComponent(compNode[compName], existing);
+        MeshComponent mesh = decodeMeshComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<MeshComponent>())){
             registry->addComponent<MeshComponent>(entity, std::move(mesh));
         }else{
@@ -4508,12 +3921,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<MeshComponent>(entity) = std::move(mesh);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::UIComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::UIComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         UIComponent* existing = registry->findComponent<UIComponent>(entity);
-        UIComponent ui = decodeUIComponent(compNode[compName], existing);
+        UIComponent ui = decodeUIComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<UIComponent>())){
             registry->addComponent<UIComponent>(entity, std::move(ui));
         }else{
@@ -4521,12 +3933,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<UIComponent>(entity) = std::move(ui);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ButtonComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ButtonComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ButtonComponent* existing = registry->findComponent<ButtonComponent>(entity);
-        ButtonComponent button = decodeButtonComponent(compNode[compName], existing);
+        ButtonComponent button = decodeButtonComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ButtonComponent>())){
             registry->addComponent<ButtonComponent>(entity, std::move(button));
         }else{
@@ -4534,12 +3945,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ButtonComponent>(entity) = std::move(button);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ScrollbarComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ScrollbarComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ScrollbarComponent* existing = registry->findComponent<ScrollbarComponent>(entity);
-        ScrollbarComponent scrollbar = decodeScrollbarComponent(compNode[compName], existing);
+        ScrollbarComponent scrollbar = decodeScrollbarComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ScrollbarComponent>())){
             registry->addComponent<ScrollbarComponent>(entity, std::move(scrollbar));
         }else{
@@ -4547,12 +3957,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ScrollbarComponent>(entity) = std::move(scrollbar);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ProgressbarComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ProgressbarComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ProgressbarComponent* existing = registry->findComponent<ProgressbarComponent>(entity);
-        ProgressbarComponent progressbar = decodeProgressbarComponent(compNode[compName], existing);
+        ProgressbarComponent progressbar = decodeProgressbarComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ProgressbarComponent>())){
             registry->addComponent<ProgressbarComponent>(entity, std::move(progressbar));
         }else{
@@ -4560,12 +3969,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ProgressbarComponent>(entity) = std::move(progressbar);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::InputFieldComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::InputFieldComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         InputFieldComponent* existing = registry->findComponent<InputFieldComponent>(entity);
-        InputFieldComponent inputfield = decodeInputFieldComponent(compNode[compName], existing);
+        InputFieldComponent inputfield = decodeInputFieldComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<InputFieldComponent>())){
             registry->addComponent<InputFieldComponent>(entity, std::move(inputfield));
         }else{
@@ -4573,12 +3981,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<InputFieldComponent>(entity) = std::move(inputfield);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::PanelComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::PanelComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         PanelComponent* existing = registry->findComponent<PanelComponent>(entity);
-        PanelComponent panel = decodePanelComponent(compNode[compName], existing);
+        PanelComponent panel = decodePanelComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<PanelComponent>())){
             registry->addComponent<PanelComponent>(entity, std::move(panel));
         }else{
@@ -4586,12 +3993,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<PanelComponent>(entity) = std::move(panel);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::RectTransformComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::RectTransformComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         RectTransformComponent* existing = registry->findComponent<RectTransformComponent>(entity);
-        RectTransformComponent layout = decodeRectTransformComponent(compNode[compName], existing);
+        RectTransformComponent layout = decodeRectTransformComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<RectTransformComponent>())){
             registry->addComponent<RectTransformComponent>(entity, std::move(layout));
         }else{
@@ -4599,12 +4005,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<RectTransformComponent>(entity) = std::move(layout);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::LayoutGroupComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::LayoutGroupComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         LayoutGroupComponent* existing = registry->findComponent<LayoutGroupComponent>(entity);
-        LayoutGroupComponent container = decodeLayoutGroupComponent(compNode[compName], existing);
+        LayoutGroupComponent container = decodeLayoutGroupComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<LayoutGroupComponent>())){
             registry->addComponent<LayoutGroupComponent>(entity, std::move(container));
         }else{
@@ -4612,12 +4017,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<LayoutGroupComponent>(entity) = std::move(container);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::TextComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::TextComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         TextComponent* existing = registry->findComponent<TextComponent>(entity);
-        TextComponent text = decodeTextComponent(compNode[compName], existing);
+        TextComponent text = decodeTextComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<TextComponent>())){
             registry->addComponent<TextComponent>(entity, std::move(text));
         }else{
@@ -4625,12 +4029,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<TextComponent>(entity) = std::move(text);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ImageComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ImageComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ImageComponent* existing = registry->findComponent<ImageComponent>(entity);
-        ImageComponent image = decodeImageComponent(compNode[compName], existing);
+        ImageComponent image = decodeImageComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ImageComponent>())){
             registry->addComponent<ImageComponent>(entity, std::move(image));
         }else{
@@ -4638,12 +4041,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ImageComponent>(entity) = std::move(image);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::SpriteComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::SpriteComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         SpriteComponent* existing = registry->findComponent<SpriteComponent>(entity);
-        SpriteComponent sprite = decodeSpriteComponent(compNode[compName], existing);
+        SpriteComponent sprite = decodeSpriteComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<SpriteComponent>())){
             registry->addComponent<SpriteComponent>(entity, std::move(sprite));
         }else{
@@ -4651,12 +4053,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<SpriteComponent>(entity) = std::move(sprite);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::TilemapComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::TilemapComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         TilemapComponent* existing = registry->findComponent<TilemapComponent>(entity);
-        TilemapComponent tilemap = decodeTilemapComponent(compNode[compName], existing);
+        TilemapComponent tilemap = decodeTilemapComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<TilemapComponent>())){
             registry->addComponent<TilemapComponent>(entity, std::move(tilemap));
         }else{
@@ -4664,12 +4065,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<TilemapComponent>(entity) = std::move(tilemap);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::TerrainComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::TerrainComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         TerrainComponent* existing = registry->findComponent<TerrainComponent>(entity);
-        TerrainComponent terrain = decodeTerrainComponent(compNode[compName], existing);
+        TerrainComponent terrain = decodeTerrainComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<TerrainComponent>())){
             registry->addComponent<TerrainComponent>(entity, std::move(terrain));
         }else{
@@ -4677,12 +4077,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<TerrainComponent>(entity) = std::move(terrain);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::LightComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::LightComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         LightComponent* existing = registry->findComponent<LightComponent>(entity);
-        LightComponent light = decodeLightComponent(compNode[compName], existing);
+        LightComponent light = decodeLightComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<LightComponent>())){
             registry->addComponent<LightComponent>(entity, std::move(light));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::LightComponent));
@@ -4691,12 +4090,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<LightComponent>(entity) = std::move(light);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::Light2DComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::Light2DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         Light2DComponent* existing = registry->findComponent<Light2DComponent>(entity);
-        Light2DComponent light2d = decodeLight2DComponent(compNode[compName], existing);
+        Light2DComponent light2d = decodeLight2DComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<Light2DComponent>())){
             registry->addComponent<Light2DComponent>(entity, std::move(light2d));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::Light2DComponent));
@@ -4705,12 +4103,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Light2DComponent>(entity) = std::move(light2d);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ShadowCaster2DComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ShadowCaster2DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ShadowCaster2DComponent* existing = registry->findComponent<ShadowCaster2DComponent>(entity);
-        ShadowCaster2DComponent shadowcaster2d = decodeShadowCaster2DComponent(compNode[compName], existing);
+        ShadowCaster2DComponent shadowcaster2d = decodeShadowCaster2DComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ShadowCaster2DComponent>())){
             registry->addComponent<ShadowCaster2DComponent>(entity, std::move(shadowcaster2d));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::ShadowCaster2DComponent));
@@ -4719,12 +4116,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ShadowCaster2DComponent>(entity) = std::move(shadowcaster2d);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::FogComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::FogComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         FogComponent* existing = registry->findComponent<FogComponent>(entity);
-        FogComponent fog = decodeFogComponent(compNode[compName], existing);
+        FogComponent fog = decodeFogComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<FogComponent>())){
             registry->addComponent<FogComponent>(entity, std::move(fog));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::FogComponent));
@@ -4733,12 +4129,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<FogComponent>(entity) = std::move(fog);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::MirrorComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::MirrorComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         MirrorComponent* existing = registry->findComponent<MirrorComponent>(entity);
-        MirrorComponent mirror = decodeMirrorComponent(compNode[compName], existing);
+        MirrorComponent mirror = decodeMirrorComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<MirrorComponent>())){
             registry->addComponent<MirrorComponent>(entity, std::move(mirror));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::MirrorComponent));
@@ -4747,12 +4142,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<MirrorComponent>(entity) = std::move(mirror);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ReflectionProbeComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ReflectionProbeComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ReflectionProbeComponent* existing = registry->findComponent<ReflectionProbeComponent>(entity);
-        ReflectionProbeComponent probe = decodeReflectionProbeComponent(compNode[compName], existing);
+        ReflectionProbeComponent probe = decodeReflectionProbeComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ReflectionProbeComponent>())){
             registry->addComponent<ReflectionProbeComponent>(entity, std::move(probe));
             Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::ReflectionProbeComponent));
@@ -4761,12 +4155,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ReflectionProbeComponent>(entity) = std::move(probe);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::UIDocumentComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::UIDocumentComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         UIDocumentComponent* existing = registry->findComponent<UIDocumentComponent>(entity);
-        UIDocumentComponent document = decodeUIDocumentComponent(compNode[compName], existing);
+        UIDocumentComponent document = decodeUIDocumentComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<UIDocumentComponent>())){
             registry->addComponent<UIDocumentComponent>(entity, std::move(document));
         }else{
@@ -4774,12 +4167,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::CameraComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::CameraComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         CameraComponent* existing = registry->findComponent<CameraComponent>(entity);
-        CameraComponent camera = decodeCameraComponent(compNode[compName], existing);
+        CameraComponent camera = decodeCameraComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<CameraComponent>())){
             registry->addComponent<CameraComponent>(entity, std::move(camera));
         }else{
@@ -4787,12 +4179,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<CameraComponent>(entity) = std::move(camera);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::AudioSourceComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::AudioSourceComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         AudioSourceComponent* existing = registry->findComponent<AudioSourceComponent>(entity);
-        AudioSourceComponent audio = decodeAudioSourceComponent(compNode[compName], existing);
+        AudioSourceComponent audio = decodeAudioSourceComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<AudioSourceComponent>())){
             registry->addComponent<AudioSourceComponent>(entity, std::move(audio));
         }else{
@@ -4800,12 +4191,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<AudioSourceComponent>(entity) = std::move(audio);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ScriptComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ScriptComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ScriptComponent* existing = registry->findComponent<ScriptComponent>(entity);
-        ScriptComponent script = decodeScriptComponent(compNode[compName], existing);
+        ScriptComponent script = decodeScriptComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ScriptComponent>())){
             registry->addComponent<ScriptComponent>(entity, std::move(script));
         }else{
@@ -4813,12 +4203,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ScriptComponent>(entity) = std::move(script);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::SkyboxComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::SkyboxComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         SkyboxComponent* existing = registry->findComponent<SkyboxComponent>(entity);
-        SkyboxComponent sky = decodeSkyboxComponent(compNode[compName], existing);
+        SkyboxComponent sky = decodeSkyboxComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<SkyboxComponent>())){
             registry->addComponent<SkyboxComponent>(entity, std::move(sky));
         }else{
@@ -4826,12 +4215,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<SkyboxComponent>(entity) = std::move(sky);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ModelComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ModelComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ModelComponent* existing = registry->findComponent<ModelComponent>(entity);
-        ModelComponent model = decodeModelComponent(compNode[compName], existing);
+        ModelComponent model = decodeModelComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ModelComponent>())){
             registry->addComponent<ModelComponent>(entity, std::move(model));
         }else{
@@ -4839,12 +4227,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ModelComponent>(entity) = std::move(model);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::Rigidbody2DComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::Rigidbody2DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         Rigidbody2DComponent* existing = registry->findComponent<Rigidbody2DComponent>(entity);
-        Rigidbody2DComponent body = decodeRigidbody2DComponent(compNode[compName], existing);
+        Rigidbody2DComponent body = decodeRigidbody2DComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<Rigidbody2DComponent>())){
             registry->addComponent<Rigidbody2DComponent>(entity, std::move(body));
         }else{
@@ -4852,14 +4239,13 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Rigidbody2DComponent>(entity) = std::move(body);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::RigidbodyComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::RigidbodyComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         RigidbodyComponent* existing = registry->findComponent<RigidbodyComponent>(entity);
         Transform* bodyTransform = registry->findComponent<Transform>(entity);
         const Vector3 bodyScale = bodyTransform ? bodyTransform->scale : Vector3::UNIT_SCALE;
-        RigidbodyComponent body = decodeRigidbodyComponent(compNode[compName], existing, bodyScale);
+        RigidbodyComponent body = decodeRigidbodyComponent(componentNode, existing, bodyScale);
         if (!signature.test(registry->getComponentId<RigidbodyComponent>())){
             registry->addComponent<RigidbodyComponent>(entity, std::move(body));
         }else{
@@ -4867,12 +4253,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<RigidbodyComponent>(entity) = std::move(body);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::Joint2DComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::Joint2DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         Joint2DComponent* existing = registry->findComponent<Joint2DComponent>(entity);
-        Joint2DComponent joint = decodeJoint2DComponent(compNode[compName], existing);
+        Joint2DComponent joint = decodeJoint2DComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<Joint2DComponent>())){
             registry->addComponent<Joint2DComponent>(entity, std::move(joint));
         }else{
@@ -4880,12 +4265,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Joint2DComponent>(entity) = std::move(joint);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::Joint3DComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::Joint3DComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         Joint3DComponent* existing = registry->findComponent<Joint3DComponent>(entity);
-        Joint3DComponent joint = decodeJoint3DComponent(compNode[compName], existing);
+        Joint3DComponent joint = decodeJoint3DComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<Joint3DComponent>())){
             registry->addComponent<Joint3DComponent>(entity, std::move(joint));
         }else{
@@ -4893,12 +4277,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Joint3DComponent>(entity) = std::move(joint);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ActionComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ActionComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ActionComponent* existing = registry->findComponent<ActionComponent>(entity);
-        ActionComponent action = decodeActionComponent(compNode[compName], existing);
+        ActionComponent action = decodeActionComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ActionComponent>())){
             registry->addComponent<ActionComponent>(entity, std::move(action));
         }else{
@@ -4906,12 +4289,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ActionComponent>(entity) = std::move(action);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::TweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::TweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         TweenComponent* existing = registry->findComponent<TweenComponent>(entity);
-        TweenComponent timed = decodeTweenComponent(compNode[compName], existing);
+        TweenComponent timed = decodeTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<TweenComponent>())){
             registry->addComponent<TweenComponent>(entity, std::move(timed));
         }else{
@@ -4919,12 +4301,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<TweenComponent>(entity) = std::move(timed);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::PositionTweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::PositionTweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         PositionTweenComponent* existing = registry->findComponent<PositionTweenComponent>(entity);
-        PositionTweenComponent posAction = decodePositionTweenComponent(compNode[compName], existing);
+        PositionTweenComponent posAction = decodePositionTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<PositionTweenComponent>())){
             registry->addComponent<PositionTweenComponent>(entity, std::move(posAction));
         }else{
@@ -4932,12 +4313,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<PositionTweenComponent>(entity) = std::move(posAction);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::RotationTweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::RotationTweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         RotationTweenComponent* existing = registry->findComponent<RotationTweenComponent>(entity);
-        RotationTweenComponent rotAction = decodeRotationTweenComponent(compNode[compName], existing);
+        RotationTweenComponent rotAction = decodeRotationTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<RotationTweenComponent>())){
             registry->addComponent<RotationTweenComponent>(entity, std::move(rotAction));
         }else{
@@ -4945,12 +4325,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<RotationTweenComponent>(entity) = std::move(rotAction);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ScaleTweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ScaleTweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ScaleTweenComponent* existing = registry->findComponent<ScaleTweenComponent>(entity);
-        ScaleTweenComponent scaleTween = decodeScaleTweenComponent(compNode[compName], existing);
+        ScaleTweenComponent scaleTween = decodeScaleTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ScaleTweenComponent>())){
             registry->addComponent<ScaleTweenComponent>(entity, std::move(scaleTween));
         }else{
@@ -4958,12 +4337,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ScaleTweenComponent>(entity) = std::move(scaleTween);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ColorTweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ColorTweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ColorTweenComponent* existing = registry->findComponent<ColorTweenComponent>(entity);
-        ColorTweenComponent colorTween = decodeColorTweenComponent(compNode[compName], existing);
+        ColorTweenComponent colorTween = decodeColorTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ColorTweenComponent>())){
             registry->addComponent<ColorTweenComponent>(entity, std::move(colorTween));
         }else{
@@ -4971,12 +4349,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<ColorTweenComponent>(entity) = std::move(colorTween);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::AlphaTweenComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::AlphaTweenComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         AlphaTweenComponent* existing = registry->findComponent<AlphaTweenComponent>(entity);
-        AlphaTweenComponent alphaTween = decodeAlphaTweenComponent(compNode[compName], existing);
+        AlphaTweenComponent alphaTween = decodeAlphaTweenComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<AlphaTweenComponent>())){
             registry->addComponent<AlphaTweenComponent>(entity, std::move(alphaTween));
         }else{
@@ -4984,12 +4361,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<AlphaTweenComponent>(entity) = std::move(alphaTween);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::SpriteAnimationComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::SpriteAnimationComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         SpriteAnimationComponent* existing = registry->findComponent<SpriteAnimationComponent>(entity);
-        SpriteAnimationComponent spriteanim = decodeSpriteAnimationComponent(compNode[compName], existing);
+        SpriteAnimationComponent spriteanim = decodeSpriteAnimationComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<SpriteAnimationComponent>())){
             registry->addComponent<SpriteAnimationComponent>(entity, std::move(spriteanim));
         }else{
@@ -4997,12 +4373,11 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<SpriteAnimationComponent>(entity) = std::move(spriteanim);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::AnimationComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::AnimationComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         AnimationComponent* existing = registry->findComponent<AnimationComponent>(entity);
-        AnimationComponent animation = decodeAnimationComponent(compNode[compName], existing);
+        AnimationComponent animation = decodeAnimationComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<AnimationComponent>())){
             registry->addComponent<AnimationComponent>(entity, std::move(animation));
         }else{
@@ -5010,133 +4385,121 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<AnimationComponent>(entity) = std::move(animation);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::BoneComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::BoneComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         BoneComponent* existing = registry->findComponent<BoneComponent>(entity);
-        BoneComponent bone = decodeBoneComponent(compNode[compName], existing);
+        BoneComponent bone = decodeBoneComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<BoneComponent>())){
             registry->addComponent<BoneComponent>(entity, std::move(bone));
         }else{
             registry->getComponent<BoneComponent>(entity) = std::move(bone);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::KeyframeTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         KeyframeTracksComponent* existing = registry->findComponent<KeyframeTracksComponent>(entity);
-        KeyframeTracksComponent tracks = decodeKeyframeTracksComponent(compNode[compName], existing);
+        KeyframeTracksComponent tracks = decodeKeyframeTracksComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<KeyframeTracksComponent>())){
             registry->addComponent<KeyframeTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<KeyframeTracksComponent>(entity) = std::move(tracks);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::TranslateTracksComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::TranslateTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         TranslateTracksComponent* existing = registry->findComponent<TranslateTracksComponent>(entity);
-        TranslateTracksComponent tracks = decodeTranslateTracksComponent(compNode[compName], existing);
+        TranslateTracksComponent tracks = decodeTranslateTracksComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<TranslateTracksComponent>())){
             registry->addComponent<TranslateTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<TranslateTracksComponent>(entity) = std::move(tracks);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::RotateTracksComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::RotateTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         RotateTracksComponent* existing = registry->findComponent<RotateTracksComponent>(entity);
-        RotateTracksComponent tracks = decodeRotateTracksComponent(compNode[compName], existing);
+        RotateTracksComponent tracks = decodeRotateTracksComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<RotateTracksComponent>())){
             registry->addComponent<RotateTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<RotateTracksComponent>(entity) = std::move(tracks);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ScaleTracksComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ScaleTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ScaleTracksComponent* existing = registry->findComponent<ScaleTracksComponent>(entity);
-        ScaleTracksComponent tracks = decodeScaleTracksComponent(compNode[compName], existing);
+        ScaleTracksComponent tracks = decodeScaleTracksComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ScaleTracksComponent>())){
             registry->addComponent<ScaleTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<ScaleTracksComponent>(entity) = std::move(tracks);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::MorphTracksComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::MorphTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         MorphTracksComponent* existing = registry->findComponent<MorphTracksComponent>(entity);
-        MorphTracksComponent tracks = decodeMorphTracksComponent(compNode[compName], existing);
+        MorphTracksComponent tracks = decodeMorphTracksComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<MorphTracksComponent>())){
             registry->addComponent<MorphTracksComponent>(entity, std::move(tracks));
         }else{
             registry->getComponent<MorphTracksComponent>(entity) = std::move(tracks);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::ParticleSystemComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::ParticleSystemComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         ParticleSystemComponent* existing = registry->findComponent<ParticleSystemComponent>(entity);
-        ParticleSystemComponent particles = decodeParticleSystemComponent(compNode[compName], existing);
+        ParticleSystemComponent particles = decodeParticleSystemComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<ParticleSystemComponent>())){
             registry->addComponent<ParticleSystemComponent>(entity, std::move(particles));
         }else{
             registry->getComponent<ParticleSystemComponent>(entity) = std::move(particles);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::PointsComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::PointsComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         PointsComponent* existing = registry->findComponent<PointsComponent>(entity);
-        PointsComponent pts = decodePointsComponent(compNode[compName], existing);
+        PointsComponent pts = decodePointsComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<PointsComponent>())) {
             registry->addComponent<PointsComponent>(entity, std::move(pts));
         } else {
             registry->getComponent<PointsComponent>(entity) = std::move(pts);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::LineRendererComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::LineRendererComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         LineRendererComponent* existing = registry->findComponent<LineRendererComponent>(entity);
-        LineRendererComponent lines = decodeLineRendererComponent(compNode[compName], existing);
+        LineRendererComponent lines = decodeLineRendererComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<LineRendererComponent>())) {
             registry->addComponent<LineRendererComponent>(entity, std::move(lines));
         } else {
             registry->getComponent<LineRendererComponent>(entity) = std::move(lines);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::PolygonComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::PolygonComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         PolygonComponent* existing = registry->findComponent<PolygonComponent>(entity);
-        PolygonComponent polygon = decodePolygonComponent(compNode[compName], existing);
+        PolygonComponent polygon = decodePolygonComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<PolygonComponent>())) {
             registry->addComponent<PolygonComponent>(entity, std::move(polygon));
         } else {
             registry->getComponent<PolygonComponent>(entity) = std::move(polygon);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::MeshPolygonComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::MeshPolygonComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         MeshPolygonComponent* existing = registry->findComponent<MeshPolygonComponent>(entity);
-        MeshPolygonComponent polygon = decodeMeshPolygonComponent(compNode[compName], existing);
+        MeshPolygonComponent polygon = decodeMeshPolygonComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<MeshPolygonComponent>())) {
             registry->addComponent<MeshPolygonComponent>(entity, std::move(polygon));
         } else {
             registry->getComponent<MeshPolygonComponent>(entity) = std::move(polygon);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::InstancedMeshComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::InstancedMeshComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         InstancedMeshComponent* existing = registry->findComponent<InstancedMeshComponent>(entity);
-        InstancedMeshComponent instmesh = decodeInstancedMeshComponent(compNode[compName], existing);
+        InstancedMeshComponent instmesh = decodeInstancedMeshComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<InstancedMeshComponent>())){
             registry->addComponent<InstancedMeshComponent>(entity, std::move(instmesh));
         }else{
@@ -5144,18 +4507,19 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<InstancedMeshComponent>(entity) = std::move(instmesh);
             Catalog::updateEntity(registry, entity, flags);
         }
-    }
+    });
 
-    compName = Catalog::getComponentName(ComponentType::PrefabComponent, true);
-    if (compNode[compName]) {
+    StreamLoad::decodeComponent(ComponentType::PrefabComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
         PrefabComponent* existing = registry->findComponent<PrefabComponent>(entity);
-        PrefabComponent prefab = decodePrefabComponent(compNode[compName], existing);
+        PrefabComponent prefab = decodePrefabComponent(componentNode, existing);
         if (!signature.test(registry->getComponentId<PrefabComponent>())){
             registry->addComponent<PrefabComponent>(entity, std::move(prefab));
         }else{
             registry->getComponent<PrefabComponent>(entity) = std::move(prefab);
         }
-    }
+    });
+
+    StreamLoad::preserveUnknownComponents(entity, registry, compNode);
 }
 
 YAML::Node editor::Stream::encodeTransform(const Transform& transform) {
@@ -5358,8 +4722,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
 
-    if (node["cullingMode"]) mesh.cullingMode = stringToCullingMode(node["cullingMode"].as<std::string>());
-    if (node["windingOrder"]) mesh.windingOrder = stringToWindingOrder(node["windingOrder"].as<std::string>());
+    if (node["cullingMode"]) mesh.cullingMode = decodeEnum(node, "cullingMode", StreamSchema::cullingMode());
+    if (node["windingOrder"]) mesh.windingOrder = decodeEnum(node, "windingOrder", StreamSchema::windingOrder());
 
     if (node["customShader"]) mesh.customShader = node["customShader"].as<std::string>();
     if (node["customDepthShader"]) mesh.customDepthShader = node["customDepthShader"].as<std::string>();
@@ -5420,7 +4784,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["minBufferCount"]) ui.minBufferCount = YamlNumbers::as<unsigned int>(node["minBufferCount"]);
     if (node["minIndicesCount"]) ui.minIndicesCount = YamlNumbers::as<unsigned int>(node["minIndicesCount"]);
 
-    if (node["primitiveType"]) ui.primitiveType = stringToPrimitiveType(node["primitiveType"].as<std::string>());
+    if (node["primitiveType"]) ui.primitiveType = decodeEnum(node, "primitiveType", StreamSchema::primitiveType());
     if (node["vertexCount"]) ui.vertexCount = YamlNumbers::as<unsigned int>(node["vertexCount"]);
 
     if (node["aabb"]) ui.aabb = decodeAABB(node["aabb"]);
@@ -5503,7 +4867,7 @@ ScrollbarComponent editor::Stream::decodeScrollbarComponent(const YAML::Node& no
     }
 
     if (node["bar"]) scrollbar.bar = YamlNumbers::as<Entity>(node["bar"]);
-    if (node["type"]) scrollbar.type = stringToScrollbarType(node["type"].as<std::string>());
+    if (node["type"]) scrollbar.type = decodeEnum(node, "type", StreamSchema::scrollbarType());
     if (node["barSize"]) scrollbar.barSize = YamlNumbers::as<float>(node["barSize"]);
     if (node["step"]) scrollbar.step = YamlNumbers::as<float>(node["step"]);
     if (node["barMarginLeft"]) scrollbar.barMarginLeft = YamlNumbers::as<int>(node["barMarginLeft"]);
@@ -5536,7 +4900,7 @@ ProgressbarComponent editor::Stream::decodeProgressbarComponent(const YAML::Node
     }
 
     if (node["fill"]) progressbar.fill = YamlNumbers::as<Entity>(node["fill"]);
-    if (node["type"]) progressbar.type = stringToProgressbarType(node["type"].as<std::string>());
+    if (node["type"]) progressbar.type = decodeEnum(node, "type", StreamSchema::progressbarType());
     if (node["value"]) progressbar.value = YamlNumbers::as<float>(node["value"]);
     if (node["fillMarginLeft"]) progressbar.fillMarginLeft = YamlNumbers::as<int>(node["fillMarginLeft"]);
     if (node["fillMarginRight"]) progressbar.fillMarginRight = YamlNumbers::as<int>(node["fillMarginRight"]);
@@ -5627,7 +4991,7 @@ PanelComponent editor::Stream::decodePanelComponent(const YAML::Node& node, cons
     if (node["headerimage"]) panel.headerimage = YamlNumbers::as<Entity>(node["headerimage"]);
     if (node["headercontainer"]) panel.headercontainer = YamlNumbers::as<Entity>(node["headercontainer"]);
     if (node["headertext"]) panel.headertext = YamlNumbers::as<Entity>(node["headertext"]);
-    if (node["titleAnchorPreset"]) panel.titleAnchorPreset = stringToAnchorPreset(node["titleAnchorPreset"].as<std::string>());
+    if (node["titleAnchorPreset"]) panel.titleAnchorPreset = decodeEnum(node, "titleAnchorPreset", StreamSchema::anchorPreset());
     if (node["minWidth"]) panel.minWidth = YamlNumbers::as<unsigned int>(node["minWidth"]);
     if (node["minHeight"]) panel.minHeight = YamlNumbers::as<unsigned int>(node["minHeight"]);
     if (node["headerMarginLeft"]) panel.headerMarginLeft = YamlNumbers::as<int>(node["headerMarginLeft"]);
@@ -5690,7 +5054,7 @@ RectTransformComponent editor::Stream::decodeRectTransformComponent(const YAML::
     if (node["anchorOffsetBottom"]) layout.anchorOffsetBottom = YamlNumbers::as<int>(node["anchorOffsetBottom"]);
     if (node["positionOffset"]) layout.positionOffset = decodeVector2(node["positionOffset"]);
     if (node["pivot"]) layout.pivot = decodeVector2(node["pivot"]);
-    if (node["anchorPreset"]) layout.anchorPreset = stringToAnchorPreset(node["anchorPreset"].as<std::string>());
+    if (node["anchorPreset"]) layout.anchorPreset = decodeEnum(node, "anchorPreset", StreamSchema::anchorPreset());
     if (node["usingAnchors"]) layout.usingAnchors = YamlNumbers::as<bool>(node["usingAnchors"]);
     if (node["panel"]) layout.panel = YamlNumbers::as<Entity>(node["panel"]);
     if (node["containerBoxIndex"]) layout.containerBoxIndex = YamlNumbers::as<int>(node["containerBoxIndex"]);
@@ -5717,7 +5081,7 @@ LayoutGroupComponent editor::Stream::decodeLayoutGroupComponent(const YAML::Node
         container = *oldContainer;
     }
 
-    if (node["type"]) container.type = stringToLayoutGroupType(node["type"].as<std::string>());
+    if (node["type"]) container.type = decodeEnum(node, "type", StreamSchema::layoutGroupType());
     if (node["useAllWrapSpace"]) container.useAllWrapSpace = YamlNumbers::as<bool>(node["useAllWrapSpace"]);
     if (node["fillAvailableSpace"]) container.useAllWrapSpace = YamlNumbers::as<bool>(node["fillAvailableSpace"]);
     if (node["wrapCellWidth"]) container.wrapCellWidth = YamlNumbers::as<unsigned int>(node["wrapCellWidth"]);
@@ -5848,7 +5212,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["automaticFlipY"]) sprite.automaticFlipY = YamlNumbers::as<bool>(node["automaticFlipY"]);
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
-    if (node["pivotPreset"]) sprite.pivotPreset = stringToPivotPreset(node["pivotPreset"].as<std::string>());
+    if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];
@@ -6336,7 +5700,7 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
         light = *oldLight;
     }
 
-    if (node["type"]) light.type = stringToLightType(node["type"].as<std::string>());
+    if (node["type"]) light.type = decodeEnum(node, "type", StreamSchema::lightType());
     if (node["direction"]) light.direction = decodeVector3(node["direction"]);
     if (node["worldDirection"]) light.worldDirection = decodeVector3(node["worldDirection"]);
     if (node["color"]) light.color = decodeVector3(node["color"]);
@@ -6353,7 +5717,7 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["shadowCameraNearFar"]) light.shadowCameraNearFar = decodeVector2(node["shadowCameraNearFar"]);
     if (node["numShadowCascades"]) light.numShadowCascades = YamlNumbers::as<unsigned int>(node["numShadowCascades"]);
     // omitted at its default, so an absent key is the default
-    light.shading = node["shading"] ? stringToLightShading(node["shading"].as<std::string>()) : LightShading::BOTH;
+    light.shading = node["shading"] ? decodeEnum(node, "shading", StreamSchema::lightShading()) : LightShading::BOTH;
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -6401,16 +5765,7 @@ Light2DComponent editor::Stream::decodeLight2DComponent(const YAML::Node& node, 
 }
 
 static std::string shadowCaster2DShapeToString(ShadowCaster2DShape shape) {
-    switch (shape) {
-        case ShadowCaster2DShape::AUTO_QUAD: return "autoquad";
-        case ShadowCaster2DShape::POLYGON: return "polygon";
-    }
-    return "autoquad";
-}
-
-static ShadowCaster2DShape stringToShadowCaster2DShape(const std::string& str) {
-    if (str == "polygon") return ShadowCaster2DShape::POLYGON;
-    return ShadowCaster2DShape::AUTO_QUAD;
+    return editor::StreamSchema::shadowCaster2DShape().toString(shape);
 }
 
 YAML::Node editor::Stream::encodeShadowCaster2DComponent(const ShadowCaster2DComponent& occluder) {
@@ -6436,7 +5791,7 @@ ShadowCaster2DComponent editor::Stream::decodeShadowCaster2DComponent(const YAML
         occluder = *oldOccluder;
     }
 
-    if (node["shape"]) occluder.shape = stringToShadowCaster2DShape(node["shape"].as<std::string>());
+    if (node["shape"]) occluder.shape = decodeEnum(node, "shape", StreamSchema::shadowCaster2DShape());
     if (node["closed"]) occluder.closed = YamlNumbers::as<bool>(node["closed"]);
     if (node["enabled"]) occluder.enabled = YamlNumbers::as<bool>(node["enabled"]);
     if (node["points"]) {
@@ -6468,7 +5823,7 @@ FogComponent editor::Stream::decodeFogComponent(const YAML::Node& node, const Fo
         fog = *oldFog;
     }
 
-    if (node["type"]) fog.type = stringToFogType(node["type"].as<std::string>());
+    if (node["type"]) fog.type = decodeEnum(node, "type", StreamSchema::fogType());
     if (node["color"]) fog.color = decodeVector3(node["color"]);
     if (node["density"]) fog.density = YamlNumbers::as<float>(node["density"]);
     if (node["linearStart"]) fog.linearStart = YamlNumbers::as<float>(node["linearStart"]);
@@ -6565,7 +5920,7 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
         return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
     };
     document.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
-    document.renderMode = given("renderMode") ? stringToUIDocumentRenderMode(node["renderMode"].as<std::string>()) : defaults.renderMode;
+    document.renderMode = given("renderMode") ? decodeEnum(node, "renderMode", StreamSchema::uiDocumentRenderMode()) : defaults.renderMode;
     document.textureWidth = given("textureWidth") ? std::clamp(YamlNumbers::as<int>(node["textureWidth"]), 1, 8192) : defaults.textureWidth;
     document.textureHeight = given("textureHeight") ? std::clamp(YamlNumbers::as<int>(node["textureHeight"]), 1, 8192) : defaults.textureHeight;
     document.inputSurface = given("inputSurface") ? YamlNumbers::as<Entity>(node["inputSurface"]) : defaults.inputSurface;
@@ -6647,7 +6002,7 @@ CameraComponent editor::Stream::decodeCameraComponent(const YAML::Node& node, co
         camera = *oldCamera;
     }
 
-    if (node["type"]) camera.type = stringToCameraType(node["type"].as<std::string>());
+    if (node["type"]) camera.type = decodeEnum(node, "type", StreamSchema::cameraType());
     if (node["cullingMask"]) camera.cullingMask = decodeLayerMask(node["cullingMask"], camera.cullingMask);
     camera.target = decodeFiniteVector3(node["target"], camera.target);
     camera.up = decodeFiniteVector3(node["up"], camera.up);
@@ -6666,7 +6021,7 @@ CameraComponent editor::Stream::decodeCameraComponent(const YAML::Node& node, co
     if (node["autoResize"]) camera.autoResize = YamlNumbers::as<bool>(node["autoResize"]);
     if (node["framebufferWidth"]) camera.framebufferWidth = YamlNumbers::as<unsigned int>(node["framebufferWidth"]);
     if (node["framebufferHeight"]) camera.framebufferHeight = YamlNumbers::as<unsigned int>(node["framebufferHeight"]);
-    if (node["framebufferFilter"]) camera.framebufferFilter = stringToTextureFilter(node["framebufferFilter"].as<std::string>());
+    if (node["framebufferFilter"]) camera.framebufferFilter = decodeEnum(node, "framebufferFilter", StreamSchema::textureFilter());
 
     if (node["enabled"]) camera.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -6706,7 +6061,7 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
         oldFilename = oldAudio->filename;
     }
 
-    if (node["state"]) audio.state = stringToAudioSourceState(node["state"].as<std::string>());
+    if (node["state"]) audio.state = decodeEnum(node, "state", StreamSchema::audioSourceState());
     if (node["filename"]) audio.filename = node["filename"].as<std::string>();
     if (node["enableClocked"]) audio.enableClocked = YamlNumbers::as<bool>(node["enableClocked"]);
     if (node["volume"]) audio.volume = decodeFiniteDouble(node["volume"], audio.volume);
@@ -6719,7 +6074,7 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
     if (node["inaudibleBehaviorKill"]) audio.inaudibleBehaviorKill = YamlNumbers::as<bool>(node["inaudibleBehaviorKill"]);
     if (node["minDistance"]) audio.minDistance = decodeFinite(node["minDistance"], audio.minDistance);
     if (node["maxDistance"]) audio.maxDistance = decodeFinite(node["maxDistance"], audio.maxDistance);
-    if (node["attenuationModel"]) audio.attenuationModel = stringToAudioSourceAttenuation(node["attenuationModel"].as<std::string>());
+    if (node["attenuationModel"]) audio.attenuationModel = decodeEnum(node, "attenuationModel", StreamSchema::audioSourceAttenuation());
     if (node["attenuationRolloffFactor"]) audio.attenuationRolloffFactor = decodeFinite(node["attenuationRolloffFactor"], audio.attenuationRolloffFactor);
     if (node["dopplerFactor"]) audio.dopplerFactor = decodeFinite(node["dopplerFactor"], audio.dopplerFactor);
 
@@ -6798,8 +6153,7 @@ ScriptComponent editor::Stream::decodeScriptComponent(const YAML::Node& node, co
         ScriptEntry entry;
 
         if (scriptNode["type"]) {
-            std::string typeStr = scriptNode["type"].as<std::string>();
-            entry.type = stringToScriptType(typeStr);
+            entry.type = decodeEnum(scriptNode, "type", StreamSchema::scriptType());
         }
 
         if (scriptNode["path"])
@@ -6860,10 +6214,10 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
     if (node["texture"]) {
         if (useDefaultTexture) {
             const YAML::Node& texNode = node["texture"];
-            if (texNode["minFilter"]) sky.texture.setMinFilter(stringToTextureFilter(texNode["minFilter"].as<std::string>()));
-            if (texNode["magFilter"]) sky.texture.setMagFilter(stringToTextureFilter(texNode["magFilter"].as<std::string>()));
-            if (texNode["wrapU"]) sky.texture.setWrapU(stringToTextureWrap(texNode["wrapU"].as<std::string>()));
-            if (texNode["wrapV"]) sky.texture.setWrapV(stringToTextureWrap(texNode["wrapV"].as<std::string>()));
+            if (texNode["minFilter"]) sky.texture.setMinFilter(decodeEnum(texNode, "minFilter", StreamSchema::textureFilter()));
+            if (texNode["magFilter"]) sky.texture.setMagFilter(decodeEnum(texNode, "magFilter", StreamSchema::textureFilter()));
+            if (texNode["wrapU"]) sky.texture.setWrapU(decodeEnum(texNode, "wrapU", StreamSchema::textureWrap()));
+            if (texNode["wrapV"]) sky.texture.setWrapV(decodeEnum(texNode, "wrapV", StreamSchema::textureWrap()));
             if (texNode["releaseDataAfterLoad"]) sky.texture.setReleaseDataAfterLoad(YamlNumbers::as<bool>(texNode["releaseDataAfterLoad"]));
         } else {
             sky.texture = decodeTexture(node["texture"]);
@@ -6886,131 +6240,51 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
 // ==============================
 
 std::string editor::Stream::bodyTypeToString(BodyType type) {
-    switch (type) {
-        case BodyType::STATIC: return "static";
-        case BodyType::KINEMATIC: return "kinematic";
-        case BodyType::DYNAMIC: return "dynamic";
-        default: return "static";
-    }
+    return StreamSchema::bodyType().toString(type);
 }
 
 BodyType editor::Stream::stringToBodyType(const std::string& str) {
-    if (str == "kinematic") return BodyType::KINEMATIC;
-    if (str == "dynamic") return BodyType::DYNAMIC;
-    return BodyType::STATIC;
+    return StreamSchema::bodyType().fromString(str);
 }
 
 std::string editor::Stream::rigidbodyMotionQualityToString(RigidbodyMotionQuality motionQuality) {
-    switch (motionQuality) {
-        case RigidbodyMotionQuality::LINEAR_CAST: return "linear_cast";
-        case RigidbodyMotionQuality::DISCRETE:
-        default: return "discrete";
-    }
+    return StreamSchema::rigidbodyMotionQuality().toString(motionQuality);
 }
 
 RigidbodyMotionQuality editor::Stream::stringToRigidbodyMotionQuality(const std::string& str) {
-    if (str == "linear_cast") return RigidbodyMotionQuality::LINEAR_CAST;
-    return RigidbodyMotionQuality::DISCRETE;
+    return StreamSchema::rigidbodyMotionQuality().fromString(str);
 }
 
 std::string editor::Stream::collider2DTypeToString(Collider2DType type) {
-    switch (type) {
-        case Collider2DType::POLYGON: return "polygon";
-        case Collider2DType::CIRCLE: return "circle";
-        case Collider2DType::CAPSULE: return "capsule";
-        case Collider2DType::SEGMENT: return "segment";
-        case Collider2DType::CHAIN: return "chain";
-        default: return "polygon";
-    }
+    return StreamSchema::collider2DType().toString(type);
 }
 
 Collider2DType editor::Stream::stringToCollider2DType(const std::string& str) {
-    if (str == "circle") return Collider2DType::CIRCLE;
-    if (str == "capsule") return Collider2DType::CAPSULE;
-    if (str == "segment") return Collider2DType::SEGMENT;
-    if (str == "chain") return Collider2DType::CHAIN;
-    return Collider2DType::POLYGON;
+    return StreamSchema::collider2DType().fromString(str);
 }
 
 std::string editor::Stream::collider3DTypeToString(Collider3DType type) {
-    switch (type) {
-        case Collider3DType::SPHERE: return "sphere";
-        case Collider3DType::BOX: return "box";
-        case Collider3DType::CAPSULE: return "capsule";
-        case Collider3DType::TAPERED_CAPSULE: return "tapered_capsule";
-        case Collider3DType::CYLINDER: return "cylinder";
-        case Collider3DType::CONVEX_HULL: return "convex_hull";
-        case Collider3DType::MESH: return "mesh";
-        case Collider3DType::HEIGHTFIELD: return "heightfield";
-        default: return "sphere";
-    }
+    return StreamSchema::collider3DType().toString(type);
 }
 
 Collider3DType editor::Stream::stringToCollider3DType(const std::string& str) {
-    if (str == "box") return Collider3DType::BOX;
-    if (str == "capsule") return Collider3DType::CAPSULE;
-    if (str == "tapered_capsule") return Collider3DType::TAPERED_CAPSULE;
-    if (str == "cylinder") return Collider3DType::CYLINDER;
-    if (str == "convex_hull") return Collider3DType::CONVEX_HULL;
-    if (str == "mesh") return Collider3DType::MESH;
-    if (str == "heightfield") return Collider3DType::HEIGHTFIELD;
-    return Collider3DType::SPHERE;
+    return StreamSchema::collider3DType().fromString(str);
 }
 
 std::string editor::Stream::joint2DTypeToString(Joint2DType type) {
-    switch (type) {
-        case Joint2DType::DISTANCE: return "distance";
-        case Joint2DType::REVOLUTE: return "revolute";
-        case Joint2DType::PRISMATIC: return "prismatic";
-        case Joint2DType::MOUSE: return "mouse";
-        case Joint2DType::WHEEL: return "wheel";
-        case Joint2DType::WELD: return "weld";
-        case Joint2DType::MOTOR: return "motor";
-        default: return "distance";
-    }
+    return StreamSchema::joint2DType().toString(type);
 }
 
 Joint2DType editor::Stream::stringToJoint2DType(const std::string& str) {
-    if (str == "revolute") return Joint2DType::REVOLUTE;
-    if (str == "prismatic") return Joint2DType::PRISMATIC;
-    if (str == "mouse") return Joint2DType::MOUSE;
-    if (str == "wheel") return Joint2DType::WHEEL;
-    if (str == "weld") return Joint2DType::WELD;
-    if (str == "motor") return Joint2DType::MOTOR;
-    return Joint2DType::DISTANCE;
+    return StreamSchema::joint2DType().fromString(str);
 }
 
 std::string editor::Stream::joint3DTypeToString(Joint3DType type) {
-    switch (type) {
-        case Joint3DType::FIXED: return "fixed";
-        case Joint3DType::DISTANCE: return "distance";
-        case Joint3DType::POINT: return "point";
-        case Joint3DType::HINGE: return "hinge";
-        case Joint3DType::CONE: return "cone";
-        case Joint3DType::PRISMATIC: return "prismatic";
-        case Joint3DType::SWINGTWIST: return "swingtwist";
-        case Joint3DType::SIXDOF: return "sixdof";
-        case Joint3DType::PATH: return "path";
-        case Joint3DType::GEAR: return "gear";
-        case Joint3DType::RACKANDPINON: return "rackandpinion";
-        case Joint3DType::PULLEY: return "pulley";
-        default: return "fixed";
-    }
+    return StreamSchema::joint3DType().toString(type);
 }
 
 Joint3DType editor::Stream::stringToJoint3DType(const std::string& str) {
-    if (str == "distance") return Joint3DType::DISTANCE;
-    if (str == "point") return Joint3DType::POINT;
-    if (str == "hinge") return Joint3DType::HINGE;
-    if (str == "cone") return Joint3DType::CONE;
-    if (str == "prismatic") return Joint3DType::PRISMATIC;
-    if (str == "swingtwist") return Joint3DType::SWINGTWIST;
-    if (str == "sixdof") return Joint3DType::SIXDOF;
-    if (str == "path") return Joint3DType::PATH;
-    if (str == "gear") return Joint3DType::GEAR;
-    if (str == "rackandpinion") return Joint3DType::RACKANDPINON;
-    if (str == "pulley") return Joint3DType::PULLEY;
-    return Joint3DType::FIXED;
+    return StreamSchema::joint3DType().fromString(str);
 }
 
 // ==============================
@@ -7065,14 +6339,14 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
         body = *oldBody;
     }
 
-    if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
+    if (node["type"]) body.type = decodeEnum(node, "type", StreamSchema::bodyType());
     if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
 
     if (node["colliders"]) {
         size_t count = node["colliders"].size();
         for (size_t i = 0; i < count; i++) {
             if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = stringToCollider2DType(node["colliders"][i]["type"].as<std::string>());
+                body.colliders[i].type = decodeEnum(node["colliders"][i], "type", StreamSchema::collider2DType());
             }
             if (node["colliders"][i]["pointA"]) {
                 body.colliders[i].pointA = decodeVector2(node["colliders"][i]["pointA"]);
@@ -7200,8 +6474,8 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         body = *oldBody;
     }
 
-    if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
-    if (node["motionQuality"]) body.motionQuality = stringToRigidbodyMotionQuality(node["motionQuality"].as<std::string>());
+    if (node["type"]) body.type = decodeEnum(node, "type", StreamSchema::bodyType());
+    if (node["motionQuality"]) body.motionQuality = decodeEnum(node, "motionQuality", StreamSchema::rigidbodyMotionQuality());
     if (node["sensor"]) body.sensor = YamlNumbers::as<bool>(node["sensor"]);
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
     if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
@@ -7231,7 +6505,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         size_t count = node["colliders"].size();
         for (size_t i = 0; i < count; i++) {
             if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = stringToCollider3DType(node["colliders"][i]["type"].as<std::string>());
+                body.colliders[i].type = decodeEnum(node["colliders"][i], "type", StreamSchema::collider3DType());
             }
             if (node["colliders"][i]["position"]) {
                 body.colliders[i].position = decodeVector3(node["colliders"][i]["position"]);
@@ -7334,7 +6608,7 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
         joint = *oldJoint;
     }
 
-    if (node["type"]) joint.type = stringToJoint2DType(node["type"].as<std::string>());
+    if (node["type"]) joint.type = decodeEnum(node, "type", StreamSchema::joint2DType());
     if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
     if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
     if (node["anchorA"]) joint.anchorA = decodeVector2(node["anchorA"]);
@@ -7409,7 +6683,7 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
         joint = *oldJoint;
     }
 
-    if (node["type"]) joint.type = stringToJoint3DType(node["type"].as<std::string>());
+    if (node["type"]) joint.type = decodeEnum(node, "type", StreamSchema::joint3DType());
     if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
     if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
     if (node["anchorA"]) joint.anchorA = decodeVector3(node["anchorA"]);
@@ -7460,18 +6734,11 @@ Joint3DComponent editor::Stream::decodeJoint3DComponent(const YAML::Node& node, 
 // ── ActionComponent ──
 
 std::string editor::Stream::actionStateToString(ActionState state) {
-    switch (state) {
-        case ActionState::Running: return "Running";
-        case ActionState::Paused: return "Paused";
-        case ActionState::Stopped: return "Stopped";
-        default: return "Stopped";
-    }
+    return StreamSchema::actionState().toString(state);
 }
 
 ActionState editor::Stream::stringToActionState(const std::string& str) {
-    if (str == "Running") return ActionState::Running;
-    if (str == "Paused") return ActionState::Paused;
-    return ActionState::Stopped;
+    return StreamSchema::actionState().fromString(str);
 }
 
 YAML::Node editor::Stream::encodeActionComponent(const ActionComponent& action) {
@@ -7497,7 +6764,7 @@ ActionComponent editor::Stream::decodeActionComponent(const YAML::Node& node, co
     action.stopTrigger = false;
     action.pauseTrigger = false;
 
-    if (node["state"]) action.state = stringToActionState(node["state"].as<std::string>());
+    if (node["state"]) action.state = decodeEnum(node, "state", StreamSchema::actionState());
     if (node["speed"]) action.speed = YamlNumbers::as<float>(node["speed"]);
     if (node["target"]) action.target = YamlNumbers::as<Entity>(node["target"]);
     if (node["ownedTarget"]) action.ownedTarget = YamlNumbers::as<bool>(node["ownedTarget"]);
@@ -7840,7 +7107,7 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
     tracks.easings.clear();
     if (node["easings"]) {
         for (const YAML::Node& e : node["easings"]) {
-            tracks.easings.push_back(stringToEaseType(e.as<std::string>()));
+            tracks.easings.push_back(decodeEnumValue(e, StreamSchema::easeType()));
         }
     }
 
@@ -8174,7 +7441,7 @@ ParticleSystemComponent editor::Stream::decodeParticleSystemComponent(const YAML
     }
     if (node["positionInitializer"]) {
         const YAML::Node& n = node["positionInitializer"];
-        if (n["shape"]) particles.positionInitializer.shape = stringToParticleEmitterShape(n["shape"].as<std::string>());
+        if (n["shape"]) particles.positionInitializer.shape = decodeEnum(n, "shape", StreamSchema::particleEmitterShape());
         if (n["minPosition"]) particles.positionInitializer.minPosition = decodeVector3(n["minPosition"]);
         if (n["maxPosition"]) particles.positionInitializer.maxPosition = decodeVector3(n["maxPosition"]);
         if (n["radius"]) particles.positionInitializer.radius = YamlNumbers::as<float>(n["radius"]);

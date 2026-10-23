@@ -433,6 +433,8 @@
 		713D8293259D307F00567F9F /* Scene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC2D25962A0E0075B97D /* Scene.cpp */; };
 		713D8294259D307F00567F9F /* Data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3225962A0E0075B97D /* Data.cpp */; };
 		713D8295259D307F00567F9F /* UserSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3325962A0E0075B97D /* UserSettings.cpp */; };
+		53303346AD54911B3920A4A9 /* ScopedFileLock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330334642A567827E793B3B /* ScopedFileLock.cpp */; };
+		5330334691A83E230FB5ECB5 /* AtomicFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303346FA879A45D28931E2 /* AtomicFile.cpp */; };
 		713D8296259D307F00567F9F /* File.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3525962A0E0075B97D /* File.cpp */; };
 		713D8297259D307F00567F9F /* FileData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3625962A0E0075B97D /* FileData.cpp */; };
 		713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3925962A0E0075B97D /* ShaderRender.cpp */; };
@@ -539,6 +541,8 @@
 		7162FD1325963AE00075B97D /* Scene.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC2D25962A0E0075B97D /* Scene.cpp */; };
 		7162FD1625963AE00075B97D /* Data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3225962A0E0075B97D /* Data.cpp */; };
 		7162FD1725963AE00075B97D /* UserSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3325962A0E0075B97D /* UserSettings.cpp */; };
+		53303346B7A98CBB07BB8888 /* ScopedFileLock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330334642A567827E793B3B /* ScopedFileLock.cpp */; };
+		53303346B5F448E6AA32181A /* AtomicFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303346FA879A45D28931E2 /* AtomicFile.cpp */; };
 		7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3A2E76C0010075B97D /* ResourcePack.cpp */; };
 		7162FD1925963AE00075B97D /* File.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3525962A0E0075B97D /* File.cpp */; };
 		7162FD1A25963AE00075B97D /* FileData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3625962A0E0075B97D /* FileData.cpp */; };
@@ -4136,6 +4140,10 @@
 		7162FC3125962A0E0075B97D /* File.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = File.h; sourceTree = "<group>"; };
 		7162FC3225962A0E0075B97D /* Data.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Data.cpp; sourceTree = "<group>"; };
 		7162FC3325962A0E0075B97D /* UserSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserSettings.cpp; sourceTree = "<group>"; };
+		5330334642A567827E793B3B /* ScopedFileLock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScopedFileLock.cpp; sourceTree = "<group>"; };
+		53303346BC42784F2528C792 /* ScopedFileLock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScopedFileLock.h; sourceTree = "<group>"; };
+		53303346FA879A45D28931E2 /* AtomicFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtomicFile.cpp; sourceTree = "<group>"; };
+		53303346D2EB5AA9BC43456C /* AtomicFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AtomicFile.h; sourceTree = "<group>"; };
 		7162FC3425962A0E0075B97D /* UserSettings.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserSettings.h; sourceTree = "<group>"; };
 		7162FC3525962A0E0075B97D /* File.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = File.cpp; sourceTree = "<group>"; };
 		7162FC3625962A0E0075B97D /* FileData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileData.cpp; sourceTree = "<group>"; };
@@ -7640,6 +7648,10 @@
 				7162FC3A2E76C0010075B97D /* ResourcePack.cpp */,
 				7162FC3425962A0E0075B97D /* UserSettings.h */,
 				7162FC3325962A0E0075B97D /* UserSettings.cpp */,
+				5330334642A567827E793B3B /* ScopedFileLock.cpp */,
+				53303346BC42784F2528C792 /* ScopedFileLock.h */,
+				53303346FA879A45D28931E2 /* AtomicFile.cpp */,
+				53303346D2EB5AA9BC43456C /* AtomicFile.h */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -13072,6 +13084,8 @@
 				A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */,
 				A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */,
 				713D8295259D307F00567F9F /* UserSettings.cpp in Sources */,
+				53303346AD54911B3920A4A9 /* ScopedFileLock.cpp in Sources */,
+				5330334691A83E230FB5ECB5 /* AtomicFile.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000003 /* SokolPipelineCache.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
@@ -13454,6 +13468,8 @@
 				7162FD1625963AE00075B97D /* Data.cpp in Sources */,
 				7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */,
 				7162FD1725963AE00075B97D /* UserSettings.cpp in Sources */,
+				53303346B7A98CBB07BB8888 /* ScopedFileLock.cpp in Sources */,
+				53303346B5F448E6AA32181A /* AtomicFile.cpp in Sources */,
 				71C33FB72A315878007A5822 /* Mesh.cpp in Sources */,
 				71CC839B26B8C4FD00EEBB93 /* FramebufferRender.cpp in Sources */,
 				7162FD1925963AE00075B97D /* File.cpp in Sources */,
