@@ -121,6 +121,8 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
+    // the lattice records and their texture are the original's: the clone's are packed anew
+    mesh.lattice = LatticeMeshState();
     mesh.needUpdateBones = true;
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
