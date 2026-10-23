@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "util/PngWriter.h"
+#include "util/AtomicFileStream.h"
 #include "EditorHost.h"
 #include "Factory.h"
 #include "Generator.h"
@@ -102,22 +104,22 @@ namespace {
         }
     }
 
-    void writeU8(std::ofstream& out, uint8_t value) {
+    void writeU8(std::ostream& out, uint8_t value) {
         out.put(static_cast<char>(value));
     }
 
-    void writeU16(std::ofstream& out, uint16_t value) {
+    void writeU16(std::ostream& out, uint16_t value) {
         out.put(static_cast<char>(value & 0xff));
         out.put(static_cast<char>((value >> 8) & 0xff));
     }
 
-    void writeU32(std::ofstream& out, uint32_t value) {
+    void writeU32(std::ostream& out, uint32_t value) {
         for (int i = 0; i < 4; i++) {
             out.put(static_cast<char>((value >> (i * 8)) & 0xff));
         }
     }
 
-    void writeU64(std::ofstream& out, uint64_t value) {
+    void writeU64(std::ostream& out, uint64_t value) {
         for (int i = 0; i < 8; i++) {
             out.put(static_cast<char>((value >> (i * 8)) & 0xff));
         }
@@ -917,10 +919,7 @@ bool editor::Exporter::configureBuild() {
     }
 
     fs::create_directories(buildDir, ec);
-    std::ofstream f(kitMarker);
-    if (f.is_open()) {
-        f << kitId;
-    }
+    FileUtils::writeFile(kitMarker, kitId);
 
     return true;
 }
@@ -1259,10 +1258,12 @@ bool editor::Exporter::writeNativeResourcePack(const fs::path& outputPath, bool&
         return false;
     }
 
-    fs::rename(tempPath, outputPath, ec);
-    if (ec) {
-        setError("Failed to replace resource pack: " + ec.message());
-        fs::remove(tempPath, ec);
+    // published like an atomic write: retried while another program holds the old pack
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    const io::WriteResult published = io::publishFile(tempPath, outputPath, options);
+    if (!published.ok()) {
+        setError("Failed to replace resource pack: " + io::describeWriteError(published));
         return false;
     }
 
@@ -1436,12 +1437,19 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 temporarilyLoaded.push_back(sceneProject.id);
             }
 
-            // Save all scenes to regenerate their .cpp sources
+            // Save all scenes to regenerate their .cpp sources; one that did not load completely
+            // stops the export (its save would drop data)
+            std::string degraded;
             for (size_t i = 0; i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || !sceneProject.scene) {
                     continue;
                 }
+                if (project->isSceneSaveGated(&sceneProject)) {
+                    degraded += (degraded.empty() ? "" : ", ") + sceneProject.filepath.generic_string();
+                    continue;
+                }
+                project->warnPreservedNotInBuild(sceneProject);
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
@@ -1491,6 +1499,10 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
+            if (!degraded.empty()) {
+                throw std::runtime_error("these scenes did not load completely and exporting saves them: " + degraded +
+                                         ". Save them first (Save Anyway drops what this editor could not read, Save As keeps the original).");
+            }
             savePromise.set_value(true);
         } catch (...) {
             savePromise.set_exception(std::current_exception());
@@ -2803,7 +2815,7 @@ bool editor::Exporter::writeAppleProjectSettings() {
             setError("Failed to create Apple icon directory: " + ec.message());
             return false;
         }
-        if (!stbi_write_png(outputPath.string().c_str(), size, size, 4, pixels.data(), size * 4)) {
+        if (!writePng(outputPath, size, size, 4, pixels.data(), size * 4, io::Durability::Cache)) {
             setError("Failed to write Apple icon: " + outputPath.string());
             return false;
         }
@@ -3117,11 +3129,8 @@ bool editor::Exporter::writeWindowsResourceFile(bool includeIcon) {
         return false;
     }
 
-    std::ofstream f(projectRoot / "app_icon.rc", std::ios::binary);
-    if (!f) {
-        setError("Failed to write app_icon.rc");
-        return false;
-    }
+    // written in one atomic replace when f goes out of scope
+    AtomicFileStream f(projectRoot / "app_icon.rc", io::Durability::Cache);
 
     if (includeIcon) {
         f << "1 ICON \"app_icon.ico\"\n\n";
@@ -3291,29 +3300,16 @@ bool editor::Exporter::writeAppIcon() {
     std::error_code ec;
     fs::create_directories(projectRoot, ec);
 
-    {
-        std::ofstream f(projectRoot / "app_icon.h", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.h, exporting without icon");
+    const std::pair<const char*, std::string_view> files[] = {
+        {"app_icon.h", header},
+        {"app_icon.ico", std::string_view(ico.data(), ico.size())},
+        {"app_icon.png", std::string_view(launcherPng.data(), launcherPng.size())},
+    };
+    for (const auto& [name, bytes] : files) {
+        if (FileUtils::writeFile(projectRoot / name, std::string(bytes)) == FileUtils::WriteResult::Failed) {
+            Out::warning("Failed to write %s, exporting without icon", name);
             return false;
         }
-        f << header;
-    }
-    {
-        std::ofstream f(projectRoot / "app_icon.ico", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.ico, exporting without icon");
-            return false;
-        }
-        f.write(ico.data(), (std::streamsize)ico.size());
-    }
-    {
-        std::ofstream f(projectRoot / "app_icon.png", std::ios::binary);
-        if (!f) {
-            Out::warning("Failed to write app_icon.png, exporting without icon");
-            return false;
-        }
-        f.write(launcherPng.data(), (std::streamsize)launcherPng.size());
     }
 
     return true;

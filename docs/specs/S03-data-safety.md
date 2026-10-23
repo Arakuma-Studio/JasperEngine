@@ -589,3 +589,86 @@ gtest suites (S02 framework) under `editor/tests/data_safety/` unless noted. MCP
 - **Hard links are broken by rename-publish.** Accepted and documented.
 - **`editorData` slot on `EntityRegistry` touches the engine.** It is one opaque member, with no
   YAML dependency in engine code.
+
+## Deviations
+
+Decisions taken while implementing, each the closest correct alternative to the text above:
+
+- **Test targets.** Until S02 lands, the gtest suites build as `jasperengine-core-tests`
+  (`engine/tests/core`, `-DJASPERENGINE_TESTS=ON` on the engine tree) and
+  `jasperengine-editor-tests` (`editor/tests`, root tree), run by `tools/build.sh unit-tests`,
+  with googletest from the yaml-cpp tree. The engine primitive's suites (AC1-AC5, AC8, AC19's
+  `AtomicFileBench`, AC21) live in `engine/tests/core/io/` (S02's mirror of `engine/core/io`,
+  tested against the static engine) rather than `editor/tests/data_safety/`.
+- **`EntityRegistry::editorData`** is a `std::shared_ptr<EntityRegistryEditorData>`: a three-method
+  interface (`entityDestroyed`, `componentRemoved`, `registryCleared`) instead of `void`, because
+  pruning entries when an entity or component goes needs the registry to tell the side table.
+- **API details.** `quarantineOrphanedTemporaryFiles` takes `const std::vector<path>&` (C++17
+  until S01) and a third `relativeTo` argument for the quarantine path, with `pruneQuarantine`
+  next to it. `ScopedFileLock` adds `getStatus()` (Busy / Unsupported / Failed),
+  `writeOwnerInfo`, `readOwnerInfo` and `release`. `WriteResult` adds `written()`;
+  `describeWriteError`, `temporarySiblingWriter` / `Target`, `currentProcessId` and
+  `isProcessRunning` are public.
+- **Host decisions are asynchronous in the GUI.** `EditorHost::confirmDegradedSave` takes a
+  `DegradedSaveRequest` (document, dropped issues, `saveAnyway` / `saveAs` continuations): the
+  editor window queues "Saving Would Lose Data" and answers Refuse, and its buttons run the
+  continuation. `resolveSceneRecovery` answers Keep and queues "Recover Unsaved Changes", whose
+  Restore reopens the scene from the backup (`Project::restoreSceneFromBackup`).
+  `confirmOpenLockedProject` was added for the second-instance dialog the same way.
+- **`mcp --headless` runs the editor App** (under Xvfb), not the base host. An editor serving MCP
+  on stdio answers the three questions like the base host (Refuse, Keep, no), so no modal ever
+  waits for an agent; `--ignore-lock` was added to `mcp`, and a locked project exits with code 3.
+  `check`, `export` and `benchmark` take no lock (they never write documents); `scene-dump` takes
+  it only with `--save` or `--ops`.
+- **Did-you-mean for enum values** offers the nearest name of the (small, closed) set whatever the
+  distance: AC13 expects `area` → `spot`, four edits apart, beyond `NearestName`'s cap of 2. Unknown
+  component and field names keep the cap.
+- **Which nested structures are checked.** Unknown keys below a component's top level are
+  reported (dropped) inside the structures with decoders of their own and a key table: submesh,
+  material, material pass, stencil and texture. Others are not checked yet (S08's reflection
+  covers them).
+- **Unknown enum values outside a component's top level** (inside a submesh's material, in
+  `project.yaml` or a `.material` file, whose file overlay keeps unknown keys only) are dropped,
+  so they gate saves. The scene settings block (`scene:`) is preserved like a component (its own
+  pseudo component `#scene` in the side table).
+- **Material file saves (A4, A5, A7)** gate on a report of the file as it is on disk at save time
+  (materials are read in many places, so no report lives on a document); a new material file gets
+  `formatVersion` and the file overlay.
+- **Prefab file header order.** Prefabs keep `type` before `version`, as today: moving `version`
+  first would change every prefab file on its next save, against R41.
+- **Play and Export save modified scenes first.** A degraded scene therefore stops them with a
+  message (Save Anyway or Save As first) instead of being saved without its data; R30's warning is
+  logged for the scenes they build.
+- **MCP prefab tools.** `add_to_prefab`, `remove_from_prefab` and `prefab_overrides` change the
+  editor's model before the asset is saved; when the gate refuses that save they fail with
+  `degraded_document` after the change (the asset file is untouched, the prefab stays modified).
+  `prefab_mode action=save` refuses before writing. `load_report.skipped` counts the preserved
+  plus dropped issues.
+- **Verification without a GPU.** `Project` loads scenes with a scene render, so AC10's
+  Restore/Discard/Keep and AC15's gate (refusal, Save As, no autosave) are verified in a running
+  editor (`tools/mcp/tests/test_data_safety.py`); the unit suites cover the report, the side table
+  and the backup files. AC20's manual check (screenshots) is left to the PR review.
+- **Autosave encode budget (R35).** Building the YAML tree of a 2k-GameObject scene costs about
+  250 ms in a Release build (yaml-cpp allocates a node per value; Transforms hold three
+  matrices), far over 10 ms. The main thread only builds the tree; its text, hash, comparison
+  and write run on a worker, and the scene's interval doubles after an encode over 50 ms (the
+  spec's default for this risk). `AutosaveEncodeBench` guards 0.25 ms per GameObject against
+  regressions. The snapshot-then-encode-off-thread design of §9 is the follow-up if the
+  interval adaptation is not enough.
+- **`JE_AUTOSAVE_INTERVAL_TEST=1`** makes the interval 2 s (the test waits for a backup); R35's
+  decode-overhead budget allows 1 ms of absolute slack over the 5% on top of timer noise.
+- **R41 and `shaderKeys`.** A scene's `shaderKeys` is a set ordered by keys that hold custom
+  shader ids, which each session assigns in its own order, so its order (never its content) can
+  change on the first save in another session, as before this spec. `Compat.CorpusRoundTrip`
+  compares it as a set and the rest of the file byte for byte.
+- The window title suffix reads ` - Level1.scene (Partial Load)` after the project name.
+- **The agent guide's "Data safety" section (R38)** is two lines pointing at a new agent
+  reference, `docs/mcp/guide/data-safety.md` (`jasper://docs/data-safety`): the guide was 20
+  bytes under its 16 KB budget (`test_autosync.py`), so the detail lives in the served doc and
+  a few intro words were tightened to make room.
+- **Projects below the temp directory.** `isTempProject()` is true for any project under the
+  system temp directory (MCP test scratch projects included); Auto Save and the project lock skip
+  only the editor's own temporary project (`<temp>/<name>`, remade at each start). A project made
+  with `--create`/File > New, or the temporary project saved elsewhere, takes the lock at once.
+- `mcp --project` on a locked project exits with code 3 after one frame on the empty temporary
+  project (closing before the first frame leaves the render queue waiting on shutdown).

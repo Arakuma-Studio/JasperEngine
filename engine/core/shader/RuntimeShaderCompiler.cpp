@@ -141,22 +141,9 @@ const std::string& prepareCacheDirectory(State& s){
 
 
 bool writeCacheFile(ShaderKey key, const std::string& path, const ShaderData& data){
-    // written aside and renamed into place: a run reading the cache never sees half a file
-    static std::atomic<unsigned> counter{0};
-    const std::string temporary = path + "." + std::to_string(counter++) + ".tmp";
+    // atomic (io::writeFileAtomic): a run reading the cache never sees half a file
     std::string err;
-    if (!ShaderDataSerializer::writeToFile(temporary, ShaderPool::getStorageKey(key), data, &err)){
-        std::error_code ec;
-        std::filesystem::remove(temporary, ec);
-        return false;
-    }
-    std::error_code ec;
-    std::filesystem::rename(temporary, path, ec);
-    if (ec){
-        std::filesystem::remove(temporary, ec);
-        return false;
-    }
-    return true;
+    return ShaderDataSerializer::writeToFile(path, ShaderPool::getStorageKey(key), data, &err);
 }
 
 // Compiles a job's variant. Any thread, without the state lock.

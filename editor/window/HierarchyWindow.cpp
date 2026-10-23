@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "window/dialog/DataSafetyDialogs.h"
+#include "StreamPreserved.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -2736,6 +2738,29 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     markPrefabRows(root);
 }
 
+void editor::HierarchyWindow::showPartialLoadBanner(const SceneProject& sceneProject) {
+    const size_t dropped = sceneProject.loadReport.dropped();
+    if (dropped == 0) {
+        return;
+    }
+    const size_t kept = sceneProject.loadReport.outstandingPreserved(findPreservedStore(sceneProject.scene));
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+    ImGui::TextWrapped("This scene did not load completely: %zu value%s dropped, %zu kept. Auto Save is off for this scene.",
+                       dropped, dropped == 1 ? "" : "s", kept);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Details##PartialLoad")) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) {
+                Out::error(issue.consoleLine());
+            }
+        }
+        DataSafetyDialogs::showFileInConsole(sceneProject.filepath.filename().string());
+    }
+    ImGui::SetItemTooltip("Show this scene's load issues in the Console");
+    ImGui::Separator();
+}
+
 void editor::HierarchyWindow::show(){
     windowFocused = false;
     if (!windowOpen) {
@@ -2773,6 +2798,8 @@ void editor::HierarchyWindow::show(){
         focusedThisFrame = false;
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    showPartialLoadBanner(*sceneProject);
 
     // A rename started for a scene that is no longer shown has nothing to edit
     if (renameTarget != RenameTarget::None && renameSceneId != sceneProject->id) {

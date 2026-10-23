@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GraphicUtils.h"
+#include "util/PngWriter.h"
 
 #include "Out.h"
 #include "System.h"
@@ -358,7 +359,7 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
                     }
                 }
             }
-            stbi_write_png(path.string().c_str(), width, height, 4, pixels, width * 4);
+            writePng(path, width, height, 4, pixels, width * 4, io::Durability::Cache);
 
             if (needDelete && pixels) {
                 delete[] pixels;

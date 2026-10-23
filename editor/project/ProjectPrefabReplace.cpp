@@ -7,6 +7,7 @@
 // sections 12 to 14.
 
 #include "Project.h"
+#include "DocumentFile.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
@@ -1278,7 +1279,7 @@ std::map<std::string, editor::PrefabUsage> editor::Project::collectPrefabUsage()
             continue;
         }
         try {
-            const YAML::Node sceneNode = YAML::LoadFile(file.string());
+            const YAML::Node sceneNode = DocumentFiles::read(file, DocumentKind::Scene).root;
             if (sceneNode["entities"]) {
                 for (const YAML::Node& entityNode : sceneNode["entities"]) {
                     walkNode(sceneProject, entityNode, 0);
