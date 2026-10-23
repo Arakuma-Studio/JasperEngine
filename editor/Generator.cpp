@@ -16,6 +16,8 @@
 #include "util/HtmlUiExamples.h"
 #include "json.hpp"
 #include "lua.h"
+#include "Jolt/Jolt.h"
+#include "Jolt/Physics/Collision/ObjectLayer.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -410,6 +412,36 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     // The build step invokes the compiler/linker again, so it needs the same
     // MSVC environment as configure (see CommandRunner::msvcEnvPrefix).
     return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
+}
+
+// The Jolt configuration the editor's engine library was built with, as compile definitions.
+// It changes Jolt's class layouts (the engine's PhysicsSystem holds a JPH::PhysicsSystem by
+// value), so scripts linking that library compile Jolt's headers the same way: the object
+// layer size, and JPH_DEBUG, which Jolt otherwise derives from the script's own NDEBUG.
+static std::string joltCompileDefinitions() {
+    std::string definitions = "JPH_OBJECT_LAYER_BITS=" + std::to_string(JPH_OBJECT_LAYER_BITS);
+#ifdef JPH_DEBUG
+    // empty, as Jolt defines it, so its own definition is no redefinition
+    definitions += " JPH_DEBUG=";
+#else
+    definitions += " JPH_NO_DEBUG";
+#endif
+#ifdef JPH_ENABLE_ASSERTS
+    definitions += " JPH_ENABLE_ASSERTS";
+#endif
+#ifdef JPH_DEBUG_RENDERER
+    definitions += " JPH_DEBUG_RENDERER";
+#endif
+#ifdef JPH_PROFILE_ENABLED
+    definitions += " JPH_PROFILE_ENABLED";
+#endif
+#ifdef JPH_DOUBLE_PRECISION
+    definitions += " JPH_DOUBLE_PRECISION";
+#endif
+#ifdef JPH_SHARED_LIBRARY
+    definitions += " JPH_SHARED_LIBRARY";
+#endif
+    return definitions;
 }
 
 // Relative to ${PROJECT_ROOT} so the generated CMakeLists.txt reads the same on every
@@ -1016,8 +1048,9 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "# Build mode: when ON, build as JasperEngine Editor plugin (shared library)\n";
     cmakeContent += "option(JASPERENGINE_EDITOR_PLUGIN \"Build as JasperEngine Editor plugin\" OFF)\n";
 
-    // Both modes link the editor's engine library, which always has both physics backends
-    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D)\n\n";
+    // Both modes link the editor's engine library, which always has both physics backends.
+    // Jolt's configuration changes its class layouts, so it has to match the engine's.
+    cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D " + joltCompileDefinitions() + ")\n\n";
 
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(JASPERENGINE_EDITOR_PLUGIN)\n";
