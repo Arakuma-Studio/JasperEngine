@@ -100,7 +100,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::SpriteAnimationComponent, {"frames", "framesTime", "loop"}},
         {ComponentType::SpriteComponent, {"automaticFlipY", "enabled", "flipY", "framesRect", "height", "pivotPreset", "textureScaleFactor", "width"}},
         {ComponentType::TerrainComponent, {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"}},
-        {ComponentType::TextComponent, {"fixedHeight", "fixedWidth", "font", "fontSize", "maxTextSize", "multiline", "pivotBaseline", "pivotCentered", "text"}},
+        {ComponentType::TextComponent, {"fixedHeight", "fixedWidth", "font", "fontGuid", "fontSize", "maxTextSize", "multiline", "pivotBaseline", "pivotCentered", "text"}},
         {ComponentType::TilemapComponent, {"automaticFlipY", "enabled", "flipY", "height", "reserveTiles", "textureScaleFactor", "tiles", "tilesRect", "width"}},
         {ComponentType::Transform, {"billboard", "billboardRotation", "cylindricalBillboard", "fakeBillboard", "localMatrix", "modelMatrix", "normalMatrix", "position", "rotation", "scale", "visible", "worldPosition", "worldRotation", "worldScale"}},
         {ComponentType::TranslateTracksComponent, {"inTangents", "outTangents", "values"}},
