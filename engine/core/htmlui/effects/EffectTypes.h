@@ -69,8 +69,8 @@ namespace jasperengine::htmlui {
         int line = 0;
     };
 
-    // @init <pass> <state> | @step <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
-    // | @frame <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    // @init <pass> <state> | @step <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]
+    // | @frame <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]
     struct EffectPassDef {
         std::string name;            // JFX_PASS_<NAME> = its index in EffectManifest::passes
         bool init = false;           // @init: once after allocation and every reset
@@ -82,6 +82,7 @@ namespace jasperengine::htmlui {
         std::string repeatParam;     // x<param> (rounded, clamped to [1, 64])
         bool additive = false;       // add: blended ONE, ONE into the cleared target
         int scatterState = -1;       // scatter <state>: one quad per texel of that placement state
+        std::string ifParam;         // if <param>: run only while that boolean or number parameter is not 0
         int line = 0;
     };
 

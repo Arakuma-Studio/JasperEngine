@@ -26,12 +26,12 @@
 // @step       gradient vel
 // @step       advect-vel vel
 // @step       advect-dye dye
-// @frame      bloom-prefilter bloom
-// @frame      bloom-down glow xbloom-iterations
-// @frame      bloom-up glow xbloom-iterations
-// @frame      bloom-final bloom
-// @frame      sunrays sunrays
-// @frame      sunrays-blur sunrays x2
+// @frame      bloom-prefilter bloom if bloom
+// @frame      bloom-down glow xbloom-iterations if bloom
+// @frame      bloom-up glow xbloom-iterations if bloom
+// @frame      bloom-final bloom if bloom
+// @frame      sunrays sunrays if sunrays
+// @frame      sunrays-blur sunrays x2 if sunrays
 // @reseed     seed, splats-on-start, splat-count
 // @suggest-for webgl-fluid fluid-simulation navier-stokes dye
 // @param      preset enum default default|mobile|smoke|ink|calm-water|psychedelic -- A named look (the native Fluid Simulation's presets): sets the parameters you leave at their defaults

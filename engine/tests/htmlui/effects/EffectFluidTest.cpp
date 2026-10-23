@@ -223,7 +223,7 @@ TEST(EffectFluidManifest, FramePassesAspectSizesAndPresetsParse){
     const std::string ok = manifestOf("// @state      vel rg16f aspect 128 max 512\n"
                                       "// @state      look rgba16f aspect 64\n"
                                       "// @step       move vel\n"
-                                      "// @frame      glow look x2\n"
+                                      "// @frame      glow look x2 if shading\n"
                                       "// @param      preset enum calm calm|wild -- A look\n"
                                       "// @param      curl number 30 0 50 -- Swirl\n"
                                       "// @param      shading boolean on -- Light\n"
@@ -239,6 +239,7 @@ TEST(EffectFluidManifest, FramePassesAspectSizesAndPresetsParse){
     EXPECT_FALSE(m.passes[0].frame);
     EXPECT_TRUE(m.passes[1].frame);
     EXPECT_EQ(m.passes[1].repeat, 2);
+    EXPECT_EQ(m.passes[1].ifParam, "shading");
     ASSERT_EQ(m.presets.size(), 1u);
     EXPECT_EQ(m.presets[0].option, "wild");
     EXPECT_EQ(m.presets[0].values, (std::vector<std::pair<std::string, std::string>>{{"curl", "50"}, {"shading", "off"}}));
@@ -268,6 +269,11 @@ TEST(EffectFluidManifest, FramePassesAspectSizesAndPresetsParse){
     EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @preset     wild curl 40\n// @preset     wild curl 45\n")).find("declared twice"),
               std::string::npos);
     EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @preset     wild\n")).find("sets no parameter"), std::string::npos);
+    // if <param>: a boolean or number parameter, not on @init
+    EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @frame      glow vel if nothing\n")).find("not a parameter"), std::string::npos);
+    EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @frame      glow vel if preset\n")).find("not a boolean or a number"),
+              std::string::npos);
+    EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @frame      glow vel if\n")).find("if names"), std::string::npos);
     // @source: shaders.com, original or a port with its author and licence
     std::string source = manifestOf(states);
     source.replace(source.find("// @source     original"), 22, "// @source     somewhere else");
@@ -388,6 +394,23 @@ TEST_F(EffectFluid, PresetsDraw){
     EXPECT_GT(maxDifference(plain, mobile), 20);
     const TestImage ink = pinned("preset ink", 0.4);
     EXPECT_GT(maxDifference(plain, ink), 20);
+    // bloom and sunrays off: their @frame passes do not run (if bloom, if sunrays)
+    {
+        ASSERT_TRUE(load("bloom off, sunrays off"));
+        at(0.4);
+        const uint64_t before = EffectRuntime::get().stats().stepPasses;
+        EffectRuntime::get().resetSimulations(scene->element("f"));
+        at(0.45);
+        const uint64_t passes = EffectRuntime::get().stats().stepPasses - before;
+        ASSERT_TRUE(load());
+        at(0.4);
+        const uint64_t before2 = EffectRuntime::get().stats().stepPasses;
+        EffectRuntime::get().resetSimulations(scene->element("f"));
+        at(0.45);
+        const uint64_t all = EffectRuntime::get().stats().stepPasses - before2;
+        // 8 bloom-down, 8 bloom-up, prefilter, final, sunrays, 2 blurs
+        EXPECT_EQ(all - passes, 21u) << all << " passes with the look, " << passes << " without";
+    }
     // the look's switches each change the image
     EXPECT_GT(maxDifference(plain, pinned("bloom off", 0.4)), 10);
     EXPECT_GT(maxDifference(plain, pinned("sunrays off", 0.4)), 10);

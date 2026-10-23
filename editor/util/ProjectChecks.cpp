@@ -1027,6 +1027,7 @@ namespace {
             for (const fx::EffectPassDef& pass : m.passes) {
                 nlohmann::json p = {{"name", pass.name}, {"state", m.states[(size_t)pass.state].name}, {"init", pass.init}};
                 if (pass.frame) p["frame"] = true;
+                if (!pass.ifParam.empty()) p["if"] = pass.ifParam;
                 if (!pass.repeatParam.empty()) p["repeat"] = pass.repeatParam;
                 else if (pass.repeat > 1) p["repeat"] = pass.repeat;
                 if (pass.additive) p["add"] = true;

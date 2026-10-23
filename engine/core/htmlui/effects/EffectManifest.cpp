@@ -317,8 +317,8 @@ namespace {
         wordsOf(rest, words);
         const char* directive = init ? "@init" : (frame ? "@frame" : "@step");
         const char* grammar = init ? "@init is '<pass> <state>'"
-                                   : (frame ? "@frame is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'"
-                                            : "@step is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>]'");
+                                   : (frame ? "@frame is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]'"
+                                            : "@step is '<pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]'");
         if (words.size() < 2){
             error(line, grammar);
             return;
@@ -357,6 +357,12 @@ namespace {
                 }
             }else if (w == "add"){
                 pass.additive = true;
+            }else if (w == "if"){
+                if (i + 1 >= words.size()){
+                    error(line, "if names a boolean or number parameter", "if bloom");
+                    return;
+                }
+                pass.ifParam = words[++i];
             }else if (w == "scatter"){
                 if (i + 1 >= words.size()){
                     error(line, "scatter names its placement state", "scatter place");
@@ -509,7 +515,8 @@ uint64_t EffectManifest::stateSignature() const{
     for (const EffectPassDef& pass : passes){
         add(pass.name);
         add(std::to_string(pass.init) + ":" + std::to_string(pass.state) + ":" + std::to_string(pass.repeat) + ":" + pass.repeatParam + ":" +
-            std::to_string(pass.additive) + ":" + std::to_string(pass.scatterState) + (pass.frame ? ":frame" : ""));
+            std::to_string(pass.additive) + ":" + std::to_string(pass.scatterState) + (pass.frame ? ":frame" : "") +
+            (pass.ifParam.empty() ? std::string() : ":if " + pass.ifParam));
     }
     add(std::to_string(warmupSteps) + ":" + std::to_string(warmupDt) + ":" + std::to_string(rateHz) + ":" + std::to_string(maxSubsteps) + ":" +
         std::to_string(replaySeconds));
@@ -1151,6 +1158,15 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
                 error(pass.line, "pass '" + pass.name + "' repeats by '" + pass.repeatParam + "', which is not a parameter");
             else if (def->type != EffectParamType::Number && def->type != EffectParamType::Integer)
                 error(def->line, "pass '" + pass.name + "' repeats by '" + pass.repeatParam + "', which is not a number or an integer");
+        }
+        if (!pass.ifParam.empty()){
+            const EffectParamDef* def = m.findParam(pass.ifParam);
+            if (!def)
+                error(pass.line, "pass '" + pass.name + "' runs if '" + pass.ifParam + "', which is not a parameter");
+            else if (def->type != EffectParamType::Boolean && def->type != EffectParamType::Number && def->type != EffectParamType::Integer)
+                error(def->line, "pass '" + pass.name + "' runs if '" + pass.ifParam + "', which is not a boolean or a number");
+            if (pass.init)
+                error(pass.line, "@init passes always run: 'if' is for @step and @frame");
         }
         if (pass.scatterState >= 0){
             if (pass.scatterState == pass.state)

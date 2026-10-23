@@ -116,6 +116,24 @@ namespace {
         return std::clamp(side, 1, st.boxMax);
     }
 
+    // how many times a pass runs: x<count> or x<param> (rounded, 1 to 64); 0 when its `if`
+    // parameter is 0
+    int passRepeats(const EffectInstance& instance, const EffectPassDef& pass){
+        const EffectManifest& m = *instance.manifest;
+        auto valueOf = [&](const std::string& param, float fallback){
+            const int index = m.paramIndex(param);
+            if (instance.snapshot && index >= 0 && index < (int)instance.snapshot->values.size())
+                return instance.snapshot->values[(size_t)index].f;
+            return fallback;
+        };
+        if (!pass.ifParam.empty() && valueOf(pass.ifParam, 1.f) == 0.f)
+            return 0;
+        int repeat = pass.repeat;
+        if (!pass.repeatParam.empty())
+            repeat = (int)std::lround(valueOf(pass.repeatParam, (float)pass.repeat));
+        return std::clamp(repeat, 1, 64);
+    }
+
 }
 
 ColorFormat jasperengine::htmlui::colorFormatOf(EffectStateFormat format){
@@ -521,13 +539,7 @@ void EffectRenderer::runStep(EffectInstance& instance, EffectSimulation& simulat
         const EffectPassDef& pass = m.passes[p];
         if (pass.init != initPasses || pass.frame)
             continue;
-        int repeat = pass.repeat;
-        if (!pass.repeatParam.empty() && instance.snapshot){
-            const int index = m.paramIndex(pass.repeatParam);
-            if (index >= 0 && index < (int)instance.snapshot->values.size())
-                repeat = (int)std::lround(instance.snapshot->values[(size_t)index].f);
-        }
-        repeat = std::clamp(repeat, 1, 64);
+        const int repeat = passRepeats(instance, pass);
         for (int it = 0; it < repeat; it++){
             if (!runPass(instance, simulation, drawProgram, filter, pass, (int)p, it, input))
                 return;
@@ -563,13 +575,7 @@ void EffectRenderer::runFramePasses(EffectInstance& instance, EffectSimulation& 
         const EffectPassDef& pass = m.passes[p];
         if (!pass.frame)
             continue;
-        int repeat = pass.repeat;
-        if (!pass.repeatParam.empty() && instance.snapshot){
-            const int index = m.paramIndex(pass.repeatParam);
-            if (index >= 0 && index < (int)instance.snapshot->values.size())
-                repeat = (int)std::lround(instance.snapshot->values[(size_t)index].f);
-        }
-        repeat = std::clamp(repeat, 1, 64);
+        const int repeat = passRepeats(instance, pass);
         for (int it = 0; it < repeat; it++){
             if (!runPass(instance, simulation, drawProgram, filter, pass, (int)p, it, input))
                 return;
