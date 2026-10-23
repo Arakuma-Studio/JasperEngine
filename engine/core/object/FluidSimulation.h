@@ -27,6 +27,7 @@ namespace jasperengine{
         FluidSimulation(FluidSimulation&& rhs) noexcept;
         FluidSimulation& operator=(FluidSimulation&& rhs) noexcept;
 
+        using GameObject::getComponent;
         FluidSimulationComponent& getComponent() const;
 
         void setOutput(FluidOutput output);

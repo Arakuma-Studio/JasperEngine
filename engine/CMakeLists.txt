@@ -906,6 +906,7 @@ set(JASPERENGINE_SRCS
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
+    core/object/FluidSimulation.cpp
     core/object/Model.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
@@ -978,6 +979,9 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/FluidSystem.cpp
+    core/fluid/FluidSimulator.cpp
+    core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/PhysicsSystem.cpp

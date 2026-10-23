@@ -97,6 +97,7 @@ namespace jasperengine{
         std::shared_ptr<FluidSimulator> simulator;
         std::vector<FluidSplat> pendingSplats;  // applied at the next step (FluidSimulation::splat)
         std::vector<unsigned int> pendingBursts; // random bursts asked for: each one's splat count (0: Pavel's 5-24)
+        unsigned int pendingSteps = 0;          // FluidSimulation::step(): fixed steps to run at the next frame (also paused)
         bool needReset = true;                  // restart (seed, sizes) at the next update
         unsigned int revision = 0;              // bumped by FluidSystem when the output is recreated
     };
