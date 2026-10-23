@@ -200,6 +200,7 @@ namespace jasperengine{
 	typedef struct fs_gbuffer_material_t {
 		Vector4 params;             // x = roughness, y = metallic, z = IBL source, w = alpha cutout
 		Vector4 baseColorFactor;
+		Vector4 stochastic;         // Stochastic Tiling ('Sto' variants only): cell size, blend sharpness, contrast, rotation
 	} fs_gbuffer_material_t;
 
 	typedef struct fs_ssao_t {
@@ -383,6 +384,8 @@ namespace jasperengine{
 		// as the material asks; the variant resolves it against the shader (resolveLighting)
 		MaterialLighting lighting = MaterialLighting::AUTO;
 		bool textureShadow = false;
+		// Material::stochasticTiling, as the material asks; the variant decides where it applies
+		bool stochasticTiling = false;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;

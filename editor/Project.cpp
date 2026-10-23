@@ -3103,11 +3103,14 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     const Material& material = mesh.submeshes[s].material;
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
+                    // its alpha clip samples as the colour pass's Stochastic Tiling ('Sto', which
+                    // the colour variant has when the material's maps take it)
+                    bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
                     uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
-                        instancedFade);
+                        instancedFade, false, false, false, false, false, depthStochastic);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {

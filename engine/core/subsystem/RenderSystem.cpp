@@ -40,6 +40,22 @@ namespace {
     constexpr int SPOT_MASK_TILE_SIZE = 256;
 
     static_assert(sizeof(Matrix4) == sizeof(float) * 16);
+    // the "shader part" of Material is floats: u_fs_pbrParams is a prefix of it
+    static_assert(sizeof(Vector4) == sizeof(float) * 4 && sizeof(Vector3) == sizeof(float) * 3);
+
+    // The bytes of Material's shader part a Lit variant's u_fs_pbrParams declares (mesh.frag):
+    // lit 12 floats, unlit with the alpha mask 8, unlit 4; a Stochastic Tiling ('Sto') variant
+    // all 16, its stochastic vec4 last (an unlit one pads up to it), or what a fork made before
+    // declares (reflectedSize)
+    unsigned int getLitParamsSize(uint64_t properties, unsigned int reflectedSize){
+        if ((properties & shaderPropertyBit(5)) && reflectedSize > 0)
+            return std::min((unsigned int)(sizeof(float) * 16), reflectedSize);
+        if (!(properties & shaderPropertyBit(0)))
+            return sizeof(float) * 12;
+        if (properties & shaderPropertyBit(24))
+            return sizeof(float) * 8;
+        return sizeof(float) * 4;
+    }
 
     bool bindSkinningResource(ObjectRender& render, ShaderData& shader, MeshComponent& mesh){
         const size_t boneCount = mesh.bonesMatrix.size();
@@ -3136,6 +3152,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.alphaMode = material.alphaMode;
     inputs.lighting = material.lighting;
     inputs.textureShadow = submesh.textureShadow;
+    inputs.stochasticTiling = material.stochasticTiling;
 
     inputs.receiveLights = mesh.receiveLights;
     inputs.receiveIBL = mesh.receiveIBL;
@@ -3356,6 +3373,18 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_depthTexture = p_depthAlphaMask && inputs.texCoord1 && inputs.baseColorTexture;
     const bool p_instanceFade = inputs.instanced && inputs.instanceFade;
 
+    // Stochastic Tiling (Material::stochasticTiling): the built-in Lit's (and its forks'; a
+    // shader with a manifest has its own STOCHASTIC feature) when the variant samples one of the
+    // material's textures by its UVs: the base colour, lit the other PBR maps, the normal map on
+    // the 2D light path too. Not on a terrain (its layers have their own, the base material's
+    // maps are the base tile) nor through a texture rect (a sprite's atlas frame, a tilemap's
+    // tiles), whose offset taps would read the neighbouring frames.
+    const bool stochasticAllowed = inputs.stochasticTiling && !manifest && !inputs.terrain && !inputs.textureRect;
+    const bool p_stochastic = stochasticAllowed && p_hasTexture1 &&
+        (inputs.baseColorTexture ||
+         (!p_unlit && (inputs.metallicRoughnessTexture || inputs.occlusionTexture || inputs.emissiveTexture)) ||
+         p_hasNormalMap);
+
     variant.properties = ShaderPool::getMeshProperties(
                     p_unlit, p_hasTexture1, p_hasTexture2, p_punctual,
                     p_receiveShadows, p_hasNormal, p_hasNormalMap,
@@ -3363,7 +3392,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     environment.fog, inputs.skinning, inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
                     inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
-                    p_vertexLights, lightCapacity);
+                    p_vertexLights, lightCapacity, p_stochastic);
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
@@ -3386,20 +3415,29 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }
         // the sprite rect the alpha-clip UV goes through (an atlas frame's shadow)
         const bool d_textureRect = inputs.textureRect && !inputs.terrain && (p_depthTexture || d_uv1);
+        // the alpha clip reads the base colour's alpha as the colour pass does (the same taps
+        // and weights), so shadows and pre-passes cut out what it cuts out
+        const bool d_stochastic = p_depthTexture && stochasticAllowed;
         variant.depthProperties = ShaderPool::getDepthMeshProperties(
             p_depthTexture, inputs.skinning, inputs.morphTarget,
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
-            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect);
+            p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect,
+            d_stochastic);
     }
 
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
     // normal/roughness/metallic). Built only when SSR is enabled (it needs normals).
     variant.gbuffer = environment.ssr;
     if (variant.gbuffer){
+        // its base colour and metallic-roughness taps as the colour pass's, so SSR reflects
+        // the surface that is shaded
+        const bool g_stochastic = stochasticAllowed && inputs.texCoord1 &&
+            (inputs.baseColorTexture || inputs.metallicRoughnessTexture);
         variant.gbufferProperties = ShaderPool::getGBufferMeshProperties(
             inputs.baseColorTexture, inputs.normal, inputs.skinning,
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
-            inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal);
+            inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
+            g_stochastic);
     }
 
     return variant;
@@ -5419,6 +5457,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
+        shaderData.getUniformBlockMembers("u_fs_pbrParams", mesh.submeshes[i].sizeFSParams);
         if (p_hasTexture2){
             mesh.submeshes[i].slotFSTexCoordSets = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS);
         }
@@ -5639,6 +5678,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             depthShaderData.getUniformBlockMembers("u_vs_depthParams", mesh.submeshes[i].sizeVSDepthParams);
             if (p_depthAlphaMask){
                 mesh.submeshes[i].slotFSDepthMaterial = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_FS_MATERIAL);
+                depthShaderData.getUniformBlockMembers("u_fs_depthMaterial", mesh.submeshes[i].sizeFSDepthMaterial);
             }
             if (p_instanceFade){
                 mesh.submeshes[i].slotVSDepthFade = depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
@@ -5794,6 +5834,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
+            gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
 
             if (mesh.submeshes[i].hasSkinning){
                 mesh.submeshes[i].slotVSGBufferSkinning = gbufferShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_SKINNING);
@@ -6666,6 +6707,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     const bool p_lit = !(properties & (1u << 0));
     extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
     extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
+    shaderData.getUniformBlockMembers("u_fs_pbrParams", extra.sizeFSParams);
     extra.slotFSTexCoordSets = (properties & (1u << 2)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS) : -1;
     extra.slotVSFade = (properties & (1u << 26)) ? shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
     extra.slotFSFog = hasFog ? shaderData.getUniformBlockIndex(UniformBlockType::FS_FOG) : -1;
@@ -6810,13 +6852,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     }
 
     // the material's prefix, the size its variant declares (a fork of Lit reads it)
-    if (lit){
-        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 12, &submesh.material);
-    }else if (properties & (1u << 24)){
-        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 8, &submesh.material);
-    }else{
-        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 4, &submesh.material);
-    }
+    render.applyUniformBlock(extra.slotFSParams, getLitParamsSize(properties, extra.sizeFSParams), &submesh.material);
 
     if (extra.slotVSFade != -1 && instmesh){
         applyInstanceFadeUniform(render, extra.slotVSFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
@@ -7509,15 +7545,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 }
             }
 
-            if (submeshLit){
-                render.applyUniformBlock(mesh.submeshes[i].slotFSParams, sizeof(float) * 12, &mesh.submeshes[i].material);
-            }else if (mesh.submeshes[i].shaderProperties & (1u << 24)){
-                // Unlit alpha-mask variants include the metallic/roughness padding
-                // and alphaCutoff from the shared CPU material prefix.
-                render.applyUniformBlock(mesh.submeshes[i].slotFSParams, sizeof(float) * 8, &mesh.submeshes[i].material);
-            }else{
-                render.applyUniformBlock(mesh.submeshes[i].slotFSParams, sizeof(float) * 4, &mesh.submeshes[i].material);
-            }
+            // the material's prefix: lit 12 floats, unlit alpha-mask variants the metallic/roughness
+            // padding and alphaCutoff too (8), unlit 4; Stochastic Tiling its last vec4 too (16)
+            render.applyUniformBlock(mesh.submeshes[i].slotFSParams,
+                getLitParamsSize(mesh.submeshes[i].shaderProperties, mesh.submeshes[i].sizeFSParams), &mesh.submeshes[i].material);
 
             if (mesh.submeshes[i].slotVSFade != -1 && instmesh){
                 applyInstanceFadeUniform(render, mesh.submeshes[i].slotVSFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
@@ -7677,8 +7708,14 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             if (mesh.submeshes[i].slotFSDepthMaterial != -1){
                 const Material& material = mesh.submeshes[i].material;
-                Vector4 alphaParams(material.baseColorFactor.w, material.alphaCutoff, 0.0f, 0.0f);
-                depthRender.applyUniformBlock(mesh.submeshes[i].slotFSDepthMaterial, sizeof(Vector4), &alphaParams);
+                // alphaParams, and with Stochastic Tiling ('Sto') the material's four values
+                Vector4 depthMaterial[2] = {
+                    Vector4(material.baseColorFactor.w, material.alphaCutoff, 0.0f, 0.0f),
+                    Vector4(material.stochasticCellSize, material.stochasticBlendSharpness, material.stochasticContrast, material.stochasticRotation)};
+                unsigned int depthMaterialSize = sizeof(Vector4);
+                if ((mesh.submeshes[i].depthShaderProperties & shaderPropertyBit(14)) && mesh.submeshes[i].sizeFSDepthMaterial > depthMaterialSize)
+                    depthMaterialSize = std::min((unsigned int)sizeof(depthMaterial), mesh.submeshes[i].sizeFSDepthMaterial);
+                depthRender.applyUniformBlock(mesh.submeshes[i].slotFSDepthMaterial, depthMaterialSize, depthMaterial);
             }
 
             if (mesh.submeshes[i].hasSkinning){
@@ -8423,7 +8460,12 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
             : -1.0f;
         mat.params = Vector4(material.roughnessFactor, material.metallicFactor, iblSource, alphaCutoff);
         mat.baseColorFactor = mesh.submeshes[i].material.baseColorFactor;
-        gbufferRender.applyUniformBlock(mesh.submeshes[i].slotFSGBufferMaterial, sizeof(fs_gbuffer_material_t), &mat);
+        mat.stochastic = Vector4(material.stochasticCellSize, material.stochasticBlendSharpness, material.stochasticContrast, material.stochasticRotation);
+        // the stochastic vec4 only to the Stochastic Tiling ('Sto') variants, which declare it
+        unsigned int gbufferMaterialSize = sizeof(Vector4) * 2;
+        if ((mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(10)) && mesh.submeshes[i].sizeFSGBufferMaterial > gbufferMaterialSize)
+            gbufferMaterialSize = std::min((unsigned int)sizeof(fs_gbuffer_material_t), mesh.submeshes[i].sizeFSGBufferMaterial);
+        gbufferRender.applyUniformBlock(mesh.submeshes[i].slotFSGBufferMaterial, gbufferMaterialSize, &mat);
 
         if (mesh.submeshes[i].hasSkinning){
             applySkinningUniform(gbufferRender, mesh.submeshes[i].slotVSGBufferSkinning, mesh, mesh.submeshes[i]);
@@ -9276,6 +9318,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         //Shaders uniforms
         submesh.slotVSParams = -1;
         submesh.slotFSParams = -1;
+        submesh.sizeFSParams = 0;
         submesh.slotFSTexCoordSets = -1;
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
@@ -9298,6 +9341,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthParams = -1;
         submesh.slotVSDepthFade = -1;
         submesh.slotFSDepthMaterial = -1;
+        submesh.sizeFSDepthMaterial = 0;
         submesh.slotVSDepthSkinning = -1;
         submesh.slotVSDepthMorphTarget = -1;
         submesh.slotVSDepthTerrain = -1;
@@ -9305,6 +9349,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
 
         submesh.slotVSGBufferParams = -1;
         submesh.slotFSGBufferMaterial = -1;
+        submesh.sizeFSGBufferMaterial = 0;
         submesh.slotVSGBufferSkinning = -1;
         submesh.slotVSGBufferMorphTarget = -1;
         submesh.slotVSGBufferTerrain = -1;

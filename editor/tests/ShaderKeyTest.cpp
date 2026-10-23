@@ -57,8 +57,11 @@ namespace {
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
         ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT};
 
-    // MESH has every one of its 32 bits but the retired bit 5 ('Pcf')
-    const uint64_t meshValidMask = 0xFFFFFFDFULL;
+    // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
+    // October 2026, see StochasticTilingTest.cpp)
+    const uint64_t meshValidMask = 0xFFFFFFFFULL;
+    // every MESH bit but 5: the valid mask before Stochastic Tiling
+    const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
     ShaderData sampleShaderData() {
         ShaderData data;
@@ -250,10 +253,11 @@ TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
             EXPECT_EQ(ShaderPool::getValidPropertyMask(type) >> count, 0u) << ShaderPool::getShaderTypeName(type);
         }
     }
-    // the masks every type had (32-bit, MESH without its retired bit 5)
+    // the masks every type has (32-bit; MESH bit 5, DEPTH bit 14 and GBUFFER bit 10 are
+    // Stochastic Tiling)
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::MESH), meshValidMask);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::DEPTH), 0x3FFFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), 0x3FFu);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::DEPTH), 0x7FFFu);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), 0x7FFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI), 0xFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::POINTS), 0x1Fu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::LINES), 0x7u);
@@ -279,11 +283,12 @@ TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
             EXPECT_EQ(ShaderPool::normalizeKey(normalized), normalized);
         }
     }
-    // MESH: the retired bit 5 and every bit past 31 (none named yet) go
+    // MESH: every bit past 31 (none named yet) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | shaderPropertyBit(47) | 0x41)),
-              ShaderPool::getShaderKey(ShaderType::MESH, 0x41));
+              ShaderPool::getShaderKey(ShaderType::MESH, shaderPropertyBit(5) | 0x41));
 }
 
 TEST(ShaderKeyNormalize, EveryNamedBitRoundTripsThroughItsName) {
@@ -340,7 +345,7 @@ TEST(ShaderKeyStream, ExistingFilesSaveByteIdentical) {
     ASSERT_EQ(decoded.size(), 9u);
     EXPECT_EQ(decoded[2], ShaderPool::getShaderKey(ShaderType::MESH, 0x41));
     EXPECT_EQ(decoded[3], ShaderPool::getShaderKey(ShaderType::MESH, 0x80000041ULL));
-    EXPECT_EQ(decoded[4], ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
+    EXPECT_EQ(decoded[4], ShaderPool::getShaderKey(ShaderType::MESH, meshMaskWithoutBit5));
     EXPECT_EQ(decoded[8], ShaderPool::getShaderKey(ShaderType::MESH, 0x41, forkId));
 
     const std::set<ShaderKey> keys(decoded.begin(), decoded.end());
@@ -483,14 +488,17 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 1) | (1u << 3) | (1u << 4) | (1u << 6) | (1u << 12) | (1u << 19) | (1u << 31), "mesh_Uv1PucShwNorFogIblPcl"},
         {ShaderType::MESH, (1u << 3) | (1u << 28) | (1u << 29), "mesh_PucVtlLc4"},
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
-        // bits past the count add nothing; the retired bit 5 is a '?' as it always was (keys are
-        // normalized before they are named)
+        {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
+        // bits past the count add nothing
         {ShaderType::MESH, 0x41 | shaderPropertyBit(32) | shaderPropertyBit(63), "mesh_UltNor"},
-        {ShaderType::MESH, 0x41 | (1u << 5), "mesh_Ult?Nor"},
+        // bit 5, a '?' while it was retired, is Stochastic Tiling
+        {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
+        {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
         {ShaderType::GBUFFER, 0x3FF, "gbuffer_BctNorSkiMtaMnrMtgTerIstMrtTpb"},
+        {ShaderType::GBUFFER, 0x7FF, "gbuffer_BctNorSkiMtaMnrMtgTerIstMrtTpbSto"},
         {ShaderType::UI, 0xF, "ui_TexFtxVc3Vc4"},
         {ShaderType::POINTS, 0x1F, "points_TexVc3Vc4TxrPcl"},
         {ShaderType::LINES, 0x6, "lines_Vc4Pcl"},
