@@ -377,6 +377,25 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
     return true;
 }
 
+bool editor::GraphicUtils::readFramebufferRGBA(Framebuffer* framebuffer, std::vector<uint8_t>& out) {
+    out.clear();
+    if (!framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 || framebuffer->getHeight() == 0) {
+        return false;
+    }
+
+    uint8_t* pixels = nullptr;
+    bool needDelete = false;
+    if (!readFramebufferPixels(framebuffer, pixels, needDelete) || !pixels) {
+        if (needDelete) delete[] pixels;
+        return false;
+    }
+
+    const size_t size = static_cast<size_t>(framebuffer->getWidth()) * framebuffer->getHeight() * 4;
+    out.assign(pixels, pixels + size);
+    if (needDelete) delete[] pixels;
+    return true;
+}
+
 bool editor::GraphicUtils::encodeFramebufferPng(Framebuffer* framebuffer, std::vector<uint8_t>& out, bool flipY, int maxWidth, int* outWidth, int* outHeight) {
     out.clear();
     if (!framebuffer || !framebuffer->isCreated() || framebuffer->getWidth() == 0 || framebuffer->getHeight() == 0) {

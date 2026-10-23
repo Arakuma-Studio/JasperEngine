@@ -17,6 +17,8 @@ namespace jasperengine::editor{
     // keys of what a scene caches for each of the editor's secondary views
     constexpr uint32_t SCENE_VIEW_ID = 1;
     constexpr uint32_t GAME_VIEW_ID = 2;
+    // PoseRender's offscreen pose views (each renderer has a scene of its own)
+    constexpr uint32_t POSE_VIEW_ID = 3;
 
     // Ray through (x, y), in pixels of a view of viewWidth x viewHeight that viewProjection
     // covers. An orthographic ray spans the whole near-far range.
