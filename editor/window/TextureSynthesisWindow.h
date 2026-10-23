@@ -40,6 +40,9 @@ namespace jasperengine::editor {
         void open();
         void setOpen(bool open);
         bool isOpen() const;
+        // Another project is being opened (App::prepareForProjectSwitch): a running synthesis is
+        // cancelled and the window forgets the spec, its result and the project's images
+        void resetForProjectSwitch();
 
         // ---- entry points (absolute paths)
 
@@ -68,8 +71,11 @@ namespace jasperengine::editor {
         bool isStale() const;
         // Save: the result's files (primary, companions, a painted mask, recipes) as one undo step;
         // existing files are refused unless overwrite. The written project-relative paths go to
-        // `written`; the first is selected in the Project window.
-        bool save(bool overwrite, std::vector<std::string>& written, std::string& error);
+        // `written`; the first is selected in the Project window. `outputs` (MCP): the output
+        // paths of that spec are written instead of the window's (which the human may have edited
+        // during the run), and the window's later setting changes don't block it. Refused when
+        // the result was generated in another project.
+        bool save(bool overwrite, std::vector<std::string>& written, std::string& error, const texsynth::SynthesisSpec* outputs = nullptr);
 
     private:
         enum class View { Result, Example, SideBySide };
@@ -94,6 +100,8 @@ namespace jasperengine::editor {
         uint64_t generatedMaskRevision = 0;
         std::shared_ptr<texsynth::SynthesisRun> run;
         texsynth::SynthesisSpec runSpec;       // the spec `run` was started with
+        std::filesystem::path runRoot;         // the project it was started in
+        uint64_t runGeneration = 0;            // texsynth::projectGeneration() then
         bool resultSaved = false;
         std::vector<std::string> lastWritten;
         std::string statusMessage;

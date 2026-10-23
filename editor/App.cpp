@@ -3285,6 +3285,9 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 
 void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
+    // a synthesis started in this project is cancelled and never written into the next one
+    textureSynthesisWindow->resetForProjectSwitch();
+    editor::texsynth::projectSwitching();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.

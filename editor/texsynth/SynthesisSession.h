@@ -164,6 +164,14 @@ namespace jasperengine::editor::texsynth {
     bool specFromRecipe(const nlohmann::json& recipe, const std::filesystem::path& pngFile, const std::filesystem::path& projectDir,
                         SynthesisSpec& spec, std::vector<std::string>& notes, std::string& error);
 
+    // ---- project switches
+
+    // The editor is about to open another project (App::prepareForProjectSwitch): every run is
+    // cancelled and projectGeneration() grows. Whoever writes a run's result checks the
+    // generation it started in, so a result finishing later never lands in the next project.
+    void projectSwitching();
+    uint64_t projectGeneration();
+
     // ---- worker
 
     // synthesize() on a detached worker thread. The run keeps itself alive until it finishes, and

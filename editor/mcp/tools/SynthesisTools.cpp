@@ -475,6 +475,9 @@ Json toolArguments(const ts::SynthesisSpec& spec) {
 
 struct SynthesisCall {
     ts::SynthesisSpec spec;
+    // the project the call started in: its result is written there or nowhere
+    fs::path root;
+    uint64_t generation = 0;
     bool seedGiven = false;
     bool overwrite = false;
     bool showInEditor = false;
@@ -492,6 +495,14 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
     const ts::Result& result = run.result();
     const ts::SynthesisSpec& spec = state->spec;
     Json data = {{"mode", ts::toString(spec.mode)}, {"quality", ts::toString(spec.quality)}, {"seed", spec.seed}};
+    // another project was opened meanwhile (the run was cancelled then): nothing goes into it
+    Project* project = ctx.project();
+    if (state->generation != ts::projectGeneration() || !project || project->getProjectPath() != state->root) {
+        job->fail("The project changed while the synthesis ran (it was started in " + state->root.u8string() +
+                      "): nothing was written. Call synthesize_texture again in the open project.",
+                  data);
+        return;
+    }
     if (result.status == ts::Status::Cancelled || job->cancelRequested()) {
         job->markCancelled("Synthesis cancelled; nothing was written.");
         return;
@@ -504,7 +515,6 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
 
     // write
     Json outputs = Json::array();
-    Project* project = ctx.project();
     if (!spec.output.empty()) {
         std::string error;
         std::vector<std::string> written;
@@ -514,7 +524,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             ok = window->save(true, written, error);   // existence was checked when the call started
         } else {
             std::vector<ts::OutputFile> files;
-            ok = ts::encodeOutputs(project->getProjectPath(), spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
+            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
             for (const ts::OutputFile& f : files) written.push_back(f.path);
         }
         if (!ok) {
@@ -598,6 +608,8 @@ void synthesizeTextureTool(const CallPtr& call) {
     }
     state->overwrite = args.value("overwrite", false);
     state->showInEditor = args.value("show_in_editor", false);
+    state->root = project->getProjectPath();
+    state->generation = ts::projectGeneration();
     const bool wait = args.value("wait", true);
     const double timeout = args.value("timeout_seconds", 120.0);
     const fs::path root = project->getProjectPath();

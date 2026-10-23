@@ -753,6 +753,21 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
+    // ------------------------------------------------------------------ project switches
+
+    namespace {
+        std::atomic<uint64_t> generation{1};
+    }
+
+    void projectSwitching() {
+        generation++;
+        SynthesisRun::cancelRunning();
+    }
+
+    uint64_t projectGeneration() {
+        return generation.load();
+    }
+
     // ------------------------------------------------------------------ SynthesisRun
 
     std::shared_ptr<SynthesisRun> SynthesisRun::start(Request request, const Options& options, Finished onFinished) {

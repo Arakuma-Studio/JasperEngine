@@ -17,7 +17,9 @@ project with small generated textures (value noise; a 16-bit height companion; a
   reproduce the file;
 - `check` warns (synthesis-source-changed / -missing) once a source changes or disappears;
 - show_in_editor runs the synthesis in the Texture Synthesis window and saves it through the
-  window's Save; an editor screenshot shows the window (saved for inspection).
+  window's Save; an editor screenshot shows the window (saved for inspection);
+- (last: it switches projects) a run still going when another project is opened is cancelled and
+  its job fails saying so; nothing lands in either project, with or without show_in_editor.
 """
 
 from __future__ import annotations
@@ -393,3 +395,32 @@ async def test_window_show_in_editor(ed: Editor):
     shot = await ed.screenshot("editor", max_width=1600)
     w, h, _, _ = decode_png(shot)
     check(w > 600 and h > 400, f"an editor screenshot: {w}x{h}")
+
+
+# ---------------------------------------------------------------------------- last: switches projects
+
+async def test_project_switch_during_a_run(ed: Editor):
+    original = ed.project.resolve()
+    other = ed.scratch.root / "switched" / "Other"
+    for show in (False, True):
+        out = f"{TEX}/switch_{int(show)}.png"
+        r = await ed.call_raw("synthesize_texture", {"examples": [ALBEDO], "size": 2048, "quality": "high", "seed": 13, "companions": "none",
+                                                     "output": out, "wait": False, "show_in_editor": show})
+        check(not r.is_error, r.text)
+        job = r.structured["job_id"]
+        await asyncio.sleep(0.3)
+        if not other.exists():
+            await ed.call("create_project", path=str(other), name="Other", unsaved="discard")
+        else:
+            await ed.call("open_project", path=str(other), unsaved="discard")
+        for _ in range(200):
+            state = await ed.call("get_job", job_id=job)
+            if state["status"] != "running":
+                break
+            await asyncio.sleep(0.2)
+        check(state["status"] == "failed" and "project changed" in json.dumps(state), f"show_in_editor {show}: the job says why: {state}")
+        check(not (original / out).exists() and not (other / out).exists(), f"show_in_editor {show}: nothing written in either project")
+        await ed.call("open_project", path=str(original), unsaved="discard")
+    # back in the original project, a synthesis works as before
+    r = await ed.call_raw("synthesize_texture", {**BASE, "companions": "none"})
+    check(not r.is_error, r.text)
