@@ -358,3 +358,6 @@ the figure is approximate; re-measure on an idle host before deciding otherwise.
   `test_gtest_gate.py` (14), `test_check_notices.py` (10), `check-release-tag.sh` cases
   (`v1.2.3` at the commit passes; `v1.2.3-bad`, another commit, `v1.2` fail), actionlint 1.7.12
   on both workflows: pass.
+- `tools/build.sh htmlui-tests` (AC11, on `libs/googletest` and `engine/tests/support`): 3,237 ran,
+  74 skipped (3,311 declared), 0 failed, no golden changed. `tools/build.sh htmlui-editor-tests`:
+  72 ran, 1 skipped (the live Google Fonts test), 73 declared.
