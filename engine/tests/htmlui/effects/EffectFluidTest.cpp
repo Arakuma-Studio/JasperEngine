@@ -15,6 +15,8 @@
 #include "htmlui/effects/EffectValue.h"
 
 #include <array>
+#include <chrono>
+#include <cstdlib>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -390,4 +392,41 @@ TEST_F(EffectFluid, PresetsDraw){
     EXPECT_GT(maxDifference(plain, pinned("bloom off", 0.4)), 10);
     EXPECT_GT(maxDifference(plain, pinned("sunrays off", 0.4)), 10);
     EXPECT_GT(maxDifference(plain, pinned("shading off", 0.4)), 2);
+}
+
+// JASPER_FLUID_PROFILE=1: the live cost of a 512 x 512 instance per variant (a step a capture)
+TEST(EffectFluidProfile, LiveCost){
+    if (!std::getenv("JASPER_FLUID_PROFILE"))
+        GTEST_SKIP() << "JASPER_FLUID_PROFILE=1 to run";
+    EffectScene scene(512, 512, 1);
+    if (!scene.valid())
+        GTEST_SKIP() << "no GPU";
+    ASSERT_TRUE(warmUpEffect(fluid()));
+    ASSERT_TRUE(warmUpEffect(*EffectRegistry::get().find("ink-flow")));
+    const char* variants[] = {"background-image: none", "background-image: effect(ink-flow)", "background-image: effect(fluid)",
+                              "background-image: effect(fluid, bloom off, sunrays off)",
+                              "background-image: effect(fluid, bloom off, sunrays off, pressure-iterations 1)",
+                              "background-image: effect(fluid, bloom off, sunrays off, pressure-iterations 1, shading off)",
+                              "background-image: effect(fluid, sunrays off)", "background-image: effect(fluid, bloom off)"};
+    for (const char* declaration : variants){
+        const std::string html = "<!DOCTYPE html><html><head><style>html, body { margin: 0; width: 512px; height: 512px; background: #000; }"
+                                 "#f { position: absolute; left: 0; top: 0; width: 512px; height: 512px; " + std::string(declaration) +
+                                 "; }</style></head><body><div id=\"f\"></div></body></html>";
+        ASSERT_TRUE(scene.loadHtml(html));
+        TestImage image;
+        double t = 10.0;
+        for (int i = 0; i < 3; i++){
+            HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
+            scene.capture(image);
+        }
+        const uint64_t passes = EffectRuntime::get().stats().stepPasses;
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < 6; i++){
+            HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
+            scene.capture(image);
+        }
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 6.0;
+        std::printf("[ fluid    ] %-100s %8.1f ms a capture, %.1f passes\n", declaration, ms,
+                    (double)(EffectRuntime::get().stats().stepPasses - passes) / 6.0);
+    }
 }
