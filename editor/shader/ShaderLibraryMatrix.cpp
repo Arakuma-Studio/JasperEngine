@@ -89,6 +89,15 @@ namespace {
                 e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
             {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
                 e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+            // a mesh bound to lattices (includes/lattice.glsl): the deformation before and after
+            // skinning, after the instance matrix, the vertex colour a mask reads
+            {"lattice", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.lattice = true; }},
+            {"lattice, skinning, morph targets, vertex colour", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){
+                i.lattice = true; i.skinning = true; i.morphTarget = true; i.morphNormal = true; i.vertexColor4 = true; }},
+            {"lattice, instancing, vertex colour vec3, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                i.lattice = true; i.instanced = true; i.instanceFade = true; i.vertexColor3 = true; e.lights = true; e.shadows = true; }},
+            {"lattice, no normals or uv, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){
+                i.lattice = true; i.normal = false; i.tangent = false; i.texCoord1 = false; i.textureRect = true; }},
         };
         return cases;
     }

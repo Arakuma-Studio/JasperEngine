@@ -3103,11 +3103,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     const Material& material = mesh.submeshes[s].material;
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
+                    // a mesh loaded with its lattice variant: its depth one too, with the
+                    // vertex colour a lattice mask reads
+                    bool lattice = mesh.lattice.variantActive && !isTerrain;
                     uint32_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
-                        instancedFade);
+                        instancedFade, false, lattice && mesh.submeshes[s].hasVertexColor3,
+                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, lattice);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {

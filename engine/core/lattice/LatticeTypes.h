@@ -24,6 +24,7 @@ namespace jasperengine{
         std::vector<Vector4> texels;                // packed records, width LATTICE_TEXTURE_WIDTH
         float recordStart[LATTICE_MAX_PER_MESH] = {}; // first texel of each record
         int submesh[LATTICE_MAX_PER_MESH] = {-1, -1, -1, -1}; // per binding, -1 = all submeshes
+        uint32_t movingBindings = 0;                // bit b: binding b moves vertices (not at rest, weight not 0)
         float worldPadding = 0.0f;                  // world-space AABB growth (spec §5.5)
         bool needUpload = false;
         bool variantActive = false;                 // count > 0 when the loaded shaders were built

@@ -127,7 +127,7 @@ namespace jasperengine{
 
         // Bitmask of the property positions that currently map to a real variant for
         // this shader type (derived from getShaderPropertyName, so retired/reserved
-        // bits like MESH bit 5 are excluded). Used to normalize keys.
+        // bits are excluded). Used to normalize keys.
         static uint32_t getValidPropertyMask(ShaderType shaderType);
 
         // Strips property bits that no longer map to a variant (retired features,
@@ -196,13 +196,16 @@ namespace jasperengine{
                         bool light2d = false, bool shadows2d = false,
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
                         bool terrainPBR = false,
-                        bool vertexLights = false, int lightCapacity = 8);
-        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires;
-        // textureRect: the sprite texture rect its UV (texture or uv1) goes through
+                        bool vertexLights = false, int lightCapacity = 8, bool lattice = false);
+        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
+        // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
+        // texture rect its UV (texture or uv1) goes through
         static uint32_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
-                                               bool textureRect = false);
-        static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false);
+                                               bool textureRect = false, bool lattice = false);
+        // vertexColorVec3/4: the vertex colour a lattice's mask reads (set only with lattice)
+        static uint32_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
+                                                 bool lattice = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false);
         static uint32_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint32_t getHtmlUIProperties(bool texture);
         // HTMLUI_POST: one property bit per (exclusive) variant
