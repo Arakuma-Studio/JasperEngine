@@ -672,10 +672,11 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   base was already at 100.6 K, over the ~100 K target, so the total is 101.5 K. The overage
   predates S06. `focus_window` also gains `jobs_memory`.
 
-### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01)
+### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01 and S03)
 
-- **AC1-AC10, AC22.** `jasperengine-core-tests` (S06 and S03 suites) passes 226 of 226, three runs in Release and
-  two under TSan with 0 warnings.
+- **AC1-AC10, AC22.** `jasperengine-core-tests` (S06 and S03 suites) passes 251 of 251:
+  three runs in Release, two under TSan with 0 warnings, and through `tools/build.sh
+  unit-tests`. `jasperengine-editor-tests` passes 29 of 29.
 - **AC11-AC14.** `je-bench-jobs`, `je-bench-memory` and `check_bench.py`: all budgets hold in
   three consecutive runs.
   - R23: 5.9-8.5 M jobs/s, dispatch 24 ns, round trip p99 1-2.3 µs.
