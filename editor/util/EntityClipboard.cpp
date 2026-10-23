@@ -312,7 +312,7 @@ namespace {
         }
     }
 
-    const editor::Prefab::Instance* instanceRootedAt(editor::Project* project, Scene* scene, uint32_t sceneId, Entity entity, std::filesystem::path* path = nullptr) {
+    const editor::Prefab::Instance* clipboardInstanceRootedAt(editor::Project* project, Scene* scene, uint32_t sceneId, Entity entity, std::filesystem::path* path = nullptr) {
         const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
         if (!component || component->path.empty()) {
             return nullptr;
@@ -335,7 +335,7 @@ namespace {
         collectBranch(scene, root, coverage);
         std::unordered_set<Entity> seen(coverage.begin(), coverage.end());
         for (size_t i = 0; i < coverage.size(); i++) {
-            if (!instanceRootedAt(project, scene, sceneId, coverage[i])) {
+            if (!clipboardInstanceRootedAt(project, scene, sceneId, coverage[i])) {
                 continue;
             }
             // every level rooted there (an instance of a Prefab Variant roots its bases' too)
@@ -610,7 +610,7 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     for (Entity root : roots) {
         // A prefab member copied on its own is a plain GameObject, the prefab instances
         // below it still paste as instances
-        const bool member = !instanceRootedAt(project, scene, sceneId, root) &&
+        const bool member = !clipboardInstanceRootedAt(project, scene, sceneId, root) &&
             !project->findPrefabPathFor(sceneId, root).empty();
         YAML::Node encoded = member ?
             Stream::encodeEntity(root, scene, project, sceneProject, true) :
@@ -633,7 +633,7 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     YAML::Node instancesNode(YAML::NodeType::Sequence);
     std::vector<std::tuple<Entity, std::filesystem::path, const Prefab::Instance*>> levels;
     for (Entity entity : covered) {
-        if (!instanceRootedAt(project, scene, sceneId, entity)) {
+        if (!clipboardInstanceRootedAt(project, scene, sceneId, entity)) {
             continue;
         }
         // outer levels first (a variant's, then its bases')

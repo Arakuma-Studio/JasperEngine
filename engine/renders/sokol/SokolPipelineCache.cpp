@@ -16,7 +16,7 @@ using namespace jasperengine;
 
 namespace {
 
-    struct Entry {
+    struct PipelineCacheEntry {
         sg_pipeline pipeline;
         sg_shader shader;
         uint64_t baseHash;
@@ -30,8 +30,8 @@ namespace {
         return mutex;
     }
 
-    std::unordered_map<uint64_t, Entry>& entries(){
-        static std::unordered_map<uint64_t, Entry> map;
+    std::unordered_map<uint64_t, PipelineCacheEntry>& entries(){
+        static std::unordered_map<uint64_t, PipelineCacheEntry> map;
         return map;
     }
 
@@ -76,7 +76,7 @@ namespace {
         return SG_COMPAREFUNC_ALWAYS;
     }
 
-    sg_stencil_op toStencilOp(StencilOp op){
+    sg_stencil_op cacheToStencilOp(StencilOp op){
         switch (op){
         case StencilOp::KEEP: return SG_STENCILOP_KEEP;
         case StencilOp::ZERO: return SG_STENCILOP_ZERO;
@@ -206,9 +206,9 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
         desc.stencil.enabled = true;
         sg_stencil_face_state face = {};
         face.compare = toCompare(state.stencil.compare);
-        face.fail_op = toStencilOp(state.stencil.failOp);
-        face.depth_fail_op = toStencilOp(state.stencil.depthFailOp);
-        face.pass_op = toStencilOp(state.stencil.passOp);
+        face.fail_op = cacheToStencilOp(state.stencil.failOp);
+        face.depth_fail_op = cacheToStencilOp(state.stencil.depthFailOp);
+        face.pass_op = cacheToStencilOp(state.stencil.passOp);
         desc.stencil.front = face;
         desc.stencil.back = face;
         desc.stencil.read_mask = state.stencil.readMask;
@@ -243,7 +243,7 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
         auto it = map.find(key);
         if (it == map.end())
             break;
-        const Entry& entry = it->second;
+        const PipelineCacheEntry& entry = it->second;
         if (entry.shader.id == base.shader.id && entry.baseHash == baseHash && entry.state == state)
             return entry.pipeline;
         key++;
@@ -261,7 +261,7 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
     if (pipeline.id == SG_INVALID_ID)
         return pipeline;
 
-    map[key] = Entry{pipeline, base.shader, baseHash, state};
+    map[key] = PipelineCacheEntry{pipeline, base.shader, baseHash, state};
     return pipeline;
 }
 
