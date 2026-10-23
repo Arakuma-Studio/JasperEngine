@@ -239,7 +239,7 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
             // weights are a partition of unity, the fade at most 1), local to world at most
             // the lattice's scale
             float growth = std::fabs(binding.weight) * source.maxOffset * source.worldScale;
-            if (binding.stage == 0 && !mesh.bonesMatrix.empty())
+            if (binding.stage == 0 && mesh.bonesMatrix.size() > 0)
                 growth *= boneScale;
             padding += growth;
         }

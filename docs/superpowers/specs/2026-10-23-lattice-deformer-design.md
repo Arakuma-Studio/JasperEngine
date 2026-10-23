@@ -596,3 +596,123 @@ branches to integrate (the integrator merges into `lattice`).
 ## 12. Implementation notes
 
 (Work packages append here: decisions, deviations, file lists, shortcut choices.)
+
+### 12.x WP-RENDER
+
+GPU deformation as §5, with these decisions and deviations:
+
+- **Variant bits.** MESH bit 5 `Ltc` (`HAS_LATTICE`, the retired `Pcf` slot), DEPTH bit 14
+  `Ltc`, GBUFFER bit 10 `Ltc` plus bits 11/12 `Vc3`/`Vc4` (the vertex colour a mask channel
+  reads; set only with `Ltc`). `getMeshProperties`, `getDepthMeshProperties` and
+  `getGBufferMeshProperties` take a trailing `lattice` argument (default false), so every
+  mesh without a lattice keeps its exact key. Counts: DEPTH 15, GBUFFER 13. A key with the
+  terrain bit compiles `Ltc` inert (the compiler leaves `HAS_LATTICE` out). Consequence of
+  reusing bit 5: a persisted key from an editor older than the PCF retirement that still has
+  bit 5 set now normalizes to a lattice variant instead of dropping the bit (one extra
+  exported variant at worst).
+- **Vertex colour in every pass of a lattice variant.** `SubmeshShaderInputs::lattice`
+  (added) forces the mesh's vertex colour bits into the colour, depth and G-buffer variants of
+  a lattice mesh, whatever the shader's `@require`, so changing a binding's mask never
+  reloads anything and shadows/depth follow the mask. The built-in depth and G-buffer loads
+  bind `COLOR` (a no-op for shaders that do not declare `a_color`). `water_depth`,
+  `spin_bob_depth` and `dissolve_depth` keep the colour defines under `HAS_LATTICE`. A mesh
+  without vertex colours is not masked (mask 1 for every channel, inverted ones too), as the
+  CPU solver does with a null colour.
+- **Variant switch.** `LatticeRender::prepare` sets `MeshComponent::needVariantReload` when
+  `count > 0` differs from `variantActive` (set by `loadMesh`): the loaded variant keeps
+  drawing (with count 0 in its block when the bindings went) until the new one is built, no
+  invisible frames while the editor compiles it. A mesh whose lattice variant is missing
+  from a build without runtime compilation behaves as any other missing variant (it does not
+  draw); the variant collector adds the lattice variants of authored targets (below), so
+  only bindings made by scripts at runtime rely on runtime compilation.
+- **GLSL** (`includes/lattice.glsl`): `latticeDeform(stage, pos, normal, tangent, stretch)`
+  as specified, plus `latticeDeformSmooth` (also moves the smoothed normal of
+  `includes/surface_vs.glsl`, so outlines follow) and `latticeWriteStretch`. One Jacobian per
+  lattice and vertex, taken to object space (`A^-1 J A`): position `p + A^-1 delta`
+  (`= Minv (M p + delta)`), normal by the cofactor of that Jacobian (`= A^T cof(J) A^-T`, the
+  spec's), tangent by it, stretch its determinant. A binding whose field is zero at the
+  vertex leaves it bit-identical (as the solver's `deformVertex`), and bindings at rest or
+  with weight 0 are left out of the draw by the CPU (`LatticeMeshState::movingBindings`), so
+  a lattice at rest draws exactly what no lattice draws (tested pixel for pixel). Loops
+  have constant bounds with `break`; data through `texelFetch` on an unfilterable RGBA32F
+  texture with a non-filtering sampler (the bones texture's annotations) on every backend,
+  the block is floats only. The record constants come from `LatticeTypes.h` as compiler
+  defines (`LATTICE_MAX_PER_MESH`, `LATTICE_TEXTURE_WIDTH`, `LATTICE_RECORD_HEADER`, in
+  the library hash). `u_vs_lattice.z` is 1 in the colour passes (stretch computed), 0 in
+  depth and G-buffer.
+- **Pipeline order** in every vertex path: morph targets, stage 0 bindings (only under
+  `HAS_SKINNING`; without skinning every binding is stage 1), skinning, instance matrix,
+  instance fade, stage 1 bindings, then (surface shaders) the `SURFACE_DISPLACE` hooks,
+  which see the deformed position and normals, then the model matrix.
+- **Stretch** (deviation): the `v_latticeStretch` varying exists only when both stages
+  define `LATTICE_STRETCH` (an output the fragment stage does not read fails the
+  cross-compile, so it cannot be written by every `mesh.vert`/`surface_vs.glsl` variant).
+  The fragment side defines `LATTICE_FS` (and `LATTICE_STRETCH`) and includes
+  `includes/lattice.glsl` for `latticeStretch()` (1.0 without a lattice or without the
+  define). `library/lattice_stretch` (.vert + .frag, category Effects): log-scale heat map,
+  `squashColor`, `stretchColor`, `range` (volume ratio of the full colour, 1.05..16, default
+  2), `baseColor` and `u_baseTexture` tint; folded cells show the squash colour.
+- **Vertex paths audited** (all call `latticeDeform`/`latticeDeformSmooth`): `mesh.vert`,
+  `depth.vert`, `gbuffer.vert`, `includes/surface_vs.glsl` (every library mesh shader's
+  colour pass: `surface`, `unlit`, `simple_lit`, `vertex_lit`, `toon`, `matcap`,
+  `triplanar`, `panner`, `decal`, `projected_decal`, `foliage`, `flipbook`, `dissolve`,
+  `spin_bob`, `water`, `fake_lit`, `sprite`, `outline` and `outline_stencil` through
+  `library/outline_vs.glsl`, `lattice_stretch`), `includes/surface_depth_vs.glsl` (every
+  depth program: `surface_depth`, `unlit_depth`, `foliage_depth`, `flipbook_depth`,
+  `dissolve_depth`, `spin_bob_depth`, `water_depth`). Not mesh paths (no lattice):
+  `sky_vs`, `ui_vs`, `points_vs` (`particle`), `htmlui*`, `lines`, `shadow2d`, `fullscreen`,
+  `bloom`, `uber`, `effects/*`. Forks made before this keep compiling and draw undeformed
+  (their block and texture slots are -1); `mesh.vert`'s header and
+  `docs/mcp/guide/shaders.md` (Forking) show the call.
+- **Packing** (`LatticeRender::prepare`): one walk down the Transform array from the first
+  modifier (skipping the parts no `includeChildren` branch covers), the path of ancestors
+  giving the inherited bindings nearest first after the own ones. A lattice is validated and
+  padded once a frame; skipped when deleted, without `LatticeComponent`, disabled, inactive
+  in the hierarchy, with a singular or non-finite transform, or when the mesh's transform is
+  singular. Resolutions are clamped and short offset lists read as zero, as the solver does
+  (texel 8 holds the clamped resolution); a NaN fade distance is packed as 0. More than
+  `LATTICE_MAX_PER_MESH` valid bindings: the rest are ignored, `Log::warn` once per modifier
+  (`warnedOverflow`, cleared when it fits again). Texels are built in a scratch vector,
+  compared with the mesh's (`memcmp`) and swapped in only when they differ (`needUpload`).
+  Terrains are never targets. `wantsTessellation` is true for every target with `count > 0`
+  (MeshSystem only reads it for sprites), `tessellation` the first binding's modifier's
+  `subdivisions` clamped to 1..64. Meshes filled last frame and not this one are reset.
+  With no `LatticeModifierComponent` and nothing filled last frame it returns at once; in a
+  steady frame it allocates nothing (scratch kept in `LatticeRenderState`).
+- **Bounds**: `worldPadding = sum |weight| * maxPaddedOffset * s`, `s` the lattice model's
+  longest column (or the root sum of squares of the columns for a skewed matrix, a bound of
+  the spectral norm); a before-skinning binding of a skinned mesh is also scaled by its
+  largest bone scale. Added to `worldAABB`, to tilemap chunk bounds and to the per-instance
+  culling radius (`buildInstanceView`). A padding change marks the AABB dirty, which for an
+  instanced mesh also rebuilds its instance list (a jiggling lattice on a large instanced
+  mesh does that every frame).
+- **Texture**: `TextureRender::createDynamicTexture` (RGBA32F stream), `LATTICE_TEXTURE_WIDTH`
+  wide, as many rows as the texels need (made again when that changes), uploaded by
+  `updateMeshBuffers` once a frame at most and bound at each draw (so a remade texture needs
+  no reload). Destroyed by `destroyMesh` and by a load without the lattice variant.
+
+Contract additions: `LatticeMeshState::movingBindings`; `LatticeRenderState` and
+`LatticeRender::prepare(Scene*, LatticeRenderState&)`, `getUniformBlock`,
+`isLatticeTarget` (LatticeRender.h); `RenderSystem::getLatticeState()` (RenderSystem owns
+the state); `SubmeshShaderInputs::lattice`; `UniformBlockType::VS_LATTICE`,
+`DEPTH_VS_LATTICE`, `GBUFFER_VS_LATTICE`, `TextureShaderType::LATTICE`; `Submesh`
+`slotVSLattice`/`slotVSLatticeTexture`, `slotVSDepthLattice`/`...Texture`,
+`slotVSGBufferLattice`/`...Texture`, the same pair on `SubmeshExtraPass`.
+
+Variant collection: `ShaderVariantCollector` adds, for every mesh that
+`LatticeRender::isLatticeTarget` (own or inherited binding to a lattice entity, enabled or
+not), the lattice variants next to the unbound ones; `Project.cpp`'s loaded-mesh list derives
+the depth key with the lattice bit; `ShaderLibraryMatrix` gains four lattice cases (plain;
+skinning + morph + vertex colour; instancing + fade + vec3 colour + shadows; no normals/UV
+with a sprite rect).
+
+Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (one field),
+`component/MeshComponent.h` (slots), `render/Render.h`, `shader/ShaderData.cpp`,
+`shader/ShaderVariantCompiler.cpp`, `pool/ShaderPool.{h,cpp}`,
+`subsystem/RenderSystem.{h,cpp}`, `registry/EntityCloner.cpp` (one line: a clone's
+`LatticeMeshState` is reset, the texture handle is the original's; WP-ECS owns the file),
+`engine/shaderlib/{mesh,depth,gbuffer}.vert`, `includes/{lattice,surface_vs,surface_depth_vs}.glsl`,
+`library/lattice_stretch.{vert,frag}`, `library/{water,spin_bob,dissolve}_depth.vert`,
+`editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
+`docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
+`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
