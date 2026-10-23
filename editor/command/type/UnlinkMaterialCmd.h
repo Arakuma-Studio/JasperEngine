@@ -28,7 +28,7 @@ namespace jasperengine::editor{
         struct EntityData {
             Material oldMaterial;
             std::string linkedFilePath;
-            uint32_t oldOverrideFields = 0;
+            uint64_t oldOverrideFields = 0;
         };
         std::map<Entity, EntityData> entities;
 

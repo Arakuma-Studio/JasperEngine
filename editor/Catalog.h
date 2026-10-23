@@ -207,7 +207,7 @@ namespace jasperengine::editor{
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
         // writing the value, and puts the whole mask back on undo.
-        static uint32_t* getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields);
+        static uint64_t* getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint64_t& propertyFields);
 
         // custom uniform blocks of a Mesh/UI/Points/Lines/Sky component's loaded shader, vertex first
         static std::vector<const CustomUniformBlock*> getShaderUniformBlocks(EntityRegistry* registry, Entity entity, ComponentType component);

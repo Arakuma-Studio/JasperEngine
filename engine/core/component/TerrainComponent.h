@@ -92,6 +92,12 @@ namespace jasperengine{
         Vector2 uvScale = Vector2(1, 1); //multiplies the shared detail tiling
         Vector2 uvOffset;
 
+        // hex tiling (includes/hex_tiling.glsl): the flat projection sampled on three randomly
+        // rotated copies instead of its near and far tiling, which hides the repetition; the
+        // side planes stay planar. hexRotation 0..1 is the share of a turn a tile may rotate.
+        bool hexTiling = false;
+        float hexRotation = 1;
+
         bool operator == (const TerrainSurfaceLayer& other) const{
             return pbr == other.pbr &&
                    colorTexture == other.colorTexture &&
@@ -106,7 +112,9 @@ namespace jasperengine{
                    metallicFactor == other.metallicFactor &&
                    occlusionStrength == other.occlusionStrength &&
                    uvScale == other.uvScale &&
-                   uvOffset == other.uvOffset;
+                   uvOffset == other.uvOffset &&
+                   hexTiling == other.hexTiling &&
+                   hexRotation == other.hexRotation;
         }
 
         bool operator != (const TerrainSurfaceLayer& other) const{

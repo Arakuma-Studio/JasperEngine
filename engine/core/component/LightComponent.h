@@ -28,6 +28,17 @@ namespace jasperengine{
         SPOT
     };
 
+    // What LightComponent::intensity is in (util/LightPhotometry.h). ENGINE is the engine's own
+    // unitless intensity, drawn as it is. The physical units are converted on the CPU through the
+    // scene's Physical Light Exposure (SceneSettings::physicalLightEV100): LUX for a directional
+    // light, CANDELA and LUMEN for a point or spot light.
+    enum class LightUnit{
+        ENGINE,
+        LUX,
+        CANDELA,
+        LUMEN
+    };
+
     struct LightCamera{
         CameraRender render;
         Matrix4 lightViewMatrix;
@@ -47,10 +58,31 @@ namespace jasperengine{
         Vector3 direction;
         Vector3 worldDirection;
 
+        // linear; with useColorTemperature, the filter the temperature's colour goes through
         Vector3 color = Vector3(1.0, 1.0, 1.0);
 
         float range = 0.0;
         float intensity = 1.0;
+        LightUnit intensityUnit = LightUnit::ENGINE;
+        // the colour of a black body at colorTemperature (Kelvin, 1000..20000; 6500 is white)
+        // times color
+        bool useColorTemperature = false;
+        float colorTemperature = 6500.0f;
+
+        // Runtime only: the colour and unitless intensity every renderer consumer reads, made from
+        // the authored values above by LightPhotometry::resolveLight when one of them or the
+        // scene's EV100 changes (resolvedKey). Never serialized.
+        Vector3 resolvedColor = Vector3(1.0, 1.0, 1.0);
+        float resolvedIntensity = 1.0;
+        struct ResolvedKey{
+            Vector3 color;
+            float intensity = NAN;
+            float colorTemperature = 0.0f;
+            float ev100 = 0.0f;
+            LightUnit intensityUnit = LightUnit::ENGINE;
+            LightType type = LightType::DIRECTIONAL;
+            bool useColorTemperature = false;
+        } resolvedKey;
 
         float innerConeCos = 0.766044438f; // cos(Angle::defaultToRad(80 / 2));
         float outerConeCos = 0.642787635f; // cos(Angle::defaultToRad(100 / 2));

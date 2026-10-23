@@ -233,7 +233,7 @@ void MeshSystem::applySubmeshOverrides(const SubmeshOverrides& overrides, Entity
 }
 
 void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
-    const uint32_t fields = saved.overrideFields;
+    const uint64_t fields = saved.overrideFields;
 
     Material& material = submesh.material;
     const Material& savedMaterial = saved.material;
@@ -285,6 +285,8 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
     if (fields & SubmeshOverride_Stencil)        material.stencil        = savedMaterial.stencil;
     if (fields & SubmeshOverride_ColorWrite)     material.colorWrite     = savedMaterial.colorWrite;
     if (fields & SubmeshOverride_ExtraPass)      material.extraPass      = savedMaterial.extraPass;
+    if (fields & SubmeshOverride_EmissiveStrength) material.emissiveStrength = savedMaterial.emissiveStrength;
+    if (fields & SubmeshOverride_PbrExtensions)  restorePbrExtensions(savedMaterial.pbr, material.pbr);
 
     if (fields & SubmeshOverride_FaceCulling)   submesh.faceCulling   = saved.faceCulling;
     if (fields & SubmeshOverride_TextureShadow) submesh.textureShadow = saved.textureShadow;
@@ -292,6 +294,19 @@ void MeshSystem::applySubmeshOverride(const Submesh& saved, Submesh& submesh) {
 
     submesh.overrideFields = fields;
     submesh.needUpdateTexture = true;
+}
+
+void MeshSystem::restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded) {
+    MaterialPbrExtensions result = saved;
+    const MaterialPbrExtensions& fresh = loaded.get();
+    for (int m = 0; m < (int)PbrMap::COUNT; m++) {
+        const PbrMap map = (PbrMap)m;
+        const Texture& freshMap = MaterialPbr::getMap(fresh, map);
+        Texture& savedMap = MaterialPbr::getMap(result, map);
+        if (!freshMap.empty() && savedMap.getId() == freshMap.getId())
+            savedMap = freshMap;
+    }
+    loaded = result;
 }
 
 void MeshSystem::prepareSpriteMesh(MeshComponent& mesh){

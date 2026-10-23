@@ -164,6 +164,10 @@ namespace jasperengine{
         static bool usesTextureRect(const Submesh& submesh);
         // Puts the fields a model load must keep (Submesh::overrideFields) on a loaded submesh
         static void applySubmeshOverride(const Submesh& saved, Submesh& submesh);
+        // The edited lobes over the ones a load made: all of them (one override bit), but a map
+        // that is still the file's keeps the loaded texture, which knows how to make its pixels
+        // (a map packed from two of the file's images, TexturePack)
+        static void restorePbrExtensions(const MaterialPbrExtensions& saved, OutOfLineValue<MaterialPbrExtensions>& loaded);
         // true when a frame of another size needs the sprite rebuilt for its texture scale factor
         static bool changesSpriteInset(const SpriteComponent& sprite, const Rect& oldRect, const Rect& newRect);
 

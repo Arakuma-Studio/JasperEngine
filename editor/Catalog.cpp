@@ -128,7 +128,7 @@ namespace {
     // reload. textureRect is absent on purpose: no loader touches it.
     struct SubmeshOverrideField {
         const char* name;
-        uint32_t fields;
+        uint64_t fields;
     };
 
     const SubmeshOverrideField submeshOverrideFields[] = {
@@ -167,7 +167,7 @@ namespace {
     };
 
     // Splits "submeshes[N].<field>" into the submesh it addresses and the override bits it writes.
-    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint32_t& fields) {
+    bool parseSubmeshOverrideProperty(const std::string& propertyName, size_t& submeshIndex, uint64_t& fields) {
         if (propertyName.compare(0, 10, "submeshes[") != 0) {
             return false;
         }
@@ -4287,7 +4287,7 @@ uint64_t editor::Catalog::getComponentStructuralUpdateFlags(ComponentType compTy
     }
 }
 
-uint32_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint32_t& propertyFields) {
+uint64_t* editor::Catalog::getSubmeshOverrideMask(EntityRegistry* registry, Entity entity, ComponentType component, const std::string& propertyName, uint64_t& propertyFields) {
     if (component != ComponentType::MeshComponent) {
         return nullptr;
     }
@@ -5357,9 +5357,9 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
     }
 
     // The override bit travels with the value, or the target keeps it only until its model loads.
-    uint32_t propertyFields = 0;
-    if (uint32_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
-        if (uint32_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
+    uint64_t propertyFields = 0;
+    if (uint64_t* source = getSubmeshOverrideMask(sourceRegistry, sourceEntity, compType, property, propertyFields)) {
+        if (uint64_t* target = getSubmeshOverrideMask(targetRegistry, targetEntity, compType, property, propertyFields)) {
             *target = (*target & ~propertyFields) | (*source & propertyFields);
         }
     }

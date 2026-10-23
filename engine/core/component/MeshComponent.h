@@ -30,8 +30,8 @@
 namespace jasperengine{
 
     // Submesh fields a model load rewrites from its source file, so an edit to one only survives
-    // the load while it is flagged in Submesh::overrideFields.
-    enum SubmeshOverrideFlags : uint32_t {
+    // the load while it is flagged in Submesh::overrideFields (64 bits, saved as a number).
+    enum SubmeshOverrideFlags : uint64_t {
         SubmeshOverride_BaseColorFactor          = 1 << 0,
         SubmeshOverride_MetallicFactor           = 1 << 1,
         SubmeshOverride_RoughnessFactor          = 1 << 2,
@@ -65,6 +65,10 @@ namespace jasperengine{
         SubmeshOverride_Stencil                  = 1 << 27,
         SubmeshOverride_ColorWrite               = 1 << 28,
         SubmeshOverride_ExtraPass                = 1 << 29,
+        // the extended lobes and hex tiling (Material::pbr, all of it) and the emissive strength,
+        // which a glTF model sets (KHR_materials_*)
+        SubmeshOverride_PbrExtensions            = 1ull << 30,
+        SubmeshOverride_EmissiveStrength         = 1ull << 31,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -80,7 +84,8 @@ namespace jasperengine{
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
-                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary
+                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary |
+                                   SubmeshOverride_PbrExtensions | SubmeshOverride_EmissiveStrength
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
@@ -251,7 +256,7 @@ namespace jasperengine{
         PrimitiveType primitiveType = PrimitiveType::TRIANGLES;
         unsigned int vertexCount = 0;
 
-        uint32_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
+        uint64_t overrideFields = 0; // SubmeshOverrideFlags edited after import, kept across loads
 
         // material.lighting the shader variant was picked for
         MaterialLighting loadedLighting = MaterialLighting::AUTO;

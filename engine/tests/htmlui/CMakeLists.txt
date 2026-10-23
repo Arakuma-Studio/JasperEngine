@@ -25,6 +25,13 @@ file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/video/*.cpp
 )
 
+# engine core tests (engine/tests/core/<area>/, where the core test target of the build and
+# test framework spec will build them), built here until that target exists
+file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/*.cpp
+)
+list(APPEND HTMLUI_TEST_SOURCES ${CORE_TEST_SOURCES})
+
 # editor logic without ImGui or editor state, tested here because the editor has no
 # googletest target (EditorLogicTests.cpp)
 set(HTMLUI_TEST_EDITOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../editor")
@@ -60,6 +67,7 @@ endif()
 target_compile_definitions(jasperengine-htmlui-tests PRIVATE
     JASPER_HTMLUI_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
     JASPER_HTMLUI_TEST_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+    JASPER_CORE_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../core"
 )
 
 set_target_properties(jasperengine-htmlui-tests PROPERTIES

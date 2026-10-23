@@ -320,6 +320,10 @@ namespace shadercompiler{
 
     bool load_input(std::vector<input_t>& inputs, const args_t& args);
 
+    // The preprocessed source of every input (includes expanded, the variant's defines
+    // applied, #line directives kept), as glslang's -E gives it; one output per input
+    bool preprocess(std::vector<std::string>& outputs, const std::vector<input_t>& inputs, const args_t& args);
+
     bool compile_to_spirv(std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args);
 
     bool compile_to_lang(std::vector<spirvcross_t>& spirvcrossvec, const std::vector<spirv_t>& spirvvec, const std::vector<input_t>& inputs, const args_t& args);

@@ -198,6 +198,13 @@ namespace jasperengine{
         void setMaxLightsPerObject(int maxLightsPerObject);
         int getMaxLightsPerObject() const;
 
+        // the built-in Lit's shading quality (a variant of every lit mesh: they reload)
+        void setLitQuality(LitQuality litQuality);
+        LitQuality getLitQuality() const;
+        // the exposure (EV100, -6..24) lights in physical units are drawn at
+        void setPhysicalLightEV100(float ev100);
+        float getPhysicalLightEV100() const;
+
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
         void setAmbientLight2D(Vector3 color);

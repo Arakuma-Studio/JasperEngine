@@ -992,6 +992,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemTexture.cpp
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
+    core/texture/MaterialPbr.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
     core/thread/ResourceProgress.cpp

@@ -1188,7 +1188,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){
-            code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << formatUInt(mesh.submeshes[s].overrideFields) << ";\n";
+            // the bits past 31 (the extended lobes) need a 64-bit literal
+            const uint64_t fields = mesh.submeshes[s].overrideFields;
+            code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << (fields > 0xFFFFFFFFull ? std::to_string(fields) + "ull" : formatUInt((unsigned int)fields)) << ";\n";
         }
 
         if (hasModel){ // the load rebuilds the attributes
