@@ -394,10 +394,10 @@ TEST_F(EffectFluid, PresetsDraw){
     EXPECT_GT(maxDifference(plain, pinned("shading off", 0.4)), 2);
 }
 
-// JASPER_FLUID_PROFILE=1: the live cost of a 512 x 512 instance per variant (a step a capture)
+// JASPER_EFFECT_FLUID_PROFILE=1: the live cost of a 512 x 512 instance per variant (a step a capture)
 TEST(EffectFluidProfile, LiveCost){
-    if (!std::getenv("JASPER_FLUID_PROFILE"))
-        GTEST_SKIP() << "JASPER_FLUID_PROFILE=1 to run";
+    if (!std::getenv("JASPER_EFFECT_FLUID_PROFILE"))
+        GTEST_SKIP() << "JASPER_EFFECT_FLUID_PROFILE=1 to run";
     EffectScene scene(512, 512, 1);
     if (!scene.valid())
         GTEST_SKIP() << "no GPU";
