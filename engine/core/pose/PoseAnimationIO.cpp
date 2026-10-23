@@ -3,17 +3,14 @@
 
 #include "pose/PoseAnimationIO.h"
 
-#include "io/Data.h"
-#include "io/FileData.h"
 #include "json.hpp"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRanges.h"
 
+#include <cfloat>
+#include <climits>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <initializer_list>
 
 namespace jasperengine::pose {
@@ -23,6 +20,47 @@ namespace jasperengine::pose {
         using Json = nlohmann::json;
 
         // ---- parsing ----
+
+        // A number rounded to 4 decimals without trailing zeros ("0.12", "25", "0")
+        std::string number(double value){
+            if (!std::isfinite(value)){
+                return "0";
+            }
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%.4f", value);
+            std::string text = buffer;
+            size_t end = text.size();
+            while (end > 0 && text[end - 1] == '0'){
+                end--;
+            }
+            if (end > 0 && text[end - 1] == '.'){
+                end--;
+            }
+            text.resize(end);
+            if (text == "-0" || text.empty()){
+                text = "0";
+            }
+            return text;
+        }
+
+        // A number for warning texts: up to 6 significant digits, no trailing zeros
+        std::string shortNumber(double value){
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), "%.6g", value);
+            return buffer;
+        }
+
+        // A JSON number as a float (a huge value saturates instead of overflowing the cast)
+        float toFloat(double value){
+            if (value > static_cast<double>(FLT_MAX)){
+                return FLT_MAX;
+            }
+            if (value < -static_cast<double>(FLT_MAX)){
+                return -FLT_MAX;
+            }
+            return static_cast<float>(value);
+        }
+
 
         void warn(std::vector<std::string>& warnings, const std::string& message){
             warnings.push_back(message);
@@ -86,9 +124,9 @@ namespace jasperengine::pose {
 
         void readFloat(const Json& parent, const char* key, float& value, const std::string& path,
                        std::vector<std::string>& warnings){
-            double number;
-            if (readDouble(parent, key, number, path, warnings)){
-                value = static_cast<float>(number);
+            double parsed;
+            if (readDouble(parent, key, parsed, path, warnings)){
+                value = toFloat(parsed);
             }
         }
 
@@ -118,23 +156,26 @@ namespace jasperengine::pose {
             value = it->get<std::string>();
         }
 
-        // A whole number: rounded, saturated to [lo, hi] (the range table clamps afterwards)
+        // A whole number: rounded and saturated to [lo, hi]. With `warnRange` a saturated value is
+        // reported like a clamp; without it the caller's range clamp (PoseRanges) reports it.
         void readInteger(const Json& parent, const char* key, long long lo, long long hi, long long& value,
-                         const std::string& path, std::vector<std::string>& warnings){
-            double number;
-            if (!readDouble(parent, key, number, path, warnings)){
+                         bool warnRange, const std::string& path, std::vector<std::string>& warnings){
+            double parsed;
+            if (!readDouble(parent, key, parsed, path, warnings)){
                 return;
             }
-            const double rounded = std::round(number);
+            const double rounded = std::round(parsed);
             if (rounded < static_cast<double>(lo) || rounded > static_cast<double>(hi)){
                 value = rounded < static_cast<double>(lo) ? lo : hi;
-                warn(warnings, join(path, key) + ": " + std::to_string(number) + " out of range, clamped to " +
-                               std::to_string(value));
-            }else{
-                value = static_cast<long long>(rounded);
+                if (warnRange){
+                    warn(warnings, "out of range, clamped: " + join(path, key) + ": " + shortNumber(parsed) +
+                                   " -> " + std::to_string(value));
+                }
+                return;
             }
-            if (rounded != number){
-                warn(warnings, join(path, key) + ": " + std::to_string(number) + " is not a whole number, rounded");
+            value = static_cast<long long>(rounded);
+            if (rounded != parsed){
+                warn(warnings, join(path, key) + ": " + shortNumber(parsed) + " is not a whole number, rounded");
             }
         }
 
@@ -178,7 +219,7 @@ namespace jasperengine::pose {
             readFloat(object, "inbetweens", humanize.inbetweens, "humanize", warnings);
             readFloat(object, "life", humanize.life, "humanize", warnings);
             long long seed = humanize.seed;
-            readInteger(object, "seed", 0, 0xFFFFFFFFLL, seed, "humanize", warnings);
+            readInteger(object, "seed", 0, ranges::SEED_MAX, seed, true, "humanize", warnings);
             humanize.seed = static_cast<uint32_t>(seed);
             readFloat(object, "head_follow", humanize.headFollow, "humanize", warnings);
             readFloat(object, "torso_follow", humanize.torsoFollow, "humanize", warnings);
@@ -216,7 +257,7 @@ namespace jasperengine::pose {
                     }else if (!it->is_number()){
                         warn(warnings, path + ".angles." + it.key() + ": expected a number, ignored");
                     }else{
-                        key.body.angles[dof] = static_cast<float>(it->get<double>());
+                        key.body.angles[dof] = toFloat(it->get<double>());
                     }
                 }
             }
@@ -230,28 +271,6 @@ namespace jasperengine::pose {
         }
 
         // ---- writing ----
-
-        // A number rounded to 4 decimals without trailing zeros ("0.12", "25", "0")
-        std::string number(double value){
-            if (!std::isfinite(value)){
-                return "0";
-            }
-            char buffer[64];
-            std::snprintf(buffer, sizeof(buffer), "%.4f", value);
-            std::string text = buffer;
-            size_t end = text.size();
-            while (end > 0 && text[end - 1] == '0'){
-                end--;
-            }
-            if (end > 0 && text[end - 1] == '.'){
-                end--;
-            }
-            text.resize(end);
-            if (text == "-0" || text.empty()){
-                text = "0";
-            }
-            return text;
-        }
 
         std::string quote(const std::string& text){
             return Json(text).dump(-1, ' ', false, Json::error_handler_t::replace);
@@ -268,13 +287,27 @@ namespace jasperengine::pose {
                    ", \"anticipation\": " + number(transition.anticipation) + "}";
         }
 
+        // An angle as written: rounded to 4 decimals, then wrapped to (-180, 180], so a value that
+        // rounds to -180 prints 180 and write -> parse -> write stays byte-identical
+        double writtenAngle(float angle){
+            double rounded = std::round(static_cast<double>(angle) * 10000.0) / 10000.0;
+            rounded = std::fmod(rounded, 360.0);
+            if (rounded <= -180.0){
+                rounded += 360.0;
+            }else if (rounded > 180.0){
+                rounded -= 360.0;
+            }
+            return rounded;
+        }
+
         // The angles object, entries in DOF order, wrapped to lines of about 100 columns
         std::string anglesText(const PoseKey& key, const std::string& indent){
             std::vector<std::string> entries;
             for (int dof = 0; dof < DOF_COUNT; dof++){
                 const float angle = key.body.angles[dof];
-                if (std::fabs(angle) >= 0.0005f){
-                    entries.push_back(quote(dofName(dof)) + ": " + number(angle));
+                const double written = writtenAngle(angle);
+                if (std::fabs(angle) >= 0.0005f && std::fabs(written) >= 0.0005){
+                    entries.push_back(quote(dofName(dof)) + ": " + number(written));
                 }
             }
             if (entries.empty()){
@@ -341,10 +374,10 @@ namespace jasperengine::pose {
             }
             const double value = version->get<double>();
             if (value != std::floor(value) || value < 1.0){
-                return fail(error, "invalid \"version\": " + number(value));
+                return fail(error, "invalid \"version\": " + shortNumber(value));
             }
             if (value > POSEANIM_VERSION){
-                return fail(error, "unsupported pose animation version " + number(value) +
+                return fail(error, "unsupported pose animation version " + shortNumber(value) +
                                    " (this engine reads versions up to " + std::to_string(POSEANIM_VERSION) + ")");
             }
         }
@@ -363,7 +396,7 @@ namespace jasperengine::pose {
         PoseAnimationSettings& settings = out.settings;
         readString(root, "preview_model", out.previewModel, "", warnings);
         long long frameRate = settings.frameRate;
-        readInteger(root, "frame_rate", -1000000, 1000000, frameRate, "", warnings);
+        readInteger(root, "frame_rate", INT_MIN, INT_MAX, frameRate, false, "", warnings);
         settings.frameRate = static_cast<int>(frameRate);
         readBool(root, "loop", settings.loop, "", warnings);
         if (const Json* feel = objectAt(root, "feel", "", warnings)){
@@ -447,60 +480,6 @@ namespace jasperengine::pose {
         }
         text += "}\n";
         return text;
-    }
-
-    bool readTextFile(const std::string& path, std::string& text, std::string* error){
-        Data data;
-        if (data.open(path.c_str()) != FileErrors::FILEDATA_OK){
-            return fail(error, "cannot read '" + path + "'");
-        }
-        text.assign(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
-        return true;
-    }
-
-    bool writeTextFile(const std::string& path, const std::string& text, std::string* error){
-        namespace fs = std::filesystem;
-        const std::string systemPath = FileData::getSystemPath(path);
-        const std::string temporary = systemPath + ".tmp";
-        {
-            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-            if (!file){
-                return fail(error, "cannot write '" + path + "'");
-            }
-            file.write(text.data(), static_cast<std::streamsize>(text.size()));
-            file.close();
-            if (!file){
-                std::error_code ignored;
-                fs::remove(temporary, ignored);
-                return fail(error, "failed writing '" + path + "'");
-            }
-        }
-        std::error_code code;
-        fs::rename(temporary, systemPath, code);
-        if (code){
-            fs::remove(temporary, code);
-            return fail(error, "cannot replace '" + path + "'");
-        }
-        return true;
-    }
-
-    bool loadPoseAnimationFile(const std::string& path, PoseAnimationData& out,
-                               std::vector<std::string>& warnings, std::string* error,
-                               std::optional<PoseAnimationTemplateInfo>* templateInfo){
-        std::string text;
-        if (!readTextFile(path, text, error)){
-            return false;
-        }
-        std::string parseError;
-        if (!parsePoseAnimation(text, out, warnings, &parseError, templateInfo)){
-            return fail(error, path + ": " + parseError);
-        }
-        return true;
-    }
-
-    bool savePoseAnimationFile(const std::string& path, const PoseAnimationData& data, std::string* error,
-                               const PoseAnimationTemplateInfo* templateInfo){
-        return writeTextFile(path, writePoseAnimation(data, templateInfo), error);
     }
 
 }

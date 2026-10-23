@@ -6,10 +6,11 @@
 // change the data in place and append one ClampReport per field that changed, so callers can
 // echo it (MCP) or turn it into load warnings.
 //
-// Field paths in reports use the C++ member names:
-//   settings.transition.overshoot, settings.stepRate, settings.weights.spine,
-//   settings.humanize.movingHolds, settings.frameRate, poses[2].hold, poses[2].lift,
-//   poses[2].offset.x, poses[2].transition.duration, poses[2].angles.left_upper_arm.raise.
+// Field paths in reports use the file / MCP vocabulary (the same names as the .poseanim keys and
+// the load warnings):
+//   frame_rate, feel.transition.duration, feel.step_rate, feel.weights.spine,
+//   humanize.moving_holds, humanize.seed, poses[2].hold, poses[2].lift, poses[2].offset.left,
+//   poses[2].offset.forward, poses[2].transition.duration, poses[2].angles.left_upper_arm.raise.
 // A non-finite value (NaN) is replaced by the lower bound of its range (angles: 0).
 // Joint limits (the 4.5 table) are not clamped here: angles only wrap to (-180, 180].
 
@@ -55,7 +56,7 @@ namespace jasperengine::pose {
     // Wraps an angle in degrees to (-180, 180]; a non-finite angle becomes 0
     JASPERENGINE_API float wrapAngle(float degrees);
 
-    // `path` is the prefix of the reported fields: "settings.transition", "poses[2].transition"
+    // `path` is the prefix of the reported fields: "feel.transition", "poses[2].transition"
     JASPERENGINE_API void clampTransition(Transition& transition, const std::string& path,
                                           std::vector<ClampReport>& reports);
     // Clamps the settings, including their default transition and the humanize block

@@ -53,42 +53,42 @@ namespace jasperengine::pose {
     }
 
     void clampSettings(PoseAnimationSettings& settings, std::vector<ClampReport>& reports){
-        clampTransition(settings.transition, "settings.transition", reports);
+        clampTransition(settings.transition, "feel.transition", reports);
         clampValue(settings.stepRate, ranges::STEP_RATE_MIN, ranges::STEP_RATE_MAX,
-                   "settings.stepRate", reports);
+                   "feel.step_rate", reports);
         clampValue(settings.overlap, ranges::OVERLAP_MIN, ranges::OVERLAP_MAX,
-                   "settings.overlap", reports);
+                   "feel.overlap", reports);
         clampValue(settings.looseness, ranges::LOOSENESS_MIN, ranges::LOOSENESS_MAX,
-                   "settings.looseness", reports);
+                   "feel.looseness", reports);
         for (int group = 0; group < static_cast<int>(BodyGroup::Count); group++){
             clampValue(settings.weights[group], ranges::WEIGHT_MIN, ranges::WEIGHT_MAX,
-                       std::string("settings.weights.") + bodyGroupName(static_cast<BodyGroup>(group)),
+                       std::string("feel.weights.") + bodyGroupName(static_cast<BodyGroup>(group)),
                        reports);
         }
 
         HumanizeSettings& humanize = settings.humanize;
         clampValue(humanize.movingHolds, ranges::MOVING_HOLDS_MIN, ranges::MOVING_HOLDS_MAX,
-                   "settings.humanize.movingHolds", reports);
+                   "humanize.moving_holds", reports);
         clampValue(humanize.inbetweens, ranges::INBETWEENS_MIN, ranges::INBETWEENS_MAX,
-                   "settings.humanize.inbetweens", reports);
+                   "humanize.inbetweens", reports);
         clampValue(humanize.life, ranges::LIFE_MIN, ranges::LIFE_MAX,
-                   "settings.humanize.life", reports);
+                   "humanize.life", reports);
         if (humanize.seed > ranges::SEED_MAX){
-            reports.push_back({"settings.humanize.seed", static_cast<float>(humanize.seed),
+            reports.push_back({"humanize.seed", static_cast<float>(humanize.seed),
                                static_cast<float>(ranges::SEED_MAX)});
             humanize.seed = ranges::SEED_MAX;
         }
         clampValue(humanize.headFollow, ranges::FOLLOW_MIN, ranges::FOLLOW_MAX,
-                   "settings.humanize.headFollow", reports);
+                   "humanize.head_follow", reports);
         clampValue(humanize.torsoFollow, ranges::FOLLOW_MIN, ranges::FOLLOW_MAX,
-                   "settings.humanize.torsoFollow", reports);
+                   "humanize.torso_follow", reports);
         clampValue(humanize.springiness, ranges::SPRINGINESS_MIN, ranges::SPRINGINESS_MAX,
-                   "settings.humanize.springiness", reports);
+                   "humanize.springiness", reports);
 
         if (settings.frameRate < ranges::FRAME_RATE_MIN || settings.frameRate > ranges::FRAME_RATE_MAX){
             const int applied = settings.frameRate < ranges::FRAME_RATE_MIN ? ranges::FRAME_RATE_MIN
                                                                             : ranges::FRAME_RATE_MAX;
-            reports.push_back({"settings.frameRate", static_cast<float>(settings.frameRate),
+            reports.push_back({"frame_rate", static_cast<float>(settings.frameRate),
                                static_cast<float>(applied)});
             settings.frameRate = applied;
         }
@@ -104,8 +104,8 @@ namespace jasperengine::pose {
         clampValue(key.lift, ranges::LIFT_MIN, ranges::LIFT_MAX, path + ".lift", reports);
 
         Vector3& offset = key.body.offset;
-        clampValue(offset.x, ranges::OFFSET_MIN, ranges::OFFSET_MAX, path + ".offset.x", reports);
-        clampValue(offset.z, ranges::OFFSET_MIN, ranges::OFFSET_MAX, path + ".offset.z", reports);
+        clampValue(offset.x, ranges::OFFSET_MIN, ranges::OFFSET_MAX, path + ".offset.left", reports);
+        clampValue(offset.z, ranges::OFFSET_MIN, ranges::OFFSET_MAX, path + ".offset.forward", reports);
         if (offset.y != 0.0f){   // the vertical position comes from grounding and lift
             reports.push_back({path + ".offset.y", offset.y, 0.0f});
             offset.y = 0.0f;

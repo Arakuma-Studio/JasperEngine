@@ -4,7 +4,6 @@
 #include "pose/HumanoidMapIO.h"
 
 #include "json.hpp"
-#include "pose/PoseAnimationIO.h"
 
 #include <cmath>
 
@@ -113,23 +112,6 @@ namespace jasperengine::pose {
         }
         text += "}\n";
         return text;
-    }
-
-    bool loadHumanoidOverridesFile(const std::string& path, HumanoidOverrides& out,
-                                   std::vector<std::string>& warnings, std::string* error){
-        std::string text;
-        if (!readTextFile(path, text, error)){
-            return false;
-        }
-        std::string parseError;
-        if (!parseHumanoidOverrides(text, out, warnings, &parseError)){
-            return fail(error, path + ": " + parseError);
-        }
-        return true;
-    }
-
-    bool saveHumanoidOverridesFile(const std::string& path, const HumanoidOverrides& overrides, std::string* error){
-        return writeTextFile(path, writeHumanoidOverrides(overrides), error);
     }
 
 }

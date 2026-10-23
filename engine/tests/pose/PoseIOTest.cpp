@@ -8,18 +8,17 @@
 #include "pose/PoseAnimationIO.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRanges.h"
-#include "PoseTestSystem.h"
+#include "PoseTestUtil.h"
 
-#include <algorithm>
-#include <chrono>
-#include <cstdio>
-#include <filesystem>
-#include <fstream>
+#include <cfloat>
+#include <cmath>
 #include <limits>
 #include <sstream>
 
 using namespace jasperengine;
 using namespace jasperengine::pose;
+using posetest::anyWarningContains;
+using posetest::dof;
 
 namespace {
 
@@ -29,29 +28,10 @@ namespace {
         return std::string("{") + HEADER + (body.empty() ? "" : ", " + body) + "}";
     }
 
-    struct Parsed {
-        PoseAnimationData data;
-        std::vector<std::string> warnings;
-        std::string error;
-        bool ok = false;
-        std::optional<PoseAnimationTemplateInfo> info;
-    };
+    using Parsed = posetest::ParsedPose;
 
     Parsed parse(const std::string& text){
-        Parsed result;
-        result.ok = parsePoseAnimation(text, result.data, result.warnings, &result.error, &result.info);
-        return result;
-    }
-
-    bool anyWarningContains(const std::vector<std::string>& warnings, const std::string& part){
-        return std::any_of(warnings.begin(), warnings.end(),
-                           [&](const std::string& w){ return w.find(part) != std::string::npos; });
-    }
-
-    int dof(const char* name){
-        int index = -1;
-        EXPECT_TRUE(dofFromName(name, index)) << name;
-        return index;
+        return posetest::parsePose(text);
     }
 
     void expectTransitionEq(const Transition& a, const Transition& b){
@@ -142,15 +122,6 @@ namespace {
         PoseKey c;   // an empty, default key
         data.poses.push_back(c);
         return data;
-    }
-
-    std::filesystem::path scratchDir(){
-        static int counter = 0;
-        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        const std::filesystem::path dir = std::filesystem::temp_directory_path() /
-                                          ("pose-io-test-" + std::to_string(stamp) + "-" + std::to_string(counter++));
-        std::filesystem::create_directories(dir);
-        return dir;
     }
 
 }
@@ -444,6 +415,19 @@ TEST(PoseIO, TransitionNullVersusObject){
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].transition"));
 }
 
+TEST(PoseIO, CustomTransitionMissingFieldsTakeTheTransitionDefaults){
+    // not the animation's transition: feel.transition.duration 0.3 does not leak into the pose
+    Parsed parsed = parse(withHeader(
+        "\"feel\": {\"transition\": {\"curve\": \"linear\", \"duration\": 0.3, \"overshoot\": 0.5}}, "
+        "\"poses\": [{\"transition\": {\"anticipation\": 0.2}}]"));
+    ASSERT_TRUE(parsed.ok) << parsed.error;
+    EXPECT_TRUE(parsed.warnings.empty());
+    ASSERT_EQ(parsed.data.poses.size(), 1u);
+    EXPECT_TRUE(parsed.data.poses[0].customTransition);
+    expectTransitionEq(parsed.data.poses[0].transition, {TransitionCurve::Spring, 0.12f, 0.25f, 0.2f});
+    expectTransitionEq(parsed.data.settings.transition, {TransitionCurve::Linear, 0.3f, 0.5f, 0.06f});
+}
+
 // ---- failures ----
 
 TEST(PoseIO, BadFormatFails){
@@ -508,13 +492,22 @@ TEST(PoseIO, WronglyTypedValuesWarnAndKeepTheDefault){
         "\"poses\": [{\"hold\": \"long\", \"grounded\": 0, \"name\": 4, \"angles\": {\"head.bend\": \"a\"}, "
         "\"offset\": []}, 7, \"x\"]"));
     ASSERT_TRUE(parsed.ok) << parsed.error;
-    EXPECT_GE(parsed.warnings.size(), 10u);
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "loop"));
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "frame_rate"));
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "feel"));
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].hold"));
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].angles.head.bend"));
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[1]"));
+    const std::vector<std::string> expectedWarnings = {
+        "preview_model: expected a string, ignored",
+        "frame_rate: expected a number, ignored",
+        "loop: expected true or false, ignored",
+        "feel: expected an object, ignored",
+        "humanize.enabled: expected true or false, ignored",
+        "humanize.seed: expected a number, ignored",
+        "poses[0].name: expected a string, ignored",
+        "poses[0].hold: expected a number, ignored",
+        "poses[0].grounded: expected true or false, ignored",
+        "poses[0].offset: expected an object, ignored",
+        "poses[0].angles.head.bend: expected a number, ignored",
+        "poses[1]: expected an object, replaced by a default pose",
+        "poses[2]: expected an object, replaced by a default pose",
+    };
+    EXPECT_EQ(parsed.warnings, expectedWarnings);
     EXPECT_TRUE(parsed.data.settings.loop);
     EXPECT_EQ(parsed.data.settings.frameRate, 30);
     ASSERT_EQ(parsed.data.poses.size(), 3u);   // a malformed entry keeps its slot as a default pose
@@ -569,16 +562,18 @@ TEST(PoseIO, OutOfRangeValuesAreClampedWithWarnings){
     EXPECT_FLOAT_EQ(key.body.offset.x, -5.0f);
     EXPECT_FLOAT_EQ(key.body.offset.z, 5.0f);
 
-    for (const char* field : {"settings.frameRate", "settings.transition.duration", "settings.transition.overshoot",
-                              "settings.transition.anticipation", "settings.stepRate", "settings.overlap",
-                              "settings.looseness", "settings.weights.spine", "settings.weights.legs",
-                              "settings.humanize.movingHolds", "settings.humanize.inbetweens",
-                              "settings.humanize.life", "settings.humanize.seed", "settings.humanize.headFollow",
-                              "settings.humanize.torsoFollow", "settings.humanize.springiness", "poses[0].hold",
-                              "poses[0].lift", "poses[0].transition.duration", "poses[0].offset.x",
-                              "poses[0].offset.z"}){
+    for (const char* field : {"frame_rate", "feel.transition.duration", "feel.transition.overshoot",
+                              "feel.transition.anticipation", "feel.step_rate", "feel.overlap",
+                              "feel.looseness", "feel.weights.spine", "feel.weights.legs",
+                              "humanize.moving_holds", "humanize.inbetweens",
+                              "humanize.life", "humanize.seed", "humanize.head_follow",
+                              "humanize.torso_follow", "humanize.springiness", "poses[0].hold",
+                              "poses[0].lift", "poses[0].transition.duration", "poses[0].offset.left",
+                              "poses[0].offset.forward"}){
         EXPECT_TRUE(anyWarningContains(parsed.warnings, field)) << field;
     }
+
+    EXPECT_EQ(parsed.warnings.size(), 21u);   // one per clamped field, no duplicates
 
     // the clamped data is stable: writing and parsing again warns about nothing
     Parsed again = parse(writePoseAnimation(parsed.data));
@@ -602,17 +597,53 @@ TEST(PoseIO, FrameRateIsRoundedToAWholeNumber){
     Parsed parsed = parse(withHeader("\"frame_rate\": 30.4"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 30);
-    EXPECT_TRUE(anyWarningContains(parsed.warnings, "frame_rate"));
+    EXPECT_EQ(parsed.warnings, std::vector<std::string>({"frame_rate: 30.4 is not a whole number, rounded"}));
+
+    // out of range: the range clamp is the only report
+    parsed = parse(withHeader("\"frame_rate\": 500"));
+    ASSERT_TRUE(parsed.ok);
+    EXPECT_EQ(parsed.data.settings.frameRate, 120);
+    EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: frame_rate: 500 -> 120"}));
     parsed = parse(withHeader("\"frame_rate\": 1e12"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 120);
+    EXPECT_EQ(parsed.warnings.size(), 1u);
     parsed = parse(withHeader("\"frame_rate\": -5"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.frameRate, 12);
+    EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: frame_rate: -5 -> 12"}));
+
     parsed = parse(withHeader("\"humanize\": {\"seed\": -3}"));
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(parsed.data.settings.humanize.seed, 0u);
-    EXPECT_FALSE(parsed.warnings.empty());
+    EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: humanize.seed: -3 -> 0"}));
+    parsed = parse(withHeader("\"humanize\": {\"seed\": 4000000000}"));
+    ASSERT_TRUE(parsed.ok);
+    EXPECT_EQ(parsed.data.settings.humanize.seed, 2147483647u);
+    EXPECT_EQ(parsed.warnings, std::vector<std::string>({"out of range, clamped: humanize.seed: 4e+09 -> 2147483647"}));
+}
+
+TEST(PoseIO, HugeNumbersDoNotOverflowTheFloatCast){
+    Parsed parsed = parse(withHeader(
+        "\"feel\": {\"overlap\": 1e300, \"looseness\": -1e300}, "
+        "\"poses\": [{\"hold\": 1e300, \"lift\": -1e300, \"offset\": {\"left\": 1e39, \"forward\": -1e39}, "
+        "\"angles\": {\"head.bend\": 1e300, \"head.side\": -1e300}}]"));
+    ASSERT_TRUE(parsed.ok) << parsed.error;
+    EXPECT_FLOAT_EQ(parsed.data.settings.overlap, 0.3f);
+    EXPECT_FLOAT_EQ(parsed.data.settings.looseness, 0.0f);
+    const PoseKey& key = parsed.data.poses[0];
+    EXPECT_FLOAT_EQ(key.hold, 5.0f);
+    EXPECT_FLOAT_EQ(key.lift, 0.0f);
+    EXPECT_FLOAT_EQ(key.body.offset.x, 5.0f);
+    EXPECT_FLOAT_EQ(key.body.offset.z, -5.0f);
+    for (const char* name : {"head.bend", "head.side"}){
+        const float angle = key.body.angles[dof(name)];
+        EXPECT_TRUE(std::isfinite(angle)) << name;
+        EXPECT_GT(angle, -180.0f) << name;
+        EXPECT_LE(angle, 180.0f) << name;
+    }
+    EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].hold: 3.40282e+38 -> 5"));
+    EXPECT_TRUE(parse(writePoseAnimation(parsed.data)).warnings.empty());
 }
 
 TEST(PoseIO, AnglesWrapToMinus180Plus180){
@@ -634,6 +665,35 @@ TEST(PoseIO, AnglesWrapToMinus180Plus180){
     EXPECT_TRUE(anyWarningContains(parsed.warnings, "poses[0].angles.neck.bend"));
     EXPECT_FALSE(anyWarningContains(parsed.warnings, "poses[0].angles.neck.side"));
     EXPECT_FALSE(anyWarningContains(parsed.warnings, "poses[0].angles.spine.side"));
+}
+
+TEST(PoseIO, AnglesRoundingToMinus180WriteAs180){
+    PoseAnimationData data;
+    PoseKey key;
+    key.body.angles[dof("head.bend")] = -179.99998f;    // rounds to -180: printed as 180
+    key.body.angles[dof("head.side")] = 179.99998f;     // rounds to 180
+    key.body.angles[dof("head.twist")] = -179.9999f;    // stays
+    key.body.angles[dof("neck.bend")] = -180.0f;
+    data.poses.push_back(key);
+    const std::string text = writePoseAnimation(data);
+    EXPECT_NE(text.find("\"head.bend\": 180"), std::string::npos) << text;
+    EXPECT_NE(text.find("\"head.side\": 180"), std::string::npos);
+    EXPECT_NE(text.find("\"head.twist\": -179.9999"), std::string::npos);
+    EXPECT_NE(text.find("\"neck.bend\": 180"), std::string::npos);
+    EXPECT_EQ(text.find("-180"), std::string::npos);
+
+    Parsed back = parse(text);
+    ASSERT_TRUE(back.ok) << back.error;
+    EXPECT_TRUE(back.warnings.empty()) << back.warnings[0];
+    EXPECT_EQ(writePoseAnimation(back.data), text) << "write -> parse -> write must be byte-identical";
+
+    // a value that only wraps to nothing is not written (the parse would drop it again)
+    PoseAnimationData wrapped;
+    PoseKey tiny;
+    tiny.body.angles[dof("head.bend")] = 360.0001f;
+    wrapped.poses.push_back(tiny);
+    const std::string wrappedText = writePoseAnimation(wrapped);
+    EXPECT_EQ(wrappedText.find("head.bend"), std::string::npos);
 }
 
 TEST(PoseIO, ClampDataReportsFieldRequestedAndApplied){
@@ -659,12 +719,12 @@ TEST(PoseIO, ClampDataReportsFieldRequestedAndApplied){
         }
         return nullptr;
     };
-    ASSERT_NE(find("settings.transition.overshoot"), nullptr);
-    EXPECT_FLOAT_EQ(find("settings.transition.overshoot")->requested, 2.0f);
-    EXPECT_FLOAT_EQ(find("settings.transition.overshoot")->applied, 0.9f);
-    ASSERT_NE(find("settings.frameRate"), nullptr);
-    EXPECT_FLOAT_EQ(find("settings.frameRate")->applied, 12.0f);
-    ASSERT_NE(find("settings.humanize.seed"), nullptr);
+    ASSERT_NE(find("feel.transition.overshoot"), nullptr);
+    EXPECT_FLOAT_EQ(find("feel.transition.overshoot")->requested, 2.0f);
+    EXPECT_FLOAT_EQ(find("feel.transition.overshoot")->applied, 0.9f);
+    ASSERT_NE(find("frame_rate"), nullptr);
+    EXPECT_FLOAT_EQ(find("frame_rate")->applied, 12.0f);
+    ASSERT_NE(find("humanize.seed"), nullptr);
     ASSERT_NE(find("poses[2].hold"), nullptr);
     EXPECT_FLOAT_EQ(find("poses[2].hold")->requested, -1.0f);
     EXPECT_FLOAT_EQ(find("poses[2].hold")->applied, 0.0f);
@@ -697,8 +757,8 @@ TEST(PoseIO, ClampFunctionsIndividually){
     reports.clear();
     clampSettings(settings, reports);
     ASSERT_EQ(reports.size(), 2u);
-    EXPECT_EQ(reports[0].field, "settings.looseness");
-    EXPECT_EQ(reports[1].field, "settings.weights.arms");
+    EXPECT_EQ(reports[0].field, "feel.looseness");
+    EXPECT_EQ(reports[1].field, "feel.weights.arms");
 
     PoseKey key;
     key.lift = 4.0f;
@@ -797,67 +857,4 @@ TEST(PoseIO, NoTemplateKeyWithoutTemplateInfo){
     std::vector<std::string> warnings;
     ASSERT_TRUE(parsePoseAnimation(withHeader("\"template\": {\"name\": \"X\"}"), data, warnings, nullptr));
     EXPECT_TRUE(warnings.empty());
-}
-
-// ---- files ----
-
-TEST(PoseIO, SaveAndLoadFile){
-    jasperengine::test::ensurePoseTestSystem();
-    const std::filesystem::path dir = scratchDir();
-    const std::string path = (dir / "walk.poseanim").string();
-    const PoseAnimationData data = fullData();
-    PoseAnimationTemplateInfo info{"T", "D", "C"};
-
-    std::string error;
-    ASSERT_TRUE(savePoseAnimationFile(path, data, &error, &info)) << error;
-    EXPECT_FALSE(std::filesystem::exists(path + ".tmp"));
-
-    std::ifstream file(path, std::ios::binary);
-    std::stringstream onDisk;
-    onDisk << file.rdbuf();
-    EXPECT_EQ(onDisk.str(), writePoseAnimation(data, &info));
-
-    PoseAnimationData loaded;
-    std::vector<std::string> warnings;
-    std::optional<PoseAnimationTemplateInfo> loadedInfo;
-    ASSERT_TRUE(loadPoseAnimationFile(path, loaded, warnings, &error, &loadedInfo)) << error;
-    EXPECT_TRUE(warnings.empty());
-    expectDataEq(data, loaded);
-    ASSERT_TRUE(loadedInfo.has_value());
-    EXPECT_EQ(loadedInfo->name, "T");
-
-    // overwriting replaces the content
-    PoseAnimationData other;
-    other.previewModel = "other.gltf";
-    ASSERT_TRUE(savePoseAnimationFile(path, other, &error)) << error;
-    ASSERT_TRUE(loadPoseAnimationFile(path, loaded, warnings, &error)) << error;
-    EXPECT_EQ(loaded.previewModel, "other.gltf");
-    EXPECT_TRUE(loaded.poses.empty());
-
-    std::filesystem::remove_all(dir);
-}
-
-TEST(PoseIO, LoadFileErrors){
-    jasperengine::test::ensurePoseTestSystem();
-    const std::filesystem::path dir = scratchDir();
-    PoseAnimationData data;
-    std::vector<std::string> warnings;
-    std::string error;
-    EXPECT_FALSE(loadPoseAnimationFile((dir / "missing.poseanim").string(), data, warnings, &error));
-    EXPECT_NE(error.find("missing.poseanim"), std::string::npos) << error;
-
-    const std::string bad = (dir / "bad.poseanim").string();
-    {
-        std::ofstream file(bad);
-        file << "{\"format\": \"jasperengine.poseanim\", \"version\": 7}";
-    }
-    EXPECT_FALSE(loadPoseAnimationFile(bad, data, warnings, &error));
-    EXPECT_NE(error.find("bad.poseanim"), std::string::npos) << error;
-    EXPECT_NE(error.find("version"), std::string::npos) << error;
-
-    // an unwritable target reports an error and leaves no temporary file
-    error.clear();
-    EXPECT_FALSE(savePoseAnimationFile((dir / "no-such-dir" / "x.poseanim").string(), data, &error));
-    EXPECT_FALSE(error.empty());
-    std::filesystem::remove_all(dir);
 }

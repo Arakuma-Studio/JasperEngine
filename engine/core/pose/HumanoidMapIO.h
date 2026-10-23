@@ -4,7 +4,7 @@
 // The .humanoid sidecar (spec: pose animation phase 2, section 2.2), next to the model file
 // ("models/hero.gltf.humanoid"). Only overrides are stored: a slot present with a bone name
 // forces that mapping, a slot present with "" forces it unmapped, an absent slot uses
-// auto-detect. Applying the overrides to an auto-detected map is resolveHumanoid's job.
+// auto-detect. File access is in PoseFile.h. Applying the overrides to an auto-detected map is resolveHumanoid's job.
 
 #ifndef HUMANOID_MAP_IO_H
 #define HUMANOID_MAP_IO_H
@@ -47,11 +47,6 @@ namespace jasperengine::pose {
                                                  std::vector<std::string>& warnings, std::string* error);
     // Deterministic: slots in table order, 2-space indent, trailing newline
     JASPERENGINE_API std::string writeHumanoidOverrides(const HumanoidOverrides& overrides);
-
-    JASPERENGINE_API bool loadHumanoidOverridesFile(const std::string& path, HumanoidOverrides& out,
-                                                    std::vector<std::string>& warnings, std::string* error);
-    JASPERENGINE_API bool saveHumanoidOverridesFile(const std::string& path, const HumanoidOverrides& overrides,
-                                                    std::string* error);
 
 }
 

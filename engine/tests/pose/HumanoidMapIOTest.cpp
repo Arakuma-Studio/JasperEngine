@@ -7,35 +7,18 @@
 
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
-#include "PoseTestSystem.h"
-
-#include <algorithm>
-#include <chrono>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
+#include "PoseTestUtil.h"
 
 using namespace jasperengine;
 using namespace jasperengine::pose;
+using posetest::anyWarningContains;
 
 namespace {
 
-    struct Parsed {
-        HumanoidOverrides overrides;
-        std::vector<std::string> warnings;
-        std::string error;
-        bool ok = false;
-    };
+    using Parsed = posetest::ParsedHumanoid;
 
     Parsed parse(const std::string& text){
-        Parsed result;
-        result.ok = parseHumanoidOverrides(text, result.overrides, result.warnings, &result.error);
-        return result;
-    }
-
-    bool anyWarningContains(const std::vector<std::string>& warnings, const std::string& part){
-        return std::any_of(warnings.begin(), warnings.end(),
-                           [&](const std::string& w){ return w.find(part) != std::string::npos; });
+        return posetest::parseHumanoid(text);
     }
 
     std::optional<std::string>& slot(HumanoidOverrides& overrides, HumanBone bone){
@@ -176,42 +159,4 @@ TEST(HumanoidMapIO, BadFormatOrVersionFails){
 
 TEST(HumanoidMapIO, SidecarPath){
     EXPECT_EQ(humanoidSidecarPath("models/hero.gltf"), "models/hero.gltf.humanoid");
-}
-
-TEST(HumanoidMapIO, SaveAndLoadFile){
-    jasperengine::test::ensurePoseTestSystem();
-    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    const std::filesystem::path dir = std::filesystem::temp_directory_path() /
-                                      ("humanoid-io-test-" + std::to_string(stamp));
-    std::filesystem::create_directories(dir);
-    const std::string path = (dir / humanoidSidecarPath("hero.gltf")).string();
-
-    HumanoidOverrides overrides;
-    slot(overrides, HumanBone::Hips) = "Root";
-    slot(overrides, HumanBone::RightToes) = "";
-    std::string error;
-    ASSERT_TRUE(saveHumanoidOverridesFile(path, overrides, &error)) << error;
-
-    std::ifstream file(path, std::ios::binary);
-    std::stringstream onDisk;
-    onDisk << file.rdbuf();
-    EXPECT_EQ(onDisk.str(), writeHumanoidOverrides(overrides));
-
-    HumanoidOverrides loaded;
-    std::vector<std::string> warnings;
-    ASSERT_TRUE(loadHumanoidOverridesFile(path, loaded, warnings, &error)) << error;
-    EXPECT_TRUE(warnings.empty());
-    EXPECT_EQ(loaded, overrides);
-
-    EXPECT_FALSE(loadHumanoidOverridesFile((dir / "none.humanoid").string(), loaded, warnings, &error));
-    EXPECT_NE(error.find("none.humanoid"), std::string::npos) << error;
-
-    {
-        std::ofstream bad(dir / "bad.humanoid");
-        bad << "{\"format\": \"jasperengine.humanoid\", \"version\": 5}";
-    }
-    EXPECT_FALSE(loadHumanoidOverridesFile((dir / "bad.humanoid").string(), loaded, warnings, &error));
-    EXPECT_NE(error.find("bad.humanoid"), std::string::npos) << error;
-
-    std::filesystem::remove_all(dir);
 }
