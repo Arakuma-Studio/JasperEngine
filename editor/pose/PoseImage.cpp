@@ -300,15 +300,18 @@ void editor::PoseImage::strokeRect(int x, int y, int w, int h, PoseColor color){
 }
 
 void editor::PoseImage::drawLine(float x0, float y0, float x1, float y1, float lineWidth, PoseColor color){
-    if (isEmpty() || !(lineWidth > 0.0f)){
+    // NaN or infinite input would reach float-to-int casts (undefined): nothing is drawn
+    if (isEmpty() || !std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(x1) || !std::isfinite(y1) ||
+            !std::isfinite(lineWidth) || !(lineWidth > 0.0f)){
         return;
     }
     const float half = lineWidth * 0.5f;
     // coverage falls off over one pixel across the edge, so the box grows by one more
-    const int minX = std::max(0, (int)std::floor(std::min(x0, x1) - half - 1.0f));
-    const int minY = std::max(0, (int)std::floor(std::min(y0, y1) - half - 1.0f));
-    const int maxX = std::min(width - 1, (int)std::ceil(std::max(x0, x1) + half + 1.0f));
-    const int maxY = std::min(height - 1, (int)std::ceil(std::max(y0, y1) + half + 1.0f));
+    // clamped as floats: a huge coordinate never reaches the int cast
+    const int minX = (int)std::max(0.0f, std::floor(std::min(x0, x1) - half - 1.0f));
+    const int minY = (int)std::max(0.0f, std::floor(std::min(y0, y1) - half - 1.0f));
+    const int maxX = (int)std::min((float)(width - 1), std::ceil(std::max(x0, x1) + half + 1.0f));
+    const int maxY = (int)std::min((float)(height - 1), std::ceil(std::max(y0, y1) + half + 1.0f));
     for (int py = minY; py <= maxY; py++){
         for (int px = minX; px <= maxX; px++){
             const float d = segmentDistance(px + 0.5f, py + 0.5f, x0, y0, x1, y1);
@@ -321,14 +324,14 @@ void editor::PoseImage::drawLine(float x0, float y0, float x1, float y1, float l
 }
 
 void editor::PoseImage::fillCircle(float cx, float cy, float diameter, PoseColor color){
-    if (isEmpty() || !(diameter > 0.0f)){
+    if (isEmpty() || !std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(diameter) || !(diameter > 0.0f)){
         return;
     }
     const float radius = diameter * 0.5f;
-    const int minX = std::max(0, (int)std::floor(cx - radius - 1.0f));
-    const int minY = std::max(0, (int)std::floor(cy - radius - 1.0f));
-    const int maxX = std::min(width - 1, (int)std::ceil(cx + radius + 1.0f));
-    const int maxY = std::min(height - 1, (int)std::ceil(cy + radius + 1.0f));
+    const int minX = (int)std::max(0.0f, std::floor(cx - radius - 1.0f));
+    const int minY = (int)std::max(0.0f, std::floor(cy - radius - 1.0f));
+    const int maxX = (int)std::min((float)(width - 1), std::ceil(cx + radius + 1.0f));
+    const int maxY = (int)std::min((float)(height - 1), std::ceil(cy + radius + 1.0f));
     for (int py = minY; py <= maxY; py++){
         for (int px = minX; px <= maxX; px++){
             const float dx = px + 0.5f - cx;
@@ -531,9 +534,7 @@ std::string editor::PoseContactSheet::timeLabel(float seconds, bool leftContact,
     std::snprintf(buffer, sizeof(buffer), "t=%.2f", seconds);
     std::string label = buffer;
     if (leftContact || rightContact){
-        label += " C";
-        if (leftContact) label += "L";
-        if (rightContact) label += "R";
+        label += leftContact && rightContact ? " [LR]" : (leftContact ? " [L]" : " [R]");
     }
     return label;
 }

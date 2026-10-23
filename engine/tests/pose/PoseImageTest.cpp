@@ -10,6 +10,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -95,6 +96,28 @@ TEST(PoseImage, DiagonalLineIsAntiAliased){
     // far from the segment nothing is drawn
     EXPECT_EQ(image.getPixel(17, 2), BLACK);
     EXPECT_EQ(image.getPixel(2, 17), BLACK);
+}
+
+TEST(PoseImage, NonFiniteInputsDrawNothing){
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    PoseImage image(16, 16, BLACK);
+    const std::vector<uint8_t> before = image.getPixels();
+    image.drawLine(nan, 2.0f, 10.0f, 10.0f, 2.0f, WHITE);
+    image.drawLine(2.0f, 2.0f, inf, 10.0f, 2.0f, WHITE);
+    image.drawLine(2.0f, 2.0f, 10.0f, -inf, 2.0f, WHITE);
+    image.drawLine(2.0f, 2.0f, 10.0f, 10.0f, nan, WHITE);
+    image.drawLine(2.0f, 2.0f, 10.0f, 10.0f, inf, WHITE);
+    image.fillCircle(nan, 8.0f, 4.0f, WHITE);
+    image.fillCircle(8.0f, inf, 4.0f, WHITE);
+    image.fillCircle(8.0f, 8.0f, inf, WHITE);
+    image.fillCircle(8.0f, 8.0f, nan, WHITE);
+    EXPECT_EQ(image.getPixels(), before);
+    // huge but finite coordinates clip safely (no int overflow in the bounding box)
+    image.drawLine(-1e30f, 8.0f, 1e30f, 8.0f, 2.0f, WHITE);
+    image.fillCircle(1e30f, -1e30f, 1e30f, WHITE);
+    image.drawLine(-1e4f, 8.0f, 1e4f, 8.0f, 2.0f, WHITE);
+    EXPECT_EQ(image.getPixel(8, 8), WHITE);
 }
 
 TEST(PoseImage, FilledCircle){
@@ -292,9 +315,9 @@ TEST(PoseImage, LabelTexts){
     EXPECT_EQ(PoseContactSheet::poseLabel(0, ""), "0");
     EXPECT_EQ(PoseContactSheet::timeLabel(0.5f), "t=0.50");
     EXPECT_EQ(PoseContactSheet::timeLabel(-0.001f), "t=0.00");
-    EXPECT_EQ(PoseContactSheet::timeLabel(1.234f, true, false), "t=1.23 CL");
-    EXPECT_EQ(PoseContactSheet::timeLabel(2.0f, false, true), "t=2.00 CR");
-    EXPECT_EQ(PoseContactSheet::timeLabel(0.25f, true, true), "t=0.25 CLR");
+    EXPECT_EQ(PoseContactSheet::timeLabel(1.234f, true, false), "t=1.23 [L]");
+    EXPECT_EQ(PoseContactSheet::timeLabel(2.0f, false, true), "t=2.00 [R]");
+    EXPECT_EQ(PoseContactSheet::timeLabel(0.25f, true, true), "t=0.25 [LR]");
 }
 
 TEST(PoseImage, PngRoundTrip){

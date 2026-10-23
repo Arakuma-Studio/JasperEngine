@@ -2525,6 +2525,13 @@ void editor::App::engineRender(){
         return;
     }
 
+    // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
+    // from here on, main-thread tasks included, until the end of this function
+    struct PoseFrameScope {
+        PoseFrameScope() { PoseRender::setInEditorFrame(true); }
+        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); }
+    } poseFrameScope;
+
     processMainThreadTasks();
     project.refreshLinkedMaterials();
     project.refreshAssetDatabase();
@@ -3238,10 +3245,15 @@ void editor::App::shutdownBackgroundWork() {
     mcp::McpServer::get().stop();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
+    PoseRender::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
     imageViewerWindow->closeAll();
+    // the offscreen pose renderers' private scenes are not the Engine's: they free their GPU
+    // objects here, while the view still exists (not on Engine::onViewDestroyed, which a play
+    // session's stop fires too)
+    PoseRender::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();

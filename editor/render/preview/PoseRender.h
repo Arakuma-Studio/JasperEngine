@@ -60,7 +60,9 @@ namespace jasperengine::editor{
         };
 
         // ok false: the render failed (no graphics view, a load that never finished, a
-        // readback error) or the request was cancelled; the image is then empty
+        // readback error) or the request was cancelled; the image is then empty. A callback
+        // getting ok false may be running inside the renderer's destructor (or releaseGpu), so
+        // it must not touch the renderer.
         using RenderCallback = std::function<void(bool ok, PoseImage&& image)>;
 
         // frames a queued render waits for the scene to load (meshes, shaders) before it fails
@@ -101,8 +103,11 @@ namespace jasperengine::editor{
         // every bone back to its rest transform
         void resetToRest();
 
-        // world position of a bone in the current pose (zero for a bad index or no graphics view)
+        // world position of a bone in the current pose (zero for a bad index or no graphics view).
+        // The scene is updated only when the pose changed since the last update.
         Vector3 boneWorldPosition(int index);
+        // every bone's world position, in bone order, with one update; false without a graphics view
+        bool boneWorldPositions(std::vector<Vector3>& out);
         // world bounds of the posed model: its (skinned) meshes, or its bone positions when it
         // has no mesh bounds. False when there is nothing to bound.
         bool computeBounds(AABB& out);
@@ -125,6 +130,8 @@ namespace jasperengine::editor{
         Vector3 getViewUp() const { return view.up; }
 
         // ---- look ----
+        // style and lighting are applied to the scene when a render draws (each queued render
+        // keeps the ones it was requested with)
         void setStyle(const Style& style);
         const Style& getStyle() const { return style; }
         // directions the lights shine along (world). The defaults light a character facing +Z
@@ -132,14 +139,14 @@ namespace jasperengine::editor{
         void setLighting(const Vector3& keyDirection, const Vector3& fillDirection);
 
         // ---- rendering ----
-        // Queues a width x height render of the current pose, view and style (captured now:
+        // Queues a width x height render of the current pose, view, style and lighting (captured now:
         // later changes do not affect it). done runs on the main thread from a later call of
         // processFrame (the editor's frame loop), never inside this call; queued renders of
         // one PoseRender finish in order. Main thread only.
         void requestRender(int width, int height, RenderCallback done);
-        // Renders now when the scene is ready (loaded meshes and shaders, a graphics view):
-        // main thread, inside an editor frame. False, leaving out empty, when it is not ready
-        // yet; requestRender waits for that instead.
+        // Renders now when the scene is ready (loaded meshes and shaders, a graphics view) and the
+        // editor is inside a drawing frame (App::engineRender; see setInEditorFrame). False,
+        // leaving out empty, otherwise; requestRender waits for that instead. Main thread.
         bool renderNow(int width, int height, PoseImage& out);
         size_t getPendingRenderCount() const { return pending.size(); }
         // the queued renders end now with ok false
@@ -151,6 +158,12 @@ namespace jasperengine::editor{
         static bool hasPendingRenders();
         // called when a render is queued, so an idle editor loop draws the frames it needs
         static void setFrameRequester(std::function<void()> requester);
+        // App::engineRender marks the span of a frame that began drawing (renderNow refuses to
+        // draw outside it: the loop also runs main-thread tasks in frames that do not draw)
+        static void setInEditorFrame(bool inFrame);
+        // The graphics view is going away (App::engineViewDestroyed): every queue is cancelled
+        // and every renderer frees its GPU objects; the next use loads its scene again.
+        static void releaseGpu();
 
     private:
         struct BoneLocal{
@@ -174,6 +187,8 @@ namespace jasperengine::editor{
             std::vector<BoneLocal> pose;
             ViewState view;
             Style style;
+            Vector3 keyDirection;
+            Vector3 fillDirection;
             int width = 0;
             int height = 0;
         };
@@ -198,8 +213,13 @@ namespace jasperengine::editor{
 
         ViewState view;
         Style style;
+        // what the scene has (style and floor are applied when a render draws)
         bool appliedShaded = true;
         bool appliedModelVisible = true;
+        bool floorBuilt = false;
+        Vector3 appliedFloorCenter;
+        float appliedFloorRadius = 0.0f;
+        float appliedFloorHeight = 0.0f;
         Vector3 keyDirection = Vector3(-0.45f, -0.6f, -0.65f);
         Vector3 fillDirection = Vector3(0.6f, -0.25f, -0.75f);
         int viewWidth = 160;
@@ -209,22 +229,31 @@ namespace jasperengine::editor{
         bool sceneLoaded = false;
         // drawn once: the view's pipelines are baked into the meshes on the next update
         bool viewWarmed = false;
+        // a bone moved (or the scene is new) since the last scene update
+        bool poseDirty = true;
         std::deque<Request> pending;
 
         void createScene();
         void destroyScene();
         void collectModel();
-        void updateFloor();
-        void applyStyle();
+        // the floor quad and grid for the current view and style, rebuilt only when they moved
+        void applyFloor();
+        // style, lighting, floor and camera of a state into the scene (inside tryRender only)
+        void applyToScene(const RenderState& state);
         void applyCamera(const ViewState& state, int width, int height);
         void halfExtents(const ViewState& state, int width, int height, float& halfWidth, float& halfHeight) const;
         bool ensureLoaded();
         void updateScene();
+        // updateScene when the pose changed since the last one
+        void updatePose();
         RenderState captureState(int width, int height) const;
-        // the pose, view, style and image size of a state (not the camera: applyCamera)
+        // the pose, view, style, lighting and image size of a state, as the caller's values
+        // (nothing is applied to the scene's look here: applyToScene)
         void setState(const RenderState& state);
         bool isSceneReady();
-        bool drawAndRead(int width, int height, PoseImage& out);
+        void draw(int width, int height);
+        bool readBack(int width, int height, bool opaque, PoseImage& out);
+        void releaseGpuResources();
         bool tryRender(const RenderState& state, PoseImage& out);
         // serves this renderer's queue within the frame budget; false once it was destroyed
         // by a callback

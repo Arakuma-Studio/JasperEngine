@@ -83,7 +83,8 @@ namespace jasperengine::editor{
         void fillRect(int x, int y, int w, int h, PoseColor color);
         // 1 px outline inside the rectangle
         void strokeRect(int x, int y, int w, int h, PoseColor color);
-        // anti-aliased line with round caps; coordinates in pixels, pixel centres at +0.5
+        // anti-aliased line with round caps; coordinates in pixels, pixel centres at +0.5.
+        // Lines and circles with a NaN or infinite input draw nothing.
         void drawLine(float x0, float y0, float x1, float y1, float lineWidth, PoseColor color);
         // anti-aliased disc of that diameter centred on (cx, cy)
         void fillCircle(float cx, float cy, float diameter, PoseColor color);
@@ -156,7 +157,7 @@ namespace jasperengine::editor{
         const PoseImage& getImage() const { return image; }
 
         // label texts of the spec: "<index> <name>" and "t=<seconds>" with 2 decimals, plus
-        // " C" and the feet in contact ("L", "R" or "LR") when any is
+        // the feet in contact when any is: " [L]", " [R]" or " [LR]" (e.g. "t=0.25 [LR]")
         static std::string poseLabel(int index, const std::string& name);
         static std::string timeLabel(float seconds, bool leftContact = false, bool rightContact = false);
 
