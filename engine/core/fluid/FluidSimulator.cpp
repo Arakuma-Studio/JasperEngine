@@ -732,7 +732,8 @@ struct FluidSimulator::Impl {
     }
 
     // his step(dt)
-    void stepOnce(const FluidSimulationComponent& c, float dt){
+    void stepOnce(const FluidSimulationComponent& c, double seconds){
+        const float dt = (float)seconds;
         FluidTarget& vel = velocity.read();
         const float tx = 1.0f / (float)vel.width;
         const float ty = 1.0f / (float)vel.height;
@@ -772,7 +773,7 @@ struct FluidSimulator::Impl {
         dye.swap();
 
         stats.steps++;
-        stats.time += (double)dt;
+        stats.time += seconds;
         outputDirty = true;
     }
 
@@ -931,7 +932,7 @@ struct FluidSimulator::Impl {
             const float f = (float)(k + 1) / (float)steps;
             for (const Stroke& s : strokes)
                 splat(s.from + s.delta * f, correctDelta(s.delta / (float)steps) * c.splatForce, s.color, c.splatRadius);
-            stepOnce(c, (float)h);
+            stepOnce(c, h);
         }
         for (auto it = pointers.begin(); it != pointers.end();){
             if (!it->second.down && it->second.applied == it->second.position)
