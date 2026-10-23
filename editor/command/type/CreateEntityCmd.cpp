@@ -638,6 +638,11 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
 
+    }else if (type == EntityCreationType::LATTICE){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LatticeComponent>(entity, {});
+
     }
 
     scene->setEntityName(entity, entityName);
