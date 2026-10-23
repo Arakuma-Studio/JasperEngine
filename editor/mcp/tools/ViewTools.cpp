@@ -27,7 +27,9 @@
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
+#include "pose/PoseAnimationDocument.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -973,6 +975,87 @@ void frameEntityTool(const CallPtr& call) {
     });
 }
 
+// focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
+bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
+    const Json& args = call->args();
+    const Json& pose = args["pose"];
+    if (!pose.is_object()) {
+        call->fail("pose must be an object {entity, path, index, play}.");
+        return false;
+    }
+    for (auto it = pose.begin(); it != pose.end(); ++it) {
+        const std::string& key = it.key();
+        if (key != "entity" && key != "path" && key != "index" && key != "play") {
+            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play).");
+            return false;
+        }
+    }
+    Project* project = call->ctx().project();
+    std::string error;
+    if (pose.contains("entity")) {
+        SceneProject* sp = resolveViewScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!sp) {
+            call->fail(error);
+            return false;
+        }
+        const Entity entity = w3::resolveLiveEntity(project, sp, pose["entity"], error);
+        if (entity == NULL_ENTITY) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+        if (!window->bindCharacter(sp->id, entity, &error)) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+    }
+    if (pose.contains("path")) {
+        if (!pose["path"].is_string() || !window->openAnimation(pose["path"].get<std::string>(), &error)) {
+            call->fail("pose.path: " + (error.empty() ? std::string("a .poseanim path (string)") : error));
+            return false;
+        }
+    }
+    PoseEditSession& session = window->getSession();
+    if (pose.contains("index")) {
+        const int count = session.document() ? static_cast<int>(session.document()->data().poses.size()) : 0;
+        if (!pose["index"].is_number_integer() || pose["index"].get<int>() < 0 || pose["index"].get<int>() >= count) {
+            call->fail("pose.index: a pose index 0.." + std::to_string(count - 1) + " of the open animation.");
+            return false;
+        }
+        window->selectPose(pose["index"].get<int>());
+    }
+    if (pose.contains("play")) {
+        if (!pose["play"].is_boolean()) {
+            call->fail("pose.play: true plays the preview, false stops it.");
+            return false;
+        }
+        if (!session.bound() || !session.document()) {
+            call->fail("pose.play: bind a character (pose.entity) and open an animation (pose.path) first.");
+            return false;
+        }
+        if (pose["play"].get<bool>()) window->play();
+        else window->stop();
+    }
+    return true;
+}
+
+Json poseWindowState(const CallPtr& call) {
+    PoseAnimationWindow::State state = call->ctx().app().getPoseAnimationWindow()->getState();
+    Json data = {{"character", state.character.empty() ? Json() : Json(state.character)},
+                 {"rig", state.rig.empty() ? Json() : Json(state.rig)},
+                 {"animation", state.animation.empty() ? Json() : Json(state.animation)},
+                 {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
+                 {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
+                 {"tab", state.tab}};
+    if (state.entity != NULL_ENTITY) {
+        if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
+            if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);
+        }
+    }
+    if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
+    if (!state.status.empty()) data["status"] = state.status;
+    return data;
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1012,11 +1095,19 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "pose_animation") {
+        PoseAnimationWindow* pw = app.getPoseAnimationWindow();
+        pw->requestFocus();
+        imguiName = PoseAnimationWindow::WINDOW_NAME;
+        if (args.contains("pose") && !focusPoseAnimation(call, pw)) return;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp.");
         return;
     }
-    (void)app;
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
     // A window opened just now exists after its next draw
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
@@ -1025,6 +1116,7 @@ void focusWindowTool(const CallPtr& call) {
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
             if (w) data["size"] = {w->Size.x, w->Size.y};
+            if (window == "pose_animation") data["state"] = poseWindowState(call);
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
@@ -1178,12 +1270,15 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "focus_window";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
+        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview)}; the result has the
+        // window's state. Budget-neutral with the pose_animation window added.
         tool.description =
-            "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot.";
+            "Show an editor panel (not needed before screenshot). pose_animation: pose {entity, path, index, play}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
-            {"scene", sceneRef("window scene: whose tab.")}
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+                                       "terrain", "mcp"})},
+            {"scene", sceneRef()},
+            {"pose", {{"type", "object"}}}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
