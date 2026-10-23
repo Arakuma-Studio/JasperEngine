@@ -16,13 +16,13 @@ namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-void test::ensureEngine() {
+void editor::test::ensureEngine() {
     // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
     // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
     // System would leave that capture reading the wrong object
 }
 
-void test::releaseCameraFramebuffers(Scene* scene) {
+void editor::test::releaseCameraFramebuffers(Scene* scene) {
     if (!scene)
         return;
     ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
@@ -33,16 +33,16 @@ void test::releaseCameraFramebuffers(Scene* scene) {
     }
 }
 
-fs::path test::fixture(const std::string& relative) {
+fs::path editor::test::fixture(const std::string& relative) {
     return fs::path(JASPER_TEST_FIXTURES_DIR) / relative;
 }
 
-std::string test::readText(const fs::path& path) {
+std::string editor::test::readText(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-test::DecodedScene::~DecodedScene() {
+editor::test::DecodedScene::~DecodedScene() {
     if (scene) {
         releaseCameraFramebuffers(scene->scene);
         delete scene->scene;
@@ -52,8 +52,8 @@ test::DecodedScene::~DecodedScene() {
 
 namespace {
 
-    test::DecodedScene decodeNode(YAML::Node root, const std::string& name, LoadReport report) {
-        test::DecodedScene decoded;
+    editor::test::DecodedScene decodeNode(YAML::Node root, const std::string& name, LoadReport report) {
+        editor::test::DecodedScene decoded;
         decoded.scene = std::make_unique<SceneProject>();
         decoded.report = std::move(report);
         {
@@ -67,7 +67,7 @@ namespace {
 
 }
 
-test::DecodedScene test::decodeSceneFile(const fs::path& path) {
+editor::test::DecodedScene editor::test::decodeSceneFile(const fs::path& path) {
     ensureEngine();
     LoadReport report;
     report.documentPath = path.filename().string();
@@ -84,7 +84,7 @@ test::DecodedScene test::decodeSceneFile(const fs::path& path) {
     return decoded;
 }
 
-test::DecodedScene test::decodeSceneText(const std::string& text, const std::string& name) {
+editor::test::DecodedScene editor::test::decodeSceneText(const std::string& text, const std::string& name) {
     ensureEngine();
     LoadReport report;
     report.documentPath = name;
@@ -99,15 +99,15 @@ test::DecodedScene test::decodeSceneText(const std::string& text, const std::str
     return decoded;
 }
 
-YAML::Node test::encodeScene(const DecodedScene& decoded) {
+YAML::Node editor::test::encodeScene(const DecodedScene& decoded) {
     return Stream::encodeSceneProject(nullptr, decoded.scene.get());
 }
 
-std::string test::encodeSceneText(const DecodedScene& decoded) {
+std::string editor::test::encodeSceneText(const DecodedScene& decoded) {
     return DocumentFiles::text(encodeScene(decoded));
 }
 
-bool test::structurallyEqual(const YAML::Node& a, const YAML::Node& b, std::string* why) {
+bool editor::test::structurallyEqual(const YAML::Node& a, const YAML::Node& b, std::string* why) {
     auto fail = [why](const std::string& text) {
         if (why) *why = text;
         return false;
@@ -145,7 +145,7 @@ bool test::structurallyEqual(const YAML::Node& a, const YAML::Node& b, std::stri
     return true;
 }
 
-YAML::Node test::withoutKey(const YAML::Node& map, const std::string& key) {
+YAML::Node editor::test::withoutKey(const YAML::Node& map, const std::string& key) {
     YAML::Node copy(YAML::NodeType::Map);
     for (auto it = map.begin(); it != map.end(); ++it) {
         if (it->first.Scalar() != key) copy[it->first] = it->second;

@@ -635,7 +635,7 @@ namespace {
 
 namespace {
 
-    bool isIdentChar(char c){
+    bool collectorIsIdentChar(char c){
         return std::isalnum((unsigned char)c) || c == '-' || c == '_';
     }
 
@@ -726,7 +726,7 @@ void editor::ShaderVariantCollector::scanUiEffects(const std::string& textIn, bo
         while ((at = text.find(prefix, at)) != std::string::npos){
             const size_t found = at;
             at += length;
-            if (found > 0 && isIdentChar(text[found - 1]))
+            if (found > 0 && collectorIsIdentChar(text[found - 1]))
                 continue;
             size_t p = at;
             if (!typed){
