@@ -49,7 +49,8 @@ namespace jasperengine::pose {
     // nub), finger tokens (index, middle, ring, pinky, little, thumb, finger) are never mapped;
     // "c"/"center"/"centre" tokens are ignored (VRM "J_Bip_C_Hips"); an all-lower-case name
     // starting with "left"/"right" counts as sided ("leftarm"). Neck and head must descend from
-    // the hips (head from the neck when there is one).
+    // the hips (head from the neck when there is one). When a mapped shoulder or upper arm
+    // descends from the mapped neck (3ds Max biped), the neck is left unmapped (with a note).
     JASPERENGINE_API HumanoidMap autoDetectHumanoid(const Skeleton& skeleton, std::vector<std::string>* notes = nullptr);
 
     // true when every required slot is mapped, every mapped name exists exactly once in the

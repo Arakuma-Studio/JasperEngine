@@ -424,6 +424,23 @@ namespace jasperengine::pose {
             }
         }
 
+        // arms hanging from the neck (3ds Max biped: the clavicles are children of the neck):
+        // the neck slot would lie between the arms and their parent slot, so it is left unmapped
+        // and the neck bone stays at rest as an intermediate bone
+        if (neck >= 0){
+            for (HumanBone arm : {B::LeftShoulder, B::RightShoulder, B::LeftUpperArm, B::RightUpperArm}){
+                const int bone = slotBone[boneIndex(arm)];
+                if (bone >= 0 && isAncestor(skeleton, depth, neck, bone)){
+                    map.bones[boneIndex(B::Neck)].clear();
+                    if (notes){
+                        notes->push_back("neck: '" + skeleton.bones[neck].name + "' left unmapped: " + humanBoneName(arm) + " ('" +
+                                         skeleton.bones[bone].name + "') hangs from it");
+                    }
+                    break;
+                }
+            }
+        }
+
         return map;
     }
 

@@ -91,6 +91,28 @@ async def exists(ed, entity_id, scene=None):
 # -- tool list --------------------------------------------------------------------
 
 
+async def test_numeric_string_ids(ed: Editor):
+    """scene, entity and entities are typed string in tools/list (OpenAI/Gemini want a type); an id passed as a
+    string ("12") must resolve like the number 12."""
+    tools = {t.name: t for t in await ed.tools()}
+    props = tools["get_entity"].input_schema["properties"]
+    ed.check_eq(props["entity"]["type"], "string", "entity is typed string")
+    ed.check_eq(props["scene"]["type"], "string", "scene is typed string")
+    ed.check_eq(tools["delete_entities"].input_schema["properties"]["entities"]["items"]["type"], "string", "entities items")
+    ed.check(("null" in tools["move_entity"].input_schema["properties"]["parent"]["type"]), "move_entity parent is nullable")
+    scene = await lab(ed)
+    parent = await create(ed, "empty", name="StrParent")
+    child = await create(ed, "empty", name="StrChild", parent=str(parent))
+    ed.check_eq((await ed.call("get_entity", entity=str(child), scene=str(scene), detail="summary"))["id"], child,
+                "string entity id and string scene id")
+    ed.check_eq((await ed.call("get_entity", entity=child, scene=scene, detail="summary"))["path"], "StrParent/StrChild",
+                "created under the string parent id")
+    await ed.call("set_entity_state", entities=[str(parent), str(child)], active=False, scene=str(scene))
+    ed.check_eq((await ed.call("get_entity", entity=str(child), detail="summary"))["active"], False, "entities as strings")
+    await ed.call("delete_entities", entities=[str(parent)], scene=str(scene))
+    await ed.check_error("get_entity", entity=str(child), contains="No GameObject")
+
+
 async def test_tool_list(ed: Editor):
     names = {t.name for t in await ed.tools()}
     mine = {"list_scenes", "create_scene", "open_scene", "close_scene", "select_scene", "save_scene", "rename_scene",

@@ -8,6 +8,18 @@
 // - The reach clamp margin is 1e-4 * humanScale (the spec's 1e-4 in humanScale units, so it
 //   does not depend on the model's unit).
 // - A target at the upper bone's position keeps the limb's current aim (only the bend changes).
+// - Bend side (spec 4.10, near-straight rule): with sinA the sine of the angle at the upper
+//   joint, the bend plane normal blends from the pole's (sinA <= 0.02, ~1.1 degrees) to the
+//   limb's current one (sinA >= 0.1, ~5.7 degrees) by smoothstep(0.02, 0.1, sinA) *
+//   smoothstep(-1, 0, cos(angle between the current and the pole plane)): the current plane loses
+//   its weight as it turns past 90 degrees from the pole plane, so a limb bent slightly away from
+//   the pole side (float noise of a straight rest or neutral limb) takes the pole's side without
+//   any jump. Above sinA = 0.1 the limb keeps its own plane on either side (the one documented
+//   discontinuity: a limb bent backwards by ~5.7 degrees).
+// - The solve: the chosen plane normal is carried by the shortest rotation from C - A to T - A
+//   (like fromTo(C - A, T - A) of the spec), the target triangle is built in that plane (C* on the
+//   target line at the clamped reach, B* on the normal's side), then A is turned onto it
+//   (aligning B - A and the plane normal) and B onto C* by the shortest arc.
 
 #ifndef POSE_IK_H
 #define POSE_IK_H

@@ -331,7 +331,9 @@ TEST(PoseRig, JointLimitsClampAndReport){
         high.angles[d] = 1000.0f;
         clampToLimits(low);
         clampToLimits(high);
-        EXPECT_EQ(low.angles[d], dofInfo(d).minDegrees);
-        EXPECT_EQ(high.angles[d], dofInfo(d).maxDegrees);
+        // (a swing DOF alone is also capped at MAX_SWING_DEGREES: the hips lean/side table rows)
+        const bool swingDof = d % DOFS_PER_BONE < 2;
+        EXPECT_EQ(low.angles[d], swingDof ? std::max(dofInfo(d).minDegrees, -MAX_SWING_DEGREES) : dofInfo(d).minDegrees);
+        EXPECT_EQ(high.angles[d], swingDof ? std::min(dofInfo(d).maxDegrees, MAX_SWING_DEGREES) : dofInfo(d).maxDegrees);
     }
 }

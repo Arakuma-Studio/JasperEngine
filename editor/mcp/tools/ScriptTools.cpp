@@ -1760,17 +1760,17 @@ void codeEditorTool(const CallPtr& call) {
 void registerScriptTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json scriptSelector = any("Index, class name or file (optional with one script).");
+    const Json scriptSelector = any("Index, class or file (optional with one script).");
 
     {
         ToolDef tool;
         tool.name = "create_script";
         tool.title = "Create Script";
         tool.description =
-            "Create a script from the engine template, optionally attached to entity; then edit the file yourself. "
-            "kind lua: module table in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the "
-            "GameObject's class (e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) "
-            "replace the template.";
+            "Create a script from the engine template, optionally attached to entity. kind lua: module table "
+            "in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the GameObject's "
+            "class (e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) replace "
+            "the template.";
         tool.inputSchema = object({
             {"kind", stringEnum("", {"lua", "cpp_script", "cpp_subclass"})},
             {"name", string("Class/module name = file name.")},
@@ -1779,7 +1779,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"header_content", string("")},
             {"source_content", string("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("Attach to (needed for cpp_subclass).")},
+            {"entity", entityRef("")},
             {"overwrite", withDefault(boolean(""), false)}
         }, {"kind", "name"});
         tool.allowedWhilePlaying = false;
@@ -1797,7 +1797,7 @@ void registerScriptTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"path", assetPath(".lua, .h or .cpp.")},
+            {"path", assetPath("")},
             {"class_name", string("C++: the class, if several in the header.")},
             {"index", integer("Position (default: last); run order.")},
             {"enabled", withDefault(boolean(""), true)}
@@ -1850,15 +1850,15 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "set_script_properties";
         tool.title = "Set Script Properties";
         tool.description =
-            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= set_properties "
-            "scripts[i].<name>). Prefab properties take a .prefab path, GameObject ones an entity ref (another "
-            "scene: {\"scene\", \"id\"}); \"enabled\" toggles the script. Properties added to the file are picked up "
-            "before your next call.";
+            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
+            "set_properties scripts[i].<name>). Prefab properties take a .prefab path, GameObject ones an "
+            "entity ref; \"enabled\" toggles the script. Properties added to the file are picked up before your "
+            "next call.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"script", scriptSelector},
-            {"values", anyObject("{propertyName: value}")}
+            {"values", anyObject("")}
         }, {"entity", "values"});
         tool.allowedWhilePlaying = false;
         tool.handler = setScriptPropertiesTool;
@@ -1893,7 +1893,7 @@ void registerScriptTools(McpRegistry& registry) {
             "header: class, kind, DPROPERTY fields (code: compile_scripts). path, or code + language.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"code", string("Source instead of a file.")},
+            {"code", string("")},
             {"language", stringEnum("Default: from the extension.", {"lua", "cpp_header", "cpp_source"})}
         });
         tool.annotations.readOnly = true;
@@ -1907,12 +1907,12 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "sync_files";
         tool.title = "Sync Files";
         tool.description =
-            "Rarely needed (files edited on disk are picked up before every call: external_changes): a full rescan "
-            "of code editor buffers, attached scripts' properties, Lua syntax, materials, shaders, textures, assets; "
-            "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
+            "Rarely needed (disk edits are picked up before every call): a full rescan of code editor "
+            "buffers, script properties, Lua syntax, materials, shaders, textures, assets; returns what "
+            "changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
-            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
+            {"full", withDefault(boolean(""), true)}
         });
         tool.annotations.idempotent = true;
         tool.handler = syncFilesTool;
@@ -1925,9 +1925,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ScriptCompile;  // busy policy (McpServer::busyRefusal)
         tool.title = "Compile C++ Scripts";
         tool.description =
-            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): success, "
-            "errors and warnings [{file, line, column, message}], log tail; compile errors are no tool error. Past "
-            "timeout_seconds: a job id. Don't Play meanwhile.";
+            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): "
+            "success, errors and warnings [{file, line, column, message}], log tail; compile errors are no "
+            "tool error. Don't Play meanwhile.";
         tool.inputSchema = object({
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 1, 3600), 300)}

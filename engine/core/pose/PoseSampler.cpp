@@ -59,6 +59,73 @@ namespace jasperengine::pose {
             return motion;
         }
 
+        // Clamps `values` to their ranges keeping their sum at `total` where the ranges allow: the
+        // remainder of a clamp is spread over the values still free to move (proportionally).
+        // With stepRate > 0 the values are then whole steps (at least one), rounded so the sum is
+        // the step count nearest to `total` where the ranges allow (largest remainders first).
+        void fitLength(std::vector<double>& values, const std::vector<double>& lo, const std::vector<double>& hi, double total, double stepRate){
+            const size_t count = values.size();
+            for (size_t i = 0; i < count; i++) values[i] = clampd(values[i], lo[i], hi[i]);
+            for (int iteration = 0; iteration < 32 && total > 0.0; iteration++){
+                double sum = 0.0;
+                for (double v : values) sum += v;
+                const double residual = total - sum;
+                if (std::fabs(residual) < 1e-12 * std::max(1.0, total)){
+                    break;
+                }
+                double freeSum = 0.0;
+                size_t freeCount = 0;
+                for (size_t i = 0; i < count; i++){
+                    if (residual > 0.0 ? values[i] < hi[i] : values[i] > lo[i]){
+                        freeSum += values[i];
+                        freeCount++;
+                    }
+                }
+                if (freeCount == 0){
+                    break;   // every value at its bound: the residual stays
+                }
+                for (size_t i = 0; i < count; i++){
+                    if (residual > 0.0 ? values[i] < hi[i] : values[i] > lo[i]){
+                        const double share = freeSum > 1e-12 ? values[i] / freeSum : 1.0 / static_cast<double>(freeCount);
+                        values[i] = clampd(values[i] + residual * share, lo[i], hi[i]);
+                    }
+                }
+            }
+            if (!(stepRate > 0.0)){
+                return;
+            }
+            std::vector<long> steps(count), minSteps(count), maxSteps(count);
+            long sum = 0;
+            for (size_t i = 0; i < count; i++){
+                minSteps[i] = std::max(1L, static_cast<long>(std::ceil(lo[i] * stepRate - 1e-9)));
+                maxSteps[i] = std::max(minSteps[i], static_cast<long>(std::floor(hi[i] * stepRate + 1e-9)));
+                steps[i] = std::min(std::max(std::lround(values[i] * stepRate), minSteps[i]), maxSteps[i]);
+                sum += steps[i];
+            }
+            long diff = std::lround(total * stepRate) - sum;
+            while (diff != 0){
+                // the value whose rounding is furthest from its exact step count in diff's direction
+                long best = -1;
+                double bestGap = 0.0;
+                for (size_t i = 0; i < count; i++){
+                    const double gap = (values[i] * stepRate - static_cast<double>(steps[i])) * (diff > 0 ? 1.0 : -1.0);
+                    const bool free = diff > 0 ? steps[i] < maxSteps[i] : steps[i] > minSteps[i];
+                    if (free && (best < 0 || gap > bestGap)){
+                        best = static_cast<long>(i);
+                        bestGap = gap;
+                    }
+                }
+                if (best < 0){
+                    break;
+                }
+                steps[best] += diff > 0 ? 1 : -1;
+                diff += diff > 0 ? -1 : 1;
+            }
+            for (size_t i = 0; i < count; i++){
+                values[i] = static_cast<double>(steps[i]) / stepRate;
+            }
+        }
+
         void applyAutoTiming(PoseAnimationData& data, const std::vector<double>& motion){
             const size_t n = data.poses.size();
             const size_t segments = motion.size();
@@ -107,18 +174,22 @@ namespace jasperengine::pose {
                 }
             }
 
-            const double stepRate = data.settings.stepRate;
+            // the timed values (holds, then the segment durations) and their ranges
+            std::vector<double> values(holds);
+            std::vector<double> lo(n, 0.0), hi(n, 5.0);
+            for (size_t i = 0; i < segments; i++){
+                values.push_back(durations[i]);
+                lo.push_back(0.02);
+                hi.push_back(1.0);
+            }
+            fitLength(values, lo, hi, oldLength, data.settings.stepRate);
+
             for (size_t i = 0; i < n; i++){
-                if (stepRate > 0.0){
-                    const double step = 1.0 / stepRate;
-                    holds[i] = std::max(step, std::round(holds[i] / step) * step);
-                    durations[i] = std::max(step, std::round(durations[i] / step) * step);
-                }
                 PoseKey& key = data.poses[i];
-                key.hold = static_cast<float>(clampd(holds[i], 0.0, 5.0));
+                key.hold = static_cast<float>(values[i]);
                 key.customTransition = true;
                 key.transition = transitions[i];
-                key.transition.duration = static_cast<float>(clampd(durations[i], 0.02, 1.0));
+                key.transition.duration = static_cast<float>(i < segments ? values[n + i] : clampd(durations[i], 0.02, 1.0));
             }
         }
 
@@ -203,11 +274,7 @@ namespace jasperengine::pose {
         const HumanizeSettings& humanize = settings.humanize;
         const double length = timeline.length;
 
-        // loops: a time within 1e-6 s below a loop boundary (float times) samples the boundary
         double t = time;
-        if (timeline.loop && length - positiveFmod(t, length) < 1e-6){
-            t = std::round(t / length) * length;
-        }
 
         // choppiness
         if (settings.stepRate > 0.0f){
@@ -231,12 +298,20 @@ namespace jasperengine::pose {
             for (int c = firstCycle; c <= 0; c++){
                 for (size_t s = 0; s < segments; s++){
                     const double local = tau - timeline.start[s] - c * length;
+                    if (c == 0 && local <= 0.0 && !movingHolds){
+                        continue;   // not started: e = 0 (the wind-up is at x > 0)
+                    }
                     const Transition tr = loose > 0.0 ? loosen(timeline.transitions[s], static_cast<float>(loose)) : timeline.transitions[s];
                     double e = easePrecise(local / std::max(static_cast<double>(tr.duration), 1e-4), tr);
                     if (movingHolds){
                         const double hold = timeline.holds[s];
                         const double hp = hold > 1e-4 ? smoothstep(0.0, 1.0, (local + hold) / hold) : (local >= 0.0 ? 1.0 : 0.0);
                         e = drift * hp + (1.0 - drift) * e;
+                    }
+                    if (c < 0){
+                        // the previous cycle settles exactly by the end of the loop, so the
+                        // product is the identity at tau = len and the loop is seamless
+                        e += (1.0 - e) * smoothstep(0.0, 1.0, tau / length);
                     }
                     if (e == 0.0){
                         continue;
@@ -325,19 +400,27 @@ namespace jasperengine::pose {
                     }
                     float angles[DOFS_PER_BONE];
                     rig.anglesFromLocal(bone, frame.rotations[b], angles);
-                    bool clamped = false;
-                    for (int k = 0; k < DOFS_PER_BONE; k++){
-                        const DofInfo& dof = dofInfo(dofIndex(bone, k));
-                        const float limited = std::min(std::max(angles[k], dof.minDegrees), dof.maxDegrees);
-                        if (limited != angles[k]){
-                            angles[k] = limited;
-                            clamped = true;
+                    if (boneWithinLimits(bone, angles)){
+                        continue;
+                    }
+                    // a swing longer than 180 degrees (inside the limits) decomposes to the short
+                    // form the other way: keep the rotation when its long form is within limits
+                    const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+                    if (swing > 1e-6){
+                        const double factor = 1.0 - 360.0 / swing;
+                        const float longForm[DOFS_PER_BONE] = {static_cast<float>(angles[0] * factor), static_cast<float>(angles[1] * factor), angles[2]};
+                        bool inside = true;
+                        for (int k = 0; k < DOFS_PER_BONE; k++){
+                            const DofInfo& dof = dofInfo(dofIndex(bone, k));
+                            inside = inside && longForm[k] >= dof.minDegrees && longForm[k] <= dof.maxDegrees;
+                        }
+                        if (inside){
+                            continue;
                         }
                     }
                     // only clamped bones change: the others keep their exact rotation
-                    if (clamped){
-                        frame.rotations[b] = rig.localFromAngles(bone, angles);
-                    }
+                    clampBoneToLimits(bone, angles);
+                    frame.rotations[b] = rig.localFromAngles(bone, angles);
                 }
             }
         }

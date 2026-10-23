@@ -24,6 +24,7 @@
 
 #include <cmath>
 #include <functional>
+#include <random>
 #include <map>
 #include <memory>
 #include <stdexcept>
@@ -433,8 +434,53 @@ namespace posetest {
         return rig;
     }
 
+    // A humanoid (Unity names) whose bone frames do not aim at their children: every rest
+    // rotation is random (fixed seed), the elbows and knees are slightly off the straight line
+    // and the rig is not symmetric. Built by the same recipe as randomHumanoid().
+    inline Skeleton randomHumanoid(std::mt19937& rng){
+        std::uniform_real_distribution<double> U(-1, 1);
+        SkeletonBuilder b;
+        auto randomRot = [&](){ return axisAngleRad(Vec3d(U(rng), U(rng), U(rng)), POSE_PI * U(rng)); };
+        const Vec3d hips(0, 0.95, 0), spine(0, 1.1, 0), chest(0, 1.3, 0), head(0, 1.55, 0), top(0, 1.75, 0);
+        b.add("Hips", "", hips, randomRot());
+        b.add("Spine", "Hips", spine, randomRot());
+        b.add("Chest", "Spine", chest, randomRot());
+        b.add("Head", "Chest", head, randomRot());
+        b.add("HeadTop", "Head", top, randomRot());
+        for (int side = 0; side < 2; side++){
+            const std::string s = side == 0 ? "Left" : "Right";
+            const double x = side == 0 ? 1.0 : -1.0;
+            const Vec3d ua(0.17 * x, 1.42, 0), la((0.45 + 0.01 * U(rng)) * x, 1.42 + 0.01 * U(rng), 0.02 * U(rng)), ha(0.72 * x, 1.42, 0.01 * U(rng));
+            const Vec3d ul(0.09 * x, 0.9, 0), ll((0.09 + 0.01 * U(rng)) * x, 0.5, 0.02 * U(rng)), ft(0.09 * x, 0.08, -0.02), tip(0.09 * x, 0.02, 0.15);
+            b.add(s + "UpperArm", "Chest", ua, randomRot());
+            b.add(s + "LowerArm", s + "UpperArm", la, randomRot());
+            b.add(s + "Hand", s + "LowerArm", ha, randomRot());
+            b.add(s + "UpperLeg", "Hips", ul, randomRot());
+            b.add(s + "LowerLeg", s + "UpperLeg", ll, randomRot());
+            b.add(s + "Foot", s + "LowerLeg", ft, randomRot());
+            b.add(s + "FootTip", s + "Foot", tip, randomRot());
+        }
+        return b.skeleton;
+    }
+
+    inline const TestRig& skewedRig(){
+        static const TestRig rig = [](){
+            std::mt19937 rng(20261023);
+            using H = HumanBone;
+            const HumanoidMap expected = mapOf({
+                {H::Hips, "Hips"}, {H::Spine, "Spine"}, {H::Chest, "Chest"}, {H::Head, "Head"},
+                {H::LeftUpperArm, "LeftUpperArm"}, {H::LeftLowerArm, "LeftLowerArm"}, {H::LeftHand, "LeftHand"},
+                {H::RightUpperArm, "RightUpperArm"}, {H::RightLowerArm, "RightLowerArm"}, {H::RightHand, "RightHand"},
+                {H::LeftUpperLeg, "LeftUpperLeg"}, {H::LeftLowerLeg, "LeftLowerLeg"}, {H::LeftFoot, "LeftFoot"},
+                {H::RightUpperLeg, "RightUpperLeg"}, {H::RightLowerLeg, "RightLowerLeg"}, {H::RightFoot, "RightFoot"},
+            });
+            return finish("skewed-unity", randomHumanoid(rng), expected);
+        }();
+        return rig;
+    }
+
     inline std::vector<const TestRig*> allRigs(){
-        return {&tposeRig(), &aposeRig(), &minimalRig(), &backwardRig()};
+        return {&tposeRig(), &aposeRig(), &minimalRig(), &backwardRig(), &skewedRig()};
     }
 
     // ---- name-list skeletons (hierarchy only matters for auto-detect) ----
