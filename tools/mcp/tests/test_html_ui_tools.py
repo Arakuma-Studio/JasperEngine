@@ -53,7 +53,9 @@ INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
           "list_ui_effects": 900, "set_ui_effect_time": 500}
-TOTAL_LIMIT = 99800 + 837
+# S07 adds the four ECS tools (get_ecs_stats 276, get_system_schedule 292, set_system_options 332,
+# query_entities 640: +1540)
+TOTAL_LIMIT = 99800 + 837 + 1540
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

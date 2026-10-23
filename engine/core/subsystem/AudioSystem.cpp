@@ -166,17 +166,26 @@ bool AudioSystem::seekSound(AudioSourceComponent& audio, double time){
     return getSoloud().seek(audio.handle, time) == SoLoud::SOLOUD_ERRORS::SO_NO_ERROR;
 }
 
-void AudioSystem::setPaused(bool paused) {
-    this->paused = paused;
+void AudioSystem::applySoundPause(bool pause) {
     if (inited) {
         auto audios = scene->getComponentArray<AudioSourceComponent>();
         for (int i = 0; i < audios->size(); i++) {
             AudioSourceComponent& audio = audios->getComponentFromIndex(i);
             if (audio.handle != 0) {
-                getSoloud().setPause(audio.handle, paused);
+                getSoloud().setPause(audio.handle, pause);
             }
         }
     }
+}
+
+void AudioSystem::setPaused(bool paused) {
+    this->paused = paused;
+    applySoundPause(paused || !schedulerEnabled);
+}
+
+void AudioSystem::onSchedulerEnabledChanged(bool enabled) {
+    schedulerEnabled = enabled;
+    applySoundPause(paused || !schedulerEnabled);
 }
 
 void AudioSystem::stopSceneSounds() {

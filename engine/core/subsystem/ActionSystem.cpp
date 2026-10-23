@@ -330,6 +330,8 @@ void ActionSystem::actionComponentStart(ActionComponent& action){
     action.state = ActionState::Running;
     action.startTrigger = false;
 
+    // what the Lua callbacks destroy goes when they are done (StructuralDeferScope)
+    StructuralDeferScope deferScope(*scene);
     action.onStart.call();
 }
 
@@ -389,6 +391,7 @@ void ActionSystem::actionComponentStop(ActionComponent& action){
     action.stopTrigger = false;
     action.timecount = 0;
 
+    StructuralDeferScope deferScope(*scene);
     onStop.call();
 }
 
@@ -420,12 +423,14 @@ void ActionSystem::actionComponentPause(ActionComponent& action){
     action.state = ActionState::Paused;
     action.pauseTrigger = false;
 
+    StructuralDeferScope deferScope(*scene);
     onPause.call();
 }
 
 void ActionSystem::actionUpdate(double dt, ActionComponent& action){
     action.timecount += dt * action.speed;
 
+    StructuralDeferScope deferScope(*scene);
     action.onStep.call();
 }
 

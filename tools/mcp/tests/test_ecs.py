@@ -1,0 +1,157 @@
+"""S07: the ECS tools (get_ecs_stats, get_system_schedule, set_system_options, query_entities).
+
+Runs against the TappyPlane fixture (a 2D Lua game). Tests run in order and share one editor.
+"""
+
+from harness import Editor
+
+TIMEOUT = 900
+
+SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
+
+
+def type_count(stats, name):
+    for entry in stats["types"]:
+        if entry["name"] == name:
+            return entry["count"]
+    return 0
+
+
+def phase(schedule, name):
+    for entry in schedule["phases"]:
+        if entry["phase"] == name:
+            return entry["waves"]
+    raise AssertionError(f"no phase {name}: {schedule}")
+
+
+def system_entry(schedule, phase_name, system):
+    for wave in phase(schedule, phase_name):
+        for entry in wave:
+            if entry["name"] == system:
+                return entry
+    raise AssertionError(f"no {system} in {phase_name}")
+
+
+async def test_ecs_stats_counts(ed: Editor):
+    ed.require_tools("get_ecs_stats", "create_entity", "delete_entities", "list_component_types")
+    before = await ed.call("get_ecs_stats")
+    ed.check(before["entities"]["total"] > 0, f"entities: {before['entities']}")
+    ed.check_eq(before["entities"]["total"], before["entities"]["user"] + before["entities"]["system"], "user + system")
+    ed.check_eq(before["component_types"]["max"], 256, "max component types")
+    listed = await ed.call("list_component_types")
+    names = listed.get("components") or listed.get("types") or []
+    ed.check_eq(before["component_types"]["registered"], len(names), "registered types = list_component_types")
+    ed.check(isinstance(before["change_tick"], int) and before["change_tick"] > 0, "change_tick")
+    ed.check(before["bytes"]["total"] > 0, "bytes")
+
+    made = await ed.call("create_entity", type="empty", name="EcsProbe")
+    after = await ed.call("get_ecs_stats")
+    ed.check_eq(after["entities"]["total"], before["entities"]["total"] + 1, "one more entity")
+    ed.check_eq(type_count(after, "transform"), type_count(before, "transform") + 1, "one more Transform")
+
+    await ed.call("delete_entities", entity=made["entity_id"])
+    gone = await ed.call("get_ecs_stats")
+    ed.check_eq(gone["entities"]["total"], before["entities"]["total"], "deleted again")
+    ed.check_eq(type_count(gone, "transform"), type_count(before, "transform"), "its Transform is gone")
+
+
+async def test_changed_since(ed: Editor):
+    ed.require_tools("get_ecs_stats", "set_transform", "query_entities")
+    made = await ed.call("create_entity", type="empty", name="EcsMoved")
+    entity = made["entity_id"]
+    other = (await ed.call("create_entity", type="empty", name="EcsStill"))["entity_id"]
+    # let the editor's frame settle what creating them changed
+    await ed.call("get_ecs_stats")
+    tick = (await ed.call("get_ecs_stats"))["change_tick"]
+
+    await ed.call("set_transform", entity=entity, position=[3, 4, 0])
+    changed = await ed.call("query_entities", components=["transform"], changed_since_tick=tick)
+    ids = [e["id"] for e in changed["entities"]]
+    ed.check_in(entity, ids, "the moved GameObject changed since the tick before set_transform")
+    later = await ed.call("query_entities", components=["transform"], changed_since_tick=changed["change_tick"])
+    ed.check(entity not in [e["id"] for e in later["entities"]], "not changed again since")
+    await ed.call("delete_entities", entities=[entity, other])
+
+
+async def test_query_entities(ed: Editor):
+    ed.require_tools("query_entities", "create_entity", "get_entity")
+    parent = (await ed.call("create_entity", type="empty", name="EcsParent"))["entity_id"]
+    child = (await ed.call("create_entity", type="empty", name="EcsChild", parent=parent))["entity_id"]
+
+    every = await ed.call("query_entities", components=["transform"], limit=10000)
+    ids = [e["id"] for e in every["entities"]]
+    ed.check_in(parent, ids)
+    ed.check_in(child, ids)
+    ed.check(ids.index(parent) < ids.index(child), "Transform order: parents before children")
+    ed.check(all({"id", "name", "path"} <= set(e) for e in every["entities"]), "id, name, path")
+    again = await ed.call("query_entities", components=["transform"], limit=10000)
+    ed.check_eq([e["id"] for e in again["entities"]], ids, "deterministic order")
+
+    sprites = await ed.call("query_entities", components=["sprite"], limit=10000)
+    sprite_ids = {e["id"] for e in sprites["entities"]}
+    ed.check(sprite_ids, "the fixture has sprites")
+    plain = await ed.call("query_entities", components=["transform"], exclude=["sprite"], limit=10000)
+    plain_ids = {e["id"] for e in plain["entities"]}
+    ed.check(not (plain_ids & sprite_ids), "exclude: no sprite in the result")
+    ed.check_eq(plain_ids | sprite_ids, set(ids), "with and without a sprite: every GameObject")
+
+    one = await ed.call("query_entities", components=["transform"], limit=1)
+    ed.check_eq(len(one["entities"]), 1, "limit")
+    ed.check(one["more"], "more after the limit")
+    ed.check_eq(one["entities"][0]["id"], ids[0], "the limit keeps the order")
+
+    await ed.check_error("query_entities", components=["nosuchcomponent"])
+    await ed.check_error("query_entities", components=[])
+    await ed.call("delete_entities", entities=[parent])
+
+
+async def test_system_schedule_and_options(ed: Editor):
+    ed.require_tools("get_system_schedule", "set_system_options", "play", "wait")
+    edit = await ed.call("get_system_schedule")
+    for name in ("FixedUpdate", "Update", "Draw"):
+        waves = phase(edit, name)
+        ed.check_eq([[s["name"] for s in wave] for wave in waves], [[s] for s in SYSTEMS], f"{name}: one wave each, in order")
+    ed.check_eq(phase(edit, "PostUpdate"), [], "no PostUpdate systems")
+    action = system_entry(edit, "Update", "ActionSystem")
+    ed.check_in("exclusive", action["resources"])
+    ed.check_in("main_thread", action["resources"])
+
+    await ed.check_error("set_system_options", name="ActionSystem", enabled=False, contains="play")
+
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", seconds=1)
+        running = await ed.call("get_system_schedule", runtime=True)
+        for system in SYSTEMS:
+            entry = system_entry(running, "Update", system)
+            ed.check(entry["timing"]["calls"] > 0, f"{system} ran: {entry['timing']}")
+            ed.check(entry["timing"]["avg_ms"] >= 0, f"{system} avg")
+        ed.check(running["last_trace"], "a wave trace of the last frame")
+        ed.check(any(t["system"] == "RenderSystem" for t in running["last_trace"]), "RenderSystem in the trace")
+
+        await ed.check_error("set_system_options", name="NoSuchSystem", enabled=False, contains="ActionSystem")
+        paused = await ed.call("set_system_options", name="ActionSystem", enabled=False)
+        ed.check_eq(paused["enabled"], False, "disabled")
+        calls = system_entry(await ed.call("get_system_schedule", runtime=True), "Update", "ActionSystem")["timing"]["calls"]
+        await ed.call("wait", seconds=0.5)
+        later = await ed.call("get_system_schedule", runtime=True)
+        stopped = system_entry(later, "Update", "ActionSystem")
+        ed.check_eq(stopped["timing"]["calls"], calls, "a disabled ActionSystem does not run")
+        ed.check_eq(stopped["enabled"], False, "shown disabled")
+        ed.check(system_entry(later, "Update", "RenderSystem")["timing"]["calls"] > 0, "the others still run")
+
+        every = await ed.call("set_system_options", name="AudioSystem", every_n_frames=3)
+        ed.check_eq(every["every_n_frames"], 3, "every_n_frames")
+    finally:
+        await ed.call("play", action="stop")
+
+    # debug state: gone with the Play session
+    edit = await ed.call("get_system_schedule")
+    ed.check(system_entry(edit, "Update", "ActionSystem")["enabled"], "the edit scene was not changed")
+    await ed.call("play", action="start")
+    try:
+        fresh = await ed.call("get_system_schedule", runtime=True)
+        ed.check(system_entry(fresh, "Update", "ActionSystem")["enabled"], "re-enabled when Play started again")
+        ed.check_eq(system_entry(fresh, "Update", "AudioSystem")["every_n_frames"], 1, "every_n_frames reset")
+    finally:
+        await ed.call("play", action="stop")

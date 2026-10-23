@@ -59,6 +59,7 @@ void Tilemap::setTextureScaleFactor(float textureScaleFactor){
     if (tilemap.textureScaleFactor != textureScaleFactor){
         tilemap.textureScaleFactor = textureScaleFactor;
         tilemap.needUpdateTilemap = true;
+        markChanged<TilemapComponent>();
     }
 }
 
@@ -105,6 +106,7 @@ void Tilemap::addRect(int id, const std::string& name, const std::string& textur
             mesh.submeshes[submeshId].material.baseColorTexture.setMinFilter(texFilter);
             mesh.submeshes[submeshId].material.baseColorTexture.setMagFilter(texFilter);
             mesh.submeshes[submeshId].needUpdateTexture = true;
+            markChanged<MeshComponent>();
             mesh.numSubmeshes++;
         }
     }
@@ -208,6 +210,7 @@ void Tilemap::addTile(int id, const std::string& name, int rectId, Vector2 posit
     }
 
     tilemap.needUpdateTilemap = true;
+    markChanged<TilemapComponent>();
 }
 
 void Tilemap::addTile(const std::string& name, int rectId, Vector2 position, float width, float height){
@@ -243,6 +246,7 @@ void Tilemap::removeTile(int id){
     }
 
     tilemap.needUpdateTilemap = true;
+    markChanged<TilemapComponent>();
 }
 
 void Tilemap::removeTile(const std::string& name){

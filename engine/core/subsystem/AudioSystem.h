@@ -27,6 +27,11 @@ namespace jasperengine{
 
 		Vector3 cameraLastPosition;
 		bool outputRequested = false;
+		// off while the scheduler skips the system (Systems window): its sounds hold too
+		bool schedulerEnabled = true;
+
+		// pauses or resumes the scene's playing sounds
+		void applySoundPause(bool pause);
 
         bool loadSoundSample(AudioSourceComponent& audio);
         void preloadSoundAssets();
@@ -54,6 +59,7 @@ namespace jasperengine{
 		bool seekSound(AudioSourceComponent& audio, double time);
 
 		void setPaused(bool paused) override;
+		void onSchedulerEnabledChanged(bool enabled) override;
 
 		void load() override;
 		void draw() override;

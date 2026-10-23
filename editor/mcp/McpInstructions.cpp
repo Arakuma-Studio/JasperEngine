@@ -18,7 +18,7 @@ scripts. Every edit you make through tools is an undoable editor command, visibl
 watching. Build scenes with tools, write code with your own file tools, verify by playing,
 screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+C++ scripting, physics, shaders, prefabs, HTML/CSS UI, ECS/systems, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.

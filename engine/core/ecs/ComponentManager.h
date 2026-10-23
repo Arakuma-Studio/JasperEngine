@@ -4,16 +4,21 @@
 #ifndef COMPONENTMANAGER_H
 #define COMPONENTMANAGER_H
 
+#include <array>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <utility>
 #include <vector>
 #include "ComponentArray.h"
+#include "Signature.h"
 #include "Log.h"
 
 namespace jasperengine {
 
+	// A signature bit position: 0..kMaxComponentTypes-1
 	using ComponentId = unsigned char;
 
 
@@ -31,6 +36,20 @@ namespace jasperengine {
 		return index;
 	}
 
+	namespace ecs {
+		// "RenderSystem" for typeid(RenderSystem).name() on every compiler (namespaces dropped)
+		JASPERENGINE_API std::string readableTypeName(const char* typeName);
+
+		// Debug access check (SystemScheduler, D10): reports an access to a component type the
+		// system running on this thread did not declare. Compiled in when
+		// JASPERENGINE_ECS_ACCESS_CHECKS is on (the default in builds without NDEBUG).
+		JASPERENGINE_API void checkComponentAccess(ComponentId id);
+	}
+
+#if !defined(JASPERENGINE_ECS_ACCESS_CHECKS) && !defined(NDEBUG)
+	#define JASPERENGINE_ECS_ACCESS_CHECKS 1
+#endif
+
 
 	class JASPERENGINE_API ComponentManager {
 	private:
@@ -41,7 +60,10 @@ namespace jasperengine {
 
 		// Indexed by componentTypeIndex<T>(); unregistered types keep an empty slot.
 		std::vector<ComponentEntry> entries{};
-		ComponentId nextComponentIdId{};
+		// Indexed by ComponentId (the signature bit)
+		std::array<ComponentArrayBase*, kMaxComponentTypes> arraysById{};
+		std::array<std::string, kMaxComponentTypes> namesById{};
+		size_t registeredCount = 0;
 
 		const ComponentEntry* findEntry(size_t index) const {
 			if (index >= entries.size() || !entries[index].array){
@@ -51,30 +73,48 @@ namespace jasperengine {
 		}
 
 	public:
+		ComponentManager() = default;
+		ComponentManager(const ComponentManager&) = delete;
+		ComponentManager& operator=(const ComponentManager&) = delete;
+
 		// whether registerComponent<T>() ran (the getters throw for a type that is not)
 		template<typename T>
 		bool isRegistered() const {
 			return findEntry(componentTypeIndex<T>()) != nullptr;
 		}
 
+		// False (logged) for a type registered twice, or past kMaxComponentTypes: that type
+		// stays unregistered
 		template<typename T>
-		void registerComponent() {
+		bool registerComponent(ComponentOrder order = ComponentOrder::Insertion, const char* name = nullptr) {
 			const size_t index = componentTypeIndex<T>();
+
+			if (index < entries.size() && entries[index].array){
+				Log::error("Registering component type more than once");
+				return false;
+			}
+
+			if (registeredCount >= kMaxComponentTypes){
+				Log::error("Cannot register component type %s: the limit of %zu component types is reached",
+					name ? name : typeid(T).name(), kMaxComponentTypes);
+				return false;
+			}
 
 			if (index >= entries.size()){
 				entries.resize(index + 1);
 			}
 
-			if (entries[index].array){
-				Log::error("Registering component type more than once");
-				return;
-			}
-
 			// Ids stay sequential: they are signature bit positions.
-			entries[index].array = std::make_shared<ComponentArray<T>>();
-			entries[index].id = nextComponentIdId;
+			auto array = std::make_shared<ComponentArray<T>>();
+			array->setOrder(order);
+			const ComponentId id = (ComponentId)registeredCount;
+			entries[index].array = array;
+			entries[index].id = id;
+			arraysById[id] = array.get();
+			namesById[id] = name ? std::string(name) : std::string();
 
-			++nextComponentIdId;
+			++registeredCount;
+			return true;
 		}
 
 		template<typename T>
@@ -93,11 +133,39 @@ namespace jasperengine {
 		template<typename T>
 		ComponentArray<T>* getComponentArray() const {
 			if (const ComponentEntry* entry = findEntry(componentTypeIndex<T>())){
+#if JASPERENGINE_ECS_ACCESS_CHECKS
+				ecs::checkComponentAccess(entry->id);
+#endif
 				return static_cast<ComponentArray<T>*>(entry->array.get());
 			}
 
 			Log::error("Component not registered before use");
 			throw std::out_of_range("Component not registered before use");
+		}
+
+		// By signature bit; null for an unused id
+		ComponentArrayBase* getArray(ComponentId id) const {
+			return arraysById[id];
+		}
+
+		// The name given at registration ("" when none was)
+		const std::string& getName(ComponentId id) const {
+			return namesById[id];
+		}
+
+		// The id of the type registered under `name`; false when there is none
+		bool findId(const std::string& name, ComponentId& id) const {
+			for (size_t i = 0; i < registeredCount; i++){
+				if (namesById[i] == name){
+					id = (ComponentId)i;
+					return true;
+				}
+			}
+			return false;
+		}
+
+		size_t getRegisteredCount() const {
+			return registeredCount;
 		}
 
 		template<typename T>
@@ -141,19 +209,42 @@ namespace jasperengine {
 		    return getComponentArray<T>()->getComponentFromIndex(index);
 	    }
 
+		// Every array (an entity whose signature is not known)
 		void entityDestroyed(Entity entity) {
-			for (auto const& entry : entries) {
-				if (entry.array){
-					entry.array->entityDestroyed(entity);
-				}
+			for (size_t id = 0; id < registeredCount; id++) {
+				arraysById[id]->entityDestroyed(entity);
 			}
 		}
 
-		void entitiesDestroyed(const std::unordered_set<Entity>& entities) {
-			for (auto const& entry : entries) {
-				if (entry.array){
-					entry.array->entitiesDestroyed(entities);
+		// Only the arrays of the signature's types
+		void entityDestroyed(Entity entity, const Signature& signature) {
+			signature.forEachSet([&](size_t id){
+				if (ComponentArrayBase* array = arraysById[id]){
+					array->entityDestroyed(entity);
 				}
+			});
+		}
+
+		void entitiesDestroyed(const std::unordered_set<Entity>& entities) {
+			for (size_t id = 0; id < registeredCount; id++) {
+				arraysById[id]->entitiesDestroyed(entities);
+			}
+		}
+
+		// `types`: the union of the entities' signatures
+		void entitiesDestroyed(const std::vector<Entity>& entities, const Signature& types) {
+			types.forEachSet([&](size_t id){
+				if (ComponentArrayBase* array = arraysById[id]){
+					array->entitiesDestroyed(entities);
+				}
+			});
+		}
+
+		// fn(ComponentId, ComponentArrayBase&) for every registered type, by id
+		template<typename F>
+		void forEachArray(F&& fn) const {
+			for (size_t id = 0; id < registeredCount; id++){
+				fn((ComponentId)id, *arraysById[id]);
 			}
 		}
 	};

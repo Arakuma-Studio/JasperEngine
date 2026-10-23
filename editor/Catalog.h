@@ -171,6 +171,9 @@ namespace jasperengine::editor{
         // The component has the Unity enable checkbox (an "enabled" property)
         static bool hasEnabledProperty(ComponentType component);
         static ComponentId getComponentId(const EntityRegistry* registry, ComponentType compType);
+        // A value of the entity's component was written (property edits, undo, decode): its
+        // Changed<T> tick (EntityRegistry::markChanged). Nothing when it has no such component.
+        static void markChanged(EntityRegistry* registry, Entity entity, ComponentType compType);
         static ComponentType getComponentType(const std::string& componentName);
         static Signature componentTypeToSignature(const EntityRegistry* registry, ComponentType compType);
 

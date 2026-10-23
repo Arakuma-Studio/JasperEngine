@@ -8,7 +8,6 @@
 #include "Entity.h"
 #include "Signature.h"
 #include "ComponentManager.h"
-#include <set>
 
 namespace jasperengine{
 
@@ -52,6 +51,10 @@ namespace jasperengine{
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         // GameObject layer changed (Scene::setEntityLayer)
         virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
+        // The scheduler stopped (false) or resumed running the system (the editor's Systems
+        // window and set_system_options, a Play-mode debug switch); its phases are skipped
+        // meanwhile. A system with effects that outlive its updates (sounds) pauses them.
+        virtual void onSchedulerEnabledChanged(bool enabled) { (void)enabled; }
 
     };
 

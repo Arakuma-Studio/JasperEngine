@@ -8,8 +8,15 @@
 #include "EntityManager.h"
 #include "ComponentManager.h"
 #include "Signature.h"
+#include "ChangeTracking.h"
+#include "CommandBuffer.h"
+#include "EntityRef.h"
+#include "View.h"
 #include "TagManager.h"
 #include <memory>
+#include <cstdint>
+#include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 
@@ -70,25 +77,58 @@ namespace jasperengine {
 
     enum class EntityPool { User, System };
 
+    class Scene;
+
     class JASPERENGINE_API EntityRegistry {
     private:
         EntityManager entityManager;
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
 
+        ChangeClock clock;
+
+        // the Hierarchy-ordered types, re-sorted by the Transforms
+        Signature hierarchyTypes;
+
+        // StructuralDeferScope: depth, the thread that opened it and what it deferred
+        int deferDepth = 0;
+        std::thread::id deferThread;
+        // callbacks of other threads that the opening thread waits for, serialized by their
+        // own lock (the Jolt contact listener) are deferred too
+        int deferAnyThread = 0;
+        EntityCommandBuffer deferred;
+
+        // every registry alive (markChangedComponent)
+        static std::vector<EntityRegistry*>& liveRegistries();
+        static std::mutex& liveRegistriesMutex();
+
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         void changeTransformChildren(Entity entity);
+        void linkOrderSource(ComponentArrayBase* array);
+        // a Transform added to or removed from an entity moves its Hierarchy components'
+        // place in their order
+        void transformChanged(Entity entity);
+        bool deferStructural(Entity entity) const;
+        // true (logged, asserts in debug) while a parallel wave runs: systems record
+        // structural changes into their command buffer instead
+        bool structuralLocked(const char* operation) const;
 
     protected:
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onEntityDestroyed(Entity entity, Signature signature) { (void)entity; (void)signature; }
         virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
+        // destroyHierarchy once it is not deferred: the entity's Transform branch, children
+        // first (Scene: ObjectManager, which stops the scripts too)
+        virtual void destroyHierarchyNow(Entity entity);
 
     public:
         EntityRegistry();
         EntityRegistry(EntityPool defaultPool);
         virtual ~EntityRegistry();
+
+        // The Scene this registry is, if it is one
+        virtual Scene* asScene() { return nullptr; }
 
         //Entity methods
 
@@ -100,17 +140,19 @@ namespace jasperengine {
         bool isEntityCreated(Entity entity) const;
 
         void destroyEntity(Entity entity);
-        // Several entities: every component removal callback first, then each component
-        // array compacted once (destroying many one by one shifts the arrays each time)
+        // Several entities: every component removal callback first, then the components
         void destroyEntities(const std::vector<Entity>& entities);
+        // GameObject.destroy semantics: the entity and its Transform children (a Scene
+        // stops their scripts first)
+        void destroyHierarchy(Entity entity);
 
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 
         void moveChildToIndex(Entity entity, size_t index); // for internal/editor use
-        // Reorders the component arrays kept in Transform order (meshes, UI, ...) that the
-        // signature holds, after the Transform array itself was reordered. For internal/editor
-        // use: moving a block of branches directly in the Transform array needs one call,
-        // where moveChildToIndex re-sorts once per branch.
+        // Marks the component arrays kept in Transform order (meshes, UI, ...) that the
+        // signature holds for a re-sort, after the Transform array itself was reordered:
+        // each re-sorts once, at its next index-based read. For internal/editor use: moving
+        // a block of branches directly in the Transform array needs one call.
         void sortComponentsByTransform(Signature entitySignature);
         // The T components in the order their entities have in `entities` (the others last):
         // for components without a Transform ordered by a list, e.g. the skyboxes by the
@@ -164,62 +206,166 @@ namespace jasperengine {
         // A scene sets it past the ids it recreates, so what it creates next stays clear of them.
         void setLastEntity(Entity entity); // for internal editor use only
         std::vector<Entity> getEntityList() const;
+        // fn(Entity) for every entity in ascending id order, without building a list
+        template<typename F>
+        void forEachEntity(F&& fn) const {
+            entityManager.forEachEntity(std::forward<F>(fn));
+        }
+        size_t getEntityCount() const;
+        size_t getSystemEntityCount() const;
 
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;
 
         void clear();
 
+        // Handles for deferred and asynchronous code (EntityRef)
+
+        EntityRef makeRef(Entity entity) const;
+        bool isAlive(const EntityRef& ref) const;
+
+        // Change tracking: the registry's change tick (see ChangeClock). changeTick() samples
+        // it: whatever changes after the call is stamped with a newer tick.
+        Tick changeTick() const;
+        Tick advanceChangeTick();
+        ChangeClock& getChangeClock();
+
+        // A change to the entity's T that went through a T& (direct writes are not tracked)
+        template<typename T>
+        void markChanged(Entity entity){
+            componentManager.getComponentArray<T>()->markChanged(entity);
+        }
+        // by id (editor and MCP code that knows the type at run time); false when the entity
+        // has no such component
+        bool markChanged(ComponentId componentId, Entity entity);
+
+        // The entities with every `include` type and none of `exclude`, in the order of the
+        // first include type's array (parents before children for Transform and Hierarchy
+        // types); with `changedAfter`, only those where an included type changed after that
+        // tick. At most `limit`. Lua findEntitiesWith / findChangedEntities, MCP query_entities.
+        std::vector<Entity> queryEntities(const std::vector<ComponentId>& include, const std::vector<ComponentId>& exclude,
+                                          const Tick* changedAfter = nullptr, size_t limit = SIZE_MAX);
+
+        // A change made through a pointer to a component of any live registry (the Lua
+        // setters of component fields, which have no entity): finds the registry and entity
+        // owning `component` and stamps it changed. False when no registry holds it.
+        template<typename T>
+        static bool markChangedComponent(const T* component){
+            std::lock_guard<std::mutex> lock(liveRegistriesMutex());
+            for (EntityRegistry* registry : liveRegistries()){
+                if (!registry->isComponentRegistered<T>()){
+                    continue;
+                }
+                const Entity entity = registry->componentManager.getComponentArray<T>()->findOwner(component);
+                if (entity != NULL_ENTITY){
+                    registry->componentManager.getComponentArray<T>()->markChanged(entity);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Removed<T> entries stamped at or before `tick` go (Scene, at the end of a frame)
+        void trimRemovedComponents(Tick tick);
+
+        // Typed query: view<Read<A>, Write<B>, Optional<C>, Without<D>>() (see View.h)
+        template<typename... Q>
+        View<Q...> view() const {
+            return View<Q...>(componentManager);
+        }
+
+        // Structural changes during iteration (StructuralDeferScope): while a scope is open on
+        // the thread that opened it, destroyEntity, destroyEntities, destroyHierarchy and
+        // removeComponent go to a command buffer played back when the outermost scope closes.
+        // Adding components stays immediate (an add never moves a component).
+        void beginStructuralDefer(bool anyThread = false);
+        void endStructuralDefer(bool anyThread = false);
+        bool isStructuralDeferActive() const;
+        EntityCommandBuffer& getDeferredCommands();
+
+        // Component types: count, names given at registration, lookup by name and by id
+
+        size_t getComponentTypeCount() const;
+        const std::string& getComponentName(ComponentId componentId) const;
+        bool findComponentId(const std::string& name, ComponentId& componentId) const;
+        ComponentArrayBase* getComponentArray(ComponentId componentId) const;
+        // the bytes of the entity metadata (names' heap buffers left out)
+        size_t getMetadataBytes() const;
+
         // Component methods
 
+        // `order`: how the type's array keeps its order (ComponentOrder). Past 256 types the
+        // registration is refused (logged) and the type stays unregistered.
         template<typename T>
-        void registerComponent(){
-            componentManager.registerComponent<T>();
+        void registerComponent(ComponentOrder order = ComponentOrder::Insertion){
+            registerComponent<T>(order, nullptr);
+        }
+
+        // ...with the name scripts and tools look the type up by
+        template<typename T>
+        bool registerComponent(ComponentOrder order, const char* name){
+            if (!componentManager.registerComponent<T>(order, name)){
+                return false;
+            }
+            ComponentArray<T>* array = componentManager.getComponentArray<T>();
+            array->setClock(&clock);
+            if (order == ComponentOrder::Hierarchy){
+                hierarchyTypes.set(componentManager.getComponentId<T>());
+            }
+            linkOrderSource(array);
+            return true;
         }
 
         template<typename T>
         void addComponent(Entity entity){
+            if (structuralLocked("addComponent")){
+                return;
+            }
             componentManager.addComponent<T>(entity);
-            auto signature = entityManager.getSignature(entity);
-            signature.set(componentManager.getComponentId<T>(), true);
-            entityManager.setSignature(entity, signature);
-
-            onComponentAdded(entity, componentManager.getComponentId<T>());
+            componentAdded<T>(entity);
         }
 
         template<typename T>
         void addComponent(Entity entity, const T& component){
+            if (structuralLocked("addComponent")){
+                return;
+            }
             componentManager.addComponent<T>(entity, component);
-            auto signature = entityManager.getSignature(entity);
-            signature.set(componentManager.getComponentId<T>(), true);
-            entityManager.setSignature(entity, signature);
-
-            onComponentAdded(entity, componentManager.getComponentId<T>());
+            componentAdded<T>(entity);
         }
 
         template<typename T>
         void addComponent(Entity entity, T&& component){
+            if (structuralLocked("addComponent")){
+                return;
+            }
             using Component = std::remove_cv_t<std::remove_reference_t<T>>;
             componentManager.addComponent<Component>(entity, std::forward<T>(component));
-            auto signature = entityManager.getSignature(entity);
-            signature.set(componentManager.getComponentId<Component>(), true);
-            entityManager.setSignature(entity, signature);
-
-            onComponentAdded(entity, componentManager.getComponentId<Component>());
+            componentAdded<Component>(entity);
         }
 
         template<typename T>
         void removeComponent(Entity entity){
+            if (deferStructural(entity)){
+                deferred.remove<T>(makeRef(entity));
+                return;
+            }
+            if (structuralLocked("removeComponent")){
+                return;
+            }
+
             onComponentRemoved(entity, componentManager.getComponentId<T>());
 
-            if (componentManager.getComponentId<T>() == getComponentId<Transform>()) {
+            if constexpr (std::is_same_v<T, Transform>) {
                 changeTransformChildren(entity);
             }
 
             componentManager.removeComponent<T>(entity);
-            auto signature = entityManager.getSignature(entity);
-            signature.set(componentManager.getComponentId<T>(), false);
-            entityManager.setSignature(entity, signature); 
+            entityManager.setSignatureBit(entity, componentManager.getComponentId<T>(), false);
+
+            if constexpr (std::is_same_v<T, Transform>) {
+                transformChanged(entity);
+            }
         }
 
         template<typename T>
@@ -257,6 +403,46 @@ namespace jasperengine {
         ComponentArray<T>* getComponentArray() const{
             return componentManager.getComponentArray<T>();
         }
+
+    private:
+        template<typename T>
+        void componentAdded(Entity entity){
+            const ComponentId id = componentManager.getComponentId<T>();
+            if (entity == NULL_ENTITY){
+                return; // refused (logged by the array)
+            }
+            auto signature = entityManager.getSignature(entity);
+            signature.set(id, true);
+            entityManager.setSignature(entity, signature);
+
+            if constexpr (std::is_same_v<T, Transform>) {
+                transformChanged(entity);
+            }
+
+            onComponentAdded(entity, id);
+        }
+    };
+
+    // Defers the registry's structural changes while it is open (see beginStructuralDefer);
+    // scopes nest, the outermost one plays the changes back when it closes
+    class StructuralDeferScope {
+    private:
+        EntityRegistry& registry;
+        bool anyThread;
+
+    public:
+        // anyThread: also for the callbacks other threads run while this one waits for them,
+        // which their own lock serializes (a physics step's contact listener)
+        explicit StructuralDeferScope(EntityRegistry& registry, bool anyThread = false): registry(registry), anyThread(anyThread) {
+            registry.beginStructuralDefer(anyThread);
+        }
+
+        ~StructuralDeferScope(){
+            registry.endStructuralDefer(anyThread);
+        }
+
+        StructuralDeferScope(const StructuralDeferScope&) = delete;
+        StructuralDeferScope& operator=(const StructuralDeferScope&) = delete;
     };
 
 } // namespace jasperengine

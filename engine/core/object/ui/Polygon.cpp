@@ -48,6 +48,7 @@ void Polygon::addVertex(Vector3 vertex){
     pcomp.points.push_back({vertex, Vector4(1.0f, 1.0f, 1.0f, 1.0f)});
 
     pcomp.needUpdatePolygon = true;
+    markChanged<PolygonComponent>();
 }
 
 void Polygon::addVertex(float x, float y){
@@ -60,6 +61,7 @@ void Polygon::clearVertices(){
     pcomp.points.clear();
 
     pcomp.needUpdatePolygon = true;
+    markChanged<PolygonComponent>();
 }
 
 void Polygon::setTexture(const std::string& path){
@@ -68,6 +70,7 @@ void Polygon::setTexture(const std::string& path){
     ui.texture.setPath(path);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setTexture(const std::string& id, TextureData data){
@@ -76,6 +79,7 @@ void Polygon::setTexture(const std::string& id, TextureData data){
     ui.texture.setData(id, data);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setTexture(Framebuffer* framebuffer){
@@ -84,6 +88,7 @@ void Polygon::setTexture(Framebuffer* framebuffer){
     ui.texture.setFramebuffer(framebuffer);
 
     ui.needUpdateTexture = true;
+    markChanged<UIComponent>();
 }
 
 void Polygon::setColor(Vector4 color){
@@ -124,6 +129,7 @@ void Polygon::setFlipY(bool flipY){
         ui.flipY = flipY;
 
         pcomp.needUpdatePolygon = true;
+        markChanged<PolygonComponent>();
     }
 }
 
@@ -166,6 +172,7 @@ void Polygon::setShaderUniform(const std::string& name, const Vector4& value){
 
     if (ShaderUniforms::set(ui.shaderUniforms, name, value))
         ui.needUpdateShaderUniforms = true;
+        markChanged<UIComponent>();
 }
 
 void Polygon::setShaderUniform(const std::string& name, const Vector3& value){
@@ -193,6 +200,7 @@ bool Polygon::removeShaderUniform(const std::string& name){
         return false;
 
     ui.needUpdateShaderUniforms = true;
+    markChanged<UIComponent>();
     return true;
 }
 

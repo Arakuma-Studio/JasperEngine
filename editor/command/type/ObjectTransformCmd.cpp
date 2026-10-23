@@ -48,6 +48,7 @@ bool editor::ObjectTransformCmd::execute(){
             transform->scale = property.newScale;
 
             transform->needUpdate = true;
+            sceneProject->scene->markChanged<Transform>(entity);
 
             // Unity: what moved on a prefab instance's GameObject is an override of it
             std::vector<std::string> changed;
@@ -77,6 +78,7 @@ void editor::ObjectTransformCmd::undo(){
             transform->scale = property.oldScale;
 
             transform->needUpdate = true;
+            sceneProject->scene->markChanged<Transform>(entity);
         }
     }
     prefabUndo.restore(project, sceneId);

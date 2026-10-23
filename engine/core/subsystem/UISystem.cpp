@@ -2620,6 +2620,8 @@ void UISystem::resetButtonStates() {
 }
 
 bool UISystem::eventOnCharInput(wchar_t codepoint){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
@@ -2641,6 +2643,8 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
 }
 
 bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++){
         Entity entity = layouts->getEntity(i);
@@ -2843,6 +2847,8 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
 }
 
 bool UISystem::eventOnPointerDown(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     lastUIFromPointer = NULL_ENTITY;
     lastPanelFromPointer = NULL_ENTITY;
     lastPointerDownPos = Vector2(x, y);
@@ -2932,6 +2938,8 @@ bool UISystem::eventOnPointerDown(float x, float y){
 }
 
 bool UISystem::eventOnPointerUp(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     lastPointerPos = Vector2(-1, -1);
 
     auto layouts = scene->getComponentArray<RectTransformComponent>();
@@ -3219,6 +3227,8 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 }
 
 bool UISystem::eventOnPointerMove(float x, float y){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
 
     CursorType cursor = CursorType::ARROW;

@@ -7,6 +7,7 @@
 #   tools/build.sh android [--clean]   engine sample project APK (debug)
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
+#   tools/build.sh unit-tests          builds and runs jasperengine-core-tests (engine/tests/core)
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
@@ -25,6 +26,8 @@
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
+# unit-tests: UNIT_TEST_ARGS goes to the test binary, RUN=0 builds only; its XML report is
+# build/test-results/core.xml.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -54,13 +57,13 @@ for arg in "$@"; do
 done
 
 case "$TARGET" in
-    linux|web|android|htmlui-tests|htmlui-editor-tests) ;;
+    linux|web|android|htmlui-tests|htmlui-editor-tests|unit-tests) ;;
     *) usage ;;
 esac
 
 # The tests run in the linux image, next to the linux build output
 IMAGE_TARGET="$TARGET"
-[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests ]] && IMAGE_TARGET=linux
+[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests || "$TARGET" == unit-tests ]] && IMAGE_TARGET=linux
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
 CACHE="build/.cache"
@@ -85,6 +88,7 @@ fi
 # What --clean removes: the whole output of the target, or only this test build
 CLEAN_DIR="$OUT"
 [[ "$TARGET" == htmlui-tests ]] && CLEAN_DIR="$OUT/htmlui-tests-$HTMLUI_BACKEND"
+[[ "$TARGET" == unit-tests ]] && CLEAN_DIR="$OUT/core-tests"
 
 if [[ $CLEAN -eq 1 ]]; then
     # Files inside may belong to the container user; remove them from inside.
@@ -214,6 +218,18 @@ htmlui-editor-tests)
         [[ '${RUN:-1}' == 0 ]] && exit 0
         set -f  # a --gtest_filter pattern is not a glob
         xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests ${HTMLUI_TEST_ARGS:-}
+    "
+    ;;
+unit-tests)
+    BT="${BUILD_TYPE:-Release}"
+    TESTS_DIR="$OUT/core-tests"
+    run bash -euo pipefail -c "
+        cmake -S engine -B $TESTS_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TESTS=ON $CCACHE_FLAGS
+        cmake --build $TESTS_DIR --target jasperengine-core-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        mkdir -p build/test-results
+        set -f  # a --gtest_filter pattern is not a glob
+        $TESTS_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:build/test-results/core.xml ${UNIT_TEST_ARGS:-}
     "
     ;;
 android)

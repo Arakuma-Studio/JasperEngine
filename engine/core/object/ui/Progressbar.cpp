@@ -54,6 +54,7 @@ void Progressbar::setType(ProgressbarType type){
 
     progresscomp.type = type;
     progresscomp.needUpdateProgressbar = true;
+    markChanged<ProgressbarComponent>();
 }
 
 ProgressbarType Progressbar::getType() const{
@@ -67,6 +68,7 @@ void Progressbar::setValue(float value){
 
     progresscomp.value = value;
     progresscomp.needUpdateProgressbar = true;
+    markChanged<ProgressbarComponent>();
 }
 
 float Progressbar::getValue() const{
@@ -139,4 +141,5 @@ void Progressbar::setFillMargin(int marginLeft, int marginRight, int marginTop, 
     progresscomp.fillMarginTop = marginTop;
     progresscomp.fillMarginBottom = marginBottom;
     progresscomp.needUpdateProgressbar = true;
+    markChanged<ProgressbarComponent>();
 }

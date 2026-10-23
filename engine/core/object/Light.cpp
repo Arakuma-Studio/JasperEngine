@@ -33,6 +33,7 @@ void Light::setType(LightType type){
 
         lightcomp.needUpdateShadowCamera = true;
         lightcomp.needUpdateShadowMap = true;
+        markChanged<LightComponent>();
         scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
@@ -51,6 +52,7 @@ void Light::setDirection(Vector3 direction){
         lightcomp.direction = direction;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -87,6 +89,7 @@ void Light::setRange(float range){
         lightcomp.range = range;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -102,6 +105,7 @@ void Light::setIntensity(float intensity){
 
     if (intensity > 0 && lightcomp.intensity == 0){
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 
     lightcomp.intensity = intensity;
@@ -124,6 +128,7 @@ void Light::setConeAngle(float inner, float outer){
         lightcomp.outerConeCos = outerConeCos;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -136,6 +141,7 @@ void Light::setInnerConeAngle(float inner){
         lightcomp.innerConeCos = innerConeCos;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -154,6 +160,7 @@ void Light::setOuterConeAngle(float outer){
         lightcomp.outerConeCos = outerConeCos;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -168,6 +175,7 @@ void Light::setSpotMask(const std::string& texture){
     lightcomp.spotMask.setPath(texture);
     lightcomp.spotMaskReady = false;
     lightcomp.needUpdateShadowCamera = true;
+    markChanged<LightComponent>();
 }
 
 void Light::setSpotMask(const std::string& id, TextureData data){
@@ -175,6 +183,7 @@ void Light::setSpotMask(const std::string& id, TextureData data){
     lightcomp.spotMask.setData(id, data);
     lightcomp.spotMaskReady = false;
     lightcomp.needUpdateShadowCamera = true;
+    markChanged<LightComponent>();
 }
 
 void Light::clearSpotMask(){
@@ -183,6 +192,7 @@ void Light::clearSpotMask(){
     lightcomp.spotMaskReady = false;
     lightcomp.spotMaskAspect = 1.0f;
     lightcomp.needUpdateShadowCamera = true;
+    markChanged<LightComponent>();
 }
 
 Texture Light::getSpotMask() const{
@@ -196,6 +206,7 @@ void Light::setShadows(bool shadows){
         lightcomp.shadows = shadows;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
         scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
@@ -225,6 +236,7 @@ void Light::setShadowMapSize(unsigned int size){
         lightcomp.mapResolution = size;
 
         lightcomp.needUpdateShadowMap = true;
+        markChanged<LightComponent>();
         scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
@@ -243,6 +255,7 @@ void Light::setShadowCameraNearFar(float nearValue, float farValue){
 
         lightcomp.automaticShadowCamera = false;
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -254,6 +267,7 @@ void Light::setCameraNear(float nearValue){
 
         lightcomp.automaticShadowCamera = false;
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -271,6 +285,7 @@ void Light::setCameraFar(float farValue){
 
         lightcomp.automaticShadowCamera = false;
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -287,6 +302,7 @@ void Light::setAutomaticShadowCamera(bool automatic){
         lightcomp.automaticShadowCamera = automatic;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 
@@ -303,6 +319,7 @@ void Light::setNumCascades(unsigned int numCascades){
         lightcomp.numShadowCascades = numCascades;
 
         lightcomp.needUpdateShadowCamera = true;
+        markChanged<LightComponent>();
     }
 }
 

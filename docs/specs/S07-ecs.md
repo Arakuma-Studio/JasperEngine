@@ -517,3 +517,58 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   later spec (for example S20 particle emitters) decides for its own new types.
 - **Open question: per-root parallel transform propagation.** *Default:* out of scope for S07. A
   follow-up can build on `Changed<Transform>` and the settled-order guarantee.
+
+## Deviations (implementation)
+
+- **Per-slot ticks are 32-bit offsets from a 64-bit per-array base** (`ecs::TickColumn`). The
+  API ticks are `uint64`. When a tick passes base + 2^32 - 1 the column rebases; offsets older
+  than the new base become the base, so a change billions of ticks old may be reported again,
+  never missed. This keeps R27 (index page 4 B + slot owner 4 B + two ticks 8 B, with room
+  for partly filled pages and sparse types) where two 64-bit ticks alone would exceed 24 B.
+- **R1: removal destroys the component in place** (`std::destroy_at`) and leaves raw storage,
+  instead of moving it out first: the resources go at once whatever the type's move does
+  (a copy-only type would otherwise keep them); compaction move-constructs into the holes.
+- **Equal sort keys keep their order.** The re-sort (Hierarchy arrays, `sortByComponent`,
+  `sortByEntityOrder`) is stable: runs are merged pairwise (a moved branch leaves two or three),
+  `std::stable_sort` past 64 runs. `std::sort` left entities without a Transform (equal keys) in
+  an unspecified order; the AC1 reference copy uses `std::stable_sort` for that sort only.
+- **`moveChildToIndex` re-sorts the types of the whole moved branch**, not only the root's
+  (otherwise a child's Mesh stayed out of order: R5/AC3).
+- **The change tick is sampled.** `changeTick()` (MCP `change_tick`, Lua `getChangeTick`)
+  returns the current tick and makes the next stamp advance first, so "changed since a tick
+  read before an edit" always holds. The gate of a scheduled system is the tick it ran at
+  (its own writes of that run are not new to it next run; what it records into its command
+  buffer is, being stamped at playback); the clock is sampled after each wave.
+- **`changedSince`/`addedSince` on a view** pass a row when any of its Read/Write components
+  is newer than the gate; MCP `query_entities changed_since_tick` and Lua
+  `findChangedEntities` do the same for the listed types.
+- **`Structural` systems run alone in their wave** (like `Exclusive`): structural changes are
+  refused during a wave of declared systems. A `dependsOn` naming a later-registered system
+  moves the dependent after it; a dependency cycle is logged and the cycle runs in
+  registration order.
+- **Waves run serially until S06 lands.** `SystemScheduler::workerCount()` is 0 (no job
+  system on `oe-port`), so `isSerial()` is always true and
+  `SchedulerTest.ParallelEqualsSerial` compares `setSerial(true)` with `setSerial(false)`,
+  both serial today; switching the waves to S06 jobs is the follow-up once S06 is on
+  `oe-port` (the per-system ticks, access sets and command buffers are already per thread /
+  per system).
+- **Removed<T> logs are capped** at 65536 entries (the older half dropped) for registries that
+  never end a frame (prefab and scratch registries); scenes trim them at each frame end.
+- **Lua component-field setters** (`addProperty(&T::m, &T::m)` on component classes) stamp
+  through `setTrackedMember`, which finds the owning registry and entity by searching the pages
+  of the live registries' arrays of that type (`EntityRegistry::markChangedComponent`).
+- **Physics defer scopes**: the Jolt contact listener runs on Jolt's threads, serialized by its
+  callback mutex, while the main thread waits in `PhysicsSystem::Update`; its scope is opened
+  with `anyThread` so those callbacks' structural calls are deferred too.
+- **AC14 round trip runs through the editor binary** (`tools/mcp/tests/test_ecs_roundtrip.py`:
+  `scene-dump --save` for every scene, Prefab Mode save for every prefab of `tools/fixtures/*`
+  and the MCP fixture), because the editor has no unit-test target for `Stream` before S02.
+  The repository has no other example or template scene files.
+- **Unit tests** are in `engine/tests/core/ecs` in a minimal `jasperengine-core-tests` target
+  (`-DJASPERENGINE_TESTS=ON`, `tools/build.sh unit-tests`) that S02's framework replaces.
+  `SchedulerTest.AccessCheckFires` is compiled only where `JASPERENGINE_ECS_ACCESS_CHECKS` is on
+  (builds without `NDEBUG`), so a Release run has no skipped test.
+- **The Systems window** is not part of the saved panel visibility (it opens closed).
+- **`move_branch` benchmark**: the 100-entity branch moves under a top-level GameObject about a
+  thousand entities before it (a typical reparent); a move across the whole array is bounded by
+  the Transform rotation itself, the same before and after S07.

@@ -194,6 +194,11 @@ namespace jasperengine::editor::prefabinternal {
             Catalog::copyPropertyValue(from.registry.get(), from.entity, target, entity, type, *it);
             ++it;
         }
+        // prefab override applied: a change of the component (the whole-component path is
+        // stamped by Stream::decodeComponents)
+        if (!names.empty()) {
+            Catalog::markChanged(target, entity, type);
+        }
     }
 
 }

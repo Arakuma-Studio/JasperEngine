@@ -118,6 +118,7 @@ void Rigidbody::load(){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.needReloadBody = true;
     body.needUpdateColliders = true;
+    markChanged<RigidbodyComponent>();
 
     scene->getSystem<PhysicsSystem>()->loadRigidbody(entity);
 }
