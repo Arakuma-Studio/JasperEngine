@@ -65,7 +65,7 @@ bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
 }
 
 Json unsavedSchema() {
-    return withDefault(stringEnum("Unsaved changes of a scene that closes (cancel: fail).", {"cancel", "save", "discard"}),
+    return withDefault(stringEnum("Its unsaved changes (cancel: fail).", {"cancel", "save", "discard"}),
                        "cancel");
 }
 
@@ -1441,7 +1441,7 @@ void registerSceneTools(McpRegistry& registry) {
             "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
-            {"child", sceneRef("Child scene.")},
+            {"child", sceneRef()},
             {"attached", withDefault(boolean(""), true)},
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
@@ -1468,9 +1468,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
+            "Scene settings (lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, default shaders, "
+            "post_process, post_processing): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (what the last frame made for "
             "scene-reading shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1487,10 +1487,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces the pass "
-            "list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
-            "post_processing {field: value} sets the fields named (null resets all), like post_processing.<field>; "
-            "one undo step per call.";
+            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
+            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
+            "step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;

@@ -1968,7 +1968,7 @@ void registerProjectTools(McpRegistry& registry) {
 
     // Shared by create_project / open_project
     const Json unsavedSchema = withDefault(stringEnum(
-        "The open project's unsaved changes (cancel: fail listing them).",
+        "Unsaved changes (cancel: fail listing them).",
         {"cancel", "save", "discard"}), "cancel");
     const Json loadTimeout = withDefault(number("", 5, 600), 180);
 
@@ -2058,7 +2058,7 @@ void registerProjectTools(McpRegistry& registry) {
             "Example: {\"values\": {\"player.window_width\": 800, \"physics.layer_collision_matrix\": [[\"Player\", "
             "\"Water\"]]}}.";
         tool.inputSchema = object({
-            {"values", anyObject("{key: value}")}
+            {"values", anyObject("")}
         }, {"values"});
         tool.annotations.destructive = true;
         tool.annotations.idempotent = true;

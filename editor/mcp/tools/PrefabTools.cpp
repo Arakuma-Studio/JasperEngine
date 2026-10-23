@@ -1874,7 +1874,7 @@ void setStandalonePrefabTool(const CallPtr& call) {
 void registerPrefabTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json prefabRef = assetPath(".prefab asset.");
+    const Json prefabRef = assetPath("");
 
     {
         ToolDef tool;
@@ -1925,7 +1925,7 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"prefab", prefabRef},
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("Local position.")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
@@ -2043,11 +2043,12 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_overrides";
         tool.title = "Apply / Revert Prefab Overrides";
         tool.description =
-            "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with all=true + "
-            "entity (Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
-            "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). target: "
-            "one of the entry's apply_targets (default innermost = Apply to Prefab; outer = Apply as Override; a "
-            "base clears the overrides in between). The .prefab is written when a scene using it is saved.";
+            "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with "
+            "all=true + entity (all of its outermost instance), entity [+ kind, component, properties, "
+            "state], or overrides (get_prefab_info.overrides entries; removed GameObjects by name or "
+            "registry_entity). target: one of the entry's apply_targets (default innermost = Apply to Prefab; "
+            "outer = Apply as Override; a base clears the overrides in between). The .prefab is written when "
+            "a scene using it is saved.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},

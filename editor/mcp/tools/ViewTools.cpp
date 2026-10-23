@@ -1105,7 +1105,7 @@ void configureGameViewTool(const CallPtr& call) {
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json viewScene = sceneRef("Default: playing, else selected.");
+    const Json viewScene = sceneRef();
     const Json sceneShot = withDefault(boolean("Also return a Scene view image."), false);
     const Json maxWidth = w3::maxWidthArgSchema(8192, 768);
 
@@ -1145,7 +1145,7 @@ void registerViewTools(McpRegistry& registry) {
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
-            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false}; saved with the workspace.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });
@@ -1199,7 +1199,7 @@ void registerViewTools(McpRegistry& registry) {
             "project = the canvas size (a project setting); the game renders at render_size.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
-            {"scale", number("Zoom.", 1, 5)},
+            {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}

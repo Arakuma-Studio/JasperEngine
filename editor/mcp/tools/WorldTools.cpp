@@ -4087,8 +4087,8 @@ void registerWorldTools(McpRegistry& registry) {
     };
     const Json createSpec = object({
         {"name", string("")},
-        {"parent", entityRef("Default: scene root.")},
-        {"position", vec3("Local.")}
+        {"parent", entityRef()},
+        {"position", vec3("")}
     });
     const Json numberItem = Json{{"type", "number"}};
     const Json arrayItem = Json{{"type", "array"}};
@@ -4122,7 +4122,7 @@ void registerWorldTools(McpRegistry& registry) {
                     {"noise_size", number("World units per cell.")},
                     {"layer", integer("Surface or foliage layer.", 0, 64)},
                     {"normalize", withDefault(boolean(""), true)},
-                    {"mask", assetPath("Mask texture.")},
+                    {"mask", assetPath("")},
                     {"asset", assetPath("Model or prefab.")},
                     {"instanced", withDefault(boolean(""), true)},
                     {"spacing", number("")},
@@ -4144,8 +4144,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"entity", entityRef("Default: the only terrain.")},
             {"heightmap", {{"type", {"string", "object"}}, {"properties", {
                 {"generate", withDefault(stringEnum("", {"middle", "flat", "random_noise", "fractal_noise"}), "middle")},
-                {"base_height", number("0-1.", 0, 1)},
-                {"amplitude", withDefault(number("0-1.", 0, 1), 0.35)},
+                {"base_height", number("", 0, 1)},
+                {"amplitude", withDefault(number("", 0, 1), 0.35)},
                 {"frequency", withDefault(number(""), 4)},
                 {"octaves", withDefault(integer("", 1, 8), 4)},
                 {"seed", integer("")},
@@ -4177,12 +4177,11 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
         "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
-        "list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), circle "
-        "(radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, loop), px "
-        "before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
-        "convex_hull/mesh, heightfield. New shapes fit what the GameObject draws unless fit: false. Also "
-        "density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, "
-        "rotation. Returns the colliders.",
+        "list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), "
+        "circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, "
+        "loop); px before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
+        "convex_hull/mesh, heightfield. New shapes fit the drawn GameObject unless fit: false. Also density, "
+        "friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, rotation.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4233,13 +4232,13 @@ void registerWorldTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"create", createSpec},
-            {"texture", assetPath("Tileset image.")},
+            {"texture", assetPath("")},
             {"tileset", object({
-                {"tile_size", vec2("Pixels.")},
+                {"tile_size", vec2("")},
                 {"columns", integer("")},
                 {"rows", integer("")},
-                {"offset", vec2("Pixels.")},
-                {"padding", vec2("Pixels.")},
+                {"offset", vec2("")},
+                {"padding", vec2("")},
                 {"count", integer("")},
                 {"names", array(string(""), "Row-major.")},
                 {"prefix", withDefault(string(""), "tile_")},
@@ -4247,7 +4246,7 @@ void registerWorldTools(McpRegistry& registry) {
             })},
             {"rects", array(object({{"name", string("Replaces same name.")},
                                     {"rect", vec4("[x, y, w, h] px, top-left origin.")},
-                                    {"submesh", integer("")}}, {"rect"}), "Extra rects.")},
+                                    {"submesh", integer("")}}, {"rect"}), "")},
             {"replace_rects", boolean("")},
             {"cell_size", vec2("")},
             {"origin", vec2(">= 0.")},
@@ -4281,10 +4280,10 @@ void registerWorldTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"create", createSpec},
-            {"texture", assetPath("Sheet image.")},
+            {"texture", assetPath("")},
             {"slice", object({
-                {"tile_size", vec2("Pixels.")}, {"columns", integer("")}, {"rows", integer("")},
-                {"offset", vec2("Pixels.")}, {"padding", vec2("Pixels.")},
+                {"tile_size", vec2("")}, {"columns", integer("")}, {"rows", integer("")},
+                {"offset", vec2("")}, {"padding", vec2("")},
                 {"count", integer("")}, {"names", array(string(""), "")},
                 {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("If unreadable.")}})},
             {"frames", array(object({{"name", string("")}, {"rect", vec4("[x, y, w, h] px.")}}, {"rect"}), "")},
@@ -4318,9 +4317,9 @@ void registerWorldTools(McpRegistry& registry) {
         "Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: "
         "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs "
         "middle keys) or morph weights; ease to the next key: linear, step, "
-        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
-        "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
-        "indices from before the call.",
+        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or "
+        "merges. tweens: tween actions (from: current). add_actions: existing actions; "
+        "set_frames/remove_actions: pre-call indices.",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef("Animation to edit.")},
@@ -4346,7 +4345,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
                                          {"duration", number("0 = auto.")}, {"lane", integer("")}}, {"index"}), "")},
             {"remove_actions", array(integerItem, "")},
-            {"delete_removed", withDefault(boolean("Delete removed GameObjects."), true)},
+            {"delete_removed", withDefault(boolean(""), true)},
             {"loop", boolean("")},
             {"duration", number("-1: until actions end.")},
             {"speed", number("")},
@@ -4381,16 +4380,14 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- UI
     add("create_ui", "Create UI",
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
-        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text = "
-        "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: px, y "
-        "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
-        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. "
-        "HUDs/menus go in a UI scene (child scene): pointer input needs its UI camera; layout groups stack "
-        "bottom-up elsewhere.",
+        "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
+        "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
+        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins} in px, "
+        "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "
+        "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
         object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"root", anyObject("")}
         }, {"root"}),
         createUiTool, false, false);
@@ -4418,8 +4415,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef("Effect to reconfigure.")},
             {"name", string("")},
-            {"parent", entityRef("Default: scene root.")},
-            {"position", vec3("Local.")},
+            {"parent", entityRef()},
+            {"position", vec3("")},
             {"emitter_entity", entityRef()},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
             {"scale", number("Default 1 (3D), 40 (2D).")},

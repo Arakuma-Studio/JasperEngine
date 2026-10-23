@@ -2941,8 +2941,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "read_file";
         tool.title = "Read File";
         tool.description =
-            "Read a project text file (as on disk); the result text is the content. For clients without file access "
-            "(remote HTTP).";
+            "Read a project text file (as on disk); the result text is the content.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
@@ -2959,10 +2958,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "Create or change a project text file (undo scope project; for clients without file access) and validate "
-            "it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = whole file, "
-            "or edits [{old_text, new_text}] (old_text matches once unless replace_all). Refuses project.yaml, "
-            ".scene, .prefab and files with unsaved code editor edits.";
+            "Create or change a project text file (undo scope project) and validate it: Lua syntax, forks "
+            "using it recompiled (errors with lines), materials parsed. content = whole file, or edits "
+            "[{old_text, new_text}] (old_text matches once unless replace_all). Refuses project.yaml, .scene, "
+            ".prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},
@@ -3176,7 +3175,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
             {"pass_index", integer("A post-process pass instead.")}
         });
         tool.annotations.readOnly = true;
@@ -3196,7 +3195,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("A submesh's material (default 0 when its material has a shader).")},
+            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
             {"pass_index", integer("A post-process pass instead.")},
             {"name", string("")},
             {"value", {{"type", {"number", "array", "string"}}, {"items", {{"type", "number"}}},
@@ -3212,15 +3211,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_shaders";
         tool.title = "List Shaders";
         tool.description =
-            "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a material's "
-            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and "
-            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default "
-            "state and their rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Using them: "
-            "jasper://docs/shaders.";
+            "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a "
+            "material's shader; ui, points, lines, sky: a component's customShader; postprocess: a "
+            "post_process pass) and lighting modes; detail (or name) adds parameters, textures, "
+            "features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the "
+            "scene (an extra pass per camera).";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
-            {"detail", withDefault(boolean("Parameters, textures, features, keywords, inputs, state and their rules."), false)}
+            {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3233,9 +3232,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "check_shader";
         tool.title = "Check Shader";
         tool.description =
-            "Compile shader forks or library shaders now: errors (line, message, log). shader: a customShader base "
-            "(\"shaders/Water\"), its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if unused yet. No "
-            "shader: every custom and library shader in use. A failing shader draws as the built-in one.";
+            "Compile shader forks or library shaders now: errors (line, message, log). shader: a customShader "
+            "base (\"shaders/Water\"), its .vert/.frag, or \"library:<name>[#FEATURES]\"; shader_type if unused "
+            "yet. No shader: every custom and library shader in use.";
         tool.inputSchema = object({
             {"shader", string("")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines", "depth", "post_process"})}
@@ -3281,13 +3280,13 @@ void registerAssetTools(McpRegistry& registry) {
             "and background (default transparent); gradient: color -> color2, checker alternates them. Colors "
             "[r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("A .png inside the assets dir, e.g. \"assets/sprites/coin.png\" (then a texture path).")},
+            {"path", assetPath("A .png in the assets dir, e.g. \"assets/sprites/coin.png\".")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
             {"color", any("")},
             {"color2", any("")},
-            {"outline_width", withDefault(number("px", 0, 512), 0)},
+            {"outline_width", withDefault(number("", 0, 512), 0)},
             {"outline_color", any("Default black.")},
             {"background", any("")},
             {"corner_radius", number("rounded_rect, px.")},
@@ -3304,8 +3303,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "search_files";
         tool.title = "Search Files";
         tool.description =
-            "Grep project text files (scripts, shaders, docs, configs), for HTTP clients without file access. "
-            "ECMAScript regex; matches [{path, line, text, context}].";
+            "Grep project text files (scripts, shaders, docs, configs). ECMAScript regex; matches [{path, "
+            "line, text, context}].";
         tool.inputSchema = object({
             {"pattern", string("")},
             {"regex", boolean("")},

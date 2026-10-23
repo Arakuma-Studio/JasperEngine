@@ -1770,17 +1770,18 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "inspect_ui";
         tool.title = "Inspect UI Document";
         tool.description =
-            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px "
-            "= send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box "
-            "model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics "
-            "without a document (as `jasperengine-editor check --ui`). Content Lua makes appears in play only.";
+            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in "
+            "canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; "
+            "detail full: box model + computed styles with the file:line of each rule. at: hit test. file: a "
+            ".html/.css's diagnostics without a document (as `jasperengine-editor check --ui`). Lua-made "
+            "content appears in play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"entity", entityRef("UI Document (default: the only one).")},
             {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
             {"selector", string("CSS selector (default: whole document).")},
             {"at", vec2("Hit test (canvas px): the element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
+            {"detail", withDefault(stringEnum("full: max 20 elements.",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
@@ -1803,14 +1804,14 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "assert_ui";
         tool.title = "Assert UI Layout";
         tool.description =
-            "Assert the layout of a live HTML/CSS UI document: passed + each failure (element ref, numbers, rects), "
-            "and on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), "
-            "visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent "
-            "(container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size "
-            "(width, height). viewports: other sizes too. Zero matches fail.";
+            "Assert the layout of a live HTML/CSS UI document: passed + each failure (element ref, numbers, "
+            "rects), and on failure an image with failing boxes outlined. Checks {type, selector}: exists, "
+            "count (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap "
+            "(with), within_parent (container), within_viewport, contrast (min_ratio, background where "
+            "transparent), min_size (width, height). Zero matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("With the UI Document (default: the only one).")},
+            {"entity", entityRef("UI Document (default: the only one).")},
             {"checks", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 50}, {"items", object({
                 {"type", stringEnum("", assertKindNames())},
                 {"selector", string("")},
@@ -1845,16 +1846,15 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "create_ui_document";
         tool.title = "Create UI Document";
         tool.description =
-            "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made "
-            "from template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, "
-            "toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept unless "
-            "overwrite. The html must be in the assets dir (e.g. assets/ui/menu.html). Returns the files and the "
-            "first load's diagnostics.";
+            "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing "
+            "html is made from template (blank or an example: main_menu, pause_menu, hud, inventory, "
+            "settings, dialogue, shop, toasts, loading) with its .css, assets and Lua (script: attached); "
+            "existing files are kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"name", string("Default: from the file name.")},
-            {"html", assetPath(".html in the assets dir.")},
+            {"html", assetPath(".html in the assets dir, e.g. assets/ui/menu.html.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},

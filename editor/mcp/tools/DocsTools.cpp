@@ -532,7 +532,7 @@ void registerDocsTools(McpRegistry& registry) {
             {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
             {"parent", string("Only members of this class/enum.")},
             {"max_results", withDefault(integer("", 1, 50), 16)},
-            {"include_docs", withDefault(boolean("Also search the reference docs."), true)},
+            {"include_docs", withDefault(boolean(""), true)},
             {"max_doc_results", withDefault(integer("", 0, 40), 8)}
         }, {"query"});
         tool.annotations.readOnly = true;
