@@ -607,6 +607,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
