@@ -1,0 +1,4 @@
+# Registered MCP tools no test in tools/mcp/tests/*.py names (S31 R23, docs/mcp/conventions.md).
+# One per line: <tool name> <reason>. test_tool_coverage.py fails on a tool that is neither named
+# by a test ("tool_name" or 'tool_name' in a test file) nor listed here, and on an entry whose
+# tool no longer exists or that gives no reason. Keep this list empty: every tool has a test.

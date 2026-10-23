@@ -1122,7 +1122,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
             {"name", string("Default: the type's Unity name.")},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},

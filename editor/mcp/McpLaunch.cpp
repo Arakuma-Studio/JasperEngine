@@ -4,6 +4,7 @@
 #include "McpLaunch.h"
 
 #include "McpServer.h"
+#include "McpToolGroups.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -62,6 +63,8 @@ void printUsage(const std::string& name) {
         << "      --name <name>      Name of the --create project. Default: the directory name.\n"
         << "      --headless         Linux: with no DISPLAY, run on a private Xvfb server.\n"
         << "      --http-port <n>    Also serve MCP over HTTP on http://127.0.0.1:<n>/mcp.\n"
+        << "      --tool-groups <g>  Tool groups to list besides core: a,b or all (default: Editor\n"
+        << "                         Settings mcp.tool_groups). Every tool is callable either way.\n"
         << "  -h, --help             Show this help.\n\n"
         << "Without --project or --create the last opened project opens, as in a normal start.\n\n"
         << "Client configuration (e.g. .mcp.json):\n"
@@ -226,6 +229,14 @@ int prepareMcpCommand(int argc, char** argv, const char* executableName) {
             options.createName = text;
         } else if (arg == "--headless") {
             options.headless = true;
+        } else if (arg == "--tool-groups") {
+            if (!value(text)) return 2;
+            std::string error;
+            if (!parseToolGroupList(text, options.toolGroups, error)) {
+                std::cerr << name << " mcp: --tool-groups: " << error << "\n";
+                return 2;
+            }
+            options.toolGroupsSet = true;
         } else if (arg == "--http-port") {
             if (!value(text)) return 2;
             if (!parsePort(text, options.httpPort)) {

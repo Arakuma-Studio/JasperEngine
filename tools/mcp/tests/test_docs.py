@@ -1,9 +1,25 @@
 """W4 docs: jasper://guide and jasper://docs/* resources, the project resources, engine API search,
-prompts."""
+prompts; and the docs gate of docs/mcp/TOOLS.md (S31 R22): `gen_tool_docs.py --check` passes on
+the committed file and fails after a description edit that was not regenerated (red control), the
+header names the editor version, each tool shows its group and the sections follow _meta modules."""
+
+import asyncio
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
 
 from mcp.shared.exceptions import MCPError
 
+import harness
 from harness import Editor
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import gen_tool_docs  # noqa: E402
+
+TIMEOUT = 900
+TOOLS_MD = harness.REPO / "docs" / "mcp" / "TOOLS.md"
 
 DOCS = ["cpp-scripting", "html-ui", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
 
@@ -88,3 +104,43 @@ async def test_prompts(ed: Editor):
     got = await ed.session.get_prompt("new_2d_game", {"idea": "a pong clone"})
     text = got.messages[0].content.text
     ed.check("pong" in text and "create_script" in text, text[:300])
+
+
+# ---------------------------------------------------------------- docs/mcp/TOOLS.md (S31 R22)
+
+async def run_gen_check(out: Path) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, str(Path(gen_tool_docs.__file__)), "--check", "--out", str(out),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, env=dict(os.environ))
+    text, _ = await asyncio.wait_for(proc.communicate(), 600)
+    return proc.returncode, text.decode(errors="replace")
+
+
+async def test_tool_docs_current(ed: Editor):
+    code, out = await run_gen_check(TOOLS_MD)
+    ed.check(code == 0, f"docs/mcp/TOOLS.md is stale: regenerate it with tools/mcp/gen_tool_docs.py\n{out[-2000:]}")
+    text = gen_tool_docs.render(await ed.tools(groups="all"), ed.init_result.server_info, ed.init_result.protocol_version)
+    version = ed.init_result.server_info.version
+    ed.check(f"jasperengine-editor {version} (protocol" in text.splitlines()[2], f"the header names the version {version}")
+    ed.check("Group: `core`" in text and "## Core" in text and "## HTML/CSS UI" in text, "groups and _meta sections")
+
+
+async def test_tool_docs_red_control(ed: Editor):
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-tooldocs-"))
+    try:
+        copy = tmp / "TOOLS.md"
+        shutil.copy(TOOLS_MD, copy)
+        # a description edited in the editor without regenerating = the file no longer matches
+        text = copy.read_text(encoding="utf-8")
+        description = ed.tool("editor_status").description
+        ed.check(description in text, "the description is in the file")
+        copy.write_text(text.replace(description, description + " Changed."), encoding="utf-8")
+        code, out = await run_gen_check(copy)
+        ed.check(code == 1 and "is stale" in out and "Changed." in out, f"a stale file fails --check: {code}\n{out[-1500:]}")
+        # the version in the header alone is not staleness
+        lines = text.splitlines(keepends=True)
+        lines[2] = lines[2].replace(" (protocol", "-other-version (protocol", 1)
+        copy.write_text("".join(lines), encoding="utf-8")
+        ed.check(gen_tool_docs.stale_diff(copy, text) == [], "a different version in the header is not stale")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

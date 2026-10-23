@@ -442,6 +442,8 @@ async def test_instructions_name_real_tools(ed: Editor):
     params: set = set()
     for t in ed.tool_list:
         schema_words(t.input_schema, params)
+    # the tool groups the guide's generated section names (tool_groups)
+    params.update(g["name"] for g in (await ed.call("tool_groups"))["groups"])
     # scene setting names (set_scene_settings values) count as parameters
     settings = await ed.call("get_scene_settings")
 

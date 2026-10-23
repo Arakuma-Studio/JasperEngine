@@ -859,12 +859,11 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Set Properties";
         tool.description =
             "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
-            "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
-            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path (texture "
-            "{\"camera\": <entity>} = render texture); material: fields object or a .material path (links it); "
-            "GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties a .prefab path; "
-            "custom values (colliders, frames, scripts...) as get_entity returns them. Lists: {component, property, "
-            "insert: value, index?} / {..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
+            "values read back. Colors also \"#RRGGBB[AA]\"; enums/eases by name; textures/fonts/models by asset path "
+            "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path (links "
+            "it); GameObject refs or null; Prefab script properties a .prefab path; custom values (colliders, "
+            "frames, scripts...) as get_entity returns them. Lists: {component, property, insert: value, index?} / "
+            "{..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

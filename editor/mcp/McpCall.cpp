@@ -115,6 +115,26 @@ void McpCall::setProgressSink(ProgressSink sink) {
     progressSink = std::move(sink);
 }
 
+SessionPtr McpCall::session() const {
+    if (callSession) return callSession;
+    const std::shared_ptr<McpCall> parent = parentCall.lock();
+    return parent ? parent->session() : nullptr;
+}
+
+void McpCall::setNotifier(std::function<bool(const Json&)> fn) {
+    std::lock_guard<std::mutex> lock(progressMutex);
+    notifier = std::move(fn);
+}
+
+bool McpCall::notifyClient(const Json& notification) {
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        if (notifier) return !isCompleted.load() && notifier(notification);
+    }
+    const std::shared_ptr<McpCall> parent = parentCall.lock();
+    return parent && parent->notifyClient(notification);
+}
+
 double McpCall::elapsedMs() const {
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - startTime).count();
 }

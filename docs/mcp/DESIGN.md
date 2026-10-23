@@ -62,6 +62,7 @@ editor/mcp/
   McpRefs.{h,cpp}         scene + entity + component + asset reference resolution
   McpValues.{h,cpp}       JSON <-> engine property values, PropertyCmd building
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
+  McpToolGroups.{h,cpp}   the tool groups tools/list hides until a session enables them
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
@@ -70,7 +71,8 @@ editor/mcp/
   EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
     McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h, HtmlUiShared.h: helpers shared by modules
-    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
+    McpTools.cpp          buildToolRegistry: the module table (docs section, group), no App needed
+    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog, tool_groups
     ProjectTools.cpp      project lifecycle and settings
     SceneTools.cpp        scenes and scene settings
     EntityTools.cpp       hierarchy, GameObjects, selection and clipboard
@@ -88,8 +90,10 @@ editor/mcp/
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
-`McpServer` calls them all in a fixed order (Core first, then the rest; a later module may
-replace a tool by registering the same name). Every file above is listed in `CMakeLists.txt`.
+`buildToolRegistry` (`tools/McpTools.cpp`) calls them all in the fixed order of its module
+table (Core first, then the rest; a later module may replace a tool by registering the same
+name) and stamps each tool's module and default group. The server calls it at start, the
+`jasperengine-editor call` CLI offline. Every file above is listed in `CMakeLists.txt`.
 
 ## Registry API
 
@@ -106,6 +110,9 @@ struct ToolDef {
     Json outputSchema;         // optional
     ToolAnnotations annotations;
     bool allowedWhilePlaying = true;   // registry refuses the call during play if false
+    ToolActivity activity = ToolActivity::Auto;  // busy policy
+    std::string group;         // McpToolGroups.cpp; empty = core (always listed)
+    std::string module;        // docs section, stamped by buildToolRegistry
     std::function<void(CallPtr)> handler;  // runs on the MAIN thread
 };
 
@@ -196,13 +203,20 @@ Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 
 ## Tool conventions
 
+[conventions.md](conventions.md) is the rule book (names, schemas, groups, budget, docs and
+coverage gates); in short:
+
 - Prefer fewer, more powerful tools with excellent descriptions and schemas over many
   narrow ones. A tool description says what it does, what it returns, and the common
-  mistakes. Target well under 150 tools in total.
+  mistakes. The default listing (`core`) stays within 150 tools and 100,000 characters;
+  other tools sit in groups (`McpToolGroups.cpp`) that tools/list shows once a session
+  enables them (`tool_groups`), and every tool stays callable by name.
+- `buildToolRegistry` (`tools/McpTools.cpp`) builds the registry without an `App`, so the
+  CLI lists and validates tools offline exactly as the server serves them.
 - Edits through commands (undoable); file writes refresh the Project window, the asset
   database and open code editor buffers.
 - Every tool has a test in `tools/mcp/tests/` run through the harness against a real
-  editor under Xvfb.
+  editor under Xvfb (`test_tool_coverage.py`).
 
 ## Code lives on disk: agents edit it with their own tools
 

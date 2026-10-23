@@ -43,17 +43,11 @@ S: dict = {}
 LIBRARY = harness.REPO / "docs" / "mcp" / "guide" / "html-ui-examples"
 MANIFEST = json.loads((LIBRARY / "examples.json").read_text(encoding="utf-8"))
 
-# §3.6.7: measured on html-ui before this package (40f403609) with tools/mcp/tool_budget.py
-SEND_INPUT_BEFORE = 1780
-IMPORT_FILES_BEFORE = 452
-# phase 5 (p5-tooling, spec 3.13): the effects tools within their caps, inspect_ui's `effects`
-# within +150 of its size before (1806), the total raised by what they measure (+837:
-# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9)
-INSPECT_UI_BEFORE_P5 = 1806
-LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
-          "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
-          "list_ui_effects": 900, "set_ui_effect_time": 500}
-TOTAL_LIMIT = 99800 + 837
+# §3.6.7 and phase 5 (spec 3.13): the HTML UI tools' caps. The limits themselves live in
+# tools/mcp/budget.json (S31 R21), the single source of the tool budget: its exceptions entries
+# for these tools record the caps of the HTML UI specs, the default listing its total.
+HTML_UI_TOOLS = ("inspect_ui", "assert_ui", "create_ui_document", "send_input", "import_files",
+                 "list_ui_effects", "set_ui_effect_time")
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
@@ -373,13 +367,17 @@ async def test_tools_listed_with_annotations(ed: Editor):
 
 
 async def test_budget(ed: Editor):
+    budget = tool_budget.load_budget()
     rows = {t.name: tool_budget.measure(t, False) for t in ed.tool_list}
-    for name, limit in LIMITS.items():
+    for name in HTML_UI_TOOLS:
+        limit = tool_budget.tool_limit(budget, name)
         ed.check(rows[name]["total"] <= limit, f"{name}: {rows[name]['total']} chars, over its limit {limit}")
-    total = sum(r["total"] for r in rows.values())
-    print(f"     [budget] {len(rows)} tools, {total} chars; " +
-          ", ".join(f"{n} {rows[n]['total']}" for n in LIMITS))
-    ed.check(total <= TOTAL_LIMIT, f"the tool definitions total {total} chars, over {TOTAL_LIMIT}")
+    core = [r for r in rows.values() if r["group"] == "core"]
+    total = sum(r["total"] for r in core)
+    limit = budget["default_listing"]["chars"]
+    print(f"     [budget] {len(core)} core tools, {total} chars; " +
+          ", ".join(f"{n} {rows[n]['total']}" for n in HTML_UI_TOOLS))
+    ed.check(total <= limit, f"the default listing totals {total} chars, over {limit} (tools/mcp/budget.json)")
     ed.check(len(ed.tool("inspect_ui").description) <= 520 and len(ed.tool("assert_ui").description) <= 520 and
              len(ed.tool("create_ui_document").description) <= 480, "description caps (§3.6.1-3.6.3)")
 

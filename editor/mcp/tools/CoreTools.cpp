@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog
+// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups
 #include "McpTools.h"
 
 #include "mcp/McpAutoSync.h"
@@ -12,6 +12,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
+#include "mcp/McpToolGroups.h"
 
 #include "App.h"
 #include "EditorVersion.h"
@@ -24,6 +25,7 @@
 #include <atomic>
 #include <map>
 #include <memory>
+#include <set>
 
 namespace jasperengine::editor::mcp {
 
@@ -370,6 +372,88 @@ void respondDialogTool(const CallPtr& call) {
     });
 }
 
+// ------------------------------------------------------------------ tool_groups
+
+// Adds (on) or removes the groups args[key] names; false (call failed) on a bad name
+bool changeToolGroups(const CallPtr& call, const char* key, bool on, std::set<std::string>& enabled) {
+    const Json& args = call->args();
+    if (!args.contains(key)) return true;
+    if (!args[key].is_array()) {
+        call->fail(std::string(key) + " must be an array of group names.");
+        return false;
+    }
+    for (const Json& item : args[key]) {
+        const std::string name = item.is_string() ? item.get<std::string>() : item.dump();
+        if (!item.is_string() || !findToolGroup(name)) {
+            std::string valid;
+            for (const ToolGroupInfo& group : toolGroups()) valid += (valid.empty() ? "" : ", ") + group.name;
+            call->fail("Unknown tool group " + name + ". Groups: " + valid + ".");
+            return false;
+        }
+        if (name == CORE_TOOL_GROUP) {
+            if (!on) {
+                call->fail("core is always listed and can't be disabled.");
+                return false;
+            }
+            continue;
+        }
+        if (on) enabled.insert(name);
+        else enabled.erase(name);
+    }
+    return true;
+}
+
+void toolGroupsTool(const CallPtr& call) {
+    McpServer& server = call->server();
+    const SessionPtr session = call->session();
+    std::set<std::string> enabled = server.sessionToolGroups(session);
+    const std::set<std::string> before = enabled;
+    if (!changeToolGroups(call, "enable", true, enabled) || !changeToolGroups(call, "disable", false, enabled)) return;
+    if (enabled != before) {
+        if (!session) {
+            call->fail("This call has no client session whose tool listing could change.");
+            return;
+        }
+        server.setSessionToolGroups(session, enabled);
+    }
+
+    Json groups = Json::array();
+    size_t listedTools = 0;
+    std::string listed;
+    for (const ToolGroupInfo& group : toolGroups()) {
+        Json names = Json::array();
+        size_t chars = 0;
+        for (const ToolDef& def : server.registry().tools()) {
+            if (McpRegistry::groupOf(def) != group.name) continue;
+            names.push_back(def.name);
+            chars += McpRegistry::toolChars(def);
+        }
+        const bool on = group.name == CORE_TOOL_GROUP || enabled.count(group.name) > 0;
+        if (on) {
+            listedTools += names.size();
+            listed += (listed.empty() ? "" : ", ") + group.name;
+        }
+        groups.push_back({{"name", group.name}, {"description", group.description}, {"tools", names},
+                          {"chars", chars}, {"enabled", on}});
+    }
+
+    std::string text = "tools/list shows " + listed + " (" + std::to_string(listedTools) + " tools).";
+    Json data = {{"groups", groups}, {"list_changed", false}};
+    if (enabled != before) {
+        const bool sent = call->notifyClient(Json{{"jsonrpc", "2.0"}, {"method", "notifications/tools/list_changed"}});
+        data["list_changed"] = sent;
+        text += sent ? " Sent notifications/tools/list_changed: re-list tools."
+                     : " This client can't receive notifications/tools/list_changed (HTTP without text/event-stream): "
+                       "call tools/list again, or call the tools by name (also in batch).";
+    }
+    for (const Json& group : groups) {
+        text += "\n" + group["name"].get<std::string>() + (group["enabled"].get<bool>() ? " [listed]" : "") + ": " +
+                std::to_string(group["tools"].size()) + " tools, " + std::to_string(group["chars"].get<size_t>()) +
+                " chars. " + group["description"].get<std::string>();
+    }
+    call->ok(text, data);
+}
+
 } // namespace
 
 void registerCoreTools(McpRegistry& registry) {
@@ -490,6 +574,25 @@ void registerCoreTools(McpRegistry& registry) {
             {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
         }, {"choice"});
         tool.handler = respondDialogTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "tool_groups";
+        tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
+        tool.title = "Tool Groups";
+        tool.description =
+            "List the tool groups; enable/disable lists a group in this session's tools/list (core always is). "
+            "Every tool is callable by name whether listed or not, also in batch.";
+        tool.inputSchema = object({
+            {"enable", array(string(""), "")},
+            {"disable", array(string(""), "")}
+        });
+        // changes what this client lists, never the project
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = toolGroupsTool;
         registry.addTool(std::move(tool));
     }
 }

@@ -5,6 +5,7 @@
 
 #include "McpAutoSync.h"
 #include "McpContext.h"
+#include "McpToolGroups.h"
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
 #include "tools/McpTools.h"
@@ -66,7 +67,8 @@ void McpServer::start(App& app) {
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
 
-    registerAllTools();
+    buildToolRegistry(reg);
+    chooseInitialToolGroups();
 
     const McpLaunchOptions& options = mcpLaunchOptions();
 #ifndef _WIN32
@@ -88,24 +90,45 @@ void McpServer::start(App& app) {
     }
 }
 
-void McpServer::registerAllTools() {
-    // Fixed order (tools/list order)
-    registerCoreTools(reg);
-    registerProjectTools(reg);
-    registerSceneTools(reg);
-    registerEntityTools(reg);
-    registerComponentTools(reg);
-    registerPrefabTools(reg);
-    registerPlayTools(reg);
-    registerViewTools(reg);
-    registerConsoleTools(reg);
-    registerScriptTools(reg);
-    registerAssetTools(reg);
-    registerDocsTools(reg);
-    registerBuildTools(reg);
-    registerWorldTools(reg);
-    registerHtmlUiTools(reg);
-    registerUiEffectTools(reg);
+void McpServer::chooseInitialToolGroups() {
+    const McpLaunchOptions& options = mcpLaunchOptions();
+    std::vector<std::string> groups = options.toolGroups;
+    if (!options.toolGroupsSet) {
+        // `mcp --tool-groups` validated its names before the editor started; a stale name in
+        // the settings must not keep the editor from starting
+        std::string error;
+        if (!parseToolGroupList(AppSettings::getMcpToolGroups(), groups, error)) {
+            Out::warning("Editor settings mcp.tool_groups: %s; no tool group is enabled by default.", error.c_str());
+            groups.clear();
+        }
+    }
+    initialToolGroups = std::set<std::string>(groups.begin(), groups.end());
+}
+
+Json McpServer::listTools(const SessionPtr& session, const Json& params) const {
+    // params._meta["jasper/groups"]: "all" or a list of groups instead of the session's (the
+    // CLI, the test harness and the docs/budget generators list every group this way)
+    bool all = false;
+    std::set<std::string> groups;
+    const Json* requested = nullptr;
+    if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("jasper/groups")) {
+        requested = &params["_meta"]["jasper/groups"];
+    }
+    if (requested && requested->is_string() && requested->get<std::string>() == "all") {
+        all = true;
+    } else if (requested && requested->is_array()) {
+        for (const Json& item : *requested) {
+            if (item.is_string()) groups.insert(item.get<std::string>());
+        }
+    } else {
+        groups = sessionToolGroups(session);
+    }
+    Json tools = Json::array();
+    for (const ToolDef& def : reg.tools()) {
+        const std::string& group = McpRegistry::groupOf(def);
+        if (all || group == CORE_TOOL_GROUP || groups.count(group)) tools.push_back(McpRegistry::toolToJson(def));
+    }
+    return Json{{"tools", tools}};
 }
 
 void McpServer::stop() {
@@ -204,6 +227,7 @@ SessionPtr McpServer::createSession(const std::string& transport) {
     auto session = std::make_shared<McpSession>();
     session->transport = transport;
     std::lock_guard<std::mutex> lock(sessionMutex);
+    session->toolGroups = initialToolGroups;
     if (transport == "stdio") {
         session->id = "stdio";
     } else {
@@ -222,6 +246,18 @@ SessionPtr McpServer::findSession(const std::string& id) const {
     std::lock_guard<std::mutex> lock(sessionMutex);
     auto it = sessions.find(id);
     return it != sessions.end() ? it->second : nullptr;
+}
+
+std::set<std::string> McpServer::sessionToolGroups(const SessionPtr& session) const {
+    if (!session) return initialToolGroups;
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    return session->toolGroups;
+}
+
+void McpServer::setSessionToolGroups(const SessionPtr& session, std::set<std::string> groups) {
+    if (!session) return;
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    session->toolGroups = std::move(groups);
 }
 
 void McpServer::closeSession(const std::string& id) {
@@ -442,7 +478,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         Json result = {
             {"protocolVersion", version},
             {"capabilities", {
-                {"tools", {{"listChanged", false}}},
+                // tool_groups changes a session's listing
+                {"tools", {{"listChanged", true}}},
                 {"resources", {{"subscribe", false}, {"listChanged", false}}},
                 {"prompts", {{"listChanged", false}}},
                 {"logging", Json::object()}
@@ -466,11 +503,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     }
 
     if (method == "tools/list") {
-        Json tools = Json::array();
-        for (const ToolDef& def : reg.tools()) {
-            tools.push_back(McpRegistry::toolToJson(def));
-        }
-        reply->respond(makeResult(id, Json{{"tools", tools}}));
+        reply->respond(makeResult(id, listTools(session, params)));
         return;
     }
 
@@ -678,6 +711,13 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 reply->cancelled();
             }
         });
+
+    call->setSession(session);
+    call->setNotifier([reply](const Json& notification) {
+        if (!reply->streamsNotifications()) return false;
+        reply->notify(notification);
+        return true;
+    });
 
     if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("progressToken")) {
         const Json token = params["_meta"]["progressToken"];

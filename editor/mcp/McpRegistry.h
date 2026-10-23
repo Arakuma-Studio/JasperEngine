@@ -47,6 +47,12 @@ namespace jasperengine::editor::mcp {
         ToolAnnotations annotations;
         bool allowedWhilePlaying = true;       // the server refuses the call during play if false
         ToolActivity activity = ToolActivity::Auto;  // busy policy (see ToolActivity)
+        // Tool group (McpToolGroups.h): empty = core, always listed; any other group is listed
+        // once a session enables it, and callable either way. New tools of a spec go into
+        // that spec's group (docs/mcp/conventions.md).
+        std::string group;
+        // Section of docs/mcp/TOOLS.md; buildToolRegistry fills it from the registering module
+        std::string module;
         std::function<void(CallPtr)> handler;  // runs on the MAIN thread
     };
 
@@ -125,6 +131,8 @@ namespace jasperengine::editor::mcp {
 
         const ToolDef* findTool(const std::string& name) const;
         const std::vector<ToolDef>& tools() const { return toolList; }
+        // While the registry is built only (buildToolRegistry stamps module and group)
+        std::vector<ToolDef>& mutableTools() { return toolList; }
         const std::vector<ResourceDef>& resources() const { return resourceList; }
         const std::vector<ResourceTemplateDef>& resourceTemplates() const { return templateList; }
         const std::vector<PromptDef>& prompts() const { return promptList; }
@@ -136,8 +144,13 @@ namespace jasperengine::editor::mcp {
 
         static bool matchUriTemplate(const std::string& uriTemplate, const std::string& uri, std::map<std::string, std::string>& vars);
 
-        // MCP wire shapes
+        // MCP wire shapes. A tool carries _meta {"jasper/group", "jasper/module"}.
         static Json toolToJson(const ToolDef& def);
+        // The group a tool is listed in ("core" for an empty group)
+        static const std::string& groupOf(const ToolDef& def);
+        // What a tool costs an agent per session, as tools/mcp/tool_budget.py measures it:
+        // characters (code points) of name + description + compact JSON of the listed inputSchema
+        static size_t toolChars(const ToolDef& def);
     };
 
 }

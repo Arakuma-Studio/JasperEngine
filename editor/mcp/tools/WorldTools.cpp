@@ -4087,7 +4087,7 @@ void registerWorldTools(McpRegistry& registry) {
     };
     const Json createSpec = object({
         {"name", string("")},
-        {"parent", entityRef("Default: scene root.")},
+        {"parent", entityRef()},
         {"position", vec3("Local.")}
     });
     const Json numberItem = Json{{"type", "number"}};
@@ -4149,10 +4149,10 @@ void registerWorldTools(McpRegistry& registry) {
                 {"frequency", withDefault(number(""), 4)},
                 {"octaves", withDefault(integer("", 1, 8), 4)},
                 {"seed", integer("")},
-                {"resolution", integer("Default: Terrain setting.", 2, 4096)}}}}},
+                {"resolution", integer("Default: Terrain setting.", 2, 4096)}}}, {"additionalProperties", false}}},
             {"blendmap", {{"type", {"string", "object"}}, {"properties", {
                 {"color", vec3("Layer 0,1,2 weights 0-1.")},
-                {"resolution", integer("", 2, 4096)}}}}},
+                {"resolution", integer("", 2, 4096)}}}, {"additionalProperties", false}}},
             {"layers", array(object({
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
                 {"pbr", boolean("")},
@@ -4182,7 +4182,7 @@ void registerWorldTools(McpRegistry& registry) {
         "before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
         "convex_hull/mesh, heightfield. New shapes fit what the GameObject draws unless fit: false. Also "
         "density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, "
-        "rotation. Returns the colliders.",
+        "rotation.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4385,12 +4385,10 @@ void registerWorldTools(McpRegistry& registry) {
         "title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
         "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins}: px, y "
         "DOWN from the parent's top-left; an anchor (top_left, center, top_wide, ..., stretch) pins to the "
-        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear. "
-        "HUDs/menus go in a UI scene (child scene): pointer input needs its UI camera; layout groups stack "
-        "bottom-up elsewhere.",
+        "parent (screen for roots), position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
         object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"root", anyObject("")}
         }, {"root"}),
         createUiTool, false, false);
@@ -4418,7 +4416,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef("Effect to reconfigure.")},
             {"name", string("")},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("Local.")},
             {"emitter_entity", entityRef()},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},

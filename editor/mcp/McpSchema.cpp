@@ -87,13 +87,13 @@ Json vec3(const std::string& description) { return fixedVector(3, description); 
 Json vec4(const std::string& description) { return fixedVector(4, description); }
 
 Json quat(const std::string& description) {
-    return {
-        {"description", description.empty() ? "Rotation: [x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description},
+    return described({
         {"anyOf", Json::array({
             fixedVector(4, ""),
-            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}}}
+            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}},
+             {"additionalProperties", false}}
         })}
-    };
+    }, description);
 }
 
 Json color(const std::string& description) {
@@ -121,7 +121,7 @@ Json entities(const std::string& description) {
 }
 
 Json componentName(const std::string& description) {
-    return {{"type", "string"}, {"description", description.empty() ? "Component name." : description}};
+    return described({{"type", "string"}}, description);
 }
 
 Json assetPath(const std::string& description) {

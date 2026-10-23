@@ -1,0 +1,103 @@
+{
+    "_doc": [
+        "The MCP tool budget: the only place its limits live (S31 R21; rules in docs/mcp/conventions.md).",
+        "Gate: tools/mcp/tool_budget.py --check tools/mcp/budget.json (run by tools/mcp/tests/test_tool_budget.py).",
+        "A tool's size is len(name) + len(description) + len(compact JSON of its listed inputSchema), in characters.",
+        "default_listing: the core group, which every session lists. group_default: each other group unless groups",
+        "has an entry for it. tool_default: each tool unless exceptions has an entry (a higher limit for a tool that",
+        "predates the rule, or a lower cap a spec set). A spec that moves a tool into core records it in core_trades",
+        "with what core gave up for it, and the default listing must still fit."
+    ],
+    "default_listing": {
+        "chars": 100000,
+        "tools": 150
+    },
+    "group_default": {
+        "chars": 15000,
+        "tools": 12
+    },
+    "tool_default": 1500,
+    "groups": {
+        "profiling": {
+            "chars": 7000,
+            "tools": 7,
+            "spec": "S15 (its 7 tools within 7,000 characters)"
+        },
+        "splines": {
+            "chars": 6000,
+            "tools": 12,
+            "spec": "S18 (within 6,000 characters)"
+        }
+    },
+    "exceptions": {
+        "edit_animation": {
+            "limit": 2833,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%"
+        },
+        "sculpt_terrain": {
+            "limit": 2699,
+            "reason": "grandfathered by S31: 2571 chars when the limits were set, +5%"
+        },
+        "edit_tilemap": {
+            "limit": 2523,
+            "reason": "grandfathered by S31: 2403 chars when the limits were set, +5%"
+        },
+        "assert_ui": {
+            "limit": 2170,
+            "reason": "grandfathered by S31: 2067 chars when the limits were set, +5% (tighter than its HTML UI cap 2400)"
+        },
+        "create_entity": {
+            "limit": 2083,
+            "reason": "grandfathered by S31: 1984 chars when the limits were set, +5%"
+        },
+        "set_sprite_frames": {
+            "limit": 2075,
+            "reason": "grandfathered by S31: 1977 chars when the limits were set, +5%"
+        },
+        "build_project": {
+            "limit": 1972,
+            "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
+        },
+        "send_input": {
+            "limit": 1923,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030)"
+        },
+        "create_particles": {
+            "limit": 1888,
+            "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
+        },
+        "set_terrain_maps": {
+            "limit": 1882,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%"
+        },
+        "inspect_ui": {
+            "limit": 1792,
+            "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956)"
+        },
+        "play": {
+            "limit": 1632,
+            "reason": "grandfathered by S31: 1555 chars when the limits were set, +5%"
+        },
+        "wait": {
+            "limit": 1610,
+            "reason": "grandfathered by S31: 1534 chars when the limits were set, +5%"
+        },
+        "create_ui_document": {
+            "limit": 1300,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 1231 when S31 set the limits"
+        },
+        "import_files": {
+            "limit": 1052,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 882 when S31 set the limits"
+        },
+        "list_ui_effects": {
+            "limit": 900,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 535 when S31 set the limits"
+        },
+        "set_ui_effect_time": {
+            "limit": 500,
+            "reason": "HTML UI cap (phase 4 §3.6.7 / phase 5 §3.13), tighter than the default; 269 when S31 set the limits"
+        }
+    },
+    "core_trades": []
+}

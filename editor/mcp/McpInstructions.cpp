@@ -4,18 +4,26 @@
 // mentions must exist (tools/mcp/tests/test_autosync.py checks them against tools/list).
 //
 // MSVC limits one string literal piece to ~16 KB, so the text is split into adjacent raw
-// literals (concatenated by the compiler). Keep every chunk well under 16000 bytes.
+// literals (concatenated by the compiler). Keep every chunk well under 16000 bytes. The whole
+// guide, with the generated tool groups section, stays within 16,384 bytes
+// (tools/mcp/tests/test_tool_groups.py).
+
+#include "McpServer.h"
+#include "McpToolGroups.h"
+
+#include <string>
 
 namespace jasperengine::editor::mcp {
 
-const char* mcpServerInstructions() {
+namespace {
+
+const char* baseInstructions() {
     return
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
+scripts. Every edit you make through tools is an undoable editor command, visible live. Build scenes with tools, write code with your own file tools, verify by playing,
 screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
 C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
@@ -33,7 +41,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
-  scene. While playing, runtime-state tools resolve to the playing scene.
+  scene. While playing, runtime-state tools resolve to the playing scene. parent: omitted =
+  the scene root. max_width 0 = full size.
 - entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
@@ -62,13 +71,12 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
+past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
-The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
-in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
-your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
+The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
+grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your edits are picked up before your next tool call (script
 properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
@@ -132,9 +140,9 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
-  stubs or search_engine_api before using a name you have not seen there.
+  Engine.deltatime. A non-existent method fails at runtime ("attempt to call a nil value").
+  Check jasper://docs/lua-api (an index: read only the sections you need), the Lua stubs or
+  search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
@@ -175,21 +183,19 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
-- UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
-  and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
-  UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
+- UI widgets (HTML/CSS UI: below): create_ui lays out in pixels, y DOWN from the parent's
+  top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
+  2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
   actors, static for floors and level geometry, kinematic for scripted movers.
 - Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
-  or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
-  measured mesh bounds.
+  or pre-multiply by scale. Never guess sizes: omit them to fit the mesh bounds.
 - Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
-  meter), never set directly. Size forces as mass x acceleration; if movement needs huge
-  forces, lower the density instead.
+  meter), never set directly. Size forces as mass x acceleration; if they get huge, lower the
+  density.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
@@ -230,8 +236,8 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform; it is a
-long job (wait/timeout_seconds, get_job). The 2D/3D physics switches strip backends from the
+(Build Settings) produces a standalone CMake project or builds players per platform (a long
+job). The 2D/3D physics switches strip backends from the
 export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
 )JE"
 R"JE(
@@ -247,12 +253,36 @@ Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rule
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are discarded when play stops (as in Unity): stop before editing
-  the scene for real.
-- Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot
-  (.jasperengine/engine-api); never carry over names from Unity C#, Godot or Unreal.
+- Edits made while playing are discarded when play stops (as in Unity).
+- Never carry over API names from Unity C#, Godot or Unreal: confirm them in jasper://docs or
+  .jasperengine/engine-api first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
+}
+
+// Generated from the group table and the registry, since every spec adds groups and tools
+std::string toolGroupsSection(const McpRegistry& registry) {
+    std::string names;
+    for (const ToolGroupInfo& group : toolGroups()) {
+        if (group.name == CORE_TOOL_GROUP) continue;
+        for (const ToolDef& def : registry.tools()) {
+            if (McpRegistry::groupOf(def) != group.name) continue;
+            names += (names.empty() ? "" : ", ") + group.name;
+            break;
+        }
+    }
+    return "\n## Tool groups\n`tool_groups` lists the tool groups beyond core" +
+           (names.empty() ? std::string() : " (" + names + ")") +
+           " and adds them to this session's tools/list; every tool is callable by name anyway (also in "
+           "`batch`).\n";
+}
+
+} // namespace
+
+const char* mcpServerInstructions() {
+    // Built once the server registered its tools (the first initialize or jasper://guide read)
+    static const std::string text = std::string(baseInstructions()) + toolGroupsSection(McpServer::get().registry());
+    return text.c_str();
 }
 
 } // namespace jasperengine::editor::mcp

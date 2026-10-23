@@ -331,6 +331,11 @@ Json jsonError(int code, const std::string& message) {
 // One request's answer, handed from whatever thread completes it to the connection thread
 class HttpReply : public McpReply {
 public:
+    // streams: the client accepts text/event-stream, so notifications can go before the answer
+    explicit HttpReply(bool streams): streams(streams) {}
+
+    bool streamsNotifications() const override { return streams; }
+
     void respond(const Json& message) override {
         std::lock_guard<std::mutex> lock(mutex);
         if (responded) return;
@@ -341,7 +346,7 @@ public:
 
     void notify(const Json& notification) override {
         std::lock_guard<std::mutex> lock(mutex);
-        if (responded) return;
+        if (responded || !streams) return;
         notifications.push_back(notification);
         cv.notify_all();
     }
@@ -365,6 +370,7 @@ public:
     }
 
 private:
+    const bool streams;
     std::mutex mutex;
     std::condition_variable cv;
     std::deque<Json> notifications;
@@ -596,22 +602,16 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
             continue;
         }
 
-        // SSE only pays off when there will be progress notifications before the answer
+        // SSE only pays off when notifications (progress, tools/list_changed) come before the
+        // answer: the stream starts with the first one, else the answer goes as plain JSON
         const bool acceptsSse = request.header("accept").find("text/event-stream") != std::string::npos;
-        const Json& params = message.contains("params") ? message["params"] : Json();
-        const bool wantsProgress = params.is_object() && params.contains("_meta") && params["_meta"].is_object() &&
-                                   params["_meta"].contains("progressToken");
-        const bool sse = acceptsSse && wantsProgress;
-
-        auto reply = std::make_shared<HttpReply>();
+        auto reply = std::make_shared<HttpReply>(acceptsSse);
         server.handleMessage(session, message, reply);
 
-        if (!sse) {
-            Json out;
-            bool isResponse = false;
-            do {
-                reply->next(out, isResponse);
-            } while (!isResponse);
+        Json out;
+        bool isResponse = false;
+        reply->next(out, isResponse);
+        if (isResponse) {
             if (!sendResponse(s, 200, "application/json", out.dump(-1, ' ', false, Json::error_handler_t::replace),
                               sessionHeaders, keepAlive) || !keepAlive) return;
             continue;
@@ -622,12 +622,10 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
                            "Mcp-Session-Id: " + session->id + "\r\nConnection: close\r\n\r\n";
         if (!sendAll(s, head)) return;
         while (true) {
-            Json out;
-            bool isResponse = false;
-            reply->next(out, isResponse);
             const std::string event = "event: message\ndata: " + out.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n\n";
             if (!sendAll(s, event)) return;
             if (isResponse) break;
+            reply->next(out, isResponse);
         }
         return;
     }

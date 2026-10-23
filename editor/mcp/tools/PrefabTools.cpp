@@ -1925,7 +1925,7 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"prefab", prefabRef},
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("Local position.")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
@@ -2046,8 +2046,8 @@ void registerPrefabTools(McpRegistry& registry) {
             "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with all=true + "
             "entity (Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
             "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). target: "
-            "one of the entry's apply_targets (default innermost = Apply to Prefab; outer = Apply as Override; a "
-            "base clears the overrides in between). The .prefab is written when a scene using it is saved.";
+            "one of the entry's apply_targets (default innermost = Apply to Prefab; outer = Apply as Override). The "
+            ".prefab is written when a scene using it is saved.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},
@@ -2075,8 +2075,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks "
             "inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from "
             "the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) "
-            "writes ~0.35 s after each edit; save writes now. close keeps depth stages (unsaved ones follow "
-            "unsaved). status lists stages.";
+            "writes ~0.35 s after each edit; save writes now. status lists stages.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
