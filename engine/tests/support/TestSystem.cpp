@@ -60,7 +60,18 @@ void TestSystem::setAssetPath(const std::string& path){
 }
 
 std::string TestSystem::getUserDataPath(){
+    if (!userDataPathOverride.empty())
+        return userDataPathOverride;
     return testPaths().binaryDir + "/userdata";
+}
+
+void TestSystem::setUserDataPath(const std::string& path){
+    userDataPathOverride = path;
+}
+
+bool TestSystem::syncFileSystem(){
+    fileSystemSyncs++;
+    return true;
 }
 
 std::string TestSystem::getCachePath(){

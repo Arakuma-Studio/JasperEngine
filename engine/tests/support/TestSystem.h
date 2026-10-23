@@ -44,7 +44,10 @@ namespace jasperengine { namespace test {
         // another asset root (absolute; "" = TestPaths::assetDir): a test that loads a fixture
         // directory as a project's assets directory (phase-2 golden pages: their import manifest)
         void setAssetPath(const std::string& path);
-        std::string getUserDataPath() override;   // <binary>/userdata
+        std::string getUserDataPath() override;   // <binary>/userdata, or the override
+        void setUserDataPath(const std::string& path);  // empty: back to the default
+        bool syncFileSystem() override;           // counts the calls
+        int fileSystemSyncs = 0;
         std::string getCachePath() override;      // <binary>/userdata
         std::string getLuaPath() override;        // TestPaths::assetDir
         std::string getShaderPath() override;     // <binary>/shaders (empty: runtime compilation)
@@ -78,6 +81,7 @@ namespace jasperengine { namespace test {
         int screenWidth = 640;
         int screenHeight = 360;
         std::string assetPathOverride;
+        std::string userDataPathOverride;
 
         mutable std::mutex logMutex;
         std::vector<LogEntry> logs;

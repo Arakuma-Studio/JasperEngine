@@ -8,6 +8,7 @@
 #include "System.h"
 #include "io/AtomicFile.h"
 #include "support/TestTempDir.h"
+#include "TestSystem.h"
 
 #include <gtest/gtest.h>
 
@@ -17,43 +18,22 @@ using jasperengine::test::TestTempDir;
 
 namespace {
 
-    // The platform System of a game, with the user data directory a test chooses
-    class UserDataSystem: public System {
-    public:
-        int getScreenWidth() override { return 1; }
-        int getScreenHeight() override { return 1; }
-        std::string getUserDataPath() override { return dir.string(); }
-        bool syncFileSystem() override { syncs++; return true; }
-
-        fs::path dir;
-        int syncs = 0;
-    };
-
-    // Owned by the engine for the rest of the process, like a platform's System
-    UserDataSystem& engineSystem(){
-        static UserDataSystem* system = []{
-            auto* created = new UserDataSystem();
-            char name[] = "jasperengine-core-tests";
-            char* argv[] = {name, nullptr};
-            Engine::systemInit(1, argv, created);
-            return created;
-        }();
-        return *system;
-    }
-
+    // The test binary's System (TestMain started the engine with it), its user data directory
+    // pointed at the test's own directory
     class UserSettingsTest: public ::testing::Test {
     protected:
         void SetUp() override {
-            system = &engineSystem();
-            system->dir = dir.path();
-            system->syncs = 0;
+            system = &test::TestSystem::get();
+            system->setUserDataPath(dir.path().string());
+            system->fileSystemSyncs = 0;
         }
         void TearDown() override {
             io::setAtomicFileFaultInjector(nullptr);
+            system->setUserDataPath("");
         }
 
         TestTempDir dir{"usersettings"};
-        UserDataSystem* system = nullptr;
+        test::TestSystem* system = nullptr;
     };
 
 }
@@ -64,7 +44,7 @@ TEST_F(UserSettingsTest, AtomicOnCrash){
     const fs::path file = dir / "UserSettings.xml";
     ASSERT_TRUE(fs::exists(file));
     const std::string saved = TestTempDir::read(file);
-    EXPECT_GE(system->syncs, 2);
+    EXPECT_GE(system->fileSystemSyncs, 2);
 
     // the process "dies" in the middle of the next save: the rename never happens
     io::setAtomicFileFaultInjector([](std::string_view step, const fs::path&) -> std::error_code {
