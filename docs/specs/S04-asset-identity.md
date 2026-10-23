@@ -587,10 +587,19 @@ Recorded by the implementer; each is the closest correct alternative to the text
    part of prefab override paths (`submeshes[i].material.name`, `SubmeshOverride_MaterialName`)
    in closed scenes; renaming the key would have needed a migration of every override record
    for no gain in identity. No format migration is needed as a result.
-2. **Format versions.** S03's version framework has not landed. Every key S04 adds is optional
-   (`<key>Guid`, texture `guid`/`guids`, `guid`/`formerGuids` in scenes and materials), and
-   S03 R22 bumps no version for those; readers accept both forms directly. When S03 lands,
-   the S04 keys go into its `StreamSchema` known-key tables.
+2. **Format versions.** No scene, prefab or material version bump and no S03 migration step
+   (R34). Every key S04 adds is optional (`<key>Guid`, texture `guid`/`guids`,
+   `guid`/`formerGuids` in scenes, prefabs and materials), and S03 R22 bumps no version for
+   optional keys; readers accept both forms directly. Filling GUIDs (R10 step 4) needs the
+   project's assets directory and its asset database, which S03's pure YAML -> YAML
+   migrations do not have, so it happens in the load-time resolution pass and on save. The
+   S04 keys are in S03's `StreamSchema` known-key tables (`guid`/`formerGuids` at the root,
+   texture `guid`/`guids`, and `<key>Guid` wherever `<key>` is known), so load reports do not
+   list them as unknown and preservation does not copy them. Writes use S03's primitives:
+   metas, in-file GUID lines and the index cache through `io::writeFileAtomic`
+   (`editor/asset/AssetFileWrite`), moves through `io::renameWithRetry`, scenes and prefabs
+   through `DocumentFiles::write`, and `.material` files through `DocumentFiles::saveMaterial`
+   with its lossy-save gate.
 3. **Closed-file rewrites** (Retarget Selected, Clear, `assets migrate`) edit the YAML tree
    at the field's node and write it back with the emitter normal saves use, rather than a
    full decode/encode. This keeps unknown data (S03's preservation rule), reaches prefab
@@ -634,8 +643,8 @@ Recorded by the implementer; each is the closest correct alternative to the text
     `jasperengine-editor assets bench --project P`, which times the database and the index
     without the engine.
 15. **Tests location.** The unit tests are where S02 puts them (`engine/tests/core/asset/`,
-    `editor/tests/asset/`). Until S02's targets land they are compiled into the existing
-    HTML UI test targets (`jasperengine-htmlui-tests`, `jasperengine-htmlui-editor-tests`).
+    `editor/tests/asset/`), built into `jasperengine-core-tests` and
+    `jasperengine-editor-tests` (`tools/build.sh unit-tests`).
 16. **HTML5 player run of AC16** needs S02's web gate (headless Chrome). The asset map is
     read through the same `asset://` path on every target.
 17. **Excluded files.** Besides `project.yaml` and `CMakeLists.txt`, the project root's

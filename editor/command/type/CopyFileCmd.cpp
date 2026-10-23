@@ -3,6 +3,7 @@
 
 #include "CopyFileCmd.h"
 #include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 
 #include "util/Util.h"
 #include "asset/AssetOps.h"
@@ -37,6 +38,23 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
 }
 
 namespace {
+
+    // source's bytes replace target's atomically: copied next to it, then published (S03)
+    bool replaceFile(const fs::path& source, const fs::path& target, std::string& error) {
+        const fs::path temp = io::makeTemporarySiblingPath(target);
+        std::error_code ec;
+        if (!fs::copy_file(source, temp, ec) || ec) {
+            fs::remove(temp, ec);
+            error = ec ? ec.message() : "copy failed";
+            return false;
+        }
+        const io::WriteResult published = io::publishFile(temp, target);
+        if (!published.ok()) {
+            error = io::describeWriteError(published);
+            return false;
+        }
+        return true;
+    }
 
     // Unity's duplicate naming: "hero.png" -> "hero 1.png", "hero 2.png", ...
     fs::path freeCopyName(const fs::path& target) {
@@ -76,10 +94,16 @@ bool editor::CopyFileCmd::execute(){
             fdata.destination = target;
             fdata.backup = AssetOps::uniqueTrashPath(project->getProjectPath() / ".trash", target);
             fs::create_directories(fdata.backup.parent_path(), ec);
-            fs::copy_file(target, fdata.backup, fs::copy_options::overwrite_existing, ec);
-            if (!ec) fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-            if (ec) {
-                Out::error("Couldn't replace \"%s\": %s", fdata.filename.string().c_str(), ec.message().c_str());
+            // the backup path is new (uniqueTrashPath): nothing is overwritten
+            std::string error;
+            if (!fs::copy_file(target, fdata.backup, ec) || ec) {
+                error = ec ? ec.message() : "backup failed";
+            } else if (!replaceFile(source, target, error)) {
+                fs::remove(fdata.backup, ec);
+            }
+            if (!error.empty()) {
+                fdata.backup.clear();
+                Out::error("Couldn't replace \"%s\": %s", fdata.filename.string().c_str(), error.c_str());
                 return false;
             }
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(target));
@@ -123,7 +147,11 @@ void editor::CopyFileCmd::undo(){
         }
         if (!fdata.backup.empty()) {
             // the replaced content comes back, the file kept its identity throughout
-            fs::copy_file(fdata.backup, fdata.destination, fs::copy_options::overwrite_existing, ec);
+            std::string error;
+            if (!replaceFile(fdata.backup, fdata.destination, error)) {
+                Out::error("Couldn't restore \"%s\": %s", fdata.filename.string().c_str(), error.c_str());
+                continue;
+            }
             fs::remove(fdata.backup, ec);
             fdata.backup.clear();
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(fdata.destination));
