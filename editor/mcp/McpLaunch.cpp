@@ -62,6 +62,8 @@ void printUsage(const std::string& name) {
         << "      --name <name>      Name of the --create project. Default: the directory name.\n"
         << "      --headless         Linux: with no DISPLAY, run on a private Xvfb server.\n"
         << "      --http-port <n>    Also serve MCP over HTTP on http://127.0.0.1:<n>/mcp.\n"
+        << "      --ignore-lock      Open the project even when another editor has it open\n"
+        << "                         (without it that fails with project_locked, exit code 3).\n"
         << "  -h, --help             Show this help.\n\n"
         << "Without --project or --create the last opened project opens, as in a normal start.\n\n"
         << "Client configuration (e.g. .mcp.json):\n"
@@ -226,6 +228,8 @@ int prepareMcpCommand(int argc, char** argv, const char* executableName) {
             options.createName = text;
         } else if (arg == "--headless") {
             options.headless = true;
+        } else if (arg == "--ignore-lock") {
+            options.ignoreLock = true;
         } else if (arg == "--http-port") {
             if (!value(text)) return 2;
             if (!parsePort(text, options.httpPort)) {

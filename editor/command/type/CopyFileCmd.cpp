@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CopyFileCmd.h"
+#include "util/FileUtils.h"
 
 #include "util/Util.h"
 #include "asset/AssetOps.h"

@@ -569,6 +569,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
@@ -577,6 +578,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
+    ${EDITOR_DIR}/StreamMigrations.cpp
+    ${EDITOR_DIR}/StreamSchema.cpp
+    ${EDITOR_DIR}/StreamPreserved.cpp
+    ${EDITOR_DIR}/LoadReport.cpp
+    ${EDITOR_DIR}/DocumentFile.cpp
+    ${EDITOR_DIR}/SceneBackup.cpp
     ${EDITOR_DIR}/PrefabStage.cpp
     ${EDITOR_DIR}/Workspace.cpp
     ${EDITOR_DIR}/Exporter.cpp
@@ -601,6 +608,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
+    ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
     ${EDITOR_DIR}/mcp/tools/ComponentTools.cpp
     ${EDITOR_DIR}/mcp/tools/PrefabTools.cpp
@@ -700,6 +708,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
+    ${EDITOR_DIR}/window/dialog/DataSafetyDialogs.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ScriptCreateDialog.cpp
@@ -739,6 +748,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/AddChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/AddComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
+    ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
@@ -979,6 +989,13 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
+endif()
+
+# jasperengine-editor-tests: googletest unit tests of editor logic (editor/tests, tools/build.sh
+# unit-tests)
+option(JASPERENGINE_TESTS "Build jasperengine-editor-tests" OFF)
+if(JASPERENGINE_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs

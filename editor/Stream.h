@@ -353,7 +353,11 @@ namespace jasperengine::editor {
         static YAML::Node encodeMaterial(const Material& material, bool embedTextureData = true);
         static Material decodeMaterial(const YAML::Node& node, const Material* oldMaterial = nullptr);
 
+        // The components of `signature`, with what the entity's file held that this editor does
+        // not read (StreamPreserved.h)
         static YAML::Node encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature);
+        // The live values only
+        static YAML::Node encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature);
         static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode);
 
         static YAML::Node encodeTransform(const Transform& transform);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectUtils.h"
+#include "io/AtomicFile.h"
 
 #include "Out.h"
 #include "Catalog.h"
@@ -331,12 +332,10 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
         if (std::filesystem::exists(path, ec) || ec)
             return false;
 
-        std::ofstream f(path, std::ios::trunc);
-        if (!f.is_open())
+        if (!io::writeFileAtomic(path, content).ok())
             return false;
         written.push_back(path);
-        f << content;
-        return static_cast<bool>(f);
+        return true;
     };
 
     bool success = writeFile(plan.vertPath, plan.vertContent) &&

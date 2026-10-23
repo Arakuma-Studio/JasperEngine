@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateMaterialFileCmd.h"
-#include "asset/AssetFileWrite.h"
+#include "DocumentFile.h"
+#include "Out.h"
 
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -51,7 +52,7 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 
         decodedMaterial = material;
         hasDecodedMaterial = true;
-        this->payload = YAML::Dump(Stream::encodeMaterial(material));
+        this->payload = DocumentFiles::materialText(Stream::encodeMaterial(material), fs::path());
     } catch (const std::exception&) {
     }
 
@@ -79,11 +80,14 @@ bool editor::CreateMaterialFileCmd::execute() {
                 root["guid"] = guid.str();
             }
             guid = project->prepareDocumentIdentity(root, targetFile);
-            content = YAML::Dump(root) + "\n";
+            // no trailing newline: material files never had one (DocumentFiles::materialText)
+            content = YAML::Dump(root);
         }
     } catch (const std::exception&) {
     }
-    if (!assetio::writeFile(targetFile, content, assetio::Durability::Document)) {
+    const io::WriteResult written = DocumentFiles::write(targetFile, content);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(targetFile, written));
         return false;
     }
     project->getAssetDatabase().registerAsset(targetFile, guid.str());

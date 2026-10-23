@@ -119,6 +119,9 @@ namespace jasperengine::editor {
         // new one. assetsDir is relative to the project (data files are assets only there).
         void open(const std::filesystem::path& projectPath, const std::filesystem::path& assetsDir = std::filesystem::path());
         void close();
+        // The temporary siblings of atomic writes the last open() walked past (the project's
+        // orphan sweep uses this walk instead of one of its own)
+        std::vector<std::filesystem::path> takeTemporaryFiles();
         bool isOpen() const;
         ~AssetDatabase();
 
@@ -210,6 +213,8 @@ namespace jasperengine::editor {
         std::filesystem::path assetsDir;
         bool caseInsensitive = false;
         std::atomic<uint64_t> version{0};
+        // the atomic-write temporaries the last open() walked past (takeTemporaryFiles)
+        std::vector<std::filesystem::path> temporaryFiles;
 
         std::map<std::string, Entry> byPath;                 // key(relative path) -> entry
         std::unordered_map<Guid, std::string> byGuid;        // live guid -> key
@@ -253,7 +258,9 @@ namespace jasperengine::editor {
         bool refreshSubAssets(Entry& entry, const Entry* previous) const;
 
         // Tracked files and metas below a path (the path itself when it is a file), relative
-        void collect(const std::filesystem::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas) const;
+        // temporaries, when given, receives the atomic-write temps the walk passes (io::isTemporarySiblingName)
+        void collect(const std::filesystem::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas,
+                     std::vector<std::filesystem::path>* temporaries = nullptr) const;
         // Files without identity adopt orphan metas that match them (R5); returns the adopted
         std::vector<Change> adoptOrphans(std::vector<std::string>& withoutIdentity);
         void collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached);

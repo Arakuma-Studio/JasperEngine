@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "CommandLine.h"
+#include "io/AtomicFile.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "JasperEngine.h"
@@ -600,6 +602,8 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
         return builder.buildShader(shaderKey, projectPtr);
     });
 
+    // exports and benchmarks run next to an open editor (CI, a terminal): they take no lock
+    project.setSkipProjectLock(true);
     if (!project.loadProject(options.projectPath, false)) {
         return 1;
     }
@@ -767,6 +771,9 @@ int CommandLine::runBenchmarkHelp(const char* executableName) {
 
 
 // ---- scene-dump: a developer check of what loading a project gives ----
+
+// --allow-data-loss: saves of scenes that did not load completely are written anyway
+static DegradedSavePolicy sceneDumpSavePolicy = DegradedSavePolicy::Refuse;
 //
 // Loads every scene of a project headless and writes, per scene, every GameObject by its
 // hierarchy path (names, and an index among same-named siblings): name, state, parent and
@@ -847,8 +854,12 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
     if (outPath.empty()) {
         std::cout << out.c_str() << "\n";
     } else {
-        std::ofstream file(outPath);
-        file << out.c_str() << "\n";
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(outPath, std::string(out.c_str()) + "\n", options);
+        if (!written.ok()) {
+            std::cerr << "scene-dump: could not write " << outPath.string() << ": " << io::describeWriteError(written) << "\n";
+        }
     }
 }
 
@@ -960,7 +971,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         if (name == "save") {
             for (SceneProject& sceneProject : project.getScenes()) {
                 if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                    project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy);
                 }
             }
             continue;
@@ -1063,9 +1074,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             const fs::path out = resolveOpsPath(op["out"].as<std::string>());
             fs::create_directories(out);
             for (const auto& [path, baked] : project.bakePrefabsForExport()) {
-                std::ofstream file(out / (Factory::prefabToFileName(path) + ".cpp"));
-                file << Factory::createPrefab(path, *baked, project.getProjectPath(), out,
-                    [&project](const fs::path& p) { return project.getPrefabGuid(p); });
+                FileUtils::writeFile(out / (Factory::prefabToFileName(path) + ".cpp"), Factory::createPrefab(path, *baked, project.getProjectPath(), out,
+                    [&project](const fs::path& p) { return project.getPrefabGuid(p); }));
             }
             continue;
         }
@@ -1595,15 +1605,22 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     fs::path outPath;
     fs::path opsPath;
     bool save = false;
+    bool allowDataLoss = false;
+    bool ignoreLock = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = CommandLine::projectArgPath(argv[++i]);
         else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--ops" && i + 1 < argc) opsPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--save") save = true;
+        else if (arg == "--allow-data-loss") allowDataLoss = true;
+        else if (arg == "--ignore-lock") ignoreLock = true;
         else {
             std::cerr << commandName << " scene-dump --project <dir|project.yaml> [--out <file>] [--ops <file>] [--save]\n"
-                      << "(paths absolute or relative to the current directory)\n";
+                      << "    [--allow-data-loss] [--ignore-lock]\n"
+                      << "(paths absolute or relative to the current directory)\n"
+                      << "--save refuses (exit 4) to write a scene that did not load completely unless --allow-data-loss;\n"
+                      << "a project another editor has open fails (exit 3, project_locked) unless --ignore-lock.\n";
             return 2;
         }
     }
@@ -1623,7 +1640,16 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
+    // a dump only reads: only a writer takes the project's lock (R10)
+    const bool writes = save || !opsPath.empty();
+    project.setSkipProjectLock(!writes);
+    project.setIgnoreProjectLock(ignoreLock);
+    sceneDumpSavePolicy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     if (!project.loadProject(projectArg, false)) {
+        if (project.wasProjectLocked()) {
+            std::cerr << "scene-dump: project_locked: " << project.getProjectLockMessage() << " (--ignore-lock opens it anyway)\n";
+            return 3;
+        }
         return 1;
     }
 
@@ -1631,6 +1657,12 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     for (size_t i = 0; i < scenes.size(); i++) {
         if (!scenes[i].filepath.empty() && !scenes[i].scene) {
             project.loadScene(scenes[i].filepath, false, false, true);
+        }
+    }
+    // the load report of every scene, on stderr (R39)
+    for (const SceneProject& sceneProject : scenes) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            std::cerr << issue.consoleLine() << "\n";
         }
     }
 
@@ -1642,10 +1674,20 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     writeSceneDump(project, outPath);
 
     if (save) {
+        bool refused = false;
         for (SceneProject& sceneProject : scenes) {
             if (sceneProject.scene && !sceneProject.filepath.empty()) {
-                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false);
+                SaveResult result = SaveResult::Failed;
+                project.saveSceneToPath(sceneProject.id, sceneProject.filepath, false, sceneDumpSavePolicy, &result);
+                if (result == SaveResult::RefusedDegraded) {
+                    std::cerr << "scene-dump: not saved: " << sceneProject.filepath.generic_string() << " did not load completely "
+                              << "(--allow-data-loss writes it anyway)\n";
+                    refused = true;
+                }
             }
+        }
+        if (refused) {
+            return 4;
         }
     }
     return 0;
@@ -2080,23 +2122,10 @@ void saveHookState(const fs::path& file, const HookState& state) {
         if (!keys.empty()) uiReported[rel] = std::vector<std::string>(keys.begin(), keys.end());
     }
     const nlohmann::json json = {{"version", 2}, {"files", files}, {"ui_reported", uiReported}};
-    std::error_code ec;
-    fs::create_directories(file.parent_path(), ec);
     // a hook running in parallel must never read half a file
-    const fs::path temp = file.string() + ".tmp" + std::to_string(static_cast<long long>(
-        std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007));
-    {
-        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
-        if (!out) return;
-        out << json.dump();
-        if (!out) {
-            out.close();
-            fs::remove(temp, ec);
-            return;
-        }
-    }
-    fs::rename(temp, file, ec);
-    if (ec) fs::remove(temp, ec);
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(file, json.dump(), options);
 }
 
 fs::path hookStateFile(const fs::path& root) {
@@ -2137,7 +2166,7 @@ void appendHookLog(const fs::path& root, const std::string& tool, const std::vec
     if (!fs::is_directory(dir, ec)) fs::create_directories(dir, ec);
     const fs::path log = dir / HOOK_LOG_FILE;
     if (fs::file_size(log, ec) > HOOK_LOG_MAX_BYTES && !ec) {
-        fs::rename(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
+        io::renameWithRetry(log, dir / (std::string(HOOK_LOG_FILE) + ".1"), ec);
     }
     std::ofstream out(log, std::ios::app);
     if (!out) return;
@@ -2257,6 +2286,8 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     }
 
     if (shadersWanted || cppWanted) {
+        // checks only read the project: no lock, an open editor is fine
+        project.setSkipProjectLock(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;

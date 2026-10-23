@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AssetDatabase.h"
+#include "io/AtomicFile.h"
 
 #include "Out.h"
 #include "asset/AssetFileWrite.h"
@@ -665,7 +666,8 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
 
 // ==================================================================== scanning
 
-void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas) const {
+void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas,
+                                    std::vector<fs::path>* temporaries) const {
     std::error_code ec;
     auto consider = [&](const fs::path& path) {
         const fs::path relative = toRelative(path);
@@ -697,6 +699,10 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
             if (AssetTypes::isSkippedDirectory(entry.path().filename().string())) {
                 it.disable_recursion_pending();
             }
+            continue;
+        }
+        if (temporaries && io::isTemporarySiblingName(entry.path().filename().string())) {
+            temporaries->push_back(entry.path());
             continue;
         }
         if (entry.is_regular_file(entryError)) {
@@ -958,6 +964,11 @@ void editor::AssetDatabase::saveCache() const {
     fs::remove(projectPath / ".jasperengine" / "assetdb.yaml", ec);
 }
 
+std::vector<fs::path> editor::AssetDatabase::takeTemporaryFiles() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return std::move(temporaryFiles);
+}
+
 // ==================================================================== open / close
 
 editor::AssetDatabase::~AssetDatabase() {
@@ -976,7 +987,8 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
     loadCache(cached);
 
     std::vector<std::string> assets, metas;
-    collect(projectPath, assets, metas);
+    temporaryFiles.clear();
+    collect(projectPath, assets, metas, &temporaryFiles);
 
     struct Found {
         Entry entry;

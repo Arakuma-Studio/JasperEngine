@@ -103,6 +103,18 @@ void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callbac
     }
 }
 
+DegradedSavePolicy EditorHost::confirmDegradedSave(const DegradedSaveRequest&) {
+    return DegradedSavePolicy::Refuse;
+}
+
+RecoveryChoice EditorHost::resolveSceneRecovery(const SceneBackupInfo&) {
+    return RecoveryChoice::Keep;
+}
+
+bool EditorHost::confirmOpenLockedProject(const ProjectLockInfo&) {
+    return false;
+}
+
 void EditorHost::registerProjectSaveDialog(std::function<void()> callback) {
     if (callback) {
         callback();

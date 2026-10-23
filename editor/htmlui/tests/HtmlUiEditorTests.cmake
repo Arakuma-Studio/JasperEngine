@@ -26,9 +26,7 @@ set(HTMLUI_EDITOR_TEST_EDITOR_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(REMOVE_ITEM HTMLUI_EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
 
 # The tests themselves see googletest; the editor sources keep the editor's command lines
-file(GLOB HTMLUI_EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.cpp
-    # editor unit tests, here until the editor test target exists (docs/specs/S02, S04)
-    ${CMAKE_SOURCE_DIR}/editor/tests/asset/*Test.cpp)
+file(GLOB HTMLUI_EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*.cpp)
 add_library(jasperengine-htmlui-editor-tests-objects OBJECT ${HTMLUI_EDITOR_TEST_SOURCES})
 target_link_libraries(jasperengine-htmlui-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp)
 target_include_directories(jasperengine-htmlui-editor-tests-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "SceneBackup.h"
+#include "Out.h"
 
 #include "AppSettings.h"
 #include "App.h"
@@ -17,6 +19,18 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+
+#include <cstdlib>
+#if defined(_WIN32)
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <shellapi.h>
+#endif
 
 namespace jasperengine::editor {
 
@@ -37,7 +51,7 @@ namespace {
 
     // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
     const settingsui::Category preferencesCategories[] = {
-        {"General", "", "editor vsync default build directory output"},
+        {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
         {"Code Editor", "", "font size"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
         {"Shader Cache", "", "clear shader cache"},
@@ -183,6 +197,8 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_autosaveEnabled = AppSettings::isAutosaveEnabled();
+    m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
@@ -301,6 +317,28 @@ void EditorSettingsWindow::drawSettings() {
     }
 }
 
+// The system's file manager on a folder
+void EditorSettingsWindow::openInFileManager(const fs::path& folder) {
+#if defined(_WIN32)
+    ShellExecuteW(nullptr, L"open", folder.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#else
+    std::string quoted = "'";
+    for (char c : folder.string()) {
+        if (c == '\'') quoted += "'\\''";
+        else quoted += c;
+    }
+    quoted += "'";
+    #if defined(__APPLE__)
+    const std::string command = "open " + quoted + " &";
+    #else
+    const std::string command = "xdg-open " + quoted + " >/dev/null 2>&1 &";
+    #endif
+    if (std::system(command.c_str()) != 0) {
+        Out::warning("Could not open %s", folder.string().c_str());
+    }
+#endif
+}
+
 void EditorSettingsWindow::drawGeneralSettings() {
     drawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
         if (beginSettingsRow("Default Build Directory",
@@ -328,6 +366,33 @@ void EditorSettingsWindow::drawGeneralSettings() {
             m_editorVSyncEnabled = true;
         }
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
+
+        sectionRow("Auto Save");
+        if (beginSettingsRow("Auto Save Scenes",
+                             "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
+                             "by Save). After a crash, opening the scene offers to restore it.",
+                             m_autosaveEnabled != true)) {
+            m_autosaveEnabled = true;
+        }
+        ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
+        if (beginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
+                             m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
+            m_autosaveInterval = AppSettings::defaultAutosaveInterval;
+        }
+        ImGui::BeginDisabled(!m_autosaveEnabled);
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
+                       AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+        beginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
+        ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
+        if (ImGui::Button("Open Backup Folder")) {
+            const fs::path folder = SceneBackups::root(m_project->getProjectPath());
+            std::error_code ec;
+            fs::create_directories(folder, ec);
+            openInFileManager(folder);
+        }
+        ImGui::EndDisabled();
 
         sectionRow("HTML UI");
         if (beginSettingsRow("Import Remote Resources",
@@ -548,6 +613,8 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setAutosaveEnabled(m_autosaveEnabled);
+    AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);

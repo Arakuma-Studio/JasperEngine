@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // The writes of the asset identity code (meta sidecars, in-file GUID lines, the asset
-// index cache) and its renames. Writes are atomic: a temporary sibling named
-// `.<file>.<pid>-<n>.je-tmp` (hidden from the Project window and the asset scan) is
-// written, synced for documents, then renamed over the target, so a crash leaves either
-// the old or the new bytes. Renames retry while the file is briefly locked (antivirus,
-// indexers). This is the S03 atomic-write contract (engine/core/io/AtomicFile); these
-// functions forward to it once it is available.
+// index cache) and its renames, on S03's atomic writes (engine/core/io/AtomicFile.h): a
+// temporary sibling `.<file>.<pid>-<n>.je-tmp` is written, synced for documents, then
+// renamed over the target, so a crash leaves either the old or the new bytes. Renames retry
+// while the file is briefly locked (antivirus, indexers).
 
 #pragma once
 

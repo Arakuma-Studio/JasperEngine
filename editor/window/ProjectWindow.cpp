@@ -4,6 +4,8 @@
 #include "ProjectWindow.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
+#include "util/PngWriter.h"
+#include "DocumentFile.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -143,7 +145,7 @@ bool editor::ProjectWindow::writeImageThumbnail(const fs::path& sourcePath, cons
     );
 
     fs::create_directories(thumbnailPath.parent_path());
-    const bool written = stbi_write_png(thumbnailPath.string().c_str(), newWidth, newHeight, 4, thumbData.data(), newWidth * 4) != 0;
+    const bool written = writePng(thumbnailPath, newWidth, newHeight, 4, thumbData.data(), newWidth * 4, io::Durability::Cache);
 
     sourceData.releaseImageData();
     return written;
@@ -676,10 +678,7 @@ void editor::ProjectWindow::processPrefabThumbnails() {
         }
         saveStarted = GraphicUtils::saveFramebufferImage(framebuffer, thumbnailPath, false,
             [this, pending, thumbnailPath, stamp]() {
-                {
-                    std::ofstream stampFile(prefabStampPath(thumbnailPath), std::ios::trunc);
-                    stampFile << stamp;
-                }
+                FileUtils::writeFile(prefabStampPath(thumbnailPath), stamp);
                 bool publish = false;
                 {
                     std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
@@ -2753,7 +2752,7 @@ void editor::ProjectWindow::thumbnailWorker() {
             }
         } else if (thumbFile.type == FileType::MATERIAL) {
             try {
-                if (YAML::Node materialNode = YAML::LoadFile(thumbFile.path.string())) {
+                if (YAML::Node materialNode = DocumentFiles::read(thumbFile.path, DocumentKind::Material).root) {
                     Material material = Stream::decodeMaterial(materialNode);
                     materialRender.applyMaterial(material);
 
@@ -3601,8 +3600,7 @@ void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::
     if (text != newLuaScriptText) {
         return;  // edited since: leave it to its author
     }
-    std::ofstream out(file, std::ios::trunc | std::ios::binary);
-    out << newLuaScriptTemplate(name);
+    DocumentFiles::write(file, newLuaScriptTemplate(name));
 }
 
 void editor::ProjectWindow::assetsCreateScript(bool lua) {
@@ -3623,23 +3621,17 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     }
 
     if (lua) {
-        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc | std::ios::binary);
-        if (!f) {
-            Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
-            return;
-        }
         newLuaScriptFile = name + ".lua";
         newLuaScriptText = newLuaScriptTemplate(name);
-        f << newLuaScriptText;
-        f.close();
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
-    } else {
-        std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
-        std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);
-        if (!h || !c) {
-            Backend::getApp().registerAlert("Create C++ Script", "Could not write to " + currentPath.string());
+        const io::WriteResult written = DocumentFiles::write(currentPath / newLuaScriptFile, newLuaScriptText);
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create Lua Script", DocumentFiles::saveFailureMessage(currentPath / newLuaScriptFile, written));
             return;
         }
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
+    } else {
+        std::ostringstream h;
+        std::ostringstream c;
         h << "#pragma once\n\n";
         h << "#include \"ScriptBase.h\"\n";
         h << "#include \"Engine.h\"\n";
@@ -3662,6 +3654,14 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
         c << "}\n\n";
         c << "void " << name << "::onUpdate() {\n";
         c << "}\n";
+        io::WriteResult written = DocumentFiles::write(currentPath / (name + ".h"), h.str());
+        if (written.ok()) {
+            written = DocumentFiles::write(currentPath / (name + ".cpp"), c.str());
+        }
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create C++ Script", DocumentFiles::saveFailureMessage(currentPath, written));
+            return;
+        }
     }
 
     scanDirectory(currentPath);

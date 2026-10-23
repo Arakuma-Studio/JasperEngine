@@ -8,6 +8,7 @@
 #include "Project.h"
 
 #include "Out.h"
+#include "DocumentFile.h"
 #include "Stream.h"
 #include "PrefabStage.h"
 #include "asset/AssetFileWrite.h"
@@ -227,20 +228,17 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     return guid;
 }
 
-bool editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material) {
+editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,
+                                                    DegradedSavePolicy policy, std::string* error) {
     const fs::path relative = normalizeToProjectRelative(relativePath);
     YAML::Node root = Stream::encodeMaterial(material);
     const Guid guid = prepareDocumentIdentity(root, relative);
-    std::string error;
-    YAML::Emitter out;
-    out << root;
-    if (!assetio::writeFile(projectPath / relative, std::string(out.c_str()) + "\n", assetio::Durability::Document, &error)) {
-        Out::error("Couldn't save \"%s\": %s", relative.generic_string().c_str(), error.c_str());
-        return false;
+    const SaveResult saved = DocumentFiles::saveMaterial(projectPath / relative, root, policy, error);
+    if (saved == SaveResult::Saved) {
+        assetDatabase.registerAsset(relative, guid.str());
+        assetIndex.updateReferrer(relative.generic_string());
     }
-    assetDatabase.registerAsset(relative, guid.str());
-    assetIndex.updateReferrer(relative.generic_string());
-    return true;
+    return saved;
 }
 
 void editor::Project::collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges) {
