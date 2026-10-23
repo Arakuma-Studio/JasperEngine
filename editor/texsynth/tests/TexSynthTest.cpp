@@ -834,3 +834,46 @@ TEST(TexSynthRecipe, GarbledRecipesAreReportedNotThrown) {
     EXPECT_EQ(states[1].state, "changed");
     EXPECT_EQ(states[1].resolved, fs::path("/p/a.png"));   // pathBase of another type: "file", the PNG's directory
 }
+
+// ---- writing a set of files (the CLI): all or nothing
+
+TEST(TexSynthRecipe, WriteFilesAllOrNothing) {
+    const fs::path dir = tempDir();
+    auto bytes = [](const std::string& text) { return std::vector<uint8_t>(text.begin(), text.end()); };
+    auto text = [&](const fs::path& path) {
+        const std::vector<uint8_t> b = readFile(path);
+        return std::string(b.begin(), b.end());
+    };
+    auto listing = [&]() {
+        std::vector<std::string> names;
+        for (const auto& entry : fs::recursive_directory_iterator(dir)) names.push_back(fs::relative(entry.path(), dir).generic_string());
+        std::sort(names.begin(), names.end());
+        return names;
+    };
+    writeFile(dir / "primary.png", bytes("old primary"));
+    writeFile(dir / "blocker", bytes("a file where a directory is expected"));
+    std::string failed, error;
+
+    // staging fails (a path component is a file): the primary keeps its content, nothing is left behind
+    EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "new" / "deep" / "normal.png", bytes("n")},
+                                         {dir / "blocker" / "uncertainty.png", bytes("u")}},
+                                        failed, error));
+    EXPECT_EQ(failed, (dir / "blocker" / "uncertainty.png").u8string());
+    EXPECT_NE(error.find("nothing was written"), std::string::npos) << error;
+    EXPECT_EQ(text(dir / "primary.png"), "old primary");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png"}));
+
+    // committing fails (the target is a directory that is not empty): the replaced primary comes back
+    fs::create_directories(dir / "taken" / "inside");
+    EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "taken", bytes("t")}}, failed, error));
+    EXPECT_EQ(failed, (dir / "taken").u8string());
+    EXPECT_EQ(text(dir / "primary.png"), "old primary");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "taken", "taken/inside"}));
+
+    // success: written and replaced, no staged or previous copies left
+    ASSERT_TRUE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "sub" / "normal.png", bytes("n")}}, failed, error)) << error;
+    EXPECT_EQ(text(dir / "primary.png"), "new primary");
+    EXPECT_EQ(text(dir / "sub" / "normal.png"), "n");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "sub", "sub/normal.png", "taken", "taken/inside"}));
+    fs::remove_all(dir);
+}

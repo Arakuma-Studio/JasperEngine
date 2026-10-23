@@ -7,6 +7,9 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cmath>
@@ -414,6 +417,88 @@ namespace jasperengine::editor::texsynth {
             fs::remove(temporary, ec);
             error = "cannot write " + path.string() + ": " + ec.message();
             return false;
+        }
+        return true;
+    }
+
+    bool writeFilesAllOrNothing(const std::vector<StagedFile>& files, std::string& failedPath, std::string& error) {
+        static std::atomic<uint64_t> counter{0};
+        const std::string tag = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007) + "-" +
+                                std::to_string(counter++);
+        auto sibling = [&](const fs::path& path, const char* what) {
+            fs::path p = path;
+            p += std::string(".") + what + "-" + tag;
+            return p;
+        };
+        std::vector<fs::path> createdDirs;
+        std::vector<fs::path> staged(files.size());
+        std::vector<fs::path> backups(files.size());   // the previous target, moved aside
+        std::vector<bool> placed(files.size(), false);
+        auto cleanup = [&]() {
+            std::error_code ec;
+            for (size_t i = files.size(); i-- > 0;) {
+                if (placed[i]) fs::remove(files[i].path, ec);
+                if (!backups[i].empty()) fs::rename(backups[i], files[i].path, ec);
+                if (!staged[i].empty()) fs::remove(staged[i], ec);
+            }
+            std::sort(createdDirs.begin(), createdDirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
+            for (const fs::path& dir : createdDirs) {
+                if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+            }
+        };
+        auto failWith = [&](size_t i, const std::string& why) {
+            failedPath = files[i].path.u8string();
+            error = why + "; nothing was written";
+            cleanup();
+            return false;
+        };
+        // 1. stage
+        for (size_t i = 0; i < files.size(); i++) {
+            const fs::path& target = files[i].path;
+            std::error_code ec;
+            const fs::path parent = target.parent_path();
+            if (!parent.empty() && !fs::exists(parent, ec)) {
+                for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
+                    createdDirs.push_back(dir);
+                    if (dir.parent_path() == dir) break;
+                }
+                fs::create_directories(parent, ec);
+                if (ec) return failWith(i, "can't create the directory " + parent.u8string() + ": " + ec.message());
+            }
+            if (fs::is_directory(target, ec)) return failWith(i, "it is a directory");
+            const fs::path temporary = sibling(target, "partial");
+            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                const int code = errno;
+                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "open failed"));
+            }
+            staged[i] = temporary;
+            out.write(reinterpret_cast<const char*>(files[i].bytes.data()), static_cast<std::streamsize>(files[i].bytes.size()));
+            out.close();
+            if (!out) {
+                const int code = errno;
+                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "write failed"));
+            }
+        }
+        // 2. commit: the previous file moved aside, the staged one renamed into place
+        for (size_t i = 0; i < files.size(); i++) {
+            const fs::path& target = files[i].path;
+            std::error_code ec;
+            if (fs::exists(fs::symlink_status(target, ec))) {
+                const fs::path backup = sibling(target, "previous");
+                fs::rename(target, backup, ec);
+                if (ec) return failWith(i, "can't replace it: " + ec.message());
+                backups[i] = backup;
+            }
+            fs::rename(staged[i], target, ec);
+            if (ec) return failWith(i, "can't replace it: " + ec.message());
+            staged[i].clear();
+            placed[i] = true;
+        }
+        // 3. done: the previous files go
+        for (const fs::path& backup : backups) {
+            std::error_code ec;
+            if (!backup.empty()) fs::remove(backup, ec);
         }
         return true;
     }

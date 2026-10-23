@@ -49,7 +49,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <fstream>
 #include <map>
@@ -149,6 +151,28 @@ std::vector<fs::path> WriteFilesCmd::paths() const {
     return out;
 }
 
+void WriteFilesCmd::fail(const std::string& message) {
+    if (failureSink) *failureSink = message;
+}
+
+bool WriteFilesCmd::restore(size_t i) {
+    std::error_code ec;
+    if (previous[i].existed) return writeFile(items[i].path, previous[i].content);
+    // a file it created (or began to): gone again; never a directory that was there
+    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
+    return !fs::exists(fs::symlink_status(items[i].path, ec));
+}
+
+void WriteFilesCmd::removeCreatedDirs() {
+    std::vector<fs::path> dirs = createdDirs;
+    std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
+    for (const fs::path& dir : dirs) {
+        std::error_code ec;
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+    }
+    createdDirs.clear();
+}
+
 bool WriteFilesCmd::execute() {
     if (!captured) {
         previous.clear();
@@ -157,29 +181,51 @@ bool WriteFilesCmd::execute() {
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
             if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
+                fail("can't read " + item.path.generic_string() + " (its content is kept for undo); nothing was written");
                 return false;
             }
             previous.push_back(std::move(prev));
         }
         captured = true;
     }
-    for (const Item& item : items) {
+    createdDirs.clear();
+    // on a failure at item `failed`: items [0, touched) back to their previous state, the
+    // directories created removed
+    auto rollback = [&](size_t touched, const std::string& why) {
+        std::string unrestored;
+        for (size_t j = touched; j-- > 0;) {
+            if (!restore(j)) unrestored += (unrestored.empty() ? "" : ", ") + items[j].path.generic_string();
+        }
+        removeCreatedDirs();
+        fail(why + (unrestored.empty() ? "; nothing was changed (the files written before it were put back)"
+                                       : "; and " + unrestored + " could not be put back"));
+        return false;
+    };
+    for (size_t i = 0; i < items.size(); i++) {
+        const Item& item = items[i];
         std::error_code ec;
         const fs::path parent = item.path.parent_path();
-        if (!fs::exists(parent, ec)) {
-            // remember the outermost directory created, for undo
-            fs::path missing = parent;
-            while (!missing.parent_path().empty() && !fs::exists(missing.parent_path(), ec) && missing.parent_path() != missing) {
-                missing = missing.parent_path();
+        if (!parent.empty() && !fs::exists(parent, ec)) {
+            // every directory created, for undo (and a rollback)
+            std::vector<fs::path> missing;
+            for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
+                missing.push_back(dir);
+                if (dir.parent_path() == dir) break;
             }
             fs::create_directories(parent, ec);
-            if (ec) {
-                return false;
+            for (const fs::path& dir : missing) {
+                std::error_code exists;
+                if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
             }
-            createdDirs.push_back(missing);
+            if (ec) return rollback(i, "can't create the directory " + parent.generic_string() + " for " + item.path.generic_string() + ": " + ec.message());
         }
+        errno = 0;
         if (!writeFile(item.path, item.content)) {
-            return false;
+            const int code = errno;
+            std::string reason = code ? std::strerror(code) : std::string("write failed");
+            if (fs::is_directory(item.path, ec)) reason = "it is a directory";
+            // the file itself may be half written: restored too
+            return rollback(i + 1, "can't write " + item.path.generic_string() + ": " + reason);
         }
     }
     if (afterChange) afterChange(paths());
@@ -187,16 +233,8 @@ bool WriteFilesCmd::execute() {
 }
 
 void WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) {
-        std::error_code ec;
-        if (previous[i].existed) writeFile(items[i].path, previous[i].content);
-        else fs::remove(items[i].path, ec);
-    }
-    for (auto it = createdDirs.rbegin(); it != createdDirs.rend(); ++it) {
-        std::error_code ec;
-        if (fs::is_directory(*it, ec) && fs::is_empty(*it, ec)) fs::remove(*it, ec);
-    }
-    createdDirs.clear();
+    for (size_t i = 0; i < items.size() && i < previous.size(); i++) restore(i);
+    removeCreatedDirs();
     if (afterChange) afterChange(paths());
 }
 
@@ -213,9 +251,12 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         syncFiles(*context, changed, false);
     });
     cmd->setNoMerge();
-    // addCommand runs execute() and deletes the command when it fails
+    auto failure = std::make_shared<std::string>();
+    cmd->reportFailureTo(failure);
+    // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
     if (!ctx.project()->getProjectCommandHistory()->addCommand(cmd)) {
-        error = "Writing the file(s) failed (permissions, a read-only disk, or a parent path that is a file).";
+        error = "Writing the file(s) failed: " +
+                (failure->empty() ? std::string("permissions, a read-only disk, or a parent path that is a file") : *failure) + ".";
         return false;
     }
     return true;

@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include "mcp/tools/W4Shared.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -235,4 +237,62 @@ TEST(TextureSynthesisChecks, Latin1NamesAndGarbledRecipesAreReportedNotFatal) {
     // files mode with the Latin-1 PNG and a garbled one
     EXPECT_NO_THROW(ProjectChecks::checkSynthesisRecipes(root, {assets / "caf\xE9.png", assets / "garbled.png"}));
     fs::remove_all(root);
+}
+
+// ---- WriteFilesCmd: all or nothing (the synthesis writes its set through it)
+
+TEST(TextureSynthesisWrite, AFailedMultiFileWriteChangesNothing) {
+    const fs::path dir = tempProject("write");
+    auto text = [](const fs::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    };
+    std::ofstream(dir / "assets" / "tile.png", std::ios::binary) << "old primary";
+    std::ofstream(dir / "assets" / "blocker", std::ios::binary) << "a file";
+    int changes = 0;
+    auto after = [&changes](const std::vector<fs::path>&) { changes++; };
+
+    // the primary replaced, a companion in a new directory, then one under a file: all undone
+    {
+        mcp::w4::WriteFilesCmd cmd({{dir / "assets" / "tile.png", "new primary"},
+                                    {dir / "assets" / "made" / "deeper" / "tile_normal.png", "normal"},
+                                    {dir / "assets" / "blocker" / "tile_height.png", "height"}},
+                                   after);
+        auto failure = std::make_shared<std::string>();
+        cmd.reportFailureTo(failure);
+        EXPECT_FALSE(cmd.execute());
+        EXPECT_EQ(text(dir / "assets" / "tile.png"), "old primary");
+        EXPECT_FALSE(fs::exists(dir / "assets" / "made")) << "the directories it created are gone";
+        EXPECT_NE(failure->find("assets/blocker/tile_height.png"), std::string::npos) << *failure;
+        EXPECT_NE(failure->find("nothing was changed"), std::string::npos) << *failure;
+        EXPECT_EQ(changes, 0);
+    }
+    // a target that is a directory: the files before it are put back too
+    fs::create_directories(dir / "assets" / "dir.png");
+    {
+        mcp::w4::WriteFilesCmd cmd({{dir / "assets" / "tile.png", "new primary"}, {dir / "assets" / "fresh.png", "fresh"},
+                                    {dir / "assets" / "dir.png", "x"}},
+                                   after);
+        auto failure = std::make_shared<std::string>();
+        cmd.reportFailureTo(failure);
+        EXPECT_FALSE(cmd.execute());
+        EXPECT_EQ(text(dir / "assets" / "tile.png"), "old primary");
+        EXPECT_FALSE(fs::exists(dir / "assets" / "fresh.png"));
+        EXPECT_TRUE(fs::is_directory(dir / "assets" / "dir.png"));
+        EXPECT_NE(failure->find("dir.png"), std::string::npos) << *failure;
+    }
+    // success, undo, redo
+    {
+        mcp::w4::WriteFilesCmd cmd({{dir / "assets" / "tile.png", "new primary"}, {dir / "assets" / "a" / "b" / "n.png", "normal"}}, after);
+        ASSERT_TRUE(cmd.execute());
+        EXPECT_EQ(text(dir / "assets" / "tile.png"), "new primary");
+        EXPECT_EQ(text(dir / "assets" / "a" / "b" / "n.png"), "normal");
+        cmd.undo();
+        EXPECT_EQ(text(dir / "assets" / "tile.png"), "old primary");
+        EXPECT_FALSE(fs::exists(dir / "assets" / "a")) << "nested directories it created are removed by undo";
+        ASSERT_TRUE(cmd.execute());
+        EXPECT_EQ(text(dir / "assets" / "a" / "b" / "n.png"), "normal");
+        EXPECT_EQ(changes, 3);
+    }
+    fs::remove_all(dir);
 }

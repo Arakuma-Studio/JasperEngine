@@ -108,6 +108,17 @@ namespace jasperengine::editor::texsynth {
     // `image` as PNG bytes with `recipe` embedded (no file written)
     bool encodePngWithRecipe(const Image& image, const nlohmann::json& recipe, std::vector<uint8_t>& out, std::string& error);
 
+    // Writes every file or none: each is staged next to its target as <name>.partial-<n>
+    // (missing directories created), then each existing target is moved aside and the staged
+    // file renamed into place. Any failure puts back what was there and removes what was
+    // created; `failedPath` and `error` say which file failed and why. The CLI's writer (the
+    // editor writes through its undoable WriteFilesCmd, all or nothing as well).
+    struct StagedFile {
+        std::filesystem::path path;
+        std::vector<uint8_t> bytes;
+    };
+    bool writeFilesAllOrNothing(const std::vector<StagedFile>& files, std::string& failedPath, std::string& error);
+
     // The jasper.synthesis text of PNG bytes / a PNG file (iTXt, or a tEXt with that keyword).
     // nullopt when there is none, or the file is not a PNG, truncated, or the chunk is garbled
     // (CRC mismatch, compressed, malformed); `error` says which (empty for "no recipe").
