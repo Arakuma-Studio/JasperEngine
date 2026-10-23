@@ -151,6 +151,41 @@ bool TextureSynthesisWindow::isOpen() const {
     return windowOpen;
 }
 
+void TextureSynthesisWindow::resetForProjectSwitch() {
+    cancel();
+    run.reset();
+    spec = ts::SynthesisSpec();
+    spec.seed = randomSeed();
+    runSpec = ts::SynthesisSpec();
+    runRoot.clear();
+    runGeneration = 0;
+    generatedKey.clear();
+    resultSaved = false;
+    lastWritten.clear();
+    savedOutput.clear();
+    statusMessage.clear();
+    notices.clear();
+    specWarnings.clear();
+    problems.clear();
+    problemsFingerprint.clear();
+    problemsCheckedAt = -1.0;
+    maskCanvas.reset();
+    maskDirty = true;
+    maskRevision++;
+    projectImages.clear();
+    projectImagesScannedAt = -1.0;
+    exampleLoadedPath.clear();
+    exampleRgba = ts::Image();
+    retire(exampleGpu);
+    retire(resultGpu);
+    retire(uncertaintyGpu);
+    retire(maskGpu);
+    view = View::Result;
+    zoom = 1.0f;
+    pan = ImVec2(0, 0);
+    syncSizePreset();
+}
+
 void TextureSynthesisWindow::setStatus(const std::string& message, bool error) {
     statusMessage = message;
     statusIsError = error;
@@ -272,6 +307,8 @@ std::shared_ptr<ts::SynthesisRun> TextureSynthesisWindow::generate(std::string& 
     if (options.threads <= 0) options.threads = static_cast<int>(std::max(1u, std::thread::hardware_concurrency() > 1 ? std::thread::hardware_concurrency() - 1 : 1u));
     run = ts::SynthesisRun::start(std::move(request), options, std::move(onFinished));
     runSpec = spec;
+    runRoot = root;
+    runGeneration = ts::projectGeneration();
     generatedKey = specKey();
     generatedMaskRevision = maskRevision;
     resultSaved = false;
@@ -310,26 +347,33 @@ bool TextureSynthesisWindow::isStale() const {
     return specKey() != generatedKey || (paintsMask() && maskRevision != generatedMaskRevision);
 }
 
-bool TextureSynthesisWindow::save(bool overwrite, std::vector<std::string>& written, std::string& error) {
+bool TextureSynthesisWindow::save(bool overwrite, std::vector<std::string>& written, std::string& error, const ts::SynthesisSpec* outputs) {
     written.clear();
     if (!hasResult()) {
         error = "nothing to save: Generate first";
         return false;
     }
-    if (isStale()) {
+    const fs::path root = project->getProjectPath();
+    // the result belongs to the project it was generated in
+    if (runGeneration != ts::projectGeneration() || runRoot != root) {
+        error = "this result was generated in another project: Generate again";
+        return false;
+    }
+    // where the files go: the caller's paths (MCP), else the window's
+    const ts::SynthesisSpec& paths = outputs ? *outputs : spec;
+    if (!outputs && isStale()) {
         error = "the settings changed since this result was generated: Generate again (or undo the change)";
         return false;
     }
-    if (spec.output.empty()) {
+    if (paths.output.empty()) {
         error = "choose an output path";
         return false;
     }
-    const fs::path root = project->getProjectPath();
-    // the files: the current spec's output names, the run's request and result
+    // the files: the output names, the run's request and result
     ts::SynthesisSpec saving = runSpec;
-    saving.output = spec.output;
-    saving.uncertaintyOutput = spec.uncertaintyOutput;
-    for (size_t i = 0; i < saving.companions.size() && i < spec.companions.size(); i++) saving.companions[i].output = spec.companions[i].output;
+    saving.output = paths.output;
+    saving.uncertaintyOutput = paths.uncertaintyOutput;
+    for (size_t i = 0; i < saving.companions.size() && i < paths.companions.size(); i++) saving.companions[i].output = paths.companions[i].output;
     for (const ts::Problem& p : ts::checkSpec(root, saving)) {
         if (p.field.rfind("output", 0) == 0) {
             error = p.message;
@@ -350,7 +394,7 @@ bool TextureSynthesisWindow::save(bool overwrite, std::vector<std::string>& writ
     if (!ts::writeOutputsUndoable(files, error)) return false;
     for (const ts::OutputFile& f : files) written.push_back(f.path);
     resultSaved = true;
-    savedOutput = spec.output;
+    savedOutput = paths.output;
     lastWritten = written;
     setStatus("Saved " + std::to_string(written.size()) + " file(s) as one undo step (Edit > Undo in the Project window removes them).", false);
     if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
@@ -442,7 +486,8 @@ void TextureSynthesisWindow::loadExampleForDisplay() {
     std::string error;
     if (!ts::resolveProjectFile(project->getProjectPath(), path, absolute, error)) return;
     ts::Image image;
-    if (!ts::loadImage(absolute, image, error)) return;
+    // an image the synthesis would refuse (over 8192 per side) is not decoded for display either
+    if (!ts::loadImage(absolute, image, error, nullptr, ts::kMaxImageSide)) return;
     exampleRgba = ts::toRgba8(image);
     updateGpuImage(exampleGpu, fitRgba8(exampleRgba, 2048), 1);
     if (maskCanvas && (maskCanvas->width != exampleRgba.width || maskCanvas->height != exampleRgba.height)) {

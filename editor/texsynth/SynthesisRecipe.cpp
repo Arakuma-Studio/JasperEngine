@@ -5,8 +5,15 @@
 
 #include "EditorVersion.h"
 
+#include <algorithm>
 #include <array>
+#include <atomic>
+#include <cerrno>
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -87,19 +94,85 @@ namespace jasperengine::editor::texsynth {
                    bytes[chunk.offset + 8 + keyLength] == 0;
         }
 
-        std::string recipePath(const fs::path& path, const RecipePaths& paths) {
-            if (path.empty()) return std::string();
-            if (!paths.projectDir.empty()) {
-                const fs::path rel = path.lexically_relative(paths.projectDir);
-                if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return rel.generic_u8string();
-                return path.generic_u8string();
+        // The first string (key or value) of `value` that is not valid UTF-8, with where it is
+        bool findInvalidString(const json& value, const std::string& where, std::string& found) {
+            if (value.is_string()) {
+                if (isValidUtf8(value.get_ref<const std::string&>())) return false;
+                found = where + " \"" + printableUtf8(value.get_ref<const std::string&>()) + "\"";
+                return true;
             }
-            if (!paths.outputDir.empty()) {
-                const fs::path rel = path.lexically_relative(paths.outputDir);
-                if (!rel.empty()) return rel.generic_u8string();
+            if (value.is_object()) {
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    const std::string at = where.empty() ? it.key() : where + "." + it.key();
+                    if (!isValidUtf8(it.key())) {
+                        found = "the key \"" + printableUtf8(it.key()) + "\"";
+                        return true;
+                    }
+                    if (findInvalidString(it.value(), printableUtf8(at), found)) return true;
+                }
+            } else if (value.is_array()) {
+                for (size_t i = 0; i < value.size(); i++) {
+                    if (findInvalidString(value[i], where + "[" + std::to_string(i) + "]", found)) return true;
+                }
             }
-            return path.generic_u8string();
+            return false;
         }
+
+        // ---- validateRecipe
+
+        std::string article(const char* type) {
+            const std::string t = type;
+            return (t == "object" || t == "array") ? "an " + t : "a " + t;
+        }
+
+        struct RecipeChecker {
+            std::string error;
+
+            bool wrong(const std::string& where, const json& value, const char* expected) {
+                if (error.empty()) error = where + " is " + article(value.type_name()) + ", expected " + expected;
+                return false;
+            }
+            bool optionalString(const json& object, const char* key, const std::string& where) {
+                if (!object.contains(key) || object[key].is_string()) return true;
+                return wrong(where + key, object[key], "a string");
+            }
+            bool optionalBool(const json& object, const char* key, const std::string& where) {
+                if (!object.contains(key) || object[key].is_boolean()) return true;
+                return wrong(where + key, object[key], "true or false");
+            }
+            bool optionalInteger(const json& object, const char* key, const std::string& where, int64_t lo, int64_t hi) {
+                if (!object.contains(key)) return true;
+                const json& v = object[key];
+                bool ok = false;
+                if (v.is_number_unsigned()) {
+                    const uint64_t u = v.get<uint64_t>();
+                    ok = hi >= 0 && u <= static_cast<uint64_t>(hi) && (lo <= 0 || u >= static_cast<uint64_t>(lo));
+                } else if (v.is_number_integer()) {
+                    const int64_t x = v.get<int64_t>();
+                    ok = x >= lo && x <= hi;
+                }
+                if (!ok && error.empty()) {
+                    error = where + key + " is " + (v.is_number() ? v.dump() : article(v.type_name())) + ", expected an integer in [" +
+                            std::to_string(lo) + ", " + std::to_string(hi) + "]";
+                }
+                return ok;
+            }
+            // within +-1e6: read as float, a larger value would not convert
+            bool optionalNumber(const json& object, const char* key, const std::string& where) {
+                if (!object.contains(key)) return true;
+                const json& v = object[key];
+                if (v.is_number() && std::abs(v.get<double>()) <= 1e6) return true;
+                if (!v.is_number()) return wrong(where + key, v, "a number");
+                if (error.empty()) error = where + key + " is " + v.dump() + ", expected a number within +-1e6";
+                return false;
+            }
+            // {path?, sha1?, pixelsSha1?}
+            bool source(const json& value, const std::string& where) {
+                if (!value.is_object()) return wrong(where, value, "an object");
+                const std::string at = where + ".";
+                return optionalString(value, "path", at) && optionalString(value, "sha1", at) && optionalString(value, "pixelsSha1", at);
+            }
+        };
 
         json source(const ImageInput& input, const RecipePaths& paths) {
             json j = json::object();
@@ -112,6 +185,109 @@ namespace jasperengine::editor::texsynth {
             return j;
         }
 
+    }
+
+    // ------------------------------------------------------------------ text
+
+    bool isValidUtf8(const std::string& text) {
+        const auto* p = reinterpret_cast<const unsigned char*>(text.data());
+        const size_t n = text.size();
+        size_t i = 0;
+        while (i < n) {
+            const unsigned char c = p[i];
+            if (c < 0x80) {
+                i++;
+                continue;
+            }
+            size_t length = 0;
+            uint32_t cp = 0;
+            if (c >= 0xC2 && c <= 0xDF) {
+                length = 2;
+                cp = c & 0x1Fu;
+            } else if (c >= 0xE0 && c <= 0xEF) {
+                length = 3;
+                cp = c & 0x0Fu;
+            } else if (c >= 0xF0 && c <= 0xF4) {
+                length = 4;
+                cp = c & 0x07u;
+            } else {
+                return false;   // a continuation byte, an overlong lead (C0, C1) or F5..FF
+            }
+            if (n - i < length) return false;
+            for (size_t k = 1; k < length; k++) {
+                if ((p[i + k] & 0xC0u) != 0x80u) return false;
+                cp = (cp << 6) | (p[i + k] & 0x3Fu);
+            }
+            // overlong, surrogates, beyond U+10FFFF
+            if ((length == 3 && cp < 0x800) || (length == 4 && cp < 0x10000) || (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return false;
+            i += length;
+        }
+        return true;
+    }
+
+    std::string printableUtf8(const std::string& text) {
+        if (isValidUtf8(text)) return text;
+        std::string out;
+        size_t i = 0;
+        while (i < text.size()) {
+            // the longest valid sequence starting here (1..4 bytes), else one escaped byte
+            size_t take = 0;
+            for (size_t length = 1; length <= 4 && i + length <= text.size(); length++) {
+                if (isValidUtf8(text.substr(i, length))) {
+                    take = length;
+                    break;
+                }
+            }
+            if (take) {
+                out.append(text, i, take);
+                i += take;
+            } else {
+                char buffer[8];
+                std::snprintf(buffer, sizeof(buffer), "\\x%02X", static_cast<unsigned char>(text[i]));
+                out += buffer;
+                i++;
+            }
+        }
+        return out;
+    }
+
+    bool jsonText(const json& value, std::string& text, std::string& error) {
+        std::string found;
+        if (findInvalidString(value, "", found)) {
+            error = found + " is not valid UTF-8 text";
+            return false;
+        }
+        try {
+            text = value.dump();
+        } catch (const std::exception& e) {
+            error = e.what();
+            return false;
+        }
+        return true;
+    }
+
+    std::string jsonTextLossy(const json& value, int indent) {
+        try {
+            return value.dump(indent, ' ', false, json::error_handler_t::replace);
+        } catch (const std::exception&) {
+            return "null";
+        }
+    }
+
+    // ------------------------------------------------------------------ writing
+
+    std::string recipePath(const fs::path& path, const RecipePaths& paths) {
+        if (path.empty()) return std::string();
+        if (!paths.projectDir.empty()) {
+            const fs::path rel = path.lexically_relative(paths.projectDir);
+            if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return rel.generic_u8string();
+            return path.generic_u8string();
+        }
+        if (!paths.outputDir.empty()) {
+            const fs::path rel = path.lexically_relative(paths.outputDir);
+            if (!rel.empty()) return rel.generic_u8string();
+        }
+        return path.generic_u8string();
     }
 
     json paramsToJson(const Params& p) {
@@ -198,13 +374,26 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool writePngWithRecipe(const fs::path& path, const Image& image, const json& recipe, std::string& error) {
-        std::vector<uint8_t> png, withRecipe;
+    bool recipeText(const json& recipe, std::string& text, std::string& error) {
+        if (jsonText(recipe, text, error)) return true;
+        error = "the recipe can't record " + error + " (JSON is UTF-8): rename the file";
+        return false;
+    }
+
+    bool encodePngWithRecipe(const Image& image, const json& recipe, std::vector<uint8_t>& out, std::string& error) {
+        std::vector<uint8_t> png;
         if (!encodePng(image, png)) {
             error = "PNG encoding failed (" + describeFormat(image) + ")";
             return false;
         }
-        if (!insertRecipeChunk(png, recipe.dump(), withRecipe, error)) return false;
+        std::string text;
+        if (!recipeText(recipe, text, error)) return false;
+        return insertRecipeChunk(png, text, out, error);
+    }
+
+    bool writePngWithRecipe(const fs::path& path, const Image& image, const json& recipe, std::string& error) {
+        std::vector<uint8_t> withRecipe;
+        if (!encodePngWithRecipe(image, recipe, withRecipe, error)) return false;
         fs::path temporary = path;
         temporary += ".partial";
         {
@@ -228,6 +417,88 @@ namespace jasperengine::editor::texsynth {
             fs::remove(temporary, ec);
             error = "cannot write " + path.string() + ": " + ec.message();
             return false;
+        }
+        return true;
+    }
+
+    bool writeFilesAllOrNothing(const std::vector<StagedFile>& files, std::string& failedPath, std::string& error) {
+        static std::atomic<uint64_t> counter{0};
+        const std::string tag = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count() % 1000000007) + "-" +
+                                std::to_string(counter++);
+        auto sibling = [&](const fs::path& path, const char* what) {
+            fs::path p = path;
+            p += std::string(".") + what + "-" + tag;
+            return p;
+        };
+        std::vector<fs::path> createdDirs;
+        std::vector<fs::path> staged(files.size());
+        std::vector<fs::path> backups(files.size());   // the previous target, moved aside
+        std::vector<bool> placed(files.size(), false);
+        auto cleanup = [&]() {
+            std::error_code ec;
+            for (size_t i = files.size(); i-- > 0;) {
+                if (placed[i]) fs::remove(files[i].path, ec);
+                if (!backups[i].empty()) fs::rename(backups[i], files[i].path, ec);
+                if (!staged[i].empty()) fs::remove(staged[i], ec);
+            }
+            std::sort(createdDirs.begin(), createdDirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
+            for (const fs::path& dir : createdDirs) {
+                if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+            }
+        };
+        auto failWith = [&](size_t i, const std::string& why) {
+            failedPath = files[i].path.u8string();
+            error = why + "; nothing was written";
+            cleanup();
+            return false;
+        };
+        // 1. stage
+        for (size_t i = 0; i < files.size(); i++) {
+            const fs::path& target = files[i].path;
+            std::error_code ec;
+            const fs::path parent = target.parent_path();
+            if (!parent.empty() && !fs::exists(parent, ec)) {
+                for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
+                    createdDirs.push_back(dir);
+                    if (dir.parent_path() == dir) break;
+                }
+                fs::create_directories(parent, ec);
+                if (ec) return failWith(i, "can't create the directory " + parent.u8string() + ": " + ec.message());
+            }
+            if (fs::is_directory(target, ec)) return failWith(i, "it is a directory");
+            const fs::path temporary = sibling(target, "partial");
+            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+            if (!out) {
+                const int code = errno;
+                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "open failed"));
+            }
+            staged[i] = temporary;
+            out.write(reinterpret_cast<const char*>(files[i].bytes.data()), static_cast<std::streamsize>(files[i].bytes.size()));
+            out.close();
+            if (!out) {
+                const int code = errno;
+                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "write failed"));
+            }
+        }
+        // 2. commit: the previous file moved aside, the staged one renamed into place
+        for (size_t i = 0; i < files.size(); i++) {
+            const fs::path& target = files[i].path;
+            std::error_code ec;
+            if (fs::exists(fs::symlink_status(target, ec))) {
+                const fs::path backup = sibling(target, "previous");
+                fs::rename(target, backup, ec);
+                if (ec) return failWith(i, "can't replace it: " + ec.message());
+                backups[i] = backup;
+            }
+            fs::rename(staged[i], target, ec);
+            if (ec) return failWith(i, "can't replace it: " + ec.message());
+            staged[i].clear();
+            placed[i] = true;
+        }
+        // 3. done: the previous files go
+        for (const fs::path& backup : backups) {
+            std::error_code ec;
+            if (!backup.empty()) fs::remove(backup, ec);
         }
         return true;
     }
@@ -330,13 +601,14 @@ namespace jasperengine::editor::texsynth {
     std::vector<SourceState> checkRecipeSources(const json& recipe, const fs::path& recipeFile, const fs::path& projectDir,
                                                 const std::function<std::string(const fs::path&)>& hashFile) {
         std::vector<SourceState> states;
-        const bool fromProject = recipe.value("pathBase", std::string("file")) == "project";
+        if (!recipe.is_object()) return states;
+        const bool fromProject = jsonString(recipe, "pathBase", "file") == "project";
         const fs::path base = fromProject ? projectDir : recipeFile.parent_path();
         auto check = [&](const std::string& role, const json& entry) {
             if (!entry.is_object()) return;
             SourceState state;
             state.role = role;
-            state.path = entry.value("path", std::string());
+            state.path = jsonString(entry, "path");
             if (state.path.empty()) {
                 state.state = "unknown";
                 states.push_back(state);
@@ -355,7 +627,7 @@ namespace jasperengine::editor::texsynth {
                 }
             }
             if (hash.empty()) state.state = "missing";
-            else state.state = hash == entry.value("sha1", std::string()) ? "unchanged" : "changed";
+            else state.state = hash == jsonString(entry, "sha1") ? "unchanged" : "changed";
             states.push_back(state);
         };
         if (recipe.contains("examples") && recipe["examples"].is_array()) {
@@ -370,7 +642,7 @@ namespace jasperengine::editor::texsynth {
         if (recipe.contains("companions") && recipe["companions"].is_array()) {
             for (const json& companion : recipe["companions"]) {
                 if (!companion.is_object() || !companion.contains("sources") || !companion["sources"].is_array()) continue;
-                const std::string name = companion.value("name", std::string("?"));
+                const std::string name = jsonString(companion, "name", "?");
                 for (size_t i = 0; i < companion["sources"].size(); i++) {
                     check("companions." + name + "[" + std::to_string(i) + "]", companion["sources"][i]);
                 }
@@ -379,6 +651,133 @@ namespace jasperengine::editor::texsynth {
         if (recipe.contains("inpaintMask")) check("inpaintMask", recipe["inpaintMask"]);
         if (recipe.contains("targetGuide")) check("targetGuide", recipe["targetGuide"]);
         return states;
+    }
+
+    // ------------------------------------------------------------------ reading
+
+    bool validateRecipe(const json& recipe, std::string& error) {
+        RecipeChecker c;
+        if (!recipe.is_object()) {
+            c.wrong("the recipe", recipe, "an object");
+            error = c.error;
+            return false;
+        }
+        if (!recipe.contains("format")) {
+            error = "format is missing";
+            return false;
+        }
+        bool ok = c.optionalInteger(recipe, "format", "", 1, 1000000);
+        for (const char* key : {"generator", "engine", "role", "mode", "quality", "pathBase"}) ok = ok && c.optionalString(recipe, key, "");
+        if (ok && recipe.contains("seed")) {
+            const json& seed = recipe["seed"];
+            if (seed.is_string()) {
+                const std::string& text = seed.get_ref<const std::string&>();
+                const bool digits = !text.empty() && text.size() <= 20 && std::all_of(text.begin(), text.end(), [](char ch) { return ch >= '0' && ch <= '9'; });
+                if (!digits || (text.size() == 20 && text > "18446744073709551615")) {
+                    c.error = "seed is \"" + printableUtf8(text) + "\", expected a whole number";
+                    ok = false;
+                }
+            } else if (!seed.is_number_unsigned()) {
+                ok = c.wrong("seed", seed, "a whole number from 0");
+            }
+        }
+        if (ok && recipe.contains("size")) {
+            const json& size = recipe["size"];
+            if (!size.is_array() || size.size() != 2) {
+                ok = c.wrong("size", size, "[width, height]");
+            } else {
+                const json pair = {{"width", size[0]}, {"height", size[1]}};
+                ok = c.optionalInteger(pair, "width", "size.", 0, 65535) && c.optionalInteger(pair, "height", "size.", 0, 65535);
+            }
+        }
+        if (ok && recipe.contains("params")) {
+            const json& p = recipe["params"];
+            if (!p.is_object()) {
+                ok = c.wrong("params", p, "an object");
+            } else {
+                for (const char* key : {"nearestNeighbors", "randomSampleLocations", "backtrackStages"}) ok = ok && c.optionalInteger(p, key, "params.", -1000000, 1000000);
+                for (const char* key : {"cauchyDispersion", "backtrackPercent", "guideAlpha", "borderFraction"}) ok = ok && c.optionalNumber(p, key, "params.");
+                ok = ok && c.optionalBool(p, "guideDecay", "params.");
+            }
+        }
+        if (ok && recipe.contains("examples")) {
+            const json& examples = recipe["examples"];
+            if (!examples.is_array()) ok = c.wrong("examples", examples, "an array");
+            for (size_t i = 0; ok && examples.is_array() && i < examples.size(); i++) {
+                const std::string at = "examples[" + std::to_string(i) + "]";
+                const json& ex = examples[i];
+                ok = c.source(ex, at) && c.optionalBool(ex, "sampleable", at + ".");
+                if (ok && ex.contains("sampleMask")) ok = c.source(ex["sampleMask"], at + ".sampleMask");
+                if (ok && ex.contains("guide")) ok = c.source(ex["guide"], at + ".guide");
+            }
+        }
+        if (ok && recipe.contains("companions")) {
+            const json& companions = recipe["companions"];
+            if (!companions.is_array()) ok = c.wrong("companions", companions, "an array");
+            for (size_t i = 0; ok && companions.is_array() && i < companions.size(); i++) {
+                const std::string at = "companions[" + std::to_string(i) + "]";
+                const json& companion = companions[i];
+                if (!companion.is_object()) {
+                    ok = c.wrong(at, companion, "an object");
+                    break;
+                }
+                ok = c.optionalString(companion, "name", at + ".");
+                if (ok && companion.contains("sources")) {
+                    const json& sources = companion["sources"];
+                    if (!sources.is_array()) ok = c.wrong(at + ".sources", sources, "an array");
+                    for (size_t s = 0; ok && sources.is_array() && s < sources.size(); s++) {
+                        ok = c.source(sources[s], at + ".sources[" + std::to_string(s) + "]");
+                    }
+                }
+            }
+        }
+        if (ok && recipe.contains("inpaintMask")) {
+            const json& mask = recipe["inpaintMask"];
+            ok = c.source(mask, "inpaintMask") && c.optionalString(mask, "channel", "inpaintMask.") && c.optionalString(mask, "source", "inpaintMask.") &&
+                 c.optionalBool(mask, "invert", "inpaintMask.");
+        }
+        if (ok && recipe.contains("targetGuide")) ok = c.source(recipe["targetGuide"], "targetGuide");
+        if (ok && recipe.contains("outputs")) {
+            const json& outputs = recipe["outputs"];
+            if (!outputs.is_object()) ok = c.wrong("outputs", outputs, "an object");
+            for (auto it = outputs.begin(); ok && outputs.is_object() && it != outputs.end(); ++it) {
+                if (!it.value().is_string()) ok = c.wrong("outputs." + it.key(), it.value(), "a string");
+            }
+        }
+        if (!ok) error = c.error;
+        return ok;
+    }
+
+    std::string jsonString(const json& object, const char* key, const std::string& fallback) {
+        if (!object.is_object()) return fallback;
+        const auto it = object.find(key);
+        if (it == object.end() || !it->is_string()) return fallback;
+        return it->get<std::string>();
+    }
+
+    bool jsonBool(const json& object, const char* key, bool fallback) {
+        if (!object.is_object()) return fallback;
+        const auto it = object.find(key);
+        if (it == object.end() || !it->is_boolean()) return fallback;
+        return it->get<bool>();
+    }
+
+    std::optional<uint64_t> recipeSeed(const json& recipe) {
+        if (!recipe.is_object() || !recipe.contains("seed")) return std::nullopt;
+        const json& seed = recipe["seed"];
+        if (seed.is_number_unsigned()) return seed.get<uint64_t>();
+        if (seed.is_number_integer()) {
+            const int64_t v = seed.get<int64_t>();
+            if (v < 0) return std::nullopt;
+            return static_cast<uint64_t>(v);
+        }
+        if (seed.is_string()) {
+            const std::string& text = seed.get_ref<const std::string&>();
+            if (text.empty() || text.size() > 20 || !std::all_of(text.begin(), text.end(), [](char ch) { return ch >= '0' && ch <= '9'; })) return std::nullopt;
+            if (text.size() == 20 && text > "18446744073709551615") return std::nullopt;
+            return std::strtoull(text.c_str(), nullptr, 10);
+        }
+        return std::nullopt;
     }
 
 }

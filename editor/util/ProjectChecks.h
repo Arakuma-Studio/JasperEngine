@@ -198,7 +198,8 @@ namespace jasperengine::editor {
         // PNGs written by the texture synthesis carry their recipe (texsynth/SynthesisRecipe.h):
         // the sources' SHA-1s at synthesis time. A source changed or deleted since makes the
         // texture stale: a warning (tool "texture") at the PNG, code synthesis-source-changed or
-        // synthesis-source-missing, with how to regenerate it. Fast on large projects: only the
+        // synthesis-source-missing, with how to regenerate it; a garbled recipe (CRC, not JSON,
+        // wrong types) is a warning synthesis-recipe-invalid. Fast on large projects: only the
         // chunks before IDAT are read, sources are hashed only for PNGs with a recipe, and both
         // are cached by mtime and size in .jasperengine/synthesis-check-cache.json (when that
         // directory exists).

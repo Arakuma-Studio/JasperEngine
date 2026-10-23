@@ -74,8 +74,8 @@ project, e.g. a system header warning; `engine/shaderlib/<include>` for an engin
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
 when there is a fix, `suggestion`; so do the shader findings of a UI effect (`code`
 `HTMLUI-FX-0012` to `HTMLUI-FX-0015`), the texture findings (`synthesis-source-changed`,
-`synthesis-source-missing`) and the Stochastic Tiling warnings (`stochastic-tilted-normal-map`,
-`stochastic-no-effect`, below); the other findings have exactly the six keys above.
+`synthesis-source-missing`, `synthesis-recipe-invalid`) and the Stochastic Tiling warnings
+(`stochastic-tilted-normal-map`, `stochastic-no-effect`, below); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
 sources were checked).
@@ -173,6 +173,12 @@ assets/textures/rock_tile.png: warning: synthesized from assets/textures/rock_he
 ```
 
 - Severity **warning**, tool `texture`, one finding per changed or missing source, at the PNG.
+- A garbled recipe (CRC mismatch, not JSON, or a value of the wrong type, e.g. a number where a
+  path belongs) is one **warning** `synthesis-recipe-invalid` at the PNG saying what is wrong:
+  its sources can't be checked; synthesizing it again writes a fresh recipe.
+- File names that are not valid UTF-8 (raw Latin-1 bytes) are scanned like the others (shown with
+  U+FFFD in `--format json`); they are just not cached (JSON keys are UTF-8), so read again on
+  every run.
 - A companion or uncertainty output whose primary output exists is covered by the primary's
   findings (the set was made together); named with `--files`, it is reported itself.
 - Fast on large projects: for each PNG only the chunks before `IDAT` are read (where the recipe

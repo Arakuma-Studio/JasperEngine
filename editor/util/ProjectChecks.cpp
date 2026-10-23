@@ -1635,7 +1635,7 @@ void loadSynthesisCache(SynthesisCache& cache, const fs::path& projectRoot) {
     std::string text;
     if (!editor::ProjectChecks::readFile(cache.file, text)) return;
     const Json j = Json::parse(text, nullptr, false);
-    if (!j.is_object() || j.value("version", 0) != 1) return;
+    if (!j.is_object() || !j.contains("version") || j["version"] != 1) return;
     if (j.contains("pngs") && j["pngs"].is_object()) cache.pngs = j["pngs"];
     if (j.contains("hashes") && j["hashes"].is_object()) cache.hashes = j["hashes"];
 }
@@ -1645,13 +1645,22 @@ void saveSynthesisCache(const SynthesisCache& cache) {
     const Json j = {{"version", 1}, {"pngs", cache.pngs}, {"hashes", cache.hashes}};
     fs::path temporary = cache.file;
     temporary += ".partial";
+    // the keys are valid UTF-8 (cacheable() keeps the others out), so nothing is lost; replace
+    // only makes sure a dump never throws
+    const std::string text = editor::texsynth::jsonTextLossy(j);
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     if (!out) return;
-    out << j.dump();
+    out << text;
     out.close();
     std::error_code ec;
     fs::rename(temporary, cache.file, ec);
     if (ec) fs::remove(temporary, ec);
+}
+
+// JSON keys are UTF-8 text: a path that is not (a Latin-1 file name) is not cached, it is read
+// again on every scan instead (a lossy key could match another file)
+bool cacheable(const std::string& key) {
+    return editor::texsynth::isValidUtf8(key);
 }
 
 bool cachedStamp(const Json& entry, int64_t time, std::uintmax_t size) {
@@ -1672,7 +1681,8 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
     SynthesisCache cache;
     loadSynthesisCache(cache, projectRoot);
 
-    // the recipe text of a PNG, nullopt without one (cached: PNGs without a recipe are not reopened)
+    // the recipe of a PNG, nullopt without one (cached: PNGs without a recipe are not reopened).
+    // A garbled one (CRC mismatch, not JSON, wrong types) comes back as a string: why
     auto recipeOf = [&](const fs::path& png) -> std::optional<Json> {
         std::uintmax_t size = 0;
         bool exists = false;
@@ -1681,14 +1691,22 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         const std::string key = projectRelative(projectRoot, png);
         check.pngs++;
         if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
-        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png);
+        std::string readError;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError);
         std::optional<Json> recipe;
         if (text) {
             Json parsed = Json::parse(*text, nullptr, false);
-            if (parsed.is_object()) recipe = parsed;
+            std::string invalid;
+            if (parsed.is_discarded()) recipe = Json("the jasper.synthesis chunk is not JSON");
+            else if (!editor::texsynth::validateRecipe(parsed, invalid)) recipe = Json(invalid);
+            else recipe = parsed;
+        } else if (!readError.empty() && readError.find("jasper.synthesis") != std::string::npos) {
+            recipe = Json(readError);   // garbled chunk (CRC mismatch, compressed, malformed)
         }
-        cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
-        cache.dirty = true;
+        if (cacheable(key)) {
+            cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
+            cache.dirty = true;
+        }
         return recipe;
     };
     // a source's SHA-1 (cached by mtime and size); "" when it is gone
@@ -1704,8 +1722,10 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
         std::string content;
         if (!readFile(source, content)) return std::string();
         const std::string sha1 = editor::texsynth::sha1Hex(reinterpret_cast<const uint8_t*>(content.data()), content.size());
-        cache.hashes[key] = Json::array({time, size, sha1});
-        cache.dirty = true;
+        if (cacheable(key)) {
+            cache.hashes[key] = Json::array({time, size, sha1});
+            cache.dirty = true;
+        }
         return sha1;
     };
 
@@ -1726,9 +1746,9 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
                 if (std::optional<Json> recipe = recipeOf(file)) {
                     checked.push_back({file, *recipe});
                     givenPngs.insert(file.lexically_normal());
-                    continue;
                 }
             }
+            // a synthesized PNG may be the source of others too (synthesized from a synthesized one)
             givenSources.insert(file.lexically_normal().generic_string());
         }
         if (!givenSources.empty()) {
@@ -1749,22 +1769,38 @@ editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecip
 
     for (const Stale& item : checked) {
         const Json& recipe = item.recipe;
-        const std::string role = recipe.value("role", std::string("primary"));
+        if (recipe.is_string()) {
+            // garbled: can't be checked nor regenerated from it
+            check.recipes++;
+            Finding finding;
+            finding.tool = "texture";
+            finding.path = projectRelative(projectRoot, item.png);
+            finding.severity = "warning";
+            finding.code = "synthesis-recipe-invalid";
+            finding.message = "its texture synthesis recipe (jasper.synthesis chunk) is garbled: " + recipe.get<std::string>() +
+                              "; its sources can't be checked nor the texture regenerated from it";
+            finding.suggestion = "synthesize it again (Synthesize Texture... in the Project window, or synthesize_texture) to write a "
+                                 "fresh recipe; a PNG re-saved without the chunk is no longer checked";
+            check.findings.push_back(std::move(finding));
+            continue;
+        }
+        const std::string role = editor::texsynth::jsonString(recipe, "role", "primary");
         // a companion / uncertainty output: its primary output reports the set
         if (files.empty() && role != "primary" && recipe.contains("outputs") && recipe["outputs"].is_object() &&
             recipe["outputs"].contains("primary") && recipe["outputs"]["primary"].is_string()) {
             const fs::path recorded = fs::u8path(recipe["outputs"]["primary"].get<std::string>());
-            const bool fromProject = recipe.value("pathBase", std::string("file")) == "project";
+            const bool fromProject = editor::texsynth::jsonString(recipe, "pathBase", "file") == "project";
             const fs::path primary = recorded.is_absolute() ? recorded : (fromProject ? projectRoot : item.png.parent_path()) / recorded;
             std::error_code ec;
             if (primary.lexically_normal() != item.png.lexically_normal() && fs::is_regular_file(primary, ec)) continue;
         }
         check.recipes++;
         const std::string rel = projectRelative(projectRoot, item.png);
-        const std::string seed = recipe.contains("seed") ? (recipe["seed"].is_string() ? recipe["seed"].get<std::string>() : recipe["seed"].dump()) : "?";
+        const std::optional<uint64_t> seedValue = editor::texsynth::recipeSeed(recipe);
+        const std::string seed = seedValue ? std::to_string(*seedValue) : "?";
         const std::string suggestion =
             "regenerate it: right-click it in the Project window > Edit Synthesis... > Regenerate > Save, or synthesize_texture with the "
-            "`regenerate` arguments get_asset_info gives (mode " + recipe.value("mode", std::string("?")) + ", seed " + seed + ", overwrite: true)";
+            "`regenerate` arguments get_asset_info gives (mode " + editor::texsynth::jsonString(recipe, "mode", "?") + ", seed " + seed + ", overwrite: true)";
         for (const editor::texsynth::SourceState& s : editor::texsynth::checkRecipeSources(recipe, item.png, projectRoot, hashOf)) {
             if (s.state != "changed" && s.state != "missing") continue;
             Finding finding;

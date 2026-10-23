@@ -731,3 +731,319 @@ TEST(TexSynthRecipe, RoundTripAndGarbledChunks) {
     EXPECT_EQ(readRecipeTextFromPng(withText.data(), withText.size(), &error).value_or(""), "{\"format\":1}");
     fs::remove_all(dir);
 }
+
+// ---- recipe text: file names that are not UTF-8, garbled recipes (never an exception)
+
+TEST(TexSynthRecipe, NonUtf8PathsAreReportedNotThrown) {
+    EXPECT_TRUE(isValidUtf8("assets/rock_albedo.png"));
+    EXPECT_TRUE(isValidUtf8("assets/caf\xC3\xA9.png"));            // é in UTF-8
+    EXPECT_TRUE(isValidUtf8("\xF0\x9F\x99\x82"));                  // U+1F642
+    EXPECT_FALSE(isValidUtf8("assets/caf\xE9.png"));               // é in Latin-1
+    EXPECT_FALSE(isValidUtf8("\xC0\xAF"));                         // overlong '/'
+    EXPECT_FALSE(isValidUtf8("\xED\xA0\x80"));                     // a surrogate
+    EXPECT_FALSE(isValidUtf8("\xF4\x90\x80\x80"));                 // beyond U+10FFFF
+    EXPECT_FALSE(isValidUtf8("\xE2\x82"));                         // truncated
+    EXPECT_EQ(printableUtf8("caf\xE9-\xC3\xA9.png"), "caf\\xE9-\xC3\xA9.png");
+
+    const nlohmann::json bad = {{"examples", nlohmann::json::array({{{"path", "caf\xE9.png"}}})}};
+    std::string text, error;
+    EXPECT_FALSE(jsonText(bad, text, error));
+    EXPECT_NE(error.find("caf\\xE9.png"), std::string::npos) << error;
+    EXPECT_NE(error.find("examples[0].path"), std::string::npos) << error;
+    EXPECT_FALSE(recipeText(bad, text, error));
+    EXPECT_NE(error.find("rename"), std::string::npos) << error;
+    EXPECT_NE(jsonTextLossy(bad).find("\xEF\xBF\xBD"), std::string::npos);   // U+FFFD
+
+    // a finished synthesis whose example has a Latin-1 name: the recipe can't be written, an error says so
+    const fs::path dir = tempDir();
+    Request r = basicRequest(Mode::Extend, 16, 16, 16);
+    const Result result = synthesize(r);
+    ASSERT_EQ(result.status, Status::Ok);
+    r.examples[0].image.path = dir / "caf\xE9.png";
+    RecipePaths paths;
+    paths.projectDir = dir;
+    paths.outputs["primary"] = dir / "out.png";
+    const nlohmann::json recipe = makeRecipe(r, result, "primary", paths);
+    EXPECT_FALSE(isValidUtf8(recipePath(r.examples[0].image.path, paths)));
+    std::vector<uint8_t> png;
+    EXPECT_FALSE(encodePngWithRecipe(result.primary, recipe, png, error));
+    EXPECT_FALSE(writePngWithRecipe(dir / "out.png", result.primary, recipe, error));
+    EXPECT_NE(error.find("caf\\xE9.png"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(dir / "out.png"));
+    fs::remove_all(dir);
+}
+
+TEST(TexSynthRecipe, GarbledRecipesAreReportedNotThrown) {
+    using nlohmann::json;
+    const json good = json::parse(R"({"format":1,"mode":"tileable","role":"primary","pathBase":"project","seed":"18446744073709551615",
+        "size":[64,64],"params":{"nearestNeighbors":20,"cauchyDispersion":1.0,"guideDecay":true},
+        "examples":[{"path":"a.png","sha1":"x","sampleable":true,"sampleMask":{"path":"m.png","sha1":"y"}}],
+        "companions":[{"name":"normal","sources":[{"path":"n.png","sha1":"z"}]}],
+        "inpaintMask":{"source":"alpha","invert":false},"outputs":{"primary":"o.png"}})");
+    std::string error;
+    EXPECT_TRUE(validateRecipe(good, error)) << error;
+    EXPECT_EQ(recipeSeed(good).value_or(0), 18446744073709551615ULL);
+    EXPECT_EQ(jsonString(good, "mode"), "tileable");
+    EXPECT_EQ(jsonString(good, "size", "?"), "?");          // another type: the fallback
+    EXPECT_EQ(jsonString(json(5), "mode", "f"), "f");       // not an object
+    EXPECT_TRUE(jsonBool(good["examples"][0], "sampleable", false));
+
+    const std::vector<std::pair<std::string, std::string>> garbled = {
+        {R"({"format":1,"examples":[{"path":5}]})", "examples[0].path is a number, expected a string"},
+        {R"({"format":1,"examples":[{"path":"a.png","sha1":7}]})", "examples[0].sha1"},
+        {R"({"format":1,"examples":[5]})", "examples[0] is a number, expected an object"},
+        {R"({"format":1,"examples":{"path":"a.png"}})", "examples is an object, expected an array"},
+        {R"({"format":1,"pathBase":3})", "pathBase is a number"},
+        {R"({"format":1,"role":[]})", "role is an array"},
+        {R"({"format":"1"})", "format is a string"},
+        {R"({"mode":"tileable"})", "format is missing"},
+        {R"({"format":1,"seed":-3})", "seed"},
+        {R"({"format":1,"seed":1.5})", "seed"},
+        {R"({"format":1,"seed":"12x"})", "seed"},
+        {R"({"format":1,"seed":"99999999999999999999"})", "seed"},
+        {R"({"format":1,"size":[1]})", "size"},
+        {R"({"format":1,"size":["a",2]})", "size.width"},
+        {R"({"format":1,"params":{"nearestNeighbors":1.5}})", "params.nearestNeighbors"},
+        {R"({"format":1,"params":{"cauchyDispersion":"x"}})", "params.cauchyDispersion is a string"},
+        {R"({"format":1,"params":{"cauchyDispersion":1e300}})", "params.cauchyDispersion"},
+        {R"({"format":1,"params":{"guideDecay":1}})", "params.guideDecay"},
+        {R"({"format":1,"params":7})", "params is a number"},
+        {R"({"format":1,"companions":[{"name":1}]})", "companions[0].name"},
+        {R"({"format":1,"companions":[{"name":"n","sources":[{"path":false}]}]})", "companions[0].sources[0].path"},
+        {R"({"format":1,"companions":[{"name":"n","sources":{}}]})", "companions[0].sources is an object"},
+        {R"({"format":1,"inpaintMask":{"invert":"yes"}})", "inpaintMask.invert"},
+        {R"({"format":1,"targetGuide":"g.png"})", "targetGuide is a string"},
+        {R"({"format":1,"outputs":{"primary":3}})", "outputs.primary is a number"},
+        {R"([1,2])", "the recipe is an array"},
+    };
+    for (const auto& [text, needle] : garbled) {
+        const json recipe = json::parse(text);
+        error.clear();
+        EXPECT_FALSE(validateRecipe(recipe, error)) << text;
+        EXPECT_NE(error.find(needle), std::string::npos) << text << " -> " << error;
+        // the readers never throw on it
+        EXPECT_NO_THROW(checkRecipeSources(recipe, "/tmp/x.png", "/tmp", [](const fs::path&) { return std::string("h"); })) << text;
+        EXPECT_NO_THROW(recipeSeed(recipe)) << text;
+    }
+    // what checkRecipeSources makes of the wrong types: no path -> "unknown", a sha1 of another type -> "changed"
+    const std::vector<SourceState> states =
+        checkRecipeSources(json::parse(R"({"format":1,"pathBase":3,"examples":[{"path":5},{"path":"a.png","sha1":7}]})"), "/p/x.png", "/p",
+                           [](const fs::path&) { return std::string("h"); });
+    ASSERT_EQ(states.size(), 2u);
+    EXPECT_EQ(states[0].state, "unknown");
+    EXPECT_EQ(states[1].state, "changed");
+    EXPECT_EQ(states[1].resolved, fs::path("/p/a.png"));   // pathBase of another type: "file", the PNG's directory
+}
+
+// ---- writing a set of files (the CLI): all or nothing
+
+TEST(TexSynthRecipe, WriteFilesAllOrNothing) {
+    const fs::path dir = tempDir();
+    auto bytes = [](const std::string& text) { return std::vector<uint8_t>(text.begin(), text.end()); };
+    auto text = [&](const fs::path& path) {
+        const std::vector<uint8_t> b = readFile(path);
+        return std::string(b.begin(), b.end());
+    };
+    auto listing = [&]() {
+        std::vector<std::string> names;
+        for (const auto& entry : fs::recursive_directory_iterator(dir)) names.push_back(fs::relative(entry.path(), dir).generic_string());
+        std::sort(names.begin(), names.end());
+        return names;
+    };
+    writeFile(dir / "primary.png", bytes("old primary"));
+    writeFile(dir / "blocker", bytes("a file where a directory is expected"));
+    std::string failed, error;
+
+    // staging fails (a path component is a file): the primary keeps its content, nothing is left behind
+    EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "new" / "deep" / "normal.png", bytes("n")},
+                                         {dir / "blocker" / "uncertainty.png", bytes("u")}},
+                                        failed, error));
+    EXPECT_EQ(failed, (dir / "blocker" / "uncertainty.png").u8string());
+    EXPECT_NE(error.find("nothing was written"), std::string::npos) << error;
+    EXPECT_EQ(text(dir / "primary.png"), "old primary");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png"}));
+
+    // committing fails (the target is a directory that is not empty): the replaced primary comes back
+    fs::create_directories(dir / "taken" / "inside");
+    EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "taken", bytes("t")}}, failed, error));
+    EXPECT_EQ(failed, (dir / "taken").u8string());
+    EXPECT_EQ(text(dir / "primary.png"), "old primary");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "taken", "taken/inside"}));
+
+    // success: written and replaced, no staged or previous copies left
+    ASSERT_TRUE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "sub" / "normal.png", bytes("n")}}, failed, error)) << error;
+    EXPECT_EQ(text(dir / "primary.png"), "new primary");
+    EXPECT_EQ(text(dir / "sub" / "normal.png"), "n");
+    EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "sub", "sub/normal.png", "taken", "taken/inside"}));
+    fs::remove_all(dir);
+}
+
+// ---- memory, cancellation and failures
+
+namespace {
+
+    // A PNG of the given size without its pixels (IHDR, an empty IDAT, IEND): stbi_info reads
+    // the header up to the first IDAT, so a huge image can be probed without writing it
+    std::vector<uint8_t> pngHeaderOnly(uint32_t w, uint32_t h) {
+        std::vector<uint8_t> png = {137, 80, 78, 71, 13, 10, 26, 10};
+        auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+            const uint32_t n = static_cast<uint32_t>(data.size());
+            const uint8_t length[4] = {static_cast<uint8_t>(n >> 24), static_cast<uint8_t>(n >> 16), static_cast<uint8_t>(n >> 8), static_cast<uint8_t>(n)};
+            png.insert(png.end(), length, length + 4);
+            const size_t start = png.size();
+            png.insert(png.end(), type, type + 4);
+            png.insert(png.end(), data.begin(), data.end());
+            uint32_t crc = 0xFFFFFFFFu;
+            for (size_t i = start; i < png.size(); i++) {
+                crc ^= png[i];
+                for (int k = 0; k < 8; k++) crc = (crc & 1) ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+            }
+            crc = ~crc;
+            const uint8_t c[4] = {static_cast<uint8_t>(crc >> 24), static_cast<uint8_t>(crc >> 16), static_cast<uint8_t>(crc >> 8), static_cast<uint8_t>(crc)};
+            png.insert(png.end(), c, c + 4);
+        };
+        chunk("IHDR", {static_cast<uint8_t>(w >> 24), static_cast<uint8_t>(w >> 16), static_cast<uint8_t>(w >> 8), static_cast<uint8_t>(w),
+                       static_cast<uint8_t>(h >> 24), static_cast<uint8_t>(h >> 16), static_cast<uint8_t>(h >> 8), static_cast<uint8_t>(h), 8, 2, 0, 0, 0});
+        chunk("IDAT", {});
+        chunk("IEND", {});
+        return png;
+    }
+
+}
+
+TEST(TexSynth, PyramidKeepsOnlyReducedLevelsAndRebuildsThemExactly) {
+    const Image rgba = toRgba8(noiseImage(200, 120, 5, 4));
+    for (int levels : {1, 3, 6, 10}) {
+        detail::Pyramid pyramid;
+        ASSERT_TRUE(detail::Pyramid::build(rgba, levels, pyramid));
+        ASSERT_EQ(pyramid.levels(), levels);
+        size_t stored = 0;
+        for (const Image& small : pyramid.reduced) stored += small.pixelCount();
+        EXPECT_LE(stored * 2, rgba.pixelCount()) << "the reduced levels together are at most half the image";
+        for (int i = 0; i < levels; i++) {
+            // what every level used to be: scaled down by 2^(L-1-i) (capped) and back up, at full size
+            int factor = 1 << std::min(20, levels - 1 - i);
+            while (factor > 1 && (rgba.width / factor < 2 || rgba.height / factor < 2)) factor /= 2;
+            const Image expected = factor == 1 ? rgba : resizeRgba8(resizeRgba8(rgba, rgba.width / factor, rgba.height / factor), rgba.width, rgba.height);
+            Image scratch;
+            const Image& level = pyramid.level(i, scratch);
+            EXPECT_EQ(level.width, rgba.width);
+            EXPECT_TRUE(level.data == expected.data) << "level " << i << " of " << levels;
+        }
+    }
+    // a cancel during the build stops it
+    std::atomic<bool> cancel{true};
+    detail::Pyramid pyramid;
+    EXPECT_FALSE(detail::Pyramid::build(rgba, 4, pyramid, &cancel));
+}
+
+TEST(TexSynth, BlurIsTheSeparableGaussianAndStopsOnCancel) {
+    const Image rgba = toRgba8(noiseImage(37, 23, 9, 4));
+    const Image blurred = blurRgba8(rgba, 2.0f);
+    // a plain two-pass reference (the full-size float pass the blur used to make)
+    const int radius = 6;
+    std::vector<float> kernel(2 * radius + 1);
+    float sum = 0.0f;
+    for (int i = -radius; i <= radius; i++) sum += kernel[i + radius] = std::exp(-0.5f * static_cast<float>(i * i) / 4.0f);
+    for (float& k : kernel) k /= sum;
+    std::vector<float> tmp(rgba.pixelCount() * 4);
+    for (int y = 0; y < rgba.height; y++)
+        for (int x = 0; x < rgba.width; x++)
+            for (int c = 0; c < 4; c++) {
+                float acc = 0.0f;
+                for (int i = -radius; i <= radius; i++) acc += kernel[i + radius] * rgba.pixel(std::clamp(x + i, 0, rgba.width - 1), y)[c];
+                tmp[(static_cast<size_t>(y) * rgba.width + x) * 4 + c] = acc;
+            }
+    for (int y = 0; y < rgba.height; y++)
+        for (int x = 0; x < rgba.width; x++)
+            for (int c = 0; c < 4; c++) {
+                float acc = 0.0f;
+                for (int i = -radius; i <= radius; i++) acc += kernel[i + radius] * tmp[(static_cast<size_t>(std::clamp(y + i, 0, rgba.height - 1)) * rgba.width + x) * 4 + c];
+                ASSERT_EQ(blurred.pixel(x, y)[c], static_cast<uint8_t>(std::clamp(std::lround(acc), 0L, 255L))) << x << "," << y;
+            }
+    std::atomic<bool> cancel{true};
+    EXPECT_TRUE(blurRgba8(rgba, 2.0f, &cancel).empty());
+}
+
+TEST(TexSynth, CancelReachesThePreparation) {
+    // a large example in guided style transfer with 10 stages: seconds of preparation (decode,
+    // blur, histogram, pyramids) before the first stage, which used to ignore the cancel flag
+    Request r;
+    r.mode = Mode::Guided;
+    r.quality = Quality::High;
+    r.overrides.backtrackStages = 10;
+    r.examples.push_back(Example::fromImage(noiseImage(3072, 3072, 3)));
+    r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 4));
+    std::atomic<bool> cancel{false};
+    Control control;
+    control.cancel = &cancel;
+    std::thread canceller([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        cancel = true;
+    });
+    const auto start = std::chrono::steady_clock::now();
+    const Result result = synthesize(r, control);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    canceller.join();
+    EXPECT_EQ(result.status, Status::Cancelled);
+    EXPECT_LT(seconds, 1.5) << "the old code took 2.75 s here";
+}
+
+TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
+    const fs::path dir = tempDir();
+    // a 9000 x 9000 example: refused from its header (it has no pixel data at all)
+    writeFile(dir / "huge.png", pngHeaderOnly(9000, 9000));
+    Request r = basicRequest(Mode::Extend, 32, 32);
+    r.examples[0] = Example::fromPath(dir / "huge.png");
+    Result result = synthesize(r);
+    EXPECT_EQ(result.status, Status::InvalidRequest);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_EQ(result.errors[0].field, "examples[0].image");
+    EXPECT_NE(result.errors[0].message.find("9000x9000, at most 8192 per side"), std::string::npos) << result.errors[0].message;
+    // decoding checks the header first too
+    Image image;
+    std::string error;
+    const std::vector<uint8_t> header = pngHeaderOnly(9000, 9000);
+    EXPECT_FALSE(loadImageFromMemory(header.data(), header.size(), image, error, 8192));
+    EXPECT_NE(error.find("at most 8192 per side"), std::string::npos) << error;
+
+    // five 8192 x 8192 inputs: 335 megapixels, over the budget, refused before decoding
+    writeFile(dir / "big.png", pngHeaderOnly(8192, 8192));
+    Request many = basicRequest(Mode::Extend, 32, 32);
+    many.examples.clear();
+    for (int i = 0; i < 5; i++) many.examples.push_back(Example::fromPath(dir / "big.png"));
+    result = synthesize(many);
+    EXPECT_EQ(result.status, Status::InvalidRequest);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_NE(result.errors[0].message.find("335.5 megapixels, at most 268.4"), std::string::npos) << result.errors[0].message;
+    fs::remove_all(dir);
+}
+
+#ifdef __linux__
+#include <sys/resource.h>
+
+namespace {
+
+    // in a child process: an address-space limit makes the synthesis' allocations fail
+    void synthesizeOutOfMemory() {
+        Request r = basicRequest(Mode::Guided, 0, 0);
+        r.examples[0] = Example::fromImage(noiseImage(2048, 2048, 1, 4));
+        r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 2));
+        long pages = 0;
+        std::ifstream("/proc/self/statm") >> pages;
+        const rlim_t limit = static_cast<rlim_t>(pages) * 4096 + (40u << 20);
+        rlimit rl;
+        rl.rlim_cur = limit;
+        rl.rlim_max = limit;
+        setrlimit(RLIMIT_AS, &rl);
+        const Result result = synthesize(r);
+        const bool failed = result.status == Status::Failed && !result.errors.empty() && result.errors[0].message.find("out of memory") != std::string::npos;
+        std::exit(failed ? 0 : 1);
+    }
+
+}
+
+TEST(TexSynthDeathTest, OutOfMemoryIsAFailedStatusNotATerminate) {
+    EXPECT_EXIT(synthesizeOutOfMemory(), ::testing::ExitedWithCode(0), "");
+}
+#endif

@@ -412,8 +412,8 @@ namespace jasperengine::editor::texsynth {
             << "      --border <x>            make_tileable: band width per edge as a share of the size, (0, 0.5] (0.125).\n\n"
             << "Paths are absolute or relative to the current directory.\n"
             << "Problems go to stdout as <file>: error|warning: message; the summary to stderr.\n"
-            << "Exit code: 0 written, 1 synthesis or write failed, 2 usage error (bad option, existing output\n"
-            << "without --overwrite).\n";
+            << "Exit code: 0 written, 1 synthesis or write failed (then no file is written or replaced), 2 usage\n"
+            << "error (bad option, existing output without --overwrite).\n";
     }
 
     int runSynthesizeTexture(int argc, char** argv, const std::string& commandName, std::ostream& out, std::ostream& err) {
@@ -496,6 +496,23 @@ namespace jasperengine::editor::texsynth {
             for (const std::string& path : existing) err << prefix << path << " exists (pass --overwrite to replace it)\n";
             return 2;
         }
+        // every path the recipes record must be UTF-8 text (JSON): refused before the synthesis
+        // runs, not found out when the first recipe is written
+        {
+            RecipePaths recorded;
+            recorded.projectDir = o.project;
+            for (const std::string& role : roles) {
+                recorded.outputDir = outputs[role].parent_path();
+                std::vector<fs::path> named(inputs.begin(), inputs.end());
+                for (const std::string& other : roles) named.push_back(outputs[other]);
+                for (const fs::path& path : named) {
+                    if (isValidUtf8(recipePath(path, recorded))) continue;
+                    err << prefix << printableUtf8(path.u8string()) << ": the file name is not valid UTF-8, so the recipe (JSON text) could not "
+                        << "record it; rename it\n";
+                    return 2;
+                }
+            }
+        }
 
         // the request
         Request request;
@@ -562,11 +579,14 @@ namespace jasperengine::editor::texsynth {
         Result result = synthesize(request, control);
 
         // ---- write (the request now holds the loaded inputs and their hashes)
+        // every file encoded first, then written all or nothing: a companion that can't be
+        // written (a path component that is a file, a full disk) leaves the primary as it was
         std::vector<Problem> writeErrors;
         if (result.status == Status::Ok) {
             RecipePaths paths;
             paths.projectDir = o.project;
             paths.outputs = outputs;
+            std::vector<StagedFile> files;
             for (const std::string& role : roles) {
                 const fs::path& path = outputs[role];
                 const Image* image = &result.primary;
@@ -575,12 +595,17 @@ namespace jasperengine::editor::texsynth {
                     if (c.name == role) image = &c.image;
                 }
                 paths.outputDir = path.parent_path();
-                std::string writeError;
-                fs::create_directories(path.parent_path(), ec);
-                if (!writePngWithRecipe(path, *image, makeRecipe(request, result, role, paths), writeError)) {
-                    writeErrors.push_back({path.u8string(), writeError});
+                StagedFile file;
+                file.path = path;
+                std::string encodeError;
+                if (!encodePngWithRecipe(*image, makeRecipe(request, result, role, paths), file.bytes, encodeError)) {
+                    writeErrors.push_back({path.u8string(), encodeError + "; nothing was written"});
+                    break;
                 }
+                files.push_back(std::move(file));
             }
+            std::string failedPath, writeError;
+            if (writeErrors.empty() && !writeFilesAllOrNothing(files, failedPath, writeError)) writeErrors.push_back({failedPath, writeError});
         }
 
         // ---- report
@@ -625,7 +650,8 @@ namespace jasperengine::editor::texsynth {
             for (const Problem& problem : writeErrors) errs.push_back({{"field", "output"}, {"path", problem.field}, {"message", problem.message}});
             j["errors"] = errs;
             j["warnings"] = result.warnings;
-            out << j.dump(1) << std::endl;
+            // lossy only where a message quotes a path that is not UTF-8 (never throws)
+            out << jsonTextLossy(j, 1) << std::endl;
         } else {
             for (const Problem& problem : errors) out << location(problem.field) << ": error: " << problem.message << "\n";
             for (const Problem& problem : writeErrors) out << problem.field << ": error: " << problem.message << "\n";
@@ -643,7 +669,7 @@ namespace jasperengine::editor::texsynth {
                 err << "synthesize-texture: cancelled\n";
             } else {
                 err << "synthesize-texture: failed (" << (errors.size() + writeErrors.size()) << (errors.size() + writeErrors.size() == 1 ? " error" : " errors")
-                    << "), nothing written" << (writeErrors.empty() ? "" : " for the files listed") << "\n";
+                    << "), nothing written\n";
             }
         }
         return ok ? 0 : 1;

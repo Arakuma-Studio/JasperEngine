@@ -17,7 +17,9 @@ project with small generated textures (value noise; a 16-bit height companion; a
   reproduce the file;
 - `check` warns (synthesis-source-changed / -missing) once a source changes or disappears;
 - show_in_editor runs the synthesis in the Texture Synthesis window and saves it through the
-  window's Save; an editor screenshot shows the window (saved for inspection).
+  window's Save; an editor screenshot shows the window (saved for inspection);
+- (last: it switches projects) a run still going when another project is opened is cancelled and
+  its job fails saying so; nothing lands in either project, with or without show_in_editor.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import os
 import random
 import struct
 import subprocess
@@ -393,3 +396,148 @@ async def test_window_show_in_editor(ed: Editor):
     shot = await ed.screenshot("editor", max_width=1600)
     w, h, _, _ = decode_png(shot)
     check(w > 600 and h > 400, f"an editor screenshot: {w}x{h}")
+
+
+# ---------------------------------------------------------------------------- review fixes
+
+def latin1(text: str) -> str:
+    """A file name with raw Latin-1 bytes (not UTF-8), as a str the OS gets back byte for byte"""
+    return os.fsdecode(text.encode("latin-1"))
+
+
+def with_recipe_text(png: bytes, text: bytes) -> bytes:
+    data = b"jasper.synthesis\x00\x00\x00\x00\x00" + text
+    chunk = struct.pack(">I", len(data)) + b"iTXt" + data + struct.pack(">I", zlib.crc32(b"iTXt" + data) & 0xFFFFFFFF)
+    return png[:33] + chunk + png[33:]
+
+
+async def test_garbled_recipe_and_non_utf8_names(ed: Editor):
+    tex = ed.project / TEX
+    plain = (tex / "grass_albedo.png").read_bytes()
+    garbled = f"{TEX}/garbled.png"
+    (ed.project / garbled).write_bytes(with_recipe_text(plain, json.dumps(
+        {"format": 1, "mode": "tileable", "role": "primary", "pathBase": "project", "examples": [{"path": 5}]}).encode()))
+    info = await ed.call("get_asset_info", path=garbled)
+    syn = info.get("synthesis")
+    check(syn and "examples[0].path is a number" in syn.get("error", ""), f"a garbled recipe is reported, the asset info works: {info}")
+    check(info.get("width") == 48, f"the rest of the asset info is there: {info}")
+    view = await ed.call_raw("view_asset", {"path": garbled})
+    check(not view.is_error and "error" in view.structured["synthesis"] and "can't be used" in view.text, f"view_asset: {view.text}")
+    code, data = run_check(ed.project, "--textures")
+    check(any(f["path"] == garbled and f["code"] == "synthesis-recipe-invalid" for f in data["findings"]), f"check: {data['findings']}")
+    (ed.project / garbled).unlink()
+
+    # a companion next to the example whose name is not UTF-8: left out of auto, with a warning
+    odd = tex / latin1("rock_normal_\xe9.png")
+    odd.write_bytes((tex / "rock_normal.png").read_bytes())
+    r = await synth(ed)
+    check(any("not valid UTF-8" in w for w in r.structured["warnings"]), f"warning: {r.structured['warnings']}")
+    check({c["name"] for c in r.structured["companions"]} == {"normal", "height"}, f"companions: {r.structured['companions']}")
+    code, data = run_check(ed.project, "--textures")
+    check(code == 0, f"check with a Latin-1 PNG name: exit {code}")
+    odd.unlink()
+
+
+async def test_failed_write_changes_nothing(ed: Editor):
+    out = f"{TEX}/atomic/rock_a.png"
+    await synth(ed, output=out, seed=1, companions="none")
+    before = (ed.project / out).read_bytes()
+    (ed.project / TEX / "atomic" / "blocker").write_text("a file where a directory is expected")
+    msg = await ed.call("synthesize_texture", {**BASE, "output": out, "seed": 2, "companions": "none", "overwrite": True,
+                                               "uncertainty_output": f"{TEX}/atomic/blocker/u.png"}, expect_error=True)
+    check("blocker/u.png" in msg and "nothing was changed" in msg, f"the error names the file: {msg}")
+    check((ed.project / out).read_bytes() == before, "the replaced primary got its content back")
+    check(recipe(ed.project / out)["seed"] == 1, "its recipe too")
+
+
+async def test_overwrite_race_and_outputs_in_assets(ed: Editor):
+    out = f"{TEX}/race/rock_r.png"
+    jobs = []
+    for seed in (31, 32):
+        r = await ed.call_raw("synthesize_texture", {**BASE, "output": out, "seed": seed, "companions": "none", "size": 256, "wait": False})
+        check(not r.is_error, r.text)
+        jobs.append(r.structured["job_id"])
+    states = []
+    for job in jobs:
+        for _ in range(300):
+            state = await ed.call("get_job", job_id=job)
+            if state["status"] != "running":
+                break
+            await asyncio.sleep(0.2)
+        states.append(state)
+    statuses = sorted(s["status"] for s in states)
+    check(statuses == ["failed", "succeeded"], f"one writes, the other is refused at write time: {states}")
+    failed = next(s for s in states if s["status"] == "failed")
+    check("overwrite: true" in json.dumps(failed), f"the refusal says how to fix it: {failed}")
+    winner = next(s for s in states if s["status"] == "succeeded")
+    check(recipe(ed.project / out)["seed"] == winner["result"]["seed"], "the file is the winner's, not silently replaced")
+
+    # the companions' and the uncertainty map's outputs follow output's rule (the editor's .jasperengine/
+    # is refused whether the assets directory is the project root, as here, or below it)
+    for extra in [
+        {"companions": [{"path": f"{TEX}/rock_normal.png", "output": ".jasperengine/n.png"}]},
+        {"uncertainty_output": ".jasperengine/u.png"},
+        {"uncertainty_output": "assets/.hidden/u.png"},
+        {"companions": [{"path": f"{TEX}/rock_normal.png", "output": "assets/.cache/n.png"}]},
+    ]:
+        msg = await ed.call("synthesize_texture", {**BASE, "output": f"{TEX}/where.png", **extra}, expect_error=True)
+        check("hidden directory" in msg or "outside the assets directory" in msg, f"{extra}: {msg}")
+    check(not (ed.project / ".jasperengine" / "n.png").exists() and not (ed.project / ".jasperengine" / "u.png").exists(), "nothing written there")
+
+
+async def test_seeds_beyond_2_53_and_files_mode_chains(ed: Editor):
+    # a CLI recipe with a seed above 2^53: its regenerate arguments are accepted (a decimal string)
+    out = f"{TEX}/bigseed.png"
+    cmd = harness.editor_command() + ["synthesize-texture", "--project", str(ed.project), "--example", str(ed.project / ALBEDO),
+                                      "--out", str(ed.project / out), "--size", "64", "--quality", "draft", "--seed", "18446744073709551615", "-q"]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    check(r.returncode == 0, f"CLI: {r.stderr}")
+    info = await ed.call("get_asset_info", path=out)
+    regen = info["synthesis"]["regenerate"]
+    check(regen["seed"] == "18446744073709551615", f"regenerate seed: {regen}")
+    before = rgb_pixels((ed.project / out).read_bytes())
+    r = await ed.call_raw("synthesize_texture", regen, timeout=300)
+    check(not r.is_error, f"the regenerate arguments are accepted: {r.text}")
+    check(r.structured["seed"] == "18446744073709551615", f"echoed losslessly: {r.structured['seed']}")
+    check(rgb_pixels((ed.project / out).read_bytes()) == before, "and reproduce the file")
+    msg = await ed.call("synthesize_texture", {**BASE, "seed": "18446744073709551616"}, expect_error=True)
+    check("seed must be" in msg, msg)
+
+    # check --files: a synthesized PNG that is itself the source of another one reports both roles
+    first, second = f"{TEX}/chain/first.png", f"{TEX}/chain/second.png"
+    await synth(ed, output=first, seed=41, companions="none")
+    await synth(ed, examples=[first], output=second, seed=42, companions="none")
+    data = (ed.project / first).read_bytes()
+    (ed.project / first).write_bytes(data + b"\x00")   # changed bytes, same image
+    code, result = run_check(ed.project, "--files", first)
+    check(any(f["path"] == second and f["code"] == "synthesis-source-changed" for f in result["findings"]),
+          f"the texture made from the changed synthesized PNG is reported: {result['findings']}")
+
+
+# ---------------------------------------------------------------------------- last: switches projects
+
+async def test_project_switch_during_a_run(ed: Editor):
+    original = ed.project.resolve()
+    other = ed.scratch.root / "switched" / "Other"
+    for show in (False, True):
+        out = f"{TEX}/switch_{int(show)}.png"
+        r = await ed.call_raw("synthesize_texture", {"examples": [ALBEDO], "size": 2048, "quality": "high", "seed": 13, "companions": "none",
+                                                     "output": out, "wait": False, "show_in_editor": show})
+        check(not r.is_error, r.text)
+        job = r.structured["job_id"]
+        await asyncio.sleep(0.3)
+        if not other.exists():
+            await ed.call("create_project", path=str(other), name="Other", unsaved="discard")
+        else:
+            await ed.call("open_project", path=str(other), unsaved="discard")
+        for _ in range(200):
+            state = await ed.call("get_job", job_id=job)
+            if state["status"] != "running":
+                break
+            await asyncio.sleep(0.2)
+        check(state["status"] == "failed" and "project changed" in json.dumps(state), f"show_in_editor {show}: the job says why: {state}")
+        check(not (original / out).exists() and not (other / out).exists(), f"show_in_editor {show}: nothing written in either project")
+        await ed.call("open_project", path=str(original), unsaved="discard")
+    # back in the original project, a synthesis works as before
+    r = await ed.call_raw("synthesize_texture", {**BASE, "companions": "none"})
+    check(not r.is_error, r.text)

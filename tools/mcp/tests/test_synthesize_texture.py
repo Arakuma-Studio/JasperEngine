@@ -13,13 +13,19 @@ relative path arguments must resolve against it (once: the doubled-join bug of t
 - an existing output is refused (exit 2, "--overwrite") and kept; --overwrite replaces it;
 - identical pixels for --threads 1 and --threads 8, other pixels for another seed;
 - a missing input or a companion of the wrong size exits 1 with a compiler-style line naming the file;
-- inpaint keeps the unmasked pixels; make_tileable keeps the size and reports a seam score.
+- inpaint keeps the unmasked pixels; make_tileable keeps the size and reports a seam score;
+- a file name that is not UTF-8 (Latin-1 bytes) is refused up front (exit 2, rename it) instead of
+  aborting when the recipe is written; `check` on a project with such a PNG and with a garbled
+  recipe (a number where a path belongs) reports instead of aborting;
+- a set that can't be written whole (a companion under a path component that is a file) writes
+  nothing: the existing primary keeps its content (all or nothing), exit 1 naming the file.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import os
 import random
 import shutil
 import struct
@@ -257,7 +263,7 @@ async def test_overwrite_refusal():
     check(r.returncode == 2 and "would replace an input" in r.stderr, f"in place: exit {r.returncode}: {r.stderr}")
     ok(run(*args, "--seed", "5", "--overwrite"), "--overwrite")
     check(out.read_bytes() != before, "--overwrite did not replace the file")
-    check(not list(work.glob("ow/*.partial")), "a temporary file was left")
+    check(not list(work.glob("ow/*.partial*")) and not list(work.glob("ow/*.previous*")), "a temporary file was left")
 
 
 async def test_deterministic_across_threads():
@@ -311,3 +317,68 @@ async def test_inpaint_and_make_tileable():
     result = json.loads(r.stdout)
     check(result["width"] == 48 and result["height"] == 48, f"make_tileable size: {result}")
     check(result["metrics"]["lockedPixels"] > 0 and result["metrics"]["seamScore"] < 2.0, f"metrics: {result['metrics']}")
+
+
+def latin1(text: str) -> str:
+    """A file name with raw Latin-1 bytes (not UTF-8), as a str the OS gets back byte for byte"""
+    return os.fsdecode(text.encode("latin-1"))
+
+
+async def test_non_utf8_names_and_garbled_recipes():
+    work = layout()
+    out_dir("utf8")
+    (work / "in" / latin1("caf\xe9.png")).write_bytes((work / "in" / "rock_albedo.png").read_bytes())
+    r = run("--example", "../in/" + latin1("caf\xe9.png"), "--out", "../utf8/x.png", "--size", "32", "--quality", "draft")
+    check(r.returncode == 2, f"a Latin-1 example: exit {r.returncode}, want 2 (it aborted with 134 before)\n{r.stderr}")
+    check("caf\\xE9.png" in r.stderr and "not valid UTF-8" in r.stderr and "rename" in r.stderr, f"stderr: {r.stderr}")
+    r = run("--example", "../in/rock_albedo.png", "--out", "../utf8/" + latin1("t\xe9.png"), "--size", "32", "--quality", "draft",
+            "--format", "json")
+    check(r.returncode == 2 and "not valid UTF-8" in r.stderr, f"a Latin-1 output: exit {r.returncode}: {r.stderr}")
+    check(not (work / "utf8").exists(), "nothing written")
+
+    # check: a plain PNG with a Latin-1 name, a garbled recipe and a stale synthesized PNG with a Latin-1 name
+    proj = work / "proj"
+    assets = proj / "assets"
+    assets.mkdir(exist_ok=True)
+    (proj / ".jasperengine").mkdir(exist_ok=True)
+    (assets / latin1("caf\xe9.png")).write_bytes((work / "in" / "rock_albedo.png").read_bytes())
+    plain = (work / "in" / "rock_albedo.png").read_bytes()
+    text = json.dumps({"format": 1, "mode": "tileable", "role": "primary", "pathBase": "project", "examples": [{"path": 5}]}).encode()
+    data = b"jasper.synthesis\x00\x00\x00\x00\x00" + text
+    itxt = struct.pack(">I", len(data)) + b"iTXt" + data + struct.pack(">I", zlib.crc32(b"iTXt" + data) & 0xFFFFFFFF)
+    (assets / "garbled.png").write_bytes(plain[:33] + itxt + plain[33:])
+    (assets / "src.png").write_bytes(plain)
+    ok(run("--project", "../proj", "--example", "../proj/assets/src.png", "--out", "../proj/assets/stale.png", "--size", "32",
+           "--quality", "draft", "-q", "--overwrite"), "a synthesized texture")
+    (assets / "stale.png").rename(assets / latin1("stal\xe9.png"))
+    (assets / "src.png").write_bytes(plain + b"\x00")
+    for args in (["--textures"], []):
+        r = subprocess.run(harness.editor_command() + ["check", "--project", str(proj), *args, "--format", "json"], capture_output=True,
+                           timeout=120)
+        check(r.returncode == 0, f"check {args}: exit {r.returncode} (it aborted with 134 before)\n{r.stderr[-2000:]!r}")
+        result = json.loads(r.stdout.decode("utf-8"))
+        codes = {(f["path"], f["code"]) for f in result["findings"] if f["tool"] == "texture"}
+        check(("assets/garbled.png", "synthesis-recipe-invalid") in codes, f"check {args}: {codes}")
+        check(("assets/stal\ufffd.png", "synthesis-source-changed") in codes, f"check {args}: the Latin-1 name shown with U+FFFD: {codes}")
+    r = subprocess.run(harness.editor_command() + ["check", "--project", str(proj), "--textures"], capture_output=True, timeout=120)
+    check(r.returncode == 0 and b"stal\xe9.png: warning" in r.stdout, f"text output keeps the bytes: {r.stdout!r}")
+    cache = json.loads((proj / ".jasperengine" / "synthesis-check-cache.json").read_text("utf-8"))
+    check("assets/garbled.png" in cache["pngs"] and not any("\ufffd" in k for k in cache["pngs"]), f"the cache keeps valid keys only: {cache}")
+
+
+async def test_a_failed_write_changes_nothing():
+    work = layout()
+    d = out_dir("atomic")
+    d.mkdir()
+    (d / "blocker").write_text("a file where a directory is expected")
+    args = ["--example", "../in/rock_albedo.png", "--companion", "../in/rock_normal.png", "--out", "../atomic/tile.png", "--size", "32",
+            "--quality", "draft", "-q"]
+    ok(run(*args), "first run")
+    before = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    r = run(*args, "--seed", "9", "--overwrite", "--uncertainty-out", "../atomic/blocker/u.png", "--format", "json")
+    check(r.returncode == 1, f"an unwritable companion: exit {r.returncode}, want 1\n{r.stdout}\n{r.stderr}")
+    result = json.loads(r.stdout)
+    check(result["status"] == "write_failed" and result["errors"][0]["path"].endswith("atomic/blocker/u.png"), f"json: {result}")
+    check("nothing was written" in result["errors"][0]["message"], f"json: {result}")
+    after = {p.name: p.read_bytes() for p in d.iterdir() if p.is_file()}
+    check(after == before, f"the primary and its companion kept their content, nothing left behind: {sorted(after)} vs {sorted(before)}")

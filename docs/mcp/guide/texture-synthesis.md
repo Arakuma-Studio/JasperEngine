@@ -47,9 +47,14 @@ when you want another size or more variation.
 3. Call again with the **same arguments, the chosen `seed` and `output`**: the synthesis is
    deterministic (same inputs, parameters and seed give identical pixels, whatever the thread
    count), so the file is exactly the preview. The outputs (primary + companions) are one undo
-   step (`undo` with scope `project`), refused when they exist unless `overwrite: true`.
+   step (`undo` with scope `project`), refused when they exist unless `overwrite: true` (checked
+   again when the run finishes: a file another call wrote meanwhile is not replaced). The set is
+   written whole or not at all: if one file can't be written, the others keep their content.
+   Seeds are 0..2^53 as numbers; larger ones (from the CLI or a recipe) are decimal strings.
+   Opening another project cancels a run; its job fails and nothing is written.
 
-Output paths must be inside the assets directory (`.png`). The texture is then a normal asset:
+Output paths (`output`, companion `output`s, `uncertainty_output`) must be inside the assets
+directory and outside hidden directories (`.png`). The texture is then a normal asset:
 put it on a material (`set_properties submeshes[0].material.baseColorTexture`...), a terrain
 layer, a sprite. For tiling surfaces, the library shaders' `STOCHASTIC` feature hides the
 repetition of any tiling texture further (jasper://docs/shaders).
@@ -79,8 +84,12 @@ stored; it survives copies and renames, and game builds ignore it.
 - When a source changed (an artist repainted the example), regenerate with those arguments to
   bring the texture up to date; with unchanged sources they reproduce the file exactly.
 - `jasperengine-editor check` (and `check --textures`) warns `synthesis-source-changed` /
-  `synthesis-source-missing` for every synthesized texture whose sources changed or disappeared
-  (docs: `docs/mcp/checks.md`).
+  `synthesis-source-missing` for every synthesized texture whose sources changed or disappeared,
+  and `synthesis-recipe-invalid` for a garbled recipe (docs: `docs/mcp/checks.md`); then
+  `get_asset_info` returns `synthesis: {error}` instead of the recipe.
+- Recipes record paths as JSON (UTF-8) text: an example, companion or output whose file name is
+  not valid UTF-8 (raw Latin-1 bytes) is refused with an error saying to rename it, and such a
+  companion next to an example is left out of `companions: "auto"` with a warning.
 - Humans: right-click the PNG in the Project window > **Edit Synthesis...** reopens the window
   with everything restored (a notice lists changed sources); Regenerate, then Save.
 
@@ -93,7 +102,11 @@ so a watching human sees the live preview (the window's Save writes it when `out
 
 Time grows with the output's pixels (Balanced, 8 cores): about 1 s at 512 x 512, 4-5 s at
 1024 x 1024, 20 s at 2048 x 2048. `draft` is about twice as fast, `high` about twice as slow.
-At most 4096 x 4096 pixels (each side 1..8192).
+At most 4096 x 4096 pixels (each side 1..8192). Inputs: each image at most 8192 per side, and
+all of them together (examples, companions, masks, guides) at most 268 megapixels, e.g. one
+8192 x 8192 example with three companion maps; both are checked from the files' headers before
+anything is decoded. Cancelling reaches the loading and preparation too (within about a second),
+and a run that runs out of memory fails with status `failed` instead of taking the editor down.
 
 ## Limitations
 

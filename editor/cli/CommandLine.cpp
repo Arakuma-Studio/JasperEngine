@@ -2287,7 +2287,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
                                     {"findings", ProjectChecks::toJson(run.findings)},
                                     {"seconds", std::round(seconds * 100.0) / 100.0}};
-        std::cout << out.dump(1) << std::endl;
+        // a finding's path may not be UTF-8 (a Latin-1 file name): shown with U+FFFD, never an abort
+        std::cout << out.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
     } else {
         for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
         std::cout.flush();
