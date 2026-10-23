@@ -149,7 +149,9 @@ Value ranges (clamped everywhere a value enters: UI, MCP, file load; one table, 
 | frameRate | 12 .. 120 (UI offers 24/30/60) | | angles | -180 .. 180 (wrapped) |
 
 `PoseRanges.h` exposes `clampSettings`, `clampTransition`, `clampKey` that return the clamped
-value and report each field that changed (name, requested, applied): the MCP tools echo them.
+value and report each field that changed (name, requested, applied): the MCP tools echo them. Report field
+names use the file / MCP vocabulary (`frame_rate`, `feel.transition.overshoot`, `humanize.moving_holds`,
+`poses[2].hold`, `poses[2].offset.left`, `poses[2].angles.left_upper_arm.raise`).
 
 ### 4.3 Canonical character frame
 

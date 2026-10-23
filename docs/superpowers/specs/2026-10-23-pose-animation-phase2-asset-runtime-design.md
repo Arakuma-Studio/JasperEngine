@@ -49,7 +49,9 @@ Animation, and that agents can create and edit through MCP before any window exi
 ```
 
 - `curve`: `spring` | `linear` | `smooth`. `transition: null` = uses the animation's transition;
-  an object = custom transition (`customTransition = true`).
+  an object = custom transition (`customTransition = true`). The fields missing from a custom
+  transition object take the `Transition()` defaults (spring, 0.12, 0.25, 0.06), not the animation's
+  transition.
 - `angles` lists only DOFs whose absolute value is >= 0.0005 degrees, in DOF index order; missing
   DOFs are 0. Unknown DOF names, unknown keys and out-of-range values: load clamps/ignores and
   collects warnings (`PoseAnimationIO::load(text, data, warnings)`), never fails on them; a wrong
@@ -71,9 +73,12 @@ with `""` forces it unmapped; absent slots use auto-detect. `HumanoidMapIO` read
 `resolveHumanoid(skeleton, overrides)` = auto-detect then overrides then validation. The sidecar
 ships with exports (it is a normal asset file).
 
-Engine code in `engine/core/pose/PoseAnimationIO.{h,cpp}` and `HumanoidMapIO.{h,cpp}` uses the
-engine's bundled nlohmann json (`engine/libs/json`) and the engine file API so it works in
-exported games (desktop, web, Android, iOS).
+Engine code in `engine/core/pose/PoseAnimationIO.{h,cpp}` and `HumanoidMapIO.{h,cpp}` (parse and
+write, no engine dependency) uses the engine's bundled nlohmann json (`engine/libs/json`);
+`engine/core/pose/PoseFile.{h,cpp}` has the file helpers (`loadPoseAnimationFile`,
+`savePoseAnimationFile`, `loadHumanoidOverridesFile` with a `notFound` out-parameter: a missing
+sidecar means all-auto, not an error, `saveHumanoidOverridesFile`) on the engine file API so reading
+works in exported games (desktop, web, Android, iOS).
 
 ## 3. Engine: rig from a model, metrics
 
