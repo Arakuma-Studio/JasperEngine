@@ -180,7 +180,12 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 					const ClipMaskOperation clip_operation = (out_clip_mask_list->empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
 					const Vector2f absolute_offset = clipping_element->GetAbsoluteOffset(BoxArea::Border).Round();
 					if (*clip_geometry)
-						out_clip_mask_list->push_back(ClipMaskGeometry{clip_operation, clip_geometry, absolute_offset, transform});
+					{
+						ClipMaskGeometry clip{clip_operation, clip_geometry, absolute_offset, transform};
+						clip.has_shape = true;
+						clip.shape = ElementBackgroundBorder::GetClipShape(clipping_element, clip_area);
+						out_clip_mask_list->push_back(clip);
+					}
 				}
 
 				// If we only have border-radius then we add this element to the scissor region as well as the clip mask. This may help with e.g.
@@ -300,7 +305,10 @@ ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element, bool enab
 	ClipMaskGeometryList clip_mask_list = saved_state.clip_mask_list;
 	// The first mask of a list sets the stencil, the others intersect it (as GetClippingRegion's lists).
 	const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
-	clip_mask_list.push_back(ClipMaskGeometry{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform});
+	ClipMaskGeometry clip{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform};
+	clip.has_shape = true;
+	clip.shape = ElementBackgroundBorder::GetClipShape(element, BoxArea::Content);
+	clip_mask_list.push_back(clip);
 	manager->SetClipMask(std::move(clip_mask_list));
 }
 

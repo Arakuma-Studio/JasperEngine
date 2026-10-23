@@ -28,19 +28,7 @@ namespace jasperengine{
             if (!context)
                 return;
             RmlRenderer& renderer = context->getRenderer();
-            const HtmlUIRenderStats& frame = renderer.getStats();
-            if (renderer.hasFrame(SystemRender::getFrameCount())){
-                stats.passes += frame.passes;
-                stats.drawCalls += frame.drawCalls;
-                stats.pipelineApplies += frame.pipelineApplies;
-                stats.pipelineCacheMisses += frame.pipelineCacheMisses;
-                stats.textureBinds += frame.textureBinds;
-                stats.layersPushed += frame.layersPushed;
-                stats.filtersApplied += frame.filtersApplied;
-                stats.compositesFused += frame.compositesFused;
-            }
-            stats.geometryLive += frame.geometryLive;
-            stats.geometryBytes += frame.geometryBytes;
+            stats.add(renderer.getStats(), renderer.hasFrame(SystemRender::getFrameCount()));
         }
     };
 

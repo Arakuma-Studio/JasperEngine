@@ -3597,7 +3597,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
+    // v34: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
+    //      u_fs_htmluiClip (analytic clip, R8 coverage textures); HTMLUI_PRIM (instanced SDF
+    //      boxes, borders, shadows and glyph quads) appended after UI_EFFECT.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
 }
 
 void editor::App::pushTabNotificationStyle(){

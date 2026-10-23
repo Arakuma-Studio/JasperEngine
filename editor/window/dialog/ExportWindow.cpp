@@ -1242,7 +1242,7 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSAO, ShaderType::SSAO_BLUR,
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM,
-            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT
+            ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::HTMLUI_PRIM
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;

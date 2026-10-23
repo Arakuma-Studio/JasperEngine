@@ -2,12 +2,14 @@
 
 #include "../../Include/RmlUi/Core/CallbackTexture.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/RenderInterface.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
 
 struct BoxShadowRenderable;
 class ElementBackgroundLayers;
+class RenderManager;
 
 class ElementBackgroundBorder {
 public:
@@ -24,9 +26,16 @@ public:
 	void DirtyOutline();
 
 	Geometry* GetClipGeometry(Element* element, BoxArea clip_area);
+	// Fork (S16-F2): the shape GetClipGeometry's geometry covers, relative to the element's border box.
+	static ClipShape GetClipShape(Element* element, BoxArea clip_area);
 
 	// The size of a device pixel in the element's units, for its feathered edges.
 	static float GetFeatherUnit(Element* element);
+
+	// Fork (S16-F1): whether the background, border and box shadows were last generated as primitives, and when not
+	// why (a static string; empty when the render interface draws no primitives).
+	bool IsPaintedAsPrimitives() const { return painted_as_primitives; }
+	const char* GetPaintReason() const { return paint_reason; }
 
 private:
 	enum class BackgroundType { BackgroundBorder, BoxShadowAndBackgroundBorder, ClipBorder, ClipPadding, ClipContent, BorderAbove, Outline, Count };
@@ -34,7 +43,12 @@ private:
 		Geometry geometry;
 		Texture texture;
 		SharedPtr<BoxShadowRenderable> box_shadow_and_background_border;
+		Vector<BoxPrimitive> primitives; // fork (S16-F1): drawn instead of the geometry
 	};
+	// Renders the background's geometry, or its primitives.
+	static void RenderBackground(RenderManager& render_manager, const Background& background, Vector2f offset);
+	// Fork (S16-F1): why the element's boxes cannot be primitives (nullptr: they can).
+	const char* GetPrimitiveObstacle(Element* element, const Array<ColourbPremultiplied, 4>& border_colors, float opacity, bool has_box_shadow);
 
 	Background* GetBackground(BackgroundType type);
 	Background& GetOrCreateBackground(BackgroundType type);
@@ -58,6 +72,8 @@ private:
 	// The size of a device pixel in the element's units the geometry was feathered for: the inverse of the scale of the
 	// element's transform, in steps (the geometry is generated again when the scale leaves its step).
 	float feather_unit = 1.f;
+	bool painted_as_primitives = false;
+	const char* paint_reason = "";
 
 	StableMap<BackgroundType, Background> backgrounds;
 };

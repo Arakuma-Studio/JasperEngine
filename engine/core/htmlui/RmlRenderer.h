@@ -166,6 +166,9 @@ namespace jasperengine {
         // Rml::RenderInterface, optional
         void EnableClipMask(bool enable) override;
         void RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation) override;
+        // fork S16-F2: the mask's shape, for stencil elision and the analytic clip of the batched replay
+        void RenderToClipMaskShape(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation,
+                                   const Rml::ClipShape& shape) override;
         void SetTransform(const Rml::Matrix4f* transform) override;
         Rml::LayerHandle PushLayer() override;
         void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
@@ -236,6 +239,12 @@ namespace jasperengine {
         static bool isCommandRecording();
         // the commands the last frame recorded (0 when it drew immediately)
         size_t getLastFrameCommandCount() const;
+        // tests (S16 D1): false replays every recorded call as its own draw, with every clip mask
+        // drawn into the stencil; true (the default) merges geometry into runs, keeps a run cache,
+        // elides clip masks and clips rounded rects analytically (RmlRendererBatch.cpp). Read by
+        // beginFrame; immediate drawing is never batched
+        static void setBatchingForTesting(bool enabled);
+        static bool isBatching();
 
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
@@ -467,9 +476,126 @@ namespace jasperengine {
         };
         Command& recordCommand(CommandType type);
         void replayCommands();
+        // one recorded call drawn as it is (the unbatched replay, and the batched one's commands outside runs)
+        void replayCommand(const Command& command);
         // the releases deferred while recording (after the replay, before persistGeometry), and the
         // kept meshes; also drops the list (a frame aborted)
         void finishRecording();
+
+        // S16: the batched replay (RmlRendererBatch.cpp). The frame is planned first (clip scopes,
+        // then runs of geometry merged by state, gathered into pages or found in the run cache), the
+        // new gathered data uploaded once, then the plan is drawn
+        struct ClipShapeRecord {
+            Rml::Rectanglef rect;            // relative to the mask's translation
+            Rml::Vector2f radii[4];          // top-left, top-right, bottom-right, bottom-left
+        };
+        // u_fs_htmluiClip
+        struct ClipParams {
+            float rect[2][4] = {};           // x, y, width, height (document px, before the element transform)
+            float radiiX[2][4] = {};
+            float radiiY[2][4] = {};
+            float params[4] = {};            // x: shapes, y: 1 = coverage texture
+        };
+        enum class ScopeMode : uint8_t { STENCIL, ELIDED, ANALYTIC };
+        // the commands under one clip mask list: from its CLIP_ENABLE to the next one
+        struct ClipScope {
+            ScopeMode mode = ScopeMode::STENCIL;
+            uint32_t masks = 0;              // the mask draws of its list
+            Rml::Rectanglei scissor;         // ELIDED: target px
+            ClipParams clip;                 // ANALYTIC
+        };
+        enum class RunKind : uint8_t { VERTICES, INSTANCES };
+        // a run cut into chunks of bounded size, each found in the run cache or gathered on its own
+        struct BatchChunk {
+            uint32_t run = 0;
+            uint32_t first = 0, members = 0;     // in batchMembers
+            uint32_t vertices = 0, indices = 0;  // gathered sizes (VERTICES: vertices and indices; INSTANCES: instances)
+            uint32_t bytes = 0;
+            uint64_t hash = 0;
+            bool hit = false;                    // found in the run cache
+            uint32_t page = 0;
+            uint32_t dataFirst = 0, dataCount = 0;   // vertices or instances in the page
+            uint32_t firstIndex = 0, count = 0;      // VERTICES: indices in the page (relative to its first vertex)
+        };
+        struct BatchRun {
+            RunKind kind = RunKind::VERTICES;
+            int layer = 0;
+            bool stencil = false;
+            uint8_t stencilRef = 0;
+            int scope = -1;                  // its ANALYTIC clip scope, -1: none
+            uint32_t transformId = 0;
+            Rml::Matrix4f transform;         // projection x the element transform
+            HtmlUITexture* texture = nullptr;
+            bool allUntextured = true;
+            bool scissorSet = false;         // a member's scissor clips it: the run draws with it
+            Rml::Rectanglei scissor;
+            Rml::Rectanglef freeBounds;      // target px: the members drawn without their scissor
+            bool freeBoundsValid = false;
+            uint32_t firstChunk = 0, chunkCount = 0;
+            uint32_t members = 0;
+            uint32_t firstMember = 0;        // in batchMembers
+        };
+        struct BatchMember {
+            RmlGeometry* geometry = nullptr;
+            uint64_t generation = 0;
+            Rml::Vector2f translation;
+            HtmlUITexture* texture = nullptr;
+            bool operator==(const BatchMember& other) const{
+                return geometry == other.geometry && generation == other.generation && translation == other.translation &&
+                       texture == other.texture;
+            }
+        };
+        struct CachedChunk {
+            RunKind kind = RunKind::VERTICES;
+            HtmlUITexture* runTexture = nullptr;
+            uint32_t page = 0, first = 0, count = 0, vertexFirst = 0, vertexCount = 0;
+            std::vector<BatchMember> members;
+        };
+        // gathered data: vertices (20-byte Rml::Vertex, translation baked) with 32-bit indices
+        // relative to the page's start, or instances; uploaded whole, at most once a frame, when it
+        // gets new chunks (a page holding chunks found in the cache is not written)
+        struct GatherPage {
+            RunKind kind = RunKind::VERTICES;
+            BufferRender data;               // vertices or instances
+            BufferRender indices;            // VERTICES
+            size_t dataCapacity = 0, indexCapacity = 0;
+            std::vector<uint8_t> dataShadow, indexShadow;
+            size_t dataTop = 0, indexTop = 0;
+            size_t liveBytes = 0;            // of chunks drawn this frame
+            uint64_t updateFrame = UINT64_MAX;
+            bool writable = false;           // no chunk of it found in the cache this frame: it starts over
+            bool written = false;            // got new chunks this frame
+        };
+        struct ReplayOp {
+            enum class Kind : uint8_t { COMMAND, RUN } kind;
+            uint32_t index;                  // command or run
+            int32_t scope;                   // CLIP_ENABLE: the scope it starts (-1: disabled)
+        };
+        void replayBatched();
+        void planClipScopes();
+        void planRuns();
+        void uploadGathered();
+        void executePlan();
+        void drawRun(const BatchRun& run);
+        void destroyGatherPages();
+        Rml::Rectanglef geometryBounds(RmlGeometry& geometry);
+        Rml::Rectanglei effectiveScissorTarget() const;
+        const ClipParams& currentClipParams(bool coverageTexture);
+
+        std::vector<ClipShapeRecord> commandClipShapes;   // RenderToClipMaskShape's (CLIP_MASK i[0] - 1)
+        std::vector<ClipScope> clipScopes;
+        std::vector<int32_t> scopeOfCommand;              // CLIP_ENABLE true: its scope; else -1
+        std::vector<BatchRun> batchRuns;
+        std::vector<BatchChunk> batchChunks;
+        std::vector<BatchMember> batchMembers;
+        std::vector<ReplayOp> replayOps;
+        std::vector<uint32_t> pendingChunks;              // chunks to gather after planning
+        std::unordered_map<uint64_t, CachedChunk> runCache, nextRunCache;
+        std::vector<std::unique_ptr<GatherPage>> gatherPages;
+        int activeClipScope = -1;            // the replay's current non-stencil scope (-1: none)
+        ClipParams noClip;
+        ClipParams clipScratch;
+        bool batching = false;               // this frame replays batched
 
         bool recording = false;
         int recordLayers = 0;              // the layer depth at record time (PushLayer's handle)
@@ -544,6 +670,7 @@ namespace jasperengine {
         ObjectRender geometryObject;
         ObjectRender gradientObject;
         int geometryParamsSlot = -1;
+        int geometryClipSlot = -1;
         std::pair<int, int> geometryTextureSlot{-1, -1};
         int gradientParamsSlot = -1;
         int gradientFsSlot = -1;

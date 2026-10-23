@@ -2139,6 +2139,13 @@ ElementBackgroundBorder* Element::GetElementBackgroundBorder() const
 	return &meta->background_border;
 }
 
+bool Element::IsPaintedAsPrimitives(const char** reason) const
+{
+	if (reason)
+		*reason = meta->background_border.GetPaintReason();
+	return meta->background_border.IsPaintedAsPrimitives();
+}
+
 ElementScroll* Element::GetElementScroll() const
 {
 	return &meta->scroll;

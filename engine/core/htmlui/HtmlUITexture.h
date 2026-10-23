@@ -21,7 +21,17 @@ namespace jasperengine {
     // RmlRenderer::ReleaseTexture deletes the struct, which destroys what it owns.
     struct JASPERENGINE_API HtmlUITexture {
         enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
+        // how draws read it (S16): premultiplied RGBA; R8 coverage whose .r tints every channel
+        // (glyph atlas pages); an MTSDF glyph page (RGBA8 distances, the HTMLUI_PRIM glyph mode)
+        enum class Sample : uint8_t { RGBA, COVERAGE, MSDF };
         Kind kind = Kind::STATIC;
+        Sample sample = Sample::RGBA;
+        // a block of texels that sample as exactly 1.0 (a glyph page's reserved white block): the
+        // batched replay draws untextured geometry with this texture at that UV
+        bool hasWhiteTexel = false;
+        float whiteU = 0.0f, whiteV = 0.0f;
+        // a saved layer (SaveLayerAsTexture/SaveLayerIntoTexture: box shadows drawn as textures)
+        bool savedLayer = false;
         TextureRender* render = nullptr;            // sampled texture
         std::unique_ptr<TextureRender> ownedRender; // STATIC/DYNAMIC created by the UI code
         std::unique_ptr<Framebuffer> ownedTarget;   // RENDER_TARGET (SaveLayerAsTexture)

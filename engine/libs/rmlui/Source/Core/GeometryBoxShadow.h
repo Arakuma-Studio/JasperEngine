@@ -39,6 +39,18 @@ class RenderManager;
 
 class GeometryBoxShadow {
 public:
+	/// Fork (S16-F1, D4): box shadows blurred more than this (px) are drawn as textures even when the render interface draws
+	/// primitives (an analytic shadow's corners differ from a true Gaussian blur at large radii).
+	static constexpr float primitive_blur_limit = 1e30f;
+
+	/// The radii of a shadow's shape (CSS Backgrounds 3, 6.1.1): each horizontal and vertical radius of the box grows
+	/// (shrinks when inset) by the spread distance, by less when it is smaller than the spread so that a square corner stays
+	/// square. A corner without a curve in one axis has none at all.
+	static CornerSizes2 SpreadRadii(CornerSizes2 radii, float spread_distance, bool inset);
+	/// The render box of a shadow's shape: the element's border box (padding box when inset) moved out (in) by the spread.
+	/// Its fill area is the shape before the offset.
+	static RenderBox SpreadBox(RenderBox render_box, float spread_distance, bool inset);
+
 	/// Resolve the element's properties into its box geometry info.
 	/// @param[in] element The element to resolve.
 	/// The radii are those of the element's render boxes (percentages and overlapping curves resolved per box).

@@ -134,6 +134,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "htmluiprim") {
+        shaderType = ShaderType::HTMLUI_PRIM;
+        return true;
+    }
 
     return false;
 }
@@ -489,6 +493,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -525,6 +530,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::HTMLUI_PRIM: return 0;
         default:                 return 0;
     }
 }
@@ -1380,6 +1386,7 @@ std::vector<std::pair<ShaderType, uint32_t>> ShaderPool::getHtmlUIVariants(){
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(false)});
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(true)});
     variants.push_back({ShaderType::HTMLUI_GRADIENT, 0});
+    variants.push_back({ShaderType::HTMLUI_PRIM, 0});
     for (int variant = 0; variant < HTMLUI_POST_VARIANT_COUNT; variant++){
         variants.push_back({ShaderType::HTMLUI_POST, getHtmlUIPostProperties((HtmlUIPostVariant)variant)});
     }

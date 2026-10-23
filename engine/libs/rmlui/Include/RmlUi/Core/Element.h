@@ -612,6 +612,9 @@ public:
 	String GetEventDispatcherSummary() const;
 	/// Access the element background and border.
 	ElementBackgroundBorder* GetElementBackgroundBorder() const;
+	/// Fork (S16-F1): whether the background, border and box shadows were last generated as box primitives
+	/// (RenderInterface::RenderPrimitives); when not, why (a static string, empty when the renderer draws none).
+	bool IsPaintedAsPrimitives(const char** reason = nullptr) const;
 	/// Returns the element's scrollbar functionality.
 	ElementScroll* GetElementScroll() const;
 	/// Returns the element's nearest scroll container that can be scrolled, if any.

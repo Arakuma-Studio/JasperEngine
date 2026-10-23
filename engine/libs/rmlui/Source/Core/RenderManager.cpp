@@ -180,12 +180,32 @@ void RenderManager::ApplyClipMask(const ClipMaskGeometryList& clip_elements)
 			RMLUI_ASSERT(element_clip.geometry->render_manager == this);
 			SetTransform(element_clip.transform);
 			if (CompiledGeometryHandle handle = GetCompiledGeometryHandle(element_clip.geometry->resource_handle))
-				render_interface->RenderToClipMask(element_clip.operation, handle, element_clip.absolute_offset);
+			{
+				if (element_clip.has_shape)
+				{
+					ClipShape shape = element_clip.shape;
+					shape.transform = element_clip.transform;
+					render_interface->RenderToClipMaskShape(element_clip.operation, handle, element_clip.absolute_offset, shape);
+				}
+				else
+					render_interface->RenderToClipMask(element_clip.operation, handle, element_clip.absolute_offset);
+			}
 		}
 
 		// Apply the initially set transform in case it was changed.
 		SetTransform(&initial_transform);
 	}
+}
+
+bool RenderManager::SupportsPrimitives() const
+{
+	return render_interface->SupportsPrimitives();
+}
+
+void RenderManager::RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation)
+{
+	if (!primitives.empty())
+		render_interface->RenderPrimitives(primitives, translation);
 }
 
 void RenderManager::SetState(const RenderState& next)

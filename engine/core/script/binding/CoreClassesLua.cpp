@@ -592,6 +592,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("BLOOM", ShaderType::BLOOM)
         .addVariable("HTMLUI", ShaderType::HTMLUI)
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
+        .addVariable("HTMLUI_PRIM", ShaderType::HTMLUI_PRIM)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
         .endNamespace();

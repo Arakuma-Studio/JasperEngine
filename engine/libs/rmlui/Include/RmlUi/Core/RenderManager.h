@@ -20,10 +20,14 @@ struct ClipMaskGeometry {
 	Geometry* geometry;
 	Vector2f absolute_offset;
 	const Matrix4f* transform;
+	// Fork (S16-F2): the shape the geometry covers (RenderInterface::RenderToClipMaskShape), when has_shape
+	bool has_shape = false;
+	ClipShape shape = {};
 };
 inline bool operator==(const ClipMaskGeometry& a, const ClipMaskGeometry& b)
 {
-	return a.operation == b.operation && a.geometry == b.geometry && a.absolute_offset == b.absolute_offset && a.transform == b.transform;
+	return a.operation == b.operation && a.geometry == b.geometry && a.absolute_offset == b.absolute_offset && a.transform == b.transform &&
+		a.has_shape == b.has_shape && (!a.has_shape || a.shape == b.shape);
 }
 inline bool operator!=(const ClipMaskGeometry& a, const ClipMaskGeometry& b)
 {
@@ -68,6 +72,11 @@ public:
 	void ResetState();
 
 	Geometry MakeGeometry(Mesh&& mesh);
+
+	/// Fork (S16-F1): the render interface draws box primitives (RenderInterface::SupportsPrimitives).
+	bool SupportsPrimitives() const;
+	/// Fork (S16-F1): draws box primitives at the translation with the current state.
+	void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
 
 	Texture LoadTexture(const String& source, const String& document_path = String());
 	/// Fork (phase 3, p3-paint): the texture of 'source' joined with the document path, with 'query' (a query parameter)
