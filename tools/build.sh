@@ -19,7 +19,7 @@
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan).
 # linux, web: CXX_STANDARD=<n> builds at another supported C++ standard than the default
 # (JASPERENGINE_CXX_STANDARD), next to the default build (build/linux/editor-cxx<n>, ...).
-# linux first checks engine/ and editor/ with tools/check-cxx-subset.py.
+# linux first checks engine/ and editor/ with tools/check-cxx-subset.py and tools/check-pollers.py.
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
@@ -153,6 +153,7 @@ linux)
     ENGINE_DIR="engine$CXX_SUFFIX"
     run bash -euo pipefail -c "
         python3 tools/check-cxx-subset.py
+        python3 tools/check-pollers.py
         cmake -S . -B $OUT/$EDITOR_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $BACKEND_FLAGS $CXX_STANDARD_FLAGS \
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG

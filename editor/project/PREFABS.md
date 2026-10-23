@@ -100,8 +100,11 @@ it).
   reference written before GUIDs, by path only, still finds the file after it moves). A
   GUID found in two files stays with the file the cache says had it, else the older one;
   the other file gets a new random GUID written into it.
-- **Refresh** (`Project::refreshAssetDatabase`, every 2 s from `App::engineRender`, not
-  while playing): external changes. A new file with an unknown GUID is added; with the
+- **External changes** come from the file watcher (`Project::applyFileChanges`, through the
+  hot reload, docs/hot-reload.md): a rename keeps the GUID (`remapPrefabFilePath`), a removal
+  `removeAssets`, an addition `importAssets`, an edit `AssetDatabase::refreshFile`; while a
+  scene plays they wait, and a full **Refresh** (`Project::refreshAssetDatabase`: Assets >
+  Refresh, `sync_files` full) runs when Play stops. The full refresh: A new file with an unknown GUID is added; with the
   GUID of a file that is gone, it is that file moved; with the GUID of a file that is still
   there, it is a copy and gets a new GUID. A gone file is removed. A file edited so that its
   GUID line disappeared gets it back.

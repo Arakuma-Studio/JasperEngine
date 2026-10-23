@@ -5182,7 +5182,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             modelLoaded = true;
             assetDatabase.open(projectPath);
-            HotReloadService::get().startWatching(*this);
+            if (watchFiles) HotReloadService::get().startWatching(*this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -5470,7 +5470,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
         assetDatabase.open(projectPath);
-        HotReloadService::get().startWatching(*this);
+        if (watchFiles) HotReloadService::get().startWatching(*this);
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -5555,7 +5555,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         editor::getEditorHost().reportLoadingProgress("Scanning assets...");
         assetDatabase.open(projectPath);
         // what changes on disk from now on reloads (S05)
-        HotReloadService::get().startWatching(*this);
+        if (watchFiles) HotReloadService::get().startWatching(*this);
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 

@@ -42,27 +42,25 @@ namespace {
         return true;
     }
 
-    // Whether `use`'s sources reach a file of `changed` (project- or assets-relative forms)
-    bool reaches(Project* project, const ProjectChecks::ShaderUse& use, const std::set<std::string>& changed) {
-        const fs::path projectRoot = project->getProjectPath();
-        const fs::path assetsRoot = project->getAssetsPath();
-        // a project UI effect is named by its asset path (ShaderBuilder::resolveCustomSources)
-        const std::string& base = use.base;
-        const bool fragmentOnly = base.find('|') == std::string::npos && base.size() > 5 && base.compare(base.size() - 5, 5, ".frag") == 0;
-        auto reader = [&](const std::string& relativePath, std::string& content) {
-            const fs::path path = fragmentOnly ? Project::findShaderFile(assetsRoot, projectRoot, relativePath)
-                                               : Project::findShaderFile(projectRoot, assetsRoot, relativePath);
-            return !path.empty() && readText(path, content);
-        };
-        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(base, reader, static_cast<ShaderType>(std::max(use.shaderType, 0)));
-        if (changed.count(sources.vertFile) || changed.count(sources.fragFile)) return true;
-        for (const auto& [file, content] : sources.files) {
-            if (changed.count(file)) return true;
-        }
-        // an entry point that does not resolve any more (renamed away) still names its fork
-        return !sources.valid;
-    }
+}
 
+bool reload::shaderSourcesReach(Project* project, const std::string& base, int shaderType, const std::set<std::string>& changed) {
+    const fs::path projectRoot = project->getProjectPath();
+    const fs::path assetsRoot = project->getAssetsPath();
+    // a project UI effect is named by its asset path (ShaderBuilder::resolveCustomSources)
+    const bool fragmentOnly = base.find('|') == std::string::npos && base.size() > 5 && base.compare(base.size() - 5, 5, ".frag") == 0;
+    auto reader = [&](const std::string& relativePath, std::string& content) {
+        const fs::path path = fragmentOnly ? Project::findShaderFile(assetsRoot, projectRoot, relativePath)
+                                           : Project::findShaderFile(projectRoot, assetsRoot, relativePath);
+        return !path.empty() && readText(path, content);
+    };
+    const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(base, reader, static_cast<ShaderType>(std::max(shaderType, 0)));
+    if (changed.count(sources.vertFile) || changed.count(sources.fragFile)) return true;
+    for (const auto& [file, content] : sources.files) {
+        if (changed.count(file)) return true;
+    }
+    // an entry point that does not resolve any more (renamed away) still names its fork
+    return !sources.valid;
 }
 
 void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
@@ -89,7 +87,7 @@ void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
             };
             auto built = std::make_shared<std::vector<Built>>();
             for (size_t i = 0; i < forks.size(); i++) {
-                if (!reaches(project, forks[i], changed)) continue;
+                if (!shaderSourcesReach(project, forks[i].base, forks[i].shaderType, changed)) continue;
                 // the check reads the files on disk, not the snapshot of the last build
                 ShaderBuilder::dropSourceSnapshot(forks[i].base);
                 Built item;

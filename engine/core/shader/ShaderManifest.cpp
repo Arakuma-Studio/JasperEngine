@@ -1536,7 +1536,7 @@ void ShaderManifests::setForkReader(SourceReader reader){
     std::lock_guard<std::mutex> lock(c.mutex);
     c.forkReader = reader ? reader : SourceReader(readAssetFile);
     for (auto it = c.manifests.begin(); it != c.manifests.end();){
-        if (!ShaderReference::isLibrary(it->first) && which(it->first)){
+        if (!ShaderReference::isLibrary(it->first)){
             c.reported.erase(it->first);
             it = c.manifests.erase(it);
         }else{
@@ -1563,7 +1563,7 @@ void ShaderManifests::clearForks(const std::function<bool(const std::string& for
     ManifestCache& c = cache();
     std::lock_guard<std::mutex> lock(c.mutex);
     for (auto it = c.manifests.begin(); it != c.manifests.end();){
-        if (!ShaderReference::isLibrary(it->first)){
+        if (!ShaderReference::isLibrary(it->first) && which(it->first)){
             c.reported.erase(it->first);
             it = c.manifests.erase(it);
         }else{

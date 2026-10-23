@@ -132,6 +132,9 @@ namespace jasperengine {
         void setMainThreadWaker(std::function<void()> waker);
 
         void setQuietWindow(std::chrono::milliseconds quiet);
+        // Where the watcher's warnings go (each once: a fallback to polling, an overflow);
+        // Log::warn by default. Any thread.
+        void setWarningHandler(std::function<void(const std::string& message)> handler);
 
         ExpectedWriteLedger& ledger() { return writeLedger; }
 

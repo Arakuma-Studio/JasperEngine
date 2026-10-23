@@ -214,6 +214,7 @@ namespace {
 
         void SetUp() override {
             if (!FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
+            service.setWarningHandler([](const std::string&) {});
             ASSERT_TRUE(service.start(dir.path, WatchBackendKind::Native));
             ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, std::chrono::milliseconds(5000)));
             WatchFilter withEditor;

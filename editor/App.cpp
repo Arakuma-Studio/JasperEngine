@@ -109,6 +109,8 @@ editor::App::App(){
     playInput = new PlayInput(&project);
     sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
+    // the open project's files changing on disk reload (S05)
+    project.setWatchFiles(true);
     mainToolbar = new MainToolbar(&project);
     statusBar = new StatusBar([this]() { editorSettingsWindow.open(&project, "Asset Pipeline"); });
     inspectorWindow->setSceneWindow(sceneWindow);

@@ -32,6 +32,8 @@ namespace {
         std::vector<FileChange> changes;
 
         void SetUp() override {
+            // no System in this binary: the warnings are the test's
+            service.setWarningHandler([](const std::string&) {});
             if (GetParam() == WatchBackendKind::Native && !FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
         }
 

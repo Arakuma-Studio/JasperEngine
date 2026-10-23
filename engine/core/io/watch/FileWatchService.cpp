@@ -133,9 +133,11 @@ struct FileWatchService::Shared {
     std::function<void()> waker;
     std::atomic<std::thread::id> mainThread{std::thread::id()};
 
+    std::function<void(const std::string&)> warning = [](const std::string& message) { Log::warn("%s", message.c_str()); };
+
     void warnOnceLocked(const std::string& key, const std::string& message) {
         if (!warned.insert(key).second) return;
-        Log::warn("[Hot Reload] %s", message.c_str());
+        if (warning) warning("[Hot Reload] " + message);
     }
 };
 
@@ -339,6 +341,12 @@ void FileWatchService::setQuietWindow(std::chrono::milliseconds quiet) {
     if (!shared) return;
     std::lock_guard<std::mutex> lock(shared->stateMutex);
     shared->coalescer.setQuietWindow(quiet);
+}
+
+void FileWatchService::setWarningHandler(std::function<void(const std::string& message)> handler) {
+    if (!shared) return;
+    std::lock_guard<std::mutex> lock(shared->stateMutex);
+    shared->warning = std::move(handler);
 }
 
 void FileWatchService::setPaused(bool paused) {

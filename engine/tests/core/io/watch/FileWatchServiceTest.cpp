@@ -26,6 +26,8 @@ namespace {
         FileWatchService service;
 
         void SetUp() override {
+            // no System in this binary: the warnings are the test's
+            service.setWarningHandler([](const std::string&) {});
             if (GetParam() == WatchBackendKind::Native && !FileWatcher::hasNative()) GTEST_SKIP() << "no native backend here";
         }
         void startWatching() {
@@ -241,6 +243,7 @@ INSTANTIATE_TEST_SUITE_P(Backends, FileWatchServiceTests, ::testing::Values(Watc
 TEST(FileWatchServiceOff, OffAttachesForTheEditorsWritesOnly) {
     WatchTempDir dir;
     FileWatchService service;
+    service.setWarningHandler([](const std::string&) {});
     EXPECT_FALSE(service.start(dir.path, WatchBackendKind::Off));
     EXPECT_TRUE(service.isAttached());
     EXPECT_FALSE(service.flush(ms(100)));

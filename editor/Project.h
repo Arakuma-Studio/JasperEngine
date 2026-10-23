@@ -777,6 +777,7 @@ namespace jasperengine::editor{
 
         std::filesystem::path projectPath;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
+        bool watchFiles = false;
 
         std::map<std::filesystem::path, Prefab> prefabAssets;
 
@@ -1352,6 +1353,9 @@ namespace jasperengine::editor{
         // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
         // while a scene plays or when the file cannot be read (the open copy stays).
         bool reloadSceneFromDisk(uint32_t sceneId, std::string* error = nullptr);
+        // The editor (and its MCP server) watch the open project's files; the CLI commands do
+        // not (no watcher thread for a one-shot export or check). Off by default.
+        void setWatchFiles(bool watch) { watchFiles = watch; }
         void removeScene(uint32_t sceneId);
 
         //=== Non-interactive scene and project APIs (MCP server, CLI) ===

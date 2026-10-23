@@ -82,11 +82,14 @@ jobs:
       - name: Set version
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
-      # The portable C++20 subset (docs/specs/S01-cxx20.md, D7), the compiler floors and the
-      # one-standard check of engine/cmake/JasperEngineToolchain.cmake
+      # The portable C++20 subset (docs/specs/S01-cxx20.md, D7), the file pollers the watcher
+      # replaced (S05 AC22), the compiler floors and the one-standard check of
+      # engine/cmake/JasperEngineToolchain.cmake
       - name: Check C++ standard and toolchain rules
         run: |
           python3 tools/check-cxx-subset.py
+          python3 tools/check-pollers.py --self-test
+          python3 tools/check-pollers.py
           cmake -P tools/tests/check_toolchain_floor.cmake
           cmake -P tools/tests/cxx-standard-check/run.cmake
 

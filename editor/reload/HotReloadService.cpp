@@ -130,6 +130,10 @@ void HotReloadService::detach() {
     for (const std::shared_ptr<Job>& job : jobs) {
         if (job->future.valid()) job->future.wait();
     }
+    for (std::future<AdoptFn>& future : superseded) {
+        if (future.valid()) future.wait();
+    }
+    superseded.clear();
     jobs.clear();
     batches.clear();
     currentBatch = 0;
@@ -293,7 +297,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             continue;
         }
         if (kind == "scene" || kind == "prefab" || kind == "project") {
-            if (change.kind == FileChangeKind::Modified) openDocuments.push_back(change.path);
+            // another program's edit of an open document (a tool's own sync of a file it
+            // renamed or wrote is quiet: no bar for it)
+            if (change.kind == FileChangeKind::Modified && !options.quiet) openDocuments.push_back(change.path);
             if (kind != "prefab") continue;
         }
         external[kind].push_back(change.path);
@@ -360,11 +366,12 @@ void HotReloadService::startJob(const std::string& kind, const fs::path& path, W
         currentBatch = nextBatch++;
         batches[currentBatch].log = logReloads;
     }
-    // a reload of the same file still running is replaced: its result is out of date
+    // a reload of the same file still running is replaced: its result is out of date (it
+    // finishes on its worker and is dropped, the main thread does not wait for it)
     for (auto it = jobs.begin(); it != jobs.end(); ++it) {
         if ((*it)->kind == kind && (*it)->path == path) {
-            if ((*it)->future.valid()) (*it)->future.wait();
             const uint64_t old = (*it)->batch;
+            if ((*it)->future.valid()) superseded.push_back(std::move((*it)->future));
             jobs.erase(it);
             auto batch = batches.find(old);
             if (batch != batches.end() && batch->second.outstanding > 0) batch->second.outstanding--;
@@ -388,6 +395,9 @@ bool HotReloadService::update() {
     if (!project) return false;
     const auto start = Clock::now();
     bool adopted = false;
+    superseded.erase(std::remove_if(superseded.begin(), superseded.end(), [](std::future<AdoptFn>& future) {
+        return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    }), superseded.end());
     uint64_t texels = 0;
     for (auto it = jobs.begin(); it != jobs.end();) {
         Job& job = **it;
@@ -461,6 +471,7 @@ void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, do
     record.ms = ms;
     record.ok = ok;
     record.error = error;
+    record.attempts = job.retried ? 2 : 1;
     pushRecord(record);
     if (ok) {
         notify(job.path, job.kind, Event::Reloaded);

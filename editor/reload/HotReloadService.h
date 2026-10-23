@@ -126,6 +126,7 @@ namespace jasperengine::editor {
             double ms = 0.0;
             bool ok = true;
             std::string error;
+            int attempts = 1;        // 2: it failed once and was tried again
         };
         uint64_t lastSerial() const { return nextSerial - 1; }
         std::vector<Record> recordsSince(uint64_t serial) const;
@@ -211,6 +212,7 @@ namespace jasperengine::editor {
         uint64_t journalCursor = 1;            // the next journal sequence apply() has not seen
 
         std::vector<std::shared_ptr<Job>> jobs;
+        std::vector<std::future<AdoptFn>> superseded;   // replaced by a newer reload of their file
         std::map<uint64_t, Batch> batches;
         uint64_t currentBatch = 0;
         uint64_t nextBatch = 1;

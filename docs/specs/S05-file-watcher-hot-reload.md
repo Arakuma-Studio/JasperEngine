@@ -505,3 +505,47 @@ Each backend test is parameterised over `{Native, Polling}`.
   Play (resources only, the state is untouched). Lua goes to S23 or is deferred. The asset DB is
   updated, but prefab instance reimport waits until Play stops (as `refreshAssetDatabase` does
   today).
+
+## Deviations (implementation, feat/s05-file-watcher)
+
+- **Dependencies not landed.** S02, S04, S06 and S09 were not on `oe-port` while this stream ran
+  (S01 and S03 were, and are used: C++20 `std::span` batches, `io::writeFileAtomic`'s publish
+  listener feeding the ledger, `io::isTemporarySiblingName` in the temp-name rule). Without S04:
+  dependents are invalidated through the fixed edges of R11 (R12's default), an external rename
+  keeps a prefab's GUID through `AssetDatabase::moveAssets` (the only GUID-tracked assets today)
+  but there is no redirect record or missing-asset tracker to update, so AC14 checks the GUID and
+  not a redirect. Without S06: decodes run on `ThreadPoolManager`, the index and the polling scans
+  on the watcher's own threads. Without S09: `FileWatchSubscription` is its own RAII type and the
+  Console lines go through `Out`/`Log`.
+- **Tests.** Unit tests are where S03 put the test targets (S02's layout, `*Test.cpp` files):
+  `engine/tests/core/io/watch/` and `engine/tests/core/pool/` in `jasperengine-core-tests`,
+  `editor/tests/reload/HotReloadServiceTest.cpp` in `jasperengine-editor-tests` (not
+  `editor/reload/tests/`). Suite names are the spec's. AC10's shader case tests the selective
+  rule (`reload::shaderSourcesReach`: an include reaches only the forks including it) rather than
+  compiling forks headlessly; its Play + Lua case is covered by `test_autosync.py`'s play tests
+  (deferred) since a headless test project cannot enter Play; the model case tests
+  `MeshSystem::modelHierarchyMatches` on real glTF files.
+- **Pump placement.** `FileWatchService::pump` and `HotReloadService::update` run on every editor
+  loop iteration (`App::pollExternalChanges`), not only in `App::engineRender`: idle iterations
+  do not run `engineRender`, and a reload must not wait for the next drawn frame. A finished
+  worker job wakes the idle loop.
+- **Status bar.** The editor had no status bar; R28's indicator is a new bottom bar
+  (`editor/window/StatusBar`).
+- **inotify mask.** `IN_ATTRIB` (R16's "IN_ATTR" is not a Linux constant).
+- **Console lines.** Reloads the watcher drives and `sync_files` log `[Hot Reload]` lines;
+  McpAutoSync's pick-up before a call does not (its call result reports it), and neither does a
+  tool's or the code editor's own write. Failures always log errors.
+- **`editor_status.file_watcher.pending`** also counts, with Auto Refresh off, the changes that
+  waited for the current call (its pick-up applies them before the handler runs, as the agent
+  contract requires), so AC16 can see them.
+- **`rebuild_models`** rebuilds the model's generated GameObjects but is not an undo step
+  (destroyed generated hierarchies have no command today); the warning and the problem tell the
+  user what it does.
+- **Model materials.** "Submeshes not overridden or linked" are the ones without
+  `overrideFields` (MeshSystem's existing submesh overrides, which loadGLTF restores).
+- **Prefab Mode Reload** closes the stage without saving and opens the prefab again.
+- **AC19 frame times** are the intervals between consecutive drawn frames (gaps over 1 s are
+  idling, not frames).
+- **AC21** (manual Windows/macOS) and **AC23** (a wasm test run) could not be run here: the
+  procedure and the record are in `docs/specs/acceptance/S05.md`; on Android, iOS and the web
+  `FileWatchService` allocates nothing and `start` returns false by construction.

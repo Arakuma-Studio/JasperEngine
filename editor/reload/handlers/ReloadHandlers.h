@@ -42,6 +42,9 @@ namespace jasperengine::editor::reload {
     // at the file the compiler names, else the changed file of the fork (UI effect forms share
     // their errors: reported once)
     Json shaderProblems(Project* project, const Json& results, const std::vector<std::string>& changedFiles);
+    // Whether a fork's entry points or #include closure hold one of `changed` (project- or
+    // assets-relative); a fork whose sources no longer resolve counts as reached
+    bool shaderSourcesReach(Project* project, const std::string& fork, int shaderType, const std::set<std::string>& changed);
     // gltf/glb/obj/fbx: meshes, skins, morphs, animations of an unchanged hierarchy
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
