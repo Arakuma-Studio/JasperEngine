@@ -43,6 +43,24 @@ def safe_save(path: Path, data: bytes) -> None:
     os.replace(temp, path)
 
 
+async def console_mark(ed: Editor) -> None:
+    """Move the Console cursor past everything logged so far (console_since() reads from here)."""
+    result = await ed.call("read_console", limit=1000)
+    cursor = result["next_cursor"]
+    while result.get("more"):
+        result = await ed.call("read_console", since=cursor, limit=1000)
+        cursor = result["next_cursor"]
+    ed._console_cursor = cursor
+
+
+def prefab_guid(path: Path) -> str | None:
+    """The GUID a .prefab file carries (its `guid:` line)."""
+    for line in path.read_text().splitlines():
+        if line.strip().startswith("guid:"):
+            return line.split(":", 1)[1].strip().strip('"')
+    return None
+
+
 def external(r) -> dict | None:
     s = r.structured if isinstance(r.structured, dict) else {}
     return s.get("external_changes")
@@ -101,11 +119,11 @@ async def test_setup_sprite_with_texture(ed: Editor):
 
 async def test_external_texture_edit_reloads(ed: Editor):
     """AC11: a safe-save of the PNG reloads it without any MCP call."""
-    await ed.console_since(None)
+    await console_mark(ed)
     safe_save(ed.project / TEX, png_bytes(GREEN))
     time.sleep(1.5)   # no MCP call: only the watcher can reload it
     asked = time.time()
-    entries = await ed.console_since(None, contains="[Hot Reload] Reloaded " + TEX)
+    entries = await ed.console_since(contains="[Hot Reload] Reloaded " + TEX)
     ed.check(entries, "no [Hot Reload] line for the texture")
     ed.check(min(e["time"] for e in entries) < asked, f"the reload happened before the call: {entries!r} (asked {asked})")
     fw = watcher(await status(ed))
@@ -145,12 +163,12 @@ async def test_editor_save_no_echo(ed: Editor):
         await ed.call("link_material", scene=STATE["scene"], entity=ids[-1], material="materials/hr.material")
     await status(ed)
     echoes = watcher(await status(ed))["echoes_suppressed"]
-    await ed.console_since(None)
+    await console_mark(ed)
     await ed.call("update_material", path="materials/hr.material", values={"baseColorFactor": [0, 0, 1, 1]})
     time.sleep(2.0)
     r = await status(ed)
     ed.check(external(r) is None, f"the save came back as external: {external(r)!r}")
-    lines = await ed.console_since(None, contains="[Hot Reload]")
+    lines = await ed.console_since(contains="[Hot Reload]")
     ed.check(not [e for e in lines if "hr.material" in e["message"]], f"a [Hot Reload] line for the editor's save: {lines!r}")
     ed.check_eq(watcher(r)["echoes_suppressed"], echoes + 1, "its echo was suppressed")
     other = await ed.call("get_entity", scene=STATE["scene"], entity=ids[1], components=["mesh"], detail="values")
@@ -161,13 +179,13 @@ async def test_editor_save_no_echo(ed: Editor):
 async def test_broken_texture_kept(ed: Editor):
     """AC15: garbage bytes keep the previous texture; a problem and an error line say so."""
     good = await centre(ed)
-    await ed.console_since(None)
+    await console_mark(ed)
     safe_save(ed.project / TEX, b"this is not a png at all" * 10)
     r = await status(ed)
     ext = external(r)
     ed.check(ext is not None, "the broken edit is reported")
     ed.check(any(p.get("path") == TEX for p in ext.get("problems", [])), f"a problem names the file: {ext!r}")
-    errors = await ed.console_since(None, contains="[Hot Reload] " + TEX, types=["error"])
+    errors = await ed.console_since(contains="[Hot Reload] " + TEX, types=["error"])
     ed.check(errors, "an error line in the Console")
     got = await centre(ed)
     ed.check(close(got, good, 6), f"the old texture stays: {got} (was {good})")
@@ -185,7 +203,7 @@ async def test_auto_refresh_off(ed: Editor):
     await ed.call("sync_files", auto_refresh=False, full=False)
     try:
         await status(ed)
-        await ed.console_since(None)
+        await console_mark(ed)
         safe_save(ed.project / TEX, png_bytes(YELLOW))
         time.sleep(1.5)
         # this call's pick-up applies what waited; its status counts what waited for it
@@ -195,7 +213,7 @@ async def test_auto_refresh_off(ed: Editor):
         ed.check(fw["pending"] >= 1, f"pending while Auto Refresh is off: {fw!r}")
         ext = external(r)
         ed.check(ext is not None and TEX in ext["changed"], f"an MCP call still syncs it: {ext!r}")
-        lines = await ed.console_since(None, contains="[Hot Reload] Reloaded " + TEX)
+        lines = await ed.console_since(contains="[Hot Reload] Reloaded " + TEX)
         ed.check(not lines, f"the watcher reloaded it with Auto Refresh off: {lines!r}")
         got = await wait_centre(ed, YELLOW)
         ed.check(close(got, YELLOW), f"yellow after the call: {got}")
@@ -214,13 +232,12 @@ async def test_external_add_delete_rename(ed: Editor):
     made = await ed.call("create_entity", scene=STATE["scene"], type="sprite", name="PrefabSource", select=False)
     eid = find_key(made, "entity_id", "id")
     await ed.call("create_prefab", scene=STATE["scene"], entity=eid, path="prefabs/hr.prefab")
-    info = await ed.call("get_asset_info", path="prefabs/hr.prefab")
-    guid = find_key(info, "guid")
-    ed.check(guid, f"the prefab has a GUID: {info!r}")
+    guid = prefab_guid(ed.project / "prefabs/hr.prefab")
+    ed.check(guid, "the prefab has a GUID")
 
     async def listed(pattern: str) -> list[str]:
         out = await ed.call("list_assets", pattern=pattern)
-        return [a if isinstance(a, str) else a.get("path") for a in out.get("assets", out.get("files", []))]
+        return [a if isinstance(a, str) else a.get("path") for a in out.get("entries", [])]
 
     png = ed.project / "assets/hr/added.png"
     safe_save(png, png_bytes(RED, 8))
@@ -235,8 +252,9 @@ async def test_external_add_delete_rename(ed: Editor):
     await status(ed)
     ed.check("assets/hr/renamed.png" in await listed("assets/**/renamed*.png"), "renamed png")
     ed.check(not await listed("assets/**/added*.png"), "the old name is gone")
-    info = await ed.call("get_asset_info", path="prefabs/hr_renamed.prefab")
-    ed.check_eq(find_key(info, "guid"), guid, "the prefab keeps its GUID across the rename")
+    ed.check_eq(prefab_guid(ed.project / "prefabs/hr_renamed.prefab"), guid, "the prefab keeps its GUID across the rename")
+    listing = await ed.call("list_assets", pattern="prefabs/*.prefab")
+    ed.check([e["path"] for e in listing["entries"]] == ["prefabs/hr_renamed.prefab"], f"listed under its new name: {listing!r}")
 
     png.with_name("renamed.png").unlink()
     time.sleep(1.5)
@@ -275,7 +293,7 @@ async def test_reload_hitch(ed: Editor):
 async def test_bulk_checkout(ed: Editor):
     """AC20: 10,000 small files in one burst: few Console lines, reloads done within 10 s, the
     editor answering throughout."""
-    await ed.console_since(None)
+    await console_mark(ed)
     root = ed.project / "assets/bulk"
     t0 = time.monotonic()
     for i in range(10000):
@@ -293,8 +311,8 @@ async def test_bulk_checkout(ed: Editor):
         time.sleep(0.1)
     ed.check(time.monotonic() - t0 <= 10.0 + 1.0, "the burst settled within 10 s")
     ed.check(slowest < 0.2 + 0.3, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
-    lines = await ed.console_since(None, contains="[Hot Reload]")
-    ed.check(len(lines) <= 10, f"{len(lines)} [Hot Reload] lines")
+    lines = await ed.console_since(contains="[Hot Reload]")
+    ed.check(len(lines) <= 10, f"{len(lines)} [Hot Reload] lines: {[e['message'] for e in lines][:12]!r}")
 
 
 async def test_polling_backend():
@@ -312,17 +330,17 @@ async def test_polling_backend():
         ed.check(close(await wait_centre(ed, RED), RED), "red")
         fw = watcher(await status(ed))
         ed.check_eq(fw["state"], "polling", f"polling: {fw!r}")
-        await ed.console_since(None)
+        await console_mark(ed)
         safe_save(ed.project / TEX, png_bytes(GREEN))
         # interval 1 s + the settle: within interval + 500 ms, with the margin of a busy runner
         time.sleep(2.0)
         asked = time.time()
-        entries = await ed.console_since(None, contains="[Hot Reload] Reloaded " + TEX)
+        entries = await ed.console_since(contains="[Hot Reload] Reloaded " + TEX)
         ed.check(entries and min(e["time"] for e in entries) < asked, f"reloaded by the poller: {entries!r}")
         ed.check(close(await centre(ed), GREEN), "green")
         png = ed.project / "assets/hr/added.png"
         safe_save(png, png_bytes(RED, 8))
         time.sleep(2.0)
         out = await ed.call("list_assets", pattern="assets/**/added*.png")
-        names = [a if isinstance(a, str) else a.get("path") for a in out.get("assets", out.get("files", []))]
+        names = [a if isinstance(a, str) else a.get("path") for a in out.get("entries", [])]
         ed.check("assets/hr/added.png" in names, f"added: {out!r}")

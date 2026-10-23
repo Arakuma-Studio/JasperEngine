@@ -285,6 +285,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         // reloaded already (by the watcher, a tool's own sync, another call's pick-up): reported,
         // not done again (the shared applied-stamp table, R29)
         if (!options.force && !options.full && isCurrent(change.path) && kind != "scene" && kind != "project") {
+            // still reloading (the watcher started it a moment ago): pending, so the caller waits
+            if (!idleFor({change.path})) {
+                if (change.origin == ChangeOrigin::External) result.pending.push_back(relPath);
+                continue;
+            }
             Record record;
             if (change.origin == ChangeOrigin::External && lastRecordOf(relPath, record)) {
                 result.reloaded.push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
@@ -342,7 +347,10 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
     }
     for (const std::shared_ptr<Job>& job : jobs) {
-        if (job->batch == batchId) result.pending.push_back(relative(job->path));
+        const std::string pendingPath = relative(job->path);
+        if (job->batch == batchId && std::find(result.pending.begin(), result.pending.end(), pendingPath) == result.pending.end()) {
+            result.pending.push_back(pendingPath);
+        }
     }
     currentBatch = 0;
     closeBatchIfDone(batchId);
