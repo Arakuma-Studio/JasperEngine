@@ -213,7 +213,7 @@ namespace {
     void parseState(const std::string& rest, int line, EffectManifest& out, ErrorFn& error){
         std::vector<std::string> words;
         wordsOf(rest, words);
-        const char* grammar = "@state is '<name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] "
+        const char* grammar = "@state is '<name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] "
                               "[clear|resample]'";
         if (words.size() < 3){
             error(line, grammar, "@state vel rgba16f 256x256");
@@ -230,12 +230,14 @@ namespace {
         else if (words[1] == "rgba16f") st.format = EffectStateFormat::RGBA16F;
         else if (words[1] == "rgba32f") st.format = EffectStateFormat::RGBA32F;
         else if (words[1] == "r32f") st.format = EffectStateFormat::R32F;
+        else if (words[1] == "rg16f") st.format = EffectStateFormat::RG16F;
+        else if (words[1] == "r16f") st.format = EffectStateFormat::R16F;
         else{
-            error(line, "unknown state format '" + words[1] + "'", "rgba8, rgba16f, rgba32f or r32f");
+            error(line, "unknown state format '" + words[1] + "'", "rgba8, rgba16f, rg16f, r16f, rgba32f or r32f");
             return;
         }
         // 32-bit float images are not filterable everywhere: nearest by default
-        st.linear = st.format == EffectStateFormat::RGBA8 || st.format == EffectStateFormat::RGBA16F;
+        st.linear = st.format != EffectStateFormat::RGBA32F && st.format != EffectStateFormat::R32F;
         const std::string& size = words[2];
         size_t next = 3;
         if (size.rfind("box", 0) == 0){
@@ -478,6 +480,8 @@ const char* jasperengine::htmlui::effectStateFormatName(EffectStateFormat format
         case EffectStateFormat::RGBA16F: return "rgba16f";
         case EffectStateFormat::RGBA32F: return "rgba32f";
         case EffectStateFormat::R32F: return "r32f";
+        case EffectStateFormat::RG16F: return "rg16f";
+        case EffectStateFormat::R16F: return "r16f";
     }
     return "rgba16f";
 }
@@ -488,6 +492,8 @@ int jasperengine::htmlui::effectStateFormatBytes(EffectStateFormat format){
         case EffectStateFormat::RGBA16F: return 8;
         case EffectStateFormat::RGBA32F: return 16;
         case EffectStateFormat::R32F: return 4;
+        case EffectStateFormat::RG16F: return 4;
+        case EffectStateFormat::R16F: return 2;
     }
     return 8;
 }

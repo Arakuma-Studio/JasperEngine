@@ -88,7 +88,7 @@ simulation (`element:effectSplat{...}`). The editor, `check`, the exporter, the 
 ### 3.2 Manifest grammar (additions to phase 5 §3.9)
 ```
 // @state   <name> <format> <size> [linear|nearest] [clamp|repeat] [clear|resample]
-//          <format> := rgba8 | rgba16f | rgba32f | r32f
+//          <format> := rgba8 | rgba16f | rg16f | r16f | rgba32f | r32f
 //          <size>   := <w>x<h> | box[*<scale>] [max <px>]
 // @init    <pass> <state>                                  (once, after allocation and every reset)
 // @step    <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
@@ -99,7 +99,9 @@ simulation (`element:effectSplat{...}`). The editor, `check`, the exporter, the 
 // @cost    stateful                                        (required with @state; forbidden without)
 ```
 - **Formats.** `rgba8` (unsigned normalised), `rgba16f` (half float, filterable everywhere),
-  `rgba32f` and `r32f` (full float: particle positions, Gray-Scott chemicals, sort offsets). The
+  `rg16f` and `r16f` (half float with two and one channels, for velocity and scalar fields: the
+  same render, blend and filter rules as `rgba16f`, half or a quarter of its memory; sampling
+  returns 0 for the missing colour channels and 1 for alpha), `rgba32f` and `r32f` (full float: particle positions, Gray-Scott chemicals, sort offsets). The
   32-bit formats are not filterable on GLES3/WebGL2 without `OES_texture_float_linear`: they must
   be `nearest` (manifest error otherwise), and the compiler annotates their texture and sampler as
   unfilterable (`@image_sample_type`, `@sampler_type`, phase 0's annotation mechanism).
