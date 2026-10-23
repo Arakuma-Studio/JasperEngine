@@ -699,6 +699,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
+    ${EDITOR_DIR}/render/preview/PoseRender.cpp
 
     ${EDITOR_DIR}/pose/PoseImage.cpp
 

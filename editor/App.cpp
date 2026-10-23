@@ -42,6 +42,7 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
+#include "render/preview/PoseRender.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -1573,6 +1574,9 @@ ImFont* editor::App::getBoldFont() {
 void editor::App::setup() {
     mainThreadId = std::this_thread::get_id();
 
+    // a queued offscreen pose render keeps the loop drawing until processFrame serves it
+    PoseRender::setFrameRequester([this]() { requestRedraw(); });
+
     // Initialize application settings
     initializeSettings();
 
@@ -2774,6 +2778,13 @@ void editor::App::engineRender(){
         footerDeltaMs = 0.0f;
     }
     renderedScenePrevFrame = renderedSceneThisFrame;
+
+    // offscreen pose renders (PoseRender): private scenes drawn as views of their own after
+    // this frame's views, so the open scenes, the Scene view and the Game view are untouched
+    if (PoseRender::processFrame()) {
+        requestRedraw();
+    }
+
     if (benchmarkEnabled)
         tickBenchmark();
 }
