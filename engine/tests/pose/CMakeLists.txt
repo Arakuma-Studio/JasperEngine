@@ -24,6 +24,7 @@ set(POSE_TEST_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(POSE_TEST_EDITOR_SOURCES
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseImage.cpp
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseUiLogic.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/pose/PoseViewportLogic.cpp
 )
 
 add_executable(jasperengine-pose-tests ${POSE_TEST_SOURCES} ${POSE_TEST_EDITOR_SOURCES})
