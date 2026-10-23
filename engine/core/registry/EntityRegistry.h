@@ -21,6 +21,7 @@
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"

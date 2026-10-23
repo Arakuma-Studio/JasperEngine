@@ -494,6 +494,7 @@ namespace jasperengine::editor{
         void drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

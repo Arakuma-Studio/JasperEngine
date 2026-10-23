@@ -63,6 +63,8 @@ namespace jasperengine::editor{
         UpdateFlags_Scene_Mesh_Variant  = (uint64_t)1 << 37,
         // a UIDocument's file changed: load it again
         UpdateFlags_UIDocument_Reload   = (uint64_t)1 << 38,
+        // a Pose Animator's animation path changed: load it again
+        UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 39,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -123,7 +125,8 @@ namespace jasperengine::editor{
         // Keep new component types at the end: their ordinal is used as the bit
         // position in Prefab's in-memory component override mask.
         ReflectionProbeComponent,
-        UIDocumentComponent
+        UIDocumentComponent,
+        PoseAnimatorComponent
     };
 
     enum class PropertyType{

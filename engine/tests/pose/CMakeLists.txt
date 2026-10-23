@@ -18,12 +18,19 @@ endif()
 
 file(GLOB POSE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 
-add_executable(jasperengine-pose-tests ${POSE_TEST_SOURCES})
+# editor pose logic without ImGui or editor state, tested here because the editor has no
+# googletest target (the editor files are compiled into this executable)
+set(POSE_TEST_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
+set(POSE_TEST_EDITOR_SOURCES
+    ${POSE_TEST_REPO_ROOT}/editor/pose/PoseImage.cpp
+)
 
-target_include_directories(jasperengine-pose-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_executable(jasperengine-pose-tests ${POSE_TEST_SOURCES} ${POSE_TEST_EDITOR_SOURCES})
+
+target_include_directories(jasperengine-pose-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${POSE_TEST_REPO_ROOT})
 
 find_package(Threads REQUIRED)
-target_link_libraries(jasperengine-pose-tests PRIVATE jasperengine gtest_main gtest Threads::Threads)
+target_link_libraries(jasperengine-pose-tests PRIVATE jasperengine stb gtest_main gtest Threads::Threads)
 
 if(NOT MSVC)
     target_compile_options(jasperengine-pose-tests PRIVATE -Wall -Wextra)

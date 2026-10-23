@@ -32,7 +32,8 @@ Json object(const Json& properties, const std::vector<std::string>& required, bo
 }
 
 Json anyObject(const std::string& description) {
-    return described({{"type", "object"}, {"additionalProperties", true}}, description);
+    // additionalProperties: true is the JSON Schema default, so it is not spelled out
+    return described({{"type", "object"}}, description);
 }
 
 Json string(const std::string& description) {
@@ -87,41 +88,40 @@ Json vec3(const std::string& description) { return fixedVector(3, description); 
 Json vec4(const std::string& description) { return fixedVector(4, description); }
 
 Json quat(const std::string& description) {
-    return {
-        {"description", description.empty() ? "Rotation: [x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description},
+    return described({
         {"anyOf", Json::array({
             fixedVector(4, ""),
             {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}}}
         })}
-    };
+    }, description);
 }
 
 Json color(const std::string& description) {
-    return {
+    return described({
         {"type", "array"},
         {"items", {{"type", "number"}}},
         {"minItems", 3},
-        {"maxItems", 4},
-        {"description", description.empty() ? "[r,g,b(,a)] 0-1." : description}
-    };
+        {"maxItems", 4}
+    }, description);
 }
 
-// Refs advertise [integer, string]; McpRefs also accepts the {"id"|"name"|"path"} objects results
-// return. The default descriptions are empty: the server instructions explain the conventions.
+// Refs advertise "string": McpRefs reads a numeric string like an integer id ("12" = 12) and also
+// accepts the {"id"|"name"|"path"} objects results return. The server instructions (Addressing)
+// explain the conventions, so the default descriptions are empty.
 Json sceneRef(const std::string& description) {
-    return described({{"type", {"integer", "string"}}}, description);
+    return described({{"type", "string"}}, description);
 }
 
 Json entityRef(const std::string& description) {
-    return described({{"type", {"integer", "string"}}}, description);
+    return described({{"type", "string"}}, description);
 }
 
 Json entities(const std::string& description) {
-    return described({{"type", "array"}, {"items", {{"type", {"integer", "string"}}}}}, description);
+    return described({{"type", "array"}, {"items", {{"type", "string"}}}}, description);
 }
 
 Json componentName(const std::string& description) {
-    return {{"type", "string"}, {"description", description.empty() ? "Component name." : description}};
+    return described({{"type", "string"}}, description);
 }
 
 Json assetPath(const std::string& description) {

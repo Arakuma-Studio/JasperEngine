@@ -31,12 +31,12 @@ Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent.
 Build Settings = export; Scenes in Build = project.yaml scenes.
 
 ## Addressing
-- scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
+- scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the selected
   scene. While playing, runtime-state tools resolve to the playing scene.
-- entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
+- entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
-  scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results return both id and path; prefer ids within a session.
+  scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail,
+  listing the paths. Results return both id and path; prefer ids within a session.
   `entities` (array) instead of `entity` applies a tool to several GameObjects.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
@@ -245,7 +245,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rule
 
 ## Pose animation
 Humanoid key poses (.poseanim): get_pose_animation (+ metrics), edit_pose_animation (one undo
-step). Angles: degrees from standing, arms down (0 is not a T-pose); use mirror_pose.
+step). Angles: degrees from standing, arms down (not a T-pose); use mirror_pose.
 Guide: jasper://docs/pose-animation.
 
 ## Pitfalls

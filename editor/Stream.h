@@ -417,6 +417,9 @@ namespace jasperengine::editor {
         static YAML::Node encodeUIDocumentComponent(const UIDocumentComponent& document);
         static UIDocumentComponent decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument = nullptr);
 
+        static YAML::Node encodePoseAnimatorComponent(const PoseAnimatorComponent& animator);
+        static PoseAnimatorComponent decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator = nullptr);
+
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
 

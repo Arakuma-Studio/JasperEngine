@@ -65,14 +65,14 @@ bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
 }
 
 Json unsavedSchema() {
-    return withDefault(stringEnum("Unsaved changes of a scene that closes (cancel: fail).", {"cancel", "save", "discard"}),
+    return withDefault(stringEnum("cancel: fail.", {"cancel", "save", "discard"}),
                        "cancel");
 }
 
 // set_main_camera's entity: null = the default camera
 Json nullableEntityRef(const std::string& description = {}) {
     Json ref = entityRef(description);
-    ref["type"].push_back("null");
+    ref["type"] = Json::array({"string", "null"});
     return ref;
 }
 
@@ -1342,7 +1342,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"name", string("Default: the file name or \"New Scene\".")},
             {"type", withDefault(stringEnum("", {"3D", "2D", "UI"}), "3D")},
             {"path", assetPath(".scene path (extension optional).")},
-            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
+            {"close_previous", withDefault(boolean(""), false)},
             {"unsaved", unsavedSchema()}
         });
         tool.allowedWhilePlaying = false;
@@ -1357,7 +1357,7 @@ void registerSceneTools(McpRegistry& registry) {
             "Opens a .scene file (adding it to the project if unlisted) and selects it; an open scene is just selected.";
         tool.inputSchema = object({
             {"scene", sceneRef(".scene path, or id/name of a project scene.")},
-            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
+            {"close_previous", withDefault(boolean(""), false)},
             {"unsaved", unsavedSchema()}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
@@ -1382,7 +1382,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "select_scene";
         tool.title = "Select Scene";
         tool.description = "Selects an open scene (its tab): the default scene of other tools.";
-        tool.inputSchema = object({{"scene", sceneRef("An open scene.")}}, {"scene"});
+        tool.inputSchema = object({{"scene", sceneRef("")}}, {"scene"});
         tool.annotations.idempotent = true;
         tool.handler = selectSceneTool;
         registry.addTool(std::move(tool));
@@ -1396,7 +1396,7 @@ void registerSceneTools(McpRegistry& registry) {
             "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"path", assetPath(".scene path.")},
+            {"path", assetPath("")},
             {"all", withDefault(boolean(""), false)}
         });
         tool.allowedWhilePlaying = false;
@@ -1424,7 +1424,7 @@ void registerSceneTools(McpRegistry& registry) {
             "Remove a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves the "
             "file to .trash. Not the last scene.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A saved project scene.")},
+            {"scene", sceneRef("")},
             {"delete_file", withDefault(boolean(""), false)}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
@@ -1441,7 +1441,7 @@ void registerSceneTools(McpRegistry& registry) {
             "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
-            {"child", sceneRef("Child scene.")},
+            {"child", sceneRef()},
             {"attached", withDefault(boolean(""), true)},
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
@@ -1468,13 +1468,13 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
+            "Scene settings (lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, default shaders, "
+            "post_process, post_processing): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (what the last frame made for "
             "scene-reading shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"names", array(string(""), "Default: all.")},
+            {"names", array(string(""), "")},
             {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
@@ -1487,10 +1487,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces the pass "
-            "list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
-            "post_processing {field: value} sets the fields named (null resets all), like post_processing.<field>; "
-            "one undo step per call.";
+            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
+            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
+            "step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;
@@ -1502,8 +1502,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "List Post-processing Presets";
         tool.description =
             "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
-            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
+            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens). "
+            "current: the scene's preset (null = custom), settings and cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

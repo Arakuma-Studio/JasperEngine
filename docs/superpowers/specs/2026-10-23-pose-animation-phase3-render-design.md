@@ -59,6 +59,7 @@ public:
   under each cell (bitmap font 6x10 ASCII, white on `#202022`), a title strip optional.
 - Label text: poses mode `"<index> <name>"` (truncated with `..`), motion mode `"t=<seconds>"`
   with 2 decimals, plus `" C"` markers for feet in contact (`"L"`, `"R"`, `"LR"`).
+- Ruling (implementation): the contact marker is appended as `" [L]"`, `" [R]"` or `" [LR]"` (e.g. `"t=0.25 [LR]"`).
 - PNG encoding through the engine's stb_image_write.
 
 ## 4. `render_pose_animation` (MCP, read-only)

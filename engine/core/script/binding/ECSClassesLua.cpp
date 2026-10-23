@@ -29,6 +29,7 @@
 #include "component/InputFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
 #include "component/TilemapComponent.h"
@@ -648,6 +649,18 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("rotationModifier", &ParticleSystemComponent::rotationModifier, &ParticleSystemComponent::rotationModifier)
         .addProperty("scaleInitializer", &ParticleSystemComponent::scaleInitializer, &ParticleSystemComponent::scaleInitializer)
         .addProperty("scaleModifier", &ParticleSystemComponent::scaleModifier, &ParticleSystemComponent::scaleModifier)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PoseAnimatorComponent>("PoseAnimatorComponent")
+        .addProperty("animation", &PoseAnimatorComponent::animation, &PoseAnimatorComponent::animation)
+        .addProperty("autoplay", &PoseAnimatorComponent::autoplay, &PoseAnimatorComponent::autoplay)
+        .addProperty("speed", &PoseAnimatorComponent::speed, &PoseAnimatorComponent::speed)
+        .addProperty("weight", &PoseAnimatorComponent::weight, &PoseAnimatorComponent::weight)
+        .addProperty("playing", &PoseAnimatorComponent::playing)
+        .addProperty("time", &PoseAnimatorComponent::time)
+        .addProperty("needsLoad", &PoseAnimatorComponent::needsLoad, &PoseAnimatorComponent::needsLoad)
+        .addProperty("onFinish", [] (PoseAnimatorComponent* self, lua_State* L) { return &self->onFinish; }, [] (PoseAnimatorComponent* self, lua_State* L) { self->onFinish = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

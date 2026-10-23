@@ -27,6 +27,7 @@
 #include "Tilemap.h"
 #include "Bone.h"
 #include "Model.h"
+#include "PoseAnimator.h"
 #include "MeshPolygon.h"
 #include "Points.h"
 #include "LineRenderer.h"
@@ -934,6 +935,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             luabridge::overload<int, float>(&Model::setMorphWeight),
             luabridge::overload<const std::string&, float>(&Model::setMorphWeight))
         .addFunction("resetToBindPose", &Model::resetToBindPose)
+        .addFunction("getPoseAnimator", &Model::getPoseAnimator)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1462,6 +1464,41 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("cursorBlink", &InputField::getCursorBlink, &InputField::setCursorBlink)
         .addProperty("cursorWidth", &InputField::getCursorWidth, &InputField::setCursorWidth)
         .addFunction("getInputFieldComponent", &InputField::getComponent<InputFieldComponent>)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<PoseAnimator, EntityHandle>("PoseAnimator")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addFunction("setAnimation", &PoseAnimator::setAnimation)
+        .addFunction("getAnimation", &PoseAnimator::getAnimation)
+        .addFunction("play", &PoseAnimator::play)
+        .addFunction("pause", &PoseAnimator::pause)
+        .addFunction("stop", &PoseAnimator::stop)
+        .addFunction("isPlaying", &PoseAnimator::isPlaying)
+        .addFunction("setTime", &PoseAnimator::setTime)
+        .addFunction("getTime", &PoseAnimator::getTime)
+        .addFunction("getLength", &PoseAnimator::getLength)
+        .addFunction("setSpeed", &PoseAnimator::setSpeed)
+        .addFunction("getSpeed", &PoseAnimator::getSpeed)
+        .addFunction("setWeight", &PoseAnimator::setWeight)
+        .addFunction("getWeight", &PoseAnimator::getWeight)
+        .addProperty("autoplay", &PoseAnimator::isAutoplay, &PoseAnimator::setAutoplay)
+        .addFunction("getPoseCount", &PoseAnimator::getPoseCount)
+        .addFunction("getPoseName", &PoseAnimator::getPoseName)
+        .addFunction("findPose", &PoseAnimator::findPose)
+        .addFunction("goToPose",
+            luabridge::overload<int>(&PoseAnimator::goToPose),
+            luabridge::overload<int, float>(&PoseAnimator::goToPose),
+            luabridge::overload<int, float, float>(&PoseAnimator::goToPose),
+            luabridge::overload<int, float, float, float>(&PoseAnimator::goToPose),
+            luabridge::overload<const std::string&>(&PoseAnimator::goToPose),
+            luabridge::overload<const std::string&, float>(&PoseAnimator::goToPose),
+            luabridge::overload<const std::string&, float, float>(&PoseAnimator::goToPose),
+            luabridge::overload<const std::string&, float, float, float>(&PoseAnimator::goToPose))
+        .addFunction("isLoaded", &PoseAnimator::isLoaded)
+        // a function called when a one-shot animation ends
+        .addProperty("onFinish", [] (PoseAnimator* self, lua_State* L) { return &self->getOnFinish(); }, [] (PoseAnimator* self, lua_State* L) { self->getOnFinish() = L; })
+        .addFunction("getPoseAnimatorComponent", &PoseAnimator::getComponent<PoseAnimatorComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

@@ -4313,6 +4313,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::UIDocumentComponent, true)] = encodeUIDocumentComponent(document);
     }
 
+    if (signature.test(registry->getComponentId<PoseAnimatorComponent>())) {
+        const PoseAnimatorComponent& animator = registry->getComponent<PoseAnimatorComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::PoseAnimatorComponent, true)] = encodePoseAnimatorComponent(animator);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -4767,6 +4772,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::PoseAnimatorComponent, true);
+    if (compNode[compName]) {
+        PoseAnimatorComponent* existing = registry->findComponent<PoseAnimatorComponent>(entity);
+        PoseAnimatorComponent animator = decodePoseAnimatorComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<PoseAnimatorComponent>())){
+            registry->addComponent<PoseAnimatorComponent>(entity, std::move(animator));
+        }else{
+            registry->getComponent<PoseAnimatorComponent>(entity) = std::move(animator);
         }
     }
 
@@ -6572,6 +6588,42 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     }
 
     return document;
+}
+
+YAML::Node editor::Stream::encodePoseAnimatorComponent(const PoseAnimatorComponent& animator) {
+    YAML::Node node;
+    // written when empty too: decoding over a component with an animation must clear it
+    node["animation"] = animator.animation;
+    node["autoplay"] = animator.autoplay;
+    encodeFinite(node, "speed", animator.speed);
+    encodeFinite(node, "weight", animator.weight);
+    return node;
+}
+
+PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator) {
+    // the old one's runtime state (what it loaded, where it plays, onFinish) stays while the
+    // animation is the same: paste and play-stop restore decode over an existing component
+    PoseAnimatorComponent animator;
+    if (oldAnimator) {
+        animator = *oldAnimator;
+    }
+
+    // a missing key is the default, not the old value
+    const PoseAnimatorComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    animator.animation = given("animation") ? node["animation"].as<std::string>() : std::string();
+    animator.autoplay = given("autoplay") ? YamlNumbers::as<bool>(node["autoplay"]) : defaults.autoplay;
+    animator.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
+    animator.weight = given("weight") ? std::clamp(decodeFinite(node["weight"], defaults.weight), 0.0f, 1.0f) : defaults.weight;
+
+    if (oldAnimator && oldAnimator->animation != animator.animation) {
+        animator.needsLoad = true;
+    }
+
+    return animator;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

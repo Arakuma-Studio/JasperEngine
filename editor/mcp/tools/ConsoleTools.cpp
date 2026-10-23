@@ -262,11 +262,11 @@ void registerConsoleTools(McpRegistry& registry) {
         tool.name = "read_console";
         tool.title = "Read Console";
         tool.description =
-            "Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes): entries [{id, "
-            "type, message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
+            "Read the editor Console (build, warnings, errors, Lua print, crashes): entries [{id, type, "
+            "message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
             "`limit`), more. play, wait and send_input return their console lines already.";
         tool.inputSchema = object({
-            {"since", integer("A previous next_cursor.")},
+            {"since", integer("")},
             {"limit", withDefault(integer("", 1, 1000), 100)},
             {"types", array(stringEnum("", {"info", "success", "warning", "error", "build"}), "")},
             {"only_problems", withDefault(boolean("Warnings, errors, build output."), false)},
