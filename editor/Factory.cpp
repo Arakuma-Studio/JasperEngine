@@ -1705,6 +1705,22 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".occlusionStrength = " << formatFloat(layer.occlusionStrength) << ";\n";
         code << ind << var << ".uvScale = " << formatVector2(layer.uvScale) << ";\n";
         code << ind << var << ".uvOffset = " << formatVector2(layer.uvOffset) << ";\n";
+        if (layer.stochasticTiling){
+            code << ind << var << ".stochasticTiling = true;\n";
+        }
+        static const TerrainSurfaceLayer defaults;
+        if (layer.stochasticCellSize != defaults.stochasticCellSize){
+            code << ind << var << ".stochasticCellSize = " << formatFloat(layer.stochasticCellSize) << ";\n";
+        }
+        if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness){
+            code << ind << var << ".stochasticBlendSharpness = " << formatFloat(layer.stochasticBlendSharpness) << ";\n";
+        }
+        if (layer.stochasticContrast != defaults.stochasticContrast){
+            code << ind << var << ".stochasticContrast = " << formatFloat(layer.stochasticContrast) << ";\n";
+        }
+        if (layer.stochasticRotation != defaults.stochasticRotation){
+            code << ind << var << ".stochasticRotation = " << formatFloat(layer.stochasticRotation) << ";\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";

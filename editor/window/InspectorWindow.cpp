@@ -2707,13 +2707,17 @@ editor::InspectorWindow::EntityPickerResult editor::InspectorWindow::drawEntityP
     return result;
 }
 
-bool editor::InspectorWindow::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child){
+bool editor::InspectorWindow::propertyHeader(std::string label, float secondColSize, bool defChanged, bool child, bool indent){
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
     ImGui::TableNextRow();
     if (child){
         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
     }
     ImGui::TableNextColumn();
+    const float indentWidth = ImGui::GetFontSize();
+    if (indent){
+        ImGui::Indent(indentWidth);
+    }
     drawPrefabPropertyLabel(label);
     ImGui::SameLine();
 
@@ -2728,6 +2732,10 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
 
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
+
+    if (indent){
+        ImGui::Unindent(indentWidth);
+    }
 
     ImGui::TableNextColumn();
     ImGui::SetNextItemWidth(secondColSize);
@@ -2771,7 +2779,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
         }
 
-        propertyHeader(label, settings.secondColSize, false, settings.child);
+        propertyHeader(label, settings.secondColSize, false, settings.child, settings.indent);
         if (different) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::TextUnformatted("---");
@@ -2809,7 +2817,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 2, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector2>(project, sceneProject->id, entity, cpType, id, static_cast<Vector2>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -2931,7 +2939,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 3, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3125,7 +3133,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&newValue, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3305,7 +3313,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)&qValue, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3447,7 +3455,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3496,7 +3504,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3549,7 +3557,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 defChanged = (newValue != *defArr);
             }
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3613,7 +3621,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<double>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3659,7 +3667,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const unsigned int value = eValue[entities[0]];
 
         bool defChanged = defArr && (dif || value != *defArr);
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3745,7 +3753,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3786,7 +3794,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3833,7 +3841,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 3, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3875,7 +3883,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 4, compThreshold);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, static_cast<Vector4>(defArr), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -3926,7 +3934,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 defChanged = (newValue != *static_cast<unsigned int*>(defArr));
             }
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 if (type == RowPropertyType::IntSlider) {
                     cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, *static_cast<int*>(defArr), settings.onValueChanged);
@@ -4009,7 +4017,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             defChanged = (item_current != item_default);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 int defValue = (*enumEntries)[item_default].value;
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, defValue, settings.onValueChanged);
@@ -4076,7 +4084,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = (currentType != defaultType);
         }
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 Ease defaultEase(static_cast<EaseType>((*enumEntries)[item_default].value));
                 cmd = new PropertyCmd<Ease>(project, sceneProject->id, entity, cpType, id, defaultEase, settings.onValueChanged);
@@ -4127,7 +4135,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<FontArray>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4187,7 +4195,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4380,7 +4388,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -4671,7 +4679,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (defArr){
             defChanged = (newValue != *defArr);
         }
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<Material>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5032,7 +5040,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         Entity newValue = value ? *value : NULL_ENTITY;
         bool defChanged = (defVal && newValue != *defVal);
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 cmd = new PropertyCmd<unsigned int>(project, sceneProject->id, entity, cpType, id, *defVal, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
@@ -5187,7 +5195,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         uint32_t currentSceneId = !entities.empty() ? eSceneId[entities[0]] : 0;
         bool defChanged = (defVal && newValue != *defVal);
 
-        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child)){
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
             for (Entity& entity : entities){
                 // Write entity and sceneId as one command so prefab propagation sees the
                 // complete reference (a split write would propagate a stale sceneId).
@@ -8739,6 +8747,24 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
             // Tiling rides on every layer, PBR or not
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvScale", "UV Scale", sceneProject, entities, settingsLayerFloat);
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvOffset", "UV Offset", sceneProject, entities, settingsLayerFloat);
+            RowSettings settingsStochastic = textureSettings;
+            settingsStochastic.help = "Hides the repetition of this layer's tiled maps: hexagonal cells each read them at a random offset "
+                                      "and blend at their borders, every map of the layer alike. Up to three reads per map where cells "
+                                      "meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid.";
+            propertyRow(RowPropertyType::Bool, cpType, property + ".stochasticTiling", "Stochastic Tiling", sceneProject, entities, settingsStochastic);
+            if (terrain.surfaceLayers[i].stochasticTiling){
+                RowSettings settingsParam = settingsLayerFloat;
+                settingsParam.indent = true;
+                settingsParam.stepSize = 0.01f;
+                settingsParam.help = "Width of one cell in texture repeats (0.25-4). Smaller cells hide the repetition better but cut up large features of the texture.";
+                propertyRow(RowPropertyType::FloatPositive, cpType, property + ".stochasticCellSize", "Cell Size", sceneProject, entities, settingsParam);
+                settingsParam.help = "How narrow the blend between neighbouring cells is: low blends wide and soft, high keeps more of each cell whole.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticBlendSharpness", "Blend Sharpness", sceneProject, entities, settingsParam);
+                settingsParam.help = "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high shows the cell borders. 0 blends linearly.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticContrast", "Contrast", sceneProject, entities, settingsParam);
+                settingsParam.help = "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a direction (planks, stripes, light baked in).";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".stochasticRotation", "Rotation", sceneProject, entities, settingsParam);
+            }
             endTable();
             ImGui::PopID();
             ImGui::TreePop();

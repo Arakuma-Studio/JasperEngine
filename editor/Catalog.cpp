@@ -1485,6 +1485,11 @@ namespace {
         if (fieldName == ".occlusionStrength") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.occlusionStrength, &layer.occlusionStrength};
         if (fieldName == ".uvScale") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvScale, &layer.uvScale};
         if (fieldName == ".uvOffset") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvOffset, &layer.uvOffset};
+        if (fieldName == ".stochasticTiling") return {PropertyType::Bool, UpdateFlags_Terrain_Texture, &def.stochasticTiling, &layer.stochasticTiling};
+        if (fieldName == ".stochasticCellSize") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticCellSize, &layer.stochasticCellSize};
+        if (fieldName == ".stochasticBlendSharpness") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticBlendSharpness, &layer.stochasticBlendSharpness};
+        if (fieldName == ".stochasticContrast") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticContrast, &layer.stochasticContrast};
+        if (fieldName == ".stochasticRotation") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticRotation, &layer.stochasticRotation};
         return PropertyData();
     }
 
@@ -2527,6 +2532,11 @@ namespace {
             field(".occlusionStrength", PropertyType::Float, (void*)&defSurfaceLayer.occlusionStrength, layer ? (void*)&layer->occlusionStrength : nullptr);
             field(".uvScale", PropertyType::Vector2, (void*)&defSurfaceLayer.uvScale, layer ? (void*)&layer->uvScale : nullptr);
             field(".uvOffset", PropertyType::Vector2, (void*)&defSurfaceLayer.uvOffset, layer ? (void*)&layer->uvOffset : nullptr);
+            field(".stochasticTiling", PropertyType::Bool, (void*)&defSurfaceLayer.stochasticTiling, layer ? (void*)&layer->stochasticTiling : nullptr);
+            field(".stochasticCellSize", PropertyType::Float, (void*)&defSurfaceLayer.stochasticCellSize, layer ? (void*)&layer->stochasticCellSize : nullptr);
+            field(".stochasticBlendSharpness", PropertyType::Float, (void*)&defSurfaceLayer.stochasticBlendSharpness, layer ? (void*)&layer->stochasticBlendSharpness : nullptr);
+            field(".stochasticContrast", PropertyType::Float, (void*)&defSurfaceLayer.stochasticContrast, layer ? (void*)&layer->stochasticContrast : nullptr);
+            field(".stochasticRotation", PropertyType::Float, (void*)&defSurfaceLayer.stochasticRotation, layer ? (void*)&layer->stochasticRotation : nullptr);
         }
 
         ps["foliageLayers"] = {PropertyType::Custom, UpdateFlags_Terrain_Foliage, (void*)&def.foliageLayers, compRef ? (void*)&comp->foliageLayers : nullptr};
