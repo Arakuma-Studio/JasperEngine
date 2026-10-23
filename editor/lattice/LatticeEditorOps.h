@@ -106,6 +106,39 @@ namespace jasperengine::editor{
         static Entity createLattice(Project* project, uint32_t sceneId, const std::vector<Entity>& targets,
                                     const Vector3& fallbackPosition, const std::string& name = "Lattice",
                                     std::string* error = nullptr);
+
+        // --- additions to the contract (spec §12, WP-EDITOR-SCENE) ---
+
+        // the lattice the Scene view edits: the scene's only selected entity, when it has a
+        // LatticeComponent and a Transform; NULL_ENTITY otherwise
+        static Entity getEditedLattice(Project* project, uint32_t sceneId);
+        // forgets the point selection of sceneId when it belongs to another entity than
+        // `lattice` (NULL_ENTITY: no lattice is edited) and drops indices past pointCount
+        static void validateSelection(uint32_t sceneId, Entity lattice, int pointCount);
+
+        // setOffsets for an edit made of many steps (a Scene-view drag, an inspector widget
+        // held): it merges into the previous continuous edit of the same lattice, so the whole
+        // edit is one undo step, until endContinuousEdit (the drag's release, the widget's
+        // deactivation) closes it
+        static bool setOffsetsContinuous(Project* project, uint32_t sceneId, Entity lattice,
+                                         const std::vector<int>& points, const std::vector<Vector3>& offsets,
+                                         std::string* error = nullptr);
+        static void endContinuousEdit(uint32_t sceneId);
+
+        // pure: `base` with `localTransform` applied about `pivot` (p' = pivot + T (p - pivot),
+        // local space) to `points` (empty = all) and, with the falloff on, to the other points by
+        // their falloff weight (distance to the nearest of `points`, weighted translation,
+        // rotation and scale). Returns `base` for a bad resolution.
+        static std::vector<Vector3> transformedOffsets(int rx, int ry, int rz, const std::vector<Vector3>& base,
+                                                       const std::vector<int>& points, const Matrix4& localTransform,
+                                                       const Vector3& pivot, const LatticeFalloff& falloff);
+        // falloff weight (0..1) of a point `distance` local units from the nearest moved point
+        static float falloffWeight(const LatticeFalloff& falloff, float distance);
+
+        // current local position (rest + offset) of a point; false for a bad index
+        static bool getPointLocalPosition(const LatticeComponent& lattice, int index, Vector3& position);
+        // the stored selection, or every point when none is selected (presets, Copy as Lua)
+        static std::vector<int> getSelectedOrAllPoints(uint32_t sceneId, Entity lattice, const LatticeComponent& component);
     };
 
 }
