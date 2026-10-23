@@ -71,7 +71,8 @@ namespace jasperengine{
         // clears the jiggle state (dynamic offsets, velocities, the acceleration history): the
         // next frames start it again as after enabling it, use it after teleporting a lattice
         static void resetJiggle(LatticeComponent& lattice);
-        // adds velocity (local units per second) to one point and wakes the jiggle
+        // adds velocity (local units per second) to one point and wakes the jiggle (nothing
+        // when the jiggle is off)
         static void poke(LatticeComponent& lattice, int index, const Vector3& localImpulse);
         // adds velocity (world units per second) to the points within worldRadius of worldPoint,
         // with a smooth radial falloff (the nearest point alone when worldRadius <= 0)
