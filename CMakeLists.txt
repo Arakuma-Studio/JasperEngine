@@ -625,6 +625,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
     ${EDITOR_DIR}/pose/PoseBaker.cpp
     ${EDITOR_DIR}/pose/PoseRigProvider.cpp
+    ${EDITOR_DIR}/pose/PoseEditSession.cpp
+    ${EDITOR_DIR}/pose/PoseThumbnails.cpp
+    ${EDITOR_DIR}/pose/PoseUiLogic.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -667,6 +670,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp

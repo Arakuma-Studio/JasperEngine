@@ -241,6 +241,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["project"]) panelVisibility.project = panelsNode["project"].as<bool>();
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
+                if (panelsNode["poseAnimation"]) panelVisibility.poseAnimation = panelsNode["poseAnimation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
@@ -376,6 +377,7 @@ bool AppSettings::saveSettings() {
         panelsNode["project"] = panelVisibility.project;
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
+        panelsNode["poseAnimation"] = panelVisibility.poseAnimation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
