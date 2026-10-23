@@ -968,7 +968,7 @@ resolutions, `simulationRate`, `maxSubsteps`, `splatRadius`).
 | `reset()` | restarts at the next frame: zero fields, the seed, the start burst |
 | `applyPreset(id)` / `getPreset()` | `"default"`, `"mobile"`, `"smoke"`, `"ink"`, `"calm-water"`, `"psychedelic"`; sets the solver and look fields only (false: unknown id) |
 | `FluidSimulation.getPresetIds()` | static: the preset ids, in order |
-| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive` |
+| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive`, `manualFiltering`, `compactFormats` (the device fallbacks in use), `outputWidth`, `outputHeight` |
 | `getTexture()` | the output `Texture` (RGBA8) |
 | `getFluidSimulationComponent()` | the raw component (no validation) |
 

@@ -692,6 +692,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadingActive", &FluidStats::shadingActive)
         .addProperty("bloomActive", &FluidStats::bloomActive)
         .addProperty("sunraysActive", &FluidStats::sunraysActive)
+        .addProperty("manualFiltering", &FluidStats::manualFiltering)
+        .addProperty("compactFormats", &FluidStats::compactFormats)
+        .addProperty("outputWidth", &FluidStats::outputWidth)
+        .addProperty("outputHeight", &FluidStats::outputHeight)
         .endClass();
 
     // Pavel Dobryakov's WebGL fluid on a GameObject (GameObject > Effects > Fluid Simulation)

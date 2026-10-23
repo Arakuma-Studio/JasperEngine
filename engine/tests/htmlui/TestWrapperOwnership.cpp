@@ -369,6 +369,26 @@ TEST_F(WrapperLuaTest, BoundFunctionsReturnOwningWrappers){
     }
 }
 
+TEST_F(WrapperLuaTest, EnumPropertiesAreIntegers){
+    // enum class properties go through a LuaBridgeAddon Stack: without one LuaBridge pushes
+    // them as unregistered userdata (an error) and cannot read the namespace's integers
+    ASSERT_TRUE(luabridge::push(L, scene.get()));
+    lua_setglobal(L, "enumScene");
+    EXPECT_EQ(lua(R"(
+        pushed = { ReflectionProbe(enumScene), ParticleSystem(enumScene) }
+        local probe, particles = pushed[1], pushed[2]
+        assert(probe.mode == ReflectionProbeMode.STATIC, "probe.mode reads " .. tostring(probe.mode))
+        probe.mode = ReflectionProbeMode.DYNAMIC
+        assert(probe.mode == ReflectionProbeMode.DYNAMIC)
+        probe.updateMode = ReflectionProbeUpdateMode.MANUAL
+        assert(probe.updateMode == ReflectionProbeUpdateMode.MANUAL)
+        particles.emitterShape = ParticleEmitterShape.Sphere
+        assert(particles.emitterShape == ParticleEmitterShape.Sphere, "emitterShape reads " .. tostring(particles.emitterShape))
+        enumScene = nil
+    )"), "");
+    ASSERT_EQ(lua("pushed = nil; collectgarbage(); collectgarbage()"), "");
+}
+
 TEST_F(WrapperLuaTest, PushedCopiesDoNotOwn){
     Button original(scene.get());
     ASSERT_TRUE(luabridge::push(L, static_cast<const Button&>(original)));
