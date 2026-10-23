@@ -9,8 +9,6 @@ of a lattice together with its target and follower, the references following the
 Runs in a new empty project; the tests share one editor and run in order (state in S).
 """
 
-import shutil
-
 import yaml
 
 from harness import Editor
@@ -284,39 +282,35 @@ async def test_scene_file_and_reload(ed: Editor):
 
 async def test_reload_resave_byte_identical(ed: Editor):
     """A second editor opens the saved scene, every value is back, and saving it again writes the same bytes."""
-    project = ed.project
-    copy = project.parent / "lattice-reload"
-    if copy.exists():
-        shutil.rmtree(copy)
-    shutil.copytree(project, copy)
-    try:
-        async with Editor(project=copy, label="lattice-reload") as ed2:
-            opened = await ed2.call("open_scene", scene="scenes/Lab.scene")
-            sid = opened["scene"]["id"]
-            got = await ed2.call("get_entity", scene=sid, entity="Cage", components=["lattice", "latticetracks"])
-            lat = got["components"]["lattice"]
-            check_close(ed2, lat["offsets[4]"], [0, 0.25, 0], "reloaded offsets[4]")
-            check_close(ed2, lat["offsets[26]"], [0.1, -0.2, 0.3], "reloaded offsets[26]")
-            ed2.check_eq([lat["interpolation"], lat["outside"], lat["jiggleAnchor"]], ["smooth", "extend", "negative_y"])
-            ed2.check_eq(lat["poses"][0]["name"], "Squashed")
-            ed2.check_eq(got["components"]["latticetracks"]["points"], [4, 22])
-            body = await ed2.call("get_entity", scene=sid, entity="Body", components=["latticemodifier"])
-            m = body["components"]["latticemodifier"]
-            ed2.check_eq(ref_id(m["bindings[0].lattice"]), S["cage"], "reloaded binding")
-            ed2.check_eq(m["bindings[0].mask"], "inverted_red")
-            fol = (await ed2.call("get_entity", scene=sid, entity="Prop", components=["latticefollower"]))["components"]["latticefollower"]
-            ed2.check_eq(ref_id(fol["rest"]), S["rest"], "reloaded rest")
-            # an edit and its revert make the scene modified with the same content
-            await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.75}})
-            await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.5}})
-            await ed2.call("save_scene", scene=sid)
-            resaved = (copy / "scenes/Lab.scene").read_text()
-            if resaved != S["saved_text"]:
-                import difflib
-                diff = "".join(list(difflib.unified_diff(S["saved_text"].splitlines(True), resaved.splitlines(True)))[:60])
-                ed2.fail("re-save is not byte-identical:\n" + diff)
-    finally:
-        shutil.rmtree(copy, ignore_errors=True)
+    # the second editor works on its own scratch copy of this project
+    async with Editor(project=ed.project, label="lattice-reload") as ed2:
+        scene_file = ed2.project / "scenes/Lab.scene"
+        ed2.check_eq(scene_file.read_text(), S["saved_text"], "the copy holds the saved scene")
+        opened = await ed2.call("open_scene", scene="scenes/Lab.scene")
+        sid = opened["scene"]["id"]
+        got = await ed2.call("get_entity", scene=sid, entity="Cage", components=["lattice", "latticetracks"])
+        lat = got["components"]["lattice"]
+        check_close(ed2, lat["offsets[4]"], [0, 0.25, 0], "reloaded offsets[4]")
+        check_close(ed2, lat["offsets[26]"], [0.1, -0.2, 0.3], "reloaded offsets[26]")
+        ed2.check_eq([lat["interpolation"], lat["outside"], lat["jiggleAnchor"]], ["smooth", "extend", "negative_y"])
+        ed2.check_eq(lat["poses"][0]["name"], "Squashed")
+        ed2.check_eq(got["components"]["latticetracks"]["points"], [4, 22])
+        body = await ed2.call("get_entity", scene=sid, entity="Body", components=["latticemodifier"])
+        m = body["components"]["latticemodifier"]
+        ed2.check_eq(ref_id(m["bindings[0].lattice"]), S["cage"], "reloaded binding")
+        ed2.check_eq(m["bindings[0].mask"], "inverted_red")
+        fol = (await ed2.call("get_entity", scene=sid, entity="Prop", components=["latticefollower"]))["components"]["latticefollower"]
+        ed2.check_eq(ref_id(fol["rest"]), S["rest"], "reloaded rest")
+        # an edit and its revert make the scene modified with the same content
+        await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.75}})
+        await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.5}})
+        scene_file.write_text("")
+        await ed2.call("save_scene", scene=sid)
+        resaved = scene_file.read_text()
+        if resaved != S["saved_text"]:
+            import difflib
+            diff = "".join(list(difflib.unified_diff(S["saved_text"].splitlines(True), resaved.splitlines(True)))[:60])
+            ed2.fail("re-save is not byte-identical:\n" + diff)
 
 
 async def test_prefab_point_override(ed: Editor):
@@ -347,22 +341,15 @@ async def test_prefab_point_override(ed: Editor):
 
     # saved and loaded again: still one per-point override
     await ed.call("save_scene", scene=sid)
-    copy = ed.project.parent / "lattice-prefab"
-    if copy.exists():
-        shutil.rmtree(copy)
-    shutil.copytree(ed.project, copy)
-    try:
-        async with Editor(project=copy, label="lattice-prefab") as ed2:
-            sid2 = (await ed2.call("open_scene", scene="scenes/Lab.scene"))["scene"]["id"]
-            got = await ed2.call("get_entity", scene=sid2, entity="Cage B", components=["lattice"],
-                                 properties=["offsets[2]", "offsets[5]"])
-            check_close(ed2, got["components"]["lattice"]["offsets[2]"], [0, 0.3, 0], "reloaded override")
-            check_close(ed2, got["components"]["lattice"]["offsets[5]"], [0.2, 0, 0], "reloaded prefab point")
-            ov = (await ed2.call("get_prefab_info", scene=sid2, entity="Cage B", usage=False))["overrides"]
-            lattice_props = [p for e in ov if e["kind"] == "property" and e.get("component") == "lattice" for p in e["properties"]]
-            ed2.check_eq(lattice_props, ["offsets[2]"], f"reloaded overrides: {ov}")
-    finally:
-        shutil.rmtree(copy, ignore_errors=True)
+    async with Editor(project=ed.project, label="lattice-prefab") as ed2:
+        sid2 = (await ed2.call("open_scene", scene="scenes/Lab.scene"))["scene"]["id"]
+        got = await ed2.call("get_entity", scene=sid2, entity="Cage B", components=["lattice"],
+                             properties=["offsets[2]", "offsets[5]"])
+        check_close(ed2, got["components"]["lattice"]["offsets[2]"], [0, 0.3, 0], "reloaded override")
+        check_close(ed2, got["components"]["lattice"]["offsets[5]"], [0.2, 0, 0], "reloaded prefab point")
+        ov = (await ed2.call("get_prefab_info", scene=sid2, entity="Cage B", usage=False))["overrides"]
+        lattice_props = [p for e in ov if e["kind"] == "property" and e.get("component") == "lattice" for p in e["properties"]]
+        ed2.check_eq(lattice_props, ["offsets[2]"], f"reloaded overrides: {ov}")
 
     # revert the point: the prefab's value comes back
     await ed.call("prefab_overrides", action="revert", scene=sid, entity=b, component="lattice", properties=["offsets[2]"])

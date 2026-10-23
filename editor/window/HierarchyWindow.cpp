@@ -2065,14 +2065,15 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     // a mesh on a target or below it: what the lattice is fitted to and deforms
                     bool targetsHaveMesh = false;
                     if (!node.isLocked) {
+                        const std::unordered_set<Entity> targetSet(targets.begin(), targets.end());
                         auto meshes = scene->getComponentArray<MeshComponent>();
                         for (size_t m = 0; m < meshes->size() && !targetsHaveMesh; m++) {
-                            Entity meshEntity = meshes->getEntity(m);
-                            for (Entity target : targets) {
-                                if (meshEntity == target || scene->isParentOf(target, meshEntity)) {
-                                    targetsHaveMesh = true;
-                                    break;
-                                }
+                            // the mesh or one of its Transform parents is a target
+                            Entity current = meshes->getEntity(m);
+                            while (current != NULL_ENTITY && !targetsHaveMesh) {
+                                targetsHaveMesh = targetSet.count(current) > 0;
+                                const Transform* transform = scene->findComponent<Transform>(current);
+                                current = transform ? transform->parent : NULL_ENTITY;
                             }
                         }
                     }
