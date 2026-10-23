@@ -15,11 +15,16 @@
 // @property softness float 0.5 "Softness (world units)" feature=SOFT
 // @property nearFadeStart float 0.3 "Near fade: invisible at (world units from the camera)" feature=NEAR_FADE
 // @property nearFadeEnd float 1.5 "Near fade: whole from (world units from the camera)" feature=NEAR_FADE
+// @property stochasticCellSize range(0.25, 4) 1 "Cell Size" feature=STOCHASTIC
+// @property stochasticBlendSharpness range(0, 1) 0.4 "Blend Sharpness" feature=STOCHASTIC
+// @property stochasticContrast range(0, 1) 0.45 "Contrast" feature=STOCHASTIC
+// @property stochasticRotation range(0, 1) 0 "Rotation" feature=STOCHASTIC
 // @texture u_baseTexture white "Base map"
 // @feature VERTEX_COLOR "Vertex colour"
 // @feature ALPHA_CLIP "Alpha clip"
 // @feature SOFT "Soft intersections (fade where it meets geometry; reads the scene depth)"
 // @feature NEAR_FADE "Camera near fade"
+// @feature STOCHASTIC "Stochastic Tiling"
 // @depth
 
 // SOFT fades the alpha by saturate((scene depth - fragment depth) / softness): a quad
@@ -42,7 +47,17 @@ uniform u_fs_customParams {
         float nearFadeStart;
         float nearFadeEnd;
     #endif
+    #ifdef STOCHASTIC
+        float stochasticCellSize;
+        float stochasticBlendSharpness;
+        float stochasticContrast;
+        float stochasticRotation;
+    #endif
 } customParams;
+
+#ifdef STOCHASTIC
+    #include "library/stochastic_surface.glsl"
+#endif
 
 uniform texture2D u_baseTexture;
 uniform sampler u_base_smp;
@@ -60,7 +75,13 @@ out vec4 g_finalColor;
 
 void main() {
     vec2 uv = v_uv1 * customParams.tiling.xy + customParams.tiling.zw;
-    vec4 color = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #ifdef STOCHASTIC
+        // the depth program (unlit_depth.frag) reads the same taps, so the clip matches
+        StochasticTiling stochastic = stochasticSetup(uv, stochasticCustomParams(), 0u);
+        vec4 color = customParams.baseColor * sRGBToLinear(stochasticTextureLuminance(u_baseTexture, u_base_smp, stochastic)) * v_color;
+    #else
+        vec4 color = customParams.baseColor * sRGBToLinear(texture(sampler2D(u_baseTexture, u_base_smp), uv)) * v_color;
+    #endif
 
     #ifdef ALPHA_CLIP
         if (color.a < customParams.alphaCutoff){
