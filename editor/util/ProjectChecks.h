@@ -274,6 +274,16 @@ namespace jasperengine::editor {
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)
         static std::string shaderSourcePath(Project* project, const std::string& base, const std::string& source);
+
+        // ---- Stochastic Tiling (materials, terrain layers, library shaders' STOCHASTIC feature)
+
+        // Warnings (tool "shader", at the scene or prefab file) for the loaded scenes and prefab
+        // stages: code "stochastic-tilted-normal-map" where Rotation is above 0 and the normal map
+        // the cells turn has an average normal at least NormalMapTilt::WARNING_DEGREES off +Z
+        // (built-in Lit materials, terrain layers, library shader materials with the feature);
+        // code "stochastic-no-effect" where a material asks Lit's Stochastic Tiling but it does
+        // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
+        static std::vector<Finding> stochasticTilingFindings(Project* project);
     };
 
 }

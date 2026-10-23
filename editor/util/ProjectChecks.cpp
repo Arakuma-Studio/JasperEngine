@@ -24,6 +24,10 @@
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
+#include "util/NormalMapTilt.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "subsystem/MeshSystem.h"
 
 #include "lua.hpp"
 #include "yaml-cpp/yaml.h"
@@ -1598,4 +1602,130 @@ Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
         }
     }
     return item;
+}
+
+// ---- Stochastic Tiling
+
+namespace {
+
+    // the tilt of a normal map a material or layer turns, when it is at least the warning's
+    bool tiltedNormalMap(editor::Project* project, const Texture& texture, fs::path& file, float& degrees) {
+        if (texture.empty() || texture.isFramebuffer()) return false;
+        const std::string path = texture.getPath(0);
+        if (path.empty()) return false;
+        file = project->resolveAssetPath(fs::u8path(path));
+        const editor::NormalMapTiltResult tilt = editor::NormalMapTilt::measure(file);
+        degrees = tilt.degrees;
+        return tilt.ready && tilt.valid && tilt.degrees >= editor::NormalMapTilt::WARNING_DEGREES;
+    }
+
+    std::string formatValue(float value) {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", value);
+        return text;
+    }
+
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTilingFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+    const char* const tiltCode = "stochastic-tilted-normal-map";
+    const char* const noEffectCode = "stochastic-no-effect";
+    const std::string tiltFix = "set Rotation (stochasticRotation) to 0, or use a normal map whose average normal is +Z";
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        auto warn = [&](const std::string& message, const char* code, const std::string& suggestion) {
+            findings.push_back({"shader", path, 0, 0, "warning", message, code, suggestion});
+        };
+
+        for (Entity entity : sceneProject->entities) {
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+
+            if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity)) {
+                for (size_t i = 0; i < terrain->surfaceLayers.size(); i++) {
+                    const TerrainSurfaceLayer& layer = terrain->surfaceLayers[i];
+                    fs::path file;
+                    float degrees = 0.0f;
+                    // a layer reads its normal map with its PBR surface only
+                    if (layer.stochasticTiling && layer.pbr && layer.stochasticRotation > 0.0f &&
+                            tiltedNormalMap(project, layer.normalTexture, file, degrees)) {
+                        warn(name + " terrain layer " + std::to_string(i) + ": " + NormalMapTilt::describe(file, degrees) +
+                             ", and Stochastic Tiling turns its cells (Rotation " + formatValue(layer.stochasticRotation) +
+                             "): the rotated cells look tilted", tiltCode, tiltFix);
+                    }
+                }
+            }
+
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh) continue;
+            const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+            const bool atlas = scene->findComponent<SpriteComponent>(entity) != nullptr || scene->findComponent<TilemapComponent>(entity) != nullptr;
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                const Submesh& submesh = mesh->submeshes[s];
+                const Material& material = submesh.material;
+                const std::string where = name + " submesh " + std::to_string(s);
+                const std::string& shader = RenderSystem::getSubmeshShader(*mesh, submesh, sceneMeshShader);
+                const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+                const bool hasManifest = manifest && manifest->present;
+
+                // a library shader's STOCHASTIC feature (its own parameters and normal map)
+                if (hasManifest) {
+                    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
+                    if (std::find(features.begin(), features.end(), "STOCHASTIC") != features.end()) {
+                        const float rotation = ShaderUniforms::has(material.shaderParams, "stochasticRotation")
+                            ? ShaderUniforms::get(material.shaderParams, "stochasticRotation").x : 0.0f;
+                        const auto normal = std::find_if(material.shaderTextures.begin(), material.shaderTextures.end(),
+                            [](const std::pair<std::string, Texture>& entry) { return entry.first == "u_normalTexture"; });
+                        fs::path file;
+                        float degrees = 0.0f;
+                        if (rotation > 0.0f && normal != material.shaderTextures.end() && tiltedNormalMap(project, normal->second, file, degrees)) {
+                            warn(where + " (" + shader + "): " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
+                                 formatValue(rotation) + "): the rotated cells look tilted", tiltCode,
+                                 "set the shader's Rotation (stochasticRotation) to 0, or use a normal map whose average normal is +Z");
+                        }
+                    }
+                }
+
+                if (!material.stochasticTiling) continue;
+
+                // where Lit's Stochastic Tiling does not apply (RenderSystem::getSubmeshShaderVariant)
+                if (hasManifest) {
+                    warn(where + ": Stochastic Tiling is on, but the submesh draws with " + shader +
+                         ", whose maps the built-in Lit's Stochastic Tiling does not sample", noEffectCode,
+                         "turn the shader's own Stochastic Tiling feature on (a library shader with STOCHASTIC), or turn the material's off");
+                    continue;
+                }
+                if (terrain) {
+                    warn(where + ": Stochastic Tiling is on for a terrain's base material, which does not take it", noEffectCode,
+                         "turn it on per terrain layer (surfaceLayers[N].stochasticTiling) instead");
+                    continue;
+                }
+                if (atlas || MeshSystem::usesTextureRect(submesh)) {
+                    warn(where + ": Stochastic Tiling is on, but the submesh draws through a texture rect (a sprite's atlas frame, "
+                         "a tilemap's tiles), whose offset reads would show the neighbouring frames: it is left off", noEffectCode,
+                         "turn it off, or draw the texture on a mesh without a texture rect");
+                    continue;
+                }
+                const bool anyTexture = !material.baseColorTexture.empty() || !material.metallicRoughnessTexture.empty() ||
+                                        !material.occlusionTexture.empty() || !material.emissiveTexture.empty() || !material.normalTexture.empty();
+                if (!anyTexture) {
+                    warn(where + ": Stochastic Tiling is on, but the material has no texture to tile", noEffectCode,
+                         "give it a tiled texture, or turn Stochastic Tiling off");
+                    continue;
+                }
+                fs::path file;
+                float degrees = 0.0f;
+                if (material.stochasticRotation > 0.0f && tiltedNormalMap(project, material.normalTexture, file, degrees)) {
+                    warn(where + ": " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
+                         formatValue(material.stochasticRotation) + "): the rotated cells look tilted", tiltCode, tiltFix);
+                }
+            }
+        }
+    }
+    return findings;
 }

@@ -2478,8 +2478,13 @@ void checkShaderTool(const CallPtr& call) {
         }
     }
     // with every shader in use: the materials reading the scene from the opaque queue (phase 3)
-    const std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
+    std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
         ? std::vector<ProjectChecks::Finding>() : ProjectChecks::sceneInputFindings(project);
+    // and Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect)
+    if (!args.contains("shader")) {
+        const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
+        stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+    }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
         size_t failed = 0;
