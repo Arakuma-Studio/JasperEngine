@@ -29,6 +29,35 @@ sounds_t& SoundPool::getMap(){
     return *map;
 };
 
+std::unordered_map<std::string, uint32_t>& SoundPool::getGenerations(){
+    static auto* generations = new std::unordered_map<std::string, uint32_t>();
+    return *generations;
+}
+
+std::shared_ptr<SoLoud::Wav> SoundPool::get(const std::string& id){
+    auto it = getMap().find(id);
+    return it == getMap().end() ? nullptr : it->second;
+}
+
+void SoundPool::replace(const std::string& id, std::shared_ptr<SoLoud::Wav> sound){
+    if (!sound){
+        return;
+    }
+    getMap()[id] = std::move(sound);
+    getGenerations()[id]++;
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    failedBuilds.erase(id);
+}
+
+uint32_t SoundPool::generation(const std::string& id){
+    auto it = getGenerations().find(id);
+    return it == getGenerations().end() ? 0 : it->second;
+}
+
+std::shared_ptr<SoLoud::Wav> SoundPool::decode(const std::string& id, const std::string& filename){
+    return loadSoundInternal(id, filename, false);
+}
+
 SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string& filename){
     auto& shared = getMap()[id];
 

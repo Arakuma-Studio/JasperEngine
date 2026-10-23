@@ -3124,6 +3124,31 @@
 		564944455DB009B63B74F936 /* loopfilter16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */; };
 		56494445772C1363CE27A8BD /* looprestoration16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */; };
 		56494445FFA36BAE684D5CC3 /* mc16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944451D86439B773050CE /* mc16_sse.asm */; };
+		A5E05A7C0000000000000007 /* ExpectedWriteLedger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000006 /* ExpectedWriteLedger.cpp */; };
+		A5E05A7C0000000000000008 /* ExpectedWriteLedger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000006 /* ExpectedWriteLedger.cpp */; };
+		A5E05A7C0000000000000011 /* FileChangeCoalescer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000010 /* FileChangeCoalescer.cpp */; };
+		A5E05A7C0000000000000012 /* FileChangeCoalescer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000010 /* FileChangeCoalescer.cpp */; };
+		A5E05A7C0000000000000015 /* FileIdentity.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000014 /* FileIdentity.cpp */; };
+		A5E05A7C0000000000000016 /* FileIdentity.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000014 /* FileIdentity.cpp */; };
+		A5E05A7C0000000000000019 /* FileWatchService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000018 /* FileWatchService.cpp */; };
+		A5E05A7C0000000000000020 /* FileWatchService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000018 /* FileWatchService.cpp */; };
+		A5E05A7C0000000000000023 /* FileWatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000022 /* FileWatcher.cpp */; };
+		A5E05A7C0000000000000024 /* FileWatcher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000022 /* FileWatcher.cpp */; };
+		A5E05A7C0000000000000027 /* ProjectFileIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000026 /* ProjectFileIndex.cpp */; };
+		A5E05A7C0000000000000028 /* ProjectFileIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000026 /* ProjectFileIndex.cpp */; };
+		A5E05A7C0000000000000031 /* SharedFileReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000030 /* SharedFileReader.cpp */; };
+		A5E05A7C0000000000000032 /* SharedFileReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000030 /* SharedFileReader.cpp */; };
+		A5E05A7C0000000000000035 /* FsEventsBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000034 /* FsEventsBackend.cpp */; };
+		A5E05A7C0000000000000036 /* FsEventsBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000034 /* FsEventsBackend.cpp */; };
+		A5E05A7C0000000000000038 /* InotifyBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000037 /* InotifyBackend.cpp */; };
+		A5E05A7C0000000000000039 /* InotifyBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000037 /* InotifyBackend.cpp */; };
+		A5E05A7C0000000000000041 /* NullBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000040 /* NullBackend.cpp */; };
+		A5E05A7C0000000000000042 /* NullBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000040 /* NullBackend.cpp */; };
+		A5E05A7C0000000000000044 /* PollingBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000043 /* PollingBackend.cpp */; };
+		A5E05A7C0000000000000045 /* PollingBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000043 /* PollingBackend.cpp */; };
+		A5E05A7C0000000000000047 /* RdcwBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000046 /* RdcwBackend.cpp */; };
+		A5E05A7C0000000000000048 /* RdcwBackend.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000046 /* RdcwBackend.cpp */; };
+		A5E05A7C0000000000000004 /* CoreServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A5E05A7C0000000000000003 /* CoreServices.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6370,6 +6395,27 @@
 		56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_sse.asm; sourceTree = "<group>"; };
 		5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_sse.asm; sourceTree = "<group>"; };
 		564944451D86439B773050CE /* mc16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_sse.asm; sourceTree = "<group>"; };
+		A5E05A7C0000000000000005 /* ExpectedWriteLedger.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ExpectedWriteLedger.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000006 /* ExpectedWriteLedger.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ExpectedWriteLedger.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000009 /* FileChangeCoalescer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileChangeCoalescer.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000010 /* FileChangeCoalescer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileChangeCoalescer.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000013 /* FileIdentity.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileIdentity.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000014 /* FileIdentity.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileIdentity.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000017 /* FileWatchService.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileWatchService.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000018 /* FileWatchService.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileWatchService.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000021 /* FileWatcher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileWatcher.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000022 /* FileWatcher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileWatcher.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000025 /* ProjectFileIndex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ProjectFileIndex.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000026 /* ProjectFileIndex.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ProjectFileIndex.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000029 /* SharedFileReader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SharedFileReader.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000030 /* SharedFileReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SharedFileReader.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000033 /* Backends.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Backends.h; sourceTree = "<group>"; };
+		A5E05A7C0000000000000034 /* FsEventsBackend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FsEventsBackend.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000037 /* InotifyBackend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InotifyBackend.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000040 /* NullBackend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NullBackend.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000043 /* PollingBackend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PollingBackend.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000046 /* RdcwBackend.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RdcwBackend.cpp; sourceTree = "<group>"; };
+		A5E05A7C0000000000000003 /* CoreServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreServices.framework; path = System/Library/Frameworks/CoreServices.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -6471,6 +6517,7 @@
 			files = (
 				17995BFD3003C4F600411B78 /* GameController.framework in Frameworks */,
 				713D8316259D3E7A00567F9F /* libjasperengine-macos.a in Frameworks */,
+				A5E05A7C0000000000000004 /* CoreServices.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7652,6 +7699,7 @@
 				53303346BC42784F2528C792 /* ScopedFileLock.h */,
 				53303346FA879A45D28931E2 /* AtomicFile.cpp */,
 				53303346D2EB5AA9BC43456C /* AtomicFile.h */,
+				A5E05A7C0000000000000001 /* watch */,
 			);
 			path = io;
 			sourceTree = "<group>";
@@ -7960,6 +8008,7 @@
 				717AD970290B67A5007D7DB5 /* AVFoundation.framework */,
 				7116070D2A0D86500052A9C3 /* FBLPromises.xcframework */,
 				17995BF93003C40000411B78 /* GameController.framework */,
+				A5E05A7C0000000000000003 /* CoreServices.framework */,
 				7116070C2A0D864F0052A9C3 /* GoogleAppMeasurement.xcframework */,
 				711607102A0D86500052A9C3 /* GoogleAppMeasurementIdentitySupport.xcframework */,
 				7116070A2A0D84660052A9C3 /* GoogleMobileAds.xcframework */,
@@ -11009,6 +11058,41 @@
 			path = x86;
 			sourceTree = "<group>";
 		};
+		A5E05A7C0000000000000001 /* watch */ = {
+			isa = PBXGroup;
+			children = (
+				A5E05A7C0000000000000002 /* backends */,
+				A5E05A7C0000000000000005 /* ExpectedWriteLedger.h */,
+				A5E05A7C0000000000000006 /* ExpectedWriteLedger.cpp */,
+				A5E05A7C0000000000000009 /* FileChangeCoalescer.h */,
+				A5E05A7C0000000000000010 /* FileChangeCoalescer.cpp */,
+				A5E05A7C0000000000000013 /* FileIdentity.h */,
+				A5E05A7C0000000000000014 /* FileIdentity.cpp */,
+				A5E05A7C0000000000000017 /* FileWatchService.h */,
+				A5E05A7C0000000000000018 /* FileWatchService.cpp */,
+				A5E05A7C0000000000000021 /* FileWatcher.h */,
+				A5E05A7C0000000000000022 /* FileWatcher.cpp */,
+				A5E05A7C0000000000000025 /* ProjectFileIndex.h */,
+				A5E05A7C0000000000000026 /* ProjectFileIndex.cpp */,
+				A5E05A7C0000000000000029 /* SharedFileReader.h */,
+				A5E05A7C0000000000000030 /* SharedFileReader.cpp */,
+			);
+			path = watch;
+			sourceTree = "<group>";
+		};
+		A5E05A7C0000000000000002 /* backends */ = {
+			isa = PBXGroup;
+			children = (
+				A5E05A7C0000000000000033 /* Backends.h */,
+				A5E05A7C0000000000000034 /* FsEventsBackend.cpp */,
+				A5E05A7C0000000000000037 /* InotifyBackend.cpp */,
+				A5E05A7C0000000000000040 /* NullBackend.cpp */,
+				A5E05A7C0000000000000043 /* PollingBackend.cpp */,
+				A5E05A7C0000000000000046 /* RdcwBackend.cpp */,
+			);
+			path = backends;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXHeadersBuildPhase section */
@@ -13052,6 +13136,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5E05A7C0000000000000007 /* ExpectedWriteLedger.cpp in Sources */,
+				A5E05A7C0000000000000011 /* FileChangeCoalescer.cpp in Sources */,
+				A5E05A7C0000000000000015 /* FileIdentity.cpp in Sources */,
+				A5E05A7C0000000000000019 /* FileWatchService.cpp in Sources */,
+				A5E05A7C0000000000000023 /* FileWatcher.cpp in Sources */,
+				A5E05A7C0000000000000027 /* ProjectFileIndex.cpp in Sources */,
+				A5E05A7C0000000000000031 /* SharedFileReader.cpp in Sources */,
+				A5E05A7C0000000000000035 /* FsEventsBackend.cpp in Sources */,
+				A5E05A7C0000000000000038 /* InotifyBackend.cpp in Sources */,
+				A5E05A7C0000000000000041 /* NullBackend.cpp in Sources */,
+				A5E05A7C0000000000000044 /* PollingBackend.cpp in Sources */,
+				A5E05A7C0000000000000047 /* RdcwBackend.cpp in Sources */,
 				713D8304259D34F900567F9F /* Ray.cpp in Sources */,
 				713E581027BA9CE400376680 /* Polygon.cpp in Sources */,
 				717AD9852919E1CB007D7DB5 /* RectTransform.cpp in Sources */,
@@ -13422,6 +13518,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A5E05A7C0000000000000008 /* ExpectedWriteLedger.cpp in Sources */,
+				A5E05A7C0000000000000012 /* FileChangeCoalescer.cpp in Sources */,
+				A5E05A7C0000000000000016 /* FileIdentity.cpp in Sources */,
+				A5E05A7C0000000000000020 /* FileWatchService.cpp in Sources */,
+				A5E05A7C0000000000000024 /* FileWatcher.cpp in Sources */,
+				A5E05A7C0000000000000028 /* ProjectFileIndex.cpp in Sources */,
+				A5E05A7C0000000000000032 /* SharedFileReader.cpp in Sources */,
+				A5E05A7C0000000000000036 /* FsEventsBackend.cpp in Sources */,
+				A5E05A7C0000000000000039 /* InotifyBackend.cpp in Sources */,
+				A5E05A7C0000000000000042 /* NullBackend.cpp in Sources */,
+				A5E05A7C0000000000000045 /* PollingBackend.cpp in Sources */,
+				A5E05A7C0000000000000048 /* RdcwBackend.cpp in Sources */,
 				7162FE0C2596A5BE0075B97D /* SokolObject.cpp in Sources */,
 				713E580F27BA9CE400376680 /* Polygon.cpp in Sources */,
 				717AD9842919E1CB007D7DB5 /* RectTransform.cpp in Sources */,

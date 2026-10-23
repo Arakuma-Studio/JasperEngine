@@ -119,6 +119,25 @@ void clearCustomSourceCache() {
     customSourceCache.clear();
 }
 
+// the customShader of a customSourceCacheKey (its second-to-last line)
+std::string customShaderOfCacheKey(const std::string& key) {
+    const size_t last = key.find_last_of('\n');
+    if (last == std::string::npos || last == 0)
+        return std::string();
+    const size_t before = key.find_last_of('\n', last - 1);
+    return key.substr(before == std::string::npos ? 0 : before + 1, last - (before == std::string::npos ? 0 : before + 1));
+}
+
+void clearCustomSourceCache(const std::function<bool(const std::string&)>& which) {
+    std::lock_guard<std::mutex> lock(customSourceCacheMutex);
+    for (auto it = customSourceCache.begin(); it != customSourceCache.end(); ) {
+        if (which(customShaderOfCacheKey(it->first)))
+            it = customSourceCache.erase(it);
+        else
+            ++it;
+    }
+}
+
 } // namespace
 
 
@@ -433,11 +452,25 @@ std::string editor::ShaderBuilder::getShaderDisplayName(ShaderKey key) {
 }
 
 void editor::ShaderBuilder::invalidateCustomShaders() {
+    invalidateCustomShaders([](const std::string&) { return true; });
+}
+
+void editor::ShaderBuilder::primeCache(ShaderKey shaderKey, const ShaderData& data) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    pendingBuilds.erase(shaderKey);
+    shaderDataCache[shaderKey] = data;
+}
+
+void editor::ShaderBuilder::dropSourceSnapshot(const std::string& fork) {
+    clearCustomSourceCache([&fork](const std::string& name) { return name == fork; });
+}
+
+void editor::ShaderBuilder::invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which) {
     std::lock_guard<std::mutex> lock(cacheMutex);
     // the engine library's effects (library ids) do not change with the project
-    auto projectCustom = [](ShaderKey key) {
+    auto projectCustom = [&which](ShaderKey key) {
         const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-        return customId != 0 && !ShaderPool::isLibraryCustomShader(customId);
+        return customId != 0 && !ShaderPool::isLibraryCustomShader(customId) && which(ShaderPool::getCustomShaderName(customId));
     };
     for (auto it = shaderDataCache.begin(); it != shaderDataCache.end(); ) {
         if (projectCustom(it->first))
@@ -454,7 +487,7 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
         else
             ++it;
     }
-    clearCustomSourceCache();
+    clearCustomSourceCache(which);
 }
 
 ShaderData editor::ShaderBuilder::buildShaderForExport(ShaderKey shaderKey, Project* project, ShaderBackend backend) {

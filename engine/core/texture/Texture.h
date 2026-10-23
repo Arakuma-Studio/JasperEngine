@@ -29,7 +29,11 @@ namespace jasperengine{
             std::string id;
 
             std::string paths[6];
-            std::shared_ptr<std::array<TextureData,6>> data = NULL;
+            // mutable: a const accessor takes a hot-reloaded entry (refreshFromPool)
+            mutable std::shared_ptr<std::array<TextureData,6>> data = NULL;
+            // the pool generation `data` is from, and the replace epoch last checked (S05 R13)
+            mutable uint32_t dataGeneration = 0;
+            mutable uint32_t checkedEpoch = 0;
 
             size_t numFaces;
 
@@ -52,6 +56,10 @@ namespace jasperengine{
             bool alphaBorderAuto;
 
             void reloadAlphaBorder(bool wasFixed);
+            // Takes the pool's entry when it was replaced since `data` was taken: O(1), and
+            // one atomic load while nothing was replaced
+            void refreshFromPool() const;
+            void adoptPoolData(std::shared_ptr<std::array<TextureData,6>> pooled) const;
 
         public:
             Texture();

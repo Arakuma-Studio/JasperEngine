@@ -773,13 +773,10 @@ namespace jasperengine::editor{
         using MaterialLinkKey = std::tuple<uint32_t, Entity, unsigned int>;
         struct MaterialLinkEntry {
             std::string filePath;
-            std::filesystem::file_time_type lastWriteTime;
         };
 
         std::filesystem::path projectPath;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
-        std::chrono::steady_clock::time_point lastMaterialRefreshTime;
-        static constexpr double materialRefreshIntervalSec = 0.2;
 
         std::map<std::filesystem::path, Prefab> prefabAssets;
 
@@ -1286,7 +1283,11 @@ namespace jasperengine::editor{
         // deleted (R16), the lock released
         void endProjectSession();
 
-        void refreshLinkedMaterials(bool force = false);
+        // The .material files submeshes are linked to (project-relative). Their changes on
+        // disk reach the links through the hot reload (editor/reload, S05).
+        std::vector<std::string> getLinkedMaterialFiles() const;
+        // `relativePath` was read again: every submesh linked to it takes `material`
+        void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
         //=== HTML UI hot reload ===
         // The scenes whose documents the HtmlUIWatcher checks: the loaded scenes, Prefab Mode
@@ -1461,6 +1462,9 @@ namespace jasperengine::editor{
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
         void invalidateCustomShaders();
+        // Only the forks `which` names (their custom shader name): the hot reload of some shader
+        // files keeps every other fork bound (S05 R11)
+        void invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which);
 
         SceneProject* getScene(uint32_t sceneId);
         const SceneProject* getScene(uint32_t sceneId) const;

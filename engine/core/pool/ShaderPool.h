@@ -169,6 +169,8 @@ namespace jasperengine{
         // the ShaderRender objects, so meshes holding them stay valid and re-bind on
         // their needReload pass.
         static void destroyCustomShaders();
+        // Only the forks `which` names by their custom shader name (a hot reload, S05)
+        static void destroyCustomShaders(const std::function<bool(const std::string& name)>& which);
 
         static const std::vector<ShaderBackend>& getShaderBackends();
         // backend this runtime was built for

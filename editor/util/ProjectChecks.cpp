@@ -1439,7 +1439,7 @@ bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks
 
 } // namespace
 
-editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey) {
+editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey, ShaderData* built) {
     ShaderCheck check;
     check.use = use;
     const bool effect = isUiEffectUse(use);
@@ -1458,6 +1458,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         ShaderBuilder builder;
         ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
+        if (built) *built = data;
         if (effect) {
             // the parameter block the shader declares is the manifest's
             std::vector<std::string> mismatches;
