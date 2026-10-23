@@ -384,6 +384,9 @@ TEST_F(WrapperLuaTest, EnumPropertiesAreIntegers){
         assert(probe.updateMode == ReflectionProbeUpdateMode.MANUAL)
         particles.emitterShape = ParticleEmitterShape.Sphere
         assert(particles.emitterShape == ParticleEmitterShape.Sphere, "emitterShape reads " .. tostring(particles.emitterShape))
+        -- an enum argument takes the namespace's integer
+        assert(type(ShaderPool.isShaderReady(ShaderType.FLUID, 0)) == "boolean")
+        assert(ShaderType.FLUID == ShaderType.UI_EFFECT + 1)
         enumScene = nil
     )"), "");
     ASSERT_EQ(lua("pushed = nil; collectgarbage(); collectgarbage()"), "");
