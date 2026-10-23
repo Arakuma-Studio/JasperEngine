@@ -114,7 +114,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
+`InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
@@ -593,7 +593,8 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer,
+ |   |  FluidSimulation
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
@@ -934,9 +935,61 @@ rw: `enabled`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`, `emitter
 `setSizeInitializer(...)`, `setRotationInitializer(...)`, `setScaleInitializer(...)`, and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause()`.
-(Component getter is misspelled in the binding: `getParticlesomponent()`.)
+Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works, deprecated).
 
-### 4.17 Other wrappers (partial)
+### 4.17 FluidSimulation (GameObject)
+
+Pavel Dobryakov's WebGL fluid (GameObject > Effects > Fluid Simulation): a GPU stable-fluids
+solve with his look (shading, bloom, sunrays) drawn into a texture. `FluidSimulation(scene)`
+makes one; `output` (`FluidOutput.*`) says where it goes: `SCREEN` (over the main camera),
+`MATERIAL` (the entity's Sprite/Image/Mesh texture), `TEXTURE` (only the `fluid|<entity>`
+texture link and `getTexture()`). Positions are fluid coordinates: (0,0) bottom-left, (1,1)
+top-right.
+
+rw (the component's fields, Pavel's defaults): `enabled`, `output`, `interactive` (pointer drags
+splat), `aspectRatio` (0 auto); solver `simResolution` (128), `dyeResolution` (1024),
+`densityDissipation` (1), `velocityDissipation` (0.2), `pressure` (0.8), `pressureIterations`
+(20), `curl` (30), `gradientScale` (1); clock `simulationRate` (60 steps/s), `maxSubsteps` (4),
+`timeScale`, `paused`; splats `splatRadius` (0.25), `splatForce` (6000), `colorful`,
+`colorUpdateSpeed`, `splatsOnStart`, `randomSplatCount` (0: random 5-24), `seed` (0: new each
+start; set one for repeatable runs); look `shading`, `backColor` (Vector3, or
+`setBackColor(r, g, b)`), `transparent` (alpha = max(r, g, b)), `bloom`, `bloomIterations`,
+`bloomResolution`, `bloomIntensity`, `bloomThreshold`, `bloomSoftKnee`, `sunrays`,
+`sunraysResolution`, `sunraysWeight`. ro `preset` (the matching preset id, `""` when custom).
+Setters log an error and keep the old value for NaN/infinite or negative numbers (and 0 for
+resolutions, `simulationRate`, `maxSubsteps`, `splatRadius`).
+
+| Method | Meaning |
+|---|---|
+| `splat(x, y, dx, dy, r, g, b)` | a splat at the next step (also while paused): velocity in Pavel's force units (a pointer delta x `splatForce`), HDR colour (his pointer colours ~0.15) |
+| `splat(posV2, velV2, colorV3 [, radius])` | the same with vectors; `radius` in `splatRadius` units (0: the component's) |
+| `randomSplats([count])` | a seeded random burst (none/0: 5-24 splats) |
+| `step([n])` | queues `n` (1) fixed steps for the next frame, also while paused (deterministic stepping) |
+| `reset()` | restarts at the next frame: zero fields, the seed, the start burst |
+| `applyPreset(id)` / `getPreset()` | `"default"`, `"mobile"`, `"smoke"`, `"ink"`, `"calm-water"`, `"psychedelic"`; sets the solver and look fields only (false: unknown id) |
+| `FluidSimulation.getPresetIds()` | static: the preset ids, in order |
+| `getStats()` | `FluidStats`: `steps`, `time`, `splats`, `simWidth`, `simHeight`, `dyeWidth`, `dyeHeight`, `gpuBytes`, `passesLastFrame`, `seed`, `shadingActive`, `bloomActive`, `sunraysActive` |
+| `getTexture()` | the output `Texture` (RGBA8) |
+| `getFluidSimulationComponent()` | the raw component (no validation) |
+
+```lua
+function Fluid:init()
+    self.fluid = FluidSimulation(self.scene)   -- keep it: the wrapper owns the entity
+    self.fluid.output = FluidOutput.SCREEN
+    self.fluid.transparent = true
+    self.fluid:applyPreset("ink")
+    self.fluid.seed = 42
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function Fluid:onUpdate()
+    if Input.isKeyPressed(Input.KEY_SPACE) then
+        self.fluid:splat(0.5, 0.2, 0, 800, 0.1, 0.4, 1.0)   -- while held: an upward blue jet
+    end
+end
+```
+
+### 4.18 Other wrappers (partial)
 
 - `Points`: `addPoint(...)`, `updatePoint(i, ...)`, `removePoint(i)`, `clearPoints()`,
   `getNumPoints()`, `setTexture(path)`, rw `maxPoints`, `enabled`.
@@ -956,7 +1009,7 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
   made and did not destroy yet (a leak check: the count before creating objects and after
   destroying them, once their loads settled).
 
-### 4.18 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
+### 4.19 HTML/CSS documents: UIDocument, UIElement, UIEvent, data models
 
 Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
@@ -1075,6 +1128,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
+| `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |
 | `FrustumPlane` | `FRUSTUM_PLANE_NEAR`, `_FAR`, `_LEFT`, `_RIGHT`, `_TOP`, `_BOTTOM` |
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
