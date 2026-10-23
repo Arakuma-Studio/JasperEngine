@@ -324,6 +324,7 @@ void fx_gather_splats(JfxStep s){
 // his multipleSplats at the start: velocity (true) or dye
 vec4 fx_burst(JfxStep s, bool velocity){
     vec4 sum = vec4(0.0, 0.0, 0.0, 1.0);
+    return sum;
     if (params.splatsOnStart < 0.5)
         return sum;
     vec2 size = max(s.c.size, vec2(1.0));
