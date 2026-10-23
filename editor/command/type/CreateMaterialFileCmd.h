@@ -19,6 +19,7 @@ namespace jasperengine::editor {
         Project* project;
         fs::path targetFile;
         std::string payload;
+        Guid guid;   // the file's GUID, kept for redo
         std::unique_ptr<Command> materialCmd;
 
         static fs::path findAvailableTargetFile(const fs::path& directory);

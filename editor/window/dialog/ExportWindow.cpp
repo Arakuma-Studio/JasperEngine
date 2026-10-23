@@ -1071,6 +1071,10 @@ void ExportWindow::drawSettings() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SetItemTooltip("Open Project Settings > Player");
+    // S04: a build referencing missing assets fails unless exported anyway
+    ImGui::SameLine();
+    ImGui::Checkbox("Export Anyway", &m_allowMissingAssets);
+    ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
     const float actionWidth = Theme::dpi(120.0f);
     const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
@@ -1151,6 +1155,7 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     ExportConfig exportConfig;
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
+    exportConfig.allowMissingAssets = m_allowMissingAssets;
 
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;

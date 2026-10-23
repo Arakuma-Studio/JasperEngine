@@ -393,7 +393,7 @@ bool Points::removeShaderUniform(const std::string& name){
 Vector4 Points::getShaderParam(const std::string& name) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, name);
+    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, name);
 }
 
 void Points::setShaderTexture(const std::string& name, const std::string& path){
@@ -414,14 +414,14 @@ void Points::setShaderFeature(const std::string& define, bool enabled){
     PointsComponent& points = getComponent<PointsComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define, enabled))
         points.needReload = true;
 }
 
 bool Points::isShaderFeatureEnabled(const std::string& define) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define);
 }
 
 void Points::setBlendMode(MaterialBlendMode blendMode){

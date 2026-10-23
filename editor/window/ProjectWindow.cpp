@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "asset/AssetTypes.h"
+#include "window/AssetPanels.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -1713,6 +1715,19 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                if (!file.isDirectory) {
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(currentPath / file.name);
+                    if (ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull())) {
+                        ImGui::SetClipboardText(guid.str().c_str());
+                    }
+                    if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull())) {
+                        if (AssetReferencesWindow* references = Backend::getApp().getAssetReferencesWindow()) {
+                            references->findReferences((currentPath / file.name).string());
+                        }
+                    }
+                    ImGui::Separator();
+                }
+
                 if (ImGui::MenuItem(ICON_FA_COPY " Copy")) copySelectedFiles(false);
                 if (ImGui::MenuItem(ICON_FA_SCISSORS " Cut")) copySelectedFiles(true);
                 if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
@@ -2053,8 +2068,8 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
             continue;
         }
 
-        // Skip project.yaml file
-        if (entry.path().filename() == "project.yaml") {
+        // Skip project.yaml file, and the assets' .meta sidecars (S04: they move with their assets)
+        if (entry.path().filename() == "project.yaml" || AssetTypes::isMetaFile(entry.path())) {
             continue;
         }
 
@@ -2161,7 +2176,7 @@ void editor::ProjectWindow::collectSearchResults() {
             it.increment(ec);
             continue;
         }
-        if (fileName != "project.yaml" && lower(fileName).find(needle) != std::string::npos) {
+        if (fileName != "project.yaml" && !AssetTypes::isMetaFile(entry.path()) && lower(fileName).find(needle) != std::string::npos) {
             files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
         }
         it.increment(ec);
@@ -3145,9 +3160,11 @@ void editor::ProjectWindow::cleanupThumbnails() {
             continue;
 
         std::string ext = p.path().extension().string();
-        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext)) {
+        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext) || Util::isPrefabFile(ext)) {
             fs::path thumbnailPath = project->getThumbnailPath(p.path());
             validThumbPaths.insert(thumbnailPath.string());
+            // a prefab's thumbnail keeps its dependency stamp beside it
+            validThumbPaths.insert(prefabStampPath(thumbnailPath).string());
         }
     }
 

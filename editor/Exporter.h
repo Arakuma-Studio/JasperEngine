@@ -65,6 +65,8 @@ namespace jasperengine::editor {
         bool packNativeResources = false;
         // Web: emsdk root override ("" = auto-detect via EMSDK env / PATH)
         std::string emsdkPath;
+        // Export anyway when a scene of the build references an asset that is missing (S04)
+        bool allowMissingAssets = false;
     };
 
     struct ExportProgress {
@@ -104,6 +106,8 @@ namespace jasperengine::editor {
             std::string filename;   // asset-relative
         };
         std::vector<HtmlUIDocumentUse> htmlUIDocuments;
+        // the build's references to missing assets (S04), found while the scenes are loaded
+        std::vector<std::string> missingBuildReferences;
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
@@ -157,6 +161,11 @@ namespace jasperengine::editor {
         bool checkHtmlUIReferences();
         bool copyGenerated();
         bool copyAssets();
+        // S04: a reference of the build's scenes (and the prefabs and materials they use) that
+        // resolves to no asset fails the export, listing each one, unless allowMissingAssets
+        bool checkMissingAssets();
+        // S04: assetmap.bin at the exported assets root, the runtime's GUID <-> path map
+        bool writeAssetMap();
         // Runtime shader compilation builds a fork's variants from its sources, which it
         // reads from the build's assets at their project-relative paths: a script can
         // put any fork of the project on a mesh, so all of them ship

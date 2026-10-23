@@ -51,6 +51,17 @@ namespace jasperengine::editor{
         uint32_t oldOverrideFields = 0; // submesh properties only, see getSubmeshOverrideMask
     };
 
+    // A string set on an asset reference (Asset, Shader properties) is its path: the reference
+    // as it was, GUIDs included, comes back on undo
+    template<>
+    struct PropertyCmdValue<std::string>{
+        std::string oldValue;
+        std::string newValue;
+        uint32_t oldOverrideFields = 0;
+        AssetRef oldAsset;
+        ShaderRef oldShader;
+    };
+
     // Component types the Hierarchy tree reads nothing from: it caches names, signature
     // icons, hierarchy and prefab/lock state, not component values. Opt-out list, so
     // anything unlisted stays structural.
@@ -118,15 +129,37 @@ namespace jasperengine::editor{
             }
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
-                T* valueRef = static_cast<T*>(prop.ref);
                 // script properties are per entity, a selection may not share all of them
-                if (!valueRef){
+                if (!prop.ref){
                     continue;
                 }
 
-                value.oldValue = T(*valueRef);
-                prefabUndo.capture(project, sceneId, entity);
-                *valueRef = value.newValue;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    // an asset reference set by its path: a new path drops the GUID (S04)
+                    if (prop.type == PropertyType::Asset) {
+                        AssetRef& ref = *static_cast<AssetRef*>(prop.ref);
+                        value.oldAsset = ref;
+                        value.oldValue = ref.path;
+                        prefabUndo.capture(project, sceneId, entity);
+                        ref = value.newValue;
+                    } else if (prop.type == PropertyType::Shader) {
+                        ShaderRef& ref = *static_cast<ShaderRef*>(prop.ref);
+                        value.oldShader = ref;
+                        value.oldValue = ref.path;
+                        prefabUndo.capture(project, sceneId, entity);
+                        ref = value.newValue;
+                    } else {
+                        std::string* valueRef = static_cast<std::string*>(prop.ref);
+                        value.oldValue = *valueRef;
+                        prefabUndo.capture(project, sceneId, entity);
+                        *valueRef = value.newValue;
+                    }
+                } else {
+                    T* valueRef = static_cast<T*>(prop.ref);
+                    value.oldValue = T(*valueRef);
+                    prefabUndo.capture(project, sceneId, entity);
+                    *valueRef = value.newValue;
+                }
 
                 // Read before the no-op check below: a command merging into this one adopts this
                 // mask, and an entity already at the new value still carries its earlier edits.
@@ -167,12 +200,21 @@ namespace jasperengine::editor{
             }
             for (auto const& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
-                T* valueRef = static_cast<T*>(prop.ref);
-                if (!valueRef){
+                if (!prop.ref){
                     continue;
                 }
 
-                *valueRef = value.oldValue;
+                if constexpr (std::is_same_v<T, std::string>) {
+                    if (prop.type == PropertyType::Asset) {
+                        *static_cast<AssetRef*>(prop.ref) = value.oldAsset;
+                    } else if (prop.type == PropertyType::Shader) {
+                        *static_cast<ShaderRef*>(prop.ref) = value.oldShader;
+                    } else {
+                        *static_cast<std::string*>(prop.ref) = value.oldValue;
+                    }
+                } else {
+                    *static_cast<T*>(prop.ref) = value.oldValue;
+                }
 
                 // Mirrors execute: restored whether or not the value moved.
                 uint32_t propertyFields = 0;
@@ -210,6 +252,10 @@ namespace jasperengine::editor{
                             // The older command holds the state a single undo has to restore.
                             values[otherEntity].oldValue = otherValue.oldValue;
                             values[otherEntity].oldOverrideFields = otherValue.oldOverrideFields;
+                            if constexpr (std::is_same_v<T, std::string>) {
+                                values[otherEntity].oldAsset = otherValue.oldAsset;
+                                values[otherEntity].oldShader = otherValue.oldShader;
+                            }
                         }else{
                             values[otherEntity] = otherValue;
                         }

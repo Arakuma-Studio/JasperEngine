@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateMaterialFileCmd.h"
+#include "asset/AssetFileWrite.h"
 
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -69,13 +70,23 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 }
 
 bool editor::CreateMaterialFileCmd::execute() {
-    std::ofstream out(targetFile, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
+    // the file's identity: a new GUID the first time, the same one again on redo
+    std::string content = payload;
+    try {
+        YAML::Node root = YAML::Load(payload);
+        if (root.IsMap()) {
+            if (!guid.isNull()) {
+                root["guid"] = guid.str();
+            }
+            guid = project->prepareDocumentIdentity(root, targetFile);
+            content = YAML::Dump(root) + "\n";
+        }
+    } catch (const std::exception&) {
+    }
+    if (!assetio::writeFile(targetFile, content, assetio::Durability::Document)) {
         return false;
     }
-
-    out.write(payload.c_str(), payload.size());
-    out.close();
+    project->getAssetDatabase().registerAsset(targetFile, guid.str());
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;
@@ -93,4 +104,5 @@ void editor::CreateMaterialFileCmd::undo() {
 
     std::error_code ec;
     fs::remove(targetFile, ec);
+    project->getAssetDatabase().removeAssets(targetFile);
 }

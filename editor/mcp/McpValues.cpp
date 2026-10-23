@@ -787,6 +787,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::Custom: return "custom";
         case PropertyType::Entity: return "entity";
         case PropertyType::EntityReference: return "entity_reference";
+        case PropertyType::Asset: return "asset";
+        case PropertyType::Shader: return "shader";
     }
     return "unknown";
 }
@@ -1172,10 +1174,20 @@ std::string McpValues::assetPathToJson(Project* project, const std::string& stor
     return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
 }
 
-bool McpValues::assetPathFromJson(Project* project, const std::string& projectRelative, std::string& stored, std::string& error) {
-    if (projectRelative.empty()) {
+bool McpValues::assetPathFromJson(Project* project, const std::string& requested, std::string& stored, std::string& error) {
+    if (requested.empty()) {
         stored.clear();
         return true;
+    }
+    // a GUID names the asset it is (S04)
+    std::string projectRelative = requested;
+    if (Guid::isValidText(requested)) {
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(Guid::parse(requested), std::string(), AssetType::Unknown, false);
+        if (!found.found()) {
+            error = "No asset has the GUID " + requested + ".";
+            return false;
+        }
+        projectRelative = found.path;
     }
     if (!isSafeRelative(projectRelative)) {
         error = "\"" + projectRelative + "\" must be a project-relative path (no '..', not absolute).";
@@ -1784,6 +1796,12 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             const std::string& value = *static_cast<std::string*>(ref);
             return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
         }
+        case PropertyType::Asset: {
+            const std::string& value = static_cast<AssetRef*>(ref)->path;
+            return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
+        }
+        case PropertyType::Shader:
+            return static_cast<ShaderRef*>(ref)->path;
         case PropertyType::Float:
             return number(*static_cast<float*>(ref));
         case PropertyType::Double:
@@ -1930,9 +1948,21 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         case PropertyType::Bool:
             if (!value.is_boolean()) return expect("true or false");
             return new PropertyCmd<bool>(project, sceneId, entity, component, propertyName, value.get<bool>(), onChanged);
-        case PropertyType::String: {
+        case PropertyType::String:
+        case PropertyType::Asset:
+        case PropertyType::Shader: {
             if (!value.is_string()) return expect("a string");
             std::string text = value.get<std::string>();
+            // the command of the property's own type: a path set on a reference gets its GUID
+            // from the file at the path when the editor next resolves the scene's references
+            const PropertyType stringType = property.type;
+            auto stringCmd = [&](const std::string& name, const std::string& stored) -> Command* {
+                if (stringType == PropertyType::Asset)
+                    return new PropertyCmd<AssetRef>(project, sceneId, entity, component, name, AssetRef(stored), onChanged);
+                if (stringType == PropertyType::Shader)
+                    return new PropertyCmd<ShaderRef>(project, sceneId, entity, component, name, ShaderRef(stored), onChanged);
+                return new PropertyCmd<std::string>(project, sceneId, entity, component, name, stored, onChanged);
+            };
             if (component == ComponentType::ModelComponent && propertyName == "filename") {
                 // a model is its file: setting it loads the file (Inspector / drag and drop)
                 std::string stored;
@@ -1940,7 +1970,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 if (stored.empty()) {
                     ModelComponent* model = scene->scene->findComponent<ModelComponent>(entity);
                     if (!model || !ModelClearCmd::hasContent(*model)) {
-                        return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, std::string(), onChanged);
+                        return stringCmd(propertyName, std::string());
                     }
                     std::string reason;
                     if (!ModelClearCmd::canClear(project, sceneId, entity, &reason)) {
@@ -1974,14 +2004,14 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     const MaterialLighting current = static_cast<MaterialLighting>(*static_cast<int*>(lighting.ref));
                     if (!Catalog::supportsLighting(current, findManifest(drawn).get())) {
                         auto* multi = new MultiPropertyCmd();
-                        multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
+                        multi->addCommand(std::unique_ptr<Command>(stringCmd(propertyName, text)));
                         multi->addPropertyCmd<int>(project, sceneId, entity, component, prefix + "lighting",
                                                    (int)MaterialLighting::AUTO, onChanged);
                         return multi;
                     }
                 }
             }
-            return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
+            return stringCmd(propertyName, text);
         }
         case PropertyType::Float:
             if (!value.is_number()) return expect("a number");

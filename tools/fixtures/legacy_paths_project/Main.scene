@@ -1,0 +1,42 @@
+id: 1
+name: Main
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+sceneType: scene_3d
+mainCamera: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Ship
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      model:
+        filename: models/ship.gltf
+  - type: Entity
+    entity: 1002
+    name: Speaker
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      audiosource:
+        filename: sounds/beep.wav
+      script:
+        scripts:
+          - type: lua
+            path: Spinner.lua
+            className: Spinner
+            enabled: true
+  - type: Entity
+    entity: 1003
+    name: Lamp
+    components:
+      prefab: {name: Lamp, path: prefabs/Lamp.prefab}
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]

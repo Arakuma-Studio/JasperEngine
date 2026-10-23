@@ -765,7 +765,7 @@ bool shaderStateFromJson(Project* project, SceneProject* scene, const Json& valu
             for (MaterialLighting mode : Catalog::getShaderLightingModes(manifest.get())) {
                 modes += ", " + McpValues::enumToJson((int)mode, *McpValues::enumTable("material_lighting")).template get<std::string>();
             }
-            error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader) + " takes " + modes + ".";
+            error = "lighting: " + (out.shader.empty() ? std::string("the built-in Lit shader") : out.shader.path) + " takes " + modes + ".";
             return false;
         }
     } else {

@@ -40,6 +40,33 @@ namespace luabridge
         }
     };
 
+    // Asset path fields (AssetRef, ShaderRef) are plain path strings in Lua. Assigning one
+    // gives a reference without a GUID, as assigning a path does in C++.
+    template <class T>
+    struct AssetPathStack
+    {
+        [[nodiscard]] static Result push(lua_State* L, const T& ref)
+        {
+            return Stack<std::string>::push(L, ref.path);
+        }
+
+        [[nodiscard]] static TypeResult<T> get(lua_State* L, int index)
+        {
+            auto result = Stack<std::string>::get(L, index);
+            if (! result)
+                return result.error();
+            return T(std::move(*result));
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return Stack<std::string>::isInstance(L, index);
+        }
+    };
+
+    template<> struct Stack<AssetRef> : AssetPathStack<AssetRef>{};
+    template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
+
     template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
     template<> struct Stack<Platform> : EnumWrapper<Platform>{};
     template<> struct Stack<GraphicBackend> : EnumWrapper<GraphicBackend>{};

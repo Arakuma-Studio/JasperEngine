@@ -576,3 +576,68 @@ in `tools/mcp/tests/test_asset_identity.py`.
   switch the cache to a binary format behind the same interface, still without SQLite.
 - **New files created during Play** are registered only after Play stops (existing rule: no
   refresh while playing). Kept.
+
+## Deviations (implementation)
+
+Recorded by the implementer; each is the closest correct alternative to the text above.
+
+1. **Linked material file.** `Material::name` (the linked `.material` path, the only meaning
+   it had in the editor) became an `AssetRef` and keeps its key, serialized `name` +
+   `nameGuid` (§6.5's scalar rule), instead of moving to a new `materialFile` key. `name` is
+   part of prefab override paths (`submeshes[i].material.name`, `SubmeshOverride_MaterialName`)
+   in closed scenes; renaming the key would have needed a migration of every override record
+   for no gain in identity. No format migration is needed as a result.
+2. **Format versions.** S03's version framework has not landed. Every key S04 adds is optional
+   (`<key>Guid`, texture `guid`/`guids`, `guid`/`formerGuids` in scenes and materials), and
+   S03 R22 bumps no version for those; readers accept both forms directly. When S03 lands,
+   the S04 keys go into its `StreamSchema` known-key tables.
+3. **Closed-file rewrites** (Retarget Selected, Clear, `assets migrate`) edit the YAML tree
+   at the field's node and write it back with the emitter normal saves use, rather than a
+   full decode/encode. This keeps unknown data (S03's preservation rule), reaches prefab
+   instance override records, and loads no scene. Undo restores the bytes captured before the
+   write, as §9 asks. Loaded owners are edited in memory; their undo restores component and
+   scene-settings snapshots.
+4. **Cache files.** The index is split into `.jasperengine/assetdb/index.json` (identity,
+   fingerprints, content hashes) and `deps.json` (edges), so the warm open (R21) parses only
+   the identity part. Both are deletable caches.
+5. **Index overlay.** Every loaded document (scene, prefab stage, loaded prefab asset)
+   contributes its in-memory edges, not only modified ones. The locators of a loaded owner
+   are then always the ones the editor edits.
+6. **Child scenes** stay referenced by scene id (project-wide ids that the scene list maps to
+   files); their edges are derived through `project.yaml`. The scene list entries gain
+   `filepathGuid`, so a moved scene file is found by GUID on load. A scene's `cppScripts` list
+   is regenerated from its Script components on every save; its edges come from the
+   components and the list.
+7. **Shader references** are a `ShaderRef` (a path plus the `.vert` and `.frag` GUIDs) for
+   every custom shader field, because one value names two files (`customShaderGuid:
+   "<vert>|<frag>"`, also for material and default shaders).
+8. **Prefab references** keep their existing types (`PrefabComponent{name, path, guid}`,
+   `PrefabAsset`): they already carry identity, and the schema adapts them. Prefab references
+   resolve through the prefab code (PREFABS.md §3), which owns Missing Prefab state.
+9. **Delete.** Deleting a closed scene's file keeps it in the project scene list, where it is
+   reported Missing, instead of removing the scene from the project (R15); undo resolves it.
+   A copy pasted over an existing name gets Unity's free name (`hero 1.png`) instead of
+   silently overwriting. `import_files overwrite: true` replaces the content in place and
+   keeps the file's identity, so its references stay.
+10. **Menus.** There is no Project menu: Migrate References is under Assets > Asset Database,
+    and Missing Assets is under Window > Assets (and Assets > Asset Database).
+11. **Thumbnails** are keyed by GUID plus size and mtime (the content fingerprint that needs no
+    read). A rename or move keeps both, so no thumbnail regenerates.
+12. **Export gate scope.** The Missing check covers the scenes of the project list plus the
+    prefabs and materials they reference, transitively.
+13. **MCP parameters.** `resolve_asset` also takes `path` (a hint for a GUID) and `type`. The
+    `referrers` of `retarget_asset_references` / `clear_asset_references` are locators or
+    `"<owner>|<locator>"` (a locator is per owner). The component tools return asset GUIDs as
+    `asset_guids` (and `guid` in detailed entries), so set-tool round trips are unchanged.
+    S31's tool groups do not exist yet; the six tools join `assets_pipeline` when S31 lands.
+14. **Benchmark.** `tools/performance/assetdb_bench.py` drives a developer subcommand,
+    `jasperengine-editor assets bench --project P`, which times the database and the index
+    without the engine.
+15. **Tests location.** The unit tests are where S02 puts them (`engine/tests/core/asset/`,
+    `editor/tests/asset/`). Until S02's targets land they are compiled into the existing
+    HTML UI test targets (`jasperengine-htmlui-tests`, `jasperengine-htmlui-editor-tests`).
+16. **HTML5 player run of AC16** needs S02's web gate (headless Chrome). The asset map is
+    read through the same `asset://` path on every target.
+17. **Excluded files.** Besides `project.yaml` and `CMakeLists.txt`, the project root's
+    `ProjectBuild.cmake` and `compile_commands.json` are not assets, and neither are hidden
+    files (S03's temporaries).

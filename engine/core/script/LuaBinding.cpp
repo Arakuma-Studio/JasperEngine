@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "shader/ShaderManifest.h"
+#include "asset/AssetMap.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 
@@ -921,6 +922,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
         } else if (std::holds_alternative<PrefabAsset>(prop.value) && !std::get<PrefabAsset>(prop.value).isEmpty()) {
             // a prefab property left at None stays nil
             if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(prop.value))) lua_pushnil(L);
+        } else if (std::holds_alternative<AssetRef>(prop.value) && std::get<AssetRef>(prop.value).isSet()) {
+            // an asset property left at None stays nil
+            if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(std::get<AssetRef>(prop.value)))) lua_pushnil(L);
         } else {
             lua_pushnil(L);
         }

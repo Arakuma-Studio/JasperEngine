@@ -4,6 +4,7 @@
 #ifndef MODEL_COMPONENT_H
 #define MODEL_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "ecs/Entity.h"
 #include "math/Matrix4.h"
 #include <vector>
@@ -51,7 +52,7 @@ namespace jasperengine{
 
         std::vector<Entity> animations;
 
-        std::string filename;
+        AssetRef filename;
 
         // Bake static multi-node GLTF meshes into this entity's MeshComponent instead of
         // generating one child entity per mesh node. This makes the model compatible with

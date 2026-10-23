@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "asset/AssetRefEditor.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -118,6 +119,8 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    missingAssetsWindow = new MissingAssetsWindow(&project);
+    assetReferencesWindow = new AssetReferencesWindow(&project);
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -247,6 +250,9 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
+    ToggleMissingAssets,
+    MigrateAssetReferences,
+    ToggleAssetReferences,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -543,6 +549,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
         menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
+        menuSubmenu("Asset Database", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
+            menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
+        }),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
@@ -569,6 +579,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Assets", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -737,6 +751,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
+            break;
+        case AppMenuCommand::ToggleMissingAssets:
+            showEditorWindow(missingAssetsWindow);
+            break;
+        case AppMenuCommand::ToggleAssetReferences:
+            showEditorWindow(assetReferencesWindow);
+            break;
+        case AppMenuCommand::MigrateAssetReferences:
+            migrateAssetReferences();
             break;
         case AppMenuCommand::FocusGame:
             gameWindow->requestFocus();
@@ -1057,6 +1080,16 @@ void editor::App::showFooter(){
         if (queuedResources > 0) {
             indicators.emplace_back(std::string(ICON_FA_SPINNER " Loading resources: ") + std::to_string(queuedResources), busyCol);
         }
+        // S04 R27: the Missing Assets badge, a click opens the panel
+        size_t missingIndicator = SIZE_MAX;
+        if (project.getAssetIndex().isReady()) {
+            const size_t missing = project.getMissingAssets().count();
+            if (missing > 0) {
+                missingIndicator = indicators.size();
+                indicators.emplace_back(std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(missing) +
+                                        (missing == 1 ? " missing asset" : " missing assets"), Theme::Colors::WarningText);
+            }
+        }
         if (selectedScene) {
             indicators.emplace_back(std::string(ICON_FA_CUBE " ") + selectedScene->name, dimCol);
             const size_t selectionCount = selectedScene->selectedEntities.size();
@@ -1132,6 +1165,15 @@ void editor::App::showFooter(){
         for (size_t i = 0; i < indicators.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
+            if (i == missingIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Assets > Missing Assets");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(missingAssetsWindow);
+                }
+            }
         }
     }
     ImGui::End();
@@ -1141,6 +1183,46 @@ void editor::App::showFooter(){
 
     // Reserve space from the viewport work area so dockspace doesn't overlap
     viewport->WorkSize.y -= footerHeight;
+}
+
+// Assets > Asset Database > Migrate References (S04 R35): every scene, prefab, material and
+// project.yaml written with the GUIDs of what it references. A document with unsaved edits is
+// left to its next save, which writes them too.
+void editor::App::migrateAssetReferences(){
+    project.getAssetIndex().waitUntilReady();
+    std::vector<std::string> files;
+    project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+            files.push_back(info.path);
+        }
+    });
+    std::sort(files.begin(), files.end());
+    files.push_back("project.yaml");
+    size_t written = 0;
+    size_t skipped = 0;
+    for (const std::string& file : files) {
+        bool unsaved = false;
+        for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
+            const PrefabStage* stage = project.getPrefabStage(sceneProject->id);
+            const fs::path path = stage ? stage->assetPath : sceneProject->filepath;
+            unsaved |= sceneProject->scene && sceneProject->isModified && !path.empty() &&
+                       project.normalizeToProjectRelative(path).generic_string() == file;
+        }
+        if (unsaved) {
+            skipped++;
+            continue;
+        }
+        bool changed = false;
+        std::string error;
+        if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+            Out::error("%s", error.c_str());
+        } else if (changed) {
+            written++;
+        }
+    }
+    project.refreshAssetDatabase(true);
+    Out::info("Migrate References: %zu file(s) written%s", written,
+              skipped ? (", " + std::to_string(skipped) + " with unsaved edits get the GUIDs when saved").c_str() : "");
 }
 
 void editor::App::showAlert(){
@@ -2062,6 +2144,8 @@ void editor::App::show(){
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    missingAssetsWindow->show();
+    assetReferencesWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows

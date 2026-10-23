@@ -185,7 +185,7 @@ namespace {
     // references the user can set on an empty Model, its skeleton and animations.
     void addModelCommands(editor::MultiPropertyCmd* multi, editor::Project* project, uint32_t sceneId, Scene* scene, Entity entity,
                           const ModelValue& model, const ModelComponent* current, bool reset = false) {
-        const std::string currentFile = current ? current->filename : std::string();
+        const std::string currentFile = current ? current->filename.path : std::string();
         const bool currentMerge = current ? current->mergeStaticMeshes : false;
         if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge)) {
             for (editor::ComponentType needed : {editor::ComponentType::Transform, editor::ComponentType::MeshComponent}) {

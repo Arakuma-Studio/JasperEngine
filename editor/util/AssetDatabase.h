@@ -1,19 +1,33 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Unity's AssetDatabase, for the asset types referenced by GUID: a 128-bit id written in
-// the asset file itself (a top-level `guid:` key), mapped to the file's project-relative
-// path. References store the GUID and the path as a hint, so a file renamed or moved,
-// inside the editor or outside it, is still found. Only .prefab files are tracked now;
-// isTrackedFile is the one place another type (scenes, materials) would be added.
-// The contract is in editor/project/PREFABS.md.
+// Unity's AssetDatabase: every asset of the project (editor/asset/AssetTypes.cpp decides
+// which files are assets) has a 128-bit GUID that survives renames and moves, inside the
+// editor or outside it. Engine YAML assets (.prefab, .scene, .material) keep it in the file
+// as a top-level `guid:` key; every other asset in a `<file>.meta` sidecar (AssetMeta).
+// Model files list their sub-assets (meshes, materials, ...) with derived GUIDs. An asset
+// may list former GUIDs (redirects): references to them resolve to it.
+//
+// The database is the index of those GUIDs, rebuilt by a scan when the project opens and
+// cached in .jasperengine/assetdb/index.json (a deletable cache: deleting it changes no
+// result). The contracts are in docs/specs/S04-asset-identity.md and
+// editor/project/PREFABS.md §3.
 
 #pragma once
 
+#include "asset/AssetType.h"
+#include "asset/Guid.h"
+#include "asset/SubAssetKeys.h"
+
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -30,14 +44,61 @@ namespace jasperengine::editor {
             std::filesystem::path oldPath;  // Moved only
         };
 
-        // GUID-tracked asset types
-        static bool isTrackedFile(const std::filesystem::path& path);
+        struct SubAsset {
+            std::string key;
+            Guid guid;
+            std::string name;
+            SubAssetKind kind = SubAssetKind::Mesh;
+        };
+
+        // What the database knows of one asset
+        struct AssetInfo {
+            Guid guid;
+            std::string path;               // project-relative, generic
+            AssetType type = AssetType::Unknown;
+            std::vector<Guid> formerGuids;
+            std::vector<SubAsset> subAssets;
+            uint64_t size = 0;
+            bool hasContentHash = false;
+            uint64_t contentHash = 0;
+        };
+
+        // How a reference resolved (S04 R10)
+        enum class ResolvedBy { Live, Former, SubAsset, LegacyPath, PathFallback, Missing };
+        struct Resolution {
+            ResolvedBy by = ResolvedBy::Missing;
+            Guid guid;                      // the live GUID (of the sub-asset for a sub-asset)
+            std::string path;               // project-relative; "<container>#<key>" for a sub-asset
+            AssetType type = AssetType::Unknown;
+            bool found() const { return by != ResolvedBy::Missing; }
+        };
+
+        // A meta whose asset is gone (the file moved without it, or was deleted outside the editor)
+        struct OrphanMeta {
+            std::string metaPath;           // project-relative
+            std::string assetPath;          // the asset it belonged to
+            Guid guid;
+        };
+
+        // A GUID that is live on one asset and a former GUID of another (R8): the live one wins
+        struct RedirectConflict {
+            Guid guid;
+            std::string livePath;
+            std::string formerOwnerPath;
+        };
+
+        // ---- identity of files
+
+        // The asset type of a project-relative path, Unknown when it is not a tracked asset
+        AssetType typeOf(const std::filesystem::path& path) const;
+        // GUID-tracked: an asset type of the table (AssetTypes)
+        bool isTrackedFile(const std::filesystem::path& path) const;
 
         // 32 lowercase hex digits, random
         static std::string generateGuid();
         // The GUID a file without one gets on its upgrade: derived from its path, so every
         // machine upgrading the same project agrees, and a reference by path alone (written
-        // before GUIDs) still finds the file after it moves
+        // before GUIDs) still finds the file after it moves. Frozen: prefabs depend on it.
         static std::string legacyGuid(const std::filesystem::path& relativePath);
         static bool isGuid(const std::string& text);
 
@@ -46,22 +107,62 @@ namespace jasperengine::editor {
         // Writes `guid` as the file's top-level `guid:` value, the rest of the file unchanged
         // (a line replaced or inserted at the top)
         static bool writeGuid(const std::filesystem::path& fullPath, const std::string& guid);
+        // In-file identity with the former GUIDs (`formerGuids:` right after `guid:`)
+        static bool readInFileIdentity(const std::filesystem::path& fullPath, Guid& guid, std::vector<Guid>& formerGuids);
+        static bool writeInFileIdentity(const std::filesystem::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids);
+
+        // ---- lifecycle
 
         // Scans the project: every tracked file gets a GUID (legacy files are upgraded on
-        // disk), a GUID found twice stays with the file that had it before (the cache from the
-        // last session, else the older file) and the other file gets a new one
-        void open(const std::filesystem::path& projectPath);
+        // disk, metas written), a GUID found twice stays with the file that had it before
+        // (the cache from the last session, else the older file) and the other file gets a
+        // new one. assetsDir is relative to the project (data files are assets only there).
+        void open(const std::filesystem::path& projectPath, const std::filesystem::path& assetsDir = std::filesystem::path());
         void close();
         bool isOpen() const;
+        ~AssetDatabase();
 
         // What changed on disk since the last look (files moved, copied, deleted or edited
         // outside the editor), applied to the database and returned
         std::vector<Change> refresh();
 
+        // Bumped by every change; listeners (Missing Assets, the dependency index) compare it
+        uint64_t getVersion() const;
+
+        // ---- queries (string GUIDs: the prefab code's form)
+
         // Empty when unknown
         std::filesystem::path getPath(const std::string& guid) const;
         std::string getGuid(const std::filesystem::path& path) const;
         bool contains(const std::string& guid) const;
+
+        std::filesystem::path getPath(const Guid& guid) const;
+        Guid getAssetGuid(const std::filesystem::path& path) const;
+        bool getInfo(const std::filesystem::path& path, AssetInfo& info) const;
+        bool getInfo(const Guid& guid, AssetInfo& info) const;
+        void forEachAsset(const std::function<void(const AssetInfo&)>& visitor) const;
+        size_t assetCount() const;
+
+        // R10: a live GUID, a former GUID, a sub-asset GUID; without a GUID the asset whose
+        // legacyGuid is the hint's, else the file at the hint (preferHint: the file at the
+        // hint first, for a path just assigned in the editor); with an unknown GUID and
+        // allowPathFallback (non-prefab types), a file of the expected type at the hint.
+        Resolution resolve(const Guid& guid, const std::string& projectRelativeHint, AssetType expected,
+                           bool allowPathFallback, bool preferHint = false) const;
+        // The live asset (or "<container>#<key>" sub-asset) at a path
+        Resolution lookupPath(const std::string& projectRelativePath) const;
+
+        std::vector<OrphanMeta> getOrphanMetas() const;
+        std::vector<RedirectConflict> getRedirectConflicts() const;
+
+        // ---- edits
+
+        // A former GUID added to / removed from an asset (its meta or in-file identity is
+        // written): references to it then resolve to the asset (R8)
+        bool addFormerGuid(const std::filesystem::path& path, const Guid& former, std::string* error = nullptr);
+        bool removeFormerGuid(const std::filesystem::path& path, const Guid& former, std::string* error = nullptr);
+        // Deletes an orphan meta (to the project trash when trashDir is given)
+        bool removeOrphanMeta(const std::string& metaPath, const std::filesystem::path& trashDir, std::string* error = nullptr);
 
         // Editor file operations, each on a file or a directory, after they happened on disk.
         // moveAssets: the files keep their GUIDs (a file whose new name is no longer a tracked
@@ -78,33 +179,90 @@ namespace jasperengine::editor {
         void registerAsset(const std::filesystem::path& path, const std::string& guid);
 
         std::filesystem::path toRelative(const std::filesystem::path& path) const;
+        const std::filesystem::path& getProjectPath() const { return projectPath; }
+
+        // The content hashes still being computed in the background (tests and the bench wait)
+        void waitForBackgroundWork();
+        // Content hashes are computed in the background after a scan (on by default); off,
+        // R5 matches a file moved without its meta by name and size only
+        void setBackgroundHashing(bool enabled);
 
     private:
         struct Entry {
-            std::string guid;
+            std::string path;                 // project-relative, as on disk
+            AssetType type = AssetType::Unknown;
+            Guid guid;
+            std::vector<Guid> formerGuids;
+            std::vector<SubAsset> subAssets;
+            std::vector<size_t> subAssetIndices;    // cache only: each sub-asset's index among its kind
             std::filesystem::file_time_type writeTime{};
-            std::uintmax_t size = 0;
+            uint64_t size = 0;
+            std::filesystem::file_time_type metaWriteTime{};
+            uint64_t metaSize = 0;
+            bool hasMeta = false;
+            bool hasContentHash = false;
+            uint64_t contentHash = 0;
         };
 
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
         std::filesystem::path projectPath;
-        std::map<std::string, Entry> byPath;               // generic relative path -> entry
-        std::unordered_map<std::string, std::string> byGuid; // guid -> generic relative path
+        std::filesystem::path assetsDir;
+        bool caseInsensitive = false;
+        std::atomic<uint64_t> version{0};
 
+        std::map<std::string, Entry> byPath;                 // key(relative path) -> entry
+        std::unordered_map<Guid, std::string> byGuid;        // live guid -> key
+        std::unordered_map<Guid, std::string> byFormer;      // former guid -> key
+        std::unordered_map<Guid, std::pair<std::string, std::string>> bySubAsset; // sub-asset guid -> key, sub key
+        std::map<std::string, OrphanMeta> orphans;           // key(meta path) -> orphan
+        std::map<std::string, Entry> orphanLast;             // key(asset path) -> what the cache knew of an orphan's asset
+        std::vector<RedirectConflict> conflicts;
+
+        // background content hashing
+        std::thread hashThread;
+        std::mutex hashMutex;
+        std::condition_variable hashWake;
+        std::condition_variable hashIdle;
+        std::vector<std::string> hashQueue;  // keys
+        bool hashStop = false;
+        bool hashBusy = false;
+        bool hashingEnabled = true;
+
+        std::filesystem::path cacheDir() const;
         std::filesystem::path cacheFile() const;
-        void loadCache(std::unordered_map<std::string, std::string>& owners) const;
+        void loadCache(std::map<std::string, Entry>& cached) const;
         void saveCache() const;
 
         std::string key(const std::filesystem::path& path) const;
+        std::string relativeKeyOf(const std::string& relative) const;
         bool fileExists(const std::string& relative) const;
-        void stat(const std::string& relative, Entry& entry) const;
-        void insert(const std::string& relative, const std::string& guid);
+        void statFile(const std::string& relative, std::filesystem::file_time_type& time, uint64_t& size) const;
+
+        void insert(Entry entry);
         void erase(const std::string& relative);
-        // A GUID no other registered file has, written into the file
-        std::string assignNewGuid(const std::string& relative, const std::string& preferred = std::string());
-        // Tracked files below a path (the path itself when it is a file), generic relative
-        std::vector<std::string> collectFiles(const std::filesystem::path& fullPath) const;
+        void reindexRedirects();
+        bool guidInUse(const Guid& guid) const;
+        Guid freshGuid(const std::string& preferred = std::string()) const;
+
+        // Reads what identity a file has on disk (in-file key, or its meta); false when none
+        bool readIdentity(const std::string& relative, AssetType type, Entry& entry, const Entry* cached) const;
+        // Writes an entry's identity (in-file line or meta, keeping the meta's other sections)
+        bool writeIdentity(const Entry& entry) const;
+        // Sub-assets of a model file matched against the ones it had (§6.4)
+        bool refreshSubAssets(Entry& entry, const Entry* previous) const;
+
+        // Tracked files and metas below a path (the path itself when it is a file), relative
+        void collect(const std::filesystem::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas) const;
+        // Files without identity adopt orphan metas that match them (R5); returns the adopted
+        std::vector<Change> adoptOrphans(std::vector<std::string>& withoutIdentity);
+        void collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached);
+        // A new identity for a file that has none (R3), written to disk
+        Entry identify(const std::string& relative, AssetType type, const std::string& preferredGuid);
+
+        void queueHash(const std::string& relative);
+        void hashWorker();
+        void stopHashing();
     };
 
 }

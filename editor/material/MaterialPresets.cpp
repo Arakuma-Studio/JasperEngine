@@ -407,7 +407,7 @@ namespace {
 
 bool isMaterialBlended(const Material& material, const std::string& meshShader){
     MaterialBlendMode blend = material.blendMode;
-    const std::string& shader = material.shader.empty() ? meshShader : material.shader;
+    const std::string& shader = material.shader.empty() ? meshShader : material.shader.path;
     if (blend == MaterialBlendMode::AUTO && !shader.empty()){
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
         if (manifest && manifest->present)
