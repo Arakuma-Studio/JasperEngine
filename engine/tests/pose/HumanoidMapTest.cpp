@@ -235,8 +235,8 @@ TEST(PoseHumanoidMap, BipedNames){
         bones.push_back({x + "Toe0", x + "Foot"});
         bones.push_back({x + "Toe0Nub", x + "Toe0"});
     }
-    // (a real 3ds Max biped hangs the clavicles from the neck: validateHumanoid rejects that,
-    // the neck slot would lie between the shoulders and their parent slot)
+    // (clavicles under the chest here; a real 3ds Max biped hangs them from the neck, which
+    // auto-detect then leaves unmapped: PoseHumanoidMap.RealBipedClaviclesUnderTheNeck)
     expectMap(skeletonFromList(bones), sidedMap(
         {{H::Hips, "Bip01 Pelvis"}, {H::Spine, "Bip01 Spine"}, {H::Chest, "Bip01 Spine1"}, {H::Neck, "Bip01 Neck"}, {H::Head, "Bip01 Head"}},
         {{H::LeftShoulder, "Bip01 %s Clavicle"}, {H::LeftUpperArm, "Bip01 %s UpperArm"}, {H::LeftLowerArm, "Bip01 %s Forearm"},

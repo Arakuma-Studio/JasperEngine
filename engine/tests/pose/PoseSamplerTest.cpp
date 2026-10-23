@@ -76,7 +76,7 @@ TEST(PoseSampler, TelescopesToTheLastKey){
     EXPECT_LT(maxRotationDifference(out, input.keys[1]), 2e-6);
 }
 
-TEST(PoseSampler, LoopSeamAndLife){
+TEST(PoseSampler, Life){
     const PoseRig& rig = *tposeRig().rig;
     PoseAnimationData data = makeAnimation(threeBodies(), true, 0.15f);
     data.settings.humanize.enabled = true;
@@ -86,11 +86,7 @@ TEST(PoseSampler, LoopSeamAndLife){
     data.settings.looseness = 0.5f;
     data.settings.weights = {1.0f, 1.0f, 1.2f, 0.5f};
     const SamplerInput input = inputFor(data, rig);
-    HumanPose a, b;
-    sample(input, 0.0f, a);
-    sample(input, static_cast<float>(input.timeline.length), b);
-    EXPECT_LT(maxRotationDifference(a, b), 1e-5);
-    EXPECT_LT((Vec3d(a.hipsPosition) - Vec3d(b.hipsPosition)).length(), 1e-6);
+    // (the loop seam itself is tested by dense sampling in PoseLoopSeamTest.cpp)
 
     // life loops seamlessly and sways
     const float length = static_cast<float>(input.timeline.length);
