@@ -24,6 +24,7 @@
 #include "util/TerrainMapFileWriter.h"
 #include "util/TerrainMapUtils.h"
 #include "util/TerrainErosion.h"
+#include "util/NormalMapTilt.h"
 #include "util/TerrainNoise.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
@@ -2258,16 +2259,22 @@ static bool beginTerrainProperties(const char* id){
     return true;
 }
 
-static void terrainPropertyRow(const char* label, const char* tooltip = nullptr, bool child = false){
+static void terrainPropertyRow(const char* label, const char* tooltip = nullptr, bool child = false, bool indent = false){
     ImGui::TableNextRow();
     if (child){
         ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
     }
     ImGui::TableSetColumnIndex(0);
+    if (indent){
+        ImGui::Indent();
+    }
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label);
     if (tooltip){
         ImGui::SetItemTooltip("%s", tooltip);
+    }
+    if (indent){
+        ImGui::Unindent();
     }
     ImGui::TableSetColumnIndex(1);
     ImGui::SetNextItemWidth(-1.0f);
@@ -2703,6 +2710,53 @@ void editor::TerrainEditWindow::drawLayerSurface(TerrainComponent& terrain, int 
     Vector2 uvOffset = layer.uvOffset;
     if (ImGui::DragFloat2("##uv_offset", &uvOffset.x, 0.01f, 0.0f, 0.0f, "%.2f")){
         edit([&](TerrainSurfaceLayer& target){ target.uvOffset = uvOffset; }, true);
+    }
+
+    terrainPropertyRow("Stochastic Tiling", "Hides the repetition of this layer's tiled maps: hexagonal cells each read them at a random "
+                       "offset and blend at their borders, every map of the layer alike. Up to three reads per map where "
+                       "cells meet. Suits organic textures (grass, rock, sand); bricks and tiles lose their grid.", true);
+    bool stochastic = layer.stochasticTiling;
+    if (ImGui::Checkbox("##stochastic", &stochastic)){
+        edit([&](TerrainSurfaceLayer& target){ target.stochasticTiling = stochastic; });
+    }
+    if (layer.stochasticTiling){
+        auto stochasticRow = [&](const char* label, const char* tooltip, float TerrainSurfaceLayer::*field, float minValue, float maxValue,
+                                 ImGuiSliderFlags flags){
+            terrainPropertyRow(label, tooltip, true, true);
+            ImGui::PushID(label);
+            float value = layer.*field;
+            if (ImGui::SliderFloat("##stochastic_param", &value, minValue, maxValue, "%.2f", flags | ImGuiSliderFlags_AlwaysClamp)){
+                edit([&](TerrainSurfaceLayer& target){ target.*field = value; }, true);
+            }
+            ImGui::PopID();
+        };
+        stochasticRow("Cell Size", "Width of one cell in texture repeats. Smaller cells hide the repetition better but cut up "
+                      "large features of the texture", &TerrainSurfaceLayer::stochasticCellSize, 0.25f, 4.0f, ImGuiSliderFlags_Logarithmic);
+        stochasticRow("Blend Sharpness", "How narrow the blend between neighbouring cells is: low blends wide and soft, high "
+                      "keeps more of each cell whole", &TerrainSurfaceLayer::stochasticBlendSharpness, 0.0f, 1.0f, ImGuiSliderFlags_None);
+        stochasticRow("Contrast", "Keeps the texture's contrast where cells blend, which a plain blend washes out. Too high "
+                      "shows the cell borders. 0 blends linearly", &TerrainSurfaceLayer::stochasticContrast, 0.0f, 1.0f, ImGuiSliderFlags_None);
+        stochasticRow("Rotation", "Turns each cell by a random angle, up to +-180 degrees at 1. Leave at 0 for textures with a "
+                      "direction (planks, stripes, light baked in) and for normal maps whose average normal leans",
+                      &TerrainSurfaceLayer::stochasticRotation, 0.0f, 1.0f, ImGuiSliderFlags_None);
+        // a normal map leaning on average looks tilted cell by cell once the cells turn (its
+        // tilt measured once per file, off this thread)
+        const std::string normalPath = layer.pbr && !layer.normalTexture.empty() ? layer.normalTexture.getPath(0) : std::string();
+        if (layer.stochasticRotation > 0.0f && !normalPath.empty()){
+            const fs::path normalFile = project->resolveAssetPath(fs::u8path(normalPath));
+            const NormalMapTiltResult tilt = NormalMapTilt::request(normalFile);
+            if (tilt.ready && tilt.valid && tilt.degrees >= NormalMapTilt::WARNING_DEGREES){
+                ImGui::TableNextRow();
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_PopupBg]));
+                ImGui::TableSetColumnIndex(1);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.2f, 1.0f));
+                ImGui::TextWrapped("%s: rotated tiles will look tilted. Keep Rotation at 0.", NormalMapTilt::describe(normalFile, tilt.degrees).c_str());
+                ImGui::PopStyleColor();
+                if (ImGui::SmallButton("Set Rotation to 0##stochastic_rotation")){
+                    edit([&](TerrainSurfaceLayer& target){ target.stochasticRotation = 0.0f; });
+                }
+            }
+        }
     }
 }
 

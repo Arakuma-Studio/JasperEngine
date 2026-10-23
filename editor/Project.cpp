@@ -3036,9 +3036,37 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
+    // The colour variant of a submesh with the scene's reflection probes: the selection
+    // RenderSystem::loadMesh makes (getSubmeshShaderInputs, getSubmeshShaderVariant), in the
+    // render system's environment with the probes in it and its lights as its next update
+    // counts them (RenderSystem::checkLightsAndShadow: a light added with the probe), from the
+    // submesh's attributes of its last load
+    MeshShaderEnvironment probeEnvironment;
+    if (hasReflectionProbes) {
+        if (std::shared_ptr<RenderSystem> renderSystem = scene->getSystem<RenderSystem>())
+            probeEnvironment = renderSystem->getMeshShaderEnvironment();
+        probeEnvironment.reflectionProbes = true;
+        auto lights = scene->getComponentArray<LightComponent>();
+        const LightState lightState = scene->getLightState();
+        if (lightState == LightState::ON || (lightState == LightState::AUTO && lights->size() > 0))
+            probeEnvironment.lights = true;
+        for (size_t i = 0; i < lights->size(); ++i) {
+            if (lights->getComponentFromIndex(i).shadows)
+                probeEnvironment.shadows = true;
+        }
+    }
+    auto probeMeshProperties = [&](Entity entity, const MeshComponent& mesh, const Submesh& submesh,
+                                   const std::string& sceneMeshShader) -> uint64_t {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        const bool mirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+        const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+        return RenderSystem::getSubmeshShaderVariant(probeEnvironment, inputs).properties;
+    };
+
     // the runtime falls back to the built-in variant when a custom shader fails to build,
     // so always collect the customId-0 key alongside a custom one
-    auto insertKeys = [&](ShaderType type, uint32_t properties, uint16_t customShaderId) {
+    auto insertKeys = [&](ShaderType type, uint64_t properties, uint16_t customShaderId) {
         keys.insert(ShaderPool::getShaderKey(type, properties, customShaderId));
         if (customShaderId != 0) {
             keys.insert(ShaderPool::getShaderKey(type, properties, 0));
@@ -3068,26 +3096,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                         RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
                         RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
-                    uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
+                    uint64_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
-                    // meshes after a probe was added. Derive the required IBL
-                    // variant here so the exported shader set is still complete.
+                    // meshes after a probe was added. Derive the variant the reload will
+                    // pick (the stored one may still be unlit) with the same selection as
+                    // RenderSystem::loadMesh (IBL, normals, the normal map and tangents, SSAO,
+                    // the UV sets and Stochastic Tiling of maps only a lit variant samples), so
+                    // the exported shader set is still complete.
                     if (hasReflectionProbes && mesh.receiveLights && mesh.receiveIBL) {
-                        meshProperties &= ~(1u << 0); // no longer MATERIAL_UNLIT
-                        meshProperties |= (1u << 6);  // HAS_NORMALS
-                        meshProperties |= (1u << 19); // USE_IBL
-                        // the unlit->lit transition also pulls in the submesh's
-                        // normal-map/tangent attributes and SSAO, mirroring
-                        // RenderSystem::loadMesh
-                        if (mesh.submeshes[s].hasNormalMap) {
-                            meshProperties |= (1u << 7); // HAS_NORMAL_MAP
-                        }
-                        if (mesh.submeshes[s].hasTangent) {
-                            meshProperties |= (1u << 8); // HAS_TANGENTS
-                        }
-                        if (scene->isSSAOEnabled()) {
-                            meshProperties |= (1u << 21); // USE_SSAO
-                        }
+                        meshProperties = probeMeshProperties(entity, mesh, mesh.submeshes[s], sceneMeshShader);
                     }
                     insertKeys(ShaderType::MESH, meshProperties, customShaderId);
                     // The runtime only computes depthShaderProperties while
@@ -3103,11 +3120,14 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     const Material& material = mesh.submeshes[s].material;
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
-                    uint32_t depthProperties = ShaderPool::getDepthMeshProperties(
+                    // its alpha clip samples as the colour pass's Stochastic Tiling ('Sto', which
+                    // the colour variant has when the material's maps take it)
+                    bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
+                    uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
-                        instancedFade);
+                        instancedFade, false, false, false, false, false, depthStochastic);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {

@@ -39,7 +39,13 @@ const int TERRAIN_BLENDMAPS = 3;
         vec4 uvTransform[MAX_TERRAIN_LAYERS]; //xy scale of the detail tiling, zw offset
         vec4 surface[MAX_TERRAIN_LAYERS];     //roughness, metallic, normal strength, occlusion strength
         vec4 slices[MAX_TERRAIN_LAYERS];      //color, normal and surface slice
+        // Stochastic Tiling (includes/stochastic.glsl) as the user set it: cell size (0 when
+        // off), blend sharpness, contrast, rotation. A uniform per draw, so the branch on it
+        // is coherent and no variant is needed.
+        vec4 stochastic[MAX_TERRAIN_LAYERS];
     } terrainLayers;
+
+    #include "includes/stochastic.glsl"
 
     #ifdef HAS_NORMALS
         in vec3 v_terrainAxisX;
@@ -174,6 +180,64 @@ vec4 getTerrainColor(vec4 color){
 
 #ifdef HAS_TERRAIN_PBR
 
+// Stochastic Tiling of a layer: one lattice per projection, set up once for all of its maps
+// (the weights come from its color taps and drive its surface and normal maps as well).
+// It breaks the repetition itself, so the coarser far tiling is not mixed in.
+struct TerrainStochastic{
+    StochasticTiling flatTiling;
+    #ifdef HAS_NORMALS
+        StochasticTiling sideX;
+        StochasticTiling sideZ;
+    #endif
+};
+
+TerrainStochastic setupTerrainStochastic(vec2 scale, vec2 offset, vec4 settings, uint seed){
+    vec4 params = stochasticParams(settings.x, settings.y, settings.z, settings.w);
+    TerrainStochastic ts;
+    ts.flatTiling = stochasticSetup(v_terrainTextureDetailTiled * scale + offset, terrainFlatDX * scale, terrainFlatDY * scale, params, seed);
+    #ifdef HAS_NORMALS
+        // textureGrad needs no derivatives of its own, so flat ground skips the side planes
+        if (terrainSideAmount > 0.0){
+            ts.sideX = stochasticSetup(terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale, params, seed);
+            ts.sideZ = stochasticSetup(terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale, params, seed);
+        }
+    #endif
+    return ts;
+}
+
+// getTerrainSlice of a stochastic layer. The color slice passes luminance true: its taps set
+// the weights of the layer's other maps.
+vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool luminance){
+    vec4 color = vec4(0.0);
+    float flatAmount = 1.0;
+    #ifdef HAS_NORMALS
+        flatAmount = 1.0 - terrainSideAmount;
+    #endif
+
+    if (flatAmount > 0.0){
+        color = luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling)
+                          : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling);
+        color *= flatAmount;
+    }
+
+    #ifdef HAS_NORMALS
+        if (terrainSideAmount > 0.0){
+            vec4 side = vec4(0.0);
+            if (terrainSideWeight.x > 0.0){
+                side += (luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX)
+                                   : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX)) * terrainSideWeight.x;
+            }
+            if (terrainSideWeight.y > 0.0){
+                side += (luminance ? stochasticTextureArrayLuminance(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ)
+                                   : stochasticTextureArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ)) * terrainSideWeight.y;
+            }
+            color += side * terrainSideAmount;
+        }
+    #endif
+
+    return color;
+}
+
 #ifdef HAS_NORMALS
     // Terrain object space into whichever space the pass shades in
     vec3 terrainShadingNormal(vec3 objectNormal){
@@ -210,6 +274,35 @@ vec4 getTerrainColor(vec4 color){
 
         return normalize(mix(normal, sideNormal, terrainSideAmount));
     }
+
+    // getTerrainLayerNormal of a stochastic layer: each projection's taps are blended as
+    // derivatives with the weights its color taps set, then whiteout-blended as above
+    vec3 getTerrainLayerNormalStochastic(float slice, TerrainStochastic ts, float strength){
+        vec3 geom = normalize(v_terrainNormal);
+        vec3 normal = vec3(0.0);
+
+        if (terrainSideAmount < 1.0){
+            vec3 flatNormal = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.flatTiling, strength, STOCHASTIC_NORMAL_DX);
+            normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy * (1.0 - terrainSideAmount);
+        }
+
+        if (terrainSideAmount > 0.0){
+            vec3 sideNormal = vec3(0.0);
+            if (terrainSideWeight.x > 0.0){
+                vec3 sideX = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideX, strength, STOCHASTIC_NORMAL_DX);
+                sideX.x *= terrainFaceX;
+                sideNormal += vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx * terrainSideWeight.x;
+            }
+            if (terrainSideWeight.y > 0.0){
+                vec3 sideZ = stochasticNormalArray(u_terrainDetail, u_terrainDetail_smp, slice, ts.sideZ, strength, STOCHASTIC_NORMAL_DX);
+                sideZ.x *= terrainFaceZ;
+                sideNormal += vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz * terrainSideWeight.y;
+            }
+            normal += sideNormal * terrainSideAmount;
+        }
+
+        return normalize(normal);
+    }
 #endif
 
 // Everything the painted layers cover, evaluated once and shared by the color pass and
@@ -242,7 +335,15 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
             vec2 scale = terrainLayers.uvTransform[index].xy;
             vec2 offset = terrainLayers.uvTransform[index].zw;
 
-            vec4 color = getTerrainSlice(terrainLayers.slices[index].x, scale, offset);
+            bool stochastic = terrainLayers.stochastic[index].x > 0.0;
+            TerrainStochastic ts;
+            vec4 color;
+            if (stochastic){
+                ts = setupTerrainStochastic(scale, offset, terrainLayers.stochastic[index], uint(index));
+                color = getTerrainSliceStochastic(terrainLayers.slices[index].x, ts, true);
+            }else{
+                color = getTerrainSlice(terrainLayers.slices[index].x, scale, offset);
+            }
             float height = color.a;
             float roughness = baseRoughness;
             float metallic = baseMetallic;
@@ -259,7 +360,8 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
 
                 float surfaceSlice = terrainLayers.slices[index].z;
                 if (surfaceSlice >= 0.0){
-                    vec4 orm = getTerrainSlice(surfaceSlice, scale, offset);
+                    vec4 orm = stochastic ? getTerrainSliceStochastic(surfaceSlice, ts, false)
+                                          : getTerrainSlice(surfaceSlice, scale, offset);
                     occlusion = mix(1.0, orm.r, terrainLayers.surface[index].w);
                     roughness *= orm.g;
                     metallic *= orm.b;
@@ -269,7 +371,9 @@ TerrainSurface getTerrainSurface(vec4 baseColor, vec3 baseNormal, float baseRoug
                 #ifdef HAS_NORMALS
                     float normalSlice = terrainLayers.slices[index].y;
                     if (normalSlice >= 0.0){
-                        normal = terrainShadingNormal(getTerrainLayerNormal(normalSlice, scale, offset, terrainLayers.surface[index].z));
+                        float strength = terrainLayers.surface[index].z;
+                        normal = terrainShadingNormal(stochastic ? getTerrainLayerNormalStochastic(normalSlice, ts, strength)
+                                                                 : getTerrainLayerNormal(normalSlice, scale, offset, strength));
                     }
                 #endif
             }

@@ -23,7 +23,7 @@ namespace jasperengine::editor {
             std::string label;      // what the variant covers ("base", "feature RIM", "skinning", ...)
             std::string reference;  // the custom shader string, "library:<name>#FEATURES"
             ShaderType type = ShaderType::MESH;
-            uint32_t properties = 0;
+            uint64_t properties = 0;
         };
 
         struct Problem {

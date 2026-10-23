@@ -85,7 +85,7 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
     ProjectChecks::invalidateShaderCaches(project);
     struct Job {
         std::vector<ProjectChecks::ShaderUse> forks;
-        std::vector<uint64_t> keys;
+        std::vector<ShaderKey> keys;
         Json results = Json::array();
         std::vector<ProjectChecks::Finding> findings;
         std::atomic<bool> finished{false};
@@ -516,6 +516,7 @@ Json materialToJson(Project* project, const Material& material) {
         {"emissiveFactor", McpValues::toJson(material.emissiveFactor)},
         {"foliageTransmission", material.foliageTransmission}
     };
+    McpValues::materialStochasticToJson(material, data);
     for (const auto& [name, member] : materialTextures()) {
         const Texture& texture = material.*member;
         data[name] = texture.empty() ? Json(nullptr) : Json(McpValues::assetPathToJson(project, texture.getPath(0)));
@@ -572,6 +573,8 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
             material.alphaMode = found->second;
         } else if (McpValues::isMaterialShaderLibraryKey(key)) {
             // applied together below, the shader first
+        } else if (McpValues::isMaterialStochasticKey(key)) {
+            // applied together below
         } else {
             handled = false;
         }
@@ -609,12 +612,14 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
         if (!handled) {
             error = "Unknown material field \"" + key + "\". Fields: baseColorFactor, metallicFactor, roughnessFactor, alphaCutoff, "
                     "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
-                    "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
+                    "occlusionTexture, normalTexture, the *TexCoord indices, stochasticTiling and its stochasticCellSize, "
+                    "stochasticBlendSharpness, stochasticContrast, stochasticRotation, and the shader library's shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
             return false;
         }
     }
+    if (!McpValues::materialStochasticFromJson(values, material, error)) return false;
     return McpValues::materialShaderLibraryFromJson(project, nullptr, values, material, error);
 }
 
@@ -777,6 +782,16 @@ void getAssetInfoTool(const CallPtr& call) {
             text += " " + std::to_string(w) + "x" + std::to_string(h) + ", " + std::to_string(c) + " channel(s)";
         }
         data["sampler_note"] = "Filtering/wrap are per texture property (set_texture_settings), not per file.";
+        if (extensionOf(file) == ".png") {
+            // a texture written by the synthesis: its recipe, whether its sources changed, and
+            // the synthesize_texture arguments that regenerate it
+            Json synthesis = synthesisAssetInfo(project, file, true);
+            if (!synthesis.is_null()) {
+                data["synthesis"] = synthesis;
+                text += "." + synthesisAssetText(synthesis);
+                text.pop_back();
+            }
+        }
     } else if (kind == "model") {
         std::string error;
         Json info = modelInfo(file, error);
@@ -834,7 +849,7 @@ void getAssetInfoTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ view_asset
 
-void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize) {
+void replyImage(const CallPtr& call, const fs::path& image, const std::string& label, int maxSize, const Json& synthesis = Json()) {
     int w = 0, h = 0, c = 0;
     unsigned char* pixels = stbi_load(image.string().c_str(), &w, &h, &c, 4);
     if (!pixels) {
@@ -849,9 +864,12 @@ void replyImage(const CallPtr& call, const fs::path& image, const std::string& l
         call->fail("Can't encode the preview of " + label + ".");
         return;
     }
+    Json data = {{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}};
+    if (!synthesis.is_null()) data["synthesis"] = synthesis;
     ToolResult result = ToolResult::success(label + " (" + std::to_string(w) + "x" + std::to_string(h) +
-                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ").",
-                                            Json{{"width", w}, {"height", h}, {"preview_width", outW}, {"preview_height", outH}});
+                                                (outW != w ? ", shown at " + std::to_string(outW) + "x" + std::to_string(outH) : std::string()) + ")." +
+                                                synthesisAssetText(synthesis),
+                                            data);
     result.images.push_back({base64, "image/png"});
     call->reply(std::move(result));
 }
@@ -863,7 +881,7 @@ void viewAssetTool(const CallPtr& call) {
     const std::string rel = projectRelative(project, file);
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
-        replyImage(call, file, rel, maxSize);
+        replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
         return;
     }
     if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel))) {
@@ -2473,8 +2491,13 @@ void checkShaderTool(const CallPtr& call) {
         }
     }
     // with every shader in use: the materials reading the scene from the opaque queue (phase 3)
-    const std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
+    std::vector<ProjectChecks::Finding> stateFindings = args.contains("shader")
         ? std::vector<ProjectChecks::Finding>() : ProjectChecks::sceneInputFindings(project);
+    // and Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect)
+    if (!args.contains("shader")) {
+        const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(project);
+        stateFindings.insert(stateFindings.end(), stochastic.begin(), stochastic.end());
+    }
     checkShadersWithFindings(call, forks, [call, stateFindings](Json results, Json findings) {
         for (const ProjectChecks::Finding& finding : stateFindings) findings.push_back(ProjectChecks::toJson(finding));
         size_t failed = 0;
@@ -2909,9 +2932,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_asset_info";
         tool.title = "Get Asset Info";
         tool.description =
-            "One project file's details by type: image size/channels; model meshes, materials, animations, nodes; "
-            "WAV format/duration; .material fields, linked submeshes; shader includes, forks using it; Lua syntax; "
-            "scene status; unsaved code editor edits.";
+            "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
+            "regenerate arguments); model meshes, materials, animations, nodes; WAV format/duration; .material fields, "
+            "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3046,7 +3069,8 @@ void registerAssetTools(McpRegistry& registry) {
 
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
-        "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
+        "foliageTransmission, *Texture (path|null), *TexCoord, stochasticTiling (Lit: hides tiling repetition, up to 3x the "
+        "reads) with stochasticCellSize (0.25-4) / BlendSharpness / Contrast / Rotation (0-1); shader (\"library:<name>\"), shaderParams {member: value}, "
         "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
         "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
         "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");

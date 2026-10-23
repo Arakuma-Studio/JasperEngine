@@ -43,7 +43,7 @@ TEST(ShaderKeyTest, LibraryIdsRoundTrip){
     const std::string filter = ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 1, id);
     EXPECT_EQ(paint, "uieffect_fx_cursor_trail");
     EXPECT_EQ(filter, "uieffect_fx_cursor_trail_Flt");
-    ShaderKey key = 0;
+    ShaderKey key;
     ASSERT_TRUE(ShaderPool::parseShaderStr(filter, key));
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::UI_EFFECT, 1, id));
     ASSERT_TRUE(ShaderPool::parseShaderStr(paint, key));
@@ -68,7 +68,7 @@ TEST(ShaderKeyTest, ProjectIdsRoundTrip){
     EXPECT_FALSE(ShaderPool::isLibraryCustomShader(id));
     const std::string name = ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 1, id);
     EXPECT_EQ(name, "uieffect_ui_fx_key_test_frag_Flt");
-    ShaderKey key = 0;
+    ShaderKey key;
     ASSERT_TRUE(ShaderPool::parseShaderStr(name, key));
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::UI_EFFECT, 1, id));
     ASSERT_TRUE(ShaderPool::parseShaderSpec("uieffect/key-test", key));
@@ -77,7 +77,7 @@ TEST(ShaderKeyTest, ProjectIdsRoundTrip){
 }
 
 TEST(ShaderKeyTest, SpecsAndExpansion){
-    ShaderKey key = 0;
+    ShaderKey key;
     std::string error;
     ASSERT_TRUE(ShaderPool::parseShaderSpec("uieffect/stripes:Flt", key, &error)) << error;
     EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), ShaderType::UI_EFFECT);

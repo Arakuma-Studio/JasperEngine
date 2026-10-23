@@ -597,7 +597,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
-    // optional last argument names a forked shader (its project-relative base path)
+    // optional last argument names a forked shader (its project-relative base path).
+    // The property bits are a Lua integer taken as the 64-bit mask it holds (1 << 63
+    // is negative in Lua)
     luabridge::getGlobalNamespace(L)
         .beginClass<ShaderPool>("ShaderPool")
         .addStaticFunction("warmUp",
@@ -609,19 +611,19 @@ void LuaBinding::registerCoreClasses(lua_State *L){
                 ShaderKey key;
                 return ShaderPool::parseShaderSpec(spec, key, nullptr, customShader) && ShaderPool::warmUp(key);
             }),
-            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
-                return ShaderPool::warmUp(type, properties);
+            luabridge::overload<ShaderType, lua_Integer>(+[](ShaderType type, lua_Integer properties) {
+                return ShaderPool::warmUp(type, static_cast<uint64_t>(properties));
             }),
-            luabridge::overload<ShaderType, uint32_t, const std::string&>(+[](ShaderType type, uint32_t properties, const std::string& customShader) {
-                return ShaderPool::warmUp(type, properties, ShaderPool::registerCustomShader(customShader));
+            luabridge::overload<ShaderType, lua_Integer, const std::string&>(+[](ShaderType type, lua_Integer properties, const std::string& customShader) {
+                return ShaderPool::warmUp(type, static_cast<uint64_t>(properties), ShaderPool::registerCustomShader(customShader));
             }))
         .addStaticFunction("isShaderReady",
             luabridge::overload<const std::string&>(+[](const std::string& spec) {
                 ShaderKey key;
                 return ShaderPool::parseShaderSpec(spec, key) && ShaderPool::getShaderState(key) == ResourceLoadState::Finished;
             }),
-            luabridge::overload<ShaderType, uint32_t>(+[](ShaderType type, uint32_t properties) {
-                return ShaderPool::isShaderReady(type, properties);
+            luabridge::overload<ShaderType, lua_Integer>(+[](ShaderType type, lua_Integer properties) {
+                return ShaderPool::isShaderReady(type, static_cast<uint64_t>(properties));
             }))
         .addStaticFunction("isShaderFailed", +[](const std::string& spec) {
             ShaderKey key;
@@ -650,11 +652,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<ShaderVariantCollection*, const std::string&, const std::string&>(+[](ShaderVariantCollection* self, const std::string& spec, const std::string& customShader) {
                 return self->add(spec, customShader);
             }),
-            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties) {
-                return self->add(type, properties);
+            luabridge::overload<ShaderVariantCollection*, ShaderType, lua_Integer>(+[](ShaderVariantCollection* self, ShaderType type, lua_Integer properties) {
+                return self->add(type, static_cast<uint64_t>(properties));
             }),
-            luabridge::overload<ShaderVariantCollection*, ShaderType, uint32_t, const std::string&>(+[](ShaderVariantCollection* self, ShaderType type, uint32_t properties, const std::string& customShader) {
-                return self->add(type, properties, customShader);
+            luabridge::overload<ShaderVariantCollection*, ShaderType, lua_Integer, const std::string&>(+[](ShaderVariantCollection* self, ShaderType type, lua_Integer properties, const std::string& customShader) {
+                return self->add(type, static_cast<uint64_t>(properties), customShader);
             }))
         .addFunction("addObject", +[](ShaderVariantCollection* self, EntityHandle* object) {
             return object ? self->addEntityVariants(object->getScene(), object->getEntity()) : (size_t)0;
@@ -1242,6 +1244,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
         .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
+        // Stochastic Tiling of the built-in Lit's maps (no repetition); the four values shape it
+        .addProperty("stochasticTiling", &Material::stochasticTiling, &Material::stochasticTiling)
+        .addProperty("stochasticCellSize", &Material::stochasticCellSize, &Material::stochasticCellSize)
+        .addProperty("stochasticBlendSharpness", &Material::stochasticBlendSharpness, &Material::stochasticBlendSharpness)
+        .addProperty("stochasticContrast", &Material::stochasticContrast, &Material::stochasticContrast)
+        .addProperty("stochasticRotation", &Material::stochasticRotation, &Material::stochasticRotation)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)

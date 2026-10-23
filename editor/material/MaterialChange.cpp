@@ -63,6 +63,11 @@ bool editor::addMaterialChangeCommands(MultiPropertyCmd& multi, Project* project
     field("foliageTransmission", from.foliageTransmission, to.foliageTransmission);
     field("emissiveFactor", from.emissiveFactor, to.emissiveFactor);
     field("alphaMode", from.alphaMode, to.alphaMode);
+    field("stochasticTiling", from.stochasticTiling, to.stochasticTiling);
+    field("stochasticCellSize", from.stochasticCellSize, to.stochasticCellSize);
+    field("stochasticBlendSharpness", from.stochasticBlendSharpness, to.stochasticBlendSharpness);
+    field("stochasticContrast", from.stochasticContrast, to.stochasticContrast);
+    field("stochasticRotation", from.stochasticRotation, to.stochasticRotation);
     field("baseColorTexture", from.baseColorTexture, to.baseColorTexture);
     field("emissiveTexture", from.emissiveTexture, to.emissiveTexture);
     field("metallicRoughnessTexture", from.metallicRoughnessTexture, to.metallicRoughnessTexture);

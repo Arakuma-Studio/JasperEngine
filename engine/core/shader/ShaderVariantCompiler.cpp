@@ -359,130 +359,132 @@ ShaderData convertToShaderData(
 
 // The #defines of each variant property bit (see ShaderPool::getShaderPropertyName)
 
-void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"MATERIAL_UNLIT", "1"});            // 'Ult'
-    if (prop & (1 << 1))  defs.push_back({"HAS_UV_SET1", "1"});               // 'Uv1'
-    if (prop & (1 << 2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
-    if (prop & (1 << 3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
-    if (prop & (1 << 4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
-    // bit 5 reserved (was USE_SHADOWS_PCF; the PCF filter is uniform-driven now)
-    if (prop & (1 << 6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
-    if (prop & (1 << 7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
-    if (prop & (1 << 8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
-    if (prop & (1 << 9))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});     // 'Vc3'
-    if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});     // 'Vc4'
-    if (prop & (1 << 11)) defs.push_back({"HAS_TEXTURERECT", "1"});           // 'Txr'
-    if (prop & (1 << 12)) defs.push_back({"HAS_FOG", "1"});                   // 'Fog'
-    if (prop & (1 << 13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
-    if (prop & (1 << 14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
-    if (prop & (1 << 15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
-    if (prop & (1 << 16)) defs.push_back({"HAS_MORPHTANGENT", "1"});          // 'Mtg'
-    if (prop & (1 << 17)) defs.push_back({"HAS_TERRAIN", "1"});               // 'Ter'
-    if (prop & (1 << 18)) defs.push_back({"HAS_INSTANCING", "1"});            // 'Ist'
-    if (prop & (1 << 19)) defs.push_back({"USE_IBL", "1"});                   // 'Ibl'
-    if (prop & (1 << 20)) defs.push_back({"USE_MIRROR", "1"});                // 'Mir'
-    if (prop & (1 << 21)) defs.push_back({"USE_SSAO", "1"});                  // 'Sao'
-    if (prop & (1 << 22)) defs.push_back({"USE_LIGHT2D", "1"});               // 'L2d'
-    if (prop & (1 << 23)) defs.push_back({"USE_SHADOWS_2D", "1"});            // 'S2d'
-    if (prop & (1 << 24)) defs.push_back({"ALPHA_MASK", "1"});                 // 'Ams'
-    if (prop & (1 << 25)) defs.push_back({"ALPHA_OPAQUE", "1"});               // 'Aop'
-    if (prop & (1 << 26)) defs.push_back({"USE_INSTANCE_FADE", "1"});          // 'Ifd'
-    if (prop & (1 << 27)) defs.push_back({"HAS_TERRAIN_PBR", "1"});            // 'Tpb'
-    if (prop & (1 << 28)) defs.push_back({"USE_VERTEX_LIGHTS", "1"});          // 'Vtl'
+void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"MATERIAL_UNLIT", "1"});            // 'Ult'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_UV_SET1", "1"});               // 'Uv1'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"USE_STOCHASTIC_TILING", "1"});     // 'Sto' (was 'Pcf' until July 2026)
+    if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
+    if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
+    if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});     // 'Vc3'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});     // 'Vc4'
+    if (prop & shaderPropertyBit(11)) defs.push_back({"HAS_TEXTURERECT", "1"});           // 'Txr'
+    if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_FOG", "1"});                   // 'Fog'
+    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
+    if (prop & shaderPropertyBit(14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
+    if (prop & shaderPropertyBit(15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
+    if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_MORPHTANGENT", "1"});          // 'Mtg'
+    if (prop & shaderPropertyBit(17)) defs.push_back({"HAS_TERRAIN", "1"});               // 'Ter'
+    if (prop & shaderPropertyBit(18)) defs.push_back({"HAS_INSTANCING", "1"});            // 'Ist'
+    if (prop & shaderPropertyBit(19)) defs.push_back({"USE_IBL", "1"});                   // 'Ibl'
+    if (prop & shaderPropertyBit(20)) defs.push_back({"USE_MIRROR", "1"});                // 'Mir'
+    if (prop & shaderPropertyBit(21)) defs.push_back({"USE_SSAO", "1"});                  // 'Sao'
+    if (prop & shaderPropertyBit(22)) defs.push_back({"USE_LIGHT2D", "1"});               // 'L2d'
+    if (prop & shaderPropertyBit(23)) defs.push_back({"USE_SHADOWS_2D", "1"});            // 'S2d'
+    if (prop & shaderPropertyBit(24)) defs.push_back({"ALPHA_MASK", "1"});                 // 'Ams'
+    if (prop & shaderPropertyBit(25)) defs.push_back({"ALPHA_OPAQUE", "1"});               // 'Aop'
+    if (prop & shaderPropertyBit(26)) defs.push_back({"USE_INSTANCE_FADE", "1"});          // 'Ifd'
+    if (prop & shaderPropertyBit(27)) defs.push_back({"HAS_TERRAIN_PBR", "1"});            // 'Tpb'
+    if (prop & shaderPropertyBit(28)) defs.push_back({"USE_VERTEX_LIGHTS", "1"});          // 'Vtl'
     // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
-    defs.push_back({"LIGHT_CAPACITY", (prop & (1 << 29)) ? "4" : ((prop & (1 << 30)) ? "16" : "8")});
-    if (prop & (1u << 31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
+    defs.push_back({"LIGHT_CAPACITY", (prop & shaderPropertyBit(29)) ? "4" : ((prop & shaderPropertyBit(30)) ? "16" : "8")});
+    if (prop & shaderPropertyBit(31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
 }
 
-void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});       // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
-    if (prop & (1 << 2))  defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
-    if (prop & (1 << 3))  defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
-    if (prop & (1 << 4))  defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
-    if (prop & (1 << 5))  defs.push_back({"HAS_TERRAIN", "1"});       // 'Ter'
-    if (prop & (1 << 6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
-    if (prop & (1 << 7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
-    if (prop & (1 << 8))  defs.push_back({"USE_INSTANCE_FADE", "1"}); // 'Ifd'
-    if (prop & (1 << 9))  defs.push_back({"HAS_NORMALS", "1"});           // 'Nor'
-    if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"}); // 'Vc3'
-    if (prop & (1 << 11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
-    if (prop & (1 << 12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
-    if (prop & (1 << 13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
+void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});       // 'Tex'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_SKINNING", "1"});      // 'Ski'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_MORPHTARGET", "1"});   // 'Mta'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHNORMAL", "1"});   // 'Mnr'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHTANGENT", "1"});  // 'Mtg'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_TERRAIN", "1"});       // 'Ter'
+    if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_INSTANCING", "1"});    // 'Ist'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"ALPHA_MASK", "1"});         // 'Ams'
+    if (prop & shaderPropertyBit(8))  defs.push_back({"USE_INSTANCE_FADE", "1"}); // 'Ifd'
+    if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_NORMALS", "1"});           // 'Nor'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"}); // 'Vc3'
+    if (prop & shaderPropertyBit(11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
+    if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
+    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
+    if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
 }
 
-void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_BASECOLOR_TEXTURE", "1"});         // 'Bct'
-    if (prop & (1 << 1))  defs.push_back({"HAS_NORMALS", "1"});                   // 'Nor'
-    if (prop & (1 << 2))  defs.push_back({"HAS_SKINNING", "1"});                  // 'Ski'
-    if (prop & (1 << 3))  defs.push_back({"HAS_MORPHTARGET", "1"});               // 'Mta'
-    if (prop & (1 << 4))  defs.push_back({"HAS_MORPHNORMAL", "1"});               // 'Mnr'
-    if (prop & (1 << 5))  defs.push_back({"HAS_MORPHTANGENT", "1"});              // 'Mtg'
-    if (prop & (1 << 6))  defs.push_back({"HAS_TERRAIN", "1"});                   // 'Ter'
-    if (prop & (1 << 7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
-    if (prop & (1 << 8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
-    if (prop & (1 << 9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
+void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_BASECOLOR_TEXTURE", "1"});         // 'Bct'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_NORMALS", "1"});                   // 'Nor'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_SKINNING", "1"});                  // 'Ski'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_MORPHTARGET", "1"});               // 'Mta'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_MORPHNORMAL", "1"});               // 'Mnr'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_MORPHTANGENT", "1"});              // 'Mtg'
+    if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_TERRAIN", "1"});                   // 'Ter'
+    if (prop & shaderPropertyBit(7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
+    if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
+    if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
+    if (prop & shaderPropertyBit(10)) defs.push_back({"USE_STOCHASTIC_TILING", "1"});         // 'Sto'
 }
 
-void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
-    if (prop & (1 << 2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_FONTATLAS_TEXTURE", "1"});    // 'Ftx'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
 }
 
-void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+void addHtmlUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
 }
 
 // exclusive: one of them per variant (ShaderPool::getHtmlUIPostProperties)
-void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_PASSTHROUGH", "1"});          // 'Pas'
-    if (prop & (1 << 1))  defs.push_back({"HAS_COLOR_MATRIX", "1"});         // 'Cmx'
-    if (prop & (1 << 2))  defs.push_back({"HAS_BLEND_MASK", "1"});           // 'Msk'
-    if (prop & (1 << 3))  defs.push_back({"HAS_DROP_SHADOW", "1"});          // 'Shd'
-    if (prop & (1 << 4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
-    if (prop & (1 << 5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
-    if (prop & (1 << 6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
+void addHtmlUIPostPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_PASSTHROUGH", "1"});          // 'Pas'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_COLOR_MATRIX", "1"});         // 'Cmx'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_BLEND_MASK", "1"});           // 'Msk'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_DROP_SHADOW", "1"});          // 'Shd'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_BLUR", "1"});                 // 'Blr'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"HAS_UNPREMULTIPLY", "1"});        // 'Unp'
+    if (prop & shaderPropertyBit(6))  defs.push_back({"HAS_YUV", "1"});                  // 'Yuv'
 }
 
-void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
-    if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 2))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
-    if (prop & (1 << 3))  defs.push_back({"HAS_TEXTURERECT", "1"});          // 'Txr'
-    if (prop & (1 << 4))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+void addPointsPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"HAS_TEXTURERECT", "1"});          // 'Txr'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
-void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
-    if (prop & (1 << 1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
-    if (prop & (1 << 2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
 // the uber pass's features (RenderSystem::UberFeature)
-void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
+void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
                                           "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR",
                                           "UBER_UPSCALE"};
     for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
-        if (prop & (1u << bit)) defs.push_back({defines[bit], "1"});
+        if (prop & shaderPropertyBit(bit)) defs.push_back({defines[bit], "1"});
     }
 }
 
-void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"BLOOM_PREFILTER", "1"});          // 'Pre'
-    if (prop & (1 << 1))  defs.push_back({"BLOOM_THRESHOLD", "1"});          // 'Thr'
-    if (prop & (1 << 2))  defs.push_back({"BLOOM_UPSAMPLE", "1"});           // 'Ups'
-    if (prop & (1 << 3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
+void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"BLOOM_PREFILTER", "1"});          // 'Pre'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"BLOOM_THRESHOLD", "1"});          // 'Thr'
+    if (prop & shaderPropertyBit(2))  defs.push_back({"BLOOM_UPSAMPLE", "1"});           // 'Ups'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
 }
 
-void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
-    if (prop & (1 << 0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
 
 // Entry points and #defines of a built-in variant
-bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32_t properties) {
+bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64_t properties) {
     if (shaderType == ShaderType::MESH){
         args.vert_file = "mesh.vert";
         args.frag_file = "mesh.frag";
@@ -561,9 +563,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         addHtmlUIPostPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::UI_EFFECT){
         // the fragment is the effect's (compile: effects/<name>.frag, or a project's .frag)
-        const bool filterForm = (properties & (1 << 0)) != 0;                   // 'Flt'
-        const bool stepForm = (properties & (1 << 1)) != 0;                     // 'Stp' (phase 6)
-        const bool scatterForm = (properties & (1 << 2)) != 0;                  // 'Sct' (phase 6)
+        const bool filterForm = (properties & shaderPropertyBit(0)) != 0;                   // 'Flt'
+        const bool stepForm = (properties & shaderPropertyBit(1)) != 0;                     // 'Stp' (phase 6)
+        const bool scatterForm = (properties & shaderPropertyBit(2)) != 0;                  // 'Sct' (phase 6)
         if (scatterForm)
             args.vert_file = "effects/effect_scatter.vert";
         else if (stepForm)
@@ -954,7 +956,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
     retainCompilerProcess();
 
     const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
-    const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
     shadercompiler::args_t args = shadercompiler::initialize_args();
@@ -1009,7 +1011,7 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         // a pixel-lit (USE_PUNCTUAL) mesh variant of a manifest shader: its fragment stage
         // evaluates the lights at the world position and normal (includes/lights.glsl), so
         // surface_vs.glsl writes them whatever @require says
-        if (customSources->manifest && shaderType == ShaderType::MESH && (properties & (1u << 3)) && !(properties & (1u << 0))){
+        if (customSources->manifest && shaderType == ShaderType::MESH && (properties & shaderPropertyBit(3)) && !(properties & shaderPropertyBit(0))){
             for (const char* define : {"SURFACE_POSITION", "SURFACE_NORMALS"}){
                 if (std::find(customSources->defines.begin(), customSources->defines.end(), define) == customSources->defines.end())
                     args.defines.push_back({define, "1"});

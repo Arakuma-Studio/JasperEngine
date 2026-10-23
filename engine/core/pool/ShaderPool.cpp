@@ -19,6 +19,7 @@
 #include <string>
 #include <mutex>
 #include <cctype>
+#include <cerrno>
 #include <set>
 #include <system_error>
 
@@ -371,13 +372,13 @@ bool ShaderPool::getShaderCliSpec(const std::string& shaderStr, std::string& cli
         if (underscorePos == std::string::npos)
             return false;
         std::string custom;
-        uint32_t properties = 0;
+        uint64_t properties = 0;
         if (!splitUiEffectShaderStr(shaderStr.substr(underscorePos + 1), custom, properties))
             return false;
         cliSpec = typeToken + "/" + getUiEffectName(custom);
         std::string props;
         for (int bit = 0; bit < getShaderPropertyCount(shaderType); bit++) {
-            if (properties & (1u << bit))
+            if (properties & shaderPropertyBit(bit))
                 props += (props.empty() ? "" : ",") + getShaderPropertyName(shaderType, bit, true);
         }
         if (!props.empty())
@@ -493,21 +494,23 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
     }
 }
 
-uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
+uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 1u << 31;
-        case ShaderType::POINTS: return 1u << 4;
-        case ShaderType::LINES:  return 1u << 2;
-        case ShaderType::SKYBOX: return 1u << 0;
+        case ShaderType::MESH:   return shaderPropertyBit(31);
+        case ShaderType::POINTS: return shaderPropertyBit(4);
+        case ShaderType::LINES:  return shaderPropertyBit(2);
+        case ShaderType::SKYBOX: return shaderPropertyBit(0);
         default:                 return 0;
     }
 }
 
+// At most SHADER_PROPERTY_BITS (64): a property past bit 31 is added like any other (a
+// case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 32;
-        case ShaderType::DEPTH:  return 14;
-        case ShaderType::GBUFFER: return 10;
+        case ShaderType::DEPTH:  return 15;
+        case ShaderType::GBUFFER: return 11;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -537,7 +540,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // case 5 reserved (was 'Pcf'; the PCF filter is uniform-driven now)
+            // Stochastic Tiling of the material's maps (USE_STOCHASTIC_TILING). Until October
+            // 2026 bit 5 was reserved, the retired 'Pcf' (July 2026): keys files hold from
+            // before have it stripped as they are read (editor::Stream::decodeShaderKey)
+            case 5:  return shortName ? "Sto" : "Stochastic Tiling";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -585,6 +591,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 12: return shortName ? "Uv1" : "UV1";
             // the sprite texture rect the alpha-clip UV goes through
             case 13: return shortName ? "Txr" : "Texture Rect";
+            // the alpha clip reads the base colour as the colour pass's Stochastic Tiling does
+            case 14: return shortName ? "Sto" : "Stochastic Tiling";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -598,6 +606,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 7: return shortName ? "Ist" : "Instancing";
             case 8: return shortName ? "Mrt" : "MetalRough Texture";
             case 9: return shortName ? "Tpb" : "Terrain PBR";
+            // base colour and metallic-roughness read as the colour pass's Stochastic Tiling does
+            case 10: return shortName ? "Sto" : "Stochastic Tiling";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -674,7 +684,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     return shortName ? "?" : "Unknown";
 }
 
-std::string ShaderPool::getShaderStr(ShaderType shaderType, uint32_t properties, uint16_t customId){
+std::string ShaderPool::getShaderStr(ShaderType shaderType, uint64_t properties, uint16_t customId){
 
     std::string str = getShaderTypeName(shaderType, true);
     std::string propOut;
@@ -689,7 +699,7 @@ std::string ShaderPool::getShaderStr(ShaderType shaderType, uint32_t properties,
 
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
-        if (properties & (1u << i))
+        if (properties & shaderPropertyBit(i))
             propOut += getShaderPropertyName(shaderType, i, true);
     }
 
@@ -699,8 +709,63 @@ std::string ShaderPool::getShaderStr(ShaderType shaderType, uint32_t properties,
     return str;
 }
 
-ShaderKey ShaderPool::getShaderKey(ShaderType shaderType, uint32_t properties, uint16_t customId) {
-    return ((uint64_t)customId << 48) | (((uint64_t)shaderType & 0xFFFF) << 32) | (properties & 0xFFFFFFFF);
+ShaderKey ShaderPool::getShaderKey(ShaderType shaderType, uint64_t properties, uint16_t customId) {
+    return ShaderKey(static_cast<uint16_t>(shaderType), properties, customId);
+}
+
+ShaderKey ShaderPool::unpackLegacyKey(uint64_t packed) {
+    return ShaderKey(static_cast<uint16_t>((packed >> 32) & 0xFFFF), packed & 0xFFFFFFFFULL, static_cast<uint16_t>((packed >> 48) & 0xFFFF));
+}
+
+std::string ShaderPool::getShaderKeyText(ShaderKey key) {
+    static const char digits[] = "0123456789abcdef";
+    auto hex = [](uint64_t value, int width){
+        std::string text(width, '0');
+        for (int i = width - 1; i >= 0; i--, value >>= 4)
+            text[i] = digits[value & 0xF];
+        return text;
+    };
+    if (key.properties <= 0xFFFFFFFFULL) {
+        const uint64_t packed = ((uint64_t)key.customId << 48) | ((uint64_t)key.type << 32) | key.properties;
+        std::string text = hex(packed, 16);
+        const size_t first = text.find_first_not_of('0');
+        return "0x" + (first == std::string::npos ? std::string("0") : text.substr(first));
+    }
+    return "0x" + hex(key.customId, 4) + hex(key.type, 4) + hex(key.properties, 16);
+}
+
+bool ShaderPool::parseShaderKeyText(const std::string& text, ShaderKey& key) {
+    if (text.empty() || !std::isdigit(static_cast<unsigned char>(text[0])))
+        return false;
+    const bool hexText = text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    if (hexText && text.size() - 2 > 16) {
+        // the wide form: customId (4), type (4), properties (16)
+        if (text.size() - 2 != 24)
+            return false;
+        uint64_t parts[3] = {0, 0, 0};
+        const int widths[3] = {4, 4, 16};
+        size_t at = 2;
+        for (int part = 0; part < 3; part++) {
+            for (int i = 0; i < widths[part]; i++, at++) {
+                const char c = static_cast<char>(std::tolower(static_cast<unsigned char>(text[at])));
+                int digit;
+                if (c >= '0' && c <= '9') digit = c - '0';
+                else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+                else return false;
+                parts[part] = (parts[part] << 4) | (uint64_t)digit;
+            }
+        }
+        key = ShaderKey(static_cast<uint16_t>(parts[1]), parts[2], static_cast<uint16_t>(parts[0]));
+        return true;
+    }
+    // the packed form (hex, or decimal as numbers were stored)
+    errno = 0;
+    char* end = nullptr;
+    const unsigned long long packed = std::strtoull(text.c_str(), &end, 0);
+    if (errno != 0 || !end || *end != '\0')
+        return false;
+    key = unpackLegacyKey(packed);
+    return true;
 }
 
 void ShaderPool::addMissingShader(const std::string& shaderStr) {
@@ -710,7 +775,7 @@ void ShaderPool::addMissingShader(const std::string& shaderStr) {
     }
 }
 
-std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t properties, uint16_t customId){
+std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
     auto& shared = getMap()[shaderKey];
 
@@ -796,7 +861,7 @@ bool ShaderPool::loadPrecompiledShader(ShaderKey shaderKey, const std::string& s
     return ShaderDataSerializer::readFromFile("shader://"+getShaderName(shaderStr)+".sdat", storageKey, shaderData);
 }
 
-bool ShaderPool::warmUp(ShaderType shaderType, uint32_t properties, uint16_t customId){
+bool ShaderPool::warmUp(ShaderType shaderType, uint64_t properties, uint16_t customId){
     std::shared_ptr<ShaderRender> shader = get(shaderType, properties, customId);
     return shader && shader->isCreated();
 }
@@ -805,7 +870,7 @@ bool ShaderPool::warmUp(ShaderKey shaderKey){
     return warmUp(getShaderTypeFromKey(shaderKey), getPropertiesFromKey(shaderKey), getCustomIdFromKey(shaderKey));
 }
 
-bool ShaderPool::isShaderReady(ShaderType shaderType, uint32_t properties, uint16_t customId){
+bool ShaderPool::isShaderReady(ShaderType shaderType, uint64_t properties, uint16_t customId){
     auto& map = getMap();
     auto it = map.find(getShaderKey(shaderType, properties, customId));
     return it != map.end() && it->second && it->second->isCreated();
@@ -934,18 +999,19 @@ std::vector<std::string> splitSpecList(const std::string& value) {
     return parts;
 }
 
-bool parseSpecUInt32(const std::string& value, uint32_t& out) {
+bool parseSpecUInt64(const std::string& value, uint64_t& out) {
     if (value.empty() || value[0] == '+' || value[0] == '-') {
         return false;
     }
 
+    errno = 0;
     char* end = nullptr;
     unsigned long long parsed = std::strtoull(value.c_str(), &end, 0);
-    if (!end || *end != '\0' || parsed > UINT32_MAX) {
+    if (!end || *end != '\0' || errno == ERANGE) {
         return false;
     }
 
-    out = static_cast<uint32_t>(parsed);
+    out = static_cast<uint64_t>(parsed);
     return true;
 }
 
@@ -999,12 +1065,12 @@ bool ShaderPool::parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, 
         return fail("Only UI effects take a name after the type: " + spec);
     }
 
-    uint32_t properties = 0;
+    uint64_t properties = 0;
     if (!propsPart.empty()) {
         const bool numericMask = std::isdigit(static_cast<unsigned char>(propsPart[0]));
 
         if (numericMask) {
-            if (!parseSpecUInt32(propsPart, properties)) {
+            if (!parseSpecUInt64(propsPart, properties)) {
                 return fail("Invalid shader property mask: " + propsPart);
             }
         } else {
@@ -1016,7 +1082,7 @@ bool ShaderPool::parseShaderSpec(const std::string& spec, ShaderKey& shaderKey, 
                     const std::string shortName = normalizeSpecToken(getShaderPropertyName(type, bit, true));
                     const std::string longName  = normalizeSpecToken(getShaderPropertyName(type, bit, false));
                     if (propToken == shortName || propToken == longName) {
-                        properties |= (1u << bit);
+                        properties |= shaderPropertyBit(bit);
                         found = true;
                         break;
                     }
@@ -1079,7 +1145,7 @@ bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey
             if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
                 scatter = true;
         }
-        auto addForms = [&](uint32_t drawForm){
+        auto addForms = [&](uint64_t drawForm){
             shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm, customId));
             if (stateful)
                 shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm | 2u, customId));
@@ -1093,10 +1159,10 @@ bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey
     return true;
 }
 
-bool ShaderPool::splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint32_t& properties){
+bool ShaderPool::splitUiEffectShaderStr(const std::string& basenameAndProperties, std::string& customShader, uint64_t& properties){
     // "<basename>[_<Flt|Stp|Sct, concatenated>]": the property names are capitalised, effect
     // basenames are not, and the longest suffix that leaves a known effect wins
-    static const struct { const char* suffix; uint32_t properties; } suffixes[] = {
+    static const struct { const char* suffix; uint64_t properties; } suffixes[] = {
         {"_FltStp", 1u | 2u}, {"_FltSct", 1u | 4u}, {"_Flt", 1u}, {"_Stp", 2u}, {"_Sct", 4u}};
     for (const auto& candidate : suffixes) {
         const size_t length = std::char_traits<char>::length(candidate.suffix);
@@ -1119,7 +1185,7 @@ bool ShaderPool::parseShaderStr(const std::string& shaderStr, ShaderKey& shaderK
     // a UI effect: its basename back into the custom shader it names
     if (shaderStr.rfind("uieffect_", 0) == 0) {
         std::string custom;
-        uint32_t properties = 0;
+        uint64_t properties = 0;
         if (!splitUiEffectShaderStr(shaderStr.substr(9), custom, properties))
             return false;
         shaderKey = getShaderKey(ShaderType::UI_EFFECT, properties, registerCustomShader(custom));
@@ -1184,11 +1250,11 @@ std::string ShaderPool::getUiEffectName(const std::string& customShader){
     return stem;
 }
 
-bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint32_t properties, uint16_t customId){
+bool ShaderPool::isShaderBuildFailed(ShaderType shaderType, uint64_t properties, uint16_t customId){
     return failedShaders().count(getShaderKey(shaderType, properties, customId)) > 0;
 }
 
-void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t customId){
+void ShaderPool::remove(ShaderType shaderType, uint64_t properties, uint16_t customId){
     ShaderKey shaderKey = getShaderKey(shaderType, properties, customId);
     failedShaders().erase(shaderKey);
     auto& map = getMap();
@@ -1231,152 +1297,157 @@ void ShaderPool::destroyCustomShaders(){
 }
 
 ShaderType ShaderPool::getShaderTypeFromKey(ShaderKey key) {
-    return (ShaderType)((key >> 32) & 0xFFFF);
+    return (ShaderType)key.type;
 }
 
-uint32_t ShaderPool::getPropertiesFromKey(ShaderKey key) {
-    return (uint32_t)(key & 0xFFFFFFFF);
+uint64_t ShaderPool::getPropertiesFromKey(ShaderKey key) {
+    return key.properties;
 }
 
 uint16_t ShaderPool::getCustomIdFromKey(ShaderKey key) {
-    return (uint16_t)((key >> 48) & 0xFFFF);
+    return key.customId;
 }
 
 ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
-    // Strip the session-local customShaderId (bits 48..63); keep type + properties.
-    return key & 0x0000FFFFFFFFFFFFULL;
+    // Strip the session-local customShaderId; keep type + properties.
+    key.customId = 0;
+    return key;
 }
 
-uint32_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit (e.g. MESH bit 5, the
-    // old 'Pcf') is excluded automatically: it has no short name ("?").
-    uint32_t mask = 0;
-    int propCount = getShaderPropertyCount(shaderType);
+uint64_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
+    // Derived from the property-name table so a retired bit is excluded automatically: it
+    // has no short name ("?"). (MESH bit 5, the old 'Pcf', is Stochastic Tiling again: the
+    // stale ones of old files are stripped where those are read, editor::Stream.)
+    uint64_t mask = 0;
+    const int propCount = std::min(getShaderPropertyCount(shaderType), SHADER_PROPERTY_BITS);
     for (int i = 0; i < propCount; i++) {
         if (getShaderPropertyName(shaderType, i, true) != "?")
-            mask |= (1u << i);
+            mask |= shaderPropertyBit(i);
     }
     return mask;
 }
 
 ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
-    ShaderType type = getShaderTypeFromKey(key);
-    uint16_t customId = getCustomIdFromKey(key);
-    uint32_t properties = getPropertiesFromKey(key) & getValidPropertyMask(type);
-    return getShaderKey(type, properties, customId);
+    key.properties &= getValidPropertyMask(getShaderTypeFromKey(key));
+    return key;
 }
 
-uint32_t ShaderPool::getMeshProperties(
+uint64_t ShaderPool::getMeshProperties(
     bool unlit, bool uv1, bool uv2,
     bool punctual, bool shadows, bool normals, bool normalMap,
     bool tangents, bool vertexColorVec3, bool vertexColorVec4, bool textureRect,
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity){
-    uint32_t prop = 0;
+    bool vertexLights, int lightCapacity, bool stochasticTiling){
+    uint64_t prop = 0;
 
-    prop |= unlit            ? (1 <<  0) : 0;
-    prop |= uv1              ? (1 <<  1) : 0;
-    prop |= uv2              ? (1 <<  2) : 0;
-    prop |= punctual         ? (1 <<  3) : 0;
-    prop |= shadows          ? (1 <<  4) : 0;
-    // bit 5 was USE_SHADOWS_PCF; the PCF filter is uniform-driven now (Scene
-    // shadowQuality). Kept reserved so the other bit positions stay stable.
-    prop |= normals          ? (1 <<  6) : 0;
-    prop |= normalMap        ? (1 <<  7) : 0;
-    prop |= tangents         ? (1 <<  8) : 0;
-    prop |= vertexColorVec3  ? (1 <<  9) : 0;
-    prop |= vertexColorVec4  ? (1 << 10) : 0;
-    prop |= textureRect      ? (1 << 11) : 0;
-    prop |= fog              ? (1 << 12) : 0;
-    prop |= skinning         ? (1 << 13) : 0;
-    prop |= morphTarget      ? (1 << 14) : 0;
-    prop |= morphNormal      ? (1 << 15) : 0;
-    prop |= morphTangent     ? (1 << 16) : 0;
-    prop |= terrain          ? (1 << 17) : 0;
-    prop |= instanced        ? (1 << 18) : 0;
-    prop |= ibl              ? (1 << 19) : 0;
-    prop |= mirror           ? (1 << 20) : 0;
-    prop |= ssao             ? (1 << 21) : 0;
-    prop |= light2d          ? (1 << 22) : 0;
-    prop |= shadows2d        ? (1 << 23) : 0;
-    prop |= alphaMask        ? (1 << 24) : 0;
-    prop |= alphaOpaque      ? (1 << 25) : 0;
-    prop |= instanceFade     ? (1 << 26) : 0;
-    prop |= terrainPBR       ? (1 << 27) : 0;
-    prop |= vertexLights     ? (1 << 28) : 0;
+    prop |= unlit            ? shaderPropertyBit(0) : 0;
+    prop |= uv1              ? shaderPropertyBit(1) : 0;
+    prop |= uv2              ? shaderPropertyBit(2) : 0;
+    prop |= punctual         ? shaderPropertyBit(3) : 0;
+    prop |= shadows          ? shaderPropertyBit(4) : 0;
+    // bit 5 was USE_SHADOWS_PCF until July 2026 (the PCF filter is uniform-driven now); since
+    // October 2026 it is Stochastic Tiling (see getShaderPropertyName)
+    prop |= stochasticTiling ? shaderPropertyBit(5) : 0;
+    prop |= normals          ? shaderPropertyBit(6) : 0;
+    prop |= normalMap        ? shaderPropertyBit(7) : 0;
+    prop |= tangents         ? shaderPropertyBit(8) : 0;
+    prop |= vertexColorVec3  ? shaderPropertyBit(9) : 0;
+    prop |= vertexColorVec4  ? shaderPropertyBit(10) : 0;
+    prop |= textureRect      ? shaderPropertyBit(11) : 0;
+    prop |= fog              ? shaderPropertyBit(12) : 0;
+    prop |= skinning         ? shaderPropertyBit(13) : 0;
+    prop |= morphTarget      ? shaderPropertyBit(14) : 0;
+    prop |= morphNormal      ? shaderPropertyBit(15) : 0;
+    prop |= morphTangent     ? shaderPropertyBit(16) : 0;
+    prop |= terrain          ? shaderPropertyBit(17) : 0;
+    prop |= instanced        ? shaderPropertyBit(18) : 0;
+    prop |= ibl              ? shaderPropertyBit(19) : 0;
+    prop |= mirror           ? shaderPropertyBit(20) : 0;
+    prop |= ssao             ? shaderPropertyBit(21) : 0;
+    prop |= light2d          ? shaderPropertyBit(22) : 0;
+    prop |= shadows2d        ? shaderPropertyBit(23) : 0;
+    prop |= alphaMask        ? shaderPropertyBit(24) : 0;
+    prop |= alphaOpaque      ? shaderPropertyBit(25) : 0;
+    prop |= instanceFade     ? shaderPropertyBit(26) : 0;
+    prop |= terrainPBR       ? shaderPropertyBit(27) : 0;
+    prop |= vertexLights     ? shaderPropertyBit(28) : 0;
     // the default capacity (8) sets neither bit, so it keeps the keys it had before tiers
-    prop |= (lightCapacity == 4)  ? (1 << 29) : 0;
-    prop |= (lightCapacity == 16) ? (1 << 30) : 0;
+    prop |= (lightCapacity == 4)  ? shaderPropertyBit(29) : 0;
+    prop |= (lightCapacity == 16) ? shaderPropertyBit(30) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
-                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect){
-    uint32_t prop = 0;
+uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
+                                            bool stochasticTiling){
+    uint64_t prop = 0;
 
-    prop |= texture          ? (1 <<  0) : 0;
-    prop |= skinning         ? (1 <<  1) : 0;
-    prop |= morphTarget      ? (1 <<  2) : 0;
-    prop |= morphNormal      ? (1 <<  3) : 0;
-    prop |= morphTangent     ? (1 <<  4) : 0;
-    prop |= terrain          ? (1 <<  5) : 0;
-    prop |= instanced        ? (1 <<  6) : 0;
-    prop |= alphaMask        ? (1 <<  7) : 0;
-    prop |= instanceFade     ? (1 <<  8) : 0;
-    prop |= normals          ? (1 <<  9) : 0;
-    prop |= vertexColorVec3  ? (1 << 10) : 0;
-    prop |= vertexColorVec4  ? (1 << 11) : 0;
-    prop |= uv1              ? (1 << 12) : 0;
-    prop |= textureRect      ? (1 << 13) : 0;
-
-    return prop;
-}
-
-uint32_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR){
-    uint32_t prop = 0;
-
-    prop |= baseColorTexture        ? (1 <<  0) : 0;
-    prop |= normals                 ? (1 <<  1) : 0;
-    prop |= skinning                ? (1 <<  2) : 0;
-    prop |= morphTarget             ? (1 <<  3) : 0;
-    prop |= morphNormal             ? (1 <<  4) : 0;
-    prop |= morphTangent            ? (1 <<  5) : 0;
-    prop |= terrain                 ? (1 <<  6) : 0;
-    prop |= instanced               ? (1 <<  7) : 0;
-    prop |= metallicRoughnessTexture ? (1 << 8) : 0;
-    prop |= terrainPBR              ? (1 <<  9) : 0;
+    prop |= texture          ? shaderPropertyBit(0) : 0;
+    prop |= skinning         ? shaderPropertyBit(1) : 0;
+    prop |= morphTarget      ? shaderPropertyBit(2) : 0;
+    prop |= morphNormal      ? shaderPropertyBit(3) : 0;
+    prop |= morphTangent     ? shaderPropertyBit(4) : 0;
+    prop |= terrain          ? shaderPropertyBit(5) : 0;
+    prop |= instanced        ? shaderPropertyBit(6) : 0;
+    prop |= alphaMask        ? shaderPropertyBit(7) : 0;
+    prop |= instanceFade     ? shaderPropertyBit(8) : 0;
+    prop |= normals          ? shaderPropertyBit(9) : 0;
+    prop |= vertexColorVec3  ? shaderPropertyBit(10) : 0;
+    prop |= vertexColorVec4  ? shaderPropertyBit(11) : 0;
+    prop |= uv1              ? shaderPropertyBit(12) : 0;
+    prop |= textureRect      ? shaderPropertyBit(13) : 0;
+    prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4){
-    uint32_t prop = 0;
+uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
+                                              bool stochasticTiling){
+    uint64_t prop = 0;
 
-    prop |= texture          ? (1 <<  0) : 0;
-    prop |= fontAtlasTexture ? (1 <<  1) : 0;
-    prop |= vertexColorVec3  ? (1 <<  2) : 0;
-    prop |= vertexColorVec4  ? (1 <<  3) : 0;
+    prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
+    prop |= normals                 ? shaderPropertyBit(1) : 0;
+    prop |= skinning                ? shaderPropertyBit(2) : 0;
+    prop |= morphTarget             ? shaderPropertyBit(3) : 0;
+    prop |= morphNormal             ? shaderPropertyBit(4) : 0;
+    prop |= morphTangent            ? shaderPropertyBit(5) : 0;
+    prop |= terrain                 ? shaderPropertyBit(6) : 0;
+    prop |= instanced               ? shaderPropertyBit(7) : 0;
+    prop |= metallicRoughnessTexture ? shaderPropertyBit(8) : 0;
+    prop |= terrainPBR              ? shaderPropertyBit(9) : 0;
+    prop |= stochasticTiling        ? shaderPropertyBit(10) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getHtmlUIProperties(bool texture){
-    uint32_t prop = 0;
+uint64_t ShaderPool::getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4){
+    uint64_t prop = 0;
 
-    prop |= texture          ? (1 <<  0) : 0;
+    prop |= texture          ? shaderPropertyBit(0) : 0;
+    prop |= fontAtlasTexture ? shaderPropertyBit(1) : 0;
+    prop |= vertexColorVec3  ? shaderPropertyBit(2) : 0;
+    prop |= vertexColorVec4  ? shaderPropertyBit(3) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant variant){
-    return 1u << (uint32_t)variant;
+uint64_t ShaderPool::getHtmlUIProperties(bool texture){
+    uint64_t prop = 0;
+
+    prop |= texture          ? shaderPropertyBit(0) : 0;
+
+    return prop;
 }
 
-std::vector<std::pair<ShaderType, uint32_t>> ShaderPool::getHtmlUIVariants(){
-    std::vector<std::pair<ShaderType, uint32_t>> variants;
+uint64_t ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant variant){
+    return shaderPropertyBit(static_cast<int>(variant));
+}
+
+std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getHtmlUIVariants(){
+    std::vector<std::pair<ShaderType, uint64_t>> variants;
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(false)});
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(true)});
     variants.push_back({ShaderType::HTMLUI_GRADIENT, 0});
@@ -1386,22 +1457,22 @@ std::vector<std::pair<ShaderType, uint32_t>> ShaderPool::getHtmlUIVariants(){
     return variants;
 }
 
-uint32_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){
-    uint32_t prop = 0;
+uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect){
+    uint64_t prop = 0;
 
-    prop |= texture          ? (1 <<  0) : 0;
-    prop |= vertexColorVec3	 ? (1 <<  1) : 0;
-    prop |= vertexColorVec4  ? (1 <<  2) : 0;
-    prop |= textureRect      ? (1 <<  3) : 0;
+    prop |= texture          ? shaderPropertyBit(0) : 0;
+    prop |= vertexColorVec3	 ? shaderPropertyBit(1) : 0;
+    prop |= vertexColorVec4  ? shaderPropertyBit(2) : 0;
+    prop |= textureRect      ? shaderPropertyBit(3) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4){
-    uint32_t prop = 0;
+uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4){
+    uint64_t prop = 0;
 
-    prop |= vertexColorVec3	 ? (1 <<  0) : 0;
-    prop |= vertexColorVec4  ? (1 <<  1) : 0;
+    prop |= vertexColorVec3	 ? shaderPropertyBit(0) : 0;
+    prop |= vertexColorVec4  ? shaderPropertyBit(1) : 0;
 
     return prop;
 }

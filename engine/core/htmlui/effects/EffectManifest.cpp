@@ -1072,7 +1072,7 @@ std::vector<uint32_t> EffectManifestParser::passForms(const EffectManifest& m, u
     return forms;
 }
 
-bool EffectManifestParser::checkReflection(const EffectManifest& m, ShaderData& shader, std::vector<std::string>& problems, uint32_t properties){
+bool EffectManifestParser::checkReflection(const EffectManifest& m, ShaderData& shader, std::vector<std::string>& problems, uint64_t properties){
     const size_t before = problems.size();
     const bool passForm = (properties & 6u) != 0;
     unsigned int frameSize = 0;

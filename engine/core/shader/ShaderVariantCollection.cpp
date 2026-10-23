@@ -49,7 +49,7 @@ bool ShaderVariantCollection::addKey(ShaderKey key){
     return true;
 }
 
-bool ShaderVariantCollection::add(ShaderType type, uint32_t properties, const std::string& customShader){
+bool ShaderVariantCollection::add(ShaderType type, uint64_t properties, const std::string& customShader){
     return addKey(ShaderPool::getShaderKey(type, properties, ShaderPool::registerCustomShader(customShader)));
 }
 
@@ -73,7 +73,7 @@ size_t ShaderVariantCollection::addEntityVariants(Scene* scene, Entity entity){
     return added;
 }
 
-bool ShaderVariantCollection::remove(ShaderType type, uint32_t properties, const std::string& customShader){
+bool ShaderVariantCollection::remove(ShaderType type, uint64_t properties, const std::string& customShader){
     const ShaderKey key = ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties, ShaderPool::registerCustomShader(customShader)));
     auto it = std::find(variants.begin(), variants.end(), key);
     if (it == variants.end())
@@ -90,7 +90,7 @@ bool ShaderVariantCollection::remove(const std::string& spec, const std::string&
     return remove(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key), customShader);
 }
 
-bool ShaderVariantCollection::contains(ShaderType type, uint32_t properties, const std::string& customShader) const{
+bool ShaderVariantCollection::contains(ShaderType type, uint64_t properties, const std::string& customShader) const{
     const ShaderKey key = ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties, ShaderPool::registerCustomShader(customShader)));
     return std::find(variants.begin(), variants.end(), key) != variants.end();
 }

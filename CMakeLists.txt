@@ -530,6 +530,16 @@ include_directories (${EDITOR_DIR})
 
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
 
+# The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md), also
+# built alone into jasperengine-texsynth-tests (-DJASPERENGINE_TEXSYNTH_TESTS=ON); its CLI is
+# SynthesisCli.cpp (CommandLine)
+set(JASPERENGINE_TEXSYNTH_SOURCES
+    ${EDITOR_DIR}/texsynth/SynthImage.cpp
+    ${EDITOR_DIR}/texsynth/Synthesizer.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisRecipe.cpp
+    ${EDITOR_DIR}/texsynth/TextureSynthesis.cpp
+)
+
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
@@ -594,6 +604,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -608,12 +619,16 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${JASPERENGINE_TEXSYNTH_SOURCES}
+    ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
@@ -664,6 +679,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
@@ -936,6 +952,21 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
+endif()
+
+# jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images:
+# determinism across thread counts, the modes, companions, the recipe chunk (tools/build.sh
+# texsynth-tests, or -DJASPERENGINE_TEXSYNTH_TESTS=ON and the target)
+option(JASPERENGINE_TEXSYNTH_TESTS "Build jasperengine-texsynth-tests (texture synthesis tests)" OFF)
+if(JASPERENGINE_TEXSYNTH_TESTS)
+    include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
+endif()
+
+# jasperengine-editor-tests: unit tests of the editor and the engine core it drives (shader
+# variant keys, .sdat files, scene encoding), built with the editor (tools/build.sh editor-tests)
+option(JASPERENGINE_EDITOR_TESTS "Build jasperengine-editor-tests (editor and engine core unit tests)" OFF)
+if(JASPERENGINE_EDITOR_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs

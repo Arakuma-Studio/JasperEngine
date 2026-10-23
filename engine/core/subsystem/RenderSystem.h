@@ -143,6 +143,7 @@ namespace jasperengine{
 		Vector4 uvTransform[MAX_TERRAIN_LAYERS]; // xy = detail tiling scale, zw = offset
 		Vector4 surface[MAX_TERRAIN_LAYERS];     // roughness, metallic, normal strength, occlusion strength
 		Vector4 slices[MAX_TERRAIN_LAYERS];      // color, normal and packed surface slice (-1 = none)
+		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
 	} fs_terrain_layers_t;
 
 	// includes/environment.glsl (u_fs_environment)
@@ -199,6 +200,7 @@ namespace jasperengine{
 	typedef struct fs_gbuffer_material_t {
 		Vector4 params;             // x = roughness, y = metallic, z = IBL source, w = alpha cutout
 		Vector4 baseColorFactor;
+		Vector4 stochastic;         // Stochastic Tiling ('Sto' variants only): cell size, blend sharpness, contrast, rotation
 	} fs_gbuffer_material_t;
 
 	typedef struct fs_ssao_t {
@@ -382,6 +384,12 @@ namespace jasperengine{
 		// as the material asks; the variant resolves it against the shader (resolveLighting)
 		MaterialLighting lighting = MaterialLighting::AUTO;
 		bool textureShadow = false;
+		// Material::stochasticTiling, as the material asks; the variant decides where it applies
+		bool stochasticTiling = false;
+		// the colour shader samples Lit's Stochastic Tiling (RenderSystem::supportsStochasticTiling:
+		// the built-in Lit, a fork of it defining LIT_STOCHASTIC_PARAMS); a fork made before it
+		// samples plainly, so its depth and G-buffer passes must too
+		bool stochasticShader = true;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;
@@ -407,12 +415,12 @@ namespace jasperengine{
 
 	// The shaders one submesh draws with
 	struct SubmeshShaderVariant {
-		uint32_t properties = 0;        // ShaderType::MESH
+		uint64_t properties = 0;        // ShaderType::MESH
 		bool depthPass = false;         // drawn into shadow maps and depth pre-passes
 		bool depth = false;             // has a depth shader: a depth pass, or a forked depth shader
-		uint32_t depthProperties = 0;   // ShaderType::DEPTH
+		uint64_t depthProperties = 0;   // ShaderType::DEPTH
 		bool gbuffer = false;           // drawn into the SSR G-buffer
-		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
+		uint64_t gbufferProperties = 0; // ShaderType::GBUFFER
 	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
@@ -1399,12 +1407,12 @@ namespace jasperengine{
 		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
 		// the object's lights a submesh variant (its lighting mode and capacity) takes, pixel
 		// lights then vertex lights, as scene light indices
-		void orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
+		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
-		void buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
-		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
+		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
@@ -1502,7 +1510,7 @@ namespace jasperengine{
 		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
 		                FramebufferRender* destination, const Rect& viewport, bool nearestSource);
 		// the post colour bit of a shader type's variants while the scene's objects load with it
-		uint32_t postColorProperty(ShaderType type) const;
+		uint64_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);
@@ -1871,6 +1879,14 @@ namespace jasperengine{
 		static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Whether a mesh colour shader ("" built-in, a fork, a library reference) samples the
+		// material's Stochastic Tiling (Material::stochasticTiling): the built-in Lit does; a fork
+		// without manifest lines does when its .frag defines LIT_STOCHASTIC_PARAMS
+		// (ShaderManifest::litStochasticParams; a fork made before the feature does not, nor one
+		// whose files cannot be read); a shader with a manifest never does (a library shader has
+		// its own STOCHASTIC feature). Read from the fork's entry point at runtime and by the
+		// editor alike, so a build ships the variants the game asks for.
+		static bool supportsStochasticTiling(const std::string& shader);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
