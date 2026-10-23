@@ -110,7 +110,7 @@ namespace jasperengine{
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
-        uint32_t shaderProperties = 0; // ShaderType::MESH
+        uint64_t shaderProperties = 0; // ShaderType::MESH
         uint16_t customShaderId = 0;   // the pass's shader reference, registered
         MaterialPassOrder order = MaterialPassOrder::AFTER;
 
@@ -175,9 +175,9 @@ namespace jasperengine{
         std::shared_ptr<ShaderRender> depthShader;
         std::shared_ptr<ShaderRender> gbufferShader;
 
-        uint32_t shaderProperties = 0;
-        uint32_t depthShaderProperties = 0;
-        uint32_t gbufferShaderProperties = 0;
+        uint64_t shaderProperties = 0;
+        uint64_t depthShaderProperties = 0;
+        uint64_t gbufferShaderProperties = 0;
 
         // resolved ids of MeshComponent::customShader/customDepthShader (0 = built-in);
         // cached here so the matching ShaderPool::remove uses the same key

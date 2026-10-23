@@ -46,7 +46,7 @@ struct Variant {
 };
 
 struct Job {
-    ShaderKey key = 0;
+    ShaderKey key;
     std::shared_ptr<const CustomShaderSources> sources;
     std::string cachePath; // where the compiled variant is cached, empty for none
 };

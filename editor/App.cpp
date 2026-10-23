@@ -3597,7 +3597,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
+    // v34: .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
+    //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
 }
 
 void editor::App::pushTabNotificationStyle(){

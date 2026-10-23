@@ -1723,7 +1723,7 @@ void RenderSystem::selectMeshLights(Entity entity, MeshComponent& mesh, const Tr
 // lights first (USE_PUNCTUAL), then vertex lights (USE_VERTEX_LIGHTS), each in scene order;
 // MIXED sends the lights shaded VERTEX per vertex and the others per pixel. At most the
 // variant's capacity.
-void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const{
+void RenderSystem::orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const{
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const bool pixel = (properties & (1u << 3)) != 0;
     const bool vertex = (properties & (1u << 28)) != 0;
@@ -1761,7 +1761,7 @@ int RenderSystem::passLightCascades(const SceneLight& light) const{
 // The per-object lights block of a submesh variant (layout in includes/lights.glsl), at the
 // variant's capacity C: counts, then position_type[C], direction_inner[C], color_outer[C]
 // (all the vertex stage reads), the SH ambient, spot_shadow[C].
-void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const{
+void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const{
     const int capacity = (properties & (1u << 29)) ? 4 : ((properties & (1u << 30)) ? 16 : 8);
     const MeshLights& picked = mesh.lights;
 
@@ -1801,11 +1801,11 @@ void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint32_t propert
 // An older fork's u_fs_lighting: the camera's part, then the object's first MAX_LIGHTS
 // lights, all per pixel. What the block cannot hold (lights over the cap, past MAX_LIGHTS)
 // is added to its flat ambient as the SH would, which changes nothing when none is left out.
-void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const{
+void RenderSystem::buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const{
     block = ps().fs_lighting;
 
     // every picked light per pixel, at the largest capacity
-    const uint32_t legacyProperties = (properties | (1u << 3) | (1u << 30)) & ~((1u << 28) | (1u << 29));
+    const uint64_t legacyProperties = (properties | shaderPropertyBit(3) | shaderPropertyBit(30)) & ~(shaderPropertyBit(28) | shaderPropertyBit(29));
     int order[MAX_LIGHTS_PER_OBJECT];
     int pixelCount = 0;
     int vertexCount = 0;
@@ -2902,7 +2902,7 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
             keys.push_back(key);
     };
     // a fork that fails to build falls back to the built-in variant
-    auto add = [&addKey](ShaderType type, uint32_t properties, uint16_t customId){
+    auto add = [&addKey](ShaderType type, uint64_t properties, uint16_t customId){
         addKey(ShaderPool::getShaderKey(type, properties, customId));
         if (customId != 0)
             addKey(ShaderPool::getShaderKey(type, properties, 0));
@@ -3732,7 +3732,7 @@ bool RenderSystem::postColorVariantsReady(){
     if (!Engine::isViewLoaded())
         return false;
     // a variant is ready when built or failed (its load falls back to the built-in one)
-    auto ready = [](ShaderType type, uint32_t properties, uint16_t customId){
+    auto ready = [](ShaderType type, uint64_t properties, uint16_t customId){
         return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
     };
     bool allReady = true;
@@ -3741,8 +3741,8 @@ bool RenderSystem::postColorVariantsReady(){
         const PointsComponent& points = pointsArray->getComponentFromIndex(i);
         if (!points.loaded || points.needReload)
             continue;
-        const uint32_t bit = ShaderPool::getPostColorProperty(ShaderType::POINTS);
-        const uint32_t properties = (points.shaderProperties & ~bit) | postColorProperty(ShaderType::POINTS);
+        const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::POINTS);
+        const uint64_t properties = (points.shaderProperties & ~bit) | postColorProperty(ShaderType::POINTS);
         allReady = ready(ShaderType::POINTS, properties, points.customShaderId) && allReady;
     }
     auto linesArray = scene->getComponentArray<LineRendererComponent>();
@@ -3750,8 +3750,8 @@ bool RenderSystem::postColorVariantsReady(){
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         if (!lines.loaded || lines.needReload)
             continue;
-        const uint32_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
-        const uint32_t properties = (lines.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
+        const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
+        const uint64_t properties = (lines.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
         allReady = ready(ShaderType::LINES, properties, lines.customShaderId) && allReady;
     }
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
@@ -3764,7 +3764,7 @@ bool RenderSystem::postColorVariantsReady(){
     return allReady;
 }
 
-uint32_t RenderSystem::postColorProperty(ShaderType type) const{
+uint64_t RenderSystem::postColorProperty(ShaderType type) const{
     return postColorVariants ? ShaderPool::getPostColorProperty(type) : 0;
 }
 
@@ -5395,7 +5395,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         const bool needDepthPass = variant.depthPass;
 
         // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
-        const uint32_t meshProperties = variant.properties;
+        const uint64_t meshProperties = variant.properties;
         const bool p_lit = !(meshProperties & (1u << 0));
         const bool p_hasTexture2 = (meshProperties & (1u << 2)) != 0;
         const bool p_receiveShadows = (meshProperties & (1u << 4)) != 0;
@@ -6656,7 +6656,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     ShaderData& shaderData = extra.shader->shaderData;
 
     // the blocks of its variant, as the submesh's colour render resolves them
-    const uint32_t properties = extra.shaderProperties;
+    const uint64_t properties = extra.shaderProperties;
     const bool p_lit = !(properties & (1u << 0));
     extra.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
     extra.slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
@@ -6726,7 +6726,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     MaterialPass& pass = submesh.material.extraPass.edit(); // set: it loaded
     ObjectRender& render = extra.render;
     ShaderData& shaderData = extra.shader->shaderData;
-    const uint32_t properties = extra.shaderProperties;
+    const uint64_t properties = extra.shaderProperties;
 
     // textures changed (drawMesh also sets it when a material texture is a render target that was
     // redrawn), or one of its own is a redrawn render target
@@ -6762,7 +6762,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (lit){
         loadSpotMaskTexture(shaderData, render);
         if (extra.slotVSObjectLights != -1 || extra.slotFSObjectLights != -1){
-            const uint32_t lightBits = properties & ((1u << 3) | (1u << 28) | (1u << 29) | (1u << 30));
+            const uint32_t lightBits = static_cast<uint32_t>(properties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30)));
             if (lightBits != builtLightBits){
                 buildObjectLights(mesh, properties, objectLightsBlock);
                 builtLightBits = lightBits;
@@ -7447,7 +7447,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 loadSpotMaskTexture(lightingShaderData, render);
                 // the object's lights, split for this submesh's lighting mode
                 if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
-                    const uint32_t lightBits = mesh.submeshes[i].shaderProperties & ((1u << 3) | (1u << 28) | (1u << 29) | (1u << 30));
+                    const uint32_t lightBits = static_cast<uint32_t>(mesh.submeshes[i].shaderProperties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30)));
                     if (lightBits != builtLightBits){
                         buildObjectLights(mesh, mesh.submeshes[i].shaderProperties, objectLightsBlock);
                         builtLightBits = lightBits;
@@ -10848,7 +10848,7 @@ void RenderSystem::needReloadMeshVariants() {
 bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
     if (!Engine::isViewLoaded())
         return false;
-    auto ready = [](ShaderType type, uint32_t properties, uint16_t customId){
+    auto ready = [](ShaderType type, uint64_t properties, uint16_t customId){
         return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
     };
     const MeshShaderEnvironment shaderEnvironment = getMeshShaderEnvironment();
@@ -10903,7 +10903,7 @@ bool RenderSystem::isAllLoaded() const{
 // A load that cannot finish: a shader it asked for is not in the build or failed to build
 // (ShaderPool stops trying it), so the object is not drawn. Counted as settled, so a loading
 // screen or a one-frame scene does not wait for it.
-static bool isShaderUnavailable(const std::shared_ptr<ShaderRender>& shader, ShaderType type, uint32_t properties, uint16_t customId){
+static bool isShaderUnavailable(const std::shared_ptr<ShaderRender>& shader, ShaderType type, uint64_t properties, uint16_t customId){
     return shader && !shader->isCreated() && ShaderPool::isShaderBuildFailed(type, properties, customId);
 }
 

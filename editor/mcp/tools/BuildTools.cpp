@@ -221,27 +221,25 @@ bool parseBackends(const Json& value, std::set<ShaderBackend>& out, std::string&
     return true;
 }
 
+// "0x..." (ShaderPool::getShaderKeyText): the packed hex a key always had while its
+// properties fit in 32 bits, the 24-digit wide form beyond
 std::string shaderKeyText(ShaderKey key) {
-    std::ostringstream text;
-    text << "0x" << std::hex << key;
-    return text.str();
+    return ShaderPool::getShaderKeyText(key);
 }
 
 bool parseShaderKey(const Json& value, ShaderKey& out) {
     try {
+        // a number: the legacy packed key
         if (value.is_number_unsigned()) {
-            out = value.get<uint64_t>();
+            out = ShaderPool::unpackLegacyKey(value.get<uint64_t>());
             return true;
         }
         if (value.is_number_integer() && value.get<long long>() >= 0) {
-            out = static_cast<ShaderKey>(value.get<long long>());
+            out = ShaderPool::unpackLegacyKey(static_cast<uint64_t>(value.get<long long>()));
             return true;
         }
         if (value.is_string()) {
-            const std::string text = value.get<std::string>();
-            size_t used = 0;
-            out = static_cast<ShaderKey>(std::stoull(text, &used, 0));
-            return used == text.size();
+            return ShaderPool::parseShaderKeyText(value.get<std::string>(), out);
         }
     } catch (...) {
     }

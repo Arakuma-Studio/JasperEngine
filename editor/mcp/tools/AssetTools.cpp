@@ -85,7 +85,7 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
     ProjectChecks::invalidateShaderCaches(project);
     struct Job {
         std::vector<ProjectChecks::ShaderUse> forks;
-        std::vector<uint64_t> keys;
+        std::vector<ShaderKey> keys;
         Json results = Json::array();
         std::vector<ProjectChecks::Finding> findings;
         std::atomic<bool> finished{false};

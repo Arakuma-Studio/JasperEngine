@@ -407,12 +407,12 @@ namespace jasperengine{
 
 	// The shaders one submesh draws with
 	struct SubmeshShaderVariant {
-		uint32_t properties = 0;        // ShaderType::MESH
+		uint64_t properties = 0;        // ShaderType::MESH
 		bool depthPass = false;         // drawn into shadow maps and depth pre-passes
 		bool depth = false;             // has a depth shader: a depth pass, or a forked depth shader
-		uint32_t depthProperties = 0;   // ShaderType::DEPTH
+		uint64_t depthProperties = 0;   // ShaderType::DEPTH
 		bool gbuffer = false;           // drawn into the SSR G-buffer
-		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
+		uint64_t gbufferProperties = 0; // ShaderType::GBUFFER
 	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
@@ -1399,12 +1399,12 @@ namespace jasperengine{
 		void selectMeshLights(Entity entity, MeshComponent& mesh, const Transform& transform);
 		// the object's lights a submesh variant (its lighting mode and capacity) takes, pixel
 		// lights then vertex lights, as scene light indices
-		void orderObjectLights(const MeshComponent& mesh, uint32_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
+		void orderObjectLights(const MeshComponent& mesh, uint64_t properties, int order[MAX_LIGHTS_PER_OBJECT], int& pixelCount, int& vertexCount) const;
 		// the per-object lights block of a submesh variant for the camera pass being drawn
-		void buildObjectLights(const MeshComponent& mesh, uint32_t properties, object_lights_t& block) const;
+		void buildObjectLights(const MeshComponent& mesh, uint64_t properties, object_lights_t& block) const;
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
-		void buildLegacyLighting(const MeshComponent& mesh, uint32_t properties, fs_lighting_t& block) const;
+		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
@@ -1502,7 +1502,7 @@ namespace jasperengine{
 		void renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
 		                FramebufferRender* destination, const Rect& viewport, bool nearestSource);
 		// the post colour bit of a shader type's variants while the scene's objects load with it
-		uint32_t postColorProperty(ShaderType type) const;
+		uint64_t postColorProperty(ShaderType type) const;
 		// the size of the target a camera's colour pass renders into
 		Vector2 passFrameResolution(const CameraComponent& camera) const;
 		void applyFrameBlock(ObjectRender& render, const ShaderLibraryBindings& bindings);

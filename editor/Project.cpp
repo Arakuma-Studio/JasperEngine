@@ -3038,7 +3038,7 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
     // the runtime falls back to the built-in variant when a custom shader fails to build,
     // so always collect the customId-0 key alongside a custom one
-    auto insertKeys = [&](ShaderType type, uint32_t properties, uint16_t customShaderId) {
+    auto insertKeys = [&](ShaderType type, uint64_t properties, uint16_t customShaderId) {
         keys.insert(ShaderPool::getShaderKey(type, properties, customShaderId));
         if (customShaderId != 0) {
             keys.insert(ShaderPool::getShaderKey(type, properties, 0));
@@ -3068,25 +3068,25 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                         RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
                         RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
-                    uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
+                    uint64_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
                     // meshes after a probe was added. Derive the required IBL
                     // variant here so the exported shader set is still complete.
                     if (hasReflectionProbes && mesh.receiveLights && mesh.receiveIBL) {
-                        meshProperties &= ~(1u << 0); // no longer MATERIAL_UNLIT
-                        meshProperties |= (1u << 6);  // HAS_NORMALS
-                        meshProperties |= (1u << 19); // USE_IBL
+                        meshProperties &= ~shaderPropertyBit(0); // no longer MATERIAL_UNLIT
+                        meshProperties |= shaderPropertyBit(6);  // HAS_NORMALS
+                        meshProperties |= shaderPropertyBit(19); // USE_IBL
                         // the unlit->lit transition also pulls in the submesh's
                         // normal-map/tangent attributes and SSAO, mirroring
                         // RenderSystem::loadMesh
                         if (mesh.submeshes[s].hasNormalMap) {
-                            meshProperties |= (1u << 7); // HAS_NORMAL_MAP
+                            meshProperties |= shaderPropertyBit(7); // HAS_NORMAL_MAP
                         }
                         if (mesh.submeshes[s].hasTangent) {
-                            meshProperties |= (1u << 8); // HAS_TANGENTS
+                            meshProperties |= shaderPropertyBit(8); // HAS_TANGENTS
                         }
                         if (scene->isSSAOEnabled()) {
-                            meshProperties |= (1u << 21); // USE_SSAO
+                            meshProperties |= shaderPropertyBit(21); // USE_SSAO
                         }
                     }
                     insertKeys(ShaderType::MESH, meshProperties, customShaderId);
@@ -3103,7 +3103,7 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     const Material& material = mesh.submeshes[s].material;
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
-                    uint32_t depthProperties = ShaderPool::getDepthMeshProperties(
+                    uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,

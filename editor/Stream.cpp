@@ -31,63 +31,83 @@
 
 using namespace jasperengine;
 
-namespace {
-    // The customShaderId in a key is a session-local registry index, so a fork is
-    // named by its project-relative path instead, the way scenes name theirs.
-    // Both directions normalize, keeping a since-retired property bit out of the file.
-    YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
-        YAML::Node node(YAML::NodeType::Sequence);
-        for (ShaderKey rawKey : shaderKeys) {
-            const ShaderKey key = ShaderPool::normalizeKey(rawKey);
-            const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-            std::string customShader;
-            if (customId != 0) {
-                // Without a name there is nothing stable to write, and dropping only
-                // the id would turn the override into one for the built-in shader
-                customShader = ShaderPool::getCustomShaderName(customId);
-                if (customShader.empty()) continue;
-            }
-
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
-            YAML::Node entry(YAML::NodeType::Map);
-            entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
-            if (properties) entry["properties"] = properties;
-            if (!customShader.empty()) entry["customShader"] = customShader;
-            node.push_back(entry);
-        }
-        return node;
+// The customShaderId in a key is a session-local registry index, so a fork is
+// named by its project-relative path instead, the way scenes name theirs.
+YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+    std::string customShader;
+    if (customId != 0) {
+        // Without a name there is nothing stable to write, and dropping only
+        // the id would turn the override into one for the built-in shader
+        customShader = ShaderPool::getCustomShaderName(customId);
+        if (customShader.empty()) return YAML::Node();
     }
 
-    std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node) {
-        std::vector<ShaderKey> shaderKeys;
-        if (!node || !node.IsSequence()) {
-            return shaderKeys;
-        }
+    // a plain integer: the 32-bit values files hold read and write as before
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+    YAML::Node entry(YAML::NodeType::Map);
+    entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
+    if (properties) entry["properties"] = properties;
+    if (!customShader.empty()) entry["customShader"] = customShader;
+    return entry;
+}
 
-        for (const auto& keyNode : node) {
-            if (!keyNode.IsMap()) {
-                // Backward compatibility: scenes saved before forks were named by path
-                // stored the packed key, so only its stable half survives and the fork
-                // is re-paired on the next save. Remove this branch with support for them.
-                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(editor::YamlNumbers::as<uint64_t>(keyNode))));
-                continue;
-            }
-            ShaderType shaderType;
-            if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
-                continue;
-            }
-
-            // Keyed by name, so this returns the id the scenes resolve for it too
-            uint16_t customId = 0;
-            if (keyNode["customShader"]) {
-                customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
-            }
-            const uint32_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint32_t>(keyNode["properties"]) : 0;
-            shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getShaderKey(shaderType, properties, customId)));
+bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) {
+    if (!keyNode) {
+        return false;
+    }
+    if (!keyNode.IsMap()) {
+        // Backward compatibility: scenes saved before forks were named by path
+        // stored the packed key (32 property bits), so only its stable half survives and
+        // the fork is re-paired on the next save. Remove this branch with support for them.
+        if (!keyNode.IsScalar()) {
+            return false;
         }
+        key = ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode)));
+        return true;
+    }
+    ShaderType shaderType;
+    if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
+        return false;
+    }
+
+    // Keyed by name, so this returns the id the scenes resolve for it too
+    uint16_t customId = 0;
+    if (keyNode["customShader"]) {
+        customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
+    }
+    // 64 bits; a file written before they were widened holds a 32-bit value
+    const uint64_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint64_t>(keyNode["properties"]) : 0;
+    key = ShaderPool::getShaderKey(shaderType, properties, customId);
+    return true;
+}
+
+// Both directions normalize, keeping a since-retired property bit out of the file.
+YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (ShaderKey rawKey : shaderKeys) {
+        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
+        if (entry.IsMap()) node.push_back(entry);
+    }
+    return node;
+}
+
+std::vector<ShaderKey> editor::Stream::decodeShaderKeys(const YAML::Node& node) {
+    std::vector<ShaderKey> shaderKeys;
+    if (!node || !node.IsSequence()) {
         return shaderKeys;
     }
 
+    for (const auto& keyNode : node) {
+        ShaderKey key;
+        if (decodeShaderKey(keyNode, key)) {
+            shaderKeys.push_back(ShaderPool::normalizeKey(key));
+        }
+    }
+    return shaderKeys;
+}
+
+namespace {
     YAML::Node encodeExportBackendSet(const std::set<ShaderBackend>& backends) {
         YAML::Node node(YAML::NodeType::Sequence);
         for (ShaderBackend backend : backends) {
@@ -2304,8 +2324,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         YAML::Node exportNode;
 
         const ShaderOverrides& shaders = project->getShaderOverrides();
-        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = encodeShaderKeys(shaders.additions);
-        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = encodeShaderKeys(shaders.exclusions);
+        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = Stream::encodeShaderKeys(shaders.additions);
+        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = Stream::encodeShaderKeys(shaders.exclusions);
 
         const SourceCodeExportSettings& sourceCode = project->getSourceCodeExportSettings();
         if (sourceCode.graphicBackendsConfigured) {
@@ -2700,8 +2720,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         const YAML::Node& exportNode = node["export"];
 
         ShaderOverrides& shaders = project->getShaderOverrides();
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderExclusions"])) {
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderExclusions"])) {
             shaders.exclusions.insert(key);
             shaders.additions.erase(key);
         }
@@ -2974,7 +2994,7 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
-    YAML::Node shaderKeysNode = encodeShaderKeys(sceneProject->shaderKeys);
+    YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
     if (shaderKeysNode.size()) {
         root["shaderKeys"] = shaderKeysNode;
     }
@@ -3088,7 +3108,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     }
 
     sceneProject->shaderKeys.clear();
-    for (ShaderKey key : decodeShaderKeys(node["shaderKeys"])) {
+    for (ShaderKey key : Stream::decodeShaderKeys(node["shaderKeys"])) {
         sceneProject->shaderKeys.insert(key);
     }
 
