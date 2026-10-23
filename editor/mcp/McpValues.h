@@ -45,7 +45,9 @@ namespace jasperengine::editor::mcp {
     //   Texture         null (none) | "path.png" (project-relative; "x.svg?svgScale=2") |
     //                   {"path"|"cube":[6 paths]|"cube":"one.png", "min_filter", "mag_filter",
     //                   "wrap_u", "wrap_v", "alpha_border", "svg_scale"} when the sampler is not
-    //                   the default | {"camera": <entity>} (render texture of that camera)
+    //                   the default | {"camera": <entity>} (render texture of that camera) |
+    //                   {"fluid": <entity>} (that FluidSimulation's output); writes also take
+    //                   the link ids "camera|<entity id>" and "fluid|<entity id>"
     //   Font            [main font path, fallback paths...]; writes also take one path
     //   Material        {"name", "baseColorFactor", "metallicFactor", "roughnessFactor",
     //                   "alphaCutoff", "foliageTransmission", "alphaMode", "emissiveFactor",
@@ -168,7 +170,8 @@ namespace jasperengine::editor::mcp {
         static bool entityReferenceFromJson(Project* project, SceneProject* scene, const Json& value, EntityReference& out, std::string& error);
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
-        // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise)
+        // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
+        // {"fluid": ...} value is a plain texture bound to the fluid's output)
         static bool textureFromJson(Project* project, SceneProject* scene, const Json& value, Texture& out,
                                     Entity& camera, std::string& error);
         static Json materialToJson(Project* project, SceneProject* scene, const Material& material, const std::string& linkedFile = {});

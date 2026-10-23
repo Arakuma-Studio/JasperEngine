@@ -178,8 +178,9 @@ namespace jasperengine::editor{
         static std::string createPrefab(const std::filesystem::path& prefabPath, const BakedPrefab& baked, const fs::path& projectPath, const fs::path& generatedPath,
             const std::function<std::string(const std::filesystem::path&)>& prefabGuid = nullptr);
         static std::string createPrefabHeader(const std::filesystem::path& prefabPath);
-        // Binds each camera-linked texture of the entities to its camera's framebuffer; with
-        // namedCamerasOnly, only links to cameras that have a variable in entityVarNames
+        // Binds each camera-linked texture of the entities to its camera's framebuffer, and each
+        // fluid-linked one ("fluid|<e>") to its FluidSimulation's output; with namedCamerasOnly,
+        // only links to cameras (fluids) that have a variable in entityVarNames
         static std::string createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly);
 
 
@@ -206,6 +207,7 @@ namespace jasperengine::editor{
         static std::string createFogComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createMirrorComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
+        static std::string createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createReflectionProbeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createCameraComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createAudioSourceComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
