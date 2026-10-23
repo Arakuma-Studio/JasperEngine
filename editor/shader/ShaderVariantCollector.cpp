@@ -639,7 +639,7 @@ namespace {
         return std::isalnum((unsigned char)c) || c == '-' || c == '_';
     }
 
-    std::string lowerAscii(std::string text){
+    std::string collectorLowerAscii(std::string text){
         for (char& c : text)
             c = (char)std::tolower((unsigned char)c);
         return text;
@@ -683,7 +683,7 @@ namespace {
             b++;
         while (e > b && std::isspace((unsigned char)text[e - 1]))
             e--;
-        return lowerAscii(text.substr(b, e - b));
+        return collectorLowerAscii(text.substr(b, e - b));
     }
 
     // the effect form a property draws with: 'p' paint, 'f' filter, 0 either (custom properties, unknown)
@@ -738,7 +738,7 @@ void editor::ShaderVariantCollector::scanUiEffects(const std::string& textIn, bo
                 continue;
             while (p < text.size() && (std::isalnum((unsigned char)text[p]) || text[p] == '-'))
                 p++;
-            std::string name = lowerAscii(text.substr(nameStart, p - nameStart));
+            std::string name = collectorLowerAscii(text.substr(nameStart, p - nameStart));
             if (typed && (p >= text.size() || text[p] != '('))
                 continue;
             add(name, found);
@@ -795,7 +795,7 @@ void editor::ShaderVariantCollector::collectUiEffects(const std::vector<std::str
     auto scanFile = [&](const std::string& assetPath){
         if (!scanned.insert(assetPath).second)
             return;
-        const std::string ext = lowerAscii(fs::path(assetPath).extension().string());
+        const std::string ext = collectorLowerAscii(fs::path(assetPath).extension().string());
         if (ext != ".html" && ext != ".htm" && ext != ".css" && ext != ".rml" && ext != ".rcss")
             return;
         std::string content;

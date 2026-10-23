@@ -157,7 +157,7 @@ namespace {
         blend.enabled = true;
     }
 
-    void destroyPipeline(sg_pipeline pipeline){
+    void destroyCachedPipeline(sg_pipeline pipeline){
         if (pipeline.id == SG_INVALID_ID || !sg_isvalid())
             return;
         if (Engine::isAsyncThread()){
@@ -276,7 +276,7 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
         if (it->second.shader.id == shader.id){
             if (it->second.pipeline.id == lastApplied)
                 lastApplied = SG_INVALID_ID;
-            destroyPipeline(it->second.pipeline);
+            destroyCachedPipeline(it->second.pipeline);
             it = map.erase(it);
         }else{
             ++it;
@@ -289,7 +289,7 @@ void SokolPipelineCache::clear(){
     pipelineGeneration++;
     auto& map = entries();
     for (auto& pair : map){
-        destroyPipeline(pair.second.pipeline);
+        destroyCachedPipeline(pair.second.pipeline);
     }
     map.clear();
     lastApplied = SG_INVALID_ID;

@@ -17,6 +17,9 @@ import json
 
 from harness import Editor, RawEditor
 
+CI = True
+EDITOR = {"create": True, "name": "Lua Gc Lifetime CI"}
+
 TIMEOUT = 900
 
 # Made in init: kept by the script (collected once the stop releases the instance), dropped
@@ -191,7 +194,7 @@ async def raw_call(raw: RawEditor, ids: list, tool: str, **args):
 async def test_editor_shutdown_after_play_exits_cleanly():
     """Handles left in Lua (globals, uncollected garbage) after play are collected by lua_close
     at shutdown, after the Play copies are gone: the editor still exits with 0."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True, name="Lua GC Lifetime CI") as raw:
         await raw.initialize()
         ids = [100]
         made = await raw_call(raw, ids, "create_scene", name="GcChild", type="UI", path="scenes/GcChild")

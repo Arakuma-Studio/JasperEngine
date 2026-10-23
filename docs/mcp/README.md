@@ -244,7 +244,7 @@ from the editor's `tools/list`, grouped by module, with each tool's description 
 parameters. Regenerate it after you change tools:
 
 ```sh
-uv run --no-project --with mcp --with pyyaml python tools/mcp/gen_tool_docs.py
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_tool_docs.py
 ```
 
 Main ideas:
@@ -268,7 +268,7 @@ tools of phase 5 to ~99.8K: new tools must pay for themselves by trimming). Shar
 shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh
-uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py [--top 20]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20]
 ```
 
 ## Troubleshooting
@@ -297,7 +297,24 @@ in a scratch copy of a project under Xvfb:
 tools/mcp/run-tests.sh                 # every tools/mcp/tests/test_*.py
 tools/mcp/run-tests.sh -k batch -j 4   # filter by name, run 4 files at a time
 tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py  # protocol checks against a fake server
+tools/mcp/run-tests.sh --suite ci -j 2 # the CI suite (below)
 ```
 
 The harness API and conventions are described in the docstrings of `tools/mcp/harness.py`
-and `tools/mcp/run_tests.py`. Every tool needs a test.
+and `tools/mcp/run_tests.py`. Every tool needs a test. The harness's Python packages are pinned
+in `tools/mcp/requirements.txt`.
+
+### The CI suite (`CI = True`)
+
+CI runs only the test files that declare `CI = True` at module level
+(`tools/mcp/run-tests.sh --suite ci`, or `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`). CI has no
+copy of the default fixture project (`build/fixture-unity`, which is not in git), so a CI file
+must not need it: its editor tests run on a project they make, `EDITOR = {"create": True, ...}`,
+or on a committed one, `EDITOR = {"project": ".../tools/fixtures/<name>"}`. Tests without an
+editor parameter need neither. The runner checks this and exits with status 2 when a `CI = True`
+file relies on the default fixture.
+
+Write new test files CI-capable by default: create the project (or use `tools/fixtures/*`), then
+declare `CI = True`. The full suite, default-fixture files included, still runs on the build
+servers (`MCP_SUITE=all JASPER_FIXTURE=<fixture> tools/build.sh mcp-tests`). `docs/testing.md`
+covers every other test suite.

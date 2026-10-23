@@ -255,7 +255,7 @@ namespace {
         return label;
     }
 
-    void wrappedTooltip(const std::string& text) {
+    void postProcessingWrappedTooltip(const std::string& text) {
         ImGui::BeginTooltip();
         ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
         ImGui::TextUnformatted(text.c_str());
@@ -298,7 +298,7 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label);
     if (ImGui::IsItemHovered())
-        wrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help));
+        postProcessingWrappedTooltip(std::string(f.help) + (help.empty() ? std::string() : "\n\n" + help));
     if (!fieldIsDefault(settings, f)) {
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
         ImGui::SameLine();
@@ -469,7 +469,7 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
 
         auto sideTooltip = [](const char* who, const PostProcessingCostSide& side) {
             if (ImGui::IsItemHovered())
-                wrappedTooltip(std::string(who) + ":" + passListText(side));
+                postProcessingWrappedTooltip(std::string(who) + ":" + passListText(side));
         };
         auto row = [&](const char* label, const std::string& engineText, const std::string& urpText) {
             ImGui::TableNextRow();
@@ -544,7 +544,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                     setAll(preset.settings);
                 if (ImGui::IsItemHovered()) {
                     const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
-                    wrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
+                    postProcessingWrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
                                    formatFloat(cost.engine.fullscreen) + " screens shaded (Unity URP: " +
                                    std::to_string(cost.urp.passCount) + " passes, " + formatFloat(cost.urp.fullscreen) + ").");
                 }
@@ -589,7 +589,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
             // a group of one effect (Bloom, Blur): its checkbox is the effect's, with its help
             const bool single = group.effects.size() == 1;
             if (ImGui::IsItemHovered()) {
-                if (single) wrappedTooltip(std::string(group.effects[0].help) + "\n\nCost: " + tierText(group.effects[0]));
+                if (single) postProcessingWrappedTooltip(std::string(group.effects[0].help) + "\n\nCost: " + tierText(group.effects[0]));
                 else ImGui::SetTooltip(on > 0 ? "Turn every %s effect off" : "Turn every %s effect on", group.name);
             }
             ImGui::SameLine();
@@ -630,12 +630,12 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                             project, sceneId, std::string("post_processing.") + enable.snakeName, value));
                     }
                     if (ImGui::IsItemHovered())
-                        wrappedTooltip(help);
+                        postProcessingWrappedTooltip(help);
                     ImGui::TableSetColumnIndex(1);
                     ImGui::AlignTextToFramePadding();
                     ImGui::TextDisabled("%s", tierTag(effect));
                     if (ImGui::IsItemHovered())
-                        wrappedTooltip(help);
+                        postProcessingWrappedTooltip(help);
                     if (isOn) {
                         for (const ParamDef& param : effect.params) {
                             drawn.insert(param.field);
@@ -722,7 +722,7 @@ void editor::InspectorWindow::drawPostProcessPassFields(SceneProject* sceneProje
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(def.label);
         if (ImGui::IsItemHovered())
-            wrappedTooltip(def.help);
+            postProcessingWrappedTooltip(def.help);
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1);
         switch (def.kind) {
@@ -786,7 +786,7 @@ void editor::InspectorWindow::drawPostProcessPassFields(SceneProject* sceneProje
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(slot.second.c_str());
         if (ImGui::IsItemHovered())
-            wrappedTooltip("Texture " + slot.first + " of the pass's shader (unset: its default)");
+            postProcessingWrappedTooltip("Texture " + slot.first + " of the pass's shader (unset: its default)");
         ImGui::TableSetColumnIndex(1);
         const std::string path = pass.getTexture(slot.first);
         const std::string shown = path.empty() ? std::string("None") : std::filesystem::path(path).filename().string();

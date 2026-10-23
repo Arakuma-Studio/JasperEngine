@@ -33,7 +33,7 @@ using namespace jasperengine;
 namespace {
 
     // Prefab (prefab) text color, as in the Hierarchy and the rest of the Inspector
-    const ImVec4 prefabTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
+    const ImVec4 prefabBarTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
     // Unity's override bar
     const ImU32 overrideBarColor = IM_COL32(1, 153, 235, 255);
 
@@ -419,13 +419,13 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
     // Overrides dropdown
     const std::filesystem::path basePath = mixedAsset || assetPath.empty() ? std::filesystem::path() : project->getPrefabFileBase(assetPath);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(prefabTextColor, "%s", basePath.empty() ? ICON_FA_CUBE " Prefab" : ICON_FA_CUBE "  Prefab Variant");
+    ImGui::TextColored(prefabBarTextColor, "%s", basePath.empty() ? ICON_FA_CUBE " Prefab" : ICON_FA_CUBE "  Prefab Variant");
     if (!basePath.empty()) {
         const ImVec2 iconMin = ImGui::GetItemRectMin();
         const float iconWidth = ImGui::CalcTextSize(ICON_FA_CUBE).x;
         const float iconTop = iconMin.y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * 0.5f;
         UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(iconMin.x, iconTop),
-            ImVec2(iconMin.x + iconWidth, iconTop + ImGui::GetFontSize()), ImGui::GetColorU32(prefabTextColor));
+            ImVec2(iconMin.x + iconWidth, iconTop + ImGui::GetFontSize()), ImGui::GetColorU32(prefabBarTextColor));
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         const std::string kind = basePath.empty() ? "Prefab" : "Prefab Variant";
@@ -495,7 +495,7 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("Base");
         ImGui::SameLine(0.0f, gap);
-        ImGui::PushStyleColor(ImGuiCol_Text, prefabTextColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, prefabBarTextColor);
         const std::string baseLabel = std::string(ICON_FA_CUBE "  ") + basePath.stem().string() + "##prefab_base";
         if (ImGui::Selectable(baseLabel.c_str(), false, ImGuiSelectableFlags_None,
                 ImVec2(ImGui::CalcTextSize(baseLabel.c_str(), nullptr, true).x, 0.0f))) {
