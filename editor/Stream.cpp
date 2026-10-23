@@ -2457,6 +2457,19 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (loadingNode.size()) root["loading"] = loadingNode;
     }
 
+    {
+        // only what differs from Auto: an old project.yaml stays as it was
+        const ThreadingProjectSettings& threading = project->getThreadingSettings();
+        const ThreadingProjectSettings defaults;
+        YAML::Node threadingNode;
+        if (threading.workers != defaults.workers) threadingNode["workers"] = threading.workers;
+        if (threading.reservedFrameWorkers != defaults.reservedFrameWorkers) threadingNode["reservedFrameWorkers"] = threading.reservedFrameWorkers;
+        if (threading.ioThreads != defaults.ioThreads) threadingNode["ioThreads"] = threading.ioThreads;
+        if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
+        if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
+        if (threadingNode.size()) root["threading"] = threadingNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -2841,6 +2854,26 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         loading.delay = std::max(0.0f, decodeFinite(loadingNode["delay"], loading.delay));
         loading.timeout = std::max(0.0f, decodeFinite(loadingNode["timeout"], loading.timeout));
         if (loadingNode["asyncLoading"]) loading.asyncLoading = YamlNumbers::as<bool>(loadingNode["asyncLoading"]);
+    }
+
+    {
+        // absent keys are Auto; values out of range clamp to what the settings offer
+        ThreadingProjectSettings threading;
+        if (node["threading"]) {
+            const YAML::Node threadingNode = node["threading"];
+            auto readCount = [&threadingNode](const char* key, int fallback, int maximum) {
+                if (!threadingNode[key]) return fallback;
+                const int value = YamlNumbers::as<int>(threadingNode[key]);
+                return value < 0 ? -1 : std::min(value, maximum);
+            };
+            threading.workers = readCount("workers", threading.workers, 15);
+            if (threading.workers == 0) threading.workers = 1;
+            threading.reservedFrameWorkers = readCount("reservedFrameWorkers", threading.reservedFrameWorkers, 4);
+            threading.ioThreads = readCount("ioThreads", threading.ioThreads, 4);
+            threading.webPumpBudgetMs = std::max(0.5f, std::min(50.0f, decodeFinite(threadingNode["webPumpBudgetMs"], threading.webPumpBudgetMs)));
+            if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
+        }
+        project->setThreadingSettings(threading);
     }
 
     if (node["standalonePrefabs"]) {

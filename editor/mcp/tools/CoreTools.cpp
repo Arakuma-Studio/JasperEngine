@@ -1,7 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog
+// Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog,
+// get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
 
 #include "mcp/McpAutoSync.h"
@@ -18,9 +19,15 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/type/ThreadingSettingsCmd.h"
+#include "io/AssetIOService.h"
+#include "jobs/JobSystem.h"
+#include "memory/MemoryStats.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 
+#include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <map>
 #include <memory>
@@ -260,6 +267,104 @@ void undoRedo(const CallPtr& call, bool undo) {
     call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history.", data);
 }
 
+// ------------------------------------------------------------------ job system and memory
+
+Json jobSystemStatsJson(int windowFrames) {
+    const jobs::Stats stats = jobs::system().stats(windowFrames);
+    Json lanes = Json::object();
+    for (size_t lane = 0; lane < jobs::kLaneCount; lane++) {
+        lanes[jobs::laneName((jobs::Lane)lane)] = {{"queued", stats.lanes[lane].queued}, {"running", stats.lanes[lane].running}};
+    }
+    Json channels = Json::array();
+    for (const jobs::ChannelStats& channel : stats.channels) {
+        channels.push_back({{"name", channel.name}, {"queued", channel.queued}, {"running", channel.running}, {"cap", channel.cap}});
+    }
+    const AssetIOService::IOStats io = AssetIOService::instance().stats();
+    Json queuedByPriority = Json::object();
+    for (size_t level = 0; level < kIOPriorityCount; level++) {
+        queuedByPriority[ioPriorityName((IOPriority)level)] = io.queuedByPriority[level];
+    }
+    Json reads = Json::array();
+    for (const AssetIOService::ReadInfo& read : io.inFlight) {
+        reads.push_back({{"id", read.id}, {"path", read.path}, {"priority", ioPriorityName(read.priority)}, {"claimed", read.claimed}});
+    }
+    Json perWorker = Json::array();
+    for (const jobs::WorkerStats& worker : stats.perWorker) {
+        perWorker.push_back({{"busy_pct", std::round(worker.busyPct * 10.0) / 10.0}, {"jobs", worker.jobs}});
+    }
+    return {
+        {"workers", stats.workers},
+        {"single_thread", stats.singleThread},
+        {"lanes", lanes},
+        {"gate", {{"max", stats.gate.max}, {"taken", stats.gate.taken}, {"heavy_max", stats.gate.heavyMax},
+                  {"heavy_taken", stats.gate.heavyTaken}, {"reserve", stats.gate.reserve},
+                  {"peak", stats.gate.peakTaken}, {"heavy_peak", stats.gate.peakHeavyTaken}}},
+        {"channels", channels},
+        {"blocking_threads", stats.blockingThreads},
+        {"io", {{"queued_by_priority", queuedByPriority}, {"in_flight", reads}, {"readers", io.readers}}},
+        {"per_worker", perWorker},
+        {"window_frames", stats.windowFrames},
+        {"asset_jobs", stats.assetJobs},
+        {"totals", {{"executed", stats.totals.executed}, {"stolen", stats.totals.stolen},
+                    {"cancelled", stats.totals.cancelled}, {"failed", stats.totals.failed},
+                    {"heap_envelopes", stats.totals.heapEnvelopes}}},
+    };
+}
+
+void getJobSystemStatsTool(const CallPtr& call) {
+    const int window = std::max(1, std::min(120, call->args().value("window_frames", 60)));
+    Json data = jobSystemStatsJson(window);
+    call->ok("Job system: " + std::to_string(data["workers"].get<int>()) + " worker(s), Background gate " +
+             std::to_string(data["gate"]["taken"].get<int>()) + "/" + std::to_string(data["gate"]["max"].get<int>()) +
+             ", " + std::to_string(data["asset_jobs"].get<uint32_t>()) + " asset job(s) queued or running.", data);
+}
+
+void setJobSystemConfigTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    ThreadingProjectSettings settings = project->getThreadingSettings();
+    if (args.contains("reserved_frame_workers")) settings.reservedFrameWorkers = args["reserved_frame_workers"].get<int>();
+    if (args.contains("web_pump_budget_ms")) settings.webPumpBudgetMs = args["web_pump_budget_ms"].get<float>();
+    if (settings == project->getThreadingSettings()) {
+        call->ok("Nothing changed.", jobSystemStatsJson(1));
+        return;
+    }
+    // the settings path: project.yaml, live on the editor's job system, one project undo step
+    project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(project, settings));
+    Json data = jobSystemStatsJson(1);
+    call->ok("Threading settings applied (undo with scope project). Background gate max is now " +
+             std::to_string(data["gate"]["max"].get<int>()) + ".", data);
+}
+
+void getMemoryStatsTool(const CallPtr& call) {
+    const Json& args = call->args();
+    const std::string prefix = args.value("prefix", "");
+    const std::string residency = args.value("residency", "");
+    const std::string sort = args.value("sort", "current");
+    std::vector<memory::StatsEntry> entries = memory::snapshot();
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const memory::StatsEntry& entry) {
+        return entry.name.compare(0, prefix.size(), prefix) != 0
+            || (!residency.empty() && residency != memory::residencyName(entry.residency));
+    }), entries.end());
+    std::sort(entries.begin(), entries.end(), [&sort](const memory::StatsEntry& a, const memory::StatsEntry& b) {
+        if (sort == "name") return a.name < b.name;
+        if (sort == "peak") return a.peak > b.peak;
+        if (sort == "capacity") return a.capacity > b.capacity;
+        return a.current > b.current;
+    });
+    Json records = Json::array();
+    std::map<std::string, uint64_t> totals;
+    for (const memory::StatsEntry& entry : entries) {
+        records.push_back({{"name", entry.name}, {"kind", memory::kindName(entry.kind)},
+                           {"residency", memory::residencyName(entry.residency)}, {"current", entry.current},
+                           {"peak", entry.peak}, {"capacity", entry.capacity}, {"count", entry.count}});
+        totals[memory::residencyName(entry.residency)] += entry.current;
+    }
+    Json totalsJson = Json::object();
+    for (const char* name : {"Cpu", "Gpu", "Mapped"}) totalsJson[name] = totals[name];
+    call->ok(std::to_string(records.size()) + " memory record(s).", Json{{"records", records}, {"totals", totalsJson}});
+}
+
 // ------------------------------------------------------------------ editor_status
 
 void editorStatusTool(const CallPtr& call) {
@@ -475,6 +580,47 @@ void registerCoreTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = editorStatusTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_job_system_stats";
+        tool.title = "Get Job System Stats";
+        tool.description = "Job system: workers, lanes, Background gate, channels, asset I/O, per-worker busy % over window_frames, totals.";
+        tool.inputSchema = object({{"window_frames", withDefault(integer("", 1, 120), 60)}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getJobSystemStatsTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "set_job_system_config";
+        tool.title = "Set Job System Config";
+        tool.description = "Player > Threading, applied live and saved: reserved_frame_workers (-1 Auto), web_pump_budget_ms. Undo: scope project.";
+        tool.inputSchema = object({
+            {"reserved_frame_workers", integer("", -1, 4)},
+            {"web_pump_budget_ms", number("", 0.5, 50.0)}
+        });
+        tool.handler = setJobSystemConfigTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_memory_stats";
+        tool.title = "Get Memory Stats";
+        tool.description = "Memory records {name, kind, residency, current, peak, capacity, count} in bytes, totals by residency.";
+        tool.inputSchema = object({
+            {"prefix", string("e.g. Texture.")},
+            {"residency", stringEnum("", {"Cpu", "Gpu", "Mapped"})},
+            {"sort", withDefault(stringEnum("", {"current", "peak", "capacity", "name"}), "current")}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getMemoryStatsTool;
         registry.addTool(std::move(tool));
     }
 

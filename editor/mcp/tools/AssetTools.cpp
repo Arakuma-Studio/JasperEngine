@@ -13,6 +13,7 @@
 #include "mcp/McpValues.h"
 
 #include "App.h"
+#include "jobs/JobSystem.h"
 #include "Catalog.h"
 #include "Out.h"
 #include "Project.h"
@@ -78,7 +79,7 @@ namespace w4 {
 
 namespace {
 
-// Compiles the forks on a worker thread (ProjectChecks::runShaderCheck); `done` gets, on the main
+// Compiles the forks as a Background Heavy job (ProjectChecks::runShaderCheck); `done` gets, on the main
 // thread, the results [{shader, type, ok, errors, log}] and the findings of them all
 void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::ShaderUse> forks, std::function<void(Json results, Json findings)> done) {
     Project* project = call->ctx().project();
@@ -96,7 +97,11 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
     for (ProjectChecks::ShaderUse& fork : job->forks) {
         job->keys.push_back(ProjectChecks::prepareShaderCheck(project, fork));
     }
-    std::thread([job, project]() {
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "mcp-shader-check";
+    jobs::submit([job, project]() {
         for (size_t i = 0; i < job->forks.size(); i++) {
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(project, job->forks[i], job->keys[i]);
             job->results.push_back(ProjectChecks::toJson(check));
@@ -109,7 +114,7 @@ void checkShadersWithFindings(const CallPtr& call, std::vector<ProjectChecks::Sh
             }
         }
         job->finished = true;
-    }).detach();
+    }, options);
     call->waitUntil([job]() { return job->finished.load(); }, 120000, [job, done](bool timedOut) {
         if (timedOut) {
             done(Json::array({{{"ok", false}, {"log", "Shader check timed out."}}}), Json::array());
@@ -1570,7 +1575,10 @@ void importFilesTool(const CallPtr& call) {
         return;
     }
 
-    std::thread([state]() {
+    // FFmpeg and the network: the process channel
+    jobs::SubmitOptions options;
+    options.name = "mcp-import";
+    jobs::system().processChannel().submit([state]() {
         for (const fs::path& video : state->videos)
             state->videoResults.push_back(importers::VideoImporter::importFile(video, state->videoTarget, state->overwrite));
         const std::string dest = state->destDir;
@@ -1585,7 +1593,7 @@ void importFilesTool(const CallPtr& call) {
         }
         if (!state->document.empty()) state->documentResult = importers::importDocumentReferences(state->projectRoot, state->document, dest);
         state->done.store(true, std::memory_order_release);
-    }).detach();
+    }, options);
     call->waitUntil([state]() { return state->done.load(std::memory_order_acquire); }, 600000,
                     [call, state, data, text](bool timedOut) { finishRemoteImport(call, state, data, text, timedOut); });
 }

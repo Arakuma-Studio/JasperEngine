@@ -73,11 +73,8 @@ editor::Generator::Generator() :
 }
 
 editor::Generator::~Generator() {
-    // Request cancellation and wait for it to finish before destroying
-    try {
-        auto f = cancelBuild();
-        if (f.valid()) f.wait();
-    } catch (...) {}
+    // the build job uses this generator: cancel it and wait for it to end
+    cancelBuild();
     waitForBuildToComplete();
 }
 
@@ -2050,7 +2047,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2222,6 +2219,19 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "        return false;\n";
     mainContent += "    });\n";
     mainContent += "#endif\n";
+    // Threading first: the job system and the asset readers start with these counts
+    const ThreadingProjectSettings threadingDefaults;
+    if (threading.workers != threadingDefaults.workers || threading.reservedFrameWorkers != threadingDefaults.reservedFrameWorkers
+        || threading.ioThreads != threadingDefaults.ioThreads || threading.webPumpBudgetMs != threadingDefaults.webPumpBudgetMs) {
+        mainContent += "    {\n";
+        mainContent += "        ThreadingSettings threading;\n";
+        mainContent += "        threading.workers = " + std::to_string(threading.workers) + ";\n";
+        mainContent += "        threading.reservedFrameWorkers = " + std::to_string(threading.reservedFrameWorkers) + ";\n";
+        mainContent += "        threading.ioThreads = " + std::to_string(threading.ioThreads) + ";\n";
+        mainContent += "        threading.webPumpBudgetMs = " + Factory::formatFloat(threading.webPumpBudgetMs) + ";\n";
+        mainContent += "        Engine::setThreadingSettings(threading);\n";
+        mainContent += "    }\n";
+    }
     mainContent += "    Engine::setCanvasSize(" + std::to_string(canvasWidth) + ", " + std::to_string(canvasHeight) + ");\n";
 
     // Scaling mode
@@ -2304,10 +2314,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     const LoadingSettings defaults;
     std::string loadingContent;
     if (loadingSettings.asyncLoading) {
-        // web builds without pthreads load synchronously
-        loadingContent += "#ifndef NO_THREAD_SUPPORT\n";
+        // web builds without pthreads load over several frames too (the job system's pump)
         loadingContent += "    Engine::setAsyncLoading(true);\n";
-        loadingContent += "#endif\n";
     }
     for (const auto& sceneData : scenes) {
         if (sceneData.id == loadingSettings.sceneId) {
@@ -2729,79 +2737,93 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     lastBuildSucceeded.store(false, std::memory_order_relaxed);
     commandRunner.resetCancel();
 
-    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
-        try {
-            auto startTime = std::chrono::steady_clock::now();
+    if (jobs::isInChannelJob()) {
+        // already on a blocking thread, which would otherwise wait on its own channel
+        inlineBuilds.fetch_add(1, std::memory_order_acq_rel);
+        runBuild(projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs);
+        inlineBuilds.fetch_sub(1, std::memory_order_acq_rel);
+        return;
+    }
 
-            // The compiled plugin is loaded into the running editor and shares its
-            // engine library, CRT and STL across the shared-library boundary, so it
-            // must use the same build configuration. On Windows especially, a Debug
-            // plugin (/MDd, _ITERATOR_DEBUG_LEVEL=2) loaded by a Release editor (/MD)
-            // has incompatible std::vector/std::string layouts and crashes the moment
-            // the editor calls into it. Match the editor's own configuration; _DEBUG
-            // is defined iff this editor was built against the debug CRT. Elsewhere
-            // NDEBUG decides, since Jolt derives JPH_DEBUG (and its layouts) from it.
-            std::string configType = "Debug";
+    jobs::SubmitOptions options;
+    options.name = "cmake-build";
+    buildTask = jobs::system().processChannel().submit([this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
+        runBuild(projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs);
+    }, options);
+}
+
+void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
+    try {
+        auto startTime = std::chrono::steady_clock::now();
+
+        // The compiled plugin is loaded into the running editor and shares its
+        // engine library, CRT and STL across the shared-library boundary, so it
+        // must use the same build configuration. On Windows especially, a Debug
+        // plugin (/MDd, _ITERATOR_DEBUG_LEVEL=2) loaded by a Release editor (/MD)
+        // has incompatible std::vector/std::string layouts and crashes the moment
+        // the editor calls into it. Match the editor's own configuration; _DEBUG
+        // is defined iff this editor was built against the debug CRT. Elsewhere
+        // NDEBUG decides, since Jolt derives JPH_DEBUG (and its layouts) from it.
+        std::string configType = "Debug";
 #if (defined(_WIN32) && !defined(_DEBUG)) || (!defined(_WIN32) && defined(NDEBUG))
-            configType = "Release";
+        configType = "Release";
 #endif
 
-            // Resolve a "Default" selection to a concrete ABI-compatible kit once,
-            // so configure and the build step (which both need the generator, e.g.
-            // for the vcvars prefix) agree on the same toolchain.
-            std::string cc = cCompiler, cxx = cxxCompiler, gen = generator;
-            if (!resolveDefaultKit(cc, cxx, gen)) {
-                return;
-            }
-
-            // Resolve automatic mode and the per-machine safety cap once. The
-            // exact same value must drive both MSVC /MP and cmake --parallel.
-            const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
-                ? getAutomaticParallelBuildJobs()
-                : parallelJobs;
-            const unsigned int effectiveParallelJobs =
-                std::min(requestedOrAutomaticJobs, getMaxParallelBuildJobs());
-
-            if (!configureCMake(projectPath, buildPath, configType, cc, cxx, gen, effectiveParallelJobs)) {
-                if (commandRunner.isCancelRequested()) {
-                    Out::warning("Build configuration cancelled.");
-                } else {
-                    Out::error("CMake configuration failed");
-                }
-                lastBuildSucceeded.store(false, std::memory_order_relaxed);
-                return;
-            }
-
-            if (!buildProject(buildPath, configType, gen, effectiveParallelJobs)) {
-                if (commandRunner.isCancelRequested()) {
-                    Out::warning("Build cancelled.");
-                } else {
-                    Out::error("Build failed");
-                }
-                lastBuildSucceeded.store(false, std::memory_order_relaxed);
-                return;
-            }
-
-            auto endTime = std::chrono::steady_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-            double seconds = duration.count() / 1000.0;
-            Out::build("Build completed successfully in %.2f seconds.", seconds);
-            lastBuildSucceeded.store(true, std::memory_order_relaxed);
-        } catch (const std::exception& ex) {
-            Out::error("Build exception: %s", ex.what());
-            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+        // Resolve a "Default" selection to a concrete ABI-compatible kit once,
+        // so configure and the build step (which both need the generator, e.g.
+        // for the vcvars prefix) agree on the same toolchain.
+        std::string cc = cCompiler, cxx = cxxCompiler, gen = generator;
+        if (!resolveDefaultKit(cc, cxx, gen)) {
+            return;
         }
-    });
+
+        // Resolve automatic mode and the per-machine safety cap once. The
+        // exact same value must drive both MSVC /MP and cmake --parallel.
+        const unsigned int requestedOrAutomaticJobs = parallelJobs == 0
+            ? getAutomaticParallelBuildJobs()
+            : parallelJobs;
+        const unsigned int effectiveParallelJobs =
+            std::min(requestedOrAutomaticJobs, getMaxParallelBuildJobs());
+
+        if (!configureCMake(projectPath, buildPath, configType, cc, cxx, gen, effectiveParallelJobs)) {
+            if (commandRunner.isCancelRequested()) {
+                Out::warning("Build configuration cancelled.");
+            } else {
+                Out::error("CMake configuration failed");
+            }
+            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+            return;
+        }
+
+        if (!buildProject(buildPath, configType, gen, effectiveParallelJobs)) {
+            if (commandRunner.isCancelRequested()) {
+                Out::warning("Build cancelled.");
+            } else {
+                Out::error("Build failed");
+            }
+            lastBuildSucceeded.store(false, std::memory_order_relaxed);
+            return;
+        }
+
+        auto endTime = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        double seconds = duration.count() / 1000.0;
+        Out::build("Build completed successfully in %.2f seconds.", seconds);
+        lastBuildSucceeded.store(true, std::memory_order_relaxed);
+    } catch (const std::exception& ex) {
+        Out::error("Build exception: %s", ex.what());
+        lastBuildSucceeded.store(false, std::memory_order_relaxed);
+    }
 }
 
 bool editor::Generator::isBuildInProgress() const {
-    return buildFuture.valid() &&
-           buildFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready;
+    return (buildTask.isValid() && !buildTask.isReady()) || inlineBuilds.load(std::memory_order_acquire) > 0;
 }
 
 void editor::Generator::waitForBuildToComplete() {
-    if (buildFuture.valid()) {
-        buildFuture.wait();
+    buildTask.wait();
+    while (inlineBuilds.load(std::memory_order_acquire) > 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 }
 
@@ -2809,21 +2831,15 @@ bool editor::Generator::didLastBuildSucceed() const {
     return lastBuildSucceeded.load(std::memory_order_relaxed);
 }
 
-std::future<void> editor::Generator::cancelBuild() {
-    // Launch cancellation on a separate thread so the UI thread is not blocked.
-    return std::async(std::launch::async, [this]() {
-        // Check if build is in progress inside the async task
-        if (!isBuildInProgress()) {
-            commandRunner.resetCancel();
-            return;
-        }
-
-        Out::warning("Cancelling build process...");
-        // Attempt to terminate the running process, then wait for the build to complete.
-        commandRunner.cancel();
-        waitForBuildToComplete();
+void editor::Generator::cancelBuild() {
+    if (!isBuildInProgress()) {
         commandRunner.resetCancel();
-        lastBuildSucceeded.store(false, std::memory_order_relaxed);
-        Out::warning("Build process cancelled.");
-    });
+        return;
+    }
+
+    Out::warning("Cancelling build process...");
+    // a build not started never runs; a running one has its process terminated
+    buildTask.cancel();
+    commandRunner.cancel();
+    lastBuildSucceeded.store(false, std::memory_order_relaxed);
 }

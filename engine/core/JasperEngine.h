@@ -212,6 +212,14 @@
 #include "util/UniqueToken.h"
 
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
+#include "thread/ThreadUtil.h"
+
+#include "jobs/JobSystem.h"
+#include "io/AssetIOService.h"
+#include "memory/Arena.h"
+#include "memory/MemoryStats.h"
+#include "memory/ObjectPool.h"
+#include "memory/RangeAllocator.h"
+#include "memory/ScratchScope.h"
 
 #endif /* jasperengine_h */

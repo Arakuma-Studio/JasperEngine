@@ -4,8 +4,8 @@
 #pragma once
 
 #include "RemoteImporter.h"
+#include "jobs/JobSystem.h"
 
-#include <condition_variable>
 #include <deque>
 #include <functional>
 #include <map>
@@ -13,7 +13,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 namespace jasperengine::editor::htmlui {
@@ -33,15 +32,15 @@ namespace jasperengine::editor::htmlui {
         std::string error;                   // Failed
     };
 
-    // The auto-import queue (phase-2 §3.13.4): one background worker imports one URL at a
-    // time; a URL is queued once (de-duplicated by its normalized form while queued, running or
+    // The auto-import queue (phase-2 §3.13.4): a Background strand of the job system imports
+    // one URL at a time; a URL is queued once (de-duplicated by its normalized form while queued, running or
     // already imported in this session); a URL that failed is not retried automatically in the
     // same session (a manual request, the Inspector's Import, retries it). When the queue runs
     // empty the finished jobs form a batch the main thread takes to refresh the assets and
     // reload the documents. Free of ImGui and editor state (tested on its own).
     class ImportQueue {
     public:
-        // runs on the worker thread; the default runs a RemoteImporter for the job's target
+        // runs on a job-system worker; the default runs a RemoteImporter for the job's target
         using Runner = std::function<ImportedResource(const ImportJob& job)>;
 
         struct Batch {
@@ -67,25 +66,25 @@ namespace jasperengine::editor::htmlui {
         void waitIdle();
         // forgets the session's imported/failed URLs (a project change)
         void clearSession();
-        // drops the queued jobs, waits for the running one, stops the worker; later enqueues fail
+        // drops the queued jobs, waits for the running one; later enqueues fail
         void stop();
 
         static ImportedResource runImport(const ImportJob& job);
 
     private:
-        void work();
+        // imports the next queued job (one strand step per enqueued job)
+        void importNext();
 
         Runner runner;
         mutable std::mutex mutex;
-        std::condition_variable wake;
-        std::condition_variable idle;
         std::deque<ImportJob> queue;
         std::map<std::string, ImportStatus> states;   // by normalized URL
         std::string running;
         Batch finished;
         bool batchReady = false;
         bool stopping = false;
-        std::thread worker;
+        // last: its destructor waits for the step that is running
+        jobs::SerialQueue strand{"html-ui-import", jobs::Lane::Background};
     };
 
 }

@@ -8,6 +8,7 @@
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
+#include "jobs/JobTypes.h"
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
 
@@ -63,6 +64,7 @@ namespace luabridge
     template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
 
     template<> struct Stack<ResourceType> : EnumWrapper<ResourceType>{};
+    template<> struct Stack<jobs::Lane> : EnumWrapper<jobs::Lane>{};
 
     template<> struct Stack<RotationOrder> : EnumWrapper<RotationOrder>{};
 

@@ -3,6 +3,7 @@
 
 // W4: Lua/C++ scripts, compile check, code editor sync
 #include "McpTools.h"
+#include "jobs/JobSystem.h"
 #include "W4Shared.h"
 
 #include "mcp/McpAutoSync.h"
@@ -1640,7 +1641,12 @@ void compileScriptsTool(const CallPtr& call) {
     job->setProgress(-1.0, "Configuring and building " + std::to_string(plan.scripts.size()) + " script(s)");
     ProjectChecks::startCppBuild(project, *generator, plan);
 
-    std::thread([job, generator, firstLog, projectPath, scriptList, started]() {
+    // polls the build (on the process channel) until it ends: a channel of its own, which
+    // cannot hold the process slot the build waits for
+    static jobs::JobChannel* watchChannel = new jobs::JobChannel("script-build-watch", 1);
+    jobs::SubmitOptions watchOptions;
+    watchOptions.name = "script-build-watch";
+    watchChannel->submit([job, generator, firstLog, projectPath, scriptList, started]() {
         const std::vector<std::string> output =
             ProjectChecks::waitCppBuild(*generator, firstLog, [&job](const std::string& line) { job->log(line); });
         const bool success = generator->didLastBuildSucceed();
@@ -1666,7 +1672,7 @@ void compileScriptsTool(const CallPtr& call) {
                                                        ": " + errors[0]["message"].get<std::string>();
             job->fail(message, result);
         }
-    }).detach();
+    }, watchOptions);
 
     replyWhenJobDone(call, job, wait, timeout, [](const McpJob& finished) {
         Json result = finished.result();

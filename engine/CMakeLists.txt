@@ -15,6 +15,8 @@ endif()
 
 option(JASPERENGINE_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
+# Fallback for one release: Jolt's own JobSystemThreadPool instead of the engine's job system
+option(JE_JOLT_OWN_POOL "Run Jolt physics jobs on Jolt's own thread pool" OFF)
 # Compiles at runtime the shader variants a build does not ship precompiled (scripted
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
@@ -22,6 +24,9 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# googletest suite and benchmarks of the job system and the allocators (engine/tests/core),
+# standalone engine builds only: jasperengine-jobs-tests, je-bench-jobs, je-bench-memory
+option(JASPERENGINE_JOBS_TESTS "Build the job system and memory tests and benchmarks" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -215,8 +220,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         option(EMSCRIPTEN_THREAD_SUPPORT "Enable pthreads for Emscripten builds" OFF)
 
         if(EMSCRIPTEN_THREAD_SUPPORT)
-            set(USE_PTHREADS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4")
+            # The pool is created at startup and never grows: the job system's workers (at
+            # most 4), one blocking thread, one asset reader, a video decoder and a spare.
+            # STRICT=2 aborts loudly instead of deadlocking when a thread is asked beyond it.
+            set(USE_PTHREADS "-s PTHREAD_POOL_SIZE=8 -s PTHREAD_POOL_SIZE_STRICT=2")
             list(APPEND PLATFORM_OPTIONS -pthread)
+            # shared memory needs every object compiled with atomics, the libraries included
+            add_compile_options(-pthread)
+            add_link_options(-pthread)
         endif()
 
         # GROWABLE_ARRAYBUFFERS only exists on recent Emscripten, and emcc errors
@@ -913,6 +924,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectSimulator.cpp
     core/htmlui/effects/EffectSyntax.cpp
     core/htmlui/effects/EffectValue.cpp
+    core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
@@ -1031,14 +1043,27 @@ set(JASPERENGINE_SRCS
     core/texture/IBLEnvironment.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/jobs/BackgroundGate.cpp
+    core/jobs/JobCounter.cpp
+    core/jobs/JobSystem.cpp
+    core/jobs/ParallelFor.cpp
+    core/jobs/Primitives.cpp
+    core/jobs/SerialQueue.cpp
+    core/jobs/SlabPool.cpp
+    core/memory/Arena.cpp
+    core/memory/MemoryStats.cpp
+    core/memory/ObjectPool.cpp
+    core/memory/RangeAllocator.cpp
+    core/memory/ScratchScope.cpp
     core/thread/ResourceProgress.cpp
-    core/thread/ThreadPoolManager.cpp
+    core/thread/ThreadUtil.cpp
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
+    core/util/JoltJobAdapter.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PostColorLut.cpp
     core/util/STBText.cpp
@@ -1100,6 +1125,8 @@ target_compile_definitions(jasperengine
     PUBLIC
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
+    PRIVATE
+        $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
 
 find_package(Threads REQUIRED)
@@ -1316,6 +1343,10 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+
+if(JASPERENGINE_JOBS_TESTS)
+    add_subdirectory(tests/core)
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

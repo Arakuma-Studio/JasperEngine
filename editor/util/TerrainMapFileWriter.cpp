@@ -35,7 +35,17 @@ void TerrainMapFileWriter::enqueue(const fs::path& path, int width, int height, 
 void TerrainMapFileWriter::flushPath(const std::string& path){
     std::unique_lock<std::mutex> lock(mutex);
     retryFailedLocked(path);
+    drainInlineIfAlone(lock);
     condition.wait(lock, [&]{ return jobs.find(path) == jobs.end() && writingPath != path; });
+}
+
+void TerrainMapFileWriter::drainInlineIfAlone(std::unique_lock<std::mutex>& lock){
+    // single-thread mode runs channel jobs from the frame's pump: write here instead
+    if (!jobs::system().isSingleThreaded() || jobs.empty())
+        return;
+    lock.unlock();
+    run();
+    lock.lock();
 }
 
 bool TerrainMapFileWriter::flushAll(){
@@ -50,6 +60,7 @@ bool TerrainMapFileWriter::flushAll(){
         startWorkerLocked();
         condition.notify_all();
     }
+    drainInlineIfAlone(lock);
     condition.wait(lock, [&]{ return jobs.empty() && writingPath.empty(); });
     return failedJobs.empty();
 }
@@ -60,21 +71,22 @@ size_t TerrainMapFileWriter::failedCount(){
 }
 
 TerrainMapFileWriter::~TerrainMapFileWriter(){
-    std::thread joining;
     {
         std::unique_lock<std::mutex> lock(mutex);
         stopRequested = true;
-        joining = std::move(worker);
     }
     condition.notify_all();
-    if (joining.joinable()){
-        joining.join();
-    }
+    drainTask.wait();
 
-    // Last chance for writes that kept failing: retry synchronously now that
-    // the worker is gone — a since-resolved disk problem (freed space, fixed
-    // permissions) still persists the sculpt. Out may already be torn down
-    // this late in shutdown, so report irrecoverable losses to stderr.
+    // Writes still queued (a drain the job system's shutdown cancelled) and those that kept
+    // failing: written synchronously now — a since-resolved disk problem (freed space, fixed
+    // permissions) still persists the sculpt. Out may already be torn down this late in
+    // shutdown, so report irrecoverable losses to stderr.
+    for (auto& [path, job] : jobs){
+        if (failedJobs.find(path) == failedJobs.end())
+            failedJobs[path] = std::move(job);
+    }
+    jobs.clear();
     for (const auto& [path, job] : failedJobs){
         if (!writeJob(path, job)){
             std::fprintf(stderr, "[ERROR] Terrain map lost, could not be written: %s\n", path.c_str());
@@ -91,12 +103,12 @@ bool TerrainMapFileWriter::writeJob(const std::string& path, const Job& job){
 
 void TerrainMapFileWriter::startWorkerLocked(){
     if (!workerRunning){
-        if (worker.joinable()){
-            worker.join();
-        }
         workerRunning = true;
         stopRequested = false;
-        worker = std::thread(&TerrainMapFileWriter::run, this);
+        // a long disk write: the io-write channel; the drain writes until nothing is queued
+        jobs::SubmitOptions options;
+        options.name = "terrain-map-write";
+        drainTask = jobs::system().ioWriteChannel().submit([this]{ run(); }, options);
     }
 }
 
@@ -115,15 +127,7 @@ void TerrainMapFileWriter::retryFailedLocked(const std::string& path){
 
 void TerrainMapFileWriter::run(){
     std::unique_lock<std::mutex> lock(mutex);
-    while (true){
-        condition.wait(lock, [&]{ return !jobs.empty() || stopRequested; });
-        if (jobs.empty()){
-            if (stopRequested){
-                break;
-            }
-            continue;
-        }
-
+    while (!jobs.empty()){
         auto it = jobs.begin();
         const std::string path = it->first;
         Job job = std::move(it->second);

@@ -5,9 +5,11 @@
 #define SOUNDPOOL_H
 
 #include "Engine.h"
+#include "jobs/JobSystem.h"
 
 #include <atomic>
-#include <future>
+#include <cstdint>
+#include <vector>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -34,12 +36,18 @@ namespace jasperengine{
     private:
         static sounds_t& getMap();
 
-        static std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::Wav>>> pendingBuilds;
+        static std::unordered_map<std::string, jobs::Task<std::shared_ptr<SoLoud::Wav>>> pendingBuilds;
         static std::unordered_set<std::string> failedBuilds;
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
 
         static std::shared_ptr<SoLoud::Wav> loadSoundInternal(const std::string& id, const std::string& filename, bool trackProgress);
+        // decodes the file's bytes (on a Background job for async loads)
+        static std::shared_ptr<SoLoud::Wav> decodeSound(const std::string& id, const std::string& filename,
+                                                       unsigned char* data, unsigned int size, bool trackProgress);
+        // waits for every pending load (cancelling those not started first when `cancel`)
+        // and drops them; cacheMutex held
+        static void quiescePending(bool cancel);
 
     public:
         static SoundLoadResult loadFromFile(const std::string& id, const std::string& filename);

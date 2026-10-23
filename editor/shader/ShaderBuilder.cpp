@@ -9,7 +9,6 @@
 #include "Out.h"
 
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -122,7 +121,7 @@ void clearCustomSourceCache() {
 
 
 std::unordered_map<ShaderKey, ShaderData> editor::ShaderBuilder::shaderDataCache;
-std::unordered_map<ShaderKey, std::future<ShaderData>> editor::ShaderBuilder::pendingBuilds;
+std::unordered_map<ShaderKey, jobs::Task<ShaderData>> editor::ShaderBuilder::pendingBuilds;
 std::mutex editor::ShaderBuilder::cacheMutex;
 std::atomic<bool> editor::ShaderBuilder::shutdownRequested{false};
 
@@ -162,11 +161,11 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
 
     // Check if already building
     if (auto pending = pendingBuilds.find(shaderKey); pending != pendingBuilds.end()) {
-        auto& future = pending->second;
-        if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        jobs::Task<ShaderData>& task = pending->second;
+        if (task.isReady()) {
             // Build finished, move to cache
             try {
-                ShaderData data = future.get();
+                ShaderData data = task.get();
                 shaderDataCache[shaderKey] = data;
                 pendingBuilds.erase(shaderKey);
 
@@ -205,11 +204,17 @@ ShaderBuildResult editor::ShaderBuilder::buildShader(ShaderKey shaderKey, Projec
     std::string shaderName = getShaderDisplayName(shaderKey);
     ResourceProgress::startBuild(shaderKey, ResourceType::Shader, shaderName);
 
-    // Use thread pool instead of std::async
-    pendingBuilds[shaderKey] = ThreadPoolManager::getInstance().enqueue(
+    // a compile holds a worker for long: Heavy, so the decodes the frame waits on keep slots
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "shader-build";
+    // a resource being built: counted by Engine::getQueuedResourceCount (the editor's loading state)
+    options.tags = jobs::Tag::Asset;
+    pendingBuilds[shaderKey] = jobs::submit(
         [this, shaderKey, project]() {
             return buildShaderInternal(shaderKey, project, true);
-        }
+        }, options
     );
 
     return ShaderBuildResult({}, ResourceLoadState::Loading);
@@ -244,12 +249,14 @@ void editor::ShaderBuilder::requestShutdown() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;
 
-    // Wait for all pending builds to complete
-    for (auto& [key, future] : pendingBuilds) {
-        if (future.valid()) {
-            future.wait(); // Wait for completion
-        }
+    // builds not started never run; the running ones are waited for (cancelled first, so
+    // no wait runs a build inline while this holds cacheMutex)
+    for (auto& [key, task] : pendingBuilds){
+        if (task.cancel())
+            ResourceProgress::failBuild(key);
     }
+    for (auto& [key, task] : pendingBuilds)
+        task.wait();
     pendingBuilds.clear();
 }
 
@@ -450,13 +457,16 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
             ++it;
     }
     // Drop pending custom builds too, otherwise buildShader would reap a stale (pre-edit)
-    // future into the cache. ThreadPoolManager futures don't block on destruction; an
-    // in-flight task simply discards its result and the next get() restarts the build.
+    // result into the cache. One not started is cancelled; a running one finishes and its
+    // result is discarded (dropping a handle never blocks); the next get() restarts the build.
     for (auto it = pendingBuilds.begin(); it != pendingBuilds.end(); ) {
-        if (projectCustom(it->first))
+        if (projectCustom(it->first)){
+            if (it->second.cancel())
+                ResourceProgress::failBuild(it->first);
             it = pendingBuilds.erase(it);
-        else
+        }else{
             ++it;
+        }
     }
     clearCustomSourceCache();
 }

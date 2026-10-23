@@ -17,6 +17,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 
@@ -118,6 +119,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    jobsMemoryWindow = new JobsMemoryWindow();
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -247,6 +249,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
+    ToggleJobsMemory,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -569,6 +572,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Analysis", {
+            menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -734,6 +740,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
+            break;
+        case AppMenuCommand::ToggleJobsMemory:
+            showEditorWindow(jobsMemoryWindow);
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
@@ -1892,7 +1901,8 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        if (projectWindow->isFocused()) {
+        // the Jobs & Memory panel shows the threading settings: its undo is the project's
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -1969,7 +1979,7 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic:
@@ -2008,7 +2018,7 @@ void editor::App::show(){
         }
     }
 
-    if (!popupOpen && projectWindow->isFocused()) {
+    if (!popupOpen && (projectWindow->isFocused() || jobsMemoryWindow->isFocused())) {
         if (isUndo) {
             project.getProjectCommandHistory()->undo();
             projectWindow->refreshCurrentDirectory();
@@ -2062,6 +2072,7 @@ void editor::App::show(){
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    jobsMemoryWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -3647,6 +3658,10 @@ bool editor::App::popSaveDialogQueueItem() {
 
 editor::AnimationWindow* editor::App::getAnimationWindow() const{
     return animationWindow;
+}
+
+editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
+    return jobsMemoryWindow;
 }
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
