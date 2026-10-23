@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -159,18 +160,20 @@ public:
         return writeFile(filePath, newContent) != WriteResult::Failed;
     }
 
-    // path's UTF-8 conversions changed shape in C++20: u8string() returns std::u8string
-    // and u8path() is deprecated. These keep the call sites on std::string either way.
-    static std::filesystem::path pathFromUtf8(const std::string& text) {
-#ifdef __cpp_lib_char8_t
+    // path's UTF-8 conversions in C++20: u8string() returns std::u8string and u8path() is
+    // deprecated. These keep the call sites on std::string.
+    static std::filesystem::path pathFromUtf8(std::string_view text) {
         return std::filesystem::path(std::u8string(text.begin(), text.end()));
-#else
-        return std::filesystem::u8path(text);
-#endif
     }
 
     static std::string pathToUtf8(const std::filesystem::path& path) {
-        const auto utf8 = path.u8string();
+        const std::u8string utf8 = path.u8string();
+        return std::string(utf8.begin(), utf8.end());
+    }
+
+    // with '/' separators on every platform
+    static std::string genericPathToUtf8(const std::filesystem::path& path) {
+        const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
     }
 };

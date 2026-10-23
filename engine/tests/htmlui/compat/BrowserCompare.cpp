@@ -413,11 +413,11 @@ bool jasperengine::test::compat::loadReferenceLayout(const std::string& path, Re
             layout.focus = states.value("focus", "");
             layout.active = states.value("active", "");
         }
-        std::string requires = json.value("requires", "");
-        std::replace(requires.begin(), requires.end(), ',', ' ');
-        std::istringstream words(requires);
+        std::string requiredList = json.value("requires", "");
+        std::replace(requiredList.begin(), requiredList.end(), ',', ' ');
+        std::istringstream words(requiredList);
         for (std::string word; words >> word;)
-            layout.requires.push_back(word);
+            layout.requiredFeatures.push_back(word);
         for (const nlohmann::json& element : json.at("elements")){
             LayoutBox box;
             box.id = element.at("id").get<std::string>();
@@ -490,9 +490,9 @@ std::vector<LayoutDifference> jasperengine::test::compat::compareLayout(const st
     return differences;
 }
 
-std::vector<std::string> jasperengine::test::compat::missingForkFeatures(const std::vector<std::string>& requires, const hc::ForkFeatures& fork){
+std::vector<std::string> jasperengine::test::compat::missingForkFeatures(const std::vector<std::string>& requiredFeatures, const hc::ForkFeatures& fork){
     std::vector<std::string> missing;
-    for (const std::string& name : requires){
+    for (const std::string& name : requiredFeatures){
         // "pseudo-elements" -> PseudoElements
         std::string camel;
         bool upper = true;

@@ -2600,7 +2600,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     if (node["cxxStandard"]) {
-        project->setCxxStandard(YamlNumbers::as<int>(node["cxxStandard"]));
+        const int cxxStandard = YamlNumbers::as<int>(node["cxxStandard"]);
+        // C++17 projects (and unknown values) move to the default: the engine API needs C++20
+        if (!isSupportedCxxStandard(cxxStandard)) {
+            Out::warning("Project C++ standard %d is no longer supported; the project now builds with C++%d (see docs: cpp-scripting, \"Moving from C++17\")",
+                cxxStandard, Project::defaultCxxStandard);
+        }
+        project->setCxxStandard(cxxStandard);
     }
 
     if (node["physics2D"]) {

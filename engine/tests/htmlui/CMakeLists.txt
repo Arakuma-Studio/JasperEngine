@@ -14,6 +14,7 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 add_subdirectory(${JASPER_GTEST_DIR} ${CMAKE_BINARY_DIR}/gtest EXCLUDE_FROM_ALL)
 target_compile_options(gtest PRIVATE -w)
+jasperengine_apply_cxx_standard(gtest gtest_main)
 
 file(GLOB HTMLUI_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp

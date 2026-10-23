@@ -18,6 +18,7 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 add_subdirectory(${JASPER_EDITOR_GTEST_DIR} ${CMAKE_BINARY_DIR}/gtest-editor EXCLUDE_FROM_ALL)
 target_compile_options(gtest PRIVATE -w)
 target_compile_options(gtest_main PRIVATE -w)
+jasperengine_apply_cxx_standard(gtest gtest_main)
 
 # The editor's sources (the importers reach CommandRunner, Out, Project, ...), without its main();
 # the same command lines as jasperengine-editor's, so ccache shares the objects

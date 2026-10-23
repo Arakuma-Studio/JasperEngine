@@ -4,6 +4,7 @@
 #include "ImportManifestWriter.h"
 
 #include "json.hpp"
+#include "util/FileUtils.h"
 
 #include <atomic>
 #include <chrono>
@@ -31,7 +32,7 @@ namespace {
 ImportManifestWriter::ImportManifestWriter(fs::path assetsDir): assetsDir(std::move(assetsDir)) {}
 
 fs::path ImportManifestWriter::path() const{
-    return assetsDir / fs::u8path(ImportManifest::kPath);
+    return assetsDir / editor::FileUtils::pathFromUtf8(ImportManifest::kPath);
 }
 
 ImportManifest ImportManifestWriter::read() const{

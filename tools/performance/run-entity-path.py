@@ -29,7 +29,7 @@ def main():
         source = output / f"EntityPath.{variant}.cpp"
         source.write_text(subprocess.check_output(["git", "show", f"{revision}:editor/util/EntityPath.cpp"], cwd=ROOT, text=True) if revision else (ROOT / "editor/util/EntityPath.cpp").read_text())
         binary = output / variant
-        flags = ["-std=c++17", "-O2", "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections"]
+        flags = ["-std=c++20", "-O2", "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections"]
         if args.sanitize:
             flags += ["-g", "-DCHECK_ONLY", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
         subprocess.run([os.environ.get("CXX", "c++"), *flags, *(f"-I{p}" for p in includes), str(source), str(ROOT / "tools/performance/entity_path.cpp"), *(str(p) for p in math), "-o", str(binary)], check=True)

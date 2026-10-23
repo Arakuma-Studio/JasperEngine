@@ -16,6 +16,9 @@
 # DOCKER_CPUS is the same cap under the name tools/smoke-test.sh passes (e.g. DOCKER_CPUS=4
 # on a shared host).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan).
+# linux, web: CXX_STANDARD=<n> builds at another supported C++ standard than the default
+# (JASPERENGINE_CXX_STANDARD), next to the default build (build/linux/editor-cxx<n>, ...).
+# linux first checks engine/ and editor/ with tools/check-cxx-subset.py.
 # htmlui-tests: HTMLUI_BACKEND=glcore|vulkan (default glcore), RUN=0 builds only,
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
@@ -30,7 +33,7 @@ EDITOR_TARGET=jasperengine-editor
 ENGINE_TARGET=jasperengine-project
 
 usage() {
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -122,6 +125,17 @@ fi
 
 CCACHE_FLAGS="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 
+# A non-default standard gets build directories of its own, so the default trees keep theirs
+CXX_STANDARD_FLAGS=""
+CXX_SUFFIX=""
+if [[ -n "${CXX_STANDARD:-}" ]]; then
+    if [[ ! "$CXX_STANDARD" =~ ^[0-9]+$ ]]; then
+        echo "CXX_STANDARD must be a number (e.g. 23)" >&2; exit 1
+    fi
+    CXX_STANDARD_FLAGS="-DJASPERENGINE_CXX_STANDARD=$CXX_STANDARD"
+    CXX_SUFFIX="-cxx$CXX_STANDARD"
+fi
+
 case "$TARGET" in
 linux)
     BT="${BUILD_TYPE:-Release}"
@@ -132,8 +146,11 @@ linux)
         EDITOR_DIR="editor-vulkan"
         BACKEND_FLAGS="-DGRAPHIC_BACKEND=vulkan"
     fi
+    EDITOR_DIR="$EDITOR_DIR$CXX_SUFFIX"
+    ENGINE_DIR="engine$CXX_SUFFIX"
     run bash -euo pipefail -c "
-        cmake -S . -B $OUT/$EDITOR_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $BACKEND_FLAGS \
+        python3 tools/check-cxx-subset.py
+        cmake -S . -B $OUT/$EDITOR_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $BACKEND_FLAGS $CXX_STANDARD_FLAGS \
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
         cmake --install $OUT/$EDITOR_DIR --strip
@@ -159,16 +176,18 @@ linux)
             exit 1
         fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
-        cmake -S engine -B $OUT/engine -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
-        cmake --build $OUT/engine --target $ENGINE_TARGET $JOBS_FLAG
+        cmake -S engine -B $OUT/$ENGINE_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $CXX_STANDARD_FLAGS $CCACHE_FLAGS
+        cmake --build $OUT/$ENGINE_DIR --target $ENGINE_TARGET $JOBS_FLAG
         ccache --show-stats --verbose | grep -E 'Hits|Misses' || true
     "
     ;;
 web)
     BT="${BUILD_TYPE:-Debug}"
+    WEB_DIR="$OUT"
+    [[ -n "$CXX_SUFFIX" ]] && WEB_DIR="$OUT/cxx$CXX_STANDARD"
     run bash -euo pipefail -c "
-        emcmake cmake -S engine -B $OUT -G Ninja -DCMAKE_BUILD_TYPE=$BT $CCACHE_FLAGS
-        cmake --build $OUT --target $ENGINE_TARGET $JOBS_FLAG
+        emcmake cmake -S engine -B $WEB_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT $CXX_STANDARD_FLAGS $CCACHE_FLAGS
+        cmake --build $WEB_DIR --target $ENGINE_TARGET $JOBS_FLAG
     "
     ;;
 htmlui-tests)

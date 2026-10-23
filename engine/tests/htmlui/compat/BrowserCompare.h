@@ -135,7 +135,7 @@ namespace jasperengine::test::compat {
         std::string page;
         int viewportWidth = 0, viewportHeight = 0;
         std::string hover, focus, active;               // the states the reference captured
-        std::vector<std::string> requires;              // fork features: "grid", "pseudo-elements"
+        std::vector<std::string> requiredFeatures;              // fork features: "grid", "pseudo-elements"
         std::vector<LayoutBox> elements;
     };
 
@@ -157,7 +157,7 @@ namespace jasperengine::test::compat {
 
     // The fork features a page needs (<meta name="htmlui-test-requires">) that are missing
     // from `fork`; empty when the image and layout gates apply.
-    std::vector<std::string> missingForkFeatures(const std::vector<std::string>& requires,
+    std::vector<std::string> missingForkFeatures(const std::vector<std::string>& requiredFeatures,
                                                  const htmlui::compat::ForkFeatures& fork);
 
     // directories of the golden pages

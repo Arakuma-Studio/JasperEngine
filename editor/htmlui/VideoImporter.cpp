@@ -6,6 +6,7 @@
 #include "htmlui/media/VideoFormats.h"
 #include "util/CommandRunner.h"
 #include "util/ShellEnv.h"
+#include "util/FileUtils.h"
 
 #include <chrono>
 #include <cstdio>
@@ -40,7 +41,7 @@ namespace {
     }
 
     std::string pathString(const fs::path& path){
-        return path.u8string();
+        return jasperengine::editor::FileUtils::pathToUtf8(path);
     }
 
     hc::Diagnostic diagnostic(hc::DiagCode code, hc::Severity severity, const std::string& file, const std::string& message, const std::string& fix){
@@ -67,7 +68,7 @@ namespace {
 
     bool isExecutable(const std::string& path){
         std::error_code ec;
-        return !path.empty() && fs::is_regular_file(fs::u8path(path), ec);
+        return !path.empty() && fs::is_regular_file(jasperengine::editor::FileUtils::pathFromUtf8(path), ec);
     }
 
 }
@@ -153,9 +154,9 @@ bool VideoImporter::isHdrInput(const std::string& ffmpeg, const fs::path& input)
     if (ffmpeg.empty())
         return false;
 #ifdef _WIN32
-    const fs::path ffprobe = fs::u8path(ffmpeg).parent_path() / "ffprobe.exe";
+    const fs::path ffprobe = jasperengine::editor::FileUtils::pathFromUtf8(ffmpeg).parent_path() / "ffprobe.exe";
 #else
-    const fs::path ffprobe = fs::u8path(ffmpeg).parent_path() / "ffprobe";
+    const fs::path ffprobe = jasperengine::editor::FileUtils::pathFromUtf8(ffmpeg).parent_path() / "ffprobe";
 #endif
     if (!isExecutable(pathString(ffprobe)))
         return false;

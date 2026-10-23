@@ -121,6 +121,10 @@ set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 set(JASPERENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 
+# The compiler floors (the engine checks them again for its standalone builds)
+include(${JASPERENGINE_ROOT}/cmake/JasperEngineToolchain.cmake)
+jasperengine_check_cxx_toolchain()
+
 # Warnings from vendored code are not ours to fix and only hide our own
 if(MSVC)
     set(EXTERNAL_WARNING_FLAG /w)
@@ -488,8 +492,23 @@ if(GRAPHIC_BACKEND STREQUAL "vulkan")
     target_link_libraries(jasperengine PUBLIC Vulkan::Vulkan)
 endif()
 
+# The engine directory set the standard for its own targets; the editor's, and the
+# libraries below (which pick a standard of their own when none is set), use it too
+set(CMAKE_CXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
+jasperengine_apply_cxx_standard(nfd yaml-cpp)
+# The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
+# the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
+get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
+string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
 foreach(lib IN ITEMS nfd yaml-cpp)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
@@ -767,6 +786,14 @@ function(configure_jasperengine_editor_target target_name)
         ${GENERATED_DIR}
     )
 
+    target_compile_definitions(${target_name} PRIVATE
+        "JASPERENGINE_CXX_STANDARD_LIST=${JASPERENGINE_CXX_STANDARD_LIST}"
+        "JASPERENGINE_CXX_FLOOR_GNU=\"${JASPERENGINE_CXX_FLOOR_GNU}\""
+        "JASPERENGINE_CXX_FLOOR_CLANG=\"${JASPERENGINE_CXX_FLOOR_Clang}\""
+        "JASPERENGINE_CXX_FLOOR_APPLECLANG=\"${JASPERENGINE_CXX_FLOOR_AppleClang}\""
+        "JASPERENGINE_CXX_FLOOR_MSVC=\"${JASPERENGINE_CXX_FLOOR_MSVC}\""
+    )
+
     target_link_libraries(
         ${target_name}
 
@@ -1028,3 +1055,5 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         )
     endforeach()
 endif()
+
+jasperengine_check_cxx_standards()

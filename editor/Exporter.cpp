@@ -2172,6 +2172,8 @@ bool editor::Exporter::copyEngine() {
     if (!copyDir("renders")) return false;
     // the GLSL the build embeds for its runtime shader compiler
     if (!copyDir("shaderlib")) return false;
+    // JasperEngineToolchain.cmake: the C++ standard and the compiler floors
+    if (!copyDir("cmake")) return false;
     if (!copyDir("workspaces")) return false;
     if (config.mode == ExportMode::SourceCode) {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
@@ -2734,6 +2736,25 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     return true;
 }
 
+bool editor::Exporter::applyXcodeCxxStandard(std::string& pbxproj, int standard) {
+    const std::string key = "CLANG_CXX_LANGUAGE_STANDARD = ";
+    const std::string value = "\"gnu++" + std::to_string(standard) + "\"";
+    bool found = false;
+    size_t pos = 0;
+    while ((pos = pbxproj.find(key, pos)) != std::string::npos) {
+        const size_t start = pos + key.size();
+        const size_t end = pbxproj.find_first_of(";\n", start);
+        if (end == std::string::npos || pbxproj[end] != ';') {
+            pos = start;
+            continue;
+        }
+        pbxproj.replace(start, end - start, value);
+        pos = start + value.size();
+        found = true;
+    }
+    return found;
+}
+
 bool editor::Exporter::writeAppleProjectSettings() {
     const fs::path xcodeDir = config.targetDir / "workspaces" / "xcode";
     const fs::path iosPlistPath = xcodeDir / "ios" / "Info.plist";
@@ -2977,6 +2998,12 @@ bool editor::Exporter::writeAppleProjectSettings() {
             xcodeProject.replace(blockStart, blockEnd - blockStart, block);
         }
         blockStart += block.size() + 2;
+    }
+    // The workspace compiles the engine and the project's scripts itself, so it needs the
+    // project's C++ standard too (CMake builds get it from JASPERENGINE_CXX_STANDARD)
+    if (!xcodeProject.empty() && !applyXcodeCxxStandard(xcodeProject, project->getCxxStandard())) {
+        setError("Apple export template has no CLANG_CXX_LANGUAGE_STANDARD setting");
+        return false;
     }
     FileUtils::writeIfChanged(projectFile, xcodeProject);
     std::string iosPlist;

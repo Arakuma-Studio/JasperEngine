@@ -53,6 +53,7 @@
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 #include "yaml-cpp/yaml.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <array>
@@ -1289,7 +1290,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     std::vector<std::string> sources;
     Json imported = Json::array();
     for (const std::string& item : local) {
-        const fs::path source = fs::u8path(item).lexically_normal();
+        const fs::path source = FileUtils::pathFromUtf8(item).lexically_normal();
         if (!source.is_absolute() || !fs::exists(source, ec)) {
             call->fail(item + " must be an existing absolute path (or an http(s) URL).");
             return false;
@@ -1318,7 +1319,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
         return false;
     }
     std::vector<fs::path> changed;
-    for (const Json& rel : imported) changed.push_back(project->getProjectPath() / fs::u8path(rel.get<std::string>()));
+    for (const Json& rel : imported) changed.push_back(project->getProjectPath() / FileUtils::pathFromUtf8(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
@@ -1358,7 +1359,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     size_t written = 0;
     auto addFiles = [&](const importers::ImportResult& result) {
         for (const std::string& file : result.written) {
-            changed.push_back(state->projectRoot / fs::u8path(file));
+            changed.push_back(state->projectRoot / FileUtils::pathFromUtf8(file));
             written++;
         }
         for (const auto& [what, why] : result.failed) failed.push_back({{"source", what}, {"error", why}});
@@ -1388,7 +1389,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
                          d.suggestion + ") [" + d.code.id() + "]";
         }
         if (!result.ok && result.diagnostics.empty())
-            failed.push_back({{"source", result.output.filename().u8string()}, {"error", result.message}});
+            failed.push_back({{"source", FileUtils::pathToUtf8(result.output.filename())}, {"error", result.message}});
         videos.push_back(item);
     }
     if (!state->videoResults.empty()) {
@@ -1424,7 +1425,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
 
         const Json& args = call->args();
         if (args.value("rewrite", true) && !result.replaced.empty()) {
-            const fs::path file = state->projectRoot / fs::u8path(state->document);
+            const fs::path file = state->projectRoot / FileUtils::pathFromUtf8(state->document);
             std::string content, error;
             if (!ProjectChecks::readFile(file, content)) {
                 rewriteNote = " Can't read " + state->document + " to rewrite it.";
@@ -1433,7 +1434,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
                 Json replacements = Json::array();
                 for (const auto& [url, local] : result.replaced) {
                     // a Google Fonts css2 link becomes its generated @font-face stylesheet
-                    const std::string to = (state->projectRoot / fs::u8path(local)).lexically_normal().lexically_relative(dir).generic_u8string();
+                    const std::string to = FileUtils::genericPathToUtf8((state->projectRoot / FileUtils::pathFromUtf8(local)).lexically_normal().lexically_relative(dir));
                     if (replaceAll(content, url, to) > 0) replacements.push_back({{"from", url}, {"to", to}});
                 }
                 if (!replacements.empty()) {
@@ -1449,7 +1450,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     if (written > 0) {
         // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
         jasperengine::htmlui::compat::ImportManifest::reload();
-        changed.push_back(project->getAssetsPath() / fs::u8path(jasperengine::htmlui::compat::ImportManifest::kPath));
+        changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
         syncFiles(ctx, changed, false);
         if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
     }
@@ -1497,7 +1498,7 @@ void importFilesTool(const CallPtr& call) {
     // videos the engine does not play are converted (FFmpeg, on the worker) instead of copied (phase 6)
     std::vector<std::string> plainFiles;
     for (const std::string& item : local) {
-        const fs::path source = fs::u8path(item).lexically_normal();
+        const fs::path source = FileUtils::pathFromUtf8(item).lexically_normal();
         std::error_code exists;
         if (source.is_absolute() && fs::is_regular_file(source, exists) && importers::VideoImporter::isVideoFile(source) &&
             !importers::VideoImporter::isPlayable(source)) {
@@ -1546,7 +1547,7 @@ void importFilesTool(const CallPtr& call) {
                 return;
             }
             document = document.lexically_normal();
-            if (!ProjectChecks::isUiFile(document.generic_u8string())) {
+            if (!ProjectChecks::isUiFile(FileUtils::genericPathToUtf8(document))) {
                 call->fail("from_document must be an .html, .htm or .css file.");
                 return;
             }
@@ -2401,7 +2402,7 @@ void checkShaderTool(const CallPtr& call) {
     std::vector<ProjectChecks::ShaderUse> forks;
     // a project UI effect (phase 5): its .frag, checked in each of its forms
     if (args.contains("shader") && args["shader"].is_string() &&
-        ProjectChecks::isUiEffectFile(project->getProjectPath() / fs::u8path(args["shader"].get<std::string>()))) {
+        ProjectChecks::isUiEffectFile(project->getProjectPath() / FileUtils::pathFromUtf8(args["shader"].get<std::string>()))) {
         forks = ProjectChecks::uiEffectUses(project, args["shader"].get<std::string>());
     } else if (args.contains("shader") && args["shader"].is_string()) {
         std::string base = args["shader"].get<std::string>();
