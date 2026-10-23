@@ -43,6 +43,7 @@
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
+#include "texsynth/SynthesisRecipe.h"
 #include "util/UIUtils.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -1709,6 +1710,35 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                             revealAsset(project->getProjectPath() / base);
                         }
                         ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
+                    }
+                    ImGui::Separator();
+                }
+
+                if (!file.isDirectory && Util::isImageFile(file.name) && fs::path(file.name).extension() != ".svg"){
+                    // Texture synthesis: this image as the example, or its recipe restored
+                    const fs::path imagePath = currentPath / file.name;
+                    if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Synthesize Texture...")) {
+                        editor::getEditorHost().openTextureSynthesis(imagePath, false);
+                    }
+                    ImGui::SetItemTooltip("Texture Synthesis with this image as the example (its normal, roughness... maps next to it come along)");
+                    // read once per popup, not every frame
+                    static fs::path recipeProbePath;
+                    static fs::file_time_type recipeProbeTime;
+                    static bool recipeProbeFound = false;
+                    std::error_code probeError;
+                    const fs::file_time_type imageTime = fs::last_write_time(imagePath, probeError);
+                    if (recipeProbePath != imagePath || recipeProbeTime != imageTime) {
+                        recipeProbePath = imagePath;
+                        recipeProbeTime = imageTime;
+                        std::string extension = fs::path(file.name).extension().string();
+                        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        recipeProbeFound = extension == ".png" && texsynth::readRecipeTextHead(imagePath).has_value();
+                    }
+                    if (recipeProbeFound) {
+                        if (ImGui::MenuItem(ICON_FA_WAND_MAGIC_SPARKLES " Edit Synthesis...")) {
+                            editor::getEditorHost().openTextureSynthesis(imagePath, true);
+                        }
+                        ImGui::SetItemTooltip("Reopen the settings this texture was synthesized with (Regenerate reproduces it)");
                     }
                     ImGui::Separator();
                 }

@@ -117,6 +117,7 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    textureSynthesisWindow = new TextureSynthesisWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
 
     isInitialized = false;
@@ -246,6 +247,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleConsole,
     ToggleAnimation,
     ToggleTerrain,
+    ToggleTextureSynthesis,
     ToggleMcpActivity,
     FocusScene,
     FocusGame,
@@ -569,6 +571,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -735,6 +738,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleTextureSynthesis:
+            textureSynthesisWindow->open();
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
             break;
@@ -774,6 +780,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
             terrainEditWindow->setOpen(false);
+            textureSynthesisWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
@@ -1335,6 +1342,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(HierarchyWindow::WINDOW_NAME, dock_id_left_top);
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
+    // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
+    ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2060,6 +2069,7 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     terrainEditWindow->show();
+    textureSynthesisWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
     codeEditor->show();
@@ -3225,6 +3235,7 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    editor::texsynth::SynthesisRun::cancelAll();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }
@@ -3656,6 +3667,21 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
 
+editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
+    return textureSynthesisWindow;
+}
+
+void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
+    if (!editRecipe) {
+        textureSynthesisWindow->openWithExample(image);
+        return;
+    }
+    std::string error;
+    if (!textureSynthesisWindow->openRecipe(image, error)) {
+        registerAlert("Edit Synthesis", "Can't restore the synthesis of " + image.filename().string() + ": " + error);
+    }
+}
+
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
     return hierarchyWindow;
 }
@@ -3861,6 +3887,7 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     terrainEditWindow->setOpen(visibility.terrain);
+    textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
 }
@@ -3873,6 +3900,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
+    visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
 
