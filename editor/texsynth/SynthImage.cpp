@@ -47,7 +47,7 @@ namespace jasperengine::editor::texsynth {
         return SHA1::hash(std::string(reinterpret_cast<const char*>(bytes), size));
     }
 
-    bool loadImageFromMemory(const uint8_t* bytes, size_t size, Image& out, std::string& error) {
+    bool loadImageFromMemory(const uint8_t* bytes, size_t size, Image& out, std::string& error, int maxSide) {
         out = Image();
         if (!bytes || size == 0 || size > static_cast<size_t>(INT32_MAX)) {
             error = "empty or too large file";
@@ -62,6 +62,11 @@ namespace jasperengine::editor::texsynth {
         if (!stbi_info_from_memory(bytes, length, &w, &h, &comp)) {
             const char* reason = stbi_failure_reason();
             error = std::string("not a readable image") + (reason ? std::string(" (") + reason + ")" : std::string());
+            return false;
+        }
+        // the header gave the size: a too large image is refused before it is decoded
+        if (maxSide > 0 && (w > maxSide || h > maxSide)) {
+            error = "the image is " + std::to_string(w) + "x" + std::to_string(h) + ", at most " + std::to_string(maxSide) + " per side (scale it down)";
             return false;
         }
         const bool sixteen = stbi_is_16_bit_from_memory(bytes, length) != 0;
@@ -83,7 +88,13 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool loadImage(const fs::path& path, Image& out, std::string& error, std::string* sha1) {
+    bool probeImage(const fs::path& path, int& width, int& height) {
+        int comp = 0;
+        width = height = 0;
+        return stbi_info(path.string().c_str(), &width, &height, &comp) != 0;
+    }
+
+    bool loadImage(const fs::path& path, Image& out, std::string& error, std::string* sha1, int maxSide) {
         std::ifstream file(path, std::ios::binary);
         if (!file) {
             error = "cannot open " + path.string();
@@ -91,7 +102,7 @@ namespace jasperengine::editor::texsynth {
         }
         std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         if (sha1) *sha1 = sha1Hex(bytes.data(), bytes.size());
-        if (!loadImageFromMemory(bytes.data(), bytes.size(), out, error)) {
+        if (!loadImageFromMemory(bytes.data(), bytes.size(), out, error, maxSide)) {
             error = path.string() + ": " + error;
             return false;
         }
@@ -220,7 +231,7 @@ namespace jasperengine::editor::texsynth {
         return out;
     }
 
-    Image blurRgba8(const Image& image, float sigma) {
+    Image blurRgba8(const Image& image, float sigma, const std::atomic<bool>* cancel) {
         if (image.empty() || sigma <= 0.0f) return image;
         const int radius = std::max(1, static_cast<int>(std::ceil(sigma * 3.0f)));
         std::vector<float> kernel(2 * radius + 1);
@@ -231,8 +242,16 @@ namespace jasperengine::editor::texsynth {
         }
         for (float& k : kernel) k /= sum;
         const int w = image.width, h = image.height;
-        std::vector<float> tmp(image.pixelCount() * 4);
-        for (int y = 0; y < h; y++) {
+        // the horizontal pass of the rows the vertical pass reads, in a ring of 2 * radius + 1 rows
+        // (row r in slot r % ring): the same sums in the same order as a full-size pass, a
+        // fraction of its memory (16 bytes per pixel at 8192 x 8192 would be 1 GB)
+        const int ring = 2 * radius + 1;
+        std::vector<float> rows(static_cast<size_t>(ring) * w * 4);
+        std::vector<int> rowIn(ring, -1);
+        auto horizontal = [&](int y) -> const float* {
+            float* t = rows.data() + static_cast<size_t>(y % ring) * w * 4;
+            if (rowIn[y % ring] == y) return t;
+            rowIn[y % ring] = y;
             for (int x = 0; x < w; x++) {
                 float acc[4] = {0, 0, 0, 0};
                 for (int i = -radius; i <= radius; i++) {
@@ -240,17 +259,20 @@ namespace jasperengine::editor::texsynth {
                     const uint8_t* p = image.data.data() + (static_cast<size_t>(y) * w + sx) * 4;
                     for (int c = 0; c < 4; c++) acc[c] += kernel[i + radius] * p[c];
                 }
-                float* t = tmp.data() + (static_cast<size_t>(y) * w + x) * 4;
-                for (int c = 0; c < 4; c++) t[c] = acc[c];
+                for (int c = 0; c < 4; c++) t[static_cast<size_t>(x) * 4 + c] = acc[c];
             }
-        }
+            return t;
+        };
         Image out = Image::make(w, h, 4, 8);
+        std::vector<const float*> taps(ring);
         for (int y = 0; y < h; y++) {
+            if (cancel && cancel->load(std::memory_order_relaxed)) return Image();
+            // rows y - radius .. y + radius (clamped): at most `ring` distinct ones, all in the ring
+            for (int i = -radius; i <= radius; i++) taps[i + radius] = horizontal(std::clamp(y + i, 0, h - 1));
             for (int x = 0; x < w; x++) {
                 float acc[4] = {0, 0, 0, 0};
                 for (int i = -radius; i <= radius; i++) {
-                    const int sy = std::clamp(y + i, 0, h - 1);
-                    const float* t = tmp.data() + (static_cast<size_t>(sy) * w + x) * 4;
+                    const float* t = taps[i + radius] + static_cast<size_t>(x) * 4;
                     for (int c = 0; c < 4; c++) acc[c] += kernel[i + radius] * t[c];
                 }
                 uint8_t* d = out.data.data() + (static_cast<size_t>(y) * w + x) * 4;

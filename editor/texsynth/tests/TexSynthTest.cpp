@@ -877,3 +877,173 @@ TEST(TexSynthRecipe, WriteFilesAllOrNothing) {
     EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "sub", "sub/normal.png", "taken", "taken/inside"}));
     fs::remove_all(dir);
 }
+
+// ---- memory, cancellation and failures
+
+namespace {
+
+    // A PNG of the given size without its pixels (IHDR, an empty IDAT, IEND): stbi_info reads
+    // the header up to the first IDAT, so a huge image can be probed without writing it
+    std::vector<uint8_t> pngHeaderOnly(uint32_t w, uint32_t h) {
+        std::vector<uint8_t> png = {137, 80, 78, 71, 13, 10, 26, 10};
+        auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
+            const uint32_t n = static_cast<uint32_t>(data.size());
+            const uint8_t length[4] = {static_cast<uint8_t>(n >> 24), static_cast<uint8_t>(n >> 16), static_cast<uint8_t>(n >> 8), static_cast<uint8_t>(n)};
+            png.insert(png.end(), length, length + 4);
+            const size_t start = png.size();
+            png.insert(png.end(), type, type + 4);
+            png.insert(png.end(), data.begin(), data.end());
+            uint32_t crc = 0xFFFFFFFFu;
+            for (size_t i = start; i < png.size(); i++) {
+                crc ^= png[i];
+                for (int k = 0; k < 8; k++) crc = (crc & 1) ? 0xEDB88320u ^ (crc >> 1) : crc >> 1;
+            }
+            crc = ~crc;
+            const uint8_t c[4] = {static_cast<uint8_t>(crc >> 24), static_cast<uint8_t>(crc >> 16), static_cast<uint8_t>(crc >> 8), static_cast<uint8_t>(crc)};
+            png.insert(png.end(), c, c + 4);
+        };
+        chunk("IHDR", {static_cast<uint8_t>(w >> 24), static_cast<uint8_t>(w >> 16), static_cast<uint8_t>(w >> 8), static_cast<uint8_t>(w),
+                       static_cast<uint8_t>(h >> 24), static_cast<uint8_t>(h >> 16), static_cast<uint8_t>(h >> 8), static_cast<uint8_t>(h), 8, 2, 0, 0, 0});
+        chunk("IDAT", {});
+        chunk("IEND", {});
+        return png;
+    }
+
+}
+
+TEST(TexSynth, PyramidKeepsOnlyReducedLevelsAndRebuildsThemExactly) {
+    const Image rgba = toRgba8(noiseImage(200, 120, 5, 4));
+    for (int levels : {1, 3, 6, 10}) {
+        detail::Pyramid pyramid;
+        ASSERT_TRUE(detail::Pyramid::build(rgba, levels, pyramid));
+        ASSERT_EQ(pyramid.levels(), levels);
+        size_t stored = 0;
+        for (const Image& small : pyramid.reduced) stored += small.pixelCount();
+        EXPECT_LE(stored * 2, rgba.pixelCount()) << "the reduced levels together are at most half the image";
+        for (int i = 0; i < levels; i++) {
+            // what every level used to be: scaled down by 2^(L-1-i) (capped) and back up, at full size
+            int factor = 1 << std::min(20, levels - 1 - i);
+            while (factor > 1 && (rgba.width / factor < 2 || rgba.height / factor < 2)) factor /= 2;
+            const Image expected = factor == 1 ? rgba : resizeRgba8(resizeRgba8(rgba, rgba.width / factor, rgba.height / factor), rgba.width, rgba.height);
+            Image scratch;
+            const Image& level = pyramid.level(i, scratch);
+            EXPECT_EQ(level.width, rgba.width);
+            EXPECT_TRUE(level.data == expected.data) << "level " << i << " of " << levels;
+        }
+    }
+    // a cancel during the build stops it
+    std::atomic<bool> cancel{true};
+    detail::Pyramid pyramid;
+    EXPECT_FALSE(detail::Pyramid::build(rgba, 4, pyramid, &cancel));
+}
+
+TEST(TexSynth, BlurIsTheSeparableGaussianAndStopsOnCancel) {
+    const Image rgba = toRgba8(noiseImage(37, 23, 9, 4));
+    const Image blurred = blurRgba8(rgba, 2.0f);
+    // a plain two-pass reference (the full-size float pass the blur used to make)
+    const int radius = 6;
+    std::vector<float> kernel(2 * radius + 1);
+    float sum = 0.0f;
+    for (int i = -radius; i <= radius; i++) sum += kernel[i + radius] = std::exp(-0.5f * static_cast<float>(i * i) / 4.0f);
+    for (float& k : kernel) k /= sum;
+    std::vector<float> tmp(rgba.pixelCount() * 4);
+    for (int y = 0; y < rgba.height; y++)
+        for (int x = 0; x < rgba.width; x++)
+            for (int c = 0; c < 4; c++) {
+                float acc = 0.0f;
+                for (int i = -radius; i <= radius; i++) acc += kernel[i + radius] * rgba.pixel(std::clamp(x + i, 0, rgba.width - 1), y)[c];
+                tmp[(static_cast<size_t>(y) * rgba.width + x) * 4 + c] = acc;
+            }
+    for (int y = 0; y < rgba.height; y++)
+        for (int x = 0; x < rgba.width; x++)
+            for (int c = 0; c < 4; c++) {
+                float acc = 0.0f;
+                for (int i = -radius; i <= radius; i++) acc += kernel[i + radius] * tmp[(static_cast<size_t>(std::clamp(y + i, 0, rgba.height - 1)) * rgba.width + x) * 4 + c];
+                ASSERT_EQ(blurred.pixel(x, y)[c], static_cast<uint8_t>(std::clamp(std::lround(acc), 0L, 255L))) << x << "," << y;
+            }
+    std::atomic<bool> cancel{true};
+    EXPECT_TRUE(blurRgba8(rgba, 2.0f, &cancel).empty());
+}
+
+TEST(TexSynth, CancelReachesThePreparation) {
+    // a large example in guided style transfer with 10 stages: seconds of preparation (decode,
+    // blur, histogram, pyramids) before the first stage, which used to ignore the cancel flag
+    Request r;
+    r.mode = Mode::Guided;
+    r.quality = Quality::High;
+    r.overrides.backtrackStages = 10;
+    r.examples.push_back(Example::fromImage(noiseImage(3072, 3072, 3)));
+    r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 4));
+    std::atomic<bool> cancel{false};
+    Control control;
+    control.cancel = &cancel;
+    std::thread canceller([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        cancel = true;
+    });
+    const auto start = std::chrono::steady_clock::now();
+    const Result result = synthesize(r, control);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    canceller.join();
+    EXPECT_EQ(result.status, Status::Cancelled);
+    EXPECT_LT(seconds, 1.0);
+}
+
+TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
+    const fs::path dir = tempDir();
+    // a 9000 x 9000 example: refused from its header (it has no pixel data at all)
+    writeFile(dir / "huge.png", pngHeaderOnly(9000, 9000));
+    Request r = basicRequest(Mode::Extend, 32, 32);
+    r.examples[0] = Example::fromPath(dir / "huge.png");
+    Result result = synthesize(r);
+    EXPECT_EQ(result.status, Status::InvalidRequest);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_EQ(result.errors[0].field, "examples[0].image");
+    EXPECT_NE(result.errors[0].message.find("9000x9000, at most 8192 per side"), std::string::npos) << result.errors[0].message;
+    // decoding checks the header first too
+    Image image;
+    std::string error;
+    const std::vector<uint8_t> header = pngHeaderOnly(9000, 9000);
+    EXPECT_FALSE(loadImageFromMemory(header.data(), header.size(), image, error, 8192));
+    EXPECT_NE(error.find("at most 8192 per side"), std::string::npos) << error;
+
+    // five 8192 x 8192 inputs: 335 megapixels, over the budget, refused before decoding
+    writeFile(dir / "big.png", pngHeaderOnly(8192, 8192));
+    Request many = basicRequest(Mode::Extend, 32, 32);
+    many.examples.clear();
+    for (int i = 0; i < 5; i++) many.examples.push_back(Example::fromPath(dir / "big.png"));
+    result = synthesize(many);
+    EXPECT_EQ(result.status, Status::InvalidRequest);
+    ASSERT_FALSE(result.errors.empty());
+    EXPECT_NE(result.errors[0].message.find("335.5 megapixels, at most 268.4"), std::string::npos) << result.errors[0].message;
+    fs::remove_all(dir);
+}
+
+#ifdef __linux__
+#include <sys/resource.h>
+
+namespace {
+
+    // in a child process: an address-space limit makes the synthesis' allocations fail
+    void synthesizeOutOfMemory() {
+        Request r = basicRequest(Mode::Guided, 0, 0);
+        r.examples[0] = Example::fromImage(noiseImage(2048, 2048, 1, 4));
+        r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 2));
+        long pages = 0;
+        std::ifstream("/proc/self/statm") >> pages;
+        const rlim_t limit = static_cast<rlim_t>(pages) * 4096 + (40u << 20);
+        rlimit rl;
+        rl.rlim_cur = limit;
+        rl.rlim_max = limit;
+        setrlimit(RLIMIT_AS, &rl);
+        const Result result = synthesize(r);
+        const bool failed = result.status == Status::Failed && !result.errors.empty() && result.errors[0].message.find("out of memory") != std::string::npos;
+        std::exit(failed ? 0 : 1);
+    }
+
+}
+
+TEST(TexSynthDeathTest, OutOfMemoryIsAFailedStatusNotATerminate) {
+    EXPECT_EXIT(synthesizeOutOfMemory(), ::testing::ExitedWithCode(0), "");
+}
+#endif

@@ -3235,7 +3235,9 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
-    editor::texsynth::SynthesisRun::cancelAll();
+    if (!editor::texsynth::SynthesisRun::cancelAll()) {
+        Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }

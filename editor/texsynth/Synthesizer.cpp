@@ -9,9 +9,11 @@
 #include <condition_variable>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <functional>
 #include <limits>
 #include <mutex>
+#include <system_error>
 #include <thread>
 
 namespace jasperengine::editor::texsynth::detail {
@@ -61,7 +63,11 @@ namespace jasperengine::editor::texsynth::detail {
             using Task = std::function<void(size_t begin, size_t end, int worker)>;
 
             explicit WorkerPool(int threads) {
-                for (int i = 1; i < threads; i++) workers.emplace_back([this, i] { loop(i); });
+                // a thread that can't be created: fewer workers (the output never depends on them)
+                try {
+                    for (int i = 1; i < threads; i++) workers.emplace_back([this, i] { loop(i); });
+                } catch (const std::system_error&) {
+                }
             }
             ~WorkerPool() {
                 {
@@ -92,6 +98,12 @@ namespace jasperengine::editor::texsynth::detail {
                 std::unique_lock<std::mutex> lock(mutex);
                 done.wait(lock, [this] { return active == 0; });
                 current = nullptr;
+                // a chunk that threw (std::bad_alloc): rethrown here, on the calling thread
+                if (failure) {
+                    std::exception_ptr e = failure;
+                    failure = nullptr;
+                    std::rethrow_exception(e);
+                }
             }
 
         private:
@@ -99,7 +111,15 @@ namespace jasperengine::editor::texsynth::detail {
                 for (;;) {
                     const size_t b = next.fetch_add(chunkSize, std::memory_order_relaxed);
                     if (b >= total) break;
-                    (*current)(b, std::min(total, b + chunkSize), worker);
+                    try {
+                        (*current)(b, std::min(total, b + chunkSize), worker);
+                    } catch (...) {
+                        // an exception must not leave a worker thread (std::terminate): kept for
+                        // parallelFor, the remaining chunks skipped
+                        std::lock_guard<std::mutex> lock(mutex);
+                        if (!failure) failure = std::current_exception();
+                        next.store(total, std::memory_order_relaxed);
+                    }
                 }
             }
             void loop(int worker) {
@@ -128,6 +148,7 @@ namespace jasperengine::editor::texsynth::detail {
             int active = 0;
             uint64_t generation = 0;
             bool quit = false;
+            std::exception_ptr failure;
         };
 
         const uint8_t kOutside[4] = {0, 0, 0, 255};   // upstream's outside colour
@@ -177,7 +198,8 @@ namespace jasperengine::editor::texsynth::detail {
                 float uncertainty;
             };
 
-            void setLevel(int newLevel);
+            // false: cancelled while scaling the level up
+            bool setLevel(int newLevel);
             void setGuideWeight(float w);
             SourceCoord randomSample(Pcg32& rng) const;
             void resolvePixel(uint32_t pixel, uint64_t pixelSeed, Scratch& s, Slot& slot) const;
@@ -193,11 +215,17 @@ namespace jasperengine::editor::texsynth::detail {
             const int m;
 
             int level = -1;
+            // the current level of each pyramid at full resolution (only one at a time is kept)
+            std::vector<Image> levelImages;
+            std::vector<Image> guideImages;
+            Image targetGuideImage;
             std::vector<const uint8_t*> levelPixels;   // per example, current level RGBA8
             std::vector<const uint8_t*> guidePixels;   // per example (null without guides)
             const uint8_t* targetGuide = nullptr;
             bool guideActive = false;
-            bool alphaMatters = true;   // false: every alpha is 255, its cost always 0 (skipped, same sums)
+            // false: every alpha of the current level (examples, guides, target guide) is 255, so
+            // every alpha difference is 0 and its cost exactly 0: skipped, the same sums
+            bool alphaMatters = true;
             // costs by signed difference a - b: table[255 + a - b]
             float mainCost[511];
             float guideCost[511];
@@ -223,18 +251,42 @@ namespace jasperengine::editor::texsynth::detail {
             int64_t overallTotal = 1;
         };
 
-        void Resolver::setLevel(int newLevel) {
+        bool Resolver::setLevel(int newLevel) {
             level = newLevel;
-            levelPixels.assign(job.examples.size(), nullptr);
-            guidePixels.assign(job.examples.size(), nullptr);
-            for (size_t e = 0; e < job.examples.size(); e++) {
+            const size_t examples = job.examples.size();
+            // the previous level's copies go first: one full-resolution level per pyramid at a time
+            levelImages.assign(examples, Image());
+            guideImages.assign(examples, Image());
+            targetGuideImage = Image();
+            levelPixels.assign(examples, nullptr);
+            guidePixels.assign(examples, nullptr);
+            const auto cancelled = [this] { return control.cancel && control.cancel->load(std::memory_order_relaxed); };
+            auto hasAlpha = [](const Image& image) {
+                for (size_t i = 3; i < image.data.size(); i += 4)
+                    if (image.data[i] != 255) return true;
+                return false;
+            };
+            auto alphaOf = [&](const Pyramid& pyramid, const Image& image) { return &image == &pyramid.full ? pyramid.fullHasAlpha : hasAlpha(image); };
+            alphaMatters = false;
+            for (size_t e = 0; e < examples; e++) {
+                if (cancelled()) return false;
                 const CoreExample& ex = job.examples[e];
-                levelPixels[e] = ex.levels[std::min<size_t>(level, ex.levels.size() - 1)].data.data();
-                if (!ex.guideLevels.empty()) guidePixels[e] = ex.guideLevels[std::min<size_t>(level, ex.guideLevels.size() - 1)].data.data();
+                const Image& image = ex.levels.level(std::min(level, ex.levels.levels() - 1), levelImages[e]);
+                levelPixels[e] = image.data.data();
+                alphaMatters = alphaMatters || alphaOf(ex.levels, image);
+                if (!ex.guideLevels.empty()) {
+                    const Image& guide = ex.guideLevels.level(std::min(level, ex.guideLevels.levels() - 1), guideImages[e]);
+                    guidePixels[e] = guide.data.data();
+                    alphaMatters = alphaMatters || alphaOf(ex.guideLevels, guide);
+                }
             }
-            targetGuide = job.targetGuideLevels.empty()
-                              ? nullptr
-                              : job.targetGuideLevels[std::min<size_t>(level, job.targetGuideLevels.size() - 1)].data.data();
+            targetGuide = nullptr;
+            if (!job.targetGuideLevels.empty()) {
+                if (cancelled()) return false;
+                const Image& guide = job.targetGuideLevels.level(std::min(level, job.targetGuideLevels.levels() - 1), targetGuideImage);
+                targetGuide = guide.data.data();
+                alphaMatters = alphaMatters || alphaOf(job.targetGuideLevels, guide);
+            }
             // every resolved pixel takes its colour from the new level (upstream next_pyramid_level)
             for (size_t p = 0; p < N; p++) {
                 if (!resolved[p]) continue;
@@ -242,6 +294,7 @@ namespace jasperengine::editor::texsynth::detail {
                 const CoreExample& ex = job.examples[c.example];
                 std::memcpy(&colour[p * 4], levelPixels[c.example] + (static_cast<size_t>(c.y) * ex.width + c.x) * 4, 4);
             }
+            return true;
         }
 
         void Resolver::setGuideWeight(float w) {
@@ -495,18 +548,6 @@ namespace jasperengine::editor::texsynth::detail {
                 if (!validSamples[e].empty()) sampleableMaps.push_back(static_cast<int>(e));
             }
 
-            alphaMatters = false;
-            auto hasAlpha = [](const Image& image) {
-                for (size_t i = 3; i < image.data.size(); i += 4)
-                    if (image.data[i] != 255) return true;
-                return false;
-            };
-            for (const CoreExample& ex : job.examples) {
-                for (const Image& img : ex.levels) alphaMatters = alphaMatters || hasAlpha(img);
-                for (const Image& img : ex.guideLevels) alphaMatters = alphaMatters || hasAlpha(img);
-            }
-            for (const Image& img : job.targetGuideLevels) alphaMatters = alphaMatters || hasAlpha(img);
-
             coord.assign(N, SourceCoord());
             colour.assign(N * 4, 0);
             resolved.assign(N, 0);
@@ -574,7 +615,7 @@ namespace jasperengine::editor::texsynth::detail {
                 const Clock::time_point stageStart = Clock::now();
                 const int64_t count = counts[stage];
                 const int newLevel = std::min(stage, std::max(1, job.pyramidLevels) - 1);
-                if (newLevel != level) setLevel(newLevel);
+                if (newLevel != level && !setLevel(newLevel)) return false;
                 // guide weight (upstream: (alpha * (1 - resolved share))^3, none in the last stage)
                 float w = 0.0f;
                 if (!job.targetGuideLevels.empty()) {
@@ -646,7 +687,7 @@ namespace jasperengine::editor::texsynth::detail {
             }
 
             // the final colours come from the full-resolution examples
-            if (level != std::max(1, job.pyramidLevels) - 1) setLevel(std::max(1, job.pyramidLevels) - 1);
+            if (level != std::max(1, job.pyramidLevels) - 1 && !setLevel(std::max(1, job.pyramidLevels) - 1)) return false;
             out.coords = std::move(coord);
             out.uncertainty = std::move(uncertainty);
             out.rgba = Image::make(W, H, 4, 8);
@@ -819,6 +860,29 @@ namespace jasperengine::editor::texsynth::detail {
             if (found == k) return found;
         }
         return -1;
+    }
+
+    // ---- Pyramid
+
+    bool Pyramid::build(Image rgba, int levels, Pyramid& out, const std::atomic<bool>* cancel) {
+        out = Pyramid();
+        out.reduced.resize(static_cast<size_t>(std::max(1, levels)));
+        for (int i = 0; i < out.levels(); i++) {
+            if (cancel && cancel->load(std::memory_order_relaxed)) return false;
+            int factor = 1 << std::min(20, out.levels() - 1 - i);
+            while (factor > 1 && (rgba.width / factor < 2 || rgba.height / factor < 2)) factor /= 2;
+            if (factor > 1) out.reduced[i] = resizeRgba8(rgba, rgba.width / factor, rgba.height / factor);
+        }
+        for (size_t i = 3; i < rgba.data.size() && !out.fullHasAlpha; i += 4) out.fullHasAlpha = rgba.data[i] != 255;
+        out.full = std::move(rgba);
+        return true;
+    }
+
+    const Image& Pyramid::level(int i, Image& scratch) const {
+        const Image& small = reduced[static_cast<size_t>(i)];
+        if (small.empty()) return full;
+        scratch = resizeRgba8(small, full.width, full.height);
+        return scratch;
     }
 
     bool runSynthesis(const CoreJob& job, const Control& control, CoreResult& out) {

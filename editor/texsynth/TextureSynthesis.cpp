@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <new>
 #include <set>
 #include <thread>
 
@@ -19,7 +21,7 @@ namespace jasperengine::editor::texsynth {
 
         constexpr int kMaxSide = 8192;
         constexpr int64_t kMaxPixels = 4096LL * 4096LL;
-        constexpr int kMaxExampleSide = 8192;
+        constexpr int kMaxExampleSide = kMaxImageSide;
         constexpr double kHighUncertainty = 0.1;
         constexpr double kUncertaintyMapScale = 0.25;
 
@@ -47,37 +49,30 @@ namespace jasperengine::editor::texsynth {
             }
         }
 
-        // The blur pyramid upstream builds (img_pyramid.rs): level i of L is the image scaled down by
-        // 2^(L-1-i) and back up, the last level the image itself; the factor stops where a side
-        // would drop under 2 pixels (upstream crashed on large backtrack_stages)
-        std::vector<Image> pyramid(const Image& rgba, int levels) {
-            std::vector<Image> out;
-            out.reserve(levels);
-            for (int i = 0; i < levels; i++) {
-                int factor = 1 << std::min(20, levels - 1 - i);
-                while (factor > 1 && (rgba.width / factor < 2 || rgba.height / factor < 2)) factor /= 2;
-                if (factor == 1) {
-                    out.push_back(rgba);
-                } else {
-                    const Image small = resizeRgba8(rgba, rgba.width / factor, rgba.height / factor);
-                    out.push_back(resizeRgba8(small, rgba.width, rgba.height));
-                }
-            }
-            return out;
+        // upstream's transform_to_guide_map: blurred, grey (empty when cancelled)
+        Image toGuideMap(const Image& rgba, const std::atomic<bool>* cancel) {
+            Image blurred = blurRgba8(rgba, 2.0f, cancel);
+            if (blurred.empty()) return blurred;
+            return greyRgba8(blurred);
         }
-
-        // upstream's transform_to_guide_map: blurred, grey
-        Image toGuideMap(const Image& rgba) { return greyRgba8(blurRgba8(rgba, 2.0f)); }
 
         bool loadInput(ImageInput& input, const std::string& field, std::vector<Problem>& errors) {
             if (!input.image.empty()) return true;
             std::string error;
-            if (!loadImage(input.path, input.image, error, &input.sha1)) {
+            if (!loadImage(input.path, input.image, error, &input.sha1, kMaxImageSide)) {
                 addProblem(errors, field, error);
                 return false;
             }
             return true;
         }
+
+        std::string megapixels(int64_t pixels) {
+            char buffer[32];
+            std::snprintf(buffer, sizeof(buffer), "%.1f", static_cast<double>(pixels) / 1e6);
+            return buffer;
+        }
+
+        Result synthesizeImpl(Request& request, const Control& control);
 
     }
 
@@ -155,6 +150,7 @@ namespace jasperengine::editor::texsynth {
             case Status::InvalidRequest: return "invalid_request";
             case Status::LoadFailed: return "load_failed";
             case Status::Cancelled: return "cancelled";
+            case Status::Failed: return "failed";
         }
         return "?";
     }
@@ -320,7 +316,36 @@ namespace jasperengine::editor::texsynth {
     }
 
     Result synthesize(Request& request, const Control& control) {
+        // nothing escapes: a worker thread would std::terminate on it (and the CLI abort)
+        auto failed = [&](const std::string& message) {
+            Result result;
+            result.status = Status::Failed;
+            result.params = resolveParams(request.quality, request.overrides);
+            result.seed = request.seed;
+            result.errors.push_back({"synthesis", message});
+            return result;
+        };
+        try {
+            return synthesizeImpl(request, control);
+        } catch (const std::bad_alloc&) {
+            return failed("out of memory: try smaller examples or output, fewer companions, or a lower quality (fewer backtrack stages)");
+        } catch (const std::exception& e) {
+            return failed(std::string("the synthesis failed: ") + e.what());
+        } catch (...) {
+            return failed("the synthesis failed");
+        }
+    }
+
+    namespace {
+
+    Result synthesizeImpl(Request& request, const Control& control) {
         const auto started = std::chrono::steady_clock::now();
+        const auto cancelled = [&control] { return control.cancel && control.cancel->load(std::memory_order_relaxed); };
+        auto cancelledResult = [&](Result& result) {
+            result.status = Status::Cancelled;
+            result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+            return result;
+        };
         Result result;
         result.params = resolveParams(request.quality, request.overrides);
         result.seed = request.seed;
@@ -379,25 +404,58 @@ namespace jasperengine::editor::texsynth {
             return result;
         }
 
-        // ---- the images
+        // ---- every input, by field (examples, their masks and guides, companions, masks, target guide)
+        std::vector<std::pair<ImageInput*, std::string>> inputs;
         for (size_t e = 0; e < request.examples.size(); e++) {
             Example& ex = request.examples[e];
             const std::string field = "examples[" + std::to_string(e) + "]";
-            loadInput(ex.image, field + ".image", errors);
-            if (ex.sampleMask.given()) loadInput(ex.sampleMask, field + ".sampleMask", errors);
-            if (ex.guide.given()) loadInput(ex.guide, field + ".guide", errors);
+            inputs.push_back({&ex.image, field + ".image"});
+            if (ex.sampleMask.given()) inputs.push_back({&ex.sampleMask, field + ".sampleMask"});
+            if (ex.guide.given()) inputs.push_back({&ex.guide, field + ".guide"});
         }
         for (size_t c = 0; c < request.companions.size(); c++) {
             for (size_t e = 0; e < request.companions[c].images.size(); e++) {
-                loadInput(request.companions[c].images[e], "companions[" + std::to_string(c) + "].images[" + std::to_string(e) + "]", errors);
+                inputs.push_back({&request.companions[c].images[e], "companions[" + std::to_string(c) + "].images[" + std::to_string(e) + "]"});
             }
         }
-        if (request.inpaintMask.image.given()) loadInput(request.inpaintMask.image, "inpaintMask", errors);
-        if (request.targetGuide.given()) loadInput(request.targetGuide, "targetGuide", errors);
+        if (request.inpaintMask.image.given()) inputs.push_back({&request.inpaintMask.image, "inpaintMask"});
+        if (request.targetGuide.given()) inputs.push_back({&request.targetGuide, "targetGuide"});
+
+        // ---- their sizes from the headers: too large is refused before anything is decoded
+        int64_t inputPixels = 0;
+        for (const auto& [input, field] : inputs) {
+            int w = 0, h = 0;
+            if (!input->image.empty()) {
+                w = input->image.width;
+                h = input->image.height;
+            } else if (!probeImage(input->path, w, h)) {
+                continue;   // unreadable: loading reports it
+            }
+            if (w > kMaxImageSide || h > kMaxImageSide) {
+                addProblem(errors, field, "the image is " + sizeText(w, h) + ", at most " + std::to_string(kMaxImageSide) + " per side (scale it down)");
+            }
+            inputPixels += static_cast<int64_t>(w) * h;
+        }
+        if (inputPixels > kMaxInputPixels) {
+            addProblem(errors, "examples", "the input images total " + megapixels(inputPixels) + " megapixels, at most " + megapixels(kMaxInputPixels) +
+                                               " (e.g. one 8192x8192 example with three companion maps): use smaller images, fewer examples or "
+                                               "companions");
+        }
+        if (!errors.empty()) {
+            result.status = Status::InvalidRequest;
+            return result;
+        }
+
+        // ---- the images
+        for (const auto& [input, field] : inputs) {
+            if (cancelled()) return cancelledResult(result);
+            loadInput(*input, field, errors);
+        }
         if (!errors.empty()) {
             result.status = Status::LoadFailed;
             return result;
         }
+        if (cancelled()) return cancelledResult(result);
 
         // ---- sizes
         for (size_t e = 0; e < request.examples.size(); e++) {
@@ -501,26 +559,31 @@ namespace jasperengine::editor::texsynth {
             if (regenCount == 0) result.warnings.push_back("the mask selects no pixel: the output is the input");
         }
 
-        // target guide, then each example's levels, sample mask and guide
+        // target guide, then each example's levels, sample mask and guide (a cancel is checked
+        // between every step: each is at most one image's conversion, blur or resize)
         const bool guidedMode = mode == Mode::Guided;
-        Image targetGuide;
         if (guidedMode) {
-            targetGuide = resizeRgba8(toRgba8(request.targetGuide.image), width, height);
+            if (cancelled()) return cancelledResult(result);
+            Image targetGuide = resizeRgba8(toRgba8(request.targetGuide.image), width, height);
             if (request.targetGuide.image.width != width || request.targetGuide.image.height != height) {
                 result.warnings.push_back("the target guide (" + sizeText(request.targetGuide.image.width, request.targetGuide.image.height) +
                                           ") was resized to the output size " + sizeText(width, height));
             }
-            if (guided == 0) targetGuide = toGuideMap(targetGuide);   // style transfer: both sides are blurred grey maps
-            job.targetGuideLevels = pyramid(targetGuide, job.pyramidLevels);
+            if (guided == 0) targetGuide = toGuideMap(targetGuide, control.cancel);   // style transfer: both sides are blurred grey maps
+            if (cancelled() || !detail::Pyramid::build(std::move(targetGuide), job.pyramidLevels, job.targetGuideLevels, control.cancel)) {
+                return cancelledResult(result);
+            }
         }
+        // the target guide at the output size (its pyramid's last level): the examples' guides match its histogram
+        const Image& targetGuide = job.targetGuideLevels.full;
         bool anySample = false;
         for (size_t e = 0; e < request.examples.size(); e++) {
+            if (cancelled()) return cancelledResult(result);
             const Example& ex = request.examples[e];
             detail::CoreExample core;
-            const Image rgba = toRgba8(ex.image.image);
+            Image rgba = toRgba8(ex.image.image);
             core.width = rgba.width;
             core.height = rgba.height;
-            core.levels = pyramid(rgba, job.pyramidLevels);
             core.sampleable = ex.sampleable;
             if (ex.sampleMask.given()) {
                 const Image mask = toRgba8(ex.sampleMask.image);
@@ -533,6 +596,7 @@ namespace jasperengine::editor::texsynth {
                 for (size_t i = 0; i < core.allowed.size(); i++) core.allowed[i] = core.allowed[i] && !regenerate[i];
             }
             if (guidedMode) {
+                if (cancelled()) return cancelledResult(result);
                 Image guide;
                 if (ex.guide.given()) {
                     guide = toRgba8(ex.guide.image);
@@ -542,11 +606,16 @@ namespace jasperengine::editor::texsynth {
                     }
                 } else {
                     // upstream: the example as a blurred grey map, its histogram matched to the target guide's
-                    guide = toGuideMap(rgba);
+                    guide = toGuideMap(rgba, control.cancel);
+                    if (cancelled()) return cancelledResult(result);
                     matchHistogramRgba8(guide, targetGuide);
                 }
-                core.guideLevels = pyramid(guide, job.pyramidLevels);
+                if (cancelled() || !detail::Pyramid::build(std::move(guide), job.pyramidLevels, core.guideLevels, control.cancel)) {
+                    return cancelledResult(result);
+                }
             }
+            // the example's levels last: its RGBA copy moves into the pyramid
+            if (cancelled() || !detail::Pyramid::build(std::move(rgba), job.pyramidLevels, core.levels, control.cancel)) return cancelledResult(result);
             if (core.sampleable) {
                 const bool some = core.allowed.empty() || std::find(core.allowed.begin(), core.allowed.end(), 1) != core.allowed.end();
                 if (!some && ex.sampleMask.given()) {
@@ -564,11 +633,7 @@ namespace jasperengine::editor::texsynth {
 
         // ---- synthesis
         detail::CoreResult core;
-        if (!detail::runSynthesis(job, control, core)) {
-            result.status = Status::Cancelled;
-            result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-            return result;
-        }
+        if (!detail::runSynthesis(job, control, core)) return cancelledResult(result);
         result.stageSeconds = core.stageSeconds;
         result.coordinates.width = width;
         result.coordinates.height = height;
@@ -642,6 +707,8 @@ namespace jasperengine::editor::texsynth {
         result.status = Status::Ok;
         result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         return result;
+    }
+
     }
 
 }

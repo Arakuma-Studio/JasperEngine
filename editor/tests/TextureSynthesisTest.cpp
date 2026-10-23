@@ -17,11 +17,14 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine::editor;
@@ -295,4 +298,68 @@ TEST(TextureSynthesisWrite, AFailedMultiFileWriteChangesNothing) {
         EXPECT_EQ(changes, 3);
     }
     fs::remove_all(dir);
+}
+
+// ---- SynthesisRun: callbacks, cancel, shutdown
+
+namespace {
+
+    ts::Request heavyRequest() {
+        // seconds of preparation (blur, pyramids of a 3072 x 3072 example) before the first stage
+        ts::Request r;
+        r.mode = ts::Mode::Guided;
+        r.quality = ts::Quality::High;
+        r.overrides.backtrackStages = 10;
+        r.examples.push_back(ts::Example::fromImage(smallImage(3072, 5)));
+        r.targetGuide = ts::ImageInput::fromImage(smallImage(64, 6));
+        return r;
+    }
+
+    // In a child process (shutdown is for good): runs being prepared are cancelled and waited
+    // for, and no callback runs once the editor shuts down
+    void shutdownWhileRunning() {
+        std::atomic<int> finished{0};
+        std::vector<std::shared_ptr<ts::SynthesisRun>> runs;
+        for (int i = 0; i < 3; i++) {
+            runs.push_back(ts::SynthesisRun::start(heavyRequest(), {}, [&finished](ts::SynthesisRun&) { finished++; }));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        const auto start = std::chrono::steady_clock::now();
+        const bool stopped = ts::SynthesisRun::cancelAll(10.0);
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        bool cancelled = true;
+        for (const auto& run : runs) cancelled = cancelled && run->finished() && run->result().status == ts::Status::Cancelled;
+        std::exit(stopped && seconds < 2.0 && cancelled && finished == 0 ? 0 : 1);
+    }
+
+}
+
+TEST(TextureSynthesisRun, FinishesCallsBackAndCancels) {
+    ts::Request r;
+    r.mode = ts::Mode::Tileable;
+    r.width = r.height = 48;
+    r.quality = ts::Quality::Draft;
+    r.examples.push_back(ts::Example::fromImage(smallImage(32, 7)));
+    std::atomic<int> calls{0};
+    std::shared_ptr<ts::SynthesisRun> run = ts::SynthesisRun::start(r, {}, [&calls](ts::SynthesisRun& done) {
+        EXPECT_TRUE(done.finished());
+        calls++;
+    });
+    for (int i = 0; i < 500 && calls == 0; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_EQ(calls, 1);
+    EXPECT_EQ(run->result().status, ts::Status::Ok);
+
+    // cancelRunning (a project switch): the run ends cancelled, still calling back
+    std::shared_ptr<ts::SynthesisRun> heavy = ts::SynthesisRun::start(heavyRequest(), {}, [&calls](ts::SynthesisRun&) { calls++; });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    ts::SynthesisRun::cancelRunning();
+    for (int i = 0; i < 300 && !heavy->finished(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_TRUE(heavy->finished()) << "a cancel reaches the preparation";
+    EXPECT_EQ(heavy->result().status, ts::Status::Cancelled);
+    for (int i = 0; i < 100 && calls < 2; i++) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    EXPECT_EQ(calls, 2);
+}
+
+TEST(TextureSynthesisRunDeathTest, ShutdownCancelsWaitsAndCallsNothingBack) {
+    EXPECT_EXIT(shutdownWhileRunning(), ::testing::ExitedWithCode(0), "");
 }

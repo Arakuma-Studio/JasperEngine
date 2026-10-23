@@ -198,11 +198,13 @@ namespace jasperengine::editor::texsynth {
         double previewIntervalSeconds = 0.0;   // 0: no previews
         int previewMaxSize = 512;
         // Set to true from any thread: synthesize() returns Status::Cancelled within a batch
-        // (milliseconds)
+        // (milliseconds), or between the steps of loading and preparing the images (each at most
+        // one image decode or resize: about a second for an 8192 x 8192 example)
         const std::atomic<bool>* cancel = nullptr;
     };
 
-    enum class Status { Ok, InvalidRequest, LoadFailed, Cancelled };
+    // Failed: the synthesis itself could not run (out of memory: Result::errors says so)
+    enum class Status { Ok, InvalidRequest, LoadFailed, Cancelled, Failed };
     const char* toString(Status status);
 
     // Where an output pixel was copied from: example `example`'s pixel (x, y)
@@ -273,12 +275,18 @@ namespace jasperengine::editor::texsynth {
     };
 
     // Validates the request (every problem, not only the first), loads the images, synthesizes.
-    // Never throws for bad input: errors come back in Result::errors with Status::InvalidRequest
-    // (or LoadFailed for an unreadable image). The images given by path are loaded into the
+    // Never throws: errors come back in Result::errors with Status::InvalidRequest (or LoadFailed
+    // for an unreadable image, Failed when memory ran out). The input images may total at most
+    // kMaxInputPixels, checked from their headers before anything is decoded. The images given by path are loaded into the
     // request (ImageInput::image and ::sha1), so makeRecipe() can record their hashes and a
     // second run (another seed) does not decode them again. Blocking: run it on a worker thread
     // in the editor; one request at a time per Request object.
     Result synthesize(Request& request, const Control& control = Control());
+
+    // Limits of the inputs: each side of an image, and every input image together (examples,
+    // companions, masks, guides; one 8192 x 8192 example with three companion maps fits)
+    inline constexpr int kMaxImageSide = 8192;
+    inline constexpr int64_t kMaxInputPixels = 4LL * 8192 * 8192;
 
     // Only the validation (no image loaded): what synthesize() would refuse for the parameters
     std::vector<Problem> validateParams(const Params& params);

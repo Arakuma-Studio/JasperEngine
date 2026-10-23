@@ -166,7 +166,9 @@ namespace jasperengine::editor::texsynth {
 
     // ---- worker
 
-    // synthesize() on a detached worker thread. The run keeps itself alive until it finishes.
+    // synthesize() on a detached worker thread. The run keeps itself alive until it finishes, and
+    // the thread never lets an exception out: an out-of-memory run (or one whose thread can't be
+    // created) finishes with Status::Failed.
     class SynthesisRun : public std::enable_shared_from_this<SynthesisRun> {
     public:
         struct Options {
@@ -178,10 +180,14 @@ namespace jasperengine::editor::texsynth {
         };
         using Finished = std::function<void(SynthesisRun& run)>;
 
-        // onFinished runs on the worker thread once result() is ready
+        // onFinished runs on the worker thread once result() is ready (on the calling thread when
+        // no thread could be started)
         static std::shared_ptr<SynthesisRun> start(Request request, const Options& options, Finished onFinished = nullptr);
-        // Cancels every running synthesis and waits for them (editor shutdown)
-        static void cancelAll();
+        // Editor shutdown: no callback runs any more, every running synthesis is cancelled and
+        // waited for (they end within about a second); false when one outlived the timeout
+        static bool cancelAll(double timeoutSeconds = 30.0);
+        // Cancels every running synthesis without waiting (a project switch)
+        static void cancelRunning();
 
         void cancel() { cancelFlag = true; }
         bool cancelRequested() const { return cancelFlag.load(); }

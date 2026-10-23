@@ -97,7 +97,11 @@ so a watching human sees the live preview (the window's Save writes it when `out
 
 Time grows with the output's pixels (Balanced, 8 cores): about 1 s at 512 x 512, 4-5 s at
 1024 x 1024, 20 s at 2048 x 2048. `draft` is about twice as fast, `high` about twice as slow.
-At most 4096 x 4096 pixels (each side 1..8192).
+At most 4096 x 4096 pixels (each side 1..8192). Inputs: each image at most 8192 per side, and
+all of them together (examples, companions, masks, guides) at most 268 megapixels, e.g. one
+8192 x 8192 example with three companion maps; both are checked from the files' headers before
+anything is decoded. Cancelling reaches the loading and preparation too (within about a second),
+and a run that runs out of memory fails with status `failed` instead of taking the editor down.
 
 ## Limitations
 

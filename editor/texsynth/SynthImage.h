@@ -7,6 +7,7 @@
 // count and bit depth, so a companion map (a 16-bit height map, an RGB normal map) is copied texel
 // for texel into the synthesized output in its own format.
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -41,9 +42,12 @@ namespace jasperengine::editor::texsynth {
 
     // Decodes PNG (8/16-bit, any colour type), JPEG, TGA, BMP, PSD, GIF (first frame), HDR is
     // refused. Keeps the channel count and, for 16-bit PNGs, the 16-bit samples. `sha1` (when
-    // given) receives the SHA-1 of the file's bytes as 40 hex digits.
-    bool loadImage(const std::filesystem::path& path, Image& out, std::string& error, std::string* sha1 = nullptr);
-    bool loadImageFromMemory(const uint8_t* bytes, size_t size, Image& out, std::string& error);
+    // given) receives the SHA-1 of the file's bytes as 40 hex digits. `maxSide` > 0: an image
+    // larger on a side is refused from its header, before anything is decoded.
+    bool loadImage(const std::filesystem::path& path, Image& out, std::string& error, std::string* sha1 = nullptr, int maxSide = 0);
+    bool loadImageFromMemory(const uint8_t* bytes, size_t size, Image& out, std::string& error, int maxSide = 0);
+    // The size of an image file from its header (nothing decoded); false when it is not readable
+    bool probeImage(const std::filesystem::path& path, int& width, int& height);
 
     // PNG bytes of the image (8-bit through stb_image_write, 16-bit through util/PngWriter),
     // without any ancillary chunk
@@ -67,7 +71,9 @@ namespace jasperengine::editor::texsynth {
 
     // RGBA8 helpers of the synthesis (Image with channels 4, bitDepth 8)
     Image resizeRgba8(const Image& image, int width, int height);
-    Image blurRgba8(const Image& image, float sigma);
+    // Gaussian blur (separable, clamped edges). `cancel` set: checked every row, an empty image
+    // comes back when it is set. Works on a few rows at a time (no full-size float copy).
+    Image blurRgba8(const Image& image, float sigma, const std::atomic<bool>* cancel = nullptr);
     Image greyRgba8(const Image& image);   // Rec. 709 luma in R, G and B, opaque
     // Remaps `image`'s grey (R) values so its histogram matches `reference`'s (both grey RGBA8)
     void matchHistogramRgba8(Image& image, const Image& reference);

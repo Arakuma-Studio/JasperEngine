@@ -18,6 +18,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <system_error>
 #include <thread>
 
 namespace fs = std::filesystem;
@@ -89,11 +90,31 @@ namespace jasperengine::editor::texsynth {
             return fixed(p, 0) + "%";
         }
 
-        // ---- running workers (SynthesisRun::cancelAll)
-        std::mutex runsMutex;
-        std::condition_variable runsDone;
-        std::vector<std::weak_ptr<SynthesisRun>> runs;
-        int activeRuns = 0;
+        // ---- running workers (SynthesisRun::cancelAll). Owned through a shared_ptr every worker
+        // thread holds a copy of: a thread that outlives the editor's statics (exit) still locks
+        // and notifies a live object.
+        struct RunRegistry {
+            std::mutex mutex;
+            std::condition_variable done;
+            std::vector<std::weak_ptr<SynthesisRun>> runs;
+            int active = 0;
+            // set by cancelAll (shutdown): the workers call no callback any more
+            std::atomic<bool> shuttingDown{false};
+        };
+
+        std::shared_ptr<RunRegistry> registry() {
+            static const std::shared_ptr<RunRegistry> instance = std::make_shared<RunRegistry>();
+            return instance;
+        }
+
+        Result failedResult(const Request& request, const std::string& message) {
+            Result result;
+            result.status = Status::Failed;
+            result.seed = request.seed;
+            result.params = resolveParams(request.quality, request.overrides);
+            result.errors.push_back({"synthesis", message});
+            return result;
+        }
 
     }
 
@@ -738,46 +759,83 @@ namespace jasperengine::editor::texsynth {
         std::shared_ptr<SynthesisRun> run(new SynthesisRun());
         run->req = std::move(request);
         if (options.threads > 0) run->req.threads = options.threads;
+        const std::shared_ptr<RunRegistry> shared = registry();
         {
-            std::lock_guard<std::mutex> lock(runsMutex);
-            runs.erase(std::remove_if(runs.begin(), runs.end(), [](const std::weak_ptr<SynthesisRun>& w) { return w.expired(); }), runs.end());
-            runs.push_back(run);
-            activeRuns++;
+            std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->runs.erase(std::remove_if(shared->runs.begin(), shared->runs.end(), [](const std::weak_ptr<SynthesisRun>& w) { return w.expired(); }),
+                               shared->runs.end());
+            shared->runs.push_back(run);
+            shared->active++;
         }
-        std::thread([run, options, onFinished]() {
-            Control control;
-            control.cancel = &run->cancelFlag;
-            control.previewIntervalSeconds = options.previewIntervalSeconds;
-            control.previewMaxSize = options.previewMaxSize;
-            control.onProgress = [run, forward = options.onProgress](const Progress& p) {
-                {
-                    std::lock_guard<std::mutex> lock(run->mutex);
-                    run->last = p;
-                    run->last.preview.reset();
-                    if (p.preview) {
-                        run->preview = p.preview;
-                        run->previewSerial++;
-                    }
-                }
-                if (forward) forward(p);
-            };
-            Result result = synthesize(run->req, control);
+        auto finish = [run, onFinished, shared](Result result) {
             run->res = std::move(result);
             run->done = true;
-            if (onFinished) onFinished(*run);
-            std::lock_guard<std::mutex> lock(runsMutex);
-            activeRuns--;
-            runsDone.notify_all();
-        }).detach();
+            if (onFinished && !shared->shuttingDown) {
+                try {
+                    onFinished(*run);
+                } catch (...) {
+                    // a callback's failure must not take the editor down from a worker thread
+                }
+            }
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->active--;
+            }
+            shared->done.notify_all();
+        };
+        try {
+            std::thread([run, options, shared, finish]() {
+                Result result;
+                try {
+                    Control control;
+                    control.cancel = &run->cancelFlag;
+                    control.previewIntervalSeconds = options.previewIntervalSeconds;
+                    control.previewMaxSize = options.previewMaxSize;
+                    control.onProgress = [run, shared, forward = options.onProgress](const Progress& p) {
+                        {
+                            std::lock_guard<std::mutex> lock(run->mutex);
+                            run->last = p;
+                            run->last.preview.reset();
+                            if (p.preview) {
+                                run->preview = p.preview;
+                                run->previewSerial++;
+                            }
+                        }
+                        if (forward && !shared->shuttingDown) forward(p);
+                    };
+                    // synthesize() reports out of memory as Status::Failed; anything else is caught here
+                    result = synthesize(run->req, control);
+                } catch (const std::exception& e) {
+                    result = failedResult(run->req, std::string("the synthesis failed: ") + e.what());
+                } catch (...) {
+                    result = failedResult(run->req, "the synthesis failed");
+                }
+                finish(std::move(result));
+            }).detach();
+        } catch (const std::system_error& e) {
+            // no thread: the run ends at once, failed (its callback on this thread)
+            finish(failedResult(run->req, std::string("could not start a worker thread: ") + e.what()));
+        }
         return run;
     }
 
-    void SynthesisRun::cancelAll() {
-        std::unique_lock<std::mutex> lock(runsMutex);
-        for (const std::weak_ptr<SynthesisRun>& w : runs) {
+    void SynthesisRun::cancelRunning() {
+        const std::shared_ptr<RunRegistry> shared = registry();
+        std::lock_guard<std::mutex> lock(shared->mutex);
+        for (const std::weak_ptr<SynthesisRun>& w : shared->runs) {
             if (std::shared_ptr<SynthesisRun> run = w.lock()) run->cancel();
         }
-        runsDone.wait_for(lock, std::chrono::seconds(10), []() { return activeRuns == 0; });
+    }
+
+    bool SynthesisRun::cancelAll(double timeoutSeconds) {
+        const std::shared_ptr<RunRegistry> shared = registry();
+        shared->shuttingDown = true;
+        cancelRunning();
+        // every step of a run checks the cancel flag (the longest one: decoding or resizing one
+        // 8192 x 8192 image, about a second): they end quickly. One that does not (a slow disk)
+        // stays harmless: it keeps the registry alive and calls back nothing once shutting down.
+        std::unique_lock<std::mutex> lock(shared->mutex);
+        return shared->done.wait_for(lock, std::chrono::duration<double>(timeoutSeconds), [&shared]() { return shared->active == 0; });
     }
 
     Progress SynthesisRun::progress() const {
