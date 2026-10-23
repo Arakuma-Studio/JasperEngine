@@ -209,6 +209,10 @@ void Model::stopAnimations(float fadeTime){
     }
 }
 
+PoseAnimator Model::getPoseAnimator(){
+    return PoseAnimator(scene, entity);
+}
+
 Bone Model::getBone(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 

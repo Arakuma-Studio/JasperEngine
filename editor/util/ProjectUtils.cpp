@@ -1047,6 +1047,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<UIDocumentComponent>(entity, Stream::decodeUIDocumentComponent(componentNode));
             }
             break;
+        case ComponentType::PoseAnimatorComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<PoseAnimatorComponent>(entity, {});
+            }else{
+                registry->addComponent<PoseAnimatorComponent>(entity, Stream::decodePoseAnimatorComponent(componentNode));
+            }
+            break;
         case ComponentType::Light2DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<Light2DComponent>(entity, {});
@@ -1502,6 +1509,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeUIDocumentComponent(registry->getComponent<UIDocumentComponent>(entity));
             }
             registry->removeComponent<UIDocumentComponent>(entity);
+            break;
+        case ComponentType::PoseAnimatorComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodePoseAnimatorComponent(registry->getComponent<PoseAnimatorComponent>(entity));
+            }
+            registry->removeComponent<PoseAnimatorComponent>(entity);
             break;
         case ComponentType::Light2DComponent:
             if (encodeComponent){

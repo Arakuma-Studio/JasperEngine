@@ -176,6 +176,7 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 | `InputField(...):getInputFieldComponent()` | `onChange`, `onSubmit` | none |
 | `Action(...):getActionComponent()` (any Action/Tween/Animation entity) | `onStart`, `onPause`, `onStop`, `onStep` | none |
 | `AudioSource(...):getAudioSourceComponent()` | `onStart`, `onPause`, `onStop` | none |
+| `PoseAnimator(...):getPoseAnimatorComponent()` | `onFinish` | none |
 | `self.scene:getPhysicsSystem()` (2D) | `beginContact2D`, `endContact2D` | `bodyA, shapeA, bodyB, shapeB` (Rigidbody2D, index, Rigidbody2D, index) |
 | same | `beginSensorContact2D`, `endSensorContact2D` | `sensorBody, sensorShape, visitorBody, visitorShape` |
 | same | `hitContact2D` | `bodyA, shapeA, bodyB, shapeB, point (Vector2), normal (Vector2), speed` |
@@ -600,7 +601,7 @@ EntityHandle
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, Rigidbody2D, Rigidbody, Fog, Skybox
+ |- AudioSource, PoseAnimator, Rigidbody2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
              ScaleTracks, TranslateTracks
@@ -609,7 +610,7 @@ Joint2D, Joint3D (standalone classes)
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
 `(Scene)` which creates a new entity with that component. Exceptions: `Rigidbody2D`,
-`Rigidbody` and `Bone` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
+`Rigidbody`, `Bone` and `PoseAnimator` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
 
 A wrapper made with `(Scene)` owns its new entity (`entityOwned` is true): when the garbage
 collector takes it, the entity is destroyed. Keep it (e.g. in `self`) as long as the object
@@ -760,7 +761,31 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `loadModel(path)`, `loadGLTF(path)`, `loadOBJ(path)`, `getAnimation(i)`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations()`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
-`resetToBindPose()`, `enabled` (rw).
+`resetToBindPose()`, `enabled` (rw), `getPoseAnimator()` (the model's PoseAnimator, added when missing).
+
+### 4.8.1 PoseAnimator (EntityHandle)
+
+Plays a pose animation (`.poseanim`, path relative to the assets folder) live on a humanoid
+Model; it lives on the Model's GameObject. `PoseAnimator(scene, entity)` adds the component when
+missing, `model:getPoseAnimator()` does the same. It runs in play mode and in games, not in the
+editor's edit mode. Models load asynchronously: until `isLoaded()` the animator waits (calls made
+before are kept: `play`, `goToPose`...). A missing or invalid file logs one error and disables the
+animator until `setAnimation` is called again.
+
+`setAnimation(path)` / `getAnimation()` (loads again), `play()`, `pause()`, `stop()` (time 0,
+shows pose 0), `isPlaying()`, `setTime(t)` / `getTime()` / `getLength()` (seconds),
+`setSpeed(s)` / `getSpeed()` (negative plays backwards), `setWeight(w)` / `getWeight()` (0..1
+blend over the Model's clips or rest pose), `autoplay` (rw), `getPoseCount()`, `getPoseName(i)`,
+`findPose(name)` (0-based; -1 when absent), `goToPose(indexOrName [, duration [, overshoot [,
+anticipation]]])` (live spring transition from the pose shown, then holds that pose; playback
+stops; returns false for an unknown pose), `isLoaded()`, `onFinish` (a function called when a
+one-shot animation ends), `getPoseAnimatorComponent()`.
+
+```lua
+local anim = Model(self.scene, self.entity):getPoseAnimator()
+anim.onFinish = function() anim:goToPose("Idle", 0.2) end
+anim:play()
+```
 
 ### 4.9 Camera (GameObject) - partial
 

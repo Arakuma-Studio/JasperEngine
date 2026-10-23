@@ -164,10 +164,15 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // Pose animations (PoseAnimatorComponent::animation)
+        inline static bool isPoseAnimationFile(const std::string& path) {
+            return fileExtension(path) == ".poseanim";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
-                   isHtmlFile(path) || isCssFile(path);
+                   isHtmlFile(path) || isCssFile(path) || isPoseAnimationFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {
