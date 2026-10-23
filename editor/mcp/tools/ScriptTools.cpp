@@ -29,6 +29,7 @@
 #include "component/ScriptComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "pose/PoseAnimationDocument.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
 #include "script/LuaBinding.h"
@@ -134,70 +135,6 @@ bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& 
         return true;
     }
     return false;
-}
-
-// ------------------------------------------------------------------ WriteFilesCmd
-
-WriteFilesCmd::WriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange)
-    : items(std::move(items))
-    , afterChange(std::move(afterChange)) {
-}
-
-std::vector<fs::path> WriteFilesCmd::paths() const {
-    std::vector<fs::path> out;
-    for (const Item& item : items) out.push_back(item.path);
-    return out;
-}
-
-bool WriteFilesCmd::execute() {
-    if (!captured) {
-        previous.clear();
-        for (const Item& item : items) {
-            Previous prev;
-            std::error_code ec;
-            prev.existed = fs::is_regular_file(item.path, ec);
-            if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
-                return false;
-            }
-            previous.push_back(std::move(prev));
-        }
-        captured = true;
-    }
-    for (const Item& item : items) {
-        std::error_code ec;
-        const fs::path parent = item.path.parent_path();
-        if (!fs::exists(parent, ec)) {
-            // remember the outermost directory created, for undo
-            fs::path missing = parent;
-            while (!missing.parent_path().empty() && !fs::exists(missing.parent_path(), ec) && missing.parent_path() != missing) {
-                missing = missing.parent_path();
-            }
-            fs::create_directories(parent, ec);
-            if (ec) {
-                return false;
-            }
-            createdDirs.push_back(missing);
-        }
-        if (!writeFile(item.path, item.content)) {
-            return false;
-        }
-    }
-    if (afterChange) afterChange(paths());
-    return true;
-}
-
-void WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) {
-        std::error_code ec;
-        if (previous[i].existed) writeFile(items[i].path, previous[i].content);
-        else fs::remove(items[i].path, ec);
-    }
-    for (auto it = createdDirs.rbegin(); it != createdDirs.rend(); ++it) {
-        std::error_code ec;
-        if (fs::is_directory(*it, ec) && fs::is_empty(*it, ec)) fs::remove(*it, ec);
-    }
-    createdDirs.clear();
-    if (afterChange) afterChange(paths());
 }
 
 bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error) {
@@ -605,6 +542,10 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         if (Util::isImageFile(rel)) images.insert(rel);
     }
     bool firstFull = full && !notes.empty();
+
+    // Pose animation documents (editor/pose) of changed .poseanim files reload
+    PoseAnimationDocument::filesChanged(std::vector<fs::path>(changed.begin(), changed.end()));
+    if (full) PoseAnimationDocument::checkDiskChanges();
 
     // Code editor buffers
     Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};

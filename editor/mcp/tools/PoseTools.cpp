@@ -1,0 +1,1087 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Pose animations (spec: pose animation phase 2, section 6): get_pose_animation (the asset, its
+// timing and, on a rig, per-pose metrics) and edit_pose_animation (ops applied in order to a copy,
+// all or nothing, committed once through PoseAnimationDocument: one project undo step). Angles
+// are the rig-independent joint angles of engine/core/pose/PoseDofs (degrees, 0 = neutral
+// standing); the agent guide page is docs/mcp/guide/pose-animation.md.
+#include "McpTools.h"
+#include "W4Shared.h"
+
+#include "mcp/McpCall.h"
+#include "mcp/McpContext.h"
+#include "mcp/McpRefs.h"
+#include "mcp/McpRegistry.h"
+#include "mcp/McpSchema.h"
+
+#include "Project.h"
+#include "pose/HumanBones.h"
+#include "pose/HumanoidMapIO.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseAnimationIO.h"
+#include "pose/PoseDofs.h"
+#include "pose/PoseRanges.h"
+#include "pose/PoseTypes.h"
+#include "util/ProjectChecks.h"
+#include "util/Util.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <map>
+#include <set>
+#include <sstream>
+
+namespace jasperengine::editor::mcp {
+
+namespace {
+
+namespace fs = std::filesystem;
+using namespace ::jasperengine::pose;
+
+constexpr int MAX_POSES = 200;
+
+// ------------------------------------------------------------------ names and suggestions
+
+std::string lower(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+size_t editDistance(const std::string& a, const std::string& b) {
+    std::vector<size_t> row(b.size() + 1);
+    for (size_t j = 0; j <= b.size(); j++) row[j] = j;
+    for (size_t i = 1; i <= a.size(); i++) {
+        size_t diagonal = row[0];
+        row[0] = i;
+        for (size_t j = 1; j <= b.size(); j++) {
+            const size_t above = row[j];
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] == b[j - 1] ? 0 : 1)});
+            diagonal = above;
+        }
+    }
+    return row[b.size()];
+}
+
+// The candidate nearest to `name` (edit distance), "" when none is reasonably close
+std::string nearest(const std::string& name, const std::vector<std::string>& candidates) {
+    std::string best;
+    size_t bestDistance = std::max<size_t>(3, name.size() / 2) + 1;
+    for (const std::string& candidate : candidates) {
+        const size_t distance = editDistance(lower(name), candidate);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+std::vector<std::string> slotNames() {
+    std::vector<std::string> names;
+    for (int b = 0; b < HUMAN_BONE_COUNT; b++) names.push_back(humanBoneName(boneAt(b)));
+    return names;
+}
+
+// A slot name from what an agent may write instead ("left_elbow", "thigh_l", "LeftForeArm",
+// "pelvis"): body-part synonyms and side tokens, then the nearest slot name
+std::string suggestSlot(const std::string& given) {
+    std::string text = lower(given);
+    HumanBone bone;
+    if (humanBoneFromName(text, bone)) return text;
+    // tokens: split on _ . - space and camelCase (before lowering)
+    std::vector<std::string> tokens;
+    std::string token;
+    for (size_t i = 0; i < given.size(); i++) {
+        const char c = given[i];
+        const bool upper = std::isupper(static_cast<unsigned char>(c)) != 0;
+        if (c == '_' || c == '.' || c == '-' || c == ' ' || (upper && !token.empty() &&
+            !std::isupper(static_cast<unsigned char>(given[i - 1])))) {
+            if (!token.empty()) tokens.push_back(lower(token));
+            token.clear();
+            if (!upper) continue;
+        }
+        token += c;
+    }
+    if (!token.empty()) tokens.push_back(lower(token));
+    std::string side;
+    std::string part;
+    for (const std::string& t : tokens) {
+        if (t == "left" || t == "l") side = "left";
+        else if (t == "right" || t == "r") side = "right";
+        else part += t;
+    }
+    static const std::vector<std::pair<std::string, std::string>> synonyms = {
+        {"elbow", "lower_arm"}, {"forearm", "lower_arm"}, {"lowerarm", "lower_arm"},
+        {"upperarm", "upper_arm"}, {"arm", "upper_arm"}, {"wrist", "hand"}, {"hand", "hand"},
+        {"clavicle", "shoulder"}, {"collar", "shoulder"}, {"shoulder", "shoulder"},
+        {"thigh", "upper_leg"}, {"upleg", "upper_leg"}, {"upperleg", "upper_leg"}, {"hip", "upper_leg"},
+        {"knee", "lower_leg"}, {"shin", "lower_leg"}, {"calf", "lower_leg"}, {"lowerleg", "lower_leg"}, {"leg", "upper_leg"},
+        {"ankle", "foot"}, {"foot", "foot"}, {"toe", "toes"}, {"toes", "toes"}, {"ball", "toes"}};
+    static const std::vector<std::pair<std::string, std::string>> centre = {
+        {"pelvis", "hips"}, {"hips", "hips"}, {"hip", "hips"}, {"torso", "spine"}, {"spine", "spine"},
+        {"chest", "chest"}, {"upperchest", "upper_chest"}, {"neck", "neck"}, {"head", "head"}};
+    if (!side.empty()) {
+        for (const auto& [word, slot] : synonyms) {
+            if (part == word) return side + "_" + slot;
+        }
+    } else {
+        for (const auto& [word, slot] : centre) {
+            if (part == word) return slot;
+        }
+    }
+    return nearest(text, slotNames());
+}
+
+// "ops[2].angles: unknown DOF 'left_elbow.bend' (did you mean 'left_lower_arm.bend'?)"
+std::string unknownDofError(const std::string& path, const std::string& name) {
+    std::string suggestion;
+    const size_t dot = name.find('.');
+    const std::string slot = suggestSlot(dot == std::string::npos ? name : name.substr(0, dot));
+    HumanBone bone;
+    if (!slot.empty() && humanBoneFromName(slot, bone)) {
+        const BoneDofInfo& info = boneDofInfo(bone);
+        std::vector<std::string> dofs;
+        for (int k = 0; k < DOFS_PER_BONE; k++) dofs.push_back(info.dofs[k].name);
+        const std::string part = dot == std::string::npos ? "" : lower(name.substr(dot + 1));
+        std::string dof = part.empty() ? "" : nearest(part, dofs);
+        if (dof.empty() && !part.empty()) {
+            // a synonym of a DOF of another joint ("flex", "lift"): list the slot's DOFs
+            suggestion = " (" + slot + " has " + dofs[0] + ", " + dofs[1] + ", " + dofs[2] + ")";
+        } else if (dof.empty()) {
+            suggestion = " (did you mean " + slot + "." + dofs[0] + ", " + slot + "." + dofs[1] + " or " + slot + "." + dofs[2] + "?)";
+        } else {
+            suggestion = " (did you mean '" + slot + "." + dof + "'?)";
+        }
+    }
+    return path + ": unknown DOF '" + name + "'" + suggestion;
+}
+
+std::string unknownSlotError(const std::string& path, const std::string& name) {
+    const std::string slot = suggestSlot(name);
+    return path + ": unknown humanoid slot '" + name + "'" + (slot.empty() ? std::string(" (slots: hips, spine, chest, "
+           "upper_chest, neck, head, left_/right_ shoulder, upper_arm, lower_arm, hand, upper_leg, lower_leg, foot, toes)")
+           : " (did you mean '" + slot + "'?)");
+}
+
+// ------------------------------------------------------------------ numbers and JSON out
+
+// 4 decimals (the file's precision), no -0
+double r4(double value) {
+    const double r = std::round(value * 10000.0) / 10000.0;
+    return r == 0.0 ? 0.0 : r;
+}
+
+double r1(double value) {
+    const double r = std::round(value * 10.0) / 10.0;
+    return r == 0.0 ? 0.0 : r;
+}
+
+std::string fmt(double value, int decimals = 2) {
+    std::ostringstream out;
+    out.setf(std::ios::fixed);
+    out.precision(decimals);
+    out << value;
+    return out.str();
+}
+
+Json transitionJson(const Transition& transition) {
+    return {{"curve", curveName(transition.curve)}, {"duration", r4(transition.duration)},
+            {"overshoot", r4(transition.overshoot)}, {"anticipation", r4(transition.anticipation)}};
+}
+
+Json feelJson(const PoseAnimationSettings& settings) {
+    Json weights = Json::object();
+    for (int g = 0; g < static_cast<int>(BodyGroup::Count); g++) {
+        weights[bodyGroupName(static_cast<BodyGroup>(g))] = r4(settings.weights[g]);
+    }
+    return {{"transition", transitionJson(settings.transition)}, {"step_rate", r4(settings.stepRate)},
+            {"overlap", r4(settings.overlap)}, {"looseness", r4(settings.looseness)}, {"weights", weights}};
+}
+
+Json humanizeJson(const HumanizeSettings& h) {
+    return {{"enabled", h.enabled}, {"joint_limits", h.jointLimits}, {"moving_holds", r4(h.movingHolds)},
+            {"inbetweens", r4(h.inbetweens)}, {"life", r4(h.life)}, {"seed", h.seed}, {"head_follow", r4(h.headFollow)},
+            {"torso_follow", r4(h.torsoFollow)}, {"springiness", r4(h.springiness)}};
+}
+
+// Timeline (spec phase 1, 4.8): pose i is reached at start[i]; segment i (to pose i+1, the last
+// one back to pose 0 only when looping) starts after its hold and lasts its transition's duration
+struct Timeline {
+    std::vector<float> start;
+    float length = 0.0f;
+    int frameCount = 0;     // frames a bake or the runtime samples (f = 0..count)
+};
+
+// stage 2: the realisation's frames give frame_count; this is the same formula without a rig
+Timeline timelineOf(const PoseAnimationData& data) {
+    Timeline timeline;
+    const size_t n = data.poses.size();
+    float time = 0.0f;
+    for (size_t i = 0; i < n; i++) {
+        timeline.start.push_back(time);
+        time += data.poses[i].hold;
+        if (i + 1 < n || (data.settings.loop && n > 1)) time += transitionOut(data, i).duration;
+    }
+    const int fps = std::max(1, data.settings.frameRate);
+    timeline.length = n == 1 ? std::max(data.poses[0].hold, 1.0f / static_cast<float>(fps)) : time;
+    timeline.frameCount = n == 0 ? 0 : std::max(1, static_cast<int>(std::lround(timeline.length * fps))) + 1;
+    return timeline;
+}
+
+Json poseJson(const PoseAnimationData& data, const Timeline& timeline, size_t index, bool full) {
+    const PoseKey& key = data.poses[index];
+    Json pose = {{"index", index}, {"name", key.name}, {"hold", r4(key.hold)}, {"grounded", key.grounded},
+                 {"lift", r4(key.lift)},
+                 {"transition", key.customTransition ? transitionJson(key.transition) : Json(nullptr)},
+                 {"start_time", r4(index < timeline.start.size() ? timeline.start[index] : 0.0f)},
+                 {"offset", {{"left", r4(key.body.offset.x)}, {"forward", r4(key.body.offset.z)}}}};
+    if (full) {
+        Json angles = Json::object();
+        for (int dof = 0; dof < DOF_COUNT; dof++) {
+            const float value = key.body.angles[dof];
+            if (std::fabs(value) >= 0.05f) angles[dofName(dof)] = r1(value);
+        }
+        pose["angles"] = angles;
+    }
+    // stage 2: "metrics" {feet: {left: {height, contact}, right}, balanced, balance_margin, limit_hits}
+    return pose;
+}
+
+std::string projectRel(Project* project, const fs::path& absolute) {
+    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
+}
+
+// preview_model is stored relative to the assets folder (as model files are); tools show it project-relative
+std::string previewModelPath(Project* project, const PoseAnimationData& data) {
+    if (data.previewModel.empty()) return "";
+    return projectRel(project, project->resolveAssetPath(fs::u8path(data.previewModel)).lexically_normal());
+}
+
+Json animationJson(Project* project, const PoseAnimationDocument& document, const std::vector<size_t>& indices, bool full) {
+    const PoseAnimationData& data = document.data();
+    const Timeline timeline = timelineOf(data);
+    Json poses = Json::array();
+    for (size_t index : indices) poses.push_back(poseJson(data, timeline, index, full));
+    Json out = {{"path", document.path()}, {"preview_model", previewModelPath(project, data)},
+                {"rig", nullptr},   // stage 2: {model, mapped, missing, human_scale}
+                {"loop", data.settings.loop}, {"frame_rate", data.settings.frameRate}, {"length", r4(timeline.length)},
+                {"frame_count", timeline.frameCount}, {"pose_count", data.poses.size()},
+                {"feel", feelJson(data.settings)}, {"humanize", humanizeJson(data.settings.humanize)},
+                {"preset", nullptr},   // stage 2: the matching feel preset
+                {"poses", poses}};
+    if (!document.loadWarnings().empty()) out["warnings"] = document.loadWarnings();
+    return out;
+}
+
+// "0 "Contact R" at 0.00 s, hold 0.10, grounded, 2 angles"
+std::string poseLine(const Json& pose) {
+    std::string line = std::to_string(pose["index"].get<size_t>()) + " \"" + pose["name"].get<std::string>() + "\" at " +
+                       fmt(pose["start_time"].get<double>()) + " s, hold " + fmt(pose["hold"].get<double>());
+    line += pose["grounded"].get<bool>() ? ", grounded" : ", lift " + fmt(pose["lift"].get<double>());
+    if (!pose["transition"].is_null()) line += ", own transition " + fmt(pose["transition"]["duration"].get<double>()) + " s";
+    if (pose.contains("angles")) line += ", " + std::to_string(pose["angles"].size()) + " angles";
+    return line;
+}
+
+// ------------------------------------------------------------------ argument parsing
+
+bool readNumber(const Json& value, const std::string& path, float& out, std::string& error) {
+    if (!value.is_number() || !std::isfinite(value.get<double>())) {
+        error = path + " must be a number";
+        return false;
+    }
+    const double v = value.get<double>();
+    out = static_cast<float>(std::max(-1.0e30, std::min(1.0e30, v)));
+    return true;
+}
+
+bool readBool(const Json& value, const std::string& path, bool& out, std::string& error) {
+    if (!value.is_boolean()) {
+        error = path + " must be true or false";
+        return false;
+    }
+    out = value.get<bool>();
+    return true;
+}
+
+std::string poseRange(size_t count) {
+    return count == 0 ? "the animation has no poses" : "the animation has " + std::to_string(count) + " pose(s): 0.." + std::to_string(count - 1);
+}
+
+bool readIndex(const Json& value, const std::string& path, size_t count, int& out, std::string& error, int minimum = 0) {
+    if (!value.is_number_integer()) {
+        error = path + " must be a pose index (integer, 0-based)";
+        return false;
+    }
+    const long long v = value.get<long long>();
+    if (v < minimum || v >= static_cast<long long>(count)) {
+        error = path + ": no pose " + std::to_string(v) + " (" + poseRange(count) + (minimum < 0 ? "; -1 = before the first" : "") + ")";
+        return false;
+    }
+    out = static_cast<int>(v);
+    return true;
+}
+
+// Unknown keys of an object argument fail, listing the valid ones
+bool checkKeys(const Json& object, const std::string& path, const std::vector<std::string>& allowed, std::string& error) {
+    for (auto it = object.begin(); it != object.end(); ++it) {
+        if (std::find(allowed.begin(), allowed.end(), it.key()) != allowed.end()) continue;
+        std::string valid;
+        for (const std::string& key : allowed) valid += (valid.empty() ? "" : ", ") + key;
+        const std::string close = nearest(it.key(), allowed);
+        error = path + ": unknown key '" + it.key() + "'" + (close.empty() ? "" : " (did you mean '" + close + "'?)") +
+                "; valid: " + valid;
+        return false;
+    }
+    return true;
+}
+
+bool readObject(const Json& value, const std::string& path, std::string& error) {
+    if (!value.is_object()) {
+        error = path + " must be an object";
+        return false;
+    }
+    return true;
+}
+
+// {curve, duration, overshoot, anticipation}, each optional: starts from `base`
+bool readTransition(const Json& value, const std::string& path, Transition& out, std::string& error) {
+    if (!readObject(value, path, error) || !checkKeys(value, path, {"curve", "duration", "overshoot", "anticipation"}, error)) return false;
+    if (value.contains("curve")) {
+        if (!value["curve"].is_string() || !curveFromName(value["curve"].get<std::string>(), out.curve)) {
+            error = path + ".curve must be spring, linear or smooth";
+            return false;
+        }
+    }
+    if (value.contains("duration") && !readNumber(value["duration"], path + ".duration", out.duration, error)) return false;
+    if (value.contains("overshoot") && !readNumber(value["overshoot"], path + ".overshoot", out.overshoot, error)) return false;
+    if (value.contains("anticipation") && !readNumber(value["anticipation"], path + ".anticipation", out.anticipation, error)) return false;
+    return true;
+}
+
+// {left, forward} in humanScale units (the hips horizontal offset)
+bool readOffset(const Json& value, const std::string& path, Vector3& offset, std::string& error) {
+    if (!readObject(value, path, error) || !checkKeys(value, path, {"left", "forward"}, error)) return false;
+    if (value.contains("left") && !readNumber(value["left"], path + ".left", offset.x, error)) return false;
+    if (value.contains("forward") && !readNumber(value["forward"], path + ".forward", offset.z, error)) return false;
+    return true;
+}
+
+// {"left_upper_arm.raise": 30, ...}
+bool readAngles(const Json& value, const std::string& path, std::vector<std::pair<int, float>>& out, std::string& error) {
+    if (!readObject(value, path, error)) return false;
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        int dof = 0;
+        if (!dofFromName(it.key(), dof)) {
+            error = unknownDofError(path, it.key());
+            return false;
+        }
+        float degrees = 0.0f;
+        if (!readNumber(it.value(), path + "." + it.key(), degrees, error)) return false;
+        out.emplace_back(dof, degrees);
+    }
+    return true;
+}
+
+// Shortest-way angle lerp (degrees)
+float lerpAngle(float a, float b, float t) {
+    return a + wrapAngle(b - a) * t;
+}
+
+// ------------------------------------------------------------------ ops
+
+struct SidecarEdit {
+    fs::path path;                  // absolute .humanoid path
+    std::string model;              // project-relative model path
+    HumanoidOverrides overrides;
+};
+
+struct EditState {
+    Project* project = nullptr;
+    PoseAnimationData data;
+    std::vector<bool> touched;      // per pose: added, updated, moved or mirrored by this call
+    std::vector<std::string> changes;
+    std::vector<std::string> warnings;
+    std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
+};
+
+const std::map<std::string, std::vector<std::string>>& opArguments() {
+    static const std::map<std::string, std::vector<std::string>> table = {
+        {"add_pose", {"op", "after", "name", "from", "blend_to", "blend", "hold", "grounded", "lift", "offset", "angles",
+                      "add_angles", "transition"}},
+        {"update_pose", {"op", "index", "name", "hold", "grounded", "lift", "offset", "angles", "add_angles", "transition"}},
+        {"delete_pose", {"op", "index"}},
+        {"move_pose", {"op", "index", "to"}},
+        {"mirror_pose", {"op", "index", "as_new", "name"}},
+        {"set_settings", {"op", "loop", "frame_rate", "transition", "step_rate", "overlap", "looseness", "weights", "humanize"}},
+        {"apply_preset", {"op", "name"}},
+        {"auto_timing", {"op"}},
+        {"set_preview_model", {"op", "model"}},
+        {"set_humanoid", {"op", "model", "bones"}},
+    };
+    return table;
+}
+
+std::vector<std::string> opNames() {
+    std::vector<std::string> names;
+    for (const auto& entry : opArguments()) names.push_back(entry.first);
+    return names;
+}
+
+// The fields add_pose and update_pose share: hold, grounded, lift, offset, angles, add_angles,
+// transition (null = the animation's). `fields` collects the changed field names.
+bool applyKeyFields(EditState& state, size_t index, const Json& op, const std::string& path,
+                    std::vector<std::string>& fields, std::string& error) {
+    PoseKey& key = state.data.poses[index];
+    if (op.contains("name")) {
+        if (!op["name"].is_string()) {
+            error = path + ".name must be a string";
+            return false;
+        }
+        if (op["name"].get<std::string>() != key.name) fields.push_back("name");
+        key.name = op["name"].get<std::string>();
+    }
+    if (op.contains("hold")) {
+        if (!readNumber(op["hold"], path + ".hold", key.hold, error)) return false;
+        fields.push_back("hold");
+    }
+    if (op.contains("grounded")) {
+        if (!readBool(op["grounded"], path + ".grounded", key.grounded, error)) return false;
+        fields.push_back("grounded");
+    }
+    if (op.contains("lift")) {
+        if (!readNumber(op["lift"], path + ".lift", key.lift, error)) return false;
+        fields.push_back("lift");
+        if (key.grounded && key.lift > 0.0f && !op.contains("grounded")) {
+            state.warnings.push_back(path + ": lift only applies when grounded is false (the pose is grounded)");
+        }
+    }
+    if (op.contains("offset")) {
+        if (!readOffset(op["offset"], path + ".offset", key.body.offset, error)) return false;
+        fields.push_back("offset");
+    }
+    if (op.contains("transition")) {
+        if (op["transition"].is_null()) {
+            key.customTransition = false;
+            key.transition = Transition();
+        } else {
+            // a partial transition starts from the one the pose uses now
+            Transition transition = transitionOut(state.data, index);
+            if (!readTransition(op["transition"], path + ".transition", transition, error)) return false;
+            key.transition = transition;
+            key.customTransition = true;
+        }
+        fields.push_back("transition");
+    }
+    if (op.contains("angles")) {
+        std::vector<std::pair<int, float>> angles;
+        if (!readAngles(op["angles"], path + ".angles", angles, error)) return false;
+        for (const auto& [dof, degrees] : angles) key.body.angles[dof] = degrees;
+        fields.push_back("angles (" + std::to_string(angles.size()) + ")");
+    }
+    if (op.contains("add_angles")) {
+        std::vector<std::pair<int, float>> angles;
+        if (!readAngles(op["add_angles"], path + ".add_angles", angles, error)) return false;
+        for (const auto& [dof, degrees] : angles) key.body.angles[dof] += degrees;
+        fields.push_back("add_angles (" + std::to_string(angles.size()) + ")");
+    }
+    return true;
+}
+
+bool addPose(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    std::vector<PoseKey>& poses = state.data.poses;
+    const size_t count = poses.size();
+    if (count >= static_cast<size_t>(MAX_POSES)) {
+        error = path + ": an animation has at most " + std::to_string(MAX_POSES) + " poses";
+        return false;
+    }
+    int after = static_cast<int>(count) - 1;
+    if (op.contains("after") && !readIndex(op["after"], path + ".after", count, after, error, -1)) return false;
+    int from = after >= 0 ? after : (count > 0 ? 0 : -1);
+    if (op.contains("from") && !readIndex(op["from"], path + ".from", count, from, error)) return false;
+    PoseKey key = from >= 0 ? poses[from] : PoseKey();
+    std::string how = from >= 0 ? "copy of " + std::to_string(from) : "neutral";
+    if (op.contains("blend_to")) {
+        int to = 0;
+        if (!readIndex(op["blend_to"], path + ".blend_to", count, to, error)) return false;
+        float blend = 0.5f;
+        if (op.contains("blend") && !readNumber(op["blend"], path + ".blend", blend, error)) return false;
+        if (blend < 0.0f || blend > 1.0f) {
+            error = path + ".blend must be 0..1 (0 = from, 1 = blend_to)";
+            return false;
+        }
+        const PoseKey& target = poses[to];
+        for (int dof = 0; dof < DOF_COUNT; dof++) key.body.angles[dof] = lerpAngle(key.body.angles[dof], target.body.angles[dof], blend);
+        key.body.offset.x += (target.body.offset.x - key.body.offset.x) * blend;
+        key.body.offset.z += (target.body.offset.z - key.body.offset.z) * blend;
+        key.lift += (target.lift - key.lift) * blend;
+        how += ", " + fmt(blend * 100.0, 0) + "% toward " + std::to_string(to);
+    } else if (op.contains("blend")) {
+        error = path + ".blend needs blend_to (the pose to blend toward)";
+        return false;
+    }
+    const size_t at = static_cast<size_t>(after + 1);
+    key.name = "Pose " + std::to_string(count + 1);
+    poses.insert(poses.begin() + at, key);
+    state.touched.insert(state.touched.begin() + at, true);
+    std::vector<std::string> fields;
+    if (!applyKeyFields(state, at, op, path, fields, error)) return false;
+    state.changes.push_back("add_pose: \"" + poses[at].name + "\" at " + std::to_string(at) + " (" + how + ")");
+    return true;
+}
+
+bool updatePose(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    if (!op.contains("index")) {
+        error = path + ".index is required";
+        return false;
+    }
+    int index = 0;
+    if (!readIndex(op["index"], path + ".index", state.data.poses.size(), index, error)) return false;
+    std::vector<std::string> fields;
+    if (!applyKeyFields(state, static_cast<size_t>(index), op, path, fields, error)) return false;
+    state.touched[index] = true;
+    std::string list;
+    for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
+    state.changes.push_back("update_pose " + std::to_string(index) + " \"" + state.data.poses[index].name + "\": " +
+                            (list.empty() ? "nothing" : list));
+    return true;
+}
+
+bool deletePose(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    std::vector<PoseKey>& poses = state.data.poses;
+    if (!op.contains("index")) {
+        error = path + ".index is required";
+        return false;
+    }
+    int index = 0;
+    if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
+    if (poses.size() == 1) {
+        error = path + ": refusing to delete the last pose (an animation keeps at least one)";
+        return false;
+    }
+    const std::string name = poses[index].name;
+    poses.erase(poses.begin() + index);
+    state.touched.erase(state.touched.begin() + index);
+    state.changes.push_back("delete_pose " + std::to_string(index) + " \"" + name + "\"");
+    return true;
+}
+
+bool movePose(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    std::vector<PoseKey>& poses = state.data.poses;
+    if (!op.contains("index") || !op.contains("to")) {
+        error = path + ": index and to are required";
+        return false;
+    }
+    int index = 0, to = 0;
+    if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
+    if (!readIndex(op["to"], path + ".to", poses.size(), to, error)) return false;
+    PoseKey key = poses[index];
+    poses.erase(poses.begin() + index);
+    state.touched.erase(state.touched.begin() + index);
+    poses.insert(poses.begin() + to, key);
+    state.touched.insert(state.touched.begin() + to, true);
+    state.changes.push_back("move_pose \"" + key.name + "\": " + std::to_string(index) + " -> " + std::to_string(to));
+    return true;
+}
+
+bool setSettings(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    PoseAnimationSettings& settings = state.data.settings;
+    std::vector<std::string> fields;
+    if (op.contains("loop")) {
+        if (!readBool(op["loop"], path + ".loop", settings.loop, error)) return false;
+        fields.push_back("loop");
+    }
+    if (op.contains("frame_rate")) {
+        float rate = 0.0f;
+        if (!readNumber(op["frame_rate"], path + ".frame_rate", rate, error)) return false;
+        settings.frameRate = static_cast<int>(std::lround(std::max(-1.0e9f, std::min(1.0e9f, rate))));
+        if (static_cast<float>(settings.frameRate) != rate) state.warnings.push_back(path + ".frame_rate rounded to " + std::to_string(settings.frameRate));
+        fields.push_back("frame_rate");
+    }
+    if (op.contains("transition")) {
+        if (!readTransition(op["transition"], path + ".transition", settings.transition, error)) return false;
+        fields.push_back("transition");
+    }
+    if (op.contains("step_rate")) {
+        if (!readNumber(op["step_rate"], path + ".step_rate", settings.stepRate, error)) return false;
+        fields.push_back("step_rate");
+    }
+    if (op.contains("overlap")) {
+        if (!readNumber(op["overlap"], path + ".overlap", settings.overlap, error)) return false;
+        fields.push_back("overlap");
+    }
+    if (op.contains("looseness")) {
+        if (!readNumber(op["looseness"], path + ".looseness", settings.looseness, error)) return false;
+        fields.push_back("looseness");
+    }
+    if (op.contains("weights")) {
+        const Json& weights = op["weights"];
+        if (!readObject(weights, path + ".weights", error) ||
+            !checkKeys(weights, path + ".weights", {"spine", "head", "arms", "legs"}, error)) return false;
+        for (int g = 0; g < static_cast<int>(BodyGroup::Count); g++) {
+            const char* name = bodyGroupName(static_cast<BodyGroup>(g));
+            if (weights.contains(name) && !readNumber(weights[name], path + ".weights." + name, settings.weights[g], error)) return false;
+        }
+        fields.push_back("weights");
+    }
+    if (op.contains("humanize")) {
+        const Json& h = op["humanize"];
+        const std::string p = path + ".humanize";
+        HumanizeSettings& humanize = settings.humanize;
+        if (!readObject(h, p, error) || !checkKeys(h, p, {"enabled", "joint_limits", "moving_holds", "inbetweens", "life", "seed",
+                                                           "head_follow", "torso_follow", "springiness"}, error)) return false;
+        if (h.contains("enabled") && !readBool(h["enabled"], p + ".enabled", humanize.enabled, error)) return false;
+        if (h.contains("joint_limits") && !readBool(h["joint_limits"], p + ".joint_limits", humanize.jointLimits, error)) return false;
+        if (h.contains("moving_holds") && !readNumber(h["moving_holds"], p + ".moving_holds", humanize.movingHolds, error)) return false;
+        if (h.contains("inbetweens") && !readNumber(h["inbetweens"], p + ".inbetweens", humanize.inbetweens, error)) return false;
+        if (h.contains("life") && !readNumber(h["life"], p + ".life", humanize.life, error)) return false;
+        if (h.contains("head_follow") && !readNumber(h["head_follow"], p + ".head_follow", humanize.headFollow, error)) return false;
+        if (h.contains("torso_follow") && !readNumber(h["torso_follow"], p + ".torso_follow", humanize.torsoFollow, error)) return false;
+        if (h.contains("springiness") && !readNumber(h["springiness"], p + ".springiness", humanize.springiness, error)) return false;
+        if (h.contains("seed")) {
+            if (!h["seed"].is_number_integer() || h["seed"].get<long long>() < 0 ||
+                h["seed"].get<long long>() > static_cast<long long>(ranges::SEED_MAX)) {
+                error = p + ".seed must be an integer 0.." + std::to_string(ranges::SEED_MAX);
+                return false;
+            }
+            humanize.seed = static_cast<uint32_t>(h["seed"].get<long long>());
+        }
+        fields.push_back("humanize");
+    }
+    std::string list;
+    for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
+    state.changes.push_back("set_settings: " + (list.empty() ? std::string("nothing") : list));
+    return true;
+}
+
+// A model asset argument: project-relative, an existing model file inside the assets folder
+bool readModelPath(Project* project, const Json& value, const std::string& path, fs::path& absolute, std::string& error) {
+    if (!value.is_string() || value.get<std::string>().empty()) {
+        error = path + " must be a project-relative model file path (assets/models/hero.gltf)";
+        return false;
+    }
+    std::string why;
+    if (!McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, why, true)) {
+        error = path + ": " + why;
+        return false;
+    }
+    absolute = absolute.lexically_normal();
+    if (!Util::isModelFile(absolute.string())) {
+        error = path + ": '" + value.get<std::string>() + "' is not a model file (.gltf, .glb, .obj)";
+        return false;
+    }
+    if (!project->isInsideAssetsPath(project->normalizeToAssetsRelative(absolute))) {
+        error = path + ": '" + value.get<std::string>() + "' is outside the assets folder (" +
+                projectRel(project, project->getAssetsPath()) + "), which games cannot load";
+        return false;
+    }
+    return true;
+}
+
+bool setPreviewModel(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    if (!op.contains("model")) {
+        error = path + ".model is required (\"\" clears it)";
+        return false;
+    }
+    if (op["model"].is_string() && op["model"].get<std::string>().empty()) {
+        state.data.previewModel.clear();
+        state.changes.push_back("set_preview_model: none");
+        return true;
+    }
+    fs::path absolute;
+    if (!readModelPath(state.project, op["model"], path + ".model", absolute, error)) return false;
+    state.data.previewModel = state.project->normalizeToAssetsRelative(absolute).generic_string();
+    state.changes.push_back("set_preview_model: " + projectRel(state.project, absolute));
+    return true;
+}
+
+// The sidecar of a model as this call sees it: the edited copy, else the file (missing = all auto)
+bool sidecarFor(EditState& state, const fs::path& model, SidecarEdit*& out, const std::string& path, std::string& error) {
+    fs::path sidecar = model;   // humanoidSidecarPath: "<model file>.humanoid"
+    sidecar += ".humanoid";
+    const std::string key = sidecar.generic_string();
+    auto it = state.sidecars.find(key);
+    if (it == state.sidecars.end()) {
+        SidecarEdit edit;
+        edit.path = sidecar;
+        edit.model = projectRel(state.project, model);
+        std::error_code ec;
+        if (fs::exists(sidecar, ec)) {
+            std::string text;
+            std::vector<std::string> warnings;
+            std::string why;
+            if (!ProjectChecks::readFile(sidecar, text) || !parseHumanoidOverrides(text, edit.overrides, warnings, &why)) {
+                error = path + ": the sidecar " + projectRel(state.project, sidecar) + " cannot be read" + (why.empty() ? "" : ": " + why);
+                return false;
+            }
+            for (const std::string& warning : warnings) state.warnings.push_back(projectRel(state.project, sidecar) + ": " + warning);
+        }
+        it = state.sidecars.emplace(key, std::move(edit)).first;
+    }
+    out = &it->second;
+    return true;
+}
+
+bool setHumanoid(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    if (!op.contains("model") || !op.contains("bones")) {
+        error = path + ": model and bones are required";
+        return false;
+    }
+    fs::path model;
+    if (!readModelPath(state.project, op["model"], path + ".model", model, error)) return false;
+    const Json& bones = op["bones"];
+    if (!readObject(bones, path + ".bones", error)) return false;
+    SidecarEdit* edit = nullptr;
+    if (!sidecarFor(state, model, edit, path, error)) return false;
+    std::vector<std::string> set;
+    for (auto it = bones.begin(); it != bones.end(); ++it) {
+        HumanBone bone;
+        if (!humanBoneFromName(it.key(), bone)) {
+            error = unknownSlotError(path + ".bones", it.key());
+            return false;
+        }
+        if (it.value().is_null()) {
+            edit->overrides.bones[boneIndex(bone)].reset();
+            set.push_back(it.key() + " auto");
+        } else if (it.value().is_string()) {
+            // stage 2: the bone name must exist in the model's skeleton (and not be a twist/end helper)
+            edit->overrides.bones[boneIndex(bone)] = it.value().get<std::string>();
+            set.push_back(it.key() + (it.value().get<std::string>().empty() ? " unmapped" : " = " + it.value().get<std::string>()));
+        } else {
+            error = path + ".bones." + it.key() + " must be a bone name, \"\" (unmapped) or null (auto-detect)";
+            return false;
+        }
+    }
+    std::string list;
+    for (const std::string& item : set) list += (list.empty() ? "" : ", ") + item;
+    state.changes.push_back("set_humanoid " + edit->model + ": " + (list.empty() ? std::string("nothing") : list));
+    return true;
+}
+
+bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& error) {
+    const std::string path = "ops[" + std::to_string(opIndex) + "]";
+    if (!op.is_object() || !op.contains("op") || !op["op"].is_string()) {
+        error = path + " must be an object with \"op\": " + [] {
+            std::string names;
+            for (const std::string& name : opNames()) names += (names.empty() ? "" : ", ") + name;
+            return names;
+        }();
+        return false;
+    }
+    const std::string name = op["op"].get<std::string>();
+    auto it = opArguments().find(name);
+    if (it == opArguments().end()) {
+        const std::string close = nearest(name, opNames());
+        std::string names;
+        for (const std::string& n : opNames()) names += (names.empty() ? "" : ", ") + n;
+        error = path + ".op: unknown op '" + name + "'" + (close.empty() ? "" : " (did you mean '" + close + "'?)") + "; ops: " + names;
+        return false;
+    }
+    if (!checkKeys(op, path + " (" + name + ")", it->second, error)) return false;
+    if (name == "add_pose") return addPose(state, op, path, error);
+    if (name == "update_pose") return updatePose(state, op, path, error);
+    if (name == "delete_pose") return deletePose(state, op, path, error);
+    if (name == "move_pose") return movePose(state, op, path, error);
+    if (name == "set_settings") return setSettings(state, op, path, error);
+    if (name == "set_preview_model") return setPreviewModel(state, op, path, error);
+    if (name == "set_humanoid") return setHumanoid(state, op, path, error);
+    // stage 2: mirror_pose (mirrorBodyPose), apply_preset (the feel presets), auto_timing (autoTiming on the rig)
+    error = path + ": " + name + " is not available in this editor build yet";
+    return false;
+}
+
+Json clampJson(const std::vector<ClampReport>& reports) {
+    Json out = Json::array();
+    for (const ClampReport& report : reports) {
+        out.push_back({{"field", report.field}, {"requested", r4(report.requested)}, {"applied", r4(report.applied)}});
+    }
+    return out;
+}
+
+bool resolveAnimationPath(Project* project, const Json& args, std::string& relative, fs::path& absolute, std::string& error) {
+    if (!args.contains("path") || !args["path"].is_string()) {
+        error = "path is required: the project-relative .poseanim file (e.g. assets/anim/walk.poseanim).";
+        return false;
+    }
+    relative = args["path"].get<std::string>();
+    if (lower(fs::u8path(relative).extension().string()) != ".poseanim") {
+        error = "path: '" + relative + "' must end in .poseanim";
+        return false;
+    }
+    if (!McpRefs::resolveProjectPath(project, relative, absolute, error, false)) return false;
+    absolute = absolute.lexically_normal();
+    relative = projectRel(project, absolute);
+    return true;
+}
+
+void installSyncHook(McpContext& ctx) {
+    McpContext* context = &ctx;
+    PoseAnimationDocument::setFilesWrittenHook([context](const std::vector<fs::path>& changed) {
+        w4::syncFiles(*context, changed, false);
+    });
+}
+
+// ------------------------------------------------------------------ get_pose_animation
+
+void getPoseAnimationTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    installSyncHook(call->ctx());
+    std::string relative, error;
+    fs::path absolute;
+    if (!resolveAnimationPath(project, args, relative, absolute, error)) {
+        call->fail(error);
+        return;
+    }
+    if (args.contains("model")) {
+        // stage 2: the rig of a scene model (ModelRig) instead of the preview model's
+        call->fail("model: rigs of scene models are not available in this editor build yet.");
+        return;
+    }
+    const std::string detail = args.value("detail", std::string("full"));
+    if (detail != "full" && detail != "summary") {
+        call->fail("detail must be \"full\" or \"summary\".");
+        return;
+    }
+    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, relative, &error);
+    if (!document) {
+        call->fail(error + ". Create one with edit_pose_animation {path, create: {preview_model}}.");
+        return;
+    }
+    const size_t count = document->data().poses.size();
+    std::vector<size_t> indices;
+    if (args.contains("poses")) {
+        if (!args["poses"].is_array()) {
+            call->fail("poses must be an array of pose indices.");
+            return;
+        }
+        for (size_t i = 0; i < args["poses"].size(); i++) {
+            int index = 0;
+            if (!readIndex(args["poses"][i], "poses[" + std::to_string(i) + "]", count, index, error)) {
+                call->fail(error);
+                return;
+            }
+            if (std::find(indices.begin(), indices.end(), static_cast<size_t>(index)) == indices.end()) indices.push_back(static_cast<size_t>(index));
+        }
+    } else {
+        for (size_t i = 0; i < count; i++) indices.push_back(i);
+    }
+    Json out = animationJson(project, *document, indices, detail == "full");
+    std::string text = document->path() + ": " + std::to_string(count) + " pose(s), " + fmt(out["length"].get<double>()) + " s, " +
+                       (out["loop"].get<bool>() ? "loop" : "one-shot") + ", " + std::to_string(out["frame_rate"].get<int>()) + " fps, preview " +
+                       (out["preview_model"].get<std::string>().empty() ? std::string("none") : out["preview_model"].get<std::string>());
+    for (const Json& pose : out["poses"]) text += "\n" + poseLine(pose);
+    call->ok(text, out);
+}
+
+// ------------------------------------------------------------------ edit_pose_animation
+
+void editPoseAnimationTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    installSyncHook(call->ctx());
+    std::string relative, error;
+    fs::path absolute;
+    if (!resolveAnimationPath(project, args, relative, absolute, error)) {
+        call->fail(error);
+        return;
+    }
+    const bool creating = args.contains("create");
+    const Json ops = args.contains("ops") ? args["ops"] : Json::array();
+    if (!ops.is_array()) {
+        call->fail("ops must be an array of {op, ...} objects.");
+        return;
+    }
+    if (args.contains("bake")) {
+        // stage 2: bake {model, name} -> PoseBaker, its own scene undo step
+        call->fail("bake is not available in this editor build yet.");
+        return;
+    }
+    if (!creating && ops.empty()) {
+        call->fail("Nothing to do: give ops (and/or create for a new file).");
+        return;
+    }
+
+    EditState state;
+    state.project = project;
+    std::shared_ptr<PoseAnimationDocument> document;
+    if (creating) {
+        const Json& create = args["create"];
+        if (!readObject(create, "create", error) || !checkKeys(create, "create", {"preview_model", "preset"}, error)) {
+            call->fail(error);
+            return;
+        }
+        std::error_code ec;
+        if (fs::exists(absolute, ec)) {
+            call->fail("create: " + relative + " already exists; leave out create to edit it.");
+            return;
+        }
+        if (create.contains("preview_model")) {
+            if (!setPreviewModel(state, {{"op", "set_preview_model"}, {"model", create["preview_model"]}}, "create", error)) {
+                // the error names "create.model": the argument is preview_model
+                const std::string from = "create.model";
+                if (error.rfind(from, 0) == 0) error = "create.preview_model" + error.substr(from.size());
+                call->fail(error);
+                return;
+            }
+            state.changes.clear();
+        }
+        if (create.contains("preset")) {
+            // stage 2: the feel preset's transition, step rate, overlap and looseness
+            call->fail("create.preset is not available in this editor build yet.");
+            return;
+        }
+        state.changes.push_back("created " + relative + (state.data.previewModel.empty() ? std::string("") :
+                                " (preview " + previewModelPath(project, state.data) + ")"));
+    } else {
+        document = PoseAnimationDocument::open(project, relative, &error);
+        if (!document) {
+            call->fail(error + ". Pass create: {preview_model} to make a new one.");
+            return;
+        }
+        state.data = document->data();
+    }
+    state.touched.assign(state.data.poses.size(), false);
+
+    // all ops on the copy; the first failing one fails the call with nothing written
+    for (size_t i = 0; i < ops.size(); i++) {
+        if (!applyOp(state, ops[i], i, error)) {
+            call->fail(error + (ops.size() > 1 ? " (nothing was changed: ops are all or nothing)" : ""));
+            return;
+        }
+    }
+
+    std::vector<PoseAnimationDocument::ExtraFile> extras;
+    bool extrasChanged = false;
+    for (const auto& [key, sidecar] : state.sidecars) {
+        extras.push_back({sidecar.path, writeHumanoidOverrides(sidecar.overrides)});
+        std::string existing;
+        std::error_code ec;
+        if (!fs::is_regular_file(sidecar.path, ec) || !ProjectChecks::readFile(sidecar.path, existing) || existing != extras.back().content) {
+            extrasChanged = true;
+        }
+    }
+
+    std::vector<ClampReport> clamped;
+    const uint64_t before = document ? document->revision() : 0;
+    if (creating) {
+        document = PoseAnimationDocument::create(project, relative, state.data, "Create Pose Animation", &clamped, &error, extras);
+        if (!document) {
+            call->fail(error);
+            return;
+        }
+    } else if (!document->commit(state.data, "Edit Pose Animation", "", &clamped, &error, extras)) {
+        call->fail(error);
+        return;
+    }
+    const bool changed = creating || document->revision() != before || extrasChanged;
+
+    std::vector<size_t> touched;
+    for (size_t i = 0; i < state.touched.size() && i < document->data().poses.size(); i++) {
+        if (state.touched[i]) touched.push_back(i);
+    }
+    const Json full = animationJson(project, *document, touched, true);
+    Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
+                {"changes", state.changes}, {"clamped", clampJson(clamped)}, {"warnings", state.warnings},
+                {"poses", full["poses"]}};
+    std::string text = document->path() + ": " + std::to_string(document->data().poses.size()) + " pose(s), " +
+                       fmt(full["length"].get<double>()) + " s" + (changed ? "" : " (no change: nothing written)");
+    for (const std::string& line : state.changes) text += "\n" + line;
+    for (const ClampReport& report : clamped) text += "\nclamped " + describeClamp(report);
+    for (const std::string& warning : state.warnings) text += "\nwarning: " + warning;
+    call->ok(text, out);
+}
+
+// A nested object schema: no additionalProperties (the handler checks the keys, and tool
+// definitions are paid for in every agent session)
+Json obj(const Json& properties, const std::vector<std::string>& required = {}) {
+    Json out = {{"type", "object"}, {"properties", properties}};
+    if (!required.empty()) out["required"] = required;
+    return out;
+}
+
+} // namespace
+
+void registerPoseTools(McpRegistry& registry) {
+    using namespace schema;
+
+    const Json transition = obj({{"curve", stringEnum("", {"spring", "linear", "smooth"})}, {"duration", number("")},
+                                 {"overshoot", number("")}, {"anticipation", number("")}});
+    const Json angles = anyObject("");
+
+    {
+        ToolDef tool;
+        tool.name = "get_pose_animation";
+        tool.title = "Get Pose Animation";
+        tool.description =
+            "A .poseanim pose animation: settings (loop, frame_rate, feel, humanize, preset), length and its key poses "
+            "(name, hold, grounded, lift, transition or null = the animation's, start_time, offset {left, forward}, angles: "
+            "degrees, 0 = neutral standing; see jasper://docs/pose-animation for the DOF table) with metrics on the rig "
+            "(feet height/contact, balanced, balance_margin, limit_hits). model: a scene model's rig instead of preview_model.";
+        tool.inputSchema = object({
+            {"path", assetPath("")},
+            {"poses", array(integer(""), "Indices; default all.")},
+            {"model", entityRef()},
+            {"detail", withDefault(stringEnum("summary omits angles.", {"summary", "full"}), "full")}
+        }, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.allowedWhilePlaying = true;
+        tool.handler = getPoseAnimationTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "edit_pose_animation";
+        tool.title = "Edit Pose Animation";
+        tool.description =
+            "Edit a .poseanim: ops in order (index 0-based, after earlier ops), all or nothing, one project undo step. "
+            "add_pose copies from (default after; neutral if empty), blended toward blend_to; update_pose (metadata never "
+            "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
+            "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto). "
+            "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
+            "file; bake writes an Animation on a scene model (scene undo). Returns changes and the touched poses.";
+        tool.inputSchema = object({
+            {"path", assetPath("")},
+            {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}})},
+            {"ops", array(obj({
+                {"op", stringEnum("", opNames())},
+                {"index", integer("")},
+                {"after", integer("-1 = first; default last.")},
+                {"to", integer("")},
+                {"name", string("")},
+                {"from", integer("")},
+                {"blend_to", integer("")},
+                {"blend", number("", 0, 1)},
+                {"hold", number("")},
+                {"grounded", boolean("")},
+                {"lift", number("")},
+                {"offset", obj({{"left", number("")}, {"forward", number("")}})},
+                {"angles", angles},
+                {"add_angles", angles},
+                {"transition", Json{{"anyOf", Json::array({transition, {{"type", "null"}}})}}},
+                {"as_new", boolean("")},
+                {"loop", boolean("")},
+                {"frame_rate", integer("")},
+                {"step_rate", number("")},
+                {"overlap", number("")},
+                {"looseness", number("")},
+                {"weights", obj({{"spine", number("")}, {"head", number("")}, {"arms", number("")}, {"legs", number("")}})},
+                {"humanize", anyObject("")},
+                {"model", assetPath("")},
+                {"bones", anyObject("")}
+            }, {"op"}), "")},
+            {"bake", obj({{"model", entityRef()}, {"name", string("")}})}
+        }, {"path"});
+        tool.annotations.readOnly = false;
+        tool.annotations.idempotent = false;
+        tool.allowedWhilePlaying = false;
+        tool.handler = editPoseAnimationTool;
+        registry.addTool(std::move(tool));
+    }
+}
+
+} // namespace jasperengine::editor::mcp

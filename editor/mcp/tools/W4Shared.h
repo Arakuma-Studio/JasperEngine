@@ -9,6 +9,7 @@
 #include "mcp/McpJson.h"
 
 #include "command/Command.h"
+#include "command/type/WriteFilesCmd.h"
 #include "util/ProjectChecks.h"
 
 #include <filesystem>
@@ -41,32 +42,8 @@ namespace jasperengine::editor::mcp {
         // Files only editor tools may write: project.yaml, scenes, prefabs, generated build files
         bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& why);
 
-        // Writes (creates or replaces) files as one step of the project command history; undo
-        // puts back the previous contents (or deletes files that did not exist, and the
-        // directories it created). After execute and undo it runs `afterChange` with the paths.
-        class WriteFilesCmd : public Command {
-        public:
-            struct Item {
-                fs::path path;          // absolute
-                std::string content;
-            };
-            WriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange);
-            bool execute() override;
-            void undo() override;
-            bool affectsStructure() const override { return false; }
-
-        private:
-            struct Previous {
-                bool existed = false;
-                std::string content;
-            };
-            std::vector<Item> items;
-            std::vector<Previous> previous;
-            std::vector<fs::path> createdDirs;
-            bool captured = false;
-            std::function<void(const std::vector<fs::path>&)> afterChange;
-            std::vector<fs::path> paths() const;
-        };
+        // Writes files as one step of the project command history (editor/command/type)
+        using WriteFilesCmd = ::jasperengine::editor::WriteFilesCmd;
 
         // Runs a WriteFilesCmd on the project history (one undo step). False + error on failure.
         bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error);
