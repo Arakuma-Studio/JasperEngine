@@ -2740,6 +2740,15 @@ bool RenderSystem::checkPBRTextures(Material& material, bool receiveLights){
     return checkPBRTextures(getMeshShaderEnvironment(), inputs);
 }
 
+bool RenderSystem::supportsStochasticTiling(const std::string& shader){
+    if (shader.empty())
+        return true;
+    if (ShaderReference::isLibrary(shader))
+        return false;
+    const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+    return manifest && !manifest->present && manifest->litStochasticParams;
+}
+
 bool RenderSystem::checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs){
     bool hasOtherPBRTextures = false;
     if (environment.lights && inputs.receiveLights) {
@@ -2817,6 +2826,7 @@ std::string RenderSystem::getSubmeshExtraPassReference(const Submesh& submesh){
 SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderInputs& submeshInputs, const MaterialPass& pass){
     SubmeshShaderInputs inputs = submeshInputs;
     inputs.manifest = findManifest(pass.shader);
+    inputs.stochasticShader = supportsStochasticTiling(pass.shader);
     inputs.features = inputs.manifest ? ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures) : std::vector<std::string>();
     // the pass has no lighting field: its shader's default mode
     inputs.lighting = MaterialLighting::AUTO;
@@ -3163,6 +3173,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // shader library: the manifest of the shader the submesh draws with decides its inputs
     const std::string& shader = getSubmeshShader(mesh, submesh, sceneMeshShader);
     inputs.manifest = findManifest(shader);
+    inputs.stochasticShader = supportsStochasticTiling(shader);
     inputs.depthProgram = ShaderReference::isLibrary(shader) && inputs.manifest && inputs.manifest->depth;
     if (inputs.manifest){
         inputs.features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
@@ -3373,13 +3384,16 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     const bool p_depthTexture = p_depthAlphaMask && inputs.texCoord1 && inputs.baseColorTexture;
     const bool p_instanceFade = inputs.instanced && inputs.instanceFade;
 
-    // Stochastic Tiling (Material::stochasticTiling): the built-in Lit's (and its forks'; a
-    // shader with a manifest has its own STOCHASTIC feature) when the variant samples one of the
+    // Stochastic Tiling (Material::stochasticTiling): the built-in Lit's (and its forks' that
+    // define LIT_STOCHASTIC_PARAMS; a shader with a manifest has its own STOCHASTIC feature) when the variant samples one of the
     // material's textures by its UVs: the base colour, lit the other PBR maps, the normal map on
     // the 2D light path too. Not on a terrain (its layers have their own, the base material's
     // maps are the base tile) nor through a texture rect (a sprite's atlas frame, a tilemap's
     // tiles), whose offset taps would read the neighbouring frames.
-    const bool stochasticAllowed = inputs.stochasticTiling && !manifest && !inputs.terrain && !inputs.textureRect;
+    // A fork of Lit made before Stochastic Tiling samples plainly (it does not define
+    // LIT_STOCHASTIC_PARAMS): none of the submesh's passes take it then, so the shadows' and
+    // pre-passes' alpha clip and the SSR G-buffer match the colour it draws.
+    const bool stochasticAllowed = inputs.stochasticTiling && inputs.stochasticShader && !manifest && !inputs.terrain && !inputs.textureRect;
     const bool p_stochastic = stochasticAllowed && p_hasTexture1 &&
         (inputs.baseColorTexture ||
          (!p_unlit && (inputs.metallicRoughnessTexture || inputs.occlusionTexture || inputs.emissiveTexture)) ||

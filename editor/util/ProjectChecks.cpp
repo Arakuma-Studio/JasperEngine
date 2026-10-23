@@ -1934,6 +1934,15 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTil
                          "turn the shader's own Stochastic Tiling feature on (a library shader with STOCHASTIC), or turn the material's off");
                     continue;
                 }
+                // a fork of Lit made before the feature (no LIT_STOCHASTIC_PARAMS): none of its passes take it
+                if (!RenderSystem::supportsStochasticTiling(shader)) {
+                    warn(where + ": Stochastic Tiling is on, but the material's custom shader " + shader +
+                         " predates Stochastic Tiling: update the fork (see docs) or turn the feature off", noEffectCode,
+                         "update the fork: add the 'vec4 stochastic;' member to its u_fs_pbrParams under #ifdef USE_STOCHASTIC_TILING "
+                         "and '#define LIT_STOCHASTIC_PARAMS pbrParams.stochastic' in its .frag, as the engine's mesh.frag does "
+                         "(docs/mcp/guide/shaders.md, Forking); or turn stochasticTiling off");
+                    continue;
+                }
                 if (terrain) {
                     warn(where + ": Stochastic Tiling is on for a terrain's base material, which does not take it", noEffectCode,
                          "turn it on per terrain layer (surfaceLayers[N].stochasticTiling) instead");

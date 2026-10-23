@@ -212,6 +212,12 @@ namespace jasperengine{
         std::vector<ShaderManifestFeature> features;
         std::vector<ShaderManifestKeywords> keywords;
         bool depth = false;      // has its own depth program
+        // A fork's .frag defines LIT_STOCHASTIC_PARAMS (definesLitStochasticParams): a fork of
+        // the built-in Lit that samples the material's Stochastic Tiling (includes/pbr.glsl).
+        // Set by ShaderManifests::get for forks, from the entry point an export ships, so the
+        // editor collecting variants and the game loading meshes decide alike
+        // (RenderSystem::supportsStochasticTiling).
+        bool litStochasticParams = false;
         std::vector<ShaderManifestDiagnostic> diagnostics;
 
         // Adds the directives at the top of one source (up to its first line of code)
@@ -268,6 +274,9 @@ namespace jasperengine{
 
         // the source declares manifest lines (a fork the runtime needs the file of)
         static bool hasManifestLines(const std::string& source);
+        // a line "#define LIT_STOCHASTIC_PARAMS ..." outside comments: the source names the
+        // material's Stochastic Tiling values for includes/pbr.glsl
+        static bool definesLitStochasticParams(const std::string& source);
         static std::string getLightingModeName(ShaderLightingMode mode);
         static std::string getShaderTypeToken(ShaderType type);
 

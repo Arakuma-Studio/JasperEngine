@@ -386,6 +386,10 @@ namespace jasperengine{
 		bool textureShadow = false;
 		// Material::stochasticTiling, as the material asks; the variant decides where it applies
 		bool stochasticTiling = false;
+		// the colour shader samples Lit's Stochastic Tiling (RenderSystem::supportsStochasticTiling:
+		// the built-in Lit, a fork of it defining LIT_STOCHASTIC_PARAMS); a fork made before it
+		// samples plainly, so its depth and G-buffer passes must too
+		bool stochasticShader = true;
 		// mesh
 		bool receiveLights = true;
 		bool receiveIBL = true;
@@ -1875,6 +1879,14 @@ namespace jasperengine{
 		static bool supportsLighting(MaterialLighting mode, const ShaderManifest* manifest);
 		// Whether the lit or unlit shader samples the material's textures
 		static bool checkPBRTextures(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Whether a mesh colour shader ("" built-in, a fork, a library reference) samples the
+		// material's Stochastic Tiling (Material::stochasticTiling): the built-in Lit does; a fork
+		// without manifest lines does when its .frag defines LIT_STOCHASTIC_PARAMS
+		// (ShaderManifest::litStochasticParams; a fork made before the feature does not, nor one
+		// whose files cannot be read); a shader with a manifest never does (a library shader has
+		// its own STOCHASTIC feature). Read from the fork's entry point at runtime and by the
+		// editor alike, so a build ships the variants the game asks for.
+		static bool supportsStochasticTiling(const std::string& shader);
 		MeshShaderEnvironment getMeshShaderEnvironment() const;
 		// capacity tier (4, 8 or 16 lights) of the per-object lights blocks for a scene's
 		// maxLightsPerObject: the light-capacity bits of every lit mesh variant
