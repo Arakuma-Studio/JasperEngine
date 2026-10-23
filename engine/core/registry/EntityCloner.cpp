@@ -125,6 +125,13 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
+    // the copy packs and uploads its own lattice data (LatticeRender::prepare); the sprite
+    // grid request stays, the copied vertices are built for it
+    const bool wantsTessellation = mesh.lattice.wantsTessellation;
+    const int tessellation = mesh.lattice.tessellation;
+    mesh.lattice = LatticeMeshState();
+    mesh.lattice.wantsTessellation = wantsTessellation;
+    mesh.lattice.tessellation = tessellation;
 }
 
 template<>
@@ -419,6 +426,34 @@ void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, Clo
 }
 
 template<>
+void prepare<LatticeComponent>(LatticeComponent& lattice, Entity, CloneContext&) {
+    // the copy starts still: its jiggle warms up again where it is placed; a running tween
+    // goes on from where the original is
+    lattice.dynamicOffsets.clear();
+    lattice.jiggleVelocities.clear();
+    lattice.jiggleLastPosition = Vector3(0, 0, 0);
+    lattice.jiggleLastVelocity = Vector3(0, 0, 0);
+    lattice.jiggleWarmup = 0;
+    lattice.jiggleSleeping = true;
+}
+
+template<>
+void prepare<LatticeModifierComponent>(LatticeModifierComponent& modifier, Entity, CloneContext& ctx) {
+    // a copied lattice deforms the copies; one not copied stays bound in the same registry,
+    // and is none in another (the binding stays, skipped like one to a deleted lattice)
+    for (LatticeBinding& binding : modifier.bindings) {
+        binding.lattice = ctx.remap(binding.lattice);
+    }
+    modifier.warnedOverflow = false;
+}
+
+template<>
+void prepare<LatticeFollowerComponent>(LatticeFollowerComponent& follower, Entity, CloneContext& ctx) {
+    follower.lattice = ctx.remap(follower.lattice);
+    follower.rest = ctx.remap(follower.rest);
+}
+
+template<>
 void prepare<SpriteComponent>(SpriteComponent& sprite, Entity, CloneContext&) {
     sprite.needUpdateSprite = true;
 }
@@ -585,6 +620,10 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<UIDocumentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeModifierComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeFollowerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 
