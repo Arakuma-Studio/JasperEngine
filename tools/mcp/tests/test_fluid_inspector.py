@@ -1,19 +1,22 @@
-"""The Fluid Simulation inspector (editor/window/InspectorFluid.cpp), its texture-slot link button and
-the Scene view's Paint Dye brush (editor/util/FluidEditorTools.cpp), driven like a human with xdotool
-in the harness's Xvfb (1600x900, default layout):
+"""The Fluid Simulation inspector (editor/window/InspectorFluid.cpp), its texture-slot link button, the
+edit-mode preview and the Scene view's Paint Dye brush (editor/util/FluidEditorTools.cpp), driven like
+a human with xdotool in the harness's Xvfb, on the real GPU simulator:
 
 - the inspector draws (not a blank panel) for one fluid and for a mixed multi-selection;
 - a slider drag is one undo step, the reset arrow puts the default back;
 - the Bloom group checkbox turns bloom off (and back with undo);
 - the Preset combo applies a preset's fields in one undo step and leaves the others;
 - a texture slot's droplet button links a scene fluid ("fluid|<entity>"), undone in one step;
-- Paint Dye: armed, a drag over the fluid's Sprite neither moves nor deselects it (unarmed it
-  moves it), [ and ] scale splatRadius as one undo step a run of presses, the brush circle shows
-  over the Sprite, Esc puts the brush down.
+- the preview animates the fluid in the Scene view, Pause holds it, a preset changes its look;
+- Paint Dye: the circle shows over the Sprite, [ and ] scale splatRadius as one undo step a run,
+  an armed click beside the Sprite keeps the selection, a stroke paints where it was drawn (the
+  dye lands in the quadrant painted: orientation) without moving or deselecting the Sprite, and
+  after Esc a drag moves the Sprite again.
 
-The fluid's pixels are the engine tests' (FluidSimulator); this file checks the editor's side.
-Positions are those of the default layout; when a click reaches nothing the test skips and asks
-for new positions instead of failing.
+Widgets are found where the layout puts them through the editor's test-only widget locator
+(Editor(ui_probe=True), editor/util/UIProbe.h): the inspector is scrolled until the widget is
+drawn whole, then clicked at its centre. Pixels are read from editor screenshots inside the
+fluid Sprite's rectangle on the Scene view (the locator's "scene.fluidSprite").
 
 Runs in a new empty project (EDITOR create).
 """
@@ -28,42 +31,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-from harness import Editor, skip
+from harness import Editor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402
 
-EDITOR = {"xvfb": "harness", "create": True, "name": "Fluid Inspector"}
-TIMEOUT = 600
+EDITOR = {"xvfb": "harness", "create": True, "name": "Fluid Inspector", "ui_probe": True}
+TIMEOUT = 900
 
 KEY = "fluidsimulation"
 S: dict = {}
 
-INSPECTOR = (1250, 300, 1590, 880)     # the component's part of the inspector, in the editor image
-SCROLL_AT = (1420, 500)
-# a GameObject with a Transform and a Fluid Simulation, inspector scrolled to the top
-PRESET_COMBO = (1495, 405)
-PRESET_SMOKE = (1450, 466)             # third item of the opened combo
-CURL_SLIDER_Y = 684                    # Vorticity
-CURL_RESET = (1310, 682)               # the arrow after the "Vorticity" label
-# scrolled to the end
-BLOOM_CHECKBOX = (1264, 615)
-# a UI Image: its Texture slot's droplet button, then the popup's first fluid
-IMAGE_FLUID_BUTTON = (1566, 352)
-IMAGE_FLUID_ITEM = (1520, 369)
-# the fluid_simulation GameObject (a 512 px Sprite framed in the Scene view) with its Mesh Renderer
-# folded: the preview bar's Paint Dye button, the Sprite in the view
-MESH_RENDERER_HEADER = (1360, 300)
-PAINT_DYE = (1517, 596)
-PREVIEW_PLAY = (1267, 596)
-PREVIEW_STOP = (1300, 596)
-SPRITE_CENTER = (768, 353)
-SCENE_VIEW = (296, 98, 1240, 608)
-SCENE_EMPTY = (400, 500)
+# the screenshots also go here when it exists (build/fluid-inspector-shots: the box's test runs
+# leave nothing else behind)
+SHOTS = Path(__file__).resolve().parents[3] / "build" / "fluid-inspector-shots"
 
 
 class Ui:
     def __init__(self, ed: Editor):
+        self.ed = ed
         self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
 
     def xdo(self, *args: str) -> str:
@@ -71,41 +57,74 @@ class Ui:
 
     async def focus(self):
         windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
+        self.ed.check(windows, "the editor window")
         self.xdo("windowfocus", "--sync", windows[-1])
 
-    async def move(self, x: int, y: int):
-        self.xdo("mousemove", str(x), str(y))
+    async def move(self, x: float, y: float):
+        self.xdo("mousemove", str(int(x)), str(int(y)))
         await asyncio.sleep(0.3)
 
-    async def click(self, x: int, y: int):
+    async def click(self, x: float, y: float):
         await self.move(x, y)
         self.xdo("click", "1")
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.6)
 
     async def key(self, name: str):
         self.xdo("key", name)
         await asyncio.sleep(0.5)
 
-    async def drag(self, x: int, y: int, dx: int, dy: int = 0):
+    async def drag(self, x: float, y: float, dx: float, dy: float = 0.0, steps: int = 8):
         """press, move by (dx, dy) in steps (a frame between each), release"""
         await self.move(x, y)
         self.xdo("mousedown", "1")
         await asyncio.sleep(0.2)
-        steps = 8
         for i in range(1, steps + 1):
-            self.xdo("mousemove", str(x + dx * i // steps), str(y + dy * i // steps))
+            self.xdo("mousemove", str(int(x + dx * i / steps)), str(int(y + dy * i / steps)))
             await asyncio.sleep(0.1)
         await asyncio.sleep(0.2)
         self.xdo("mouseup", "1")
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.5)
 
-    async def scroll(self, down: bool, clicks: int = 120):
-        await self.move(*SCROLL_AT)
-        for _ in range(clicks):
+    async def wheel(self, at, down: bool, notches: int):
+        await self.move(*at)
+        for _ in range(notches):
             self.xdo("click", "5" if down else "4")
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.3)
+
+    async def frames(self, n: int = 3):
+        await self.ed.call("wait", frames=n)
+
+    async def reveal(self, name: str) -> list[float]:
+        """The widget's rectangle, scrolling the inspector from its top until it is drawn whole."""
+        await self.frames()
+        rect = self.ed.ui_items().get(name)
+        if rect:
+            return rect
+        panel = await self.ed.ui_rect("inspector")
+        self.ed.check(panel, "the inspector is drawn")
+        at = center(panel)
+        await self.wheel(at, False, 60)
+        for _ in range(80):
+            await self.frames()
+            rect = self.ed.ui_items().get(name)
+            if rect:
+                return rect
+            await self.wheel(at, True, 2)
+        self.ed.fail(f"{name} is never drawn in the inspector: {sorted(self.ed.ui_items())}")
+
+    async def click_item(self, name: str):
+        rect = await self.reveal(name)
+        await self.click(*center(rect))
+
+    async def click_popup_item(self, name: str):
+        """an item of the popup or combo opened last (drawn at once, no scrolling)"""
+        rect = await self.ed.ui_rect(name)
+        self.ed.check(rect, f"{name} is drawn: {sorted(self.ed.ui_items())}")
+        await self.click(*center(rect))
+
+
+def center(rect) -> tuple[float, float]:
+    return (rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0
 
 
 def close(a, b, tol=1e-3) -> bool:
@@ -119,60 +138,90 @@ async def values(ed: Editor, entity: int) -> dict:
     return got["components"][KEY]
 
 
-# the screenshots also go here when it exists (build/fluid-inspector-shots: the box's test runs
-# leave nothing else behind)
-SHOTS = Path(__file__).resolve().parents[3] / "build" / "fluid-inspector-shots"
+async def set_values(ed: Editor, entity: int, changed: dict):
+    await ed.call("set_properties", scene=S["scene"], entity=entity, values={KEY: changed})
 
 
-async def shot(ed: Editor, name: str, view: str = "editor") -> bytes:
-    png = await ed.screenshot(view, path=str(ed.scratch.root / f"{name}.png"), max_width=1600)
+async def shot(ed: Editor, name: str):
+    png = await ed.screenshot("editor", path=str(ed.scratch.root / f"{name}.png"), max_width=1600)
     if SHOTS.is_dir():
         (SHOTS / f"{name}.png").write_bytes(png)
-    return png
+    return decode_png(png)
 
 
-def busy_region(png: bytes, box) -> tuple[int, float]:
-    """distinct colours and the luminance spread of a region: a drawn panel has text and widgets"""
-    w, h, ch, rows = decode_png(png)
-    x0, y0, x1, y1 = box
-    colours = set()
-    lum = []
-    for y in range(max(0, y0), min(h, y1), 2):
+def region(image, box, step=2):
+    """the pixels of a box (x0, y0, x1, y1) of a decoded image, every step-th one"""
+    w, h, ch, rows = image
+    x0, y0, x1, y1 = (int(v) for v in box)
+    out = []
+    for y in range(max(0, y0), min(h, y1), step):
         row = rows[y]
-        for x in range(max(0, x0), min(w, x1), 2):
-            px = tuple(row[x * ch:x * ch + 3])
-            colours.add(px)
-            lum.append(0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2])
+        for x in range(max(0, x0), min(w, x1), step):
+            out.append(tuple(row[x * ch:x * ch + 3]))
+    return out
+
+
+def brightness(pixels) -> float:
+    return sum(0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels) / max(1, len(pixels))
+
+
+def difference(a, b) -> float:
+    """mean absolute difference of two equal regions"""
+    return sum(abs(p - q) for pa, pb in zip(a, b) for p, q in zip(pa, pb)) / max(1, 3 * len(a))
+
+
+def spread(pixels) -> tuple[int, float]:
+    """distinct colours and the luminance spread: a drawn panel has text and widgets"""
+    lum = [0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels]
     mean = sum(lum) / max(1, len(lum))
-    spread = math.sqrt(sum((v - mean) ** 2 for v in lum) / max(1, len(lum)))
-    return len(colours), spread
+    return len(set(pixels)), math.sqrt(sum((v - mean) ** 2 for v in lum) / max(1, len(lum)))
 
 
-def cyan_pixels(png: bytes) -> int:
-    """pixels of the Paint Dye circle's colour (89, 204, 255) over the Scene view"""
-    w, h, ch, rows = decode_png(png)
-    x0, y0, x1, y1 = SCENE_VIEW
-    count = 0
-    for y in range(max(0, y0), min(h, y1)):
-        row = rows[y]
-        for x in range(max(0, x0), min(w, x1)):
-            r, g, b = row[x * ch], row[x * ch + 1], row[x * ch + 2]
-            if b > 200 and g > 140 and r < 200 and b - r > 40:
-                count += 1
-    return count
+def inset(rect, margin=0.04):
+    """the inner part of a rectangle (no outline or anti-aliased edge)"""
+    x0, y0, x1, y1 = rect
+    mx, my = (x1 - x0) * margin, (y1 - y0) * margin
+    return x0 + mx, y0 + my, x1 - mx, y1 - my
 
 
-async def select(ed: Editor, *entities: int, frames: int = 20):
-    await ed.call("select_entities", entities=list(entities))
+def quadrants(rect):
+    """upper-left, upper-right, lower-left, lower-right of a screen rectangle (y down)"""
+    x0, y0, x1, y1 = inset(rect)
+    xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+    return {"ul": (x0, y0, xm, ym), "ur": (xm, y0, x1, ym), "ll": (x0, ym, xm, y1), "lr": (xm, ym, x1, y1)}
+
+
+def cyan_pixels(pixels) -> int:
+    """pixels of the Paint Dye circle's colour (89, 204, 255)"""
+    return sum(1 for r, g, b in pixels if b > 200 and g > 140 and r < 200 and b - r > 40)
+
+
+async def select(ed: Editor, *entities: int, frames: int = 10):
+    await ed.call("select_entities", scene=S["scene"], entities=list(entities))
     await ed.call("wait", frames=frames)
+
+
+async def position(ed: Editor, entity: int):
+    got = await ed.call("get_entity", scene=S["scene"], entity=entity, components=["transform"], properties=["position"])
+    return got["components"]["transform"]["position"]
+
+
+async def selection(ed: Editor) -> list:
+    got = await ed.call("get_selection", scene=S["scene"])
+    return [e["id"] if isinstance(e, dict) else e for e in got.get("entities", [])]
+
+
+async def sprite_rect(ed: Editor):
+    rect = await ed.ui_rect("scene.fluidSprite")
+    ed.check(rect, f"the fluid's Sprite is on the Scene view: {sorted(ed.ui_items())}")
+    return rect
 
 
 # ---------------------------------------------------------------------------- setup and drawing
 
 
 async def test_inspector_draws(ed: Editor):
-    if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
-        skip("needs xdotool and the harness's Xvfb")
+    ed.check(shutil.which("xdotool") and ed._xvfb and ed._xvfb.display, "needs xdotool and the harness's Xvfb")
     made = await ed.call("create_scene", name="Fluids", type="2D")
     S["scene"] = made["scene"]["id"]
     bare = await ed.call("create_entity", scene=S["scene"], type="empty", name="Bare")
@@ -183,17 +232,19 @@ async def test_inspector_draws(ed: Editor):
     S["ui"] = ui = Ui(ed)
     await ui.focus()
 
-    png = await shot(ed, "inspector")
-    colours, spread = busy_region(png, INSPECTOR)
-    ed.check(colours > 40 and spread > 8, f"the fluid inspector is drawn: {colours} colours, spread {spread:.1f}")
+    panel = await ed.ui_rect("inspector")
+    ed.check(panel, "the inspector rectangle")
+    S["panel"] = panel
+    for name in ("fluid.preset", "fluid.preview.play", "fluid.paint"):
+        await ui.reveal(name)
+    colours, lum = spread(region(await shot(ed, "inspector"), panel))
+    ed.check(colours > 40 and lum > 8, f"the fluid inspector is drawn: {colours} colours, spread {lum:.1f}")
 
-    # the end of it (Bloom, Sunrays, Advanced) and the Advanced section opened
-    await ui.scroll(True)
-    await ed.call("wait", frames=5)
-    png = await shot(ed, "inspector-end")
-    colours, spread = busy_region(png, INSPECTOR)
-    ed.check(colours > 40 and spread > 8, f"its end is drawn: {colours} colours, spread {spread:.1f}")
-    await ui.scroll(False)
+    # its end (Advanced) and the Stats line once the fluid has a simulator
+    await ui.reveal("fluid.advanced")
+    colours, lum = spread(region(await shot(ed, "inspector-end"), panel))
+    ed.check(colours > 40 and lum > 8, f"its end is drawn: {colours} colours, spread {lum:.1f}")
+    await ui.reveal("fluid.stats")
 
     # a second fluid with other values: the mixed rows of a multi-selection
     other = await ed.call("create_entity", scene=S["scene"], type="empty", name="Other")
@@ -201,9 +252,9 @@ async def test_inspector_draws(ed: Editor):
     await ed.call("add_component", scene=S["scene"], entity=S["other"], component="fluid",
                   values={KEY: {"curl": 12, "bloom": False, "output": "texture", "seed": 7}})
     await select(ed, S["bare"], S["other"])
-    png = await shot(ed, "inspector-mixed")
-    colours, spread = busy_region(png, INSPECTOR)
-    ed.check(colours > 40 and spread > 8, f"the mixed selection is drawn: {colours} colours, spread {spread:.1f}")
+    await ui.reveal("fluid.preset")
+    colours, lum = spread(region(await shot(ed, "inspector-mixed"), panel))
+    ed.check(colours > 40 and lum > 8, f"the mixed selection is drawn: {colours} colours, spread {lum:.1f}")
     await ed.check_alive()
     await select(ed, S["bare"])
 
@@ -213,12 +264,10 @@ async def test_inspector_draws(ed: Editor):
 
 async def test_slider_drag_is_one_undo_step(ed: Editor):
     ui: Ui = S["ui"]
-    await ui.drag(1495, CURL_SLIDER_Y, -60)
+    x, y = center(await ui.reveal("fluid.value.curl"))
+    await ui.drag(x, y, -60)
     curl = (await values(ed, S["bare"]))["curl"]
-    if close(curl, 30.0):
-        await shot(ed, "inspector-layout")
-        skip("the drag changed nothing: the inspector layout moved (update the positions at the top of this file)")
-    ed.check(0.0 <= curl < 30.0, f"dragged left: curl {curl}")
+    ed.check(0.0 <= curl < 29.0, f"dragged left: curl {curl}")
 
     await ed.call("undo", scene=S["scene"])
     ed.check(close((await values(ed, S["bare"]))["curl"], 30.0), "one undo step reverts the whole drag")
@@ -226,7 +275,7 @@ async def test_slider_drag_is_one_undo_step(ed: Editor):
     ed.check(close((await values(ed, S["bare"]))["curl"], curl), "redo")
 
     # the reset arrow next to the changed row's label
-    await ui.click(*CURL_RESET)
+    await ui.click_item("fluid.default.curl")
     ed.check(close((await values(ed, S["bare"]))["curl"], 30.0), "the reset arrow puts Pavel's 30 back")
     await ed.call("undo", scene=S["scene"])
     ed.check(close((await values(ed, S["bare"]))["curl"], curl), "reset undone")
@@ -235,30 +284,21 @@ async def test_slider_drag_is_one_undo_step(ed: Editor):
 
 async def test_bloom_group_checkbox(ed: Editor):
     ui: Ui = S["ui"]
-    await ui.scroll(True)
-    await ed.call("wait", frames=5)
-    await ui.click(*BLOOM_CHECKBOX)
-    v = await values(ed, S["bare"])
-    if v["bloom"]:
-        await shot(ed, "inspector-layout")
-        skip("the click missed the Bloom checkbox: the inspector layout moved")
-    await shot(ed, "bloom-off")
+    await ui.click_item("fluid.group.bloom")
+    ed.check(not (await values(ed, S["bare"]))["bloom"], "the group checkbox turns bloom off")
+    await ui.frames()
+    ed.check("fluid.value.bloomIntensity" not in ed.ui_items(), "its rows hide")
     await ed.call("undo", scene=S["scene"])
     ed.check((await values(ed, S["bare"]))["bloom"], "undo turns bloom back on")
-    await ui.scroll(False)
 
 
 async def test_preset_combo(ed: Editor):
     ui: Ui = S["ui"]
-    await ed.call("set_properties", scene=S["scene"], entity=S["bare"], values={KEY: {"interactive": False, "seed": 42}})
+    await set_values(ed, S["bare"], {"interactive": False, "seed": 42})
     before = await values(ed, S["bare"])
-    await ui.click(*PRESET_COMBO)
-    await shot(ed, "preset-combo")
-    await ui.click(*PRESET_SMOKE)
+    await ui.click_item("fluid.preset")
+    await ui.click_popup_item("fluid.preset.smoke")
     v = await values(ed, S["bare"])
-    if v["dyeResolution"] == before["dyeResolution"]:
-        await shot(ed, "inspector-layout")
-        skip("the preset was not applied: the inspector layout moved")
     # Smoke (FluidPresets.cpp)
     for name, want in {"dyeResolution": 512, "densityDissipation": 0.4, "velocityDissipation": 0.1, "curl": 20.0,
                        "splatRadius": 0.5, "splatForce": 4000.0, "colorful": False, "bloom": False,
@@ -267,7 +307,6 @@ async def test_preset_combo(ed: Editor):
     # what presets never touch
     ed.check_eq(v["interactive"], False, "Interactive stays")
     ed.check_eq(v["seed"], 42, "the seed stays")
-    await shot(ed, "preset-smoke")
 
     await ed.call("undo", scene=S["scene"])
     after = await values(ed, S["bare"])
@@ -285,77 +324,103 @@ async def test_preset_combo(ed: Editor):
 async def test_texture_slot_fluid_button(ed: Editor):
     ui: Ui = S["ui"]
     panel = await ed.call("create_entity", scene=S["scene"], type="image", name="Panel")
-    S["panel"] = panel["entity_id"]
-    await select(ed, S["panel"])
-    await ui.click(*IMAGE_FLUID_BUTTON)
-    await shot(ed, "fluid-popup")
-    await ui.click(*IMAGE_FLUID_ITEM)
-    got = await ed.call("get_entity", scene=S["scene"], entity=S["panel"], components=["ui"], properties=["texture"])
+    S["image"] = panel["entity_id"]
+    await select(ed, S["image"])
+    await ui.click_item("texture.fluid.texture")
+    await ui.click_popup_item(f"texture.fluid.item.{S['bare']}")
+    got = await ed.call("get_entity", scene=S["scene"], entity=S["image"], components=["ui"], properties=["texture"])
     tex = got["components"]["ui"]["texture"]
-    if not isinstance(tex, dict) or "fluid" not in tex:
-        await shot(ed, "inspector-layout")
-        skip(f"the popup click linked nothing ({tex!r}): the inspector layout moved")
-    ed.check_eq(tex["fluid"]["id"], S["bare"], "linked to the scene's first fluid")
+    ed.check(isinstance(tex, dict) and "fluid" in tex, f"the popup linked a fluid: {tex!r}")
+    ed.check_eq(tex["fluid"]["id"], S["bare"], "linked to the fluid picked")
     await shot(ed, "fluid-linked")    # the slot names it
 
     await ed.call("undo", scene=S["scene"])
-    got = await ed.call("get_entity", scene=S["scene"], entity=S["panel"], components=["ui"], properties=["texture"])
+    got = await ed.call("get_entity", scene=S["scene"], entity=S["image"], components=["ui"], properties=["texture"])
     ed.check(got["components"]["ui"]["texture"] is None, f"one undo step unlinks: {got['components']['ui']['texture']}")
     await ed.check_alive()
 
 
-# ---------------------------------------------------------------------------- Paint Dye
+# ---------------------------------------------------------------------------- the real fluid
 
 
-async def position(ed: Editor, entity: int):
-    got = await ed.call("get_entity", scene=S["scene"], entity=entity, components=["transform"], properties=["position"])
-    return got["components"]["transform"]["position"]
-
-
-async def selection(ed: Editor) -> list:
-    got = await ed.call("get_selection")
-    return [e["id"] if isinstance(e, dict) else e for e in got.get("entities", [])]
-
-
-async def test_paint_dye_brush(ed: Editor):
-    ed.require_tools("get_selection")
+async def test_preview_animates_and_presets_change_the_look(ed: Editor):
     ui: Ui = S["ui"]
     made = await ed.call("create_entity", scene=S["scene"], type="fluid_simulation")
     S["fluid"] = fluid = made["entity_id"]
+    await set_values(ed, fluid, {"seed": 7})
     await select(ed, fluid)
-    await ed.call("frame_entity", entity=fluid)
-    await ed.call("wait", frames=10)
-    await ui.click(*MESH_RENDERER_HEADER)     # fold the Mesh Renderer: the fluid's preview bar shows
-    await ed.call("wait", frames=5)
-    await shot(ed, "paint-inspector")
+    await ed.call("frame_entity", scene=S["scene"], entity=fluid)
+    await ui.frames(10)
+    rect = inset(await sprite_rect(ed))
 
-    # unarmed, a drag on the selected Sprite moves it (the control)
-    start = await position(ed, fluid)
-    await ui.drag(SPRITE_CENTER[0] - 60, SPRITE_CENTER[1], 60)
-    moved = await position(ed, fluid)
-    if close(moved, start):
-        await shot(ed, "scene-layout")
-        skip("the unarmed drag did not move the Sprite: the Scene view layout moved")
+    # Play: the start burst moves
+    await ui.click_item("fluid.preview.play")
+    await asyncio.sleep(1.0)
+    a = region(await shot(ed, "preview-a"), rect)
+    await asyncio.sleep(1.0)
+    b = region(await shot(ed, "preview-b"), rect)
+    ed.check(brightness(a) > 8, f"the fluid shows dye on its Sprite (brightness {brightness(a):.1f})")
+    ed.check(difference(a, b) > 1.0, f"the preview animates (difference {difference(a, b):.2f})")
+    await ui.reveal("fluid.stats")
+
+    # Pause holds it still
+    await ui.click_item("fluid.preview.pause")
+    await asyncio.sleep(0.5)
+    c = region(await shot(ed, "paused-c"), rect)
+    await asyncio.sleep(1.0)
+    d = region(await shot(ed, "paused-d"), rect)
+    ed.check(difference(c, d) < 0.5, f"paused, it holds still (difference {difference(c, d):.2f})")
+
+    # a preset changes the look of the same (paused) fluid: Mobile has no shading, bloom or sunrays
+    await ui.click_item("fluid.preset")
+    await ui.click_popup_item("fluid.preset.mobile")
+    await asyncio.sleep(0.5)
+    e = region(await shot(ed, "preset-mobile"), rect)
+    v = await values(ed, fluid)
+    ed.check(not v["shading"] and not v["bloom"] and not v["sunrays"], f"Mobile applied: {v}")
+    ed.check(difference(d, e) > 1.0, f"the preset changes the look (difference {difference(d, e):.2f})")
     await ed.call("undo", scene=S["scene"])
-    ed.check(close(await position(ed, fluid), start), "move undone")
+    await asyncio.sleep(0.5)
+    g = region(await shot(ed, "preset-undone"), rect)
+    ed.check(difference(d, g) < difference(d, e) / 2,
+             f"undo brings the look back ({difference(d, g):.2f} vs {difference(d, e):.2f})")
 
-    # the preview bar's Play and Stop (no simulator on this device: they must just not break)
-    await ui.click(*PREVIEW_PLAY)
-    await ui.click(*PREVIEW_STOP)
+    # Stop restarts it
+    await ui.click_item("fluid.preview.stop")
+    await ed.check_alive()
 
-    # armed: the same drag paints instead
-    await ui.click(*PAINT_DYE)
-    await shot(ed, "paint-armed")
-    await ui.drag(SPRITE_CENTER[0] - 60, SPRITE_CENTER[1], 60, 30)
-    ed.check(close(await position(ed, fluid), start), "an armed drag does not move the Sprite")
-    ed.check_eq(await selection(ed), [fluid], "nor change the selection")
 
-    # the circle over the Sprite under the pointer
-    await ui.move(*SPRITE_CENTER)
-    await ui.move(SPRITE_CENTER[0] + 5, SPRITE_CENTER[1] + 5)
-    await ed.call("wait", frames=5)
-    png = await shot(ed, "paint-cursor")
-    ed.check(cyan_pixels(png) > 40, f"the brush circle is drawn ({cyan_pixels(png)} pixels)")
+async def test_paint_dye_brush(ed: Editor):
+    ui: Ui = S["ui"]
+    fluid = S["fluid"]
+    # a black fluid that keeps its dye where it is put (no push, no swirl, no glow): a stroke's
+    # dye stays where it was painted
+    await set_values(ed, fluid, {"splatsOnStart": False, "densityDissipation": 0.1, "splatForce": 0.0, "curl": 0.0,
+                                 "bloom": False, "sunrays": False})
+    await ui.click_item("fluid.restart")
+    await ui.frames(10)
+    sprite = await sprite_rect(ed)
+    quads = quadrants(sprite)
+    black = region(await shot(ed, "paint-black"), inset(sprite))
+    ed.check(brightness(black) < 6, f"restarted without the start burst it is black ({brightness(black):.1f})")
+    start = await position(ed, fluid)
+
+    # armed: the circle over the Sprite under the pointer
+    await ui.click_item("fluid.paint")
+    sx, sy = center(sprite)
+    await ui.move(sx, sy)
+    await ui.move(sx + 5, sy + 5)
+    await ui.frames(5)
+    ring = region(await shot(ed, "paint-cursor"), inset(sprite), step=1)
+    ed.check(cyan_pixels(ring) > 40, f"the brush circle is drawn ({cyan_pixels(ring)} pixels)")
+
+    # a click beside the Sprite (the Scene view takes the keys after the inspector's clicks)
+    # neither paints nor deselects
+    view = await ed.ui_rect("scene.view")
+    beside = ((view[0] + sprite[0]) / 2, (sprite[1] + sprite[3]) / 2)
+    ed.check(view[0] + 10 < beside[0] < sprite[0] - 10, f"room beside the Sprite: view {view}, sprite {sprite}")
+    await ui.click(*beside)
+    ed.check_eq(await selection(ed), [fluid], "an armed click on empty space keeps the selection")
 
     # [ and ]: splatRadius, one undo step a run
     await ui.key("bracketright")
@@ -367,19 +432,28 @@ async def test_paint_dye_brush(ed: Editor):
     ed.check(close(radius, 0.25 * 1.15), f"[ once: {radius}")
     await ed.call("undo", scene=S["scene"])
     ed.check(close((await values(ed, fluid))["splatRadius"], 0.25), "one undo step for the run")
-    await ed.call("redo", scene=S["scene"])
-    ed.check(close((await values(ed, fluid))["splatRadius"], 0.25 * 1.15), "redo")
 
-    # a click beside the Sprite (the Scene view takes the keys again after the MCP calls) neither
-    # paints nor deselects
-    await ui.click(*SCENE_EMPTY)
-    ed.check_eq(await selection(ed), [fluid], "an armed click on empty space keeps the selection")
+    # a stroke across the upper-left quadrant paints there (the view's up is the fluid's up)
+    x0, y0, x1, y1 = quads["ul"]
+    w, h = x1 - x0, y1 - y0
+    await ui.drag(x0 + 0.25 * w, y0 + 0.3 * h, 0.5 * w, 0.3 * h, steps=10)
+    await ui.move(view[0] + 5, view[1] + 5)       # the circle off the Sprite
+    await asyncio.sleep(0.5)
+    image = await shot(ed, "paint-stroke")
+    lit = {name: brightness(region(image, box)) for name, box in quads.items()}
+    ed.check(lit["ul"] > 4 and lit["ul"] > 3 * max(lit["ur"], lit["ll"], lit["lr"]),
+             f"the dye is where it was painted, the upper-left quadrant: {lit}")
+    ed.check(close(await position(ed, fluid), start), "the stroke did not move the Sprite")
+    ed.check_eq(await selection(ed), [fluid], "nor change the selection")
 
-    # Esc puts it down: ] does nothing, no circle
+    # Esc puts the brush down: ] does nothing and a drag moves the Sprite again
+    await ui.click(*beside)
     await ui.key("Escape")
     await ui.key("bracketright")
-    ed.check(close((await values(ed, fluid))["splatRadius"], 0.25 * 1.15), "] after Esc changes nothing")
-    await ed.call("wait", frames=5)
-    png = await shot(ed, "paint-disarmed")
-    ed.check(cyan_pixels(png) < 20, f"no brush circle after Esc ({cyan_pixels(png)} pixels)")
+    ed.check(close((await values(ed, fluid))["splatRadius"], 0.25), "] after Esc changes nothing")
+    await shot(ed, "paint-disarmed")
+    await ui.drag(sx - 40, sy, 60)
+    ed.check(not close(await position(ed, fluid), start), "after Esc a drag moves the Sprite")
+    await ed.call("undo", scene=S["scene"])
+    ed.check(close(await position(ed, fluid), start), "move undone")
     await ed.check_alive()

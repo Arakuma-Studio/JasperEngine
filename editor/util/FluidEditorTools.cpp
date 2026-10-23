@@ -362,6 +362,17 @@ bool editor::FluidEditorTools::cursorCircle(const Scene* scene, const Ray& ray, 
     return true;
 }
 
+bool editor::FluidEditorTools::spriteCorners(Scene* scene, Entity entity, std::vector<Vector3>& corners) {
+    corners.clear();
+    Quad quad;
+    if (!spriteQuad(scene, entity, quad)) return false;
+    corners.push_back(quad.model * Vector3(quad.min.x, quad.min.y, 0.0f));
+    corners.push_back(quad.model * Vector3(quad.max.x, quad.min.y, 0.0f));
+    corners.push_back(quad.model * Vector3(quad.max.x, quad.max.y, 0.0f));
+    corners.push_back(quad.model * Vector3(quad.min.x, quad.max.y, 0.0f));
+    return true;
+}
+
 bool editor::FluidEditorTools::rayToFluid(Scene* scene, Entity entity, const Ray& ray, bool requireInside, Vector2& fluidPos, Vector3* worldPos) {
     Quad quad;
     if (!spriteQuad(scene, entity, quad)) return false;

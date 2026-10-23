@@ -67,6 +67,10 @@ namespace jasperengine::editor {
         // Scene view draws it over its image (SceneWindow), so no scene object hides it
         static bool cursorCircle(const Scene* scene, const Ray& ray, std::vector<Vector3>& points);
 
+        // the world corners of an entity's Sprite quad (bottom-left, bottom-right, top-right,
+        // top-left in its local space); false without a Sprite
+        static bool spriteCorners(Scene* scene, Entity entity, std::vector<Vector3>& corners);
+
         // A ray on an entity's Sprite quad: the point in fluid coordinates ((0,0) bottom-left,
         // (1,1) top-right of the image the Sprite shows) and the world point; false when the
         // ray misses the quad's plane (or the quad itself with requireInside)
