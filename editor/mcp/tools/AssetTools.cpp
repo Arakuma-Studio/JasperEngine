@@ -3211,7 +3211,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_shaders";
         tool.title = "List Shaders";
         tool.description =
-            "The engine's library shaders (\"library:<name>\"),: type (mesh: a material's shader; ui, points, "
+            "The engine's library shaders (\"library:<name>\"): type (mesh: a material's shader; ui, points, "
             "lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; "
             "detail (or name) adds parameters, textures, features/keywords, required inputs, default state "
             "and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).";
@@ -3285,7 +3285,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
             {"color", any("")},
             {"color2", any("")},
-            {"outline_width", withDefault(number("", 0, 512), 0)},
+            {"outline_width", withDefault(number("px", 0, 512), 0)},
             {"outline_color", any("Default black.")},
             {"background", any("")},
             {"corner_radius", number("rounded_rect, px.")},

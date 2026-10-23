@@ -3353,8 +3353,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits "
             "until running; returns the state + console problems, or isError with compile/script errors "
-            "(wait:false: a job_id). stop: restores the edit-time state. step: advance a paused game `frames` "
-            "frames. Script errors stop play.\n"
+            "(wait:false: a job_id). stop: restores the edit-time state, summarizes the session. step: "
+            "advance a paused game `frames` frames. Script errors stop play.\n"
             "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause (see "
             "the guide).";
         tool.inputSchema = object({
@@ -3509,12 +3509,12 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames. events in order, each {type, ...} (first "
-            "action = default):\n"
+            "Inject input into the running game across frames (no focus needed). events in order, each {type, "
+            "...} (first action = default):\n"
             "key: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames (2), hold_ms, mods "
             "[shift,ctrl,alt,super]\n"
             "text: text (UTF-8); ime: text, cursor (code points; -1 selects); ime_commit: text; ime_cancel\n"
-            "mouse_leave, mouse_enter\n"
+            "mouse_leave, mouse_enter (the game window)\n"
             "mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button "
             "left|right|middle, to [x,y] + steps (drag), dx, dy\n"
             "touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\n"

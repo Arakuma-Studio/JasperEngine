@@ -1116,7 +1116,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
             "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
-            "whole window. canvas_rect_in_image maps image -> send_input coords.";
+            "whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},

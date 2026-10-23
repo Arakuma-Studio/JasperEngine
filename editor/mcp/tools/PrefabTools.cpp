@@ -1926,7 +1926,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"prefab", prefabRef},
             {"scene", sceneRef()},
             {"parent", entityRef()},
-            {"position", vec3("")},
+            {"position", vec3("Local position.")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
         }, {"prefab"});

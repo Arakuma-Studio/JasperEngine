@@ -1114,10 +1114,10 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "create_entity";
         tool.title = "Create Entity";
         tool.description =
-            "GameObject > Create with parent, name, local transform, extra components and initial values in "
-            "one step. empty = Transform only; bare = no components (root only); model needs model; "
-            "*_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as "
-            "set_properties.";
+            "GameObject > Create with parent (omitted = scene root), name, local transform, extra components "
+            "and initial values in one step. empty = Transform only; bare = no components (root only); model "
+            "needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or "
+            "changes, as set_properties.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"type", withDefault(stringEnum("", types), "empty")},
@@ -1127,7 +1127,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"rotation", quat()},
             {"scale", vec3("")},
             {"model", assetPath("type model: .gltf/.glb/.obj.")},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", ""}}},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},
             {"select", withDefault(boolean(""), true)}

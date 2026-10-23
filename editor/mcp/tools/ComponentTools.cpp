@@ -890,7 +890,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", {{"type", {"array", "number"}}, {"items", {{"type", "number"}}}, {"description", "[x,y,z] or uniform number."}}},
-            {"space", withDefault(stringEnum("", {"local", "world"}), "local")},
+            {"space", withDefault(stringEnum("local = relative to the parent.", {"local", "world"}), "local")},
             {"relative", withDefault(boolean(""), false)}
         });
         tool.handler = setTransformTool;

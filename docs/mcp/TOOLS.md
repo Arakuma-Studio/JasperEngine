@@ -443,7 +443,7 @@ Copy GameObjects with their children to the clipboard (Ctrl+C) for paste_entitie
 
 *Create Entity*
 
-GameObject > Create with parent, name, local transform, extra components and initial values in one step. empty = Transform only; bare = no components (root only); model needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as set_properties.
+GameObject > Create with parent (omitted = scene root), name, local transform, extra components and initial values in one step. empty = Transform only; bare = no components (root only); model needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as set_properties.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -783,7 +783,7 @@ Move/rotate/scale GameObjects. relative=true adds position, applies rotation on 
 | `rotation` | array[4] of number or object {euler} |  |  |
 | `scale` | array or number |  | [x,y,z] or uniform number. |
 | `scene` | string |  |  |
-| `space` | `"local"` \| `"world"` |  | Default: `"local"`. |
+| `space` | `"local"` \| `"world"` |  | local = relative to the parent. Default: `"local"`. |
 
 
 ## Prefabs
@@ -862,7 +862,7 @@ Place a prefab (or variant) instance in a scene or prefab stage and select it; n
 | `name` | string |  |  |
 | `nest_in_parent_prefab` | boolean |  |  |
 | `parent` | string |  |  |
-| `position` | array[3] of number |  |  |
+| `position` | array[3] of number |  | Local position. |
 | `prefab` | string | yes |  |
 | `scene` | string |  |  |
 
@@ -1060,7 +1060,7 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 
 *Play Mode*
 
-Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors (wait:false: a job_id). stop: restores the edit-time state. step: advance a paused game `frames` frames. Script errors stop play.
+Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors (wait:false: a job_id). stop: restores the edit-time state, summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.
 Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause (see the guide).
 
 | Parameter | Type | Required | Description |
@@ -1081,10 +1081,10 @@ Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, 
 
 *Send Input*
 
-Inject input into the running game across frames. events in order, each {type, ...} (first action = default):
+Inject input into the running game across frames (no focus needed). events in order, each {type, ...} (first action = default):
 key: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]
 text: text (UTF-8); ime: text, cursor (code points; -1 selects); ime_commit: text; ime_cancel
-mouse_leave, mouse_enter
+mouse_leave, mouse_enter (the game window)
 mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy
 touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to
 mouse/touch: target / to_target = CSS selector of a UI Document element (its center; document: which)
@@ -1198,7 +1198,7 @@ Frame GameObjects in the Scene view like pressing F (runtime-spawned too; none g
 
 Hints: read-only
 
-Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords.
+Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1529,7 +1529,7 @@ An antialiased placeholder PNG (no art yet) and its preview: a shape with fill c
 | `direction` | `"vertical"` \| `"horizontal"` |  | Default: `"vertical"`. |
 | `height` | integer (1..2048) |  | Default: `64`. |
 | `outline_color` |  |  | Default black. |
-| `outline_width` | number (0.0..512.0) |  | Default: `0`. |
+| `outline_width` | number (0.0..512.0) |  | px Default: `0`. |
 | `overwrite` | boolean |  |  |
 | `path` | string | yes | A .png in the assets dir, e.g. "assets/sprites/coin.png". |
 | `shape` | `"rect"` \| `"rounded_rect"` \| `"circle"` \| `"ellipse"` \| `"triangle"` \| `"diamond"` \| `"gradient"` \| `"checker"` |  | Default: `"rect"`. |
@@ -1635,7 +1635,7 @@ No parameters.
 
 Hints: read-only, idempotent
 
-The engine's library shaders ("library:<name>"),: type (mesh: a material's shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).
+The engine's library shaders ("library:<name>"): type (mesh: a material's shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1924,7 +1924,7 @@ Create a particle effect (Points GameObject + Particle System child) from a pres
 | `max_particles` | integer (1..100000) |  |  |
 | `name` | string |  |  |
 | `parent` | string |  |  |
-| `position` | array[3] of number |  |  |
+| `position` | array[3] of number |  | Local. |
 | `preset` | `"fire"` \| `"smoke"` \| `"sparks"` \| `"explosion"` \| `"snow"` \| `"rain"` \| `"magic"` \| `"none"` |  |  |
 | `properties` | object |  |  |
 | `rate` | integer (0..100000) |  |  |
@@ -1978,7 +1978,7 @@ Author an Animation timeline (seconds); without animation, creates one as a chil
 
 *Edit Colliders*
 
-Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, loop); px before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, convex_hull/mesh, heightfield. New shapes fit the drawn GameObject unless fit: false. Also density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, rotation.
+Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, loop); px before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, convex_hull/mesh, heightfield. New shapes fit the drawn GameObject unless fit: false. Also density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, rotation. Returns the colliders.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -2196,7 +2196,7 @@ Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Rendere
 
 *Set Sprite Animation*
 
-Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on play.
+Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on play; make several (Idle, Run) and switch them in scripts.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

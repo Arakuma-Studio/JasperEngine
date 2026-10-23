@@ -4088,7 +4088,7 @@ void registerWorldTools(McpRegistry& registry) {
     const Json createSpec = object({
         {"name", string("")},
         {"parent", entityRef()},
-        {"position", vec3("")}
+        {"position", vec3("Local.")}
     });
     const Json numberItem = Json{{"type", "number"}};
     const Json arrayItem = Json{{"type", "array"}};
@@ -4181,7 +4181,8 @@ void registerWorldTools(McpRegistry& registry) {
         "circle (radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, "
         "loop); px before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
         "convex_hull/mesh, heightfield. New shapes fit the drawn GameObject unless fit: false. Also density, "
-        "friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, rotation.",
+        "friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, rotation. "
+        "Returns the colliders.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4234,7 +4235,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"create", createSpec},
             {"texture", assetPath("")},
             {"tileset", object({
-                {"tile_size", vec2("")},
+                {"tile_size", vec2("Pixels.")},
                 {"columns", integer("")},
                 {"rows", integer("")},
                 {"offset", vec2("")},
@@ -4281,7 +4282,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"create", createSpec},
             {"texture", assetPath("")},
             {"slice", object({
-                {"tile_size", vec2("")}, {"columns", integer("")}, {"rows", integer("")},
+                {"tile_size", vec2("Pixels.")}, {"columns", integer("")}, {"rows", integer("")},
                 {"offset", vec2("")}, {"padding", vec2("")},
                 {"count", integer("")}, {"names", array(string(""), "")},
                 {"prefix", withDefault(string(""), "frame_")}, {"sheet_size", vec2("If unreadable.")}})},
@@ -4297,7 +4298,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_sprite_animation", "Set Sprite Animation",
         "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices "
         "or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when "
-        "new) starts it on play.",
+        "new) starts it on play; make several (Idle, Run) and switch them in scripts.",
         object({
             {"scene", sceneRef()},
             {"sprite", entityRef("Sprite with frames.")},
@@ -4415,7 +4416,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"entity", entityRef("")},
             {"name", string("")},
             {"parent", entityRef()},
-            {"position", vec3("")},
+            {"position", vec3("Local.")},
             {"emitter_entity", entityRef()},
             {"preset", stringEnum("", {"fire", "smoke", "sparks", "explosion", "snow", "rain", "magic", "none"})},
             {"scale", number("Default 1 (3D), 40 (2D).")},
