@@ -445,7 +445,7 @@ bool RenderSystem::emptyTexturesCreated = false;
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
-RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
+RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
 
@@ -2016,10 +2016,10 @@ bool RenderSystem::loadAndProcessFog(){
     if (fog){
         hasFog = true;
 
-        int fogTypeI;
-        if (fog->type == FogType::LINEAR){
-            fogTypeI = 0;
-        }else if (fog->type == FogType::EXPONENTIAL){
+        // the height fog reads its own block (u_fs_heightFog, the 'Hfg' variants): this one
+        // stays a linear fog's
+        int fogTypeI = 0;
+        if (fog->type == FogType::EXPONENTIAL){
             fogTypeI = 1;
         }else if (fog->type == FogType::EXPONENTIALSQUARED){
             fogTypeI = 2;
@@ -2747,6 +2747,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
     environment.fog = hasFog;
+    environment.heightFog = heightFogVariants;
+    environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
     environment.ssao = scene->isSSAOEnabled();
@@ -3367,11 +3369,15 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
+    // the height fog: a variant of the fog's
+    if (environment.fog && environment.heightFog)
+        variant.properties |= ShaderPool::getHeightFogProperty();
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
-    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth;
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth
+                        || environment.atmosphereDepth;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -12246,6 +12252,18 @@ void RenderSystem::update(double dt){
     updateSpotMaskAtlas(numLights);
     loadLights2D();
     loadAndProcessFog();
+    // the atmosphere (height fog, volumetric fog and clouds): a height fog is a variant of the
+    // fog variants, and its volumetric passes need depth programs on every opaque mesh
+    atmosphere.update(dt);
+    {
+        const bool heightFog = hasFog && atmosphere.hasHeightFog();
+        const bool depthPrograms = atmosphere.needsDepthPrograms();
+        if (heightFog != heightFogVariants || depthPrograms != atmosphereDepthPrograms){
+            heightFogVariants = heightFog;
+            atmosphereDepthPrograms = depthPrograms;
+            needReloadMeshVariants();
+        }
+    }
 
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();

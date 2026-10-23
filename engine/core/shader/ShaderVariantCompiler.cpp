@@ -365,7 +365,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & (1 << 2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
     if (prop & (1 << 3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
     if (prop & (1 << 4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
-    // bit 5 reserved (was USE_SHADOWS_PCF; the PCF filter is uniform-driven now)
+    if (prop & (1 << 5))  defs.push_back({"HAS_HEIGHT_FOG", "1"});            // 'Hfg' (with 'Fog'; was the retired USE_SHADOWS_PCF)
     if (prop & (1 << 6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
     if (prop & (1 << 7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
     if (prop & (1 << 8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
@@ -578,6 +578,26 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
             args.defines.push_back({"JFX_STEP_FORM", "1"});
         if (scatterForm)
             args.defines.push_back({"JFX_SCATTER_FORM", "1"});
+    }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_depth.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_FOG){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_fog.frag";
+    }else if (shaderType == ShaderType::ATMOSPHERE_DENOISE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_denoise.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_CLOUDS){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_clouds.frag";
+    }else if (shaderType == ShaderType::SKY_COMPOSITE){
+        // at the far plane: the depth test passes on the sky pixels only
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "sky_composite.frag";
+        args.defines.push_back({"FULLSCREEN_AT_FAR", "1"});
+    }else if (shaderType == ShaderType::VOLUMETRIC_COMPOSITE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_composite.frag";
     }else{
         return false;
     }

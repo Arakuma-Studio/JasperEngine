@@ -87,6 +87,10 @@ namespace jasperengine{
 
         LightShading shading = LightShading::BOTH;
 
+        // how much a point or spot light lights the volumetric fog (High atmosphere quality;
+        // 0: none). The sun's share of the fog is the Fog's directional inscattering.
+        float volumetricIntensity = 1.0f;
+
         bool shadows = false;
         bool automaticShadowCamera = true;
         float shadowBias = 0.002f;

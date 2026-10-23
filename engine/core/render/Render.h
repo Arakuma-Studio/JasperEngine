@@ -164,7 +164,14 @@ namespace jasperengine{
         HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
-        UI_EFFECT        // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        // the atmosphere's passes (docs/specs/S12-atmosphere.md, RenderSystem's AtmosphereRenderer)
+        ATMOSPHERE_DEPTH,     // reduced-resolution linear depth of the scene (Atmosphere/DepthDownsample)
+        VOLUMETRIC_FOG,       // the volumetric fog march (Atmosphere/VolumetricFog)
+        ATMOSPHERE_DENOISE,   // depth-aware 3x3 blur of a reduced (S, T) target (Atmosphere/Denoise)
+        VOLUMETRIC_CLOUDS,    // the clouds march, Screen and Sky Map (Atmosphere/CloudsScreen, CloudsSkyMap)
+        SKY_COMPOSITE,        // clouds and sky fill over the sky pixels (Atmosphere/SkyComposite)
+        VOLUMETRIC_COMPOSITE  // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
     };
 
     enum class AttributeType{

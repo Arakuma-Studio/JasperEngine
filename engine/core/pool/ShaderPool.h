@@ -112,6 +112,8 @@ namespace jasperengine{
         // the variant bit of the post-processing colour (USE_POST_COLOR, includes/post_color.glsl:
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
+        // the height fog's mesh variant bit ('Hfg' = HAS_HEIGHT_FOG, with the fog bit 'Fog')
+        static uint32_t getHeightFogProperty();
         static uint32_t getPostColorProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);

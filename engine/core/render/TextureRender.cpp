@@ -27,6 +27,11 @@ bool TextureRender::createTexture(
         return false;
 }
 
+bool TextureRender::createTexture3D(const std::string& label, int width, int height, int depth, const void* data, size_t size,
+                                    TextureFilter filter, TextureWrap wrap){
+    return backend.createTexture3D(label, width, height, depth, data, size, filter, wrap);
+}
+
 bool TextureRender::createTextureCubeWithMips(
                 const std::string& label, int width,
                 ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],

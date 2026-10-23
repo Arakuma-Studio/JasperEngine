@@ -152,6 +152,7 @@
 #include "util/ThreadUtils.h"
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
+#include "render/AtmosphereQuality.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -283,6 +284,12 @@ namespace jasperengine {
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
 
+        // the atmosphere quality tier of each platform group (desktop, mobile, web) and the
+        // game's runtime override, if any
+        static AtmosphereQuality atmosphereQualityDefaults[3];
+        static bool atmosphereQualityOverridden;
+        static AtmosphereQuality atmosphereQualityOverride;
+
         static Semaphore drawSemaphore;
 
         // drawSemaphore only excludes async threads from systemDraw(). Main-thread code
@@ -396,6 +403,19 @@ namespace jasperengine {
         
         static Platform getPlatform();
         static GraphicBackend getGraphicBackend();
+
+        // Atmosphere quality (volumetric fog and clouds, docs/specs/S12-atmosphere.md): the
+        // project's tier per platform group (Project Settings > Quality; desktop High, mobile
+        // and web Low by default), which a game may override at runtime. getAtmosphereQuality
+        // is the tier in effect: the override, else this platform's default.
+        static void setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web);
+        static AtmosphereQuality getAtmosphereQualityDefault(Platform platform);
+        static AtmosphereQuality getAtmosphereQualityDefault();
+        static void setAtmosphereQuality(AtmosphereQuality quality);
+        static AtmosphereQuality getAtmosphereQuality();
+        // back to the platform default (the editor calls it when Play stops)
+        static void resetAtmosphereQuality();
+        static bool isAtmosphereQualityOverridden();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();

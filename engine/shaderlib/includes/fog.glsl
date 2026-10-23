@@ -4,8 +4,35 @@
 // (includes/frame.glsl: fogColor_type and fogDensity_start_end), else a 32-byte block of
 // its own (u_fs_fog), so a shader that reads nothing else of the frame block (an unlit
 // sprite, a tilemap) does not upload it for fog.
+//
+// The height fog (Fog type Height) is a variant of its own, HAS_HEIGHT_FOG with HAS_FOG: the
+// same functions then evaluate includes/height_fog.glsl, colour * T + S along the view ray,
+// from its block (u_fs_heightFog) instead of the distance fog's.
 #ifndef FOG_GLSL
 #define FOG_GLSL
+
+#ifdef HAS_HEIGHT_FOG
+
+#include "includes/height_fog.glsl"
+
+// The height fog on a colour at the surface under this fragment whose fog distance (below)
+// is fogDist: a shader drawing onto another surface (a projected decal) passes that surface's
+vec3 getFogColorAtDistance(vec3 color, float fogDist){
+    return heightFogApply(color, gl_FragCoord.xy, heightFogPositionAtFogDistance(gl_FragCoord.xy, fogDist));
+}
+
+// The height fog on a colour drawn at this fragment
+vec3 getFogColor(vec3 color){
+    return heightFogApply(color, gl_FragCoord.xy, heightFogWorldPosition(gl_FragCoord.xy, gl_FragCoord.z));
+}
+
+// The fog factor at a fog distance (1 no fog .. 0 all fog colour): the height fog's
+// transmittance there
+float getFogFactor(float fogDist){
+    return getFogColorAtDistance(vec3(1.0), fogDist).r - getFogColorAtDistance(vec3(0.0), fogDist).r;
+}
+
+#else
 
 #if defined(LIT_FRAME_DECLARED)
     // one parameter serves density (exponential) or start (linear)
@@ -57,5 +84,7 @@ vec3 getFogColorAtDistance(vec3 color, float fogDist){
 vec3 getFogColor(vec3 color){
     return getFogColorAtDistance(color, gl_FragCoord.z / gl_FragCoord.w);
 }
+
+#endif // HAS_HEIGHT_FOG
 
 #endif

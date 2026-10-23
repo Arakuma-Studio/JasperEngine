@@ -5,6 +5,7 @@
 #define RENDERSYSTEM_H
 
 #include "SubSystem.h"
+#include "AtmosphereRenderer.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -318,6 +319,11 @@ namespace jasperengine{
 		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
 		// RenderSystem::getPostProcessingTiers
 		bool postColor = false;
+		// the scene fog is a height fog (the 'Hfg' bit with 'Fog'; docs/specs/S12-atmosphere.md)
+		bool heightFog = false;
+		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
+		// fog, volumetric clouds)
+		bool atmosphereDepth = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -416,6 +422,7 @@ namespace jasperengine{
 	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
+		friend class AtmosphereRenderer;
 	private:
 		enum class TransparentRenderType{
 			MESH,
@@ -906,6 +913,12 @@ namespace jasperengine{
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
+			// the atmosphere's targets of the view (volumetric fog, clouds) and what it ran
+			AtmosphereViewTargets atmosphere;
+			// editor: the view draws without the volumetric clouds, and at this atmosphere
+			// quality (the Game view's preview; -1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -1141,6 +1154,13 @@ namespace jasperengine{
 		fs_lighting_t legacyLightingBlock;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
+		// the height fog of the camera pass being drawn (u_fs_heightFog), and the atmosphere:
+		// volumetric fog, clouds and their composites (AtmosphereRenderer)
+		height_fog_t passHeightFog;
+		AtmosphereRenderer atmosphere;
+		// the variant state the meshes loaded with (needReloadMeshVariants on a change)
+		bool heightFogVariants = false;
+		bool atmosphereDepthPrograms = false;
 
 		// SSAO: per-frame fullscreen passes for the main camera. The depth pre-pass
 		// renders camera-space packed depth, then the ssao + blur fullscreen passes
@@ -1840,6 +1860,13 @@ namespace jasperengine{
 		void setDisableFaceCulling(bool disableFaceCulling);
 
 		void setDisableFog(bool disableFog);
+		// editor-only: the frame's own view draws without the volumetric clouds (the Scene
+		// view's Clouds toggle), and at this atmosphere quality (the Game view's preview while
+		// playing; -1 the project's)
+		void setDisableClouds(bool disableClouds);
+		void setPreviewAtmosphereQuality(int quality);
+		// what the atmosphere ran in the last frame of a view (0: the frame's own)
+		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
 
 		// Editor-only override (see member declaration). No reload needed: the
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
@@ -2057,6 +2084,9 @@ namespace jasperengine{
 			bool postProcessing = true;
 			// the view camera's passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
+			// draws without the volumetric clouds; at this atmosphere quality (-1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;

@@ -916,8 +916,10 @@ set(JASPERENGINE_SRCS
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
+    core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
+    core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/Image.cpp
@@ -946,6 +948,10 @@ set(JASPERENGINE_SRCS
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/render/AtmosphereMath.cpp
+    core/render/AtmosphereNoise.cpp
+    core/render/AtmospherePresets.cpp
+    core/render/AtmosphereQuality.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
     core/render/FramebufferRender.cpp
