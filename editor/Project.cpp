@@ -38,6 +38,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -4652,6 +4653,7 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
+    scene->getSystem<FluidSystem>()->setPaused(pause);
 }
 
 void editor::Project::copyEngineApiToProject() {

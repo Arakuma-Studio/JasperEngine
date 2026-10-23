@@ -12,8 +12,11 @@
 
 #include "ecs/SubSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "math/Rect.h"
 
 namespace jasperengine{
+
+    class FramebufferRender;
 
     class JASPERENGINE_API FluidSystem : public SubSystem {
     public:
@@ -34,6 +37,20 @@ namespace jasperengine{
 
         // RenderSystem's frame passes: steps and draws every active fluid (once a frame)
         void renderFluids();
+
+        // RenderSystem, after a view's main camera and its post-processing: the SCREEN fluids
+        // over the view (target null: the swapchain; flipY: a target drawn Y-flipped, GL
+        // offscreen ones), premultiplied, in a pass of their own (none without such a fluid)
+        void compositeScreen(FramebufferRender* target, const Rect& viewRect, bool flipY);
+        bool hasScreenFluids() const;
+
+        // width / height of an entity's fluid: its aspectRatio, else automatic (the canvas in
+        // SCREEN, the Sprite or Image in MATERIAL, else 1)
+        float getAspectRatio(Entity entity) const;
+
+    private:
+        struct State;
+        State* state;
     };
 
 }

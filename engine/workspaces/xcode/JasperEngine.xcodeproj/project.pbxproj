@@ -1343,6 +1343,13 @@
 		48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000036 /* UIDocumentSystem.h */; };
 		48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
 		48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
+		464C5549C674E06412FBD0FC /* FluidSimulationComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 464C5549B5F9F573D7D178B6 /* FluidSimulationComponent.h */; };
+		464C554962BD3E77BE56F581 /* FluidSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 464C554922BA82D4C59B586D /* FluidSystem.h */; };
+		464C55499A2CFD8C2D65CAA5 /* FluidSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 464C554981C5AFBB45123A11 /* FluidSystem.cpp */; };
+		464C554998C49552ECD91FB5 /* FluidSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 464C554981C5AFBB45123A11 /* FluidSystem.cpp */; };
+		464C5549733ED1F02CF71A78 /* FluidSimulator.h in Headers */ = {isa = PBXBuildFile; fileRef = 464C55498D7C3C3CDFBA8D9D /* FluidSimulator.h */; };
+		464C5549FF01F37EDA1D5B0C /* FluidSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */; };
+		464C5549D30333B84D234138 /* FluidSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */; };
 		48544D4C000000000000003C /* UIDocument.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003B /* UIDocument.h */; };
 		48544D4C000000000000003E /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
 		48544D4C000000000000003F /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
@@ -5150,6 +5157,11 @@
 		48544D4C0000000000000033 /* TextShaper.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextShaper.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000036 /* UIDocumentSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystem.h; sourceTree = "<group>"; };
 		48544D4C0000000000000038 /* UIDocumentSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystem.cpp; sourceTree = "<group>"; };
+		464C5549B5F9F573D7D178B6 /* FluidSimulationComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FluidSimulationComponent.h; sourceTree = "<group>"; };
+		464C554922BA82D4C59B586D /* FluidSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FluidSystem.h; sourceTree = "<group>"; };
+		464C554981C5AFBB45123A11 /* FluidSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FluidSystem.cpp; sourceTree = "<group>"; };
+		464C55498D7C3C3CDFBA8D9D /* FluidSimulator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FluidSimulator.h; sourceTree = "<group>"; };
+		464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FluidSimulator.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000003B /* UIDocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocument.h; sourceTree = "<group>"; };
 		48544D4C000000000000003D /* UIDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocument.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000040 /* UIElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElement.h; sourceTree = "<group>"; };
@@ -7545,6 +7557,15 @@
 			path = ../..;
 			sourceTree = "<group>";
 		};
+		464C55491D47F346D35BF22F /* fluid */ = {
+			isa = PBXGroup;
+			children = (
+				464C55498D7C3C3CDFBA8D9D /* FluidSimulator.h */,
+				464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */,
+			);
+			path = fluid;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7553,6 +7574,7 @@
 				7162FC4425962A0E0075B97D /* component */,
 				7162FC7A25962A0E0075B97D /* JasperEngine.h */,
 				71E36B8125D5996400EFEED4 /* ecs */,
+				464C55491D47F346D35BF22F /* fluid */,
 				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
@@ -7702,6 +7724,7 @@
 				71451BB5270C9D0F00712643 /* PositionTweenComponent.h */,
 				17235AD92FD2F65000AF8D04 /* ProgressbarComponent.h */,
 				175DCCB2300FA1C2008C19EC /* ReflectionProbeComponent.h */,
+				464C5549B5F9F573D7D178B6 /* FluidSimulationComponent.h */,
 				71E54510284D5BE000C68FAB /* RotateTracksComponent.h */,
 				71451BBB270C9D1000712643 /* RotationTweenComponent.h */,
 				71451BB8270C9D0F00712643 /* ScaleTweenComponent.h */,
@@ -7836,6 +7859,8 @@
 				71ABBD22277A31E6001CE3AF /* UISystem.cpp */,
 				71ABBD21277A31E6001CE3AF /* UISystem.h */,
 				48544D4C0000000000000036 /* UIDocumentSystem.h */,
+				464C554922BA82D4C59B586D /* FluidSystem.h */,
+				464C554981C5AFBB45123A11 /* FluidSystem.cpp */,
 				48544D4C0000000000000038 /* UIDocumentSystem.cpp */,
 				48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */,
 				48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */,
@@ -11346,6 +11371,9 @@
 				48544D4C000000000000002D /* GlyphAtlas.h in Headers */,
 				48544D4C0000000000000032 /* TextShaper.h in Headers */,
 				48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */,
+				464C5549C674E06412FBD0FC /* FluidSimulationComponent.h in Headers */,
+				464C554962BD3E77BE56F581 /* FluidSystem.h in Headers */,
+				464C5549733ED1F02CF71A78 /* FluidSimulator.h in Headers */,
 				48544D4C000000000000003C /* UIDocument.h in Headers */,
 				48544D4C0000000000000041 /* UIElement.h in Headers */,
 				48544D4C00000000000002B3 /* UIDataModel.h in Headers */,
@@ -13323,6 +13351,8 @@
 				48544D4C000000000000002F /* GlyphAtlas.cpp in Sources */,
 				48544D4C0000000000000034 /* TextShaper.cpp in Sources */,
 				48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */,
+				464C55499A2CFD8C2D65CAA5 /* FluidSystem.cpp in Sources */,
+				464C5549FF01F37EDA1D5B0C /* FluidSimulator.cpp in Sources */,
 				48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */,
 				48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */,
 				48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */,
@@ -13691,6 +13721,8 @@
 				48544D4C0000000000000030 /* GlyphAtlas.cpp in Sources */,
 				48544D4C0000000000000035 /* TextShaper.cpp in Sources */,
 				48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */,
+				464C554998C49552ECD91FB5 /* FluidSystem.cpp in Sources */,
+				464C5549D30333B84D234138 /* FluidSimulator.cpp in Sources */,
 				48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */,
 				48544D4C00000000000002D2 /* HtmlUIContextInput.cpp in Sources */,
 				48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */,

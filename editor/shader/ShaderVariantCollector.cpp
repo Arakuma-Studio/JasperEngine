@@ -9,6 +9,7 @@
 #include "io/FileData.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Light2DComponent.h"
@@ -974,6 +975,25 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW2D, 0));
+    }
+    // the fluid simulations' programs (FluidSimulator, ShaderType::FLUID bits 'Lok' 1, 'Mfl' 2):
+    // the solver, the look, and the solver of devices that cannot filter half floats
+    auto hasFluid = [](const ShaderVariantContent& content){
+        if (!content.registry || !content.registry->isComponentRegistered<FluidSimulationComponent>())
+            return false;
+        for (Entity entity : content.entities){
+            if (content.registry->isEntityCreated(entity) && content.registry->findComponent<FluidSimulationComponent>(entity))
+                return true;
+        }
+        return false;
+    };
+    bool fluid = hasFluid(sceneContent);
+    for (const ShaderVariantContent& prefab : prefabContents)
+        fluid = fluid || hasFluid(prefab);
+    if (fluid){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
+        keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
     }
 
     // the UI effects the scene's (and its prefabs') HTML UI documents use

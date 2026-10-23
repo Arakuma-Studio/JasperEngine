@@ -22,6 +22,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -13318,6 +13319,10 @@ void RenderSystem::drawFramePasses(){
     frameShadows.pointKey.epoch = hasShadows ? shadowEpoch : 0;
     render2DShadows();
 
+    // the fluid simulations step and draw their outputs before any camera samples them (as a
+    // material or a texture link) or composites them (SCREEN)
+    scene->getSystem<FluidSystem>()->renderFluids();
+
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
@@ -14494,6 +14499,23 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the resolved multisampled scene, onto the swapchain
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
+    }
+
+    // SCREEN fluid simulations over the view's final image (after post-processing), in the
+    // game's views (not the editor's Scene view, which they would cover)
+    bool compositeFluids = isMainCamera && !pass.renderToTexture;
+#ifdef JASPERENGINE_EDITOR
+    compositeFluids = compositeFluids && !passDrawsOverlays;
+#endif
+    if (compositeFluids){
+        FluidSystem* fluids = scene->getSystem<FluidSystem>().get();
+        if (fluids->hasScreenFluids()){
+            Framebuffer* destination = targetFramebuffer();
+            if (destination && !destination->isCreated())
+                destination->create();
+            // offscreen targets are drawn Y-flipped on GL (isRenderingFlipped), the swapchain is not
+            fluids->compositeScreen(destination ? &destination->getRender() : nullptr, viewRect, destination && Engine::isOpenGL());
+        }
     }
 }
 
