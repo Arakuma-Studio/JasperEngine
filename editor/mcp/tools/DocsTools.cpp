@@ -532,7 +532,7 @@ void registerDocsTools(McpRegistry& registry) {
             {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
             {"parent", string("Only members of this class/enum.")},
             {"max_results", withDefault(integer("", 1, 50), 16)},
-            {"include_docs", withDefault(boolean("Also search the reference docs."), true)},
+            {"include_docs", withDefault(boolean(""), true)},
             {"max_doc_results", withDefault(integer("", 0, 40), 8)}
         }, {"query"});
         tool.annotations.readOnly = true;
@@ -549,7 +549,7 @@ void registerDocsTools(McpRegistry& registry) {
             "ground truth for signatures, overloads, enum values, macros, key codes (D_KEY_* in C++, Input.KEY_* in "
             "Lua); matches [{path, line, text}]; context: read_engine_source.";
         tool.inputSchema = object({
-            {"query", string("e.g. \"Quaternion(\", \"isKeyPressed\".")},
+            {"query", string("")},
             {"path_filter", string("Substring of the file path, e.g. \"math/\", \"binding\".")},
             {"max_results", withDefault(integer("", 1, 200), 40)}
         }, {"query"});
@@ -566,7 +566,7 @@ void registerDocsTools(McpRegistry& registry) {
             "Read an engine source file (path relative to the engine root, e.g. core/math/Quaternion.h, "
             "core/script/binding/CoreClassesLua.cpp).";
         tool.inputSchema = object({
-            {"path", string("Engine-relative path.")},
+            {"path", string("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
             {"max_lines", withDefault(integer("", 1, 20000), 2000)}
         }, {"path"});

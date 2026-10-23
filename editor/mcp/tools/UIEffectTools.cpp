@@ -198,7 +198,7 @@ void registerUiEffectTools(McpRegistry& registry) {
             "filter: filter, backdrop-filter), category, cost, summary, example; parameters (name, type, default, "
             "range) when one is named or few match. Project .frag effects included.";
         tool.inputSchema = object({
-            {"name", string("One effect: all its parameters.")},
+            {"name", string("")},
             {"category", string("e.g. gradient, glass, blur, light, distort.")},
             {"kind", stringEnum("", {"paint", "filter"})}
         });

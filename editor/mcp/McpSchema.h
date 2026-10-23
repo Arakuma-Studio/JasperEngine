@@ -37,7 +37,7 @@ namespace jasperengine::editor::mcp::schema {
     Json vec2(const std::string& description);
     Json vec3(const std::string& description);
     Json vec4(const std::string& description);
-    // [x,y,z,w], or {"euler":[x,y,z]} in degrees (empty description: a default one)
+    // [x,y,z,w], or {"euler":[x,y,z]} in degrees (the instructions' values section explains it)
     Json quat(const std::string& description = {});
     // [r,g,b] or [r,g,b,a], 0-1
     Json color(const std::string& description = {});
