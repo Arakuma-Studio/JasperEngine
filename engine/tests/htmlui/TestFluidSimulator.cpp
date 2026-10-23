@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <functional>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
@@ -416,8 +417,12 @@ TEST_F(FluidSimulatorTest, HalfFloatFallbackGivesTheSameImage){
     EXPECT_GE(b.getStats().gpuBytes, compactBytes);
     // half floats either way: the same values (a filter rounding apart at most)
     EXPECT_LE(maxDifference(readOutput(b), reference), 1);
-    if (SystemRender::getFeatures().renderRG16F && SystemRender::getFeatures().renderR16F)
+    const RenderFeatures& features = SystemRender::getFeatures();
+    std::printf("[fluid] RG16F render %d filter %d, R16F render %d filter %d: compact formats %d\n", (int)features.renderRG16F,
+                (int)features.filterRG16F, (int)features.renderR16F, (int)features.filterR16F, (int)a.getStats().compactFormats);
+    if (features.renderRG16F && features.filterRG16F && features.renderR16F)
         EXPECT_TRUE(a.getStats().compactFormats);
+    EXPECT_LT(b.getStats().gpuBytes, compactBytes * 2);
 }
 
 TEST_F(FluidSimulatorTest, ManualFilteringFallback){
