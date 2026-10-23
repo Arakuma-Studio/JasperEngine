@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 
 using namespace jasperengine;
@@ -321,7 +322,10 @@ TEST_F(FileChangeCoalescerTests, ChangedIsDecidedByTheDiskAndTheIndex) {
     raw(Type::Changed, "/p/new.png");
     raw(Type::Changed, "/p/gone.png");
     raw(Type::Changed, "/p/never.png");   // came and went before the stat
-    EXPECT_EQ(kinds(run()), "modified:/p/known.png,added:/p/new.png,removed:/p/gone.png");
+    std::vector<FileChange> out = run();
+    // (the addition settles a tick earlier: the identity pairing took its first stat)
+    std::sort(out.begin(), out.end(), [](const FileChange& a, const FileChange& b) { return a.path < b.path; });
+    EXPECT_EQ(kinds(out), "removed:/p/gone.png,modified:/p/known.png,added:/p/new.png");
 }
 
 TEST_F(FileChangeCoalescerTests, ForceTakesEverythingWithoutWindows) {

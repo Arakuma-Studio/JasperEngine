@@ -549,3 +549,7 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **AC21** (manual Windows/macOS) and **AC23** (a wasm test run) could not be run here: the
   procedure and the record are in `docs/specs/acceptance/S05.md`; on Android, iOS and the web
   `FileWatchService` allocates nothing and `start` returns false by construction.
+- **AC18.** `test_autosync.py` passes with one assertion widened: in
+  `test_large_project_incremental`, "the scan is incremental" (`complete` false, `checked` <
+  files) holds for the stat scan; with the watcher running there is no scan (`auto_sync.source`
+  is "watcher"), which the assertion now accepts.
