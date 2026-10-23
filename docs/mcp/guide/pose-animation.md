@@ -155,7 +155,8 @@ slots. When a mapping is wrong, `set_humanoid` stores the fix next to the model
 - Re-sending every angle to change one: `update_pose` with only the changed DOFs (or `add_angles`).
 - Swings over 180 degrees: the two swing DOFs of a slot form one swing whose length is
   sqrt(dof1^2 + dof2^2); past 180 it is the same rotation as a shorter swing the other way, so it
-  does not come back as written (`upper_arm.raise: 150, forward: 150` reads back differently). Keep
-  each slot's combined swing under 180, or twist instead.
+  does not come back as written (`upper_arm.raise: 150, forward: 150` reads back differently). With
+  `joint_limits` on, the combined swing is capped at 179.5 (both DOFs scaled, listed in `clamped`).
+  Keep each slot's combined swing under 180, or twist instead.
 - Even timing everywhere: vary holds, or run `auto_timing`, then adjust.
 - Editing the `.poseanim` file by hand: no clamping, no echo, no undo step.
