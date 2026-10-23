@@ -171,7 +171,8 @@ namespace{
         }
     }
 
-    double frameProtectionP99Ms(){
+    // One run of R25: 500 frames of 8 x 1 ms High units while 200 Heavy cooks stay queued
+    double frameProtectionRunP99Ms(){
         JobSystem system(benchConfig());
         std::atomic<int> queued{0};
         std::atomic<bool> stop{false};
@@ -205,6 +206,15 @@ namespace{
         while (queued.load() > 0)
             std::this_thread::yield();
         return bench::percentile(samples, 0.99);
+    }
+
+    // R25: the median of three runs' p99. A neighbour taking cores on a shared build server
+    // during one run moves that run's p99, not the result.
+    double frameProtectionP99Ms(){
+        std::vector<double> runs;
+        for (int run = 0; run < 3; run++)
+            runs.push_back(frameProtectionRunP99Ms());
+        return bench::percentile(runs, 0.5);
     }
 
     // The pre-S06 pool (one FIFO under a mutex, std::future), for the R25 comparison.
