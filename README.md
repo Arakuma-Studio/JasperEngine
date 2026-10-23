@@ -11,6 +11,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - A Unity-style editor: Hierarchy, Inspector, Project, Console, and separate Scene and Game views, with Unity's menus, toolbar, and shortcuts
 - Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
 - Edit components, assets, animations, bones, and terrain without leaving the editor
+- Tune a fluid simulation from presets in the Inspector, preview it in edit mode and paint dye into it with a Scene view brush
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
 - Play the game in the Game view, then build it from Build Settings as a standalone CMake project, a desktop binary, or a web build
@@ -24,6 +25,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
+- A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints
 - Spatial 3D audio and multithreaded asynchronous resource loading

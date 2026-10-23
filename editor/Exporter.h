@@ -170,12 +170,21 @@ namespace jasperengine::editor {
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
-        // licenses/shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5 spec
-        // 3.16); removed when they do not. copyLicenses: the build's to the destination.
+        // The third-party notices the shipped shaders need, under licenses/ (each removed when
+        // not needed): shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5
+        // spec 3.16), webgl-fluid-simulation-LICENSE.txt when they run Pavel Dobryakov's fluid
+        // (shipsWebGLFluid). copyLicenses: the build's to the destination.
         bool writeEffectLicense();
         bool copyLicenses();
-        // the path the export writes the shaders.com notice to, relative to its root
+        // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
+        static const char* fluidLicensePath();
+        // Pavel Dobryakov's WebGL-Fluid-Simulation (MIT) ships when either of these does: the
+        // native FluidSimulation component (its FLUID variants: a scene or prefab of the export
+        // has one) or the HTML UI `fluid` effect (its UI_EFFECT variants)
+        bool shipsWebGLFluid() const;
+        bool shipsFluidComponent() const;
+        bool shipsFluidEffect() const;
 
         // Aggregates SceneMaxValues across all project scenes and builds the
         // add_definitions() block that sizes the engine's fixed-capacity

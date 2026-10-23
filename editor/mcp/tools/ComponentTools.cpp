@@ -299,6 +299,14 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // a fluid's runtime state (read only; FluidStats, the matching preset)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::FluidSimulationComponent) != filter.end()) {
+        const Json fluid = McpValues::fluidStatsToJson(registry, entity);
+        if (!fluid.is_null()) {
+            data["fluid_stats"] = fluid;
+            text += ". fluid_stats: " + fluid.dump();
+        }
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {

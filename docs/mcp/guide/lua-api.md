@@ -944,7 +944,7 @@ solve with his look (shading, bloom, sunrays) drawn into a texture. `FluidSimula
 makes one; `output` (`FluidOutput.*`) says where it goes: `SCREEN` (over the main camera),
 `MATERIAL` (the entity's Sprite/Image/Mesh texture), `TEXTURE` (only the `fluid|<entity>`
 texture link and `getTexture()`). Positions are fluid coordinates: (0,0) bottom-left, (1,1)
-top-right.
+top-right. Full guide (presets, costs, deterministic runs, MCP): `jasper://docs/fluid`.
 
 rw (the component's fields, Pavel's defaults): `enabled`, `output`, `interactive` (pointer drags
 splat), `aspectRatio` (0 auto); solver `simResolution` (128), `dyeResolution` (1024),
