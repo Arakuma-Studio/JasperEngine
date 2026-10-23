@@ -9,6 +9,10 @@
 #include <gtest/gtest.h>
 
 #include "Catalog.h"
+#include "Project.h"
+#include "Scene.h"
+#include "component/LightComponent.h"
+#include "component/ReflectionProbeComponent.h"
 #include "Stream.h"
 #include "component/MeshComponent.h"
 #include "pool/ShaderPool.h"
@@ -19,6 +23,7 @@
 
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
 #include <ostream>
 #include <set>
 #include <string>
@@ -538,3 +543,81 @@ TEST(StochasticTilingMaterial, OnlyTheSwitchReloads) {
     to.stochasticRotation = 0.5f;
     EXPECT_EQ(editor::Catalog::getMaterialUpdateFlags(from, to) & editor::UpdateFlags_Mesh_Reload, 0u);
 }
+
+// ---- (f) the keys a build collects (Project::collectSceneShaderKeys): a submesh whose stored
+// key is still unlit when a reflection probe (and a light) was added (the mesh has not reloaded)
+// gets the lit variant the reload picks, by the same selection: its UV set and Stochastic Tiling
+// too when only a lit variant samples its maps
+
+TEST(StochasticTilingBuildKeys, ReflectionProbeDerivesTheLitVariant) {
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    mesh.loaded = true;
+    // it takes a probe's reflections (off by default)
+    mesh.receiveIBL = true;
+    Submesh& submesh = mesh.submeshes[0];
+    submesh.hasTexCoord1 = true;
+    submesh.hasNormal = true;
+    // maps only the lit variant samples (no base colour)
+    submesh.material.metallicRoughnessTexture = Texture("rock_orm.png");
+    submesh.material.occlusionTexture = Texture("rock_ao.png");
+    submesh.material.stochasticTiling = true;
+
+    // as it loaded before the probe: no lights, no probe, unlit (no texture it samples)
+    SubmeshShaderInputs loaded = RenderSystem::getSubmeshShaderInputs(mesh, submesh, nullptr, nullptr, false);
+    submesh.shaderProperties = RenderSystem::getSubmeshShaderVariant(MeshShaderEnvironment(), loaded).properties;
+    ASSERT_NE(submesh.shaderProperties & shaderPropertyBit(0), 0u) << "stored unlit";
+    ASSERT_EQ(submesh.shaderProperties & (shaderPropertyBit(1) | meshSto), 0u);
+    scene.addComponent<MeshComponent>(entity, mesh);
+
+    // a probe, and a light, added since it loaded
+    const Entity probe = scene.createEntity();
+    scene.addComponent<ReflectionProbeComponent>(probe, ReflectionProbeComponent());
+    const Entity light = scene.createEntity();
+    scene.addComponent<LightComponent>(light, LightComponent());
+
+    editor::Project project;
+    editor::SceneProject sceneProject;
+    sceneProject.scene = &scene;
+    sceneProject.entities = {entity, probe, light};
+    std::set<ShaderKey> keys;
+    project.collectSceneShaderKeys(&sceneProject, keys);
+
+    // what loadMesh picks with the probe and the light
+    MeshShaderEnvironment environment = scene.getSystem<RenderSystem>()->getMeshShaderEnvironment();
+    environment.reflectionProbes = true;
+    environment.lights = true;
+    const uint64_t expected = RenderSystem::getSubmeshShaderVariant(environment, loaded).properties;
+    EXPECT_EQ(expected & shaderPropertyBit(0), 0u);
+    EXPECT_NE(expected & shaderPropertyBit(3), 0u);   // USE_PUNCTUAL
+    EXPECT_NE(expected & shaderPropertyBit(19), 0u);  // USE_IBL
+    EXPECT_NE(expected & shaderPropertyBit(1), 0u);   // HAS_UV_SET1
+    EXPECT_NE(expected & meshSto, 0u);
+
+    std::vector<uint64_t> meshKeys;
+    for (ShaderKey key : keys) {
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH)
+            meshKeys.push_back(ShaderPool::getPropertiesFromKey(key));
+    }
+    EXPECT_NE(std::find(meshKeys.begin(), meshKeys.end(), expected), meshKeys.end())
+        << "the lit variant with the probe (Uv1, Ibl, Sto) is not collected";
+    // no lit variant without the UV set or Stochastic Tiling (the patched bits of before)
+    for (uint64_t properties : meshKeys) {
+        if (properties & shaderPropertyBit(19)) {
+            EXPECT_NE(properties & shaderPropertyBit(1), 0u) << properties;
+            EXPECT_NE(properties & meshSto, 0u) << properties;
+        }
+    }
+
+    // without the material's Stochastic Tiling the same key, without Sto
+    scene.getComponent<MeshComponent>(entity).submeshes[0].material.stochasticTiling = false;
+    keys.clear();
+    project.collectSceneShaderKeys(&sceneProject, keys);
+    bool found = false;
+    for (ShaderKey key : keys)
+        found = found || (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && ShaderPool::getPropertiesFromKey(key) == (expected & ~meshSto));
+    EXPECT_TRUE(found);
+}
+

@@ -3036,6 +3036,34 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             customShader.empty() ? scene->getDefaultCustomShader(type) : customShader, features, blendMode));
     };
 
+    // The colour variant of a submesh with the scene's reflection probes: the selection
+    // RenderSystem::loadMesh makes (getSubmeshShaderInputs, getSubmeshShaderVariant), in the
+    // render system's environment with the probes in it and its lights as its next update
+    // counts them (RenderSystem::checkLightsAndShadow: a light added with the probe), from the
+    // submesh's attributes of its last load
+    MeshShaderEnvironment probeEnvironment;
+    if (hasReflectionProbes) {
+        if (std::shared_ptr<RenderSystem> renderSystem = scene->getSystem<RenderSystem>())
+            probeEnvironment = renderSystem->getMeshShaderEnvironment();
+        probeEnvironment.reflectionProbes = true;
+        auto lights = scene->getComponentArray<LightComponent>();
+        const LightState lightState = scene->getLightState();
+        if (lightState == LightState::ON || (lightState == LightState::AUTO && lights->size() > 0))
+            probeEnvironment.lights = true;
+        for (size_t i = 0; i < lights->size(); ++i) {
+            if (lights->getComponentFromIndex(i).shadows)
+                probeEnvironment.shadows = true;
+        }
+    }
+    auto probeMeshProperties = [&](Entity entity, const MeshComponent& mesh, const Submesh& submesh,
+                                   const std::string& sceneMeshShader) -> uint64_t {
+        const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
+        const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
+        const bool mirror = scene->findComponent<MirrorComponent>(entity) != nullptr;
+        const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+        return RenderSystem::getSubmeshShaderVariant(probeEnvironment, inputs).properties;
+    };
+
     // the runtime falls back to the built-in variant when a custom shader fails to build,
     // so always collect the customId-0 key alongside a custom one
     auto insertKeys = [&](ShaderType type, uint64_t properties, uint16_t customShaderId) {
@@ -3070,24 +3098,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                         RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint64_t meshProperties = mesh.submeshes[s].shaderProperties;
                     // Saving/exporting can happen before RenderSystem has reloaded
-                    // meshes after a probe was added. Derive the required IBL
-                    // variant here so the exported shader set is still complete.
+                    // meshes after a probe was added. Derive the variant the reload will
+                    // pick (the stored one may still be unlit) with the same selection as
+                    // RenderSystem::loadMesh (IBL, normals, the normal map and tangents, SSAO,
+                    // the UV sets and Stochastic Tiling of maps only a lit variant samples), so
+                    // the exported shader set is still complete.
                     if (hasReflectionProbes && mesh.receiveLights && mesh.receiveIBL) {
-                        meshProperties &= ~shaderPropertyBit(0); // no longer MATERIAL_UNLIT
-                        meshProperties |= shaderPropertyBit(6);  // HAS_NORMALS
-                        meshProperties |= shaderPropertyBit(19); // USE_IBL
-                        // the unlit->lit transition also pulls in the submesh's
-                        // normal-map/tangent attributes and SSAO, mirroring
-                        // RenderSystem::loadMesh
-                        if (mesh.submeshes[s].hasNormalMap) {
-                            meshProperties |= shaderPropertyBit(7); // HAS_NORMAL_MAP
-                        }
-                        if (mesh.submeshes[s].hasTangent) {
-                            meshProperties |= shaderPropertyBit(8); // HAS_TANGENTS
-                        }
-                        if (scene->isSSAOEnabled()) {
-                            meshProperties |= shaderPropertyBit(21); // USE_SSAO
-                        }
+                        meshProperties = probeMeshProperties(entity, mesh, mesh.submeshes[s], sceneMeshShader);
                     }
                     insertKeys(ShaderType::MESH, meshProperties, customShaderId);
                     // The runtime only computes depthShaderProperties while
