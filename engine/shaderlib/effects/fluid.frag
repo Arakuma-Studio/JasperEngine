@@ -5,14 +5,14 @@
 // @summary    Pavel Dobryakov's WebGL fluid: drag to paint glowing, swirling dye with bloom and sunrays
 // @source     port WebGL-Fluid-Simulation (Pavel Dobryakov, MIT)
 // @cost       stateful
-// @state      vel rg16f aspect 128 max 512 linear
-// @state      pressure r16f aspect 128 max 512 nearest
-// @state      aux r16f aspect 128 max 512 nearest
+// @state      vel rgba16f aspect 128 max 512 linear
+// @state      pressure rgba16f aspect 128 max 512 nearest
+// @state      aux rgba16f aspect 128 max 512 nearest
 // @state      dye rgba16f box max 1024 linear
 // @state      ptr rgba32f 1x1 nearest
 // @state      bloom rgba16f aspect 256 max 1024 linear
 // @state      glow rgba16f aspect 256 max 1024 linear
-// @state      sunrays r16f aspect 196 max 1024 linear
+// @state      sunrays rgba16f aspect 196 max 1024 linear
 // @init       start-vel vel
 // @init       start-dye dye
 // @init       start-ptr ptr
