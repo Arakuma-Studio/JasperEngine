@@ -596,3 +596,150 @@ branches to integrate (the integrator merges into `lattice`).
 ## 12. Implementation notes
 
 (Work packages append here: decisions, deviations, file lists, shortcut choices.)
+
+### 12.x WP-EDITOR-DATA
+
+§9.1 and the generic MCP surface of §10.1, as specified, with these decisions:
+
+- **Component types.** `ComponentType::LatticeComponent`, `LatticeModifierComponent`,
+  `LatticeFollowerComponent`, `LatticeTracksComponent` appended after `UIDocumentComponent`.
+  Scene-file keys (`getComponentName(.., true)`): `lattice`, `latticemodifier`,
+  `latticefollower`, `latticetracks`. Display names "Lattice", "Lattice Modifier",
+  "Lattice Follower", "Lattice Tracks". Icons: `ICON_FA_BORDER_NONE` (lattice, also its
+  Hierarchy row), `ICON_FA_WAND_MAGIC_SPARKLES`, `ICON_FA_LOCATION_ARROW`,
+  `ICON_FA_CUBES_STACKED`. The first three have the shared enable checkbox.
+  Added `LAST_COMPONENT_TYPE` (Catalog.h); the three MCP loops over every type
+  (`McpRefs::componentTypeNames`, `resolveComponent`, `list_component_types`) use it instead
+  of naming the last type.
+- **Catalog properties.** Lattice: `resolutionX/Y/Z` (Int), `offsets` (Custom, the whole list),
+  `offsets[N]` (Vector3, one per point: prefab overrides and PropertyCmd edits are per point),
+  `interpolation`, `outside`, `jiggleAnchor` (Enum), `fadeDistance`, the jiggle floats,
+  `jiggle` (Bool), `poses` (Custom). Modifier: `bindings` (Custom), `bindings[N].lattice`
+  (Entity), `.weight` (Float), `.stage`, `.mask` (Enum), `.submesh` (Int), `includeChildren`,
+  `subdivisions`. Follower: `lattice`, `rest` (Entity), the three `apply*` (Bool), `weight`.
+  Tracks: `points`, `values`, `inTangents`, `outTangents` (Custom), `points[N]` (Int),
+  `values[N]` (Custom, the offsets of key N). Runtime fields (`dynamicOffsets`, jiggle and
+  tween state, `revision`, `warnedOverflow`) are neither properties nor serialized.
+  Entity properties are generic, so prefab reference remapping, duplicate, paste, paste
+  component values and MCP read/write cover `bindings[N].lattice` and the follower fields
+  without lattice code.
+- **`UpdateFlags_Lattice`** (bit 39), on every lattice and modifier property that changes the
+  deformation (not `poses`, not the follower's, read every frame). `Catalog::updateEntity`:
+  lattice: clamps the resolution to [2, 16] and bumps `revision`; modifier: clamps
+  `subdivisions` to 1..64 and binding weights to [0, 2] (non-finite -> 1) and clears
+  `warnedOverflow` (an edited modifier warns again). Every decode over a live component
+  (undo of component values, paste, prefab refresh) bumps `revision` through
+  `getChangedUpdateFlags` (Custom properties count as changed); `Catalog::copyComponent` bumps
+  it too.
+- **Resolution and offsets.** `updateEntity` never resizes `offsets`: a prefab instance
+  re-applies its overrides one property at a time in name order (`offsets` before
+  `resolutionX`), so a resize there would cut overridden points. A mismatched size is safe:
+  the solver counts missing offsets as zero and ignores extra ones (§12 WP-SOLVER), the
+  inspector reads within bounds. Two places keep the sizes in step: `Stream::decodeLatticeComponent`
+  cuts/pads `offsets` to `rx*ry*rz` (a component encoding set through MCP, paste, a
+  hand-edited file), and MCP refuses a lone `resolutionX/Y/Z` write in set_properties /
+  add_component / create_entity values (`McpValues::buildPropertyCommand`: "the resolution
+  changes with edit_lattice resolution: [x, y, z] (or the Inspector's Resolution), which
+  resamples the offsets"). WP-MCP: `edit_lattice resolution` must go through
+  `LatticeEditorOps::setResolution`, as the inspector does.
+- **`Catalog::copyPropertyValue`** copies the lattice Custom properties (`offsets`, `poses`,
+  `bindings`, the tracks' lists and `values[N]`). Without it a whole-list override (a
+  resolution change, Add Binding, a key added) recorded on a prefab instance would be lost at
+  the next prefab refresh or reload (existing gap of `ranges`, `pathPoints` and ShadowCaster2D
+  `points`, untouched).
+- **Scene format** (byte-identical on re-save; every key always written, so the clipboard's
+  "missing key" filling never applies):
+
+      lattice: {enabled, resolutionX, resolutionY, resolutionZ, offsets: [[x, y, z], ...],
+                interpolation: sharp|smooth|cubic, outside: extend|fade, fadeDistance,
+                poses: [{name, offsets: [...]}], jiggle, jiggleStiffness, jiggleDamping,
+                jiggleInertia, jiggleAnchor: none|negative_x|positive_x|...|positive_z,
+                jiggleMaxOffset}
+      latticemodifier: {enabled, bindings: [{lattice: <entity>, weight,
+                        stage: before_skinning|after_skinning, submesh,
+                        mask: none|red|...|inverted_alpha}], includeChildren, subdivisions}
+      latticefollower: {enabled, lattice, rest, applyPosition, applyRotation, applyScale, weight}
+      latticetracks: {points: [..], values: [[[x, y, z], ..], ..], inTangents?, outTangents?}
+
+  Floats are written as the shortest round-tripping text (`YamlNumbers`), non-finite ones are
+  left out (decode keeps the default). Unknown enum names decode to the default. Decoding over a
+  live lattice whose resolution changes clears its jiggle springs and tween (laid out for the
+  old points); poses keep their size (resampled where applied, §6.1).
+- **MCP enum names** = the scene-file names; `McpValues::enumTable` also gains
+  `lattice_interpolation`, `lattice_outside`, `lattice_jiggle_anchor`, `lattice_stage`,
+  `lattice_mask` for WP-MCP. A follower's `lattice` or `rest` set through MCP may not be the
+  follower or a GameObject below it (refused with a hint), as the inspector's pickers exclude them.
+- **Creation.** `EntityCreationType::LATTICE` (the spec's `CreateEntityType::LATTICE`):
+  Transform + LatticeComponent, a unit lattice. The menus do not push it directly: the
+  GameObject > 3D Object > Lattice entry (2D scenes: 2D Object > Lattice; both rootOnly), the
+  Hierarchy "+" and the row context menu's Create items, and the new "Add Lattice to Selection"
+  row item (3D and 2D scenes, enabled when a target or something below it has a mesh) all
+  call `HierarchyWindow::createLatticeAround(targets)` -> `LatticeEditorOps::createLattice`
+  with the authored, Transform-carrying targets (the selection, or the clicked row when it is
+  not selected) and the Scene view camera's world target as the fallback position; a failure
+  is a Console error. A lattice is never made a child of the row it was asked from.
+  WP-EDITOR-SCENE may build its unit lattice with `CreateEntityCmd(LATTICE)`.
+- **Inspectors.** Lattice: Resolution as three X/Y/Z fields applied when let go through
+  `LatticeEditorOps::setResolution` (one undo step for a multi-selection, `CommandHistory`
+  mark/groupSince), Interpolation, Outside, Fade Distance (only with Fade), Points (selected
+  count, `(i, j, k)` and an Offset field for one selected point applied through `setOffsets`
+  when let go, Reset Selected, Reset All, Select All, Select None, the Edit Points hint),
+  folded-cell warning (`findFoldedCells`, cached on a hash of resolution, settings, offsets and
+  dynamic offsets), Presets (preset, axis, toward for bend/shear, amount, seed for noise,
+  replace; Apply to the selected points or all), Poses (Save Current As..., Apply,
+  Overwrite, Rename, Delete), Jiggle foldout (plain properties), Deforming list
+  (`findTargets`, click selects). Points, presets and poses need a single selected lattice.
+  Modifier: Include Children, Subdivisions (only when a sprite is among the deformed meshes),
+  Add Binding / reorder / remove (whole-list PropertyCmds), per binding Lattice (entity field,
+  picker filtered to lattices, drag-drop, itself excluded), Weight, Stage (only when a
+  deformed mesh is skinned), Submesh, Mask; warnings for a binding without a lattice, a
+  deleted one or one without a LatticeComponent, a mesh reached by more than
+  `LATTICE_MAX_PER_MESH` lattices (own + inherited, as §2.1 counts them), and nothing to deform.
+  The **Bake** button (§9.4) is left to WP-BAKE. Follower: Lattice, Rest (pickers exclude the
+  follower and its subtree), apply flags, Weight, warnings, "Create Rest Here"
+  (`CreateEntityCmd(GAMEOBJECT)` under the follower's parent, quiet, its local
+  position/rotation/scale copied, and `rest` set: one undo step). Lattice Tracks: points (count
+  and list), keys (count, per key "N offsets, M moved", Add Key / remove with Hermite tangents
+  kept aligned as Morph Tracks), a warning for a key whose size differs from `points`.
+  Edits that go through `LatticeEditorOps` report failures in the Console.
+- **`isNonStructuralProperty`**: every property of the four components.
+- **ProjectUtils**: add/remove for the four; `getEntityClassInfo` maps a lattice entity to the
+  `Lattice` class (object base), so script templates type it as `Lattice` (WP-ECS's Lua class).
+- **Factory** (C++ export): all four; only the moved points are written
+  (`offsets.assign(n, 0)` then `offsets[i] = ...`), entity fields through `formatEntity`.
+  Verified by compiling the generated code of a scene with every component (`-fsyntax-only`
+  with the engine's flags).
+
+Contract additions: none in the engine headers. Editor: `UpdateFlags_Lattice`,
+`LAST_COMPONENT_TYPE`, the four `ComponentType`s, `EntityCreationType::LATTICE`,
+`HierarchyWindow::createLatticeAround`, the Stream/Factory/inspector functions above.
+
+Files: `editor/Catalog.{h,cpp}`, `editor/Stream.{h,cpp}`, `editor/Factory.{h,cpp}`,
+`editor/mcp/McpValues.cpp`, `editor/mcp/McpRefs.cpp` and `editor/mcp/tools/ComponentTools.cpp`
+(the `LAST_COMPONENT_TYPE` loops only), `editor/util/ProjectUtils.cpp`,
+`editor/window/dialog/ComponentAddDialog.cpp`, `editor/window/HierarchyWindow.{h,cpp}`,
+`editor/window/InspectorWindow.{h,cpp}`, `editor/command/type/CreateEntityCmd.{h,cpp}`,
+`editor/command/type/PropertyCmd.h`, `tools/mcp/tests/test_lattice_data.py` (new).
+
+Tests: `tools/mcp/tests/test_lattice_data.py` (7 tests, new empty project): component types and
+property lists (no runtime fields), every property type through add_component / set_properties
+/ get_entity with undo/redo and reset_component, the resolution refusal, clamping, follower
+self/descendant refusal, the scene file's names and the absence of runtime state, a second
+editor reloading every value and re-saving byte-identically (the file is emptied first, so the
+comparison is real), a prefab instance overriding `offsets[2]` only while the prefab's change
+to `offsets[5]` reaches it (also after a reload; revert restores the prefab value), duplicate
+and copy/paste of lattice + target + follower + rest with every reference remapped, a target
+duplicated alone keeping its lattice, paste component onto another mesh.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_data.py
+
+Integrator notes:
+- LatticeRender (WP-RENDER) must not trust `revision` alone across entity reuse: a new lattice
+  (created, pasted, loaded) starts at 0 whatever entity id it gets.
+- The inspector's lattice actions are only as good as `LatticeEditorOps`; with the contract
+  stubs they report "lattice editing is not implemented yet" in the Console.
+- Also run on a temporary merge of `lat/editor-scene` (with `lat/ecs`, `lat/render` and the
+  solver): `test_lattice_data.py` passes, the inspector shows the folded-cell warning and the
+  Deforming list. That build's Console showed `includes/lattice.glsl:135: 'active' : Reserved
+  word` for the mesh and depth `Ltc` variants (glsl410): WP-RENDER must rename it.
