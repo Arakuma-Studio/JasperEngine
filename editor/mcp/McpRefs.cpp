@@ -355,8 +355,7 @@ Json McpRefs::sceneJson(Project* project, const SceneProject& scene) {
 
 std::vector<std::string> McpRefs::componentTypeNames() {
     std::vector<std::string> names;
-    const int last = static_cast<int>(ComponentType::UIDocumentComponent);
-    for (int i = 0; i <= last; i++) {
+    for (int i = 0; i < ComponentTypeCount; i++) {
         std::string name = lower(Catalog::getComponentName(static_cast<ComponentType>(i), true));
         if (name.empty()) continue;
         // only names Catalog::getComponentType reads back
@@ -385,7 +384,7 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             {"rigidbody3d", "rigidbody"}, {"collider", "rigidbody"}, {"collider2d", "rigidbody2d"},
             {"canvasrenderer", "ui"},
             {"sky", "skybox"}, {"audio", "audiosource"}, {"sound", "audiosource"}, {"scripts", "script"},
-            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}
+            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"fluid", "fluidsimulation"}
         };
         auto alias = aliases.find(key);
         for (const std::string& candidate : {given, key, alias != aliases.end() ? alias->second : key}) {
@@ -396,8 +395,7 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             }
         }
         // Unity's display names ("Rigidbody 2D", "Audio Source")
-        const int last = static_cast<int>(ComponentType::UIDocumentComponent);
-        for (int i = 0; i <= last; i++) {
+        for (int i = 0; i < ComponentTypeCount; i++) {
             std::string display;
             for (char c : lower(Catalog::getComponentDisplayName(static_cast<ComponentType>(i)))) {
                 if (c != ' ' && c != '_' && c != '-') display.push_back(c);

@@ -7,6 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F10B0B1E0000000000000006 /* FluidSimulation.h in Headers */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000001 /* FluidSimulation.h */; };
+		F10B0B1E0000000000000008 /* FluidSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000002 /* FluidSimulation.cpp */; };
+		F10B0B1E0000000000000009 /* FluidSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000002 /* FluidSimulation.cpp */; };
+		F10B0B1E0000000000000007 /* FluidPresets.h in Headers */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000003 /* FluidPresets.h */; };
+		F10B0B1E000000000000000A /* FluidPresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000004 /* FluidPresets.cpp */; };
+		F10B0B1E000000000000000B /* FluidPresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F10B0B1E0000000000000004 /* FluidPresets.cpp */; };
 		17145B362FF7FC3B00543CB7 /* Light2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B342FF7FC3B00543CB7 /* Light2DComponent.h */; };
 		17145B372FF7FC3B00543CB7 /* ShadowCaster2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */; };
 		17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B382FF7FC5E00543CB7 /* Light2D.h */; };
@@ -3525,6 +3531,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		F10B0B1E0000000000000001 /* FluidSimulation.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FluidSimulation.h; sourceTree = "<group>"; };
+		F10B0B1E0000000000000002 /* FluidSimulation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FluidSimulation.cpp; sourceTree = "<group>"; };
+		F10B0B1E0000000000000003 /* FluidPresets.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FluidPresets.h; sourceTree = "<group>"; };
+		F10B0B1E0000000000000004 /* FluidPresets.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FluidPresets.cpp; sourceTree = "<group>"; };
 		17145B342FF7FC3B00543CB7 /* Light2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2DComponent.h; sourceTree = "<group>"; };
 		17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowCaster2DComponent.h; sourceTree = "<group>"; };
 		17145B382FF7FC5E00543CB7 /* Light2D.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2D.h; sourceTree = "<group>"; };
@@ -7557,15 +7567,6 @@
 			path = ../..;
 			sourceTree = "<group>";
 		};
-		464C55491D47F346D35BF22F /* fluid */ = {
-			isa = PBXGroup;
-			children = (
-				464C55498D7C3C3CDFBA8D9D /* FluidSimulator.h */,
-				464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */,
-			);
-			path = fluid;
-			sourceTree = "<group>";
-		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7574,11 +7575,11 @@
 				7162FC4425962A0E0075B97D /* component */,
 				7162FC7A25962A0E0075B97D /* JasperEngine.h */,
 				71E36B8125D5996400EFEED4 /* ecs */,
-				464C55491D47F346D35BF22F /* fluid */,
 				48544D4C0000000000000047 /* htmlui */,
 				7162FC2B25962A0E0075B97D /* Engine.h */,
 				7162FC7225962A0E0075B97D /* Engine.cpp */,
 				175DCCB9300FA22F008C19EC /* Export.h */,
+				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
 				7128D08525BB033D00965B51 /* Input.cpp */,
 				7162FC2F25962A0E0075B97D /* io */,
@@ -7603,6 +7604,17 @@
 				7162FC2E25962A0E0075B97D /* util */,
 			);
 			path = core;
+			sourceTree = "<group>";
+		};
+		F10B0B1E0000000000000005 /* fluid */ = {
+			isa = PBXGroup;
+			children = (
+				F10B0B1E0000000000000003 /* FluidPresets.h */,
+				F10B0B1E0000000000000004 /* FluidPresets.cpp */,
+				464C55498D7C3C3CDFBA8D9D /* FluidSimulator.h */,
+				464C55492885A0AEAB89CAAE /* FluidSimulator.cpp */,
+			);
+			path = fluid;
 			sourceTree = "<group>";
 		};
 		7162FC2E25962A0E0075B97D /* util */ = {
@@ -7791,6 +7803,8 @@
 				7162FC6425962A0E0075B97D /* Camera.cpp */,
 				71D74951296731F200348AB8 /* EntityHandle.h */,
 				71D74950296731F100348AB8 /* EntityHandle.cpp */,
+				F10B0B1E0000000000000001 /* FluidSimulation.h */,
+				F10B0B1E0000000000000002 /* FluidSimulation.cpp */,
 				7170A3CF2818A8A30003E965 /* environment */,
 				71CC839426B8C4D800EEBB93 /* Light.h */,
 				71CC839326B8C4D800EEBB93 /* Light.cpp */,
@@ -11100,6 +11114,8 @@
 			isa = PBXHeadersBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F10B0B1E0000000000000006 /* FluidSimulation.h in Headers */,
+				F10B0B1E0000000000000007 /* FluidPresets.h in Headers */,
 				712675812B65F45D0031089C /* LineRenderer.h in Headers */,
 				71D74957296731F200348AB8 /* EntityHandle.h in Headers */,
 				718FDDF72837CA9A00AF314C /* glsl100.h in Headers */,
@@ -13068,6 +13084,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F10B0B1E0000000000000008 /* FluidSimulation.cpp in Sources */,
+				F10B0B1E000000000000000A /* FluidPresets.cpp in Sources */,
 				713D8304259D34F900567F9F /* Ray.cpp in Sources */,
 				713E581027BA9CE400376680 /* Polygon.cpp in Sources */,
 				717AD9852919E1CB007D7DB5 /* RectTransform.cpp in Sources */,
@@ -13438,6 +13456,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F10B0B1E0000000000000009 /* FluidSimulation.cpp in Sources */,
+				F10B0B1E000000000000000B /* FluidPresets.cpp in Sources */,
 				7162FE0C2596A5BE0075B97D /* SokolObject.cpp in Sources */,
 				713E580F27BA9CE400376680 /* Polygon.cpp in Sources */,
 				717AD9842919E1CB007D7DB5 /* RectTransform.cpp in Sources */,

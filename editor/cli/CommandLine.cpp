@@ -793,7 +793,7 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
                     Entity target = NULL_ENTITY;
                     if (property.type == PropertyType::Entity) target = *static_cast<Entity*>(property.ref);
                     else if (property.type == PropertyType::EntityReference) target = static_cast<EntityReference*>(property.ref)->entity;
-                    else if (property.type == PropertyType::Texture) target = CameraTextureLink::parse(static_cast<Texture*>(property.ref)->getId());
+                    else if (property.type == PropertyType::Texture) target = CameraTextureLink::parseLink(static_cast<Texture*>(property.ref)->getId());
                     else continue;
                     if (target == NULL_ENTITY) continue;
                     node["refs"][Catalog::getComponentName(type, true) + "." + name] =

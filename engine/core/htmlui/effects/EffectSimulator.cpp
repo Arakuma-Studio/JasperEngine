@@ -109,6 +109,8 @@ ColorFormat jasperengine::htmlui::colorFormatOf(EffectStateFormat format){
         case EffectStateFormat::RGBA16F: return ColorFormat::RGBA16F;
         case EffectStateFormat::RGBA32F: return ColorFormat::RGBA32F;
         case EffectStateFormat::R32F: return ColorFormat::R32F;
+        case EffectStateFormat::RG16F: return ColorFormat::RG16F;
+        case EffectStateFormat::R16F: return ColorFormat::R16F;
     }
     return ColorFormat::RGBA16F;
 }
@@ -134,6 +136,8 @@ bool EffectStatePool::supports(EffectStateFormat format, bool blend){
         case EffectStateFormat::RGBA16F: return f.renderRGBA16F && (!blend || f.blendRGBA16F);
         case EffectStateFormat::RGBA32F: return f.renderRGBA32F && (!blend || f.blendRGBA32F);
         case EffectStateFormat::R32F: return f.renderR32F && (!blend || f.blendR32F);
+        case EffectStateFormat::RG16F: return f.renderRG16F && (!blend || f.blendRG16F);
+        case EffectStateFormat::R16F: return f.renderR16F && (!blend || f.blendR16F);
     }
     return false;
 }

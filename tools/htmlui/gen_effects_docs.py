@@ -172,7 +172,7 @@ def cell(text):
     return text.replace("|", "\\|").replace("\n", " ")
 
 
-FORMAT_BYTES = {"rgba8": 4, "rgba16f": 8, "rgba32f": 16, "r32f": 4}
+FORMAT_BYTES = {"rgba8": 4, "rgba16f": 8, "rg16f": 4, "r16f": 2, "rgba32f": 16, "r32f": 4}
 
 
 def stateful_text(m):

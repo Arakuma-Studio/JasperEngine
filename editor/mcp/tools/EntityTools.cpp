@@ -194,6 +194,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"fog", EntityCreationType::FOG, "Fog"},
         {"reflection_probe", EntityCreationType::REFLECTION_PROBE, "Reflection Probe"},
         {"particle_system", EntityCreationType::PARTICLE_SYSTEM, "Particle System"},
+        {"fluid_simulation", EntityCreationType::FLUID_SIMULATION, "Fluid Simulation"},
         {"points", EntityCreationType::POINTS, "Points"},
         {"line_renderer", EntityCreationType::LINE_RENDERER, "Line Renderer"},
         {"mesh_polygon", EntityCreationType::MESH_POLYGON, "Mesh Polygon"},
@@ -242,7 +243,8 @@ const EntityKind* findKind(const std::string& given) {
         {"light2d", "light_2d"}, {"point_light_2d", "light_2d"}, {"rigidbody_2d", "rigidbody2d"},
         {"rigidbody3d", "rigidbody"}, {"joint", "joint3d"}, {"joint_2d", "joint2d"}, {"progress_bar", "progressbar"},
         {"sun", "directional_light"}, {"audio", "audio_source"}, {"ui_image", "image"}, {"ui_text", "text"},
-        {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"}
+        {"label", "text"}, {"quad", "plane"}, {"uidocument", "ui_document"}, {"html", "ui_document"},
+        {"fluid", "fluid_simulation"}
     };
     auto alias = aliases.find(key);
     if (alias != aliases.end()) key = alias->second;

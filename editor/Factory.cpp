@@ -8,6 +8,8 @@
 #include "Configs.h"
 #include "Stream.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "component/FluidSimulationComponent.h"
 #include "editor/Out.h"
 #include <cmath>
 #include <sstream>
@@ -1865,6 +1867,54 @@ std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityR
     return code.str();
 }
 
+std::string editor::Factory::createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<FluidSimulationComponent>(entity)) return "";
+    FluidSimulationComponent& fluid = scene->getComponent<FluidSimulationComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "FluidSimulationComponent fluid;\n";
+    if (!fluid.enabled) code << ind << "fluid.enabled = false;\n";
+    // only what differs from the defaults (Pavel's); the runtime fields start fresh
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) code << ind << "fluid.output = " << "FluidOutput::" << (fluid.output == FluidOutput::SCREEN ? "SCREEN" : fluid.output == FluidOutput::TEXTURE ? "TEXTURE" : "MATERIAL") << ";\n";
+    if (fluid.interactive != defaults.interactive) code << ind << "fluid.interactive = " << formatBool(fluid.interactive) << ";\n";
+    if (fluid.aspectRatio != defaults.aspectRatio) code << ind << "fluid.aspectRatio = " << formatFloat(fluid.aspectRatio) << ";\n";
+    if (fluid.simResolution != defaults.simResolution) code << ind << "fluid.simResolution = " << formatUInt(fluid.simResolution) << "u" << ";\n";
+    if (fluid.dyeResolution != defaults.dyeResolution) code << ind << "fluid.dyeResolution = " << formatUInt(fluid.dyeResolution) << "u" << ";\n";
+    if (fluid.densityDissipation != defaults.densityDissipation) code << ind << "fluid.densityDissipation = " << formatFloat(fluid.densityDissipation) << ";\n";
+    if (fluid.velocityDissipation != defaults.velocityDissipation) code << ind << "fluid.velocityDissipation = " << formatFloat(fluid.velocityDissipation) << ";\n";
+    if (fluid.pressure != defaults.pressure) code << ind << "fluid.pressure = " << formatFloat(fluid.pressure) << ";\n";
+    if (fluid.pressureIterations != defaults.pressureIterations) code << ind << "fluid.pressureIterations = " << formatUInt(fluid.pressureIterations) << "u" << ";\n";
+    if (fluid.curl != defaults.curl) code << ind << "fluid.curl = " << formatFloat(fluid.curl) << ";\n";
+    if (fluid.gradientScale != defaults.gradientScale) code << ind << "fluid.gradientScale = " << formatFloat(fluid.gradientScale) << ";\n";
+    if (fluid.simulationRate != defaults.simulationRate) code << ind << "fluid.simulationRate = " << formatFloat(fluid.simulationRate) << ";\n";
+    if (fluid.maxSubsteps != defaults.maxSubsteps) code << ind << "fluid.maxSubsteps = " << formatUInt(fluid.maxSubsteps) << "u" << ";\n";
+    if (fluid.timeScale != defaults.timeScale) code << ind << "fluid.timeScale = " << formatFloat(fluid.timeScale) << ";\n";
+    if (fluid.paused != defaults.paused) code << ind << "fluid.paused = " << formatBool(fluid.paused) << ";\n";
+    if (fluid.splatRadius != defaults.splatRadius) code << ind << "fluid.splatRadius = " << formatFloat(fluid.splatRadius) << ";\n";
+    if (fluid.splatForce != defaults.splatForce) code << ind << "fluid.splatForce = " << formatFloat(fluid.splatForce) << ";\n";
+    if (fluid.colorful != defaults.colorful) code << ind << "fluid.colorful = " << formatBool(fluid.colorful) << ";\n";
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) code << ind << "fluid.colorUpdateSpeed = " << formatFloat(fluid.colorUpdateSpeed) << ";\n";
+    if (fluid.splatsOnStart != defaults.splatsOnStart) code << ind << "fluid.splatsOnStart = " << formatBool(fluid.splatsOnStart) << ";\n";
+    if (fluid.randomSplatCount != defaults.randomSplatCount) code << ind << "fluid.randomSplatCount = " << formatUInt(fluid.randomSplatCount) << "u" << ";\n";
+    if (fluid.seed != defaults.seed) code << ind << "fluid.seed = " << formatUInt(fluid.seed) << "u" << ";\n";
+    if (fluid.shading != defaults.shading) code << ind << "fluid.shading = " << formatBool(fluid.shading) << ";\n";
+    if (fluid.backColor != defaults.backColor) code << ind << "fluid.backColor = " << formatVector3(fluid.backColor) << ";\n";
+    if (fluid.transparent != defaults.transparent) code << ind << "fluid.transparent = " << formatBool(fluid.transparent) << ";\n";
+    if (fluid.bloom != defaults.bloom) code << ind << "fluid.bloom = " << formatBool(fluid.bloom) << ";\n";
+    if (fluid.bloomIterations != defaults.bloomIterations) code << ind << "fluid.bloomIterations = " << formatUInt(fluid.bloomIterations) << "u" << ";\n";
+    if (fluid.bloomResolution != defaults.bloomResolution) code << ind << "fluid.bloomResolution = " << formatUInt(fluid.bloomResolution) << "u" << ";\n";
+    if (fluid.bloomIntensity != defaults.bloomIntensity) code << ind << "fluid.bloomIntensity = " << formatFloat(fluid.bloomIntensity) << ";\n";
+    if (fluid.bloomThreshold != defaults.bloomThreshold) code << ind << "fluid.bloomThreshold = " << formatFloat(fluid.bloomThreshold) << ";\n";
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) code << ind << "fluid.bloomSoftKnee = " << formatFloat(fluid.bloomSoftKnee) << ";\n";
+    if (fluid.sunrays != defaults.sunrays) code << ind << "fluid.sunrays = " << formatBool(fluid.sunrays) << ";\n";
+    if (fluid.sunraysResolution != defaults.sunraysResolution) code << ind << "fluid.sunraysResolution = " << formatUInt(fluid.sunraysResolution) << "u" << ";\n";
+    if (fluid.sunraysWeight != defaults.sunraysWeight) code << ind << "fluid.sunraysWeight = " << formatFloat(fluid.sunraysWeight) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "FluidSimulationComponent", "fluid", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createReflectionProbeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<ReflectionProbeComponent>(entity)) return "";
     ReflectionProbeComponent& probe = scene->getComponent<ReflectionProbeComponent>(entity);
@@ -2645,6 +2695,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::MirrorComponent: return createMirrorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ReflectionProbeComponent: return createReflectionProbeComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::FluidSimulationComponent: return createFluidSimulationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -3191,6 +3242,20 @@ std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRe
                     continue;
 
                 Texture* texture = static_cast<Texture*>(prop.ref);
+                Entity fluidEntity = FluidTextureLink::parse(texture->getId());
+                if (fluidEntity != NULL_ENTITY) {
+                    // a FluidSimulation's output: its simulator object made here when the
+                    // fluid has none yet (as FluidSimulation::getTexture does)
+                    if (!registry->isEntityCreated(fluidEntity) || !registry->findComponent<FluidSimulationComponent>(fluidEntity))
+                        continue;
+                    if (namedCamerasOnly && (!entityVarNames || !entityVarNames->count(fluidEntity)))
+                        continue;
+                    const std::string fluidExpr = "scene->getComponent<FluidSimulationComponent>(" + formatEntity(fluidEntity, entityVarNames) + ")";
+                    links << ind << "if (!" << fluidExpr << ".simulator) " << fluidExpr << ".simulator = std::make_shared<FluidSimulator>();\n";
+                    links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
+                          << propName << ".setFramebuffer(" << fluidExpr << ".simulator->getOutputFramebuffer());\n";
+                    continue;
+                }
                 Entity cameraEntity = CameraTextureLink::parse(texture->getId());
                 if (cameraEntity == NULL_ENTITY)
                     continue;

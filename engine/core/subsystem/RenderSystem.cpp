@@ -7388,6 +7388,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     mesh.submeshes[i].needUpdateTexture = false;
                 }
             }
+            // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
+            // base colour, lent for the draw (the material keeps its own texture)
+            if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
+                if (TextureRender* fluidTexture = frameFluids->getMaterialTexture(entity))
+                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
+            }
 
             if (!render.beginDraw(pipType, passNoFaceCulling())){
                 mesh.needReload = true;
@@ -9364,7 +9370,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     render.beginLoad(ui.primitiveType);
 
-    bool hasUITexture = !ui.texture.empty();
+    // (an Image showing a FluidSimulation's output samples it even without a texture of its own)
+    bool hasUITexture = !ui.texture.empty() || (!isText && frameFluids && frameFluids->getMaterialTexture(entity));
 
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
@@ -9470,7 +9477,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     return true;
 }
 
-bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType){
+bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
@@ -9482,6 +9489,8 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                     ui.needUpdateTexture = false;
                 }
         }
+        if (textureOverride && textureOverride->isCreated())
+            ui.render.addTexture(ui.shader.get()->shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureOverride);
         if (!ui.libraryBindings.textures.empty() && (ui.needUpdateTexture || shaderTexturesOutdated(ui.libraryBindings, ui.shaderTextures))){
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
@@ -13321,7 +13330,9 @@ void RenderSystem::drawFramePasses(){
 
     // the fluid simulations step and draw their outputs before any camera samples them (as a
     // material or a texture link) or composites them (SCREEN)
-    scene->getSystem<FluidSystem>()->renderFluids();
+    frameFluids = scene->findSystem<FluidSystem>().get();
+    if (frameFluids)
+        frameFluids->renderFluids();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
@@ -14380,7 +14391,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
             if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
-                drawUI(ui, transform, colorPip);
+                drawUI(ui, transform, colorPip,
+                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);

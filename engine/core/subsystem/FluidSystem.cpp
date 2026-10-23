@@ -35,38 +35,28 @@ struct FluidSystem::State {
         bool mousePressed = false;      // the left button was down at the last update
         std::set<int> touches;          // the touches dragging it (pointer 1 + touch id)
         unsigned long outputVersion = 0;
-        bool bound = false;             // the entity's Sprite, Image or Mesh shows the output
-        Texture saved;                  // what it showed before
+        bool lending = false;           // the entity's Sprite, Image or Mesh shows the output
         std::string lastError;
     };
 
     std::map<Entity, Entry> entries;
     CameraRender compositePass;
+    bool materials = false;             // a MATERIAL output is lent this frame
 };
 
 namespace {
 
-    // the texture MATERIAL replaces: an Image's, else a Mesh's (a Sprite's) submesh 0 base colour
-    Texture* materialSlot(Scene* scene, Entity entity, UIComponent*& ui, MeshComponent*& mesh){
-        ui = nullptr;
-        mesh = nullptr;
-        UIComponent* image = scene->findComponent<UIComponent>(entity);
-        if (image && scene->findComponent<ImageComponent>(entity)){
-            ui = image;
-            return &image->texture;
-        }
-        if (MeshComponent* m = scene->findComponent<MeshComponent>(entity)){
-            mesh = m;
-            return &m->submeshes[0].material.baseColorTexture;
-        }
-        return nullptr;
-    }
-
-    void markTextureChanged(UIComponent* ui, MeshComponent* mesh){
-        if (ui)
+    // what shows a MATERIAL output: an Image's texture, else a Mesh's (a Sprite's) submesh 0
+    // base colour. Its texture binding is made again (its own texture) when the output stops
+    void rebindOwnTexture(Scene* scene, Entity entity){
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (ui && scene->findComponent<ImageComponent>(entity)){
             ui->needUpdateTexture = true;
-        if (mesh)
+            if (ui->texture.empty())
+                ui->needReload = true;
+        }else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
             mesh->submeshes[0].needUpdateTexture = true;
+        }
     }
 
     bool inside01(Vector2 p){
@@ -283,38 +273,11 @@ void FluidSystem::update(double dt){
     }
 }
 
-// the output on the entity's Sprite, Image or Mesh while `show`, what it had before otherwise
-static void bindMaterial(Scene* scene, Entity entity, FluidSimulationComponent& fluid, Texture& saved, bool& bound, bool show){
-    UIComponent* ui = nullptr;
-    MeshComponent* mesh = nullptr;
-    Texture* slot = materialSlot(scene, entity, ui, mesh);
-    Framebuffer* output = fluid.simulator ? fluid.simulator->getOutputFramebuffer() : nullptr;
-    if (!slot){
-        bound = false;
-        return;
-    }
-    if (show && output && output->isCreated()){
-        if (slot->getFramebuffer() != output){
-            saved = *slot;
-            bound = true;
-            slot->setFramebuffer(output);
-            // the texture link of the output (as a TEXTURE output's), so a save keeps it
-            slot->setId("fluid|" + std::to_string(entity));
-            markTextureChanged(ui, mesh);
-        }
-    }else if (bound){
-        if (slot->getFramebuffer() == output){
-            *slot = saved;
-            markTextureChanged(ui, mesh);
-        }
-        saved = Texture();
-        bound = false;
-    }
-}
-
 void FluidSystem::renderFluids(){
+    state->materials = false;
     if (!scene->isComponentRegistered<FluidSimulationComponent>())
         return;
+    bool materials = false;
     auto fluids = scene->getComponentArray<FluidSimulationComponent>();
     for (size_t i = 0; i < fluids->size(); i++){
         const Entity entity = fluids->getEntity(i);
@@ -322,7 +285,9 @@ void FluidSystem::renderFluids(){
         State::Entry& entry = state->entries[entity];
         const bool active = fluid.enabled && scene->isEntityActiveInHierarchy(entity);
         if (!active){
-            bindMaterial(scene, entity, fluid, entry.saved, entry.bound, false);
+            if (entry.lending)
+                rebindOwnTexture(scene, entity);
+            entry.lending = false;
             continue;
         }
         if (!fluid.simulator)
@@ -345,8 +310,21 @@ void FluidSystem::renderFluids(){
             entry.outputVersion = output->getVersion();
             fluid.revision++;
         }
-        bindMaterial(scene, entity, fluid, entry.saved, entry.bound, fluid.output == FluidOutput::MATERIAL && drawn);
+        // MATERIAL: lent at draw time (getMaterialTexture) while there is an image to lend
+        const bool lending = fluid.output == FluidOutput::MATERIAL && drawn && output->isCreated();
+        if (entry.lending != lending){
+            // an Image without a texture of its own has no texture to sample: loaded again
+            // with one (RenderSystem::loadUI asks getMaterialTexture), and again without
+            UIComponent* ui = scene->findComponent<UIComponent>(entity);
+            if (ui && ui->texture.empty() && scene->findComponent<ImageComponent>(entity))
+                ui->needReload = true;
+        }
+        if (entry.lending && !lending)
+            rebindOwnTexture(scene, entity);
+        entry.lending = lending;
+        materials = materials || lending;
     }
+    state->materials = materials;
 }
 
 bool FluidSystem::hasScreenFluids() const{
@@ -387,6 +365,23 @@ void FluidSystem::compositeScreen(FramebufferRender* target, const Rect& viewRec
     pass.endRenderPass();
 }
 
+bool FluidSystem::hasMaterialFluids() const{
+    return state->materials;
+}
+
+TextureRender* FluidSystem::getMaterialTexture(Entity entity) const{
+    if (!state->materials)
+        return nullptr;
+    auto it = state->entries.find(entity);
+    if (it == state->entries.end() || !it->second.lending)
+        return nullptr;
+    const FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
+    if (!fluid || !fluid->simulator || fluid->output != FluidOutput::MATERIAL || !fluid->enabled)
+        return nullptr;
+    Framebuffer* output = fluid->simulator->getOutputFramebuffer();
+    return output->isCreated() ? &output->getRender().getColorTexture() : nullptr;
+}
+
 void FluidSystem::onComponentAdded(Entity entity, ComponentId componentId){
     if (!scene->isComponentRegistered<FluidSimulationComponent>() || componentId != scene->getComponentId<FluidSimulationComponent>())
         return;
@@ -400,8 +395,8 @@ void FluidSystem::onComponentRemoved(Entity entity, ComponentId componentId){
     FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
     auto it = state->entries.find(entity);
     if (fluid){
-        if (it != state->entries.end())
-            bindMaterial(scene, entity, *fluid, it->second.saved, it->second.bound, false);
+        if (it != state->entries.end() && it->second.lending)
+            rebindOwnTexture(scene, entity);
         if (fluid->simulator){
             fluid->simulator->release();
             fluid->simulator.reset();

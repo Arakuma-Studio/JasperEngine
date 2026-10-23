@@ -8,6 +8,10 @@
 // (FluidSimulation:applyPreset) and the MCP tools. A preset sets only the fields it lists in
 // `fields` (Catalog property names: the camelCase field names); the rest keep their values. matchFluidPreset() names the
 // preset the component's values equal (the Inspector's "Custom" otherwise).
+// The built-in presets all list the same fields (the solver and the look); the compositing
+// (output, transparent, backColor, interactive, aspectRatio) and the clock (simulationRate,
+// maxSubsteps, timeScale, paused, splatsOnStart, randomSplatCount, seed) are never touched.
+// Floats are compared exactly as stored, Vector3 componentwise.
 
 #include "Export.h"
 #include "component/FluidSimulationComponent.h"

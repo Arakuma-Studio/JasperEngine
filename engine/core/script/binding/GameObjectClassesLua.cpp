@@ -13,6 +13,7 @@
 #include "EntityHandle.h"
 #include "Fog.h"
 #include "ReflectionProbe.h"
+#include "object/FluidSimulation.h"
 #include "Skybox.h"
 #include "GameObject.h"
 #include "Camera.h"
@@ -667,6 +668,94 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setTextures", &ReflectionProbe::setTextures)
         .addFunction("setTexture", &ReflectionProbe::setTexture)
         .addFunction("refresh", &ReflectionProbe::refresh)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FluidOutput")
+        .addVariable("SCREEN", FluidOutput::SCREEN)
+        .addVariable("MATERIAL", FluidOutput::MATERIAL)
+        .addVariable("TEXTURE", FluidOutput::TEXTURE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FluidStats>("FluidStats")
+        .addProperty("steps", &FluidStats::steps)
+        .addProperty("time", &FluidStats::time)
+        .addProperty("splats", &FluidStats::splats)
+        .addProperty("simWidth", &FluidStats::simWidth)
+        .addProperty("simHeight", &FluidStats::simHeight)
+        .addProperty("dyeWidth", &FluidStats::dyeWidth)
+        .addProperty("dyeHeight", &FluidStats::dyeHeight)
+        .addProperty("gpuBytes", &FluidStats::gpuBytes)
+        .addProperty("passesLastFrame", &FluidStats::passesLastFrame)
+        .addProperty("seed", &FluidStats::seed)
+        .addProperty("shadingActive", &FluidStats::shadingActive)
+        .addProperty("bloomActive", &FluidStats::bloomActive)
+        .addProperty("sunraysActive", &FluidStats::sunraysActive)
+        .endClass();
+
+    // Pavel Dobryakov's WebGL fluid on a GameObject (GameObject > Effects > Fluid Simulation)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<FluidSimulation, GameObject>("FluidSimulation")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &FluidSimulation::isEnabled, &FluidSimulation::setEnabled)
+        .addProperty("output", &FluidSimulation::getOutput, &FluidSimulation::setOutput)
+        .addProperty("interactive", &FluidSimulation::isInteractive, &FluidSimulation::setInteractive)
+        .addProperty("aspectRatio", &FluidSimulation::getAspectRatio, &FluidSimulation::setAspectRatio)
+        .addProperty("simResolution", &FluidSimulation::getSimResolution, &FluidSimulation::setSimResolution)
+        .addProperty("dyeResolution", &FluidSimulation::getDyeResolution, &FluidSimulation::setDyeResolution)
+        .addProperty("densityDissipation", &FluidSimulation::getDensityDissipation, &FluidSimulation::setDensityDissipation)
+        .addProperty("velocityDissipation", &FluidSimulation::getVelocityDissipation, &FluidSimulation::setVelocityDissipation)
+        .addProperty("pressure", &FluidSimulation::getPressure, &FluidSimulation::setPressure)
+        .addProperty("pressureIterations", &FluidSimulation::getPressureIterations, &FluidSimulation::setPressureIterations)
+        .addProperty("curl", &FluidSimulation::getCurl, &FluidSimulation::setCurl)
+        .addProperty("gradientScale", &FluidSimulation::getGradientScale, &FluidSimulation::setGradientScale)
+        .addProperty("simulationRate", &FluidSimulation::getSimulationRate, &FluidSimulation::setSimulationRate)
+        .addProperty("maxSubsteps", &FluidSimulation::getMaxSubsteps, &FluidSimulation::setMaxSubsteps)
+        .addProperty("timeScale", &FluidSimulation::getTimeScale, &FluidSimulation::setTimeScale)
+        .addProperty("paused", &FluidSimulation::isPaused, &FluidSimulation::setPaused)
+        .addProperty("splatRadius", &FluidSimulation::getSplatRadius, &FluidSimulation::setSplatRadius)
+        .addProperty("splatForce", &FluidSimulation::getSplatForce, &FluidSimulation::setSplatForce)
+        .addProperty("colorful", &FluidSimulation::isColorful, &FluidSimulation::setColorful)
+        .addProperty("colorUpdateSpeed", &FluidSimulation::getColorUpdateSpeed, &FluidSimulation::setColorUpdateSpeed)
+        .addProperty("splatsOnStart", &FluidSimulation::isSplatsOnStart, &FluidSimulation::setSplatsOnStart)
+        .addProperty("randomSplatCount", &FluidSimulation::getRandomSplatCount, &FluidSimulation::setRandomSplatCount)
+        .addProperty("seed", &FluidSimulation::getSeed, &FluidSimulation::setSeed)
+        .addProperty("shading", &FluidSimulation::isShading, &FluidSimulation::setShading)
+        .addProperty("backColor", &FluidSimulation::getBackColor, (void(FluidSimulation::*)(Vector3))&FluidSimulation::setBackColor)
+        .addFunction("setBackColor", (void(FluidSimulation::*)(const float, const float, const float))&FluidSimulation::setBackColor)
+        .addProperty("transparent", &FluidSimulation::isTransparent, &FluidSimulation::setTransparent)
+        .addProperty("bloom", &FluidSimulation::isBloom, &FluidSimulation::setBloom)
+        .addProperty("bloomIterations", &FluidSimulation::getBloomIterations, &FluidSimulation::setBloomIterations)
+        .addProperty("bloomResolution", &FluidSimulation::getBloomResolution, &FluidSimulation::setBloomResolution)
+        .addProperty("bloomIntensity", &FluidSimulation::getBloomIntensity, &FluidSimulation::setBloomIntensity)
+        .addProperty("bloomThreshold", &FluidSimulation::getBloomThreshold, &FluidSimulation::setBloomThreshold)
+        .addProperty("bloomSoftKnee", &FluidSimulation::getBloomSoftKnee, &FluidSimulation::setBloomSoftKnee)
+        .addProperty("sunrays", &FluidSimulation::isSunrays, &FluidSimulation::setSunrays)
+        .addProperty("sunraysResolution", &FluidSimulation::getSunraysResolution, &FluidSimulation::setSunraysResolution)
+        .addProperty("sunraysWeight", &FluidSimulation::getSunraysWeight, &FluidSimulation::setSunraysWeight)
+        // splat(x, y, dx, dy, r, g, b) or splat(position, velocity, color[, radius])
+        .addFunction("splat",
+            luabridge::overload<const float, const float, const float, const float, const float, const float, const float>(&FluidSimulation::splat),
+            luabridge::overload<Vector2, Vector2, Vector3, float>(&FluidSimulation::splat),
+            luabridge::overload<FluidSimulation*, Vector2, Vector2, Vector3>(+[](FluidSimulation* self, Vector2 position, Vector2 velocity, Vector3 color){
+                self->splat(position, velocity, color);
+            }))
+        .addFunction("randomSplats",
+            luabridge::overload<unsigned int>(&FluidSimulation::randomSplats),
+            luabridge::overload<FluidSimulation*>(+[](FluidSimulation* self){ self->randomSplats(); }))
+        .addFunction("reset", &FluidSimulation::reset)
+        .addFunction("step",
+            luabridge::overload<int>(&FluidSimulation::step),
+            luabridge::overload<FluidSimulation*>(+[](FluidSimulation* self){ self->step(); }))
+        .addFunction("applyPreset", &FluidSimulation::applyPreset)
+        .addFunction("getPreset", &FluidSimulation::getPreset)
+        .addProperty("preset", &FluidSimulation::getPreset)
+        .addStaticFunction("getPresetIds", &FluidSimulation::getPresetIds)
+        // the output texture (a copy of the handle: it shows the fluid while the entity lives)
+        .addFunction("getTexture", +[](const FluidSimulation* self) -> Texture { return self->getTexture(); })
+        .addFunction("getStats", &FluidSimulation::getStats)
+        .addFunction("getFluidSimulationComponent", (FluidSimulationComponent&(FluidSimulation::*)() const)&FluidSimulation::getComponent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

@@ -588,7 +588,7 @@ TEST_F(FluidSimulatorTest, SystemCompositesScreenFluids){
     scene.removeComponent<FluidSimulationComponent>(entity);
 }
 
-TEST_F(FluidSimulatorTest, SystemBindsMaterialAndPreviews){
+TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     TestSystem::get().clearLogs();
     SceneFixture fixture;
     Scene& scene = fixture.getScene();
@@ -596,8 +596,13 @@ TEST_F(FluidSimulatorTest, SystemBindsMaterialAndPreviews){
     Sprite& sprite = fixture.add<Sprite>();
     sprite.setSize(120, 60);
 
+    // red over the whole fluid (a wide splat), no steps
     FluidSimulationComponent c = plainFluid();
     c.output = FluidOutput::MATERIAL;
+    c.paused = true;
+    FluidSplat red = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
+    red.radius = 1000.0f;
+    c.pendingSplats.push_back(red);
     const Entity entity = sprite.getEntity();
     scene.addComponent<FluidSimulationComponent>(entity, c);
     FluidSimulationComponent& fluid = scene.getComponent<FluidSimulationComponent>(entity);
@@ -605,17 +610,33 @@ TEST_F(FluidSimulatorTest, SystemBindsMaterialAndPreviews){
     MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
 
     ASSERT_TRUE(fixture.waitUntilLoaded());
-    ASSERT_TRUE(framesUntil([&](){
-        return fluid.simulator && mesh.submeshes[0].material.baseColorTexture.getFramebuffer() == fluid.simulator->getOutputFramebuffer();
-    })) << (fluid.simulator ? fluid.simulator->getError() : std::string("no simulator"));
-    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getId(), "fluid|" + std::to_string(entity));
+    ASSERT_TRUE(framesUntil([&](){ return system->getMaterialTexture(entity) != nullptr; }))
+        << (fluid.simulator ? fluid.simulator->getError() : std::string("no simulator"));
+    GpuEnvironment::drawFrames(2);
+    EXPECT_TRUE(system->hasMaterialFluids());
+    EXPECT_EQ(system->getMaterialTexture(entity), &fluid.simulator->getOutputFramebuffer()->getRender().getColorTexture());
+    // lent at draw time: the sprite's own texture is untouched (nothing saved, no override)
+    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getFramebuffer(), nullptr);
+    EXPECT_TRUE(mesh.submeshes[0].material.baseColorTexture.getId().empty());
     // the sprite's shape
     EXPECT_NEAR(system->getAspectRatio(entity), 2.0f, 1e-6f);
     EXPECT_EQ(fluid.simulator->getStats().dyeWidth, 128);
     EXPECT_GE(fluid.revision, 1u);
     EXPECT_FALSE(system->hasScreenFluids());
 
+    // drawn: the sprite (top-left 120 x 60 of the UI camera's view) shows the red fluid
+    Framebuffer& target = GpuEnvironment::target();
+    const int w = (int)target.getWidth(), h = (int)target.getHeight();
+    std::vector<uint8_t> rgba;
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
+    PixelProbe probe{rgba, w};
+    const uint8_t* inside = probe.at(60, 30);
+    EXPECT_GT((int)inside[0], 150) << "the sprite shows the fluid";
+    EXPECT_LT((int)inside[1], 60);
+    EXPECT_TRUE(probe.isBackground(400, 300));
+
     // a paused system (the editor's edit mode) does not step; a preview does
+    fluid.paused = false;
     system->setPaused(true);
     const uint64_t before = fluid.simulator->getStats().steps;
     GpuEnvironment::drawFrames(10);
@@ -627,11 +648,40 @@ TEST_F(FluidSimulatorTest, SystemBindsMaterialAndPreviews){
     system->setPaused(false);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
 
-    // removed: the sprite gets its texture back, the GPU side goes
+    // another output: the sprite shows its own texture again (white, untextured)
+    fluid.output = FluidOutput::TEXTURE;
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(system->getMaterialTexture(entity), nullptr);
+    ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
+    EXPECT_GT((int)probe.at(60, 30)[1], 150) << "the sprite's own (white) look is back";
+    fluid.output = FluidOutput::MATERIAL;
+    GpuEnvironment::drawFrames(2);
+
+    // removed: the GPU side goes
     const sg_image dyeImage = fluid.simulator->getDyeFramebuffer()->getRender().getColorTexture().backend.get();
     scene.removeComponent<FluidSimulationComponent>(entity);
-    EXPECT_EQ(mesh.submeshes[0].material.baseColorTexture.getFramebuffer(), nullptr);
     EXPECT_EQ(sg_query_image_state(dyeImage), SG_RESOURCESTATE_INVALID);
+    EXPECT_EQ(system->getMaterialTexture(entity), nullptr);
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+}
+
+TEST_F(FluidSimulatorTest, SystemKeepsAnExistingSimulator){
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    // made before the system's first update (the wrapper's getTexture(), a texture link)
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::TEXTURE;
+    c.simulator = std::make_shared<FluidSimulator>();
+    FluidSimulator* made = c.simulator.get();
+    Framebuffer* output = made->getOutputFramebuffer();
+    const Entity entity = scene.createEntity();
+    scene.addComponent<FluidSimulationComponent>(entity, c);
+    FluidSimulationComponent& fluid = scene.getComponent<FluidSimulationComponent>(entity);
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return output->isCreated(); }));
+    EXPECT_EQ(fluid.simulator.get(), made);
+    EXPECT_EQ(fluid.simulator->getOutputFramebuffer(), output);
+    scene.removeComponent<FluidSimulationComponent>(entity);
 }
