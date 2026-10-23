@@ -21,9 +21,14 @@ const float TERRAIN_TILE_BREAK_FAR = 40.0;
 const float TERRAIN_TILE_BREAK_RATE = 0.371;
 const float TERRAIN_TILE_BREAK_MIX = 0.5;
 
-// Slope, as 1.0 - abs(normal.y), over which the side projections take over from the flat one
-const float TERRAIN_TRIPLANAR_START = 0.15;
-const float TERRAIN_TRIPLANAR_END = 0.6;
+// The three projections are weighted by abs(normal) raised to this power: the higher, the
+// narrower the slope band where they overlap (each one stretches on the planes it does not
+// face, and two halves of stretched projections read as ghosted streaks). 8 hands over around
+// 45 degrees and leaves gentle slopes to the flat projection alone.
+const float TERRAIN_TRIPLANAR_SHARPNESS = 8.0;
+// A projection under this weight is dropped and the others take its share, so most pixels
+// fetch a single projection
+const float TERRAIN_TRIPLANAR_CUTOFF = 0.02;
 
 // How hard layer height biases the blend. 0.0 leaves the plain blend map weights
 const float TERRAIN_HEIGHT_CONTRAST = 6.0;
@@ -90,9 +95,13 @@ void setupTerrainDetail(){
 
     #ifdef HAS_NORMALS
         vec3 normal = normalize(v_terrainNormal);
-        terrainSideAmount = smoothstep(TERRAIN_TRIPLANAR_START, TERRAIN_TRIPLANAR_END, 1.0 - abs(normal.y));
-        terrainSideWeight = vec2(abs(normal.x), abs(normal.z));
-        terrainSideWeight = terrainSideWeight / max(terrainSideWeight.x + terrainSideWeight.y, 0.0001);
+        vec3 weights = pow(abs(normal), vec3(TERRAIN_TRIPLANAR_SHARPNESS));
+        weights /= max(weights.x + weights.y + weights.z, 0.0001);
+        weights *= step(vec3(TERRAIN_TRIPLANAR_CUTOFF), weights);
+        weights /= max(weights.x + weights.y + weights.z, 0.0001);
+        // The flat projection takes weights.y, the side planes share the rest
+        terrainSideAmount = weights.x + weights.z;
+        terrainSideWeight = vec2(weights.x, weights.z) / max(terrainSideAmount, 0.0001);
 
         // The side U axis follows the face direction, or opposite faces come out mirrored
         terrainFaceX = (normal.x < 0.0) ? -1.0 : 1.0;
@@ -119,15 +128,31 @@ vec4 getTerrainSlice(float slice, vec2 scale, vec2 offset){
     vec2 dx = terrainFlatDX * scale;
     vec2 dy = terrainFlatDY * scale;
 
-    vec4 color = mix(
-        sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy),
-        sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE),
-        terrainFarAmount);
+    // A projection with no weight is not fetched (textureGrad needs no derivatives of its own)
+    vec4 color = vec4(0.0);
+    float flatAmount = 1.0;
+    #ifdef HAS_NORMALS
+        flatAmount = 1.0 - terrainSideAmount;
+    #endif
+
+    if (flatAmount > 0.0){
+        color = mix(
+            sampleTerrainSlice(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy),
+            sampleTerrainSlice(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE),
+            terrainFarAmount) * flatAmount;
+    }
 
     #ifdef HAS_NORMALS
-        vec4 side = sampleTerrainSlice(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale) * terrainSideWeight.x +
-                    sampleTerrainSlice(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale) * terrainSideWeight.y;
-        color = mix(color, side, terrainSideAmount);
+        if (terrainSideAmount > 0.0){
+            vec4 side = vec4(0.0);
+            if (terrainSideWeight.x > 0.0){
+                side += sampleTerrainSlice(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale) * terrainSideWeight.x;
+            }
+            if (terrainSideWeight.y > 0.0){
+                side += sampleTerrainSlice(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale) * terrainSideWeight.y;
+            }
+            color += side * terrainSideAmount;
+        }
     #endif
 
     return color;
@@ -257,22 +282,33 @@ vec4 getTerrainSliceStochastic(float slice, inout TerrainStochastic ts, bool lum
         vec3 geom = normalize(v_terrainNormal);
         vec2 dx = terrainFlatDX * scale;
         vec2 dy = terrainFlatDY * scale;
+        vec3 normal = vec3(0.0);
 
-        vec3 flatNormal = mix(
-            sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength),
-            sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE, strength),
-            terrainFarAmount);
-        vec3 normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy;
+        if (terrainSideAmount < 1.0){
+            vec3 flatNormal = mix(
+                sampleTerrainTangentNormal(slice, v_terrainTextureDetailTiled * scale + offset, dx, dy, strength),
+                sampleTerrainTangentNormal(slice, terrainFarUV * scale + offset, dx * TERRAIN_TILE_BREAK_RATE, dy * TERRAIN_TILE_BREAK_RATE, strength),
+                terrainFarAmount);
+            normal = vec3(flatNormal.xy + geom.xz, abs(flatNormal.z) * geom.y).xzy * (1.0 - terrainSideAmount);
+        }
 
-        vec3 sideX = sampleTerrainTangentNormal(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale, strength);
-        vec3 sideZ = sampleTerrainTangentNormal(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale, strength);
-        // Undo the mirrored U of each side plane, or opposite slopes tilt the wrong way
-        sideX.x *= terrainFaceX;
-        sideZ.x *= terrainFaceZ;
-        vec3 sideNormal = vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx * terrainSideWeight.x +
-                          vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz * terrainSideWeight.y;
+        if (terrainSideAmount > 0.0){
+            vec3 sideNormal = vec3(0.0);
+            // Undo the mirrored U of each side plane, or opposite slopes tilt the wrong way
+            if (terrainSideWeight.x > 0.0){
+                vec3 sideX = sampleTerrainTangentNormal(slice, terrainSideXUV * scale + offset, terrainSideXDX * scale, terrainSideXDY * scale, strength);
+                sideX.x *= terrainFaceX;
+                sideNormal += vec3(sideX.xy + geom.zy, abs(sideX.z) * geom.x).zyx * terrainSideWeight.x;
+            }
+            if (terrainSideWeight.y > 0.0){
+                vec3 sideZ = sampleTerrainTangentNormal(slice, terrainSideZUV * scale + offset, terrainSideZDX * scale, terrainSideZDY * scale, strength);
+                sideZ.x *= terrainFaceZ;
+                sideNormal += vec3(sideZ.xy + geom.xy, abs(sideZ.z) * geom.z).xyz * terrainSideWeight.y;
+            }
+            normal += sideNormal * terrainSideAmount;
+        }
 
-        return normalize(mix(normal, sideNormal, terrainSideAmount));
+        return normalize(normal);
     }
 
     // getTerrainLayerNormal of a stochastic layer: each projection's taps are blended as
