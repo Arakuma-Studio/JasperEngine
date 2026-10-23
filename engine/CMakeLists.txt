@@ -820,8 +820,12 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/TranslateTracks.cpp
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
+    core/pose/HumanoidMapIO.cpp
+    core/pose/PoseAnimationIO.cpp
     core/pose/PoseDofs.cpp
+    core/pose/PoseFile.cpp
     core/pose/PoseIK.cpp
+    core/pose/PoseRanges.cpp
     core/pose/PoseRig.cpp
     core/pose/PoseSampler.cpp
     core/pose/PoseSecondary.cpp
@@ -954,12 +958,6 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
-    core/pose/HumanBones.cpp
-    core/pose/HumanoidMapIO.cpp
-    core/pose/PoseAnimationIO.cpp
-    core/pose/PoseDofs.cpp
-    core/pose/PoseFile.cpp
-    core/pose/PoseRanges.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
