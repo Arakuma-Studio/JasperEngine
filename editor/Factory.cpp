@@ -1845,6 +1845,20 @@ std::string editor::Factory::createMirrorComponent(int indentSpaces, EntityRegis
     return code.str();
 }
 
+std::string editor::Factory::createPoseAnimatorComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<PoseAnimatorComponent>(entity)) return "";
+    PoseAnimatorComponent& animator = scene->getComponent<PoseAnimatorComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "PoseAnimatorComponent poseanimator;\n";
+    code << ind << "poseanimator.animation = " << formatString(animator.animation) << ";\n";
+    code << ind << "poseanimator.autoplay = " << formatBool(animator.autoplay) << ";\n";
+    code << ind << "poseanimator.speed = " << formatFloat(animator.speed) << ";\n";
+    code << ind << "poseanimator.weight = " << formatFloat(animator.weight) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "PoseAnimatorComponent", "poseanimator", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<UIDocumentComponent>(entity)) return "";
     UIDocumentComponent& document = scene->getComponent<UIDocumentComponent>(entity);
@@ -2645,6 +2659,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::MirrorComponent: return createMirrorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ReflectionProbeComponent: return createReflectionProbeComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

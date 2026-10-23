@@ -59,6 +59,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "component/ModelComponent.h"
 #include "component/MorphTracksComponent.h"
 #include "component/ShadowCaster2DComponent.h"
@@ -128,6 +129,7 @@
 #include "object/MeshPolygon.h"
 #include "object/Mirror.h"
 #include "object/Model.h"
+#include "object/PoseAnimator.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
 #include "object/Points.h"
@@ -190,6 +192,7 @@
 #include "shader/ShaderDataSerializer.h"
 
 #include "subsystem/ActionSystem.h"
+#include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"

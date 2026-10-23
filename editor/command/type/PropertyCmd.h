@@ -75,6 +75,9 @@ namespace jasperengine::editor{
             // Document placement and input; filename and render settings reload the document.
             case ComponentType::UIDocumentComponent:
                 return propertyName == "sortOrder" || propertyName == "enabled" || propertyName == "interactive" || propertyName == "pixelRatio";
+            // Nothing of it is shown in the Hierarchy.
+            case ComponentType::PoseAnimatorComponent:
+                return true;
             // Transform.parent drives tree order and lock state.
             case ComponentType::Transform:
                 return propertyName == "position" || propertyName == "rotation" || propertyName == "scale";

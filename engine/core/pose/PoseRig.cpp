@@ -141,7 +141,13 @@ namespace jasperengine::pose {
             const double det = h.m[0][0] * (h.m[1][1] * h.m[2][2] - h.m[1][2] * h.m[2][1])
                              - h.m[0][1] * (h.m[1][0] * h.m[2][2] - h.m[1][2] * h.m[2][0])
                              + h.m[0][2] * (h.m[1][0] * h.m[2][1] - h.m[1][1] * h.m[2][0]);
-            if (std::fabs(det) < 1e-18){
+            double largest = 0.0;
+            for (int r = 0; r < 3; r++){
+                for (int c = 0; c < 3; c++){
+                    largest = std::max(largest, std::fabs(h.m[r][c]));
+                }
+            }
+            if (!(largest > 0.0) || std::fabs(det) < 1e-9 * largest * largest * largest){
                 if (error) *error = "the hips' parent transform is degenerate (zero scale)";
                 return false;
             }
@@ -495,15 +501,27 @@ namespace jasperengine::pose {
             return;
         }
         const double target = floor + static_cast<double>(lift) * scale;
-        // one step is exact when the lowest point moves with the hips; a few more cover skin
-        // vertices weighted to bones above the hips
-        for (int iteration = 0; iteration < 4; iteration++){
-            const double delta = target - lowestPointPrecise(pose, skin);
-            if (!std::isfinite(delta) || std::fabs(delta) < 1e-12 * std::max(1.0, std::fabs(target))){
+        const double tolerance = 1e-12 * std::max(1.0, std::fabs(target));
+        // One step is exact when the lowest point moves with the hips. A lowest skin vertex
+        // weighted partly to bones outside the hips subtree moves less: the next steps divide by
+        // the measured response (secant). A step that does not move it at all is undone.
+        double lowest = lowestPointPrecise(pose, skin);
+        double response = 1.0;
+        for (int iteration = 0; iteration < 8; iteration++){
+            const double remaining = target - lowest;
+            if (!std::isfinite(remaining) || std::fabs(remaining) < tolerance){
                 break;
             }
-            const Vec3d localDelta = hipsParent.solveLinear(Vec3d(0, delta, 0));
-            pose.hipsPosition = (Vec3d(pose.hipsPosition) + localDelta).toVector3();
+            const double step = remaining / response;
+            const Vector3 previous = pose.hipsPosition;
+            pose.hipsPosition = (Vec3d(pose.hipsPosition) + hipsParent.solveLinear(Vec3d(0, step, 0))).toVector3();
+            const double moved = lowestPointPrecise(pose, skin);
+            if (std::fabs(moved - lowest) < 1e-9 * std::fabs(step)){
+                pose.hipsPosition = previous;
+                break;
+            }
+            response = clampd((moved - lowest) / step, 0.05, 1.0);
+            lowest = moved;
         }
     }
 
@@ -524,15 +542,49 @@ namespace jasperengine::pose {
         return result;
     }
 
-    std::vector<int> clampToLimits(BodyPose& body){
-        std::vector<int> clamped;
-        for (int d = 0; d < DOF_COUNT; d++){
-            const DofInfo& info = dofInfo(d);
-            const float value = body.angles[d];
+    bool boneWithinLimits(HumanBone bone, const float angles[DOFS_PER_BONE]){
+        for (int k = 0; k < DOFS_PER_BONE; k++){
+            const DofInfo& info = dofInfo(dofIndex(bone, k));
+            if (!(angles[k] >= info.minDegrees && angles[k] <= info.maxDegrees)){
+                return false;
+            }
+        }
+        return std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]) <= 180.0;
+    }
+
+    unsigned clampBoneToLimits(HumanBone bone, float angles[DOFS_PER_BONE]){
+        unsigned changed = 0;
+        for (int k = 0; k < DOFS_PER_BONE; k++){
+            const DofInfo& info = dofInfo(dofIndex(bone, k));
+            const float value = angles[k];
             const float limited = std::isnan(value) ? 0.0f : std::min(std::max(value, info.minDegrees), info.maxDegrees);
             if (limited != value || std::isnan(value)){
-                body.angles[d] = limited;
-                clamped.push_back(d);
+                angles[k] = limited;
+                changed |= 1u << k;
+            }
+        }
+        // the swing (dof1, dof2) is at most MAX_SWING_DEGREES long: beyond 180 it is the same
+        // rotation as a shorter swing the other way, and at 180 the twist is undefined (a twisted
+        // key would not survive the frames' limit pass), so the cap is half a degree below.
+        // Every limit range contains 0, so scaling stays inside.
+        const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+        if (swing > MAX_SWING_DEGREES){
+            const double factor = MAX_SWING_DEGREES / swing;
+            angles[0] = static_cast<float>(angles[0] * factor);
+            angles[1] = static_cast<float>(angles[1] * factor);
+            changed |= 3u;
+        }
+        return changed;
+    }
+
+    std::vector<int> clampToLimits(BodyPose& body){
+        std::vector<int> clamped;
+        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+            const unsigned changed = clampBoneToLimits(boneAt(b), &body.angles[b * DOFS_PER_BONE]);
+            for (int k = 0; k < DOFS_PER_BONE; k++){
+                if (changed & (1u << k)){
+                    clamped.push_back(b * DOFS_PER_BONE + k);
+                }
             }
         }
         return clamped;

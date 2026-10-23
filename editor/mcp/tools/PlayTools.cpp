@@ -3343,7 +3343,7 @@ void registerPlayTools(McpRegistry& registry) {
 
     const Json screenshotOption = w3::screenshotArgSchema();
     const Json maxWidth = w3::maxWidthArgSchema(4096, 768);
-    const Json runtimeScene = sceneRef("Default: the played scene.");
+    const Json runtimeScene = sceneRef();
 
     {
         ToolDef tool;
@@ -3351,20 +3351,20 @@ void registerPlayTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Play Mode";
         tool.description =
-            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
-            "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the "
-            "session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any action; set "
-            "= only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen between calls, runs only "
-            "inside wait / send_input / step.";
+            "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits "
+            "until running; returns the state + console problems, or isError with compile/script errors "
+            "(wait:false: a job_id). stop: restores the edit-time state, summarizes the session. step: "
+            "advance a paused game `frames` frames. Script errors stop play.\n"
+            "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause (see "
+            "the guide).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
-            {"frames", withDefault(integer("step only.", 1, 600), 1)},
-            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
-            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
+            {"frames", withDefault(integer("", 1, 600), 1)},
+            {"time_scale", withDefault(number("", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
@@ -3449,7 +3449,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"name_contains", string("Case-insensitive.")},
-            {"component", componentName("Has this component.")},
+            {"component", componentName("")},
             {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
             {"with_components", withDefault(boolean(""), false)},
             {"limit", withDefault(integer("", 1, 5000), 200)}
@@ -3470,8 +3470,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},
-            {"components", array(string(""), "Filter.")},
-            {"properties", array(string(""), "Filter.")},
+            {"components", array(string(""), "")},
+            {"properties", array(string(""), "")},
             {"include_script_state", withDefault(boolean(""), true)},
             {"max_depth", withDefault(integer("Script table nesting.", 1, 8), 2)}
         }, {"entity"});
@@ -3509,17 +3509,22 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames (no focus needed). events in order, each {type, ...} "
-            "(first action = default):\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames "
-            "(2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code points; -1 "
-            "selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter (the game "
-            "window)\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (click/down/up default: the "
-            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
-            "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector of a "
-            "UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
-            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\nwait: frames, ms. "
-            "release_all.\nspace: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game "
-            "view px. down holds until up/release_all/stop. Returns frames, console lines, play state; auto_pause: "
+            "Inject input into the running game across frames (no focus needed). events in order, each {type, "
+            "...} (first action = default):\n"
+            "key: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames (2), hold_ms, mods "
+            "[shift,ctrl,alt,super]\n"
+            "text: text (UTF-8); ime: text, cursor (code points; -1 selects); ime_commit: text; ime_cancel\n"
+            "mouse_leave, mouse_enter (the game window)\n"
+            "mouse: action click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button "
+            "left|right|middle, to [x,y] + steps (drag), dx, dy\n"
+            "touch: action tap|start|move|end|cancel|swipe, pointer, x, y, to\n"
+            "mouse/touch: target / to_target = CSS selector of a UI Document element (its center; document: "
+            "which)\n"
+            "gamepad: gamepad (0), button (a, b, start, dpad_up...) + action, or axis (left_x..right_trigger) "
+            "+ value -1..1\n"
+            "wait: frames, ms. release_all.\n"
+            "x/y space: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game view "
+            "px. down holds until up/release_all/stop. Returns frames, console lines, play state; auto_pause: "
             "only the events + frames_after run.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},

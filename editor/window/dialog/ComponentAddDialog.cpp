@@ -103,6 +103,7 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Animation", ICON_FA_FILM, {
             {ComponentType::AnimationComponent, "Plays a sequence of actions"},
+            {ComponentType::PoseAnimatorComponent, "Plays a pose animation (.poseanim) on a humanoid model"},
             {ComponentType::SpriteAnimationComponent, "Flips through sprite frames"},
             {ComponentType::ActionComponent, "Start, pause and stop state of an animation step"},
             {ComponentType::TweenComponent, "Duration, easing and looping of a tween"},

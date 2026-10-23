@@ -65,6 +65,7 @@ Projects made before the rename are migrated once with
 | `Collider2DType`, `Collider3DType`, `RigidbodyMotionQuality` | `Shape2DType`, `Shape3DType`, `Body3DMotionQuality` |
 | `AudioSourceState`, `AudioSourceAttenuation` | `SoundState`, `SoundAttenuation` |
 | `LayoutGroupType`, `ShadowCaster2DShape` | `ContainerType`, `Occluder2DShape` |
+| `PoseAnimator` / `PoseAnimatorComponent` (Add Component > Animation > Pose Animator; `model:getPoseAnimator()`): plays a `.poseanim` pose animation live on a humanoid Model. Unity has no equivalent; the closest are an Animator with a humanoid Avatar and its `Animator.speed` / layer weight | none (new) |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
