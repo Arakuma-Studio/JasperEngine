@@ -942,8 +942,10 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pose/HumanBones.cpp
     core/pose/HumanoidMapIO.cpp
     core/pose/PoseAnimationIO.cpp
+    core/pose/PoseDofs.cpp
     core/pose/PoseFile.cpp
     core/pose/PoseRanges.cpp
     core/registry/EntityCloner.cpp
