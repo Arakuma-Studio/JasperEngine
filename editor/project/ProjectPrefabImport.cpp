@@ -5,6 +5,7 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "util/FileUtils.h"
 #include "ProjectPrefabInternal.h"
 #include "Factory.h"
 #include "Out.h"
@@ -729,9 +730,17 @@ bool editor::Project::isPrefabRootDefaultOverride(ComponentType type, const std:
 
 bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Prefab& prefab) {
     try {
-        const YAML::Node node = loadPrefabFile(getProjectPath() / filepath);
-        std::string rootName = filepath.stem().string();
-        prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+        // what the asset's file holds that this editor cannot read gates its saves
+        LoadReport loadReport;
+        loadReport.documentPath = FileUtils::pathToUtf8(filepath);
+        {
+            ScopedLoadReport reportScope(loadReport);
+            const YAML::Node node = loadPrefabFile(getProjectPath() / filepath, &prefab.diskSha1);
+            std::string rootName = filepath.stem().string();
+            prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+        }
+        prefab.loadReport = std::move(loadReport);
+        logLoadReport(prefab.loadReport);
         resolveRegistryPrefabRefs(prefab.registry.get());
         if (prefab.root == NULL_ENTITY) {
             Out::error("Prefab %s has no GameObject", filepath.string().c_str());

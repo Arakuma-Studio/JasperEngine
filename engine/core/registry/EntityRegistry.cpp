@@ -245,6 +245,9 @@ void EntityRegistry::destroyEntity(Entity entity) {
 
     const Signature signature = entityManager.getSignature(entity);
     onEntityDestroyed(entity, signature);
+    if (editorData) {
+        editorData->entityDestroyed(entity);
+    }
 
     // the hooks may have changed what it has
     componentManager.entityDestroyed(entity, entityManager.isCreated(entity) ? entityManager.getSignature(entity) : signature);
@@ -291,6 +294,9 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     }
     componentManager.entitiesDestroyed(doomed, types);
     for (Entity entity : doomed) {
+        if (editorData) {
+            editorData->entityDestroyed(entity);
+        }
         entityManager.destroy(entity);
     }
 }
@@ -690,6 +696,9 @@ void EntityRegistry::clear() {
     }
     // Reset user counter to just before the user range
     entityManager.setLastUserEntity(EntityManager::lastSystemEntity());
+    if (editorData) {
+        editorData->registryCleared();
+    }
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

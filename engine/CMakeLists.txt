@@ -22,8 +22,7 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
-# unit tests of the engine core (engine/tests/core), standalone engine builds only
-# (tools/build.sh unit-tests)
+# googletest unit tests of engine core (engine/tests/core, tools/build.sh unit-tests)
 option(JASPERENGINE_TESTS "Build jasperengine-core-tests" OFF)
 # the S07 ECS benchmark (tools/performance/run-ecs-bench.py), standalone engine builds only
 option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
@@ -930,6 +929,8 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
+    core/io/AtomicFile.cpp
+    core/io/ScopedFileLock.cpp
     core/math/AABB.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
@@ -1325,11 +1326,7 @@ endif() # End standalone executable build
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
 endif()
-
-if(JASPERENGINE_TESTS)
-    if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-        message(FATAL_ERROR "JASPERENGINE_TESTS needs the standalone engine build (cmake -S engine)")
-    endif()
+if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
 endif()
 

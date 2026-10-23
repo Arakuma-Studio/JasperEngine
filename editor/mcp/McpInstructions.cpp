@@ -14,11 +14,11 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
-screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, ECS/systems, Unity glossary).
+scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
+with tools, write code with your own file tools, verify by playing, screenshots and the Console.
+tools/list is authoritative for tool names and arguments; read a tool's description before
+first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
+prefabs, HTML/CSS UI, data safety, ECS, Unity terms).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -67,7 +67,7 @@ A tool error says what was wrong and lists valid choices: fix the arguments, don
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
-in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
+in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your edits are picked up before your next tool call (script
 properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
@@ -245,8 +245,11 @@ brings remote resources; effect(<name>, ...) draws GPU effects and simulations (
 set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
+## Data safety
+Save after each step (Auto Save keeps backups only). degraded_document, recovery,
+project_locked: jasper://docs/data-safety.
+
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
 - Edits made while playing are discarded when play stops (as in Unity): stop before editing
   the scene for real.
 - Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot

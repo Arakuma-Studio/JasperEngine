@@ -2051,6 +2051,7 @@ void editor::App::show(){
 
     sceneSaveDialog.show();
     projectSaveDialog.show();
+    dataSafetyDialogs.show(project);
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
@@ -2323,7 +2324,19 @@ void editor::App::loadStartupProject() {
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
+        project.setIgnoreProjectLock(mcpOptions.ignoreLock);
         if (!loadMcpStartupProject(mcpOptions)) {
+            if (project.wasProjectLocked()) {
+                // another editor writes this project: an agent here would overwrite its work
+                std::fprintf(stderr, "[mcp] project_locked: %s Pass --ignore-lock to open it anyway.\n",
+                             project.getProjectLockMessage().c_str());
+                std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
+                startupExitCode = 3;
+                // the main loop exits after the next frame (consumeBenchmarkExit): closing
+                // before the first frame leaves the render queue waiting on shutdown, and that
+                // frame wants a project (the empty temporary one, as when a load fails)
+                benchmarkExit = true;
+            }
             project.createTempProject("MyJasperEngineProject");
         }
         projectLoading = false;
@@ -2354,8 +2367,10 @@ bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
             Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
             return true;
         }
-        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
-                     options.project.string().c_str(), error.c_str());
+        if (!project.wasProjectLocked()) {
+            std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                         options.project.string().c_str(), error.c_str());
+        }
         return false;
     }
 
@@ -2543,6 +2558,19 @@ void editor::App::engineRender(){
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput);
+    // scene Auto Save (backups only), never in the middle of a drag or a field being typed
+    project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
+        || ImGui::GetIO().WantTextInput);
+    // the title says when the scene shown did not load completely (its tab does too)
+    {
+        const SceneProject* shown = project.getSelectedScene();
+        const std::string suffix = shown && shown->loadReport.dropped() > 0 ?
+            " - " + (shown->filepath.empty() ? shown->name : shown->filepath.filename().string()) + " (Partial Load)" : std::string();
+        if (suffix != windowTitleSuffix) {
+            windowTitleSuffix = suffix;
+            Backend::updateWindowTitle((windowTitleProject.empty() ? project.getName() : windowTitleProject) + windowTitleSuffix);
+        }
+    }
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -3236,6 +3264,8 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // a clean quit: this session's crash backups and the project lock go
+    project.endProjectSession();
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
@@ -3385,7 +3415,8 @@ void editor::App::updateResourcesPath(){
 }
 
 void editor::App::updateWindowTitle(const std::string& projectName) {
-    Backend::updateWindowTitle(projectName);
+    windowTitleProject = projectName;
+    Backend::updateWindowTitle(projectName + windowTitleSuffix);
 }
 
 void editor::App::stopTransientPreviews() {
@@ -3472,6 +3503,31 @@ void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t co
     enqueueMainThreadTask([this, path, contextSceneId, contextRoot, inContext]() {
         project.openPrefabStage(path, contextSceneId, contextRoot, inContext);
     });
+}
+
+// An editor serving an MCP client on stdio has nobody to answer a modal: it decides like a
+// headless host (Refuse, Keep, no) and the agent passes allow_data_loss / recovery / --ignore-lock
+editor::DegradedSavePolicy editor::App::confirmDegradedSave(const DegradedSaveRequest& request) {
+    // the modal's Save Anyway runs the save again; this attempt writes nothing
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestDegradedSave(request);
+    }
+    return DegradedSavePolicy::Refuse;
+}
+
+editor::RecoveryChoice editor::App::resolveSceneRecovery(const SceneBackupInfo& backup) {
+    // the saved file opens now; the modal's Restore reloads the scene from the backup
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestRecovery(backup);
+    }
+    return RecoveryChoice::Keep;
+}
+
+bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestLockedProject(info);
+    }
+    return false;
 }
 
 void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {

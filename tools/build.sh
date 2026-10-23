@@ -7,7 +7,7 @@
 #   tools/build.sh android [--clean]   engine sample project APK (debug)
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
-#   tools/build.sh unit-tests          builds and runs jasperengine-core-tests (engine/tests/core)
+#   tools/build.sh unit-tests          builds and runs jasperengine-core-tests and jasperengine-editor-tests
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
@@ -26,8 +26,8 @@
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
-# unit-tests: UNIT_TEST_ARGS goes to the test binary, RUN=0 builds only; its XML report is
-# build/test-results/core.xml.
+# unit-tests: UNIT_TEST_ARGS goes to both test binaries (e.g. --gtest_filter=AtomicFile*), RUN=0
+# builds only, UNIT_SUITES=core|editor runs one binary; results in build/test-results/<suite>.xml.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -221,15 +221,28 @@ htmlui-editor-tests)
     "
     ;;
 unit-tests)
+    # Release, in the linux target's editor directory: the editor objects are shared with it
     BT="${BUILD_TYPE:-Release}"
-    TESTS_DIR="$OUT/core-tests"
+    SUITES="${UNIT_SUITES:-core editor}"
     run bash -euo pipefail -c "
-        cmake -S engine -B $TESTS_DIR -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TESTS=ON $CCACHE_FLAGS
-        cmake --build $TESTS_DIR --target jasperengine-core-tests $JOBS_FLAG
-        [[ '${RUN:-1}' == 0 ]] && exit 0
         mkdir -p build/test-results
         set -f  # a --gtest_filter pattern is not a glob
-        $TESTS_DIR/tests/core/jasperengine-core-tests --gtest_output=xml:build/test-results/core.xml ${UNIT_TEST_ARGS:-}
+        status=0
+        for suite in $SUITES; do
+            if [[ \$suite == core ]]; then
+                cmake -S engine -B $OUT/core-tests -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TESTS=ON $CCACHE_FLAGS
+                cmake --build $OUT/core-tests --target jasperengine-core-tests $JOBS_FLAG
+                binary=$OUT/core-tests/tests/core/jasperengine-core-tests
+            else
+                cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TESTS=ON \
+                    -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+                cmake --build $OUT/editor --target jasperengine-editor jasperengine-editor-tests $JOBS_FLAG
+                binary=$OUT/editor/jasperengine-editor-tests
+            fi
+            [[ '${RUN:-1}' == 0 ]] && continue
+            xvfb-run -a -s '-screen 0 1280x720x24' \$binary --gtest_output=xml:build/test-results/\$suite.xml ${UNIT_TEST_ARGS:-} || status=1
+        done
+        exit \$status
     "
     ;;
 android)
