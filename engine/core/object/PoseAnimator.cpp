@@ -66,8 +66,12 @@ void PoseAnimator::stop(){
     animator.playing = false;
     animator.time = 0;
     if (animator.runtime){
-        animator.runtime->transitionActive = false;
-        animator.runtime->pending = pose::PoseGoTo();
+        pose::PoseAnimatorRuntime& runtime = *animator.runtime;
+        runtime.pending = pose::PoseGoTo();
+        // key pose 0 itself: in a loop, time 0 still has the tail of the move back to it
+        runtime.transitionActive = runtime.isLoaded();
+        runtime.transitionArrived = true;
+        runtime.transitionKey = 0;
     }
 }
 

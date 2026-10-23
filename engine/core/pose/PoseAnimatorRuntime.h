@@ -11,6 +11,7 @@
 
 #include "Export.h"
 #include "ecs/Entity.h"
+#include "math/Matrix4.h"
 #include "pose/PoseTypes.h"
 
 #include <array>
@@ -81,6 +82,10 @@ namespace jasperengine::pose {
         std::string modelFile;
         std::shared_ptr<const PoseRig> rig;
         std::array<Entity, HUMAN_BONE_COUNT> slotEntities{};   // NULL_ENTITY: slot unmapped
+        // skeleton local = bridge * Transform local (ModelRig bridges: non-bone nodes folded into
+        // the skeleton): what is written to a bone transform is bridgeRotationInverse * pose
+        std::array<Quaternion, HUMAN_BONE_COUNT> bridgeRotationInverse;
+        Matrix4 hipsBridgeInverse;
 
         // the realised key poses and the frames played (frames[f] at f * length / (frames.size() - 1))
         std::vector<HumanPose> keys;
@@ -93,13 +98,19 @@ namespace jasperengine::pose {
 
         // live transition (goToPose); a request made before the rig is ready waits in `pending`
         bool transitionActive = false;
+        bool transitionArrived = false;   // settled: holds the key pose exactly
         float transitionTime = 0.0f;
+        float transitionSettle = 0.0f;    // transitionSettleTime() of the current transition
         int transitionKey = -1;
         Transition transition;
         HumanPose transitionFrom;
         PoseGoTo pending;
 
         std::array<PoseBlendBone, HUMAN_BONE_COUNT> blend;
+
+        // Realises the keys on `rig` (joint limits first when humanize.jointLimits, grounded with
+        // the rig's skin) and computes the frames at the animation's frame rate. Uses `data`.
+        bool build(std::shared_ptr<const PoseRig> rig, std::string* error);
 
         bool isLoaded() const { return !failed && rig && !frames.empty(); }
         int poseCount() const { return dataLoaded ? (int)data.poses.size() : 0; }
@@ -109,11 +120,18 @@ namespace jasperengine::pose {
         // the playback pose at `time`
         void samplePlayback(float time, HumanPose& out) const;
 
-        // starts a live transition from the displayed pose to key `request.key`; false when the
-        // key does not exist (or nothing is loaded yet)
+        // Starts a live transition from the displayed pose to key `request.key`; false when the
+        // key does not exist (or nothing is loaded yet). Every bone eases with the phase 1 ease
+        // (spec 4.8) of the transition, delayed by overlap * group weight * depth and loosened by
+        // looseness * group weight * depth, as in playback; the step rate quantises its time.
         bool startTransition(const PoseGoTo& request);
-        // advances the live transition by dt and writes its pose (the key pose once arrived)
+        // advances the live transition by dt and writes its pose: the key pose exactly once
+        // every bone's spring has settled (|ease - 1| < 1e-4 from then on)
         void sampleTransition(float dt, HumanPose& out);
+        // the eased pose `time` seconds into the current transition
+        void transitionPose(float time, HumanPose& out) const;
+        // seconds until the current transition has settled
+        float transitionSettleTime() const;
     };
 
 }

@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
+#include "pose/ModelRig.h"
 #include "pose/PoseFile.h"
 
 #include <cmath>
@@ -94,8 +95,32 @@ bool PoseAnimatorSystem::buildRuntime(Entity entity, PoseAnimatorComponent& anim
     runtime.model = entity;
     runtime.modelFile = model->filename;
 
-    // the rig, the realised keys and the frames come with the pose maths (phase 1)
-    return fail(animator, "the pose rig is not available in this build");
+    pose::ModelRigInfo rigInfo;
+    std::vector<Entity> boneEntities;
+    std::vector<Matrix4> bridges;
+    std::string error;
+    if (!pose::buildModelRig(scene, entity, rigInfo, boneEntities, &bridges, &error)){
+        return fail(animator, "'" + scene->getEntityName(entity) + "': " + error);
+    }
+    if (!runtime.build(rigInfo.rig, &error)){
+        return fail(animator, animator.animation + ": " + error);
+    }
+
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        const int bone = runtime.rig->boneIndex(pose::boneAt(b));
+        runtime.slotEntities[b] = (bone >= 0 && bone < (int)boneEntities.size()) ? boneEntities[bone] : NULL_ENTITY;
+        runtime.bridgeRotationInverse[b] = Quaternion();
+        if (bone >= 0 && bone < (int)bridges.size()){
+            Vector3 position, scale;
+            Quaternion rotation;
+            bridges[bone].decompose(position, scale, rotation);
+            runtime.bridgeRotationInverse[b] = rotation.inverse();
+            if (b == pose::boneIndex(pose::HumanBone::Hips)){
+                runtime.hipsBridgeInverse = bridges[bone].inverse();
+            }
+        }
+    }
+    return true;
 }
 
 bool PoseAnimatorSystem::bonesAlive(const pose::PoseAnimatorRuntime& runtime) const{
@@ -116,9 +141,12 @@ void PoseAnimatorSystem::applyPose(pose::PoseAnimatorRuntime& runtime, const pos
         // weight 0 from the start: the bones were never touched, leave them
         if (weight <= 0.0f && !blend.rotationActive) continue;
 
-        transform->rotation = blend.blendRotation(transform->rotation, pose.rotations[b], weight);
+        // skeleton local = bridge * Transform local
+        const Quaternion rotation = runtime.bridgeRotationInverse[b] * pose.rotations[b];
+        transform->rotation = blend.blendRotation(transform->rotation, rotation, weight);
         if (b == pose::boneIndex(pose::HumanBone::Hips)){
-            transform->position = blend.blendPosition(transform->position, pose.hipsPosition, weight);
+            const Vector3 position = runtime.hipsBridgeInverse * pose.hipsPosition;
+            transform->position = blend.blendPosition(transform->position, position, weight);
         }
         transform->needUpdate = true;
     }
@@ -190,9 +218,15 @@ void PoseAnimatorSystem::update(double dt){
             }
             animator.runtime->loading = false;
             animator.needsLoad = false;
-            if (animator.runtime->pending.key >= 0){
-                animator.runtime->startTransition(animator.runtime->pending);
-                animator.runtime->pending = pose::PoseGoTo();
+            pose::PoseAnimatorRuntime& loaded = *animator.runtime;
+            if (loaded.pending.key >= 0){
+                loaded.startTransition(loaded.pending);
+                loaded.pending = pose::PoseGoTo();
+            }else if (!animator.playing && animator.time == 0){
+                // not playing (no autoplay, or stopped before the load): key pose 0, as stop shows it
+                loaded.transitionActive = true;
+                loaded.transitionArrived = true;
+                loaded.transitionKey = 0;
             }
         }
 

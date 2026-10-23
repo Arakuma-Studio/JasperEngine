@@ -1,0 +1,290 @@
+"""Pose Animator runtime (pose animation phase 2, spec section 4): the component on the hero of the
+pose fixture project, playing a small .poseanim written here in the file format of spec 2.1.
+
+- add_component / set_properties: the component and its properties (animation, autoplay, speed,
+  weight); scene save + reload keeps them (get_entity yaml, key `poseanimator`)
+- edit mode: the animator does nothing (bones keep their rest pose)
+- play mode: bone rotations change over time; eval_lua drives the PoseAnimator API (getPoseCount,
+  findPose, getPoseName, goToPose reaching the key pose, setWeight(0) giving the rest pose back,
+  stop showing pose 0, one-shot end and onFinish); Stop restores the edit-time bones
+- a missing file logs one error and disables the animator
+- export: the generated scene code sets the component and the .poseanim ships
+
+Runs on a scratch copy of tools/fixtures/pose-animation.
+"""
+
+import asyncio
+import json
+import math
+import time
+
+from harness import Editor, REPO
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
+TIMEOUT = 900
+
+S: dict = {}
+
+ANIM = "anims/raise.poseanim"
+ONE_SHOT = "anims/oneshot.poseanim"
+HAND = "mixamorig:LeftHand"
+ARM = "mixamorig:LeftArm"
+
+
+def pose(name, raise_deg, hold=0.1):
+    angles = {}
+    if raise_deg:
+        angles = {"left_upper_arm.raise": raise_deg, "right_upper_arm.raise": raise_deg}
+    return {"name": name, "hold": hold, "grounded": True, "lift": 0, "transition": None,
+            "offset": {"left": 0, "forward": 0}, "angles": angles}
+
+
+def animation(poses, loop=True):
+    return {
+        "format": "jasperengine.poseanim", "version": 1, "preview_model": "models/hero_tpose.gltf",
+        "frame_rate": 30, "loop": loop,
+        "feel": {"transition": {"curve": "spring", "duration": 0.12, "overshoot": 0.25, "anticipation": 0.06},
+                 "step_rate": 0, "overlap": 0.05, "looseness": 0.2,
+                 "weights": {"spine": 1, "head": 1, "arms": 1, "legs": 0}},
+        "humanize": {"enabled": False, "joint_limits": True, "moving_holds": 0.08, "inbetweens": 0.4,
+                     "life": 0.6, "seed": 1, "head_follow": 0.5, "torso_follow": 0.4, "springiness": 0.5},
+        "poses": poses,
+    }
+
+
+def write_asset(ed: Editor, rel: str, data: dict):
+    path = ed.project / "assets" / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+async def lua(ed: Editor, code: str, **args):
+    return (await ed.call("eval_lua", code=code, **args))["values"]
+
+
+def close(a, b, tol):
+    return abs(a - b) <= tol
+
+
+async def hand_y(ed: Editor, **args) -> float:
+    v = await lua(ed, f"return object('Hero', 'Model'):getBone('{HAND}'):getWorldPosition().y", **args)
+    return float(v[0])
+
+
+async def arm_rotation(ed: Editor):
+    r = await ed.call("get_runtime_entity", entity=ARM, components=["transform"], include_script_state=False)
+    text = json.dumps(r)
+    found = None
+
+    def walk(value):
+        nonlocal found
+        if isinstance(value, dict):
+            for k, v in value.items():
+                if k == "rotation" and found is None:
+                    found = v
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+    walk(r)
+    ed.check(found is not None, f"no rotation in get_runtime_entity: {text[:600]}")
+    return found
+
+
+async def frames(ed: Editor, seconds: float):
+    await ed.call("wait", seconds=seconds)
+
+
+async def test_add_component(ed: Editor):
+    write_asset(ed, ANIM, animation([pose("Down", 0, hold=0.3), pose("T", 90, hold=0.3), pose("Up", 150, hold=0.3)]))
+    write_asset(ed, ONE_SHOT, animation([pose("Down", 0, hold=0.05), pose("T", 90, hold=0.05)], loop=False))
+
+    types = await ed.call("list_component_types")
+    ed.check("poseanimator" in json.dumps(types).lower(), f"poseanimator not listed: {json.dumps(types)[:400]}")
+
+    S["edit_hand_y"] = await hand_y(ed, allow_edit_mode=True)
+    await ed.call("add_component", entity="Hero", component="poseanimator",
+                  values={"poseanimator": {"animation": ANIM, "speed": 1, "weight": 1}})
+    got = await ed.call("get_entity", entity="Hero", components=["poseanimator"])
+    values = json.dumps(got)
+    ed.check(ANIM in values, f"animation not set: {values[:600]}")
+
+    # the animator does not run in edit mode
+    ed.check(close(await hand_y(ed, allow_edit_mode=True), S["edit_hand_y"], 1e-4), "edit mode moved the bones")
+
+
+async def test_scene_round_trip(ed: Editor):
+    await ed.call("set_properties", entity="Hero", values={"poseanimator": {"autoplay": True, "speed": 1.5, "weight": 0.75}})
+    await ed.call("save_scene", scene="Main Scene")
+    text = (ed.project / "Main Scene.scene").read_text()
+    ed.check("poseanimator:" in text and ANIM in text, "no poseanimator key in the saved scene")
+
+    # closed and opened again: decoded from the file
+    await ed.call("create_scene", name="Other", type="3D")
+    await ed.call("close_scene", scene="Main Scene")
+    await ed.call("open_scene", scene="Main Scene.scene")
+    y = await ed.call("get_entity", entity="Hero", detail="yaml", components=["poseanimator"])
+    blob = json.dumps(y)
+    ed.check("poseanimator" in blob and ANIM in blob, f"yaml after reload: {blob[:800]}")
+    ed.check("1.5" in blob and "0.75" in blob, f"speed/weight after reload: {blob[:800]}")
+    await ed.call("set_properties", entity="Hero", values={"poseanimator": {"speed": 1, "weight": 1}})
+
+
+async def test_play_bones_move(ed: Editor):
+    started = await ed.call("play", action="start")
+    ed.check_eq(started["state"], "playing", f"play: {started}")
+    deadline = time.monotonic() + 60
+    while True:
+        v = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()")
+        if v[0]:
+            break
+        ed.check(time.monotonic() < deadline, "the animator never loaded")
+        await frames(ed, 0.2)
+
+    rotations = []
+    for _ in range(4):
+        rotations.append(await arm_rotation(ed))
+        await frames(ed, 0.17)
+    ed.check(len({json.dumps(r) for r in rotations}) >= 3, f"the arm does not move over time: {rotations}")
+
+
+async def test_lua_api(ed: Editor):
+    v = await lua(ed, """
+        local a = object('Hero', 'Model'):getPoseAnimator()
+        return a:getPoseCount(), a:findPose('T'), a:findPose('nope'), a:getPoseName(2), a:getAnimation(),
+               a:isPlaying(), a:getLength() > 0.5
+    """)
+    ed.check_eq(v, [3, 1, -1, "Up", ANIM, True, True], "PoseAnimator API")
+
+
+async def test_go_to_pose(ed: Editor):
+    # arms down (pose 0, neutral) then out to the side (pose "T": raise 90 = the T-pose)
+    ok = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():goToPose(0, 0.1, 0, 0)")
+    ed.check_eq(ok, [True], "goToPose(0)")
+    await frames(ed, 1.0)
+    playing = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isPlaying()")
+    ed.check_eq(playing, [False], "playback stops for a live transition")
+    down = await hand_y(ed)
+    ed.check(down < S["edit_hand_y"] - 0.35, f"pose 0 has the arms down: hand y {down}, rest {S['edit_hand_y']}")
+
+    ok = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():goToPose('T', 0.1, 0, 0)")
+    ed.check_eq(ok, [True], "goToPose('T')")
+    await frames(ed, 1.0)
+    side = await hand_y(ed)
+    ed.check(close(side, S["edit_hand_y"], 0.03), f"pose T is the T-pose: hand y {side}, rest {S['edit_hand_y']}")
+    S["down_hand_y"] = down
+
+    bad = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():goToPose('nope')")
+    ed.check_eq(bad, [False], "goToPose of an unknown pose")
+
+
+async def test_weight_zero_leaves_the_rest_pose(ed: Editor):
+    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():goToPose(0, 0.05, 0, 0)")
+    await frames(ed, 0.6)
+    ed.check(await hand_y(ed) < S["edit_hand_y"] - 0.35, "arms down before the weight change")
+    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():setWeight(0)")
+    await frames(ed, 0.4)
+    ed.check(close(await hand_y(ed), S["edit_hand_y"], 1e-3), "weight 0: the bones are back in the rest pose")
+    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():setWeight(0.5)")
+    await frames(ed, 0.4)
+    half = await hand_y(ed)
+    ed.check(S["down_hand_y"] + 0.05 < half < S["edit_hand_y"] - 0.05, f"weight 0.5 is in between: {half}")
+    await frames(ed, 0.4)
+    ed.check(close(await hand_y(ed), half, 1e-3), "weight 0.5 is stable over frames")
+    await lua(ed, "object('Hero', 'Model'):getPoseAnimator():setWeight(1)")
+
+
+async def test_stop_and_one_shot(ed: Editor):
+    v = await lua(ed, """
+        local a = object('Hero', 'Model'):getPoseAnimator()
+        a:stop()
+        return a:isPlaying(), a:getTime()
+    """)
+    ed.check_eq(v, [False, 0], "stop: not playing, time 0")
+    await frames(ed, 0.3)
+    ed.check(await hand_y(ed) < S["edit_hand_y"] - 0.35, "stop shows pose 0 (arms down)")
+
+    await lua(ed, f"""
+        local a = object('Hero', 'Model'):getPoseAnimator()
+        finished = 0
+        a.onFinish = function() finished = finished + 1 end
+        a:setAnimation('{ONE_SHOT}')
+        a:play()
+    """)
+    deadline = time.monotonic() + 30
+    while True:
+        v = await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); return finished, a:isPlaying(), a:isLoaded(), a:getTime(), a:getLength()")
+        if v[0] >= 1:
+            break
+        ed.check(time.monotonic() < deadline, f"the one-shot never finished: {v}")
+        await frames(ed, 0.2)
+    await frames(ed, 0.3)
+    v = await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); return finished, a:isPlaying(), math.abs(a:getTime() - a:getLength()) < 1e-4")
+    ed.check_eq(v, [1, False, True], "one-shot: onFinish once, stopped at the end")
+    # the last pose (T) stays
+    ed.check(close(await hand_y(ed), S["edit_hand_y"], 0.03), "the one-shot holds its last pose")
+
+
+async def test_stop_play_restores_the_scene(ed: Editor):
+    await ed.call("play", action="stop")
+    ed.check(close(await hand_y(ed, allow_edit_mode=True), S["edit_hand_y"], 1e-4), "Stop restores the bones")
+    got = json.dumps(await ed.call("get_entity", entity="Hero", components=["poseanimator"]))
+    ed.check(ANIM in got and ONE_SHOT not in got, f"Stop restores the component: {got[:500]}")
+
+
+async def test_missing_file_logs_one_error(ed: Editor):
+    await ed.call("add_component", entity="Robot", component="poseanimator",
+                  values={"poseanimator": {"animation": "anims/missing.poseanim"}})
+    await ed.call("play", action="start")
+    await frames(ed, 1.0)
+    entries = await ed.console_since(None, types=["error"], limit=1000)
+    errors = [e.get("message", "") for e in entries if "missing.poseanim" in e.get("message", "")]
+    ed.check_eq(len(errors), 1, f"one error for the missing file: {errors}")
+    v = await lua(ed, "return object('Robot', 'Model'):getPoseAnimator():isLoaded(), object('Hero', 'Model'):getPoseAnimator():isLoaded()")
+    ed.check_eq(v, [False, True], "the broken animator is disabled, the other plays")
+
+    # a good path loads it again: the A-pose robot (Blender rest rotations, twist bones) in a T-pose
+    await lua(ed, f"object('Robot', 'Model'):getPoseAnimator():setAnimation('{ANIM}')")
+    deadline = time.monotonic() + 30
+    while not (await lua(ed, "return object('Robot', 'Model'):getPoseAnimator():isLoaded()"))[0]:
+        ed.check(time.monotonic() < deadline, "the robot's animator never loaded")
+        await frames(ed, 0.2)
+    await lua(ed, "object('Robot', 'Model'):getPoseAnimator():goToPose('T', 0.1, 0, 0)")
+    await frames(ed, 1.0)
+    v = await lua(ed, """
+        local m = object('Robot', 'Model')
+        return m:getBone('hand.L'):getWorldPosition().y, m:getBone('upper_arm.L'):getWorldPosition().y
+    """)
+    ed.check(close(v[0], v[1], 0.03), f"robot T-pose: the hand at shoulder height: {v}")
+    await ed.call("play", action="stop")
+    await ed.call("remove_component", entity="Robot", component="poseanimator")
+
+
+async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while True:
+        job = await ed.call("get_job", job_id=job_id, log_lines=10)
+        if job["status"] != "running":
+            return job
+        if time.monotonic() > deadline:
+            ed.fail(f"job {job_id} still running after {timeout}s: {job}")
+        await asyncio.sleep(poll)
+
+
+async def test_export_generates_the_component(ed: Editor):
+    await ed.call("save_scene")
+    out = ed.scratch.root / "export-pose"
+    raw = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux",
+                                              "overwrite": True, "timeout_seconds": 900})
+    r = raw.value
+    if isinstance(r, dict) and r.get("status") == "running":
+        r = await wait_job(ed, r["job_id"], 900)
+    ed.check_eq(r["status"], "succeeded", raw.text[:2000])
+    sources = [p for p in out.rglob("*.cpp") if "PoseAnimatorComponent poseanimator;" in p.read_text(errors="ignore")]
+    ed.check(sources, "no PoseAnimatorComponent in the generated scene code")
+    code = sources[0].read_text(errors="ignore")
+    ed.check(f'poseanimator.animation = "{ANIM}";' in code, "the generated code sets the animation")
+    ed.check("poseanimator.autoplay = true;" in code, "the generated code sets autoplay")
+    assets = out / "project" / "assets"
+    ed.check((assets / ANIM).is_file(), f"{ANIM} exported to {assets}")
+    ed.check((assets / ONE_SHOT).is_file(), f"{ONE_SHOT} exported to {assets}")
