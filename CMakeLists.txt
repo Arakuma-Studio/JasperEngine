@@ -623,6 +623,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
     ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
+    ${EDITOR_DIR}/pose/PoseBaker.cpp
+    ${EDITOR_DIR}/pose/PoseRigProvider.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp

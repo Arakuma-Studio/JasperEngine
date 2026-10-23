@@ -16,9 +16,16 @@
 #include "mcp/McpSchema.h"
 
 #include "Project.h"
+#include "component/ModelComponent.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/PoseAnimationDocument.h"
+#include "pose/PoseBaker.h"
+#include "pose/PoseMetrics.h"
+#include "pose/PoseRig.h"
+#include "pose/PoseRigProvider.h"
+#include "pose/PoseSampler.h"
+#include "pose/PoseTween.h"
 #include "pose/PoseAnimationIO.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRanges.h"
@@ -206,36 +213,98 @@ Json humanizeJson(const HumanizeSettings& h) {
             {"torso_follow", r4(h.torsoFollow)}, {"springiness", r4(h.springiness)}};
 }
 
-// Timeline (spec phase 1, 4.8): pose i is reached at start[i]; segment i (to pose i+1, the last
-// one back to pose 0 only when looping) starts after its hold and lasts its transition's duration
+// Timeline (spec phase 1, 4.8, pose::buildTimeline): pose i is reached at start[i]; segment i (to
+// pose i+1, the last one back to pose 0 only when looping) starts after its hold and lasts its
+// transition's duration
 struct Timeline {
-    std::vector<float> start;
-    float length = 0.0f;
-    int frameCount = 0;     // frames a bake or the runtime samples (f = 0..count)
+    std::vector<double> start;
+    double length = 0.0;
+    int frameCount = 0;     // frames a bake or the runtime samples (pose::frames: f = 0..count)
 };
 
-// stage 2: the realisation's frames give frame_count; this is the same formula without a rig
 Timeline timelineOf(const PoseAnimationData& data) {
     Timeline timeline;
+    const PoseTimeline built = buildTimeline(data);
     const size_t n = data.poses.size();
-    float time = 0.0f;
+    double key = 0.0;
     for (size_t i = 0; i < n; i++) {
-        timeline.start.push_back(time);
-        time += data.poses[i].hold;
-        if (i + 1 < n || (data.settings.loop && n > 1)) time += transitionOut(data, i).duration;
+        timeline.start.push_back(key);
+        if (i < built.segmentCount()) key = built.start[i] + std::max(0.0, static_cast<double>(built.transitions[i].duration));
     }
+    timeline.length = built.length;
     const int fps = std::max(1, data.settings.frameRate);
-    timeline.length = n == 1 ? std::max(data.poses[0].hold, 1.0f / static_cast<float>(fps)) : time;
     timeline.frameCount = n == 0 ? 0 : std::max(1, static_cast<int>(std::lround(timeline.length * fps))) + 1;
     return timeline;
 }
 
-Json poseJson(const PoseAnimationData& data, const Timeline& timeline, size_t index, bool full) {
+std::string projectRel(Project* project, const fs::path& absolute) {
+    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
+}
+
+// preview_model is stored relative to the assets folder (as model files are); tools show it project-relative
+fs::path previewModelFile(Project* project, const PoseAnimationData& data) {
+    return project->resolveAssetPath(fs::u8path(data.previewModel)).lexically_normal();
+}
+
+std::string previewModelPath(Project* project, const PoseAnimationData& data) {
+    if (data.previewModel.empty()) return "";
+    return projectRel(project, previewModelFile(project, data));
+}
+
+// The rig the tools use: a model GameObject's (`model`), else the preview model's
+struct RigUse {
+    std::shared_ptr<const PoseRigInfo> info;   // null: no preview model and no model given
+    Json model;                                // rig.model: the GameObject {id, name, path} or the model file
+};
+
+RigUse previewRig(Project* project, const PoseAnimationData& data) {
+    RigUse use;
+    if (data.previewModel.empty()) return use;
+    use.info = PoseRigProvider::forModelFile(project, previewModelFile(project, data));
+    use.model = previewModelPath(project, data);
+    return use;
+}
+
+Json rigJson(const RigUse& use, bool full) {
+    if (!use.info) return nullptr;
+    Json rig = {{"model", use.model}};
+    const PoseRigInfo& info = *use.info;
+    int mapped = 0;
+    Json bones = Json::object();
+    for (int b = 0; b < HUMAN_BONE_COUNT; b++) {
+        if (info.humanoid.bones[b].empty()) continue;
+        mapped++;
+        bones[humanBoneName(boneAt(b))] = info.humanoid.bones[b];
+    }
+    rig["mapped"] = mapped;
+    if (full) rig["bones"] = bones;
+    rig["missing"] = info.missing;
+    if (info.rig) rig["human_scale"] = r4(info.rig->humanScale());
+    if (!info.error.empty()) rig["error"] = info.error;
+    if (full && !info.notes.empty()) rig["notes"] = info.notes;
+    return rig;
+}
+
+double r3(double value) {
+    const double r = std::round(value * 1000.0) / 1000.0;
+    return r == 0.0 ? 0.0 : r;
+}
+
+Json metricsJson(const PoseMetrics& m) {
+    Json hits = Json::array();
+    for (int dof : m.limitHits) hits.push_back(dofName(dof));
+    auto foot = [](const FootMetrics& f) { return Json{{"height", r3(f.height)}, {"contact", f.contact}}; };
+    return {{"feet", {{"left", foot(m.left)}, {"right", foot(m.right)}}}, {"lowest", r3(m.lowest)},
+            {"balanced", m.balanced}, {"balance_margin", r3(m.balanceMargin)},
+            {"center_of_mass", {r3(m.centerOfMass.x), r3(m.centerOfMass.y), r3(m.centerOfMass.z)}}, {"limit_hits", hits}};
+}
+
+Json poseJson(const PoseAnimationData& data, const Timeline& timeline, const PoseRealisation* realised, size_t index, bool full) {
     const PoseKey& key = data.poses[index];
     Json pose = {{"index", index}, {"name", key.name}, {"hold", r4(key.hold)}, {"grounded", key.grounded},
                  {"lift", r4(key.lift)},
                  {"transition", key.customTransition ? transitionJson(key.transition) : Json(nullptr)},
-                 {"start_time", r4(index < timeline.start.size() ? timeline.start[index] : 0.0f)},
+                 {"start_time", r4(index < timeline.start.size() ? timeline.start[index] : 0.0)},
                  {"offset", {{"left", r4(key.body.offset.x)}, {"forward", r4(key.body.offset.z)}}}};
     if (full) {
         Json angles = Json::object();
@@ -245,43 +314,43 @@ Json poseJson(const PoseAnimationData& data, const Timeline& timeline, size_t in
         }
         pose["angles"] = angles;
     }
-    // stage 2: "metrics" {feet: {left: {height, contact}, right}, balanced, balance_margin, limit_hits}
+    if (realised && index < realised->metrics.size()) pose["metrics"] = metricsJson(realised->metrics[index]);
     return pose;
 }
 
-std::string projectRel(Project* project, const fs::path& absolute) {
-    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
-}
-
-// preview_model is stored relative to the assets folder (as model files are); tools show it project-relative
-std::string previewModelPath(Project* project, const PoseAnimationData& data) {
-    if (data.previewModel.empty()) return "";
-    return projectRel(project, project->resolveAssetPath(fs::u8path(data.previewModel)).lexically_normal());
-}
-
-Json animationJson(Project* project, const PoseAnimationDocument& document, const std::vector<size_t>& indices, bool full) {
+Json animationJson(Project* project, PoseAnimationDocument& document, const RigUse& rig, const std::vector<size_t>& indices, bool full) {
     const PoseAnimationData& data = document.data();
     const Timeline timeline = timelineOf(data);
+    std::shared_ptr<const PoseRealisation> realised;
+    if (rig.info && rig.info->rig) realised = document.realise(rig.info->rig);
     Json poses = Json::array();
-    for (size_t index : indices) poses.push_back(poseJson(data, timeline, index, full));
+    for (size_t index : indices) poses.push_back(poseJson(data, timeline, realised.get(), index, full));
+    const FeelPreset* preset = matchingFeelPreset(data.settings);
     Json out = {{"path", document.path()}, {"preview_model", previewModelPath(project, data)},
-                {"rig", nullptr},   // stage 2: {model, mapped, missing, human_scale}
+                {"rig", rigJson(rig, full)},
                 {"loop", data.settings.loop}, {"frame_rate", data.settings.frameRate}, {"length", r4(timeline.length)},
-                {"frame_count", timeline.frameCount}, {"pose_count", data.poses.size()},
+                {"frame_count", realised ? static_cast<int>(realised->frames.size()) : timeline.frameCount},
+                {"pose_count", data.poses.size()},
                 {"feel", feelJson(data.settings)}, {"humanize", humanizeJson(data.settings.humanize)},
-                {"preset", nullptr},   // stage 2: the matching feel preset
+                {"preset", preset ? Json(preset->name) : Json(nullptr)},
                 {"poses", poses}};
     if (!document.loadWarnings().empty()) out["warnings"] = document.loadWarnings();
     return out;
 }
 
-// "0 "Contact R" at 0.00 s, hold 0.10, grounded, 2 angles"
+// "0 "Contact R" at 0.00 s, hold 0.10, grounded, 2 angles; feet L 0.00 R 0.00, balanced"
 std::string poseLine(const Json& pose) {
     std::string line = std::to_string(pose["index"].get<size_t>()) + " \"" + pose["name"].get<std::string>() + "\" at " +
                        fmt(pose["start_time"].get<double>()) + " s, hold " + fmt(pose["hold"].get<double>());
     line += pose["grounded"].get<bool>() ? ", grounded" : ", lift " + fmt(pose["lift"].get<double>());
     if (!pose["transition"].is_null()) line += ", own transition " + fmt(pose["transition"]["duration"].get<double>()) + " s";
     if (pose.contains("angles")) line += ", " + std::to_string(pose["angles"].size()) + " angles";
+    if (pose.contains("metrics")) {
+        const Json& m = pose["metrics"];
+        line += "; feet L " + fmt(m["feet"]["left"]["height"].get<double>()) + " R " + fmt(m["feet"]["right"]["height"].get<double>()) +
+                (m["balanced"].get<bool>() ? ", balanced" : ", unbalanced (" + fmt(m["balance_margin"].get<double>(), 3) + ")");
+        if (!m["limit_hits"].empty()) line += ", " + std::to_string(m["limit_hits"].size()) + " limit hit(s)";
+    }
     return line;
 }
 
@@ -724,6 +793,20 @@ bool sidecarFor(EditState& state, const fs::path& model, SidecarEdit*& out, cons
     return true;
 }
 
+// The nearest bone name (case-insensitive), "" when none is close
+std::string nearestBone(const std::string& name, const std::vector<std::string>& bones) {
+    std::string best;
+    size_t bestDistance = std::max<size_t>(3, name.size() / 2) + 1;
+    for (const std::string& bone : bones) {
+        const size_t distance = editDistance(lower(name), lower(bone));
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = bone;
+        }
+    }
+    return best;
+}
+
 bool setHumanoid(EditState& state, const Json& op, const std::string& path, std::string& error) {
     if (!op.contains("model") || !op.contains("bones")) {
         error = path + ": model and bones are required";
@@ -735,6 +818,11 @@ bool setHumanoid(EditState& state, const Json& op, const std::string& path, std:
     if (!readObject(bones, path + ".bones", error)) return false;
     SidecarEdit* edit = nullptr;
     if (!sidecarFor(state, model, edit, path, error)) return false;
+    // the model's bone names (they do not depend on the sidecar)
+    const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(state.project, model);
+    if (info->boneNames.empty()) {
+        state.warnings.push_back(path + ": bone names not checked: " + info->error);
+    }
     std::vector<std::string> set;
     for (auto it = bones.begin(); it != bones.end(); ++it) {
         HumanBone bone;
@@ -746,9 +834,16 @@ bool setHumanoid(EditState& state, const Json& op, const std::string& path, std:
             edit->overrides.bones[boneIndex(bone)].reset();
             set.push_back(it.key() + " auto");
         } else if (it.value().is_string()) {
-            // stage 2: the bone name must exist in the model's skeleton (and not be a twist/end helper)
-            edit->overrides.bones[boneIndex(bone)] = it.value().get<std::string>();
-            set.push_back(it.key() + (it.value().get<std::string>().empty() ? " unmapped" : " = " + it.value().get<std::string>()));
+            const std::string name = it.value().get<std::string>();
+            if (!name.empty() && !info->boneNames.empty() &&
+                std::find(info->boneNames.begin(), info->boneNames.end(), name) == info->boneNames.end()) {
+                const std::string close = nearestBone(name, info->boneNames);
+                error = path + ".bones." + it.key() + ": the model has no bone '" + name + "'" +
+                        (close.empty() ? "" : " (did you mean '" + close + "'?)");
+                return false;
+            }
+            edit->overrides.bones[boneIndex(bone)] = name;
+            set.push_back(it.key() + (name.empty() ? " unmapped" : " = " + name));
         } else {
             error = path + ".bones." + it.key() + " must be a bone name, \"\" (unmapped) or null (auto-detect)";
             return false;
@@ -757,6 +852,79 @@ bool setHumanoid(EditState& state, const Json& op, const std::string& path, std:
     std::string list;
     for (const std::string& item : set) list += (list.empty() ? "" : ", ") + item;
     state.changes.push_back("set_humanoid " + edit->model + ": " + (list.empty() ? std::string("nothing") : list));
+    return true;
+}
+
+bool mirrorPose(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    std::vector<PoseKey>& poses = state.data.poses;
+    if (!op.contains("index")) {
+        error = path + ".index is required";
+        return false;
+    }
+    int index = 0;
+    if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
+    bool asNew = false;
+    if (op.contains("as_new") && !readBool(op["as_new"], path + ".as_new", asNew, error)) return false;
+    if (op.contains("name") && !op["name"].is_string()) {
+        error = path + ".name must be a string";
+        return false;
+    }
+    PoseKey key = poses[index];
+    key.body = mirrorBodyPose(key.body);
+    size_t at = static_cast<size_t>(index);
+    if (asNew) {
+        if (poses.size() >= static_cast<size_t>(MAX_POSES)) {
+            error = path + ": an animation has at most " + std::to_string(MAX_POSES) + " poses";
+            return false;
+        }
+        key.name = op.contains("name") ? op["name"].get<std::string>() : key.name + " (mirrored)";
+        at = static_cast<size_t>(index + 1);
+        poses.insert(poses.begin() + at, key);
+        state.touched.insert(state.touched.begin() + at, true);
+        state.changes.push_back("mirror_pose " + std::to_string(index) + ": mirrored copy \"" + key.name + "\" at " + std::to_string(at));
+    } else {
+        if (op.contains("name")) key.name = op["name"].get<std::string>();
+        poses[at] = key;
+        state.touched[at] = true;
+        state.changes.push_back("mirror_pose " + std::to_string(index) + " \"" + key.name + "\": mirrored in place");
+    }
+    return true;
+}
+
+bool applyPreset(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    std::string names;
+    for (const FeelPreset& preset : feelPresets()) names += (names.empty() ? "" : ", ") + std::string(preset.name);
+    if (!op.contains("name") || !op["name"].is_string()) {
+        error = path + ".name is required: " + names;
+        return false;
+    }
+    const FeelPreset* preset = findFeelPreset(op["name"].get<std::string>());
+    if (!preset) {
+        error = path + ".name: unknown preset '" + op["name"].get<std::string>() + "'; presets: " + names;
+        return false;
+    }
+    applyFeelPreset(*preset, state.data.settings);
+    state.changes.push_back(std::string("apply_preset: ") + preset->name);
+    return true;
+}
+
+bool autoTimingOp(EditState& state, const std::string& path, std::string& error) {
+    if (state.data.poses.size() < 2) {
+        error = path + ": auto_timing needs at least two poses";
+        return false;
+    }
+    const RigUse rig = previewRig(state.project, state.data);
+    if (!rig.info || !rig.info->rig) {
+        error = path + ": auto_timing measures the motion on the preview model's rig: " +
+                (rig.info ? rig.info->error : std::string("set_preview_model first"));
+        return false;
+    }
+    const std::shared_ptr<PoseRealisation> realised = PoseAnimationDocument::realiseData(state.data, rig.info->rig);
+    const double before = buildTimeline(state.data).length;
+    autoTiming(state.data, realised->keys, *rig.info->rig);
+    state.touched.assign(state.data.poses.size(), true);
+    state.changes.push_back("auto_timing: holds and transitions from the motion (length " + fmt(before) + " -> " +
+                            fmt(buildTimeline(state.data).length) + " s)");
     return true;
 }
 
@@ -784,12 +952,25 @@ bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& erro
     if (name == "update_pose") return updatePose(state, op, path, error);
     if (name == "delete_pose") return deletePose(state, op, path, error);
     if (name == "move_pose") return movePose(state, op, path, error);
+    if (name == "mirror_pose") return mirrorPose(state, op, path, error);
     if (name == "set_settings") return setSettings(state, op, path, error);
+    if (name == "apply_preset") return applyPreset(state, op, path, error);
+    if (name == "auto_timing") return autoTimingOp(state, path, error);
     if (name == "set_preview_model") return setPreviewModel(state, op, path, error);
-    if (name == "set_humanoid") return setHumanoid(state, op, path, error);
-    // stage 2: mirror_pose (mirrorBodyPose), apply_preset (the feel presets), auto_timing (autoTiming on the rig)
-    error = path + ": " + name + " is not available in this editor build yet";
-    return false;
+    return setHumanoid(state, op, path, error);
+}
+
+// humanize.joint_limits: the added and updated poses are clamped to the joint limits (reported)
+void clampTouchedToLimits(EditState& state, std::vector<ClampReport>& reports) {
+    if (!state.data.settings.humanize.jointLimits) return;
+    for (size_t i = 0; i < state.data.poses.size() && i < state.touched.size(); i++) {
+        if (!state.touched[i]) continue;
+        BodyPose& body = state.data.poses[i].body;
+        const BodyPose before = body;
+        for (int dof : clampToLimits(body)) {
+            reports.push_back({"poses[" + std::to_string(i) + "].angles." + dofName(dof), before.angles[dof], body.angles[dof]});
+        }
+    }
 }
 
 Json clampJson(const std::vector<ClampReport>& reports) {
@@ -823,6 +1004,30 @@ void installSyncHook(McpContext& ctx) {
     });
 }
 
+// A model GameObject of `scene` (the selected scene when omitted)
+bool resolveModelEntity(Project* project, const Json& args, const Json& ref, const std::string& path,
+                        SceneProject*& scene, Entity& entity, std::string& error) {
+    scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!scene) {
+        error = "scene: " + error;
+        return false;
+    }
+    if (!scene->scene) {
+        error = McpRefs::notOpenError(project, *scene);
+        return false;
+    }
+    entity = McpRefs::resolveEntity(scene, ref, error);
+    if (entity == NULL_ENTITY) {
+        error = path + ": " + error;
+        return false;
+    }
+    if (!scene->scene->findComponent<ModelComponent>(entity)) {
+        error = path + ": \"" + scene->scene->getEntityName(entity) + "\" is not a model GameObject (no Model component)";
+        return false;
+    }
+    return true;
+}
+
 // ------------------------------------------------------------------ get_pose_animation
 
 void getPoseAnimationTool(const CallPtr& call) {
@@ -835,11 +1040,6 @@ void getPoseAnimationTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    if (args.contains("model")) {
-        // stage 2: the rig of a scene model (ModelRig) instead of the preview model's
-        call->fail("model: rigs of scene models are not available in this editor build yet.");
-        return;
-    }
     const std::string detail = args.value("detail", std::string("full"));
     if (detail != "full" && detail != "summary") {
         call->fail("detail must be \"full\" or \"summary\".");
@@ -849,6 +1049,19 @@ void getPoseAnimationTool(const CallPtr& call) {
     if (!document) {
         call->fail(error + ". Create one with edit_pose_animation {path, create: {preview_model}}.");
         return;
+    }
+    RigUse rig;
+    if (args.contains("model")) {
+        SceneProject* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        if (!resolveModelEntity(project, args, args["model"], "model", scene, entity, error)) {
+            call->fail(error);
+            return;
+        }
+        rig.info = PoseRigProvider::forSceneModel(project, scene->scene, entity);
+        rig.model = McpRefs::entityJson(scene, entity);
+    } else {
+        rig = previewRig(project, document->data());
     }
     const size_t count = document->data().poses.size();
     std::vector<size_t> indices;
@@ -868,10 +1081,12 @@ void getPoseAnimationTool(const CallPtr& call) {
     } else {
         for (size_t i = 0; i < count; i++) indices.push_back(i);
     }
-    Json out = animationJson(project, *document, indices, detail == "full");
+    Json out = animationJson(project, *document, rig, indices, detail == "full");
     std::string text = document->path() + ": " + std::to_string(count) + " pose(s), " + fmt(out["length"].get<double>()) + " s, " +
                        (out["loop"].get<bool>() ? "loop" : "one-shot") + ", " + std::to_string(out["frame_rate"].get<int>()) + " fps, preview " +
                        (out["preview_model"].get<std::string>().empty() ? std::string("none") : out["preview_model"].get<std::string>());
+    if (out["preset"].is_string()) text += ", feel " + out["preset"].get<std::string>();
+    if (rig.info && !rig.info->rig) text += "\nno metrics: " + rig.info->error;
     for (const Json& pose : out["poses"]) text += "\n" + poseLine(pose);
     call->ok(text, out);
 }
@@ -894,14 +1109,45 @@ void editPoseAnimationTool(const CallPtr& call) {
         call->fail("ops must be an array of {op, ...} objects.");
         return;
     }
-    if (args.contains("bake")) {
-        // stage 2: bake {model, name} -> PoseBaker, its own scene undo step
-        call->fail("bake is not available in this editor build yet.");
+    if (!creating && ops.empty() && !args.contains("bake")) {
+        call->fail("Nothing to do: give ops, create (a new file) and/or bake.");
         return;
     }
-    if (!creating && ops.empty()) {
-        call->fail("Nothing to do: give ops (and/or create for a new file).");
-        return;
+
+    // the bake target is checked before anything is written
+    SceneProject* bakeScene = nullptr;
+    Entity bakeModel = NULL_ENTITY;
+    std::string bakeName;
+    if (args.contains("bake")) {
+        const Json& bake = args["bake"];
+        if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model", "name"}, error)) {
+            call->fail(error);
+            return;
+        }
+        if (!bake.contains("model")) {
+            call->fail("bake.model is required: the model GameObject to bake on.");
+            return;
+        }
+        if (bake.contains("name")) {
+            if (!bake["name"].is_string() || bake["name"].get<std::string>().empty()) {
+                call->fail("bake.name must be a non-empty string (default: the file name).");
+                return;
+            }
+            bakeName = bake["name"].get<std::string>();
+        }
+        if (!resolveModelEntity(project, args, bake["model"], "bake.model", bakeScene, bakeModel, error)) {
+            call->fail(error);
+            return;
+        }
+        if (bakeScene->playState != ScenePlayState::STOPPED) {
+            call->fail("bake: the scene is playing; stop play mode before baking.");
+            return;
+        }
+        const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forSceneModel(project, bakeScene->scene, bakeModel);
+        if (!info->rig) {
+            call->fail("bake.model: " + info->error);
+            return;
+        }
     }
 
     EditState state;
@@ -929,12 +1175,17 @@ void editPoseAnimationTool(const CallPtr& call) {
             state.changes.clear();
         }
         if (create.contains("preset")) {
-            // stage 2: the feel preset's transition, step rate, overlap and looseness
-            call->fail("create.preset is not available in this editor build yet.");
-            return;
+            if (!applyPreset(state, {{"op", "apply_preset"}, {"name", create["preset"]}}, "create", error)) {
+                const std::string from = "create.name";
+                if (error.rfind(from, 0) == 0) error = "create.preset" + error.substr(from.size());
+                call->fail(error);
+                return;
+            }
+            state.changes.clear();
         }
         state.changes.push_back("created " + relative + (state.data.previewModel.empty() ? std::string("") :
-                                " (preview " + previewModelPath(project, state.data) + ")"));
+                                " (preview " + previewModelPath(project, state.data) + ")") +
+                                (create.contains("preset") ? ", feel " + create["preset"].get<std::string>() : std::string("")));
     } else {
         document = PoseAnimationDocument::open(project, relative, &error);
         if (!document) {
@@ -952,6 +1203,12 @@ void editPoseAnimationTool(const CallPtr& call) {
             return;
         }
     }
+    if (bakeModel != NULL_ENTITY && state.data.poses.empty()) {
+        call->fail("bake: the animation has no poses (nothing was changed).");
+        return;
+    }
+    std::vector<ClampReport> clamped;
+    clampTouchedToLimits(state, clamped);
 
     std::vector<PoseAnimationDocument::ExtraFile> extras;
     bool extrasChanged = false;
@@ -964,7 +1221,6 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
     }
 
-    std::vector<ClampReport> clamped;
     const uint64_t before = document ? document->revision() : 0;
     if (creating) {
         document = PoseAnimationDocument::create(project, relative, state.data, "Create Pose Animation", &clamped, &error, extras);
@@ -982,15 +1238,32 @@ void editPoseAnimationTool(const CallPtr& call) {
     for (size_t i = 0; i < state.touched.size() && i < document->data().poses.size(); i++) {
         if (state.touched[i]) touched.push_back(i);
     }
-    const Json full = animationJson(project, *document, touched, true);
+    const Json full = animationJson(project, *document, previewRig(project, document->data()), touched, true);
     Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
                 {"changes", state.changes}, {"clamped", clampJson(clamped)}, {"warnings", state.warnings},
                 {"poses", full["poses"]}};
+    if (!full["preset"].is_null()) out["preset"] = full["preset"];
     std::string text = document->path() + ": " + std::to_string(document->data().poses.size()) + " pose(s), " +
                        fmt(full["length"].get<double>()) + " s" + (changed ? "" : " (no change: nothing written)");
     for (const std::string& line : state.changes) text += "\n" + line;
     for (const ClampReport& report : clamped) text += "\nclamped " + describeClamp(report);
     for (const std::string& warning : state.warnings) text += "\nwarning: " + warning;
+    for (const Json& pose : full["poses"]) text += "\n" + poseLine(pose);
+
+    if (bakeModel != NULL_ENTITY) {
+        PoseBakeResult result;
+        if (!PoseBaker::bake(project, bakeScene->id, bakeModel, *document, bakeName, result, error)) {
+            out["bake_error"] = error;
+            text += "\nbake failed: " + error + (changed ? " (the edits above were saved: undo them with scope project)" : "");
+            call->fail(text, out);
+            return;
+        }
+        out["bake"] = {{"animation", McpRefs::entityJson(bakeScene, result.animation)}, {"name", result.name},
+                       {"created", result.created}, {"frames", result.frames}, {"tracks", result.tracks}, {"length", r4(result.length)}};
+        text += "\n" + std::string(result.created ? "baked" : "re-baked") + " to the Animation \"" + result.name + "\" of \"" +
+                bakeScene->scene->getEntityName(bakeModel) + "\": " + std::to_string(result.tracks) + " tracks of " +
+                std::to_string(result.frames) + " keys (scene undo step; play it with Model:playAnimation(\"" + result.name + "\"))";
+    }
     call->ok(text, out);
 }
 
@@ -1016,14 +1289,16 @@ void registerPoseTools(McpRegistry& registry) {
         tool.name = "get_pose_animation";
         tool.title = "Get Pose Animation";
         tool.description =
-            "A .poseanim pose animation: settings (loop, frame_rate, feel, humanize, preset), length and its key poses "
-            "(name, hold, grounded, lift, transition or null = the animation's, start_time, offset {left, forward}, angles: "
-            "degrees, 0 = neutral standing; see jasper://docs/pose-animation for the DOF table) with metrics on the rig "
-            "(feet height/contact, balanced, balance_margin, limit_hits). model: a scene model's rig instead of preview_model.";
+            "A .poseanim pose animation: settings (loop, frame_rate, feel, humanize, preset), length, the rig (mapped "
+            "bones, missing slots) and its key poses (name, hold, grounded, lift, transition or null = the animation's, "
+            "start_time, offset {left, forward}, angles: degrees, 0 = neutral standing; see jasper://docs/pose-animation "
+            "for the DOF table) with metrics (feet height/contact, balanced, balance_margin, limit_hits). model: a scene "
+            "model's rig instead of preview_model.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"poses", array(integer(""), "Indices; default all.")},
             {"model", entityRef()},
+            {"scene", sceneRef()},
             {"detail", withDefault(stringEnum("summary omits angles.", {"summary", "full"}), "full")}
         }, {"path"});
         tool.annotations.readOnly = true;
@@ -1043,7 +1318,7 @@ void registerPoseTools(McpRegistry& registry) {
             "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
             "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto). "
             "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file; bake writes an Animation on a scene model (scene undo). Returns changes and the touched poses.";
+            "file; bake writes an Animation on a scene model (scene undo). Returns changes and the touched poses with metrics.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}})},
@@ -1074,7 +1349,8 @@ void registerPoseTools(McpRegistry& registry) {
                 {"model", assetPath("")},
                 {"bones", anyObject("")}
             }, {"op"}), "")},
-            {"bake", obj({{"model", entityRef()}, {"name", string("")}})}
+            {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}}, {"model"})},
+            {"scene", sceneRef()}
         }, {"path"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = false;

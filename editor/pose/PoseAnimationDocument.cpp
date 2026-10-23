@@ -354,3 +354,35 @@ void editor::PoseAnimationDocument::notify(Change change){
         }
     }
 }
+
+std::shared_ptr<editor::PoseRealisation> editor::PoseAnimationDocument::realiseData(const pose::PoseAnimationData& data,
+                                                                                  const std::shared_ptr<pose::PoseRig>& rig){
+    if (!rig || !rig->valid()){
+        return nullptr;
+    }
+    auto out = std::make_shared<PoseRealisation>();
+    out->rig = rig;
+    out->keys = pose::realiseKeys(data, *rig, rig->skin());
+    for (size_t i = 0; i < data.poses.size() && i < out->keys.size(); i++){
+        out->metrics.push_back(pose::computeMetrics(*rig, out->keys[i], data.poses[i].body));
+    }
+    const pose::SamplerInput input = pose::makeSamplerInput(data, out->keys, rig.get());
+    out->timeline = input.timeline;
+    out->frames = pose::frames(input, data.settings.frameRate);
+    return out;
+}
+
+std::shared_ptr<const editor::PoseRealisation> editor::PoseAnimationDocument::realise(const std::shared_ptr<pose::PoseRig>& rig){
+    if (!rig){
+        return nullptr;
+    }
+    if (realised && realised->rig == rig && realised->revision == rev){
+        return realised;
+    }
+    std::shared_ptr<PoseRealisation> made = realiseData(current, rig);
+    if (made){
+        made->revision = rev;
+    }
+    realised = made;
+    return realised;
+}

@@ -16,7 +16,10 @@
 #pragma once
 
 #include "pose/PoseAnimationIO.h"
+#include "pose/PoseMetrics.h"
 #include "pose/PoseRanges.h"
+#include "pose/PoseRig.h"
+#include "pose/PoseSampler.h"
 #include "pose/PoseTypes.h"
 
 #include <cstdint>
@@ -30,6 +33,16 @@
 namespace jasperengine::editor{
 
     class Project;
+
+    // A pose animation realised on one rig: what previews, metrics, baking and auto timing use
+    struct PoseRealisation{
+        std::shared_ptr<pose::PoseRig> rig;
+        uint64_t revision = 0;                  // the document revision it was made from
+        std::vector<pose::HumanPose> keys;      // per key pose (joint limits first when humanize.joint_limits)
+        std::vector<pose::PoseMetrics> metrics; // per key pose; limit hits from the key's own angles
+        std::vector<pose::HumanPose> frames;    // pose::frames at frame_rate (f = 0..count)
+        pose::PoseTimeline timeline;
+    };
 
     class PoseAnimationDocument{
     public:
@@ -80,6 +93,11 @@ namespace jasperengine::editor{
                     std::vector<pose::ClampReport>* clamped, std::string* error,
                     const std::vector<ExtraFile>& extraFiles = {});
 
+        // The animation realised on `rig`, cached by revision and rig (null rig: null)
+        std::shared_ptr<const PoseRealisation> realise(const std::shared_ptr<pose::PoseRig>& rig);
+        // The same for any data (not cached): auto timing and edits before their commit
+        static std::shared_ptr<PoseRealisation> realiseData(const pose::PoseAnimationData& data, const std::shared_ptr<pose::PoseRig>& rig);
+
         // Reads the file again (when its text changed) and notifies the listeners
         void reloadFromDisk();
 
@@ -102,6 +120,7 @@ namespace jasperengine::editor{
         int64_t stampTime = 0;              // file mtime (ns) and size when last read
         uint64_t stampSize = 0;
         std::map<int, Listener> listeners;
+        std::shared_ptr<const PoseRealisation> realised;   // the last realise()
         int nextListener = 1;
 
         PoseAnimationDocument() = default;

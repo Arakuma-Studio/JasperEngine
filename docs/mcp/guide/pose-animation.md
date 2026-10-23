@@ -13,7 +13,9 @@ the tool: it validates, clamps, echoes what it clamped and keeps the undo histor
 
 1. `get_pose_animation {path}`: settings, timing (`start_time` of every pose, `length`) and the poses.
    With a rig (the file's `preview_model`, or `model`: a model GameObject of the scene) every pose has
-   `metrics`: foot heights and contacts, `balanced` / `balance_margin`, `limit_hits`.
+   `metrics`: foot heights and contacts, `balanced` / `balance_margin`, `limit_hits`; `rig` says which
+   model it is, how many slots are `mapped` (`bones`: slot -> bone), the `missing` required slots and
+   `human_scale` (or the `error` that kept the model from being a usable humanoid).
 2. `edit_pose_animation {path, ops: [...]}`: change several poses and settings in one call.
 3. Check the metrics of the touched poses the result returns (and the motion in play mode or after
    baking). Fix, repeat.
@@ -34,7 +36,8 @@ A DOF name is `<slot>.<dof>`. Right-side slots have the same DOF names, limits a
 left ones: equal values on both sides are exact mirror images (`right_upper_arm.raise: 90` lifts the
 right arm out to the right). Centre slots: positive `side` tilts toward the character's left,
 positive `twist`/`turn` turns to the character's left. Values outside a limit are kept (and reported
-in `limit_hits`) unless `humanize.joint_limits` is on, which clamps added and updated poses.
+in `limit_hits`) unless `humanize.joint_limits` is on (the default, independent of
+`humanize.enabled`), which clamps added and updated poses (echoed in `clamped`) and the frames.
 
 | slot | dof1 | dof2 | dof3 (twist) |
 |---|---|---|---|
@@ -96,9 +99,11 @@ last pose back to the first. `length` = all holds + all transitions; a one-pose 
 
 `angles` sets absolute degrees for the DOFs it names, `add_angles` adds to them; other DOFs keep
 their values. Out-of-range values are clamped and listed in `clamped: [{field, requested, applied}]`.
-`bake {model, name}` (after the ops) writes the frames to an Animation of a model GameObject
-(one RotateTracks per bone, a TranslateTracks for the hips; its own scene undo step; baking again
-replaces the keys in place). Play it with `Model:playAnimation(name)`.
+`bake {model, name}` (after the ops; `name` defaults to the file name) writes the frames to an
+Animation of a model GameObject (one RotateTracks per mapped bone and a TranslateTracks for the
+hips, one key per frame at the frame times, step keys when `step_rate` > 0; its own scene undo step,
+`undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
+`Model:playAnimation(name)`. `bake` alone (no ops) re-bakes after edits.
 
 ## Feel (`feel`) and humanize (`humanize`)
 
@@ -148,5 +153,9 @@ slots. When a mapping is wrong, `set_humanoid` stores the fix next to the model
 - Setting heights through angles or `lift` on standing poses: grounding is automatic; `lift` only
   for airborne poses (`grounded: false`).
 - Re-sending every angle to change one: `update_pose` with only the changed DOFs (or `add_angles`).
+- Swings over 180 degrees: the two swing DOFs of a slot form one swing whose length is
+  sqrt(dof1^2 + dof2^2); past 180 it is the same rotation as a shorter swing the other way, so it
+  does not come back as written (`upper_arm.raise: 150, forward: 150` reads back differently). Keep
+  each slot's combined swing under 180, or twist instead.
 - Even timing everywhere: vary holds, or run `auto_timing`, then adjust.
 - Editing the `.poseanim` file by hand: no clamping, no echo, no undo step.

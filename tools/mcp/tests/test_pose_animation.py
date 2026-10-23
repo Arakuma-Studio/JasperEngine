@@ -64,8 +64,8 @@ async def test_tools_listed(ed: Editor):
 async def test_create_and_add_poses(ed: Editor):
     r = await ed.call("edit_pose_animation", path=WALK, create={"preview_model": HERO}, ops=[
         {"op": "add_pose", "name": "Contact R", "hold": 0.1,
-         "angles": {"right_upper_leg.forward": 25, "left_upper_leg.forward": -15, "left_upper_arm.raise": -80,
-                    "right_upper_arm.raise": -80, "hips.lean": 0.03}},
+         "angles": {"right_upper_leg.forward": 25, "left_upper_leg.forward": -15, "left_upper_arm.raise": 10,
+                    "right_upper_arm.raise": 10, "hips.lean": 0.03}},
         {"op": "add_pose", "name": "Down R", "add_angles": {"right_lower_leg.bend": 20}, "offset": {"forward": 0.02}},
     ])
     ed.check_eq(r["pose_count"], 2, "pose count")
@@ -315,3 +315,240 @@ async def test_document_follows_disk_edits(ed: Editor):
     # the next edit starts from the disk version
     await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "update_pose", "index": 0, "name": "Contact R"}])
     ed.check_eq(file_json(ed, WALK)["poses"][0]["name"], "Contact R", "edited")
+
+
+# -- rig and metrics -----------------------------------------------------------
+
+async def test_rig_and_metrics_on_the_preview_model(ed: Editor):
+    r = await ed.call("get_pose_animation", path=WALK)
+    rig = r["rig"]
+    ed.check(rig is not None and "error" not in rig, f"rig: {rig}")
+    ed.check_eq(rig["model"], HERO, "the preview model's rig")
+    ed.check_eq(rig["mapped"], 22, "every hero slot is mapped")
+    ed.check_eq(rig["missing"], [], "nothing missing")
+    ed.check_eq(rig["bones"]["hips"], "mixamorig:Hips", "auto-detected bones")
+    ed.check(0.9 < rig["human_scale"] < 1.1, f"human scale {rig['human_scale']}")
+    for pose in r["poses"]:
+        m = pose["metrics"]
+        ed.check(set(m) >= {"feet", "lowest", "balanced", "balance_margin", "limit_hits"}, f"metrics shape: {m}")
+        if pose["grounded"]:
+            ed.check(approx(m["lowest"], 0.0, 1e-3), f"{pose['name']}: grounded poses touch the floor: {m}")
+            ed.check(m["feet"]["left"]["contact"] or m["feet"]["right"]["contact"], f"{pose['name']}: a foot on the floor: {m}")
+    raw = await ed.call_raw("get_pose_animation", {"path": WALK, "detail": "summary"})
+    ed.check("feet L" in raw.text, raw.text)
+    ed.check("bones" not in raw.structured["rig"], "summary rig without the bone list")
+
+    # a neutral standing pose is balanced on both feet; an airborne one has no contact
+    path = "assets/anim/metrics.poseanim"
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": HERO}, ops=[
+        {"op": "add_pose", "name": "Stand"},
+        {"op": "add_pose", "name": "Air", "grounded": False, "lift": 0.3},
+        {"op": "add_pose", "name": "One leg", "from": 0, "angles": {"left_upper_leg.forward": 70, "left_lower_leg.bend": 80}},
+    ])
+    poses = (await ed.call("get_pose_animation", path=path))["poses"]
+    stand, air, one = (p["metrics"] for p in poses)
+    ed.check(stand["balanced"] and stand["balance_margin"] > 0, f"stand: {stand}")
+    ed.check(stand["feet"]["left"]["contact"] and stand["feet"]["right"]["contact"], f"stand: {stand}")
+    ed.check(not air["feet"]["left"]["contact"] and not air["feet"]["right"]["contact"], f"air: {air}")
+    ed.check(approx(air["lowest"], 0.3, 2e-3) and not air["balanced"], f"air: {air}")
+    ed.check(one["feet"]["right"]["contact"] and not one["feet"]["left"]["contact"], f"one leg: {one}")
+    ed.check(one["feet"]["left"]["height"] > 0.1, f"one leg: {one}")
+
+
+async def test_joint_limits_clamp_touched_poses(ed: Editor):
+    path = "assets/anim/metrics.poseanim"
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "update_pose", "index": 0, "angles": {"left_lower_arm.bend": -20, "head.twist": 80}},
+    ])
+    clamped = {c["field"]: (c["requested"], c["applied"]) for c in r["clamped"]}
+    ed.check_eq(clamped.get("poses[0].angles.left_lower_arm.bend"), (-20, 0), f"limits: {r['clamped']}")
+    ed.check_eq(clamped.get("poses[0].angles.head.twist"), (80, 55), f"limits: {r['clamped']}")
+    ed.check_eq(r["poses"][0]["metrics"]["limit_hits"], [], "clamped poses hit no limit")
+    # joint limits off: values are kept and reported as limit hits
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "set_settings", "humanize": {"joint_limits": False}},
+        {"op": "update_pose", "index": 0, "angles": {"left_lower_arm.bend": -20}},
+    ])
+    ed.check(not any(c["field"].startswith("poses[0].angles") for c in r["clamped"]), f"kept: {r['clamped']}")
+    ed.check_eq(r["poses"][0]["metrics"]["limit_hits"], ["left_lower_arm.bend"], "limit hit")
+    await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "set_settings", "humanize": {"joint_limits": True}},
+        {"op": "update_pose", "index": 0, "angles": {"left_lower_arm.bend": 0, "head.twist": 0}},
+    ])
+
+
+# -- mirror, presets, auto timing ----------------------------------------------
+
+async def test_mirror_twice_is_exact(ed: Editor):
+    before = file_json(ed, WALK)["poses"][0]
+    r = await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "mirror_pose", "index": 0}])
+    mirrored = file_json(ed, WALK)["poses"][0]
+    ed.check(approx(mirrored["angles"]["left_upper_leg.forward"], before["angles"]["right_upper_leg.forward"]),
+             f"left/right swapped: {mirrored['angles']}")
+    ed.check(approx(mirrored["angles"]["right_upper_leg.forward"], before["angles"]["left_upper_leg.forward"]), "swapped back")
+    ed.check(any("mirror_pose 0" in c for c in r["changes"]), r["changes"])
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "mirror_pose", "index": 0}])
+    ed.check_eq(file_json(ed, WALK)["poses"][0], before, "mirroring twice gives the pose back exactly")
+    r = await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "mirror_pose", "index": 0, "as_new": True, "name": "Contact L"}])
+    data = file_json(ed, WALK)
+    ed.check_eq([p["name"] for p in data["poses"]][:2], ["Contact R", "Contact L"], "inserted after")
+    ed.check(approx(data["poses"][1]["angles"]["left_upper_leg.forward"], 25), "mirrored copy")
+    ed.check_eq([p["index"] for p in r["poses"]], [1], "the copy is touched")
+    await undo_project(ed)
+
+
+async def test_presets(ed: Editor):
+    r = await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "apply_preset", "name": "Cartoon"}])
+    ed.check_eq(r.get("preset"), "Cartoon", "the result names the matching preset")
+    got = await ed.call("get_pose_animation", path=WALK, detail="summary")
+    ed.check_eq(got["preset"], "Cartoon", "preset")
+    ed.check_eq(got["feel"]["transition"], {"curve": "spring", "duration": 0.1, "overshoot": 0.35, "anticipation": 0.12}, "Cartoon")
+    ed.check(approx(got["feel"]["overlap"], 0.1) and approx(got["feel"]["looseness"], 0.65), f"feel {got['feel']}")
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "set_settings", "overlap": 0.2}])
+    ed.check((await ed.call("get_pose_animation", path=WALK, detail="summary"))["preset"] is None, "no preset matches any more")
+    msg = await ed.check_error("edit_pose_animation", path=WALK, ops=[{"op": "apply_preset", "name": "Bouncy"}])
+    ed.check("Snappy" in msg and "Stop-motion" in msg, msg)
+    await undo_project(ed, 2)
+    ed.check_eq((await ed.call("get_pose_animation", path=WALK, detail="summary"))["preset"], "Snappy", "the defaults are Snappy")
+    path = "assets/anim/stop.poseanim"
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": HERO, "preset": "stop_motion"},
+                  ops=[{"op": "add_pose"}])
+    got = await ed.call("get_pose_animation", path=path, detail="summary")
+    ed.check(got["preset"] == "Stop-motion" and got["feel"]["step_rate"] == 12, f"create.preset: {got['feel']}")
+
+
+async def test_auto_timing(ed: Editor):
+    path = "assets/anim/timing.poseanim"
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": HERO}, ops=[
+        {"op": "add_pose", "name": "A", "hold": 0.2},
+        {"op": "add_pose", "name": "B (small)", "hold": 0.2, "add_angles": {"head.bend": 5}},
+        {"op": "add_pose", "name": "C (big)", "hold": 0.2, "angles": {"left_upper_arm.raise": 120, "right_upper_arm.raise": 120,
+                                                                     "spine.bend": 20}},
+    ])
+    before = await ed.call("get_pose_animation", path=path, detail="summary")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "auto_timing"}])
+    after = await ed.call("get_pose_animation", path=path, detail="summary")
+    ed.check(approx(after["length"], before["length"], 0.02), f"length kept: {before['length']} -> {after['length']}")
+    ed.check(all(p["transition"] is not None for p in after["poses"]), "every pose gets its own transition")
+    durations = [p["transition"]["duration"] for p in after["poses"]]
+    # the big move (B -> C) snaps slower than the small one (A -> B)
+    ed.check(durations[1] > durations[0], f"bigger move, longer snap: {durations}")
+    ed.check_eq(len(r["poses"]), 3, "every pose touched")
+    msg = await ed.check_error("edit_pose_animation", path="assets/anim/one.poseanim", ops=[{"op": "auto_timing"}])
+    ed.check("two poses" in msg, msg)
+
+
+async def test_set_humanoid_checks_bone_names(ed: Editor):
+    msg = await ed.check_error("edit_pose_animation", path=WALK, ops=[
+        {"op": "set_humanoid", "model": HERO, "bones": {"left_toes": "mixamorig:LeftToeBas"}}])
+    ed.check("no bone 'mixamorig:LeftToeBas'" in msg and "mixamorig:LeftToeBase" in msg, msg)
+    # unmapping an optional slot through the sidecar shows in the rig
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "set_humanoid", "model": HERO, "bones": {"left_toes": ""}}])
+    rig = (await ed.call("get_pose_animation", path=WALK, detail="summary"))["rig"]
+    ed.check_eq(rig["mapped"], 21, f"the sidecar unmapped a slot: {rig}")
+    await undo_project(ed)
+    rig = (await ed.call("get_pose_animation", path=WALK, detail="summary"))["rig"]
+    ed.check_eq(rig["mapped"], 22, "undo: the rig follows the sidecar")
+
+
+# -- bake ----------------------------------------------------------------------
+
+S: dict = {}
+
+
+async def bake_info(ed: Editor, animation) -> dict:
+    return await ed.call("get_animation", entity=animation, max_keys=2)
+
+
+async def test_bake_creates_an_animation(ed: Editor):
+    info = await ed.call("get_pose_animation", path=WALK, detail="summary")
+    r = await ed.call("edit_pose_animation", path=WALK, bake={"model": "Hero"})
+    bake = r["bake"]
+    ed.check(bake["created"] and bake["name"] == "walk", f"bake: {bake}")
+    ed.check_eq(bake["tracks"], 23, "22 bone rotations and the hips position")
+    ed.check_eq(bake["frames"], info["frame_count"], "one key per frame")
+    anim = await bake_info(ed, bake["animation"]["id"])
+    kinds = [a["kind"] for a in anim["actions"]]
+    ed.check_eq(kinds.count("rotation_track"), 22, f"kinds {kinds}")
+    ed.check_eq(kinds.count("position_track"), 1, f"kinds {kinds}")
+    ed.check(anim["loop"] is True and approx(anim["duration"], info["length"]), f"loop/duration {anim['loop']} {anim['duration']}")
+    hips = next(a for a in anim["actions"] if a["kind"] == "position_track")
+    ed.check_eq(hips["target"]["name"], "mixamorig:Hips", "the hips position track")
+    ed.check(all(a["target"]["name"].startswith("mixamorig:") for a in anim["actions"]), "tracks target bones")
+    # the hero's rest rotations are identity: a posed leg's keys are not
+    leg = next(a for a in anim["actions"] if a["target"]["name"] == "mixamorig:RightUpLeg")
+    ed.check(abs(leg["keys"][0]["value"]["quat"][3]) < 0.999, f"the right thigh is posed forward: {leg['keys'][0]}")
+    ed.check(leg["keys"][0]["time"] == 0 and leg["keys"][1]["time"] > 0, f"key times {leg['keys']}")
+    model = await ed.call("get_model_info", entity="Hero", include_bones=False)
+    ed.check("walk" in json.dumps(model["animations"]), f"the model lists the clip: {model['animations']}")
+    S["bake"] = bake
+    S["tracks"] = sorted(a["action"]["id"] for a in anim["actions"])
+
+
+async def test_rebake_keeps_the_entities(ed: Editor):
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "update_pose", "index": 0, "hold": 0.3}],
+                  bake={"model": "Hero"})
+    anim = await bake_info(ed, S["bake"]["animation"]["id"])
+    ed.check_eq(sorted(a["action"]["id"] for a in anim["actions"]), S["tracks"], "re-bake rewrites the same track entities")
+    length = (await ed.call("get_pose_animation", path=WALK, detail="summary"))["length"]
+    ed.check(approx(anim["duration"], length), f"new duration {anim['duration']} vs {length}")
+    # the re-bake is its own scene undo step; the edit is a project one
+    await ed.call("undo", scope="scene")
+    anim = await bake_info(ed, S["bake"]["animation"]["id"])
+    ed.check_eq(sorted(a["action"]["id"] for a in anim["actions"]), S["tracks"], "undoing the re-bake keeps the first bake")
+    await undo_project(ed)
+
+
+async def test_scene_undo_removes_the_bake(ed: Editor):
+    await ed.call("undo", scope="scene")
+    r = await ed.call_raw("get_animation", {"entity": S["bake"]["animation"]["id"]})
+    ed.check(r.is_error, f"the baked Animation is gone after undo: {r.text[:300]}")
+    model = await ed.call("get_model_info", entity="Hero", include_bones=False)
+    ed.check("walk" not in json.dumps(model["animations"]), f"the clip list is back: {model['animations']}")
+
+
+async def test_bake_errors(ed: Editor):
+    msg = await ed.check_error("edit_pose_animation", path=WALK, bake={"model": "Ground"})
+    ed.check("not a model" in msg, msg)
+    msg = await ed.check_error("edit_pose_animation", path=WALK, bake={"model": "Nobody"})
+    ed.check("bake.model" in msg, msg)
+    msg = await ed.check_error("edit_pose_animation", path="assets/anim/empty.poseanim", create={}, bake={"model": "Hero"})
+    ed.check("no poses" in msg, msg)
+    ed.check(not (ed.project / "assets/anim/empty.poseanim").exists(), "nothing was written")
+
+
+# -- the A-pose robot ----------------------------------------------------------
+
+async def test_same_asset_on_the_apose_robot(ed: Editor):
+    hero = await ed.call("get_pose_animation", path=WALK)
+    robot = await ed.call("get_pose_animation", path=WALK, model="Robot")
+    rig = robot["rig"]
+    ed.check_eq(rig["model"]["name"], "Robot", "the scene model's rig")
+    ed.check_eq(rig["mapped"], 21, f"no upper chest on the robot: {rig}")
+    ed.check("upper_chest" not in rig["bones"], "upper chest unmapped")
+    ed.check_eq(rig["bones"]["left_upper_arm"], "upper_arm.L", "Blender names")
+    for h, r in zip(hero["poses"], robot["poses"]):
+        ed.check_eq(h["angles"], r["angles"], "the angles are the asset's, whatever the rig")
+        if h["grounded"]:
+            ed.check(approx(r["metrics"]["lowest"], 0.0, 1e-3), f"robot pose {r['name']} grounded: {r['metrics']}")
+    r = await ed.call("edit_pose_animation", path=WALK, bake={"model": "Robot", "name": "Walk Robot"})
+    ed.check_eq(r["bake"]["tracks"], 22, "21 mapped bones and the hips position")
+    ed.check_eq(r["bake"]["name"], "Walk Robot", "named bake")
+    await ed.call("undo", scope="scene")
+
+
+async def test_baked_animation_plays(ed: Editor):
+    """Model:playAnimation(name) plays the baked clip in play mode."""
+    r = await ed.call("edit_pose_animation", path=WALK, bake={"model": "Hero"})
+    ed.check(r["bake"]["created"], f"bake: {r['bake']}")
+    rest = harness.find_key(await ed.call("get_entity", entity="mixamorig:RightUpLeg", detail="full"), "rotation")
+    await ed.call("play", action="start")
+    try:
+        await ed.call("eval_lua", code='object("Hero", "Model"):playAnimation("walk"); return true')
+        await ed.call("wait", game_seconds=0.15)
+        got = await ed.call("get_runtime_entity", entity="mixamorig:RightUpLeg")
+        playing = harness.find_key(got, "rotation")
+        ed.check(rest is not None and playing is not None and playing != rest, f"the thigh moves: rest {rest}, playing {playing}")
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("undo", scope="scene")
