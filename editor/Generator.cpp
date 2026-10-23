@@ -375,10 +375,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     if (result) {
         std::error_code ec;
         fs::create_directories(buildPath, ec);
-        std::ofstream f(buildPath / ".jasperengine_kit");
-        if (f.is_open()) {
-            f << currentKit;
-        }
+        FileUtils::writeFile(buildPath / ".jasperengine_kit", currentKit);
     }
 
     return result;

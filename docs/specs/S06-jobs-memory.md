@@ -575,12 +575,15 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   entirely (`tools/check-cxx-subset.py`), so D9's gated `Arena::resource()` and
   `ScratchScope::resource()` are dropped: `ArenaAllocator<T>` serves std containers
   everywhere.
-- **Test target (S02 not landed).** The suites build as `jasperengine-jobs-tests` from
-  `engine/tests/core/` (option `JASPERENGINE_JOBS_TESTS`), with gtest from the vendored
-  yaml-cpp tree. S02 should fold the sources into its core test target. The spec's suite names
-  map onto parameterised suites: `Workers/JobsSteal.*`, `Workers/JobsWait*.*` and so on, run at
-  {0, 1, 2, 8} workers (cases that need workers skip at 0). TSan runs come from a separate
-  `-fsanitize=thread` build directory (docs/jobs-memory.md), not an S02 preset.
+- **Test target.** S03 added `jasperengine-core-tests` (S02 has not landed). The S06 suites
+  build into it from `engine/tests/core/{jobs,memory,io,thread}`, so they run under
+  `tools/build.sh unit-tests`. Its main is `support/TestMain.cpp`, not `gtest_main`: it starts
+  the engine without a window, which the scheduler and asset I/O suites need, and the S03
+  suites run under it unchanged. The binary links the allocation counter (`--wrap=malloc`).
+  The benchmarks `je-bench-jobs` and `je-bench-memory` build in the same directory. The spec's
+  suite names map onto parameterised suites: `Workers/JobsSteal.*`, `Workers/JobsWait*.*` and
+  so on, run at {0, 1, 2, 8} workers (cases that need workers skip at 0). TSan runs come from a
+  separate `-fsanitize=thread` build directory (docs/jobs-memory.md), not an S02 preset.
 - **Zero-allocation counter (AC10).** The vendored ThorVG replaces the global plain
   `operator new/delete`, so the test binary cannot define its own. It counts through
   `-Wl,--wrap=malloc,calloc,realloc` and replaces only the aligned forms. The steady-state test
@@ -671,7 +674,7 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 
 ### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01)
 
-- **AC1-AC10, AC22.** `jasperengine-jobs-tests` passes 226 of 226, three runs in Release and
+- **AC1-AC10, AC22.** `jasperengine-core-tests` (S06 and S03 suites) passes 226 of 226, three runs in Release and
   two under TSan with 0 warnings.
 - **AC11-AC14.** `je-bench-jobs`, `je-bench-memory` and `check_bench.py`: all budgets hold in
   three consecutive runs.
@@ -680,6 +683,8 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   - R25: 2.25-2.5 ms p99.
   - R26: arena 2.9 ns, pool 4.7-4.9 ns, range p99 153-177 ns, stats 0.9-1.4 %.
 - **AC15.** `rg "std::async|ThreadPoolManager" engine/core editor` finds only the Lua shim.
+  S03's Auto Save backup writes, which arrived in a detached `std::thread`, run on the
+  io-write channel.
 - **AC16-AC18.** `tools/mcp/tests/test_jobs_memory.py` passes.
 - **AC19.**
   - `JobsJolt.AdapterMatchesJoltsOwnPool`: 500 boxes stepped 300 times with `JoltJobAdapter`

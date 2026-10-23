@@ -163,14 +163,18 @@ For std containers, use `ArenaAllocator<T>`. `std::pmr` is outside the portable 
 
 ## Tests and benchmarks
 
+The suites are part of `jasperengine-core-tests` (`tools/build.sh unit-tests`, filter with
+`UNIT_TEST_ARGS=--gtest_filter='Jobs*:Workers/*'`). The benchmarks build next to them:
+
 ```bash
-RB=/var/lib/orquester/workspaces/jaspersito/je-remote/rb.sh
-$RB A --img 'cmake -S engine -B build/linux/jobs-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_JOBS_TESTS=ON \
-    && cmake --build build/linux/jobs-tests --target jasperengine-jobs-tests je-bench-jobs je-bench-memory \
-    && cd build/linux/jobs-tests/tests/core && ./jasperengine-jobs-tests \
-    && ./je-bench-jobs --json jobs.json && ./je-bench-memory --json memory.json \
-    && python3 /src/tools/perf/check_bench.py jobs.json memory.json'
+cmake -S engine -B build/linux/core-tests -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON
+cmake --build build/linux/core-tests --target je-bench-jobs je-bench-memory
+cd build/linux/core-tests/tests/core
+./je-bench-jobs --json jobs.json && ./je-bench-memory --json memory.json
+python3 ../../../../../tools/perf/check_bench.py jobs.json memory.json
 ```
+
+Run these through `rb.sh` on a build server (`--img`), never locally.
 
 The scheduler suites run at worker counts {0, 1, 2, 8}. For TSan, configure with
 `-DCMAKE_CXX_FLAGS=-fsanitize=thread` (and the C and linker flags) in its own build directory.

@@ -3,6 +3,7 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "McpTools.h"
+#include "io/AtomicFile.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -280,9 +281,12 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         }
         std::error_code ec;
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ".");
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(target,
+                std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
+        if (!written.ok()) {
+            job->fail("Could not write the PNG to " + target.generic_string() + ": " + io::describeWriteError(written) + ".");
             return;
         }
         info["saved_to"] = target.generic_string();

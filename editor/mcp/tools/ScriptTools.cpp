@@ -3,6 +3,7 @@
 
 // W4: Lua/C++ scripts, compile check, code editor sync
 #include "McpTools.h"
+#include "DocumentFile.h"
 #include "jobs/JobSystem.h"
 #include "W4Shared.h"
 
@@ -71,11 +72,12 @@ namespace fs = std::filesystem;
 namespace w4 {
 
 bool writeFile(const fs::path& path, const std::string& content) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    // agent writes are user documents: atomic, synced, never over a read-only file
+    const io::WriteResult written = DocumentFiles::write(path, content);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(path, written));
+    }
+    return written.ok();
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {

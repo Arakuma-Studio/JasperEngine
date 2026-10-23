@@ -103,6 +103,8 @@ namespace jasperengine::editor {
         bool isOpen() const;
         // Opens the Console if needed and brings its tab to the front.
         void requestFocus();
+        // The search field's text (the messages shown are those containing it)
+        void setSearchText(const std::string& text);
 
         // Toolbar toggles (MCP preferences)
         bool isClearOnPlay() const { return clearOnPlay; }

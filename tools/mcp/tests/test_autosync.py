@@ -411,6 +411,8 @@ NON_TOOL_WORDS = {
     "external_changes",         # the field results carry after files changed on disk
     "scene_inputs",             # list_shaders / get_entity fields of shaders reading the scene
     "cost_note",
+    "degraded_document",        # the error code of a save that would drop data (docs/data-safety.md)
+    "project_locked",           # the error of `mcp --project` on a project another editor has open
 }
 
 

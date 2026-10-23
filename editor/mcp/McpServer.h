@@ -38,6 +38,7 @@ namespace jasperengine::editor::mcp {
         std::filesystem::path createDir;  // --create: make a new project here
         std::string createName;           // --name for --create
         bool headless = false;
+        bool ignoreLock = false;          // --ignore-lock: open a project another editor holds
     };
 
     McpLaunchOptions& mcpLaunchOptions();

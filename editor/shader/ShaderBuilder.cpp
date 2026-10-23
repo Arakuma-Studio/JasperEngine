@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderBuilder.h"
+#include "io/AtomicFile.h"
 
 #include "ShaderDataSerializer.h"
 #include "App.h"
@@ -396,14 +397,9 @@ bool editor::ShaderBuilder::saveShaderDataCache(ShaderKey shaderKey, Project* pr
         return false;
     }
 
-    std::ofstream signatureFile(sourceSignaturePath(cachePath), std::ios::binary | std::ios::trunc);
-    if (!signatureFile) {
-        if (err)
-            *err = "Failed to write custom shader source signature.";
-        return false;
-    }
-    signatureFile << sources->signature << '\n';
-    if (!signatureFile) {
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    if (!io::writeFileAtomic(sourceSignaturePath(cachePath), sources->signature + "\n", options).ok()) {
         if (err)
             *err = "Failed to write custom shader source signature.";
         return false;
