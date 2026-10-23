@@ -72,7 +72,7 @@ Status of a long operation (build, compile, play startup): status, progress 0-1|
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `job_id` | string |  | Omit to list jobs. |
-| `log_lines` | integer (0..200) |  | Default: `40`. |
+| `log_lines` | integer (0..200) |  |  |
 
 
 ### `redo`
@@ -83,7 +83,7 @@ Redo what undo undid, like Ctrl+Y; same scopes. Any new edit clears the redo his
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `scope` | `"scene"` \| `"project"` |  | Default: `"scene"`. |
 | `steps` | integer (1..100) |  | Default: `1`. |
 
@@ -107,7 +107,7 @@ Undo like Ctrl+Z. scope scene: one scene's edits (a step per edit call; a batch 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `scope` | `"scene"` \| `"project"` |  | Default: `"scene"`. |
 | `steps` | integer (1..100) |  | Default: `1`. |
 
@@ -127,7 +127,7 @@ File > New Project: creates a project in `path` (no project.yaml there yet) with
 | `name` | string |  | Default: directory name. |
 | `path` | string | yes | Absolute directory. |
 | `timeout_seconds` | number (5.0..600.0) |  | Default: `180`. |
-| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | Unsaved changes (cancel: fail listing them). Default: `"cancel"`. |
+| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | cancel: fail listing them. Default: `"cancel"`. |
 
 
 ### `edit_build_scenes`
@@ -140,7 +140,7 @@ Edit Scenes in Build (index 0 = start scene). add: also a .scene path not in the
 |---|---|---|---|
 | `action` | `"list"` \| `"add"` \| `"remove"` \| `"move"` \| `"set_start"` |  | Default: `"list"`. |
 | `index` | integer |  | move (or add): build index. |
-| `scene` |  |  | Required unless list. |
+| `scene` | string |  | Required unless list. |
 
 
 ### `edit_project_build_file`
@@ -149,7 +149,7 @@ Edit Scenes in Build (index 0 = start scene). add: also a .scene path not in the
 
 Hints: destructive
 
-Read (omit content) or replace ProjectBuild.cmake, the CMake hook for C++ scripts' include dirs, libraries and definitions (Play and player builds); content "" deletes it. Use ${JASPERENGINE_TARGET} and ${JASPERENGINE_SCRIPTS_DIR}. Not undoable.
+Read (omit content) or replace ProjectBuild.cmake, the CMake hook for C++ scripts' include dirs, libraries and definitions; content "" deletes it. Use ${JASPERENGINE_TARGET} and ${JASPERENGINE_SCRIPTS_DIR}. Not undoable.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -194,7 +194,7 @@ File > Open Project: opens `path` and waits for load. Returns the project summar
 |---|---|---|---|
 | `path` | string | yes | Absolute project dir or project.yaml. |
 | `timeout_seconds` | number (5.0..600.0) |  | Default: `180`. |
-| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | Unsaved changes (cancel: fail listing them). Default: `"cancel"`. |
+| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | cancel: fail listing them. Default: `"cancel"`. |
 
 
 ### `save_project`
@@ -216,7 +216,7 @@ File > Save All: modified scenes (untitled ones to <untitled_scene_dir>/<name>.s
 
 Hints: destructive, idempotent
 
-Set get_project_settings keys. Every value is validated first (one bad value changes nothing); saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges by index. Example: {"values": {"player.window_width": 800, "physics.layer_collision_matrix": [["Player", "Water"]]}}.
+Set get_project_settings keys. Every value is validated first (one bad value changes nothing); saved to project.yaml at once, NOT undoable. Lists are replaced; tags_and_layers.layers merges by index. Example: {"values": {"player.window_width": 800}}.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -236,7 +236,7 @@ Replace the scene's post_processing with a preset (list_post_processing_presets)
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `preset` | string | yes | Preset id or name, e.g. "mobile". |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `close_scene`
@@ -249,8 +249,8 @@ Closes an open scene's tab (it stays in the project; a never-saved one leaves it
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
-| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | Its unsaved changes (cancel: fail). Default: `"cancel"`. |
+| `scene` | string |  |  |
+| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | cancel: fail. Default: `"cancel"`. |
 
 
 ### `create_scene`
@@ -261,11 +261,11 @@ File > New Scene (3D: with sun and sky); adds it to the project and selects it. 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `close_previous` | boolean |  | Close the previously selected scene. |
+| `close_previous` | boolean |  |  |
 | `name` | string |  | Default: the file name or "New Scene". |
 | `path` | string |  | .scene path (extension optional). |
 | `type` | `"3D"` \| `"2D"` \| `"UI"` |  | Default: `"3D"`. |
-| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | Its unsaved changes (cancel: fail). Default: `"cancel"`. |
+| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | cancel: fail. Default: `"cancel"`. |
 
 
 ### `delete_scene`
@@ -279,7 +279,7 @@ Remove a saved, unmodified scene from the project (undo scope=project); delete_f
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `delete_file` | boolean |  |  |
-| `scene` |  | yes | A saved project scene. |
+| `scene` | string | yes |  |
 
 
 ### `get_scene_settings`
@@ -293,8 +293,8 @@ Scene settings (lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, de
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `detail` | boolean |  |  |
-| `names` | array of string |  | Default: all. |
-| `scene` |  |  |  |
+| `names` | array of string |  |  |
+| `scene` | string |  |  |
 
 
 ### `list_post_processing_presets`
@@ -303,11 +303,11 @@ Scene settings (lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, de
 
 Hints: read-only, idempotent
 
-Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.
+Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens). current: the scene's preset (null = custom), settings and cost; in play also applied.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `list_scenes`
@@ -329,9 +329,9 @@ Opens a .scene file (adding it to the project if unlisted) and selects it; an op
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `close_previous` | boolean |  | Close the previously selected scene. |
-| `scene` |  | yes | .scene path, or id/name of a project scene. |
-| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | Its unsaved changes (cancel: fail). Default: `"cancel"`. |
+| `close_previous` | boolean |  |  |
+| `scene` | string | yes | .scene path, or id/name of a project scene. |
+| `unsaved` | `"cancel"` \| `"save"` \| `"discard"` |  | cancel: fail. Default: `"cancel"`. |
 
 
 ### `rename_scene`
@@ -345,7 +345,7 @@ Renames a scene (in the project and generated code; the .scene file keeps its na
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `save_scene`
@@ -359,8 +359,8 @@ Save a scene and its modified child scenes. Untitled scenes need path; path on a
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `all` | boolean |  |  |
-| `path` | string |  | .scene path. |
-| `scene` |  |  |  |
+| `path` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `select_scene`
@@ -373,7 +373,7 @@ Selects an open scene (its tab): the default scene of other tools.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  | yes | An open scene. |
+| `scene` | string | yes |  |
 
 
 ### `set_child_scene`
@@ -387,9 +387,9 @@ Attach (attached=false: detach) `child` as an additive child scene of `scene`. s
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `attached` | boolean |  | Default: `true`. |
-| `child` |  | yes |  |
+| `child` | string | yes |  |
 | `loaded_inline` | boolean |  |  |
-| `scene` |  |  | Parent (default: selected). |
+| `scene` | string |  | Parent (default: selected). |
 | `start_active` | boolean |  |  |
 
 
@@ -403,8 +403,8 @@ Set the scene's main camera (the game renders through it) to a GameObject with a
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` | null | yes |  |
-| `scene` |  |  |  |
+| `entity` | string or null | yes |  |
+| `scene` | string |  |  |
 
 
 ### `set_scene_settings`
@@ -417,7 +417,7 @@ Set scene settings {name: value} (names and shapes: get_scene_settings). post_pr
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `settings` | object | yes |  |
 
 
@@ -434,28 +434,28 @@ Copy GameObjects with their children to the clipboard (Ctrl+C) for paste_entitie
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `cut` | boolean |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `create_entity`
 
 *Create Entity*
 
-GameObject > Create with parent, name, local transform, extra components and initial values in one step. empty = Transform only; bare = no components (root only); model needs model (imports a project model); *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as set_properties.
+GameObject > Create with parent, name, local transform, extra components and initial values in one step. empty = Transform only; bare = no components (root only); model needs model; *_tween/*_tracks are animation actions. values {component: {property: value}} or changes, as set_properties.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `changes` | array of object |  |  |
-| `components` | string or array |  | Extra components. |
+| `components` | string or array |  |  |
 | `model` | string |  | type model: .gltf/.glb/.obj. |
 | `name` | string |  | Default: the type's Unity name. |
-| `parent` |  |  |  |
+| `parent` | string |  |  |
 | `position` | array[3] of number |  |  |
 | `rotation` | array[4] of number or object {euler} |  |  |
 | `scale` | array[3] of number |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `select` | boolean |  | Default: `true`. |
 | `type` | `"empty"` \| `"bare"` \| `"cube"` \| `"plane"` \| `"wall"` \| `"mirror"` \| `"sphere"` \| `"cylinder"` \| `"capsule"` \| `"torus"` \| `"model"` \| `"terrain"` \| `"camera"` \| `"directional_light"` \| `"point_light"` \| `"spot_light"` \| `"skybox"` \| `"fog"` \| `"reflection_probe"` \| `"particle_system"` \| `"points"` \| `"line_renderer"` \| `"mesh_polygon"` \| `"sprite"` \| `"tilemap"` \| `"light_2d"` \| `"shadow_caster_2d"` \| `"rigidbody2d"` \| `"rigidbody"` \| `"joint2d"` \| `"joint3d"` \| `"audio_source"` \| `"audio_source_3d"` \| `"image"` \| `"text"` \| `"button"` \| `"scrollbar"` \| `"progressbar"` \| `"input_field"` \| `"panel"` \| `"polygon"` \| `"layout_group"` \| `"ui_document"` \| `"animation"` \| `"sprite_animation"` \| `"position_tween"` \| `"rotation_tween"` \| `"scale_tween"` \| `"color_tween"` \| `"alpha_tween"` \| `"translate_tracks"` \| `"rotate_tracks"` \| `"scale_tracks"` \| `"morph_tracks"` |  | Default: `"empty"`. |
 | `values` | object |  |  |
@@ -471,9 +471,9 @@ Deletes GameObjects with their children; in a prefab instance only from that ins
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `duplicate_entities`
@@ -484,9 +484,9 @@ Duplicate GameObjects with their children next to the originals (Ctrl+D) and sel
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `find_entities`
@@ -499,16 +499,16 @@ Find GameObjects matching all given filters (globs: * ?, case-insensitive).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `active` | boolean |  | Active in hierarchy or not. |
+| `active` | boolean |  |  |
 | `component` | string or array |  | Required component(s). |
 | `layer` | integer or string |  | 0-31 or name. |
-| `limit` | integer (1..100000) |  | Default: `100`. |
-| `name` | string |  | Name glob. |
-| `path` | string |  | Path glob. |
+| `limit` | integer (1..100000) |  |  |
+| `name` | string |  |  |
+| `path` | string |  |  |
 | `runtime` | boolean |  | While playing: the running copy. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `tag` | string |  |  |
-| `under` |  |  | Only descendants of this. |
+| `under` | string |  | Only descendants of this. |
 | `with_components` | boolean |  | Add component names. |
 
 
@@ -525,10 +525,10 @@ The Hierarchy: each GameObject's id, components (Transform omitted) and flags (i
 | `components` | boolean |  | Default: `true`. |
 | `depth` | integer (0..1000) |  | Max depth (0: start nodes only). |
 | `format` | `"text"` \| `"json"` |  | Default: `"text"`. |
-| `limit` | integer (1..100000) |  | Default: `400`. |
-| `root` |  |  | Only this subtree. |
+| `limit` | integer (1..100000) |  |  |
+| `root` | string |  | Only this subtree. |
 | `runtime` | boolean |  | While playing: the running copy. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `get_selection`
@@ -541,25 +541,25 @@ The selected GameObjects of a scene: {entities: [{id, name, path}]}.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `move_entity`
 
 *Move Entity*
 
-Reparent/reorder GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its children, default last), before or after (a sibling). Several keep their order and world pose unless keep_world_transform=false. Prefab instance children cannot be rearranged.
+Reparent/reorder GameObjects: exactly one of parent (null = root; index among its children, default last), before or after (a sibling). Several keep their order and world pose unless keep_world_transform=false. Prefab instance children cannot be rearranged.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `after` |  |  |  |
-| `before` |  |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
+| `after` | string |  |  |
+| `before` | string |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
 | `index` | integer (0..1000000) |  |  |
 | `keep_world_transform` | boolean |  | Default: `true`. |
-| `parent` | null |  |  |
-| `scene` |  |  |  |
+| `parent` | string or null |  |  |
+| `scene` | string |  |  |
 
 
 ### `paste_entities`
@@ -570,9 +570,9 @@ Paste the copy_entities clipboard (Ctrl+V): at the scene root, as last children 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `after` |  |  |  |
-| `parent` |  |  |  |
-| `scene` |  |  |  |
+| `after` | string |  |  |
+| `parent` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `rename_entity`
@@ -585,9 +585,9 @@ Renames a GameObject.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `name` | string | yes |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `select_entities`
@@ -601,9 +601,9 @@ Replace a scene's selection (what the Inspector shows); add=true adds to it; ent
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `add` | boolean |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_entity_state`
@@ -617,10 +617,10 @@ Sets GameObjects' active (SetActive), tag (a defined tag; "" = untagged) and/or 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `active` | boolean |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
 | `layer` | integer or string |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `tag` | string |  |  |
 
 
@@ -635,9 +635,9 @@ Add components to GameObjects, optionally with initial values (as set_properties
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string or array | yes |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 | `values` | object |  |  |
 
 
@@ -650,8 +650,8 @@ Inspector > Copy Component: one component's values to the clipboard, for paste_c
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string | yes |  |
-| `entity` |  | yes |  |
-| `scene` |  |  |  |
+| `entity` | string | yes |  |
+| `scene` | string |  |  |
 
 
 ### `get_entity`
@@ -660,16 +660,16 @@ Inspector > Copy Component: one component's values to the clipboard, for paste_c
 
 Hints: read-only, idempotent
 
-A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world transform, prefab} and its components. detail: summary (names), values ({component: {property: value}}), full (+ type, default, enum options, prefab-overridden flag), yaml (scene-file encoding). Filter by components and properties (globs, e.g. "submeshes[0].*"); big custom values are elided unless named.
+A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world transform, prefab} and its components. detail: summary (names), values ({component: {property: value}}), full (+ type, default, enum options, prefab-overridden flag), yaml. Filter by components and properties (globs, e.g. "submeshes[0].*"); big custom values are elided unless named.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `components` | string or array |  |  |
 | `detail` | `"summary"` \| `"values"` \| `"full"` \| `"yaml"` |  | Default: `"values"`. |
-| `entity` |  | yes |  |
-| `properties` | array of string |  | Only these properties (names or globs). |
+| `entity` | string | yes |  |
+| `properties` | array of string |  |  |
 | `runtime` | boolean |  | While playing: read the running scene. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `list_component_types`
@@ -682,7 +682,7 @@ Component names (with Unity display names, addable flag). With component: its pr
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `component` | string |  | Describe this one. |
+| `component` | string |  |  |
 
 
 ### `paste_component`
@@ -694,9 +694,9 @@ Paste the copied component onto GameObjects: over their component of that type (
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `as_new` | boolean |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `remove_component`
@@ -710,9 +710,9 @@ Remove components from GameObjects.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string or array | yes |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `reset_component`
@@ -724,9 +724,9 @@ Inspector > Reset: a component's values back to defaults (a script component res
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string | yes |  |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_mesh_geometry`
@@ -738,12 +738,12 @@ Replace a mesh's geometry with a generated primitive. Sizes: plane width/depth, 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `depth` | number |  |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `height` | number |  |  |
 | `radius` | number |  | Base radius for cylinder/capsule. |
 | `ring_radius` | number |  |  |
 | `rings` | integer |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `shape` | `"plane"` \| `"box"` \| `"sphere"` \| `"cylinder"` \| `"capsule"` \| `"torus"` \| `"wall"` | yes |  |
 | `sides` | integer |  |  |
 | `slices` | integer |  |  |
@@ -762,9 +762,9 @@ Set component properties on GameObjects in one undo step (prefab overrides recor
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `changes` | array of object |  | Edits, in order. |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `scene` | string |  |  |
 | `values` | object |  | {component: {property: value}} |
 
 
@@ -776,13 +776,13 @@ Move/rotate/scale GameObjects. relative=true adds position, applies rotation on 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
 | `position` | array[3] of number |  |  |
 | `relative` | boolean |  |  |
 | `rotation` | array[4] of number or object {euler} |  |  |
 | `scale` | array or number |  | [x,y,z] or uniform number. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `space` | `"local"` \| `"world"` |  | Default: `"local"`. |
 
 
@@ -796,9 +796,9 @@ Unity's Apply of an added GameObject: moves it (under parent) into that instance
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes | GameObject to add (with children). |
-| `parent` |  |  | Instance GameObject (default: current parent). |
-| `scene` |  |  |  |
+| `entity` | string | yes |  |
+| `parent` | string |  | Instance GameObject (default: current parent). |
+| `scene` | string |  |  |
 | `target` | string |  | Default: parent's own prefab. |
 
 
@@ -811,10 +811,10 @@ Unity's Create Prefab: saves the GameObject (with children) as a new .prefab and
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `directory` | string |  | Folder used when path is omitted. Default: `"prefabs"`. |
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `path` | string |  | One root only. Default <directory>/<name>.prefab. |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `path` | string |  | One root only. |
+| `scene` | string |  |  |
 
 
 ### `create_prefab_variant`
@@ -826,9 +826,9 @@ Unity's Prefab Variant: a prefab on top of a base (base edits reach it unless ov
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `base` | string |  | Base .prefab (instead of entity). |
-| `entity` |  |  | Outermost instance root. |
+| `entity` | string |  |  |
 | `path` | string |  | Default "<base> Variant.prefab" next to base. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `get_prefab_info`
@@ -842,11 +842,11 @@ Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesti
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `contents` | boolean |  | List the asset's GameObjects. |
-| `entity` |  |  |  |
-| `limit` | integer (1..5000) |  | Max overrides/contents. Default: `200`. |
+| `entity` | string |  |  |
+| `limit` | integer (1..5000) |  | Max overrides/contents. |
 | `only_entity` | boolean |  | Only this GameObject's overrides. |
 | `prefab` | string |  | Instead of entity. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `usage` | boolean |  | Reads closed scene files. Default: `true`. |
 | `values` | boolean |  | Add current vs prefab values. |
 
@@ -861,10 +861,10 @@ Place a prefab (or variant) instance in a scene or prefab stage and select it; n
 |---|---|---|---|
 | `name` | string |  |  |
 | `nest_in_parent_prefab` | boolean |  |  |
-| `parent` |  |  |  |
-| `position` | array[3] of number |  | Local position. |
+| `parent` | string |  |  |
+| `position` | array[3] of number |  |  |
 | `prefab` | string | yes |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `list_prefabs`
@@ -887,7 +887,7 @@ Every .prefab: path, guid, base (variants), standalone, instance count across sc
 
 Hints: destructive
 
-Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) writes ~0.35 s after each edit; save writes now. close keeps depth stages (unsaved ones follow unsaved). status lists stages.
+Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) writes ~0.35 s after each edit; save writes now. close keeps depth stages. status lists stages.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -895,10 +895,10 @@ Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, 
 | `auto_save` | boolean |  |  |
 | `context` | `"normal"` \| `"gray"` \| `"hidden"` |  | Scene shown behind the stage. |
 | `depth` | integer (0..64) |  | close: stages kept. Default: `0`. |
-| `entity` |  |  | open: an instance GameObject. |
-| `in_context` | boolean |  | open from entity. Default: `true`. |
+| `entity` | string |  |  |
+| `in_context` | boolean |  | Default: `true`. |
 | `prefab` | string |  | open: .prefab; with entity: another level of its chain. |
-| `scene` |  |  | open: entity's scene; save: stage (default: shown). |
+| `scene` | string |  | open: entity's scene; save: stage (default: shown). |
 | `unsaved` | `"save"` \| `"discard"` \| `"cancel"` |  | cancel: error. Default: `"save"`. |
 
 
@@ -915,13 +915,13 @@ Apply (into the prefab asset; instances follow) or revert instance overrides. Se
 | `action` | `"apply"` \| `"revert"` | yes |  |
 | `all` | boolean |  |  |
 | `component` | string |  |  |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `kind` | `"property"` \| `"state"` \| `"added_component"` \| `"removed_component"` \| `"added_gameobject"` \| `"removed_gameobject"` |  |  |
 | `name` | string |  | Removed GameObject: name in prefab. |
 | `overrides` | array of object |  | get_prefab_info.overrides entries. |
 | `properties` | array of string |  | Only these properties. |
 | `registry_entity` | integer |  | Removed GameObject: file id in prefab. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `state` | array of `"name"` \| `"active"` \| `"tag"` \| `"layer"` |  | Only these state fields. |
 | `target` | string |  | apply: prefab to apply to. |
 
@@ -936,8 +936,8 @@ Remove a GameObject (with children) from its prefab asset: other instances lose 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes | Instance member (not the root). |
-| `scene` |  |  |  |
+| `entity` | string | yes | Instance member (not the root). |
+| `scene` | string |  |  |
 
 
 ### `replace_prefab`
@@ -950,13 +950,13 @@ Unity's Replace Prefab Asset: an outermost (or added) instance root, or a Missin
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  | Instance root or Missing Prefab root. |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
 | `keep_overrides` | boolean |  | false: keep only default overrides. Default: `true`. |
 | `match` | `"name"` \| `"hierarchy"` \| `"none"` |  | Default: `"name"`. |
 | `prefab` | string | yes | New .prefab. |
 | `rename_root` | boolean |  | Rename a root named after the old prefab. Default: `true`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_standalone_prefab`
@@ -984,9 +984,9 @@ Unity's Unpack: the outermost instance holding entity stops following its prefab
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `completely` | boolean |  |  |
-| `entities` | array |  |  |
-| `entity` |  |  | Any GameObject of the instance. |
-| `scene` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  | Any GameObject of the instance. |
+| `scene` | string |  |  |
 
 
 ## Play mode and input
@@ -1003,9 +1003,9 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 |---|---|---|---|
 | `allow_edit_mode` | boolean |  |  |
 | `code` | string | yes | Expression, or chunk with return. |
-| `max_depth` | integer (1..12) |  | Table nesting. Default: `4`. |
-| `max_items` | integer (1..5000) |  | Entries per table. Default: `200`. |
-| `scene` |  |  |  |
+| `max_depth` | integer (1..12) |  | Table nesting. |
+| `max_items` | integer (1..5000) |  | Entries per table. |
+| `scene` | string |  |  |
 | `timeout_seconds` | number (0.1..60.0) |  | Default: `5`. |
 
 
@@ -1031,11 +1031,11 @@ Live values of a GameObject in the running game (runtime-spawned too): component
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `components` | array of string |  |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `include_script_state` | boolean |  | Default: `true`. |
-| `max_depth` | integer (1..8) |  | Script table nesting. Default: `2`. |
+| `max_depth` | integer (1..8) |  | Script table nesting. |
 | `properties` | array of string |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `list_runtime_entities`
@@ -1048,11 +1048,11 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `component` | string |  | Has this component. |
+| `component` | string |  |  |
 | `created_only` | boolean |  | Runtime-spawned only. |
-| `limit` | integer (1..5000) |  | Default: `200`. |
+| `limit` | integer (1..5000) |  |  |
 | `name_contains` | string |  | Case-insensitive. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `with_components` | boolean |  |  |
 
 
@@ -1060,19 +1060,19 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 
 *Play Mode*
 
-Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors; past timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.
+Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until running; returns the state + console problems, or isError with compile/script errors (wait:false: a job_id). stop: restores the edit-time state. step: advance a paused game `frames` frames. Script errors stop play.
 Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause (see the guide).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"start"` \| `"stop"` \| `"restart"` \| `"pause"` \| `"resume"` \| `"step"` \| `"set"` | yes |  |
 | `auto_pause` | boolean |  |  |
-| `fixed_fps` | integer (0..1000) |  | Frames advance exactly 1/fixed_fps s; 0 = real time. Default: `0`. |
-| `frames` | integer (1..600) |  | step only. Default: `1`. |
+| `fixed_fps` | integer (0..1000) |  | 0 = real time. Default: `0`. |
+| `frames` | integer (1..600) |  | Default: `1`. |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
-| `scene` |  |  | start: default the start scene (else selected). |
+| `scene` | string |  | start: default the start scene (else selected). |
 | `screenshot` | boolean or `"game"` \| `"scene"` \| `"editor"` |  | Also return an image (true: game). |
-| `time_scale` | number (0.0..100.0) |  | Engine.timeScale. Default: `1`. |
+| `time_scale` | number (0.0..100.0) |  | Default: `1`. |
 | `timeout_seconds` | number (1.0..3600.0) |  | start/stop: then return a job. Default: `120`. |
 | `wait` | boolean |  | start only. Default: `true`. |
 
@@ -1081,7 +1081,7 @@ Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, 
 
 *Send Input*
 
-Inject input into the running game across frames (no focus needed). events in order, each {type, ...} (first action = default):
+Inject input into the running game across frames. events in order, each {type, ...} (first action = default):
 key: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]
 text: text (UTF-8); ime: text, cursor (code points; -1 selects); ime_commit: text; ime_cancel
 mouse_leave, mouse_enter
@@ -1113,9 +1113,9 @@ Set component properties of a GameObject in the running game, live: property + v
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string | yes |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `property` | string |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `value` |  |  |  |
 | `values` | object |  |  |
 
@@ -1128,7 +1128,7 @@ Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a pause
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `console_limit` | integer (0..1000) |  | Default: `50`. |
+| `console_limit` | integer (0..1000) |  |  |
 | `frames` | integer (0..1000000) |  |  |
 | `game_seconds` | number (0.0..3600.0) |  |  |
 | `input` | array of object |  |  |
@@ -1171,7 +1171,7 @@ Open and bring an editor panel to the front, e.g. to show a watching human. Not 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `scene` |  |  | window scene: whose tab. |
+| `scene` | string |  | window scene: whose tab. |
 | `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"terrain"` \| `"mcp"` | yes |  |
 
 
@@ -1185,10 +1185,10 @@ Frame GameObjects in the Scene view like pressing F (runtime-spawned too; none g
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  |  |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
 | `max_width` | integer (0..8192) |  | 0 = full size. Default: `768`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `screenshot` | boolean |  | Also return a Scene view image. |
 
 
@@ -1198,14 +1198,14 @@ Frame GameObjects in the Scene view like pressing F (runtime-spawned too; none g
 
 Hints: read-only
 
-Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.
+Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. canvas_rect_in_image maps image -> send_input coords.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `focus` | boolean |  | Front the view's tab if needed. Default: `true`. |
 | `max_width` | integer (0..8192) |  | 0 = full size. Default: `1024`. |
 | `save_path` | string |  | Also write the PNG (project-relative or absolute). |
-| `scene` |  |  | scene view: whose tab; stopped game view: preview it (selects it). |
+| `scene` | string |  | scene view: whose tab; stopped game view: preview it (selects it). |
 | `timeout_seconds` | number (1.0..600.0) |  | Default: `30`. |
 | `view` | `"game"` \| `"scene"` \| `"editor"` |  | Default: `"game"`. |
 
@@ -1224,9 +1224,9 @@ Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, t
 | `max_width` | integer (0..8192) |  | 0 = full size. Default: `768`. |
 | `orbit` | object {pitch, yaw} |  |  |
 | `position` | array[3] of number |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `screenshot` | boolean |  | Also return a Scene view image. |
-| `target` | array[3] of number |  | Look-at point. |
+| `target` | array[3] of number |  |  |
 | `zoom` | number (0.01..1000.0) |  | World units per pixel. |
 
 
@@ -1249,17 +1249,17 @@ No parameters.
 
 Hints: read-only, idempotent
 
-Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes): entries [{id, type, message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest `limit`), more. play, wait and send_input return their console lines already.
+Read the editor Console (build, warnings, errors, Lua print, crashes): entries [{id, type, message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest `limit`), more. play, wait and send_input return their console lines already.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `contains` | string |  | Substring, case-insensitive. |
 | `include_shader_builds` | boolean |  | Per-variant shader build lines. |
-| `limit` | integer (1..1000) |  | Default: `100`. |
-| `max_message_chars` | integer (100..100000) |  | Cut longer ones (build output keeps its end). Default: `4000`. |
+| `limit` | integer (1..1000) |  |  |
+| `max_message_chars` | integer (100..100000) |  | Cut longer ones (build output keeps its end). |
 | `only_problems` | boolean |  | Warnings, errors, build output. |
 | `regex` | string |  | ECMAScript, case-insensitive. |
-| `since` | integer |  | A previous next_cursor. |
+| `since` | integer |  |  |
 | `types` | array of `"info"` \| `"success"` \| `"warning"` \| `"error"` \| `"build"` |  |  |
 
 
@@ -1275,10 +1275,10 @@ Attach a script file to a GameObject (adds the Script component if needed). path
 |---|---|---|---|
 | `class_name` | string |  | C++: the class, if several in the header. |
 | `enabled` | boolean |  | Default: `true`. |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `index` | integer |  | Position (default: last); run order. |
-| `path` | string | yes | .lua, .h or .cpp. |
-| `scene` |  |  |  |
+| `path` | string | yes |  |
+| `scene` | string |  |  |
 
 
 ### `check_script`
@@ -1291,7 +1291,7 @@ Check a script without playing: Lua syntax (not run; ok false + error line) and 
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `code` | string |  | Source instead of a file. |
+| `code` | string |  |  |
 | `language` | `"lua"` \| `"cpp_header"` \| `"cpp_source"` |  | Default: from the extension. |
 | `path` | string |  |  |
 
@@ -1317,7 +1317,7 @@ The editor's code editor (for the human): open at line/column, status, save, rel
 
 *Compile C++ Scripts*
 
-Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): success, errors and warnings [{file, line, column, message}], log tail; compile errors are no tool error. Past timeout_seconds: a job id. Don't Play meanwhile.
+Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): success, errors and warnings [{file, line, column, message}], log tail; compile errors are no tool error. Don't Play meanwhile.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1335,12 +1335,12 @@ Create a script from the engine template, optionally attached to entity. kind lu
 |---|---|---|---|
 | `content` | string |  |  |
 | `directory` | string |  | Default: Lua dir, or "scripts" for C++. |
-| `entity` |  |  | Attach to (needed for cpp_subclass). |
+| `entity` | string |  |  |
 | `header_content` | string |  |  |
 | `kind` | `"lua"` \| `"cpp_script"` \| `"cpp_subclass"` | yes |  |
 | `name` | string | yes | Class/module name = file name. |
 | `overwrite` | boolean |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `source_content` | string |  |  |
 
 
@@ -1354,8 +1354,8 @@ Remove one script from a GameObject (files are kept); returns the remaining scri
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes |  |
-| `scene` |  |  |  |
+| `entity` | string | yes |  |
+| `scene` | string |  |  |
 | `script` |  |  | Index, class or file (optional with one script). |
 
 
@@ -1369,9 +1369,9 @@ With entity: its scripts in order (class, files, enabled, properties: name, type
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `include_files` | boolean |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_script_properties`
@@ -1382,8 +1382,8 @@ Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameO
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes |  |
-| `scene` |  |  |  |
+| `entity` | string | yes |  |
+| `scene` | string |  |  |
 | `script` |  |  | Index, class or file (optional with one script). |
 | `values` | object | yes |  |
 
@@ -1398,7 +1398,7 @@ Rarely needed (disk edits are picked up before every call): a full rescan of cod
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `full` | boolean |  | Scan the project, recheck all scripts. Default: `true`. |
+| `full` | boolean |  | Default: `true`. |
 | `paths` | array of string |  | Changed files (optional). |
 
 
@@ -1412,10 +1412,10 @@ Change one attached script: enabled, move_to (reorder = run order), path (repoin
 |---|---|---|---|
 | `class_name` | string |  |  |
 | `enabled` | boolean |  |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `move_to` | integer |  | New 0-based index. |
 | `path` | string |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `script` |  |  | Index, class or file (optional with one script). |
 
 
@@ -1429,12 +1429,12 @@ Apply a material preset (list_material_presets) in one undo step to submesh mate
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entities` | array |  |  |
-| `entity` |  |  |  |
-| `path` | string |  | A .material file instead of entities. |
+| `entities` | array of string |  |  |
+| `entity` | string |  |  |
+| `path` | string |  |  |
 | `preset` | string | yes | Preset id, e.g. "outline_hull". |
-| `scene` |  |  |  |
-| `submesh` | integer (0..1024) |  | One submesh (default: every submesh). |
+| `scene` | string |  |  |
+| `submesh` | integer (0..1024) |  |  |
 
 
 ### `check_shader`
@@ -1472,11 +1472,11 @@ Create a shared .material file (linked submeshes follow its edits) from defaults
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  |  | Mesh to copy from (and link). |
+| `entity` | string |  | Mesh to copy from (and link). |
 | `link` | boolean |  | Default: true with entity. |
 | `overwrite` | boolean |  |  |
-| `path` | string | yes | New .material path. |
-| `scene` |  |  |  |
+| `path` | string | yes |  |
+| `scene` | string |  |  |
 | `submesh` | integer (0..1024) |  | Default: `0`. |
 | `values` | object |  | baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, foliageTransmission, *Texture (path\|null), *TexCoord; shader ("library:<name>"), shaderParams {member: value}, shaderTextures {uniform: path}, shaderFeatures [defines]\|{define: bool}, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders). |
 
@@ -1504,11 +1504,11 @@ Copy a built-in shader into the project (<directory>/<name>.vert/.frag) and poin
 |---|---|---|---|
 | `component` | string |  | Default: auto-detect. |
 | `directory` | string |  | Default: `"shaders"`. |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `fork_includes` | boolean |  | Also copy the engine .glsl includes. |
 | `name` | string |  | Default: from the GameObject / scene. |
 | `pass_index` | integer |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `shader_type` | `"mesh"` \| `"ui"` \| `"sky"` \| `"points"` \| `"lines"` |  |  |
 | `target` | `"component"` \| `"depth"` \| `"scene_default"` \| `"post_process"` |  | Default: component when entity is given. |
 
@@ -1560,9 +1560,9 @@ A custom or library shader's parameters (u_vs/u_fs_customParams, a pass's u_fs_p
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string |  | Default: auto-detect. |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `pass_index` | integer |  | A post-process pass instead. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `submesh` | integer |  | Submesh (default 0 if its material has a shader). |
 
 
@@ -1577,7 +1577,7 @@ Copy files/folders from absolute local paths into a project folder (created if m
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `fonts` | array of string |  |  |
-| `from_document` | string |  | .html/.css |
+| `from_document` | string |  |  |
 | `icons` | array of string |  |  |
 | `overwrite` | boolean |  |  |
 | `rewrite` | boolean |  | Default: `true`. |
@@ -1593,9 +1593,9 @@ Link a mesh submesh to a .material file, or unlink it (material null: it keeps a
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `material` | string or null |  | .material path, or null to unlink. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `submesh` | integer (0..1024) |  | Default: `0`. |
 
 
@@ -1611,7 +1611,7 @@ List/search project files as the Project window shows them. pattern globs the fi
 |---|---|---|---|
 | `details` | boolean |  | Add sizes and image dimensions. |
 | `directory` | string |  | Default: project root. |
-| `limit` | integer (1..2000) |  | Default: `200`. |
+| `limit` | integer (1..2000) |  |  |
 | `pattern` | string |  |  |
 | `query` | string |  | Name substring. |
 | `recursive` | boolean |  | Default: `true`. |
@@ -1635,7 +1635,7 @@ No parameters.
 
 Hints: read-only, idempotent
 
-The engine's library shaders ("library:<name>"), to pick before forking: type (mesh: a material's shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).
+The engine's library shaders ("library:<name>"),: type (mesh: a material's shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1667,7 +1667,7 @@ Read a project text file (as on disk); the result text is the content.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_lines` | integer (1..20000) |  | Default: `2000`. |
+| `max_lines` | integer (1..20000) |  |  |
 | `path` | string | yes |  |
 | `start_line` | integer (1..100000000) |  | 1-based. Default: `1`. |
 
@@ -1685,7 +1685,7 @@ Grep project text files (scripts, shaders, docs, configs). ECMAScript regex; mat
 | `case_sensitive` | boolean |  | Default: `true`. |
 | `context` | integer (0..10) |  |  |
 | `glob` | string |  | "*.lua", "scripts/**" or a path. |
-| `max_results` | integer (1..500) |  | Default: `50`. |
+| `max_results` | integer (1..500) |  |  |
 | `pattern` | string | yes |  |
 | `regex` | boolean |  |  |
 
@@ -1699,11 +1699,11 @@ Set or remove one parameter of a custom or library shader by member (entity (+ c
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string |  | Default: auto-detect. |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `name` | string | yes |  |
 | `pass_index` | integer |  | A post-process pass instead. |
 | `remove` | boolean |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `submesh` | integer |  | Submesh (default 0 if its material has a shader). |
 | `value` | number or array or string |  | Number or [x,y(,z(,w))] (colours linear), or "#RRGGBB[AA]" (sRGB) for a colour. |
 
@@ -1719,11 +1719,11 @@ Sampler settings of a component's texture property (on the property, e.g. sprite
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `component` | string | yes |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `mag_filter` | `"nearest"` \| `"linear"` |  |  |
 | `min_filter` | `"nearest"` \| `"linear"` \| `"nearest_mipmap_nearest"` \| `"nearest_mipmap_linear"` \| `"linear_mipmap_nearest"` \| `"linear_mipmap_linear"` |  |  |
 | `property` | string | yes | Texture property path. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `svg_scale` | number |  | .svg rasterization scale. |
 | `wrap_u` | `"repeat"` \| `"mirrored_repeat"` \| `"clamp_to_edge"` \| `"clamp_to_border"` |  |  |
 | `wrap_v` | `"repeat"` \| `"mirrored_repeat"` \| `"clamp_to_edge"` \| `"clamp_to_border"` |  |  |
@@ -1738,7 +1738,7 @@ Change the given fields of a .material file; linked submeshes update. Current fi
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `path` | string | yes |  |
-| `values` | object | yes | The fields to change, as create_material's values (null removes). |
+| `values` | object | yes | As create_material's values. |
 
 
 ### `view_asset`
@@ -1782,8 +1782,8 @@ Read an engine source file (path relative to the engine root, e.g. core/math/Qua
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_lines` | integer (1..20000) |  | Default: `2000`. |
-| `path` | string | yes | Engine-relative path. |
+| `max_lines` | integer (1..20000) |  |  |
+| `path` | string | yes |  |
 | `start_line` | integer (1..100000000) |  | 1-based. Default: `1`. |
 
 
@@ -1798,8 +1798,8 @@ Search the scripting API (Lua bindings, C++ headers) and the jasper://docs refer
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `include_docs` | boolean |  | Default: `true`. |
-| `max_doc_results` | integer (0..40) |  | Default: `8`. |
-| `max_results` | integer (1..50) |  | Default: `16`. |
+| `max_doc_results` | integer (0..40) |  |  |
+| `max_results` | integer (1..50) |  |  |
 | `parent` | string |  | Only members of this class/enum. |
 | `query` | string | yes | e.g. "Sprite setTexture", "KEY_SPACE". |
 
@@ -1814,9 +1814,9 @@ Case-insensitive substring search of the engine's C++ headers/sources and Lua bi
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_results` | integer (1..200) |  | Default: `40`. |
+| `max_results` | integer (1..200) |  |  |
 | `path_filter` | string |  | Substring of the file path, e.g. "math/", "binding". |
-| `query` | string | yes | e.g. "Quaternion(", "isKeyPressed". |
+| `query` | string | yes |  |
 
 
 ## Build and export
@@ -1827,7 +1827,7 @@ Case-insensitive substring search of the engine's C++ headers/sources and Lua bi
 
 Hints: open-world
 
-File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.
+File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. Saves all scenes first. Result: output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1840,7 +1840,7 @@ File > Build Settings > Build, as a job. desktop: a player for this computer (th
 | `overwrite` | boolean |  | source: allow a non-empty output_dir. |
 | `platform` | `"windows"` \| `"macos"` \| `"linux"` \| `"android"` \| `"ios"` \| `"web"` |  | source: shader target platform. |
 | `shaders` | object {add, exclude, reset} |  |  |
-| `start_scene` |  |  | Also becomes the project's start scene. Default: project's. |
+| `start_scene` | string |  | Also becomes the project's start scene. Default: project's. |
 | `timeout_seconds` | number (0.0..3600.0) |  | Default: `120`. |
 | `wait` | boolean |  | Default: `true`. |
 
@@ -1887,10 +1887,10 @@ Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `args` | array of string |  | Player arguments. |
-| `gap_ms` | number (0.0..10000.0) |  | Default: `50`. |
+| `gap_ms` | number (0.0..10000.0) |  |  |
 | `input` | array of object |  |  |
-| `input_delay_seconds` | number (0.0..120.0) |  | Default: `1`. |
-| `log_lines` | integer (0..2000) |  | Default: `80`. |
+| `input_delay_seconds` | number (0.0..120.0) |  |  |
+| `log_lines` | integer (0..2000) |  |  |
 | `max_width` | integer (64..4096) |  | Default: `1280`. |
 | `path` | string |  | Executable or build dir (absolute). Default: last desktop build. |
 | `screenshot` | boolean |  | Default: true unless other screenshots. |
@@ -1916,20 +1916,20 @@ Create a particle effect (Points GameObject + Particle System child) from a pres
 | `bursts` | array of object |  |  |
 | `color` |  |  |  |
 | `emitter` | object |  |  |
-| `emitter_entity` |  |  |  |
-| `entity` |  |  | Effect to reconfigure. |
+| `emitter_entity` | string |  |  |
+| `entity` | string |  |  |
 | `gradient` | array of array |  | [[t, [r, g, b]], ...] |
 | `life` |  |  | Seconds or [min, max]. |
 | `loop` | boolean |  |  |
 | `max_particles` | integer (1..100000) |  |  |
 | `name` | string |  |  |
-| `parent` |  |  |  |
+| `parent` | string |  |  |
 | `position` | array[3] of number |  |  |
 | `preset` | `"fire"` \| `"smoke"` \| `"sparks"` \| `"explosion"` \| `"snow"` \| `"rain"` \| `"magic"` \| `"none"` |  |  |
 | `properties` | object |  |  |
 | `rate` | integer (0..100000) |  |  |
 | `scale` | number |  | Default 1 (3D), 40 (2D). |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `size` |  |  | Or [min, max]. |
 | `size_over_life` | array[2] of number |  |  |
 | `texture` | string |  |  |
@@ -1944,9 +1944,9 @@ Build a UI tree from one root node {type, name, layout, text, font_size, font, t
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `parent` |  |  |  |
+| `parent` | string |  |  |
 | `root` | object | yes |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `edit_animation`
@@ -1958,18 +1958,18 @@ Author an Animation timeline (seconds); without animation, creates one as a chil
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `add_actions` | array of object {action, duration, lane, start_time} |  |  |
-| `animation` |  |  | Animation to edit. |
+| `animation` | string |  |  |
 | `autoplay` | boolean |  |  |
 | `delete_removed` | boolean |  | Default: `true`. |
 | `duration` | number |  | -1: until actions end. |
 | `loop` | boolean |  |  |
-| `max_keys` | integer |  | Per track. Default: `20`. |
+| `max_keys` | integer |  | Per track. |
 | `name` | string |  |  |
 | `remove_actions` | array of integer |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `set_frames` | array of object {duration, index, lane, start_time} |  |  |
 | `speed` | number |  |  |
-| `target` |  |  | Required to create. |
+| `target` | string |  | Required to create. |
 | `tracks` | array of object {channel, keys, mode, name, start_time, target} |  |  |
 | `tweens` | array of object {duration, ease, from, loop, name, start_time, target, to, type} |  |  |
 
@@ -1987,9 +1987,9 @@ Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if m
 | `body_type` | `"static"` \| `"kinematic"` \| `"dynamic"` |  |  |
 | `clear` | boolean |  |  |
 | `dimension` | `"2d"` \| `"3d"` |  | Default: body, else scene. |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `remove` | array of integer |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `update` | array of object |  |  |
 
 
@@ -2003,14 +2003,14 @@ Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops 
 |---|---|---|---|
 | `cell_size` | array[2] of number |  |  |
 | `create` | object {name, parent, position} |  |  |
-| `entity` |  |  |  |
-| `max_cells` | integer |  | Largest grid as lines. Default: `6000`. |
+| `entity` | string |  |  |
+| `max_cells` | integer |  | Largest grid as lines. |
 | `ops` | array of object |  |  |
 | `origin` | array[2] of number |  | >= 0. |
 | `rects` | array of object {name, rect, submesh} |  |  |
 | `replace_rects` | boolean |  |  |
 | `return_grid` | boolean |  | Default: `true`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `texture` | string |  |  |
 | `tileset` | object {columns, count, names, offset, padding, prefix, rows, sheet_size, tile_size} |  |  |
 
@@ -2025,9 +2025,9 @@ An Animation's timeline: loop, duration, autoplay, target and actions (index, ki
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes | Animation, or an animated GameObject. |
-| `max_keys` | integer |  | Per track. Default: `50`. |
-| `scene` |  |  |  |
+| `entity` | string | yes | Animation, or an animated GameObject. |
+| `max_keys` | integer |  | Per track. |
+| `scene` | string |  |  |
 
 
 ### `get_model_info`
@@ -2040,9 +2040,9 @@ What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (tr
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `include_bones` | boolean |  | Default: `true`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `get_tilemap`
@@ -2056,12 +2056,12 @@ A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `cell_size` | array[2] of number |  |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `include_tiles` | boolean |  |  |
-| `limit` | integer |  | Default: `200`. |
-| `max_cells` | integer |  | Largest grid as lines. Default: `6000`. |
+| `limit` | integer |  |  |
+| `max_cells` | integer |  | Largest grid as lines. |
 | `origin` | array[2] of number |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `preview_animation`
@@ -2073,8 +2073,8 @@ Edit-mode preview (Animation window controls): play, pause, seek (time), stop (r
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"play"` \| `"pause"` \| `"stop"` \| `"seek"` |  | Default: `"play"`. |
-| `animation` |  | yes |  |
-| `scene` |  |  |  |
+| `animation` | string | yes |  |
+| `scene` | string |  |  |
 | `time` | number |  | seek: seconds. |
 | `wait_ms` | integer (0..30000) |  |  |
 
@@ -2089,10 +2089,10 @@ Terrain size, max_height, maps, layers and heights. points: each one's position,
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  |  | Default: the only terrain. |
+| `entity` | string |  | Default: the only terrain. |
 | `grid` | integer (0..65) |  | Default 9 without points. |
 | `points` | array of array of number |  | [x, z] points. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `space` | `"world"` \| `"local"` |  | Default: `"world"`. |
 
 
@@ -2100,13 +2100,13 @@ Terrain size, max_height, maps, layers and heights. points: each one's position,
 
 *Sculpt / Paint Terrain*
 
-Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move ~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. Returns heights after each stroke. Whole maps: set_terrain_maps.
+Terrain-window brush strokes: the brush moves along each stroke's points, holding seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move ~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. Returns heights after each stroke. Whole maps: set_terrain_maps.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` |  |  | Default: the only terrain. |
+| `entity` | string |  | Default: the only terrain. |
 | `map_resolution` | integer (2..4096) |  | New maps. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `space` | `"world"` \| `"local"` |  | local: terrain-centred. Default: `"world"`. |
 | `strokes` | array of object {align_to_normal, asset, falloff, flatten_height, instanced, layer, mask, max_scale, min_scale, mode, noise_size, normalize, points, rotation, rotation_jitter, seconds_per_point, shape, size, spacing, strength, terrace_steps} | yes |  |
 
@@ -2124,16 +2124,16 @@ Create a joint GameObject between two bodies, or edit one (joint). 2D: distance,
 | `anchor_b` |  |  |  |
 | `auto_anchors` | boolean |  |  |
 | `axis` |  |  |  |
-| `body_a` |  |  |  |
-| `body_b` |  |  |  |
+| `body_a` | string |  |  |
+| `body_b` | string |  |  |
 | `dimension` | `"2d"` \| `"3d"` |  |  |
-| `joint` |  |  | Joint to edit. |
+| `joint` | string |  |  |
 | `limits` | array[2] of number |  | 3D [min, max]. |
 | `name` | string |  |  |
 | `normal` | array[3] of number |  | 3D. |
 | `properties` | object |  | Other joint properties. |
 | `rope` | boolean |  | 2D distance. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `target` | array[2] of number |  | 2D mouse. |
 | `type` | string |  |  |
 
@@ -2148,10 +2148,10 @@ Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it; crea
 |---|---|---|---|
 | `clear` | boolean |  |  |
 | `create` | object {name, parent, position} |  |  |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `merge_static_meshes` | boolean |  |  |
 | `path` | string |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `timeout_seconds` | integer (1..600) |  | Default: `60`. |
 
 
@@ -2166,7 +2166,7 @@ Lay out existing UI elements (RectTransform) with create_ui's layout rules.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `items` | array of object {anchor, entity, margins, pivot, position, size} | yes |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_shape_points`
@@ -2184,48 +2184,48 @@ Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Rendere
 | `color` | array of number |  |  |
 | `colors` | array of array |  | One per point. |
 | `component` | `"polygon"` \| `"mesh_polygon"` \| `"shadow_caster_2d"` \| `"line_renderer"` |  |  |
-| `entity` |  | yes |  |
+| `entity` | string | yes |  |
 | `lines` | array of object |  |  |
 | `order` | `"outline"` \| `"strip"` |  | Default: `"outline"`. |
 | `points` | array of array |  | [[x, y(, z)], ...] |
 | `rect` | array[4] of number |  | [x, y, w, h]. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ### `set_sprite_animation`
 
 *Set Sprite Animation*
 
-Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on play; make several (Idle, Run) and switch them in scripts.
+Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) starts it on play.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `animation` |  |  | To update. |
+| `animation` | string |  | To update. |
 | `autoplay` | boolean |  |  |
 | `fps` | number |  | Default: `10`. |
 | `frame_ms` |  |  |  |
 | `frames` | array of integer or string |  |  |
 | `loop` | boolean |  | Default: `true`. |
 | `name` | string |  |  |
-| `scene` |  |  |  |
-| `sprite` |  | yes | Sprite with frames. |
+| `scene` | string |  |  |
+| `sprite` | string | yes | Sprite with frames. |
 
 
 ### `set_sprite_frames`
 
 *Set Sprite Frames*
 
-Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or frames lists pixel rects (top-left origin). It shows frame (sized to it with resize); pivot center suits characters. create instead of entity makes one. Animate: set_sprite_animation; scripts: Sprite:setFrame(index or name).
+Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or frames lists pixel rects (top-left origin). It shows frame (sized to it with resize). create instead of entity makes one. Animate: set_sprite_animation; scripts: Sprite:setFrame(index or name).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `create` | object {name, parent, position} |  |  |
-| `entity` |  |  |  |
+| `entity` | string |  |  |
 | `frame` | integer |  | Default: `0`. |
 | `frames` | array of object {name, rect} |  |  |
 | `pivot` | `"center"` \| `"top_center"` \| `"bottom_center"` \| `"left_center"` \| `"right_center"` \| `"top_left"` \| `"bottom_left"` \| `"top_right"` \| `"bottom_right"` |  |  |
 | `resize` | boolean |  | Default: `true`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `size` | array[2] of number |  |  |
 | `slice` | object {columns, count, names, offset, padding, prefix, rows, sheet_size, tile_size} |  |  |
 | `texture` | string |  |  |
@@ -2235,15 +2235,15 @@ Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row
 
 *Set Terrain Maps*
 
-Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its normal/roughness/metallic/occlusion). Images under the assets dir.
+Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its normal/roughness/metallic/occlusion).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `blendmap` | string or object |  |  |
-| `entity` |  |  | Default: the only terrain. |
+| `entity` | string |  | Default: the only terrain. |
 | `heightmap` | string or object |  |  |
 | `layers` | array of object {color, height, index, metallic, normal, occlusion, pbr, roughness} |  |  |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 
 
 ## HTML/CSS UI
@@ -2259,9 +2259,9 @@ Assert the layout of a live HTML/CSS UI document: passed + each failure (element
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `checks` | array of object {allow_scroll, background, container, count, height, max, min, min_ratio, selector, single_line, tolerance, type, unobstructed, width, with} | yes |  |
-| `entity` |  |  | UI Document (default: the only one). |
+| `entity` | string |  | UI Document (default: the only one). |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
 | `viewports` | array of array[2] of number |  | [[w,h], ...] (max 6); default the current. |
 
@@ -2270,16 +2270,16 @@ Assert the layout of a live HTML/CSS UI document: passed + each failure (element
 
 *Create UI Document*
 
-Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made from template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept unless overwrite. Returns the files and the first load's diagnostics.
+Create a GameObject with a UI Document showing an HTML/CSS file. A missing html is made from template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept unless overwrite. Returns the files and the first load's diagnostics.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `html` | string | yes | .html in the assets dir, e.g. assets/ui/menu.html. |
 | `name` | string |  | Default: from the file name. |
-| `overwrite` | boolean |  | Replace existing files. |
-| `parent` |  |  |  |
+| `overwrite` | boolean |  |  |
+| `parent` | string |  |  |
 | `properties` | object |  | Other UI Document properties. |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `script` | boolean |  | Attach the template's Lua (default: examples yes, blank no). |
 | `sort_order` | integer (-32768..32767) |  |  |
 | `template` | `"main_menu"` \| `"pause_menu"` \| `"hud"` \| `"inventory"` \| `"settings"` \| `"dialogue"` \| `"shop"` \| `"toasts"` \| `"loading"` \| `"video_menu"` \| `"blank"` |  | Default: `"blank"`. |
@@ -2291,19 +2291,19 @@ Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo 
 
 Hints: read-only, idempotent
 
-Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics without a document (as `jasperengine-editor check --ui`). Lua-made content appears in play only.
+Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics without a document. Lua-made content appears in play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `at` | array[2] of number |  | Hit test (canvas px): the element stack. |
+| `at` | array[2] of number |  | Canvas px. |
 | `depth` | integer (0..16) |  | Descendant levels (default tree 3, full 0). |
 | `detail` | `"tree"` \| `"full"` |  | full: max 20 elements. Default: `"tree"`. |
-| `entity` |  |  | UI Document (default: the only one). |
-| `file` | string |  | .html/.css: its diagnostics only, no live document. |
-| `limit` | integer (1..1000) |  | Default: `200`. |
+| `entity` | string |  | UI Document (default: the only one). |
+| `file` | string |  |  |
+| `limit` | integer (1..1000) |  |  |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
-| `scene` |  |  |  |
+| `scene` | string |  |  |
 | `screenshot` | boolean |  | Game view image of the matches, outlined. |
 | `selector` | string |  | CSS selector (default: whole document). |
 | `styles` | array of string |  | Computed CSS properties per element. |
@@ -2322,7 +2322,7 @@ The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: backgr
 |---|---|---|---|
 | `category` | string |  | e.g. gradient, glass, blur, light, distort. |
 | `kind` | `"paint"` \| `"filter"` |  |  |
-| `name` | string |  | One effect: all its parameters. |
+| `name` | string |  |  |
 
 
 ### `set_ui_effect_time`

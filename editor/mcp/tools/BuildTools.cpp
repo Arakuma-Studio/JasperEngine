@@ -1852,10 +1852,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles "
-            "the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
-            "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
-            "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
+            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build "
+            "compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone "
+            "C++/CMake project. Saves all scenes first. Result: output_dir, artifacts, executable, errors "
+            "[{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
@@ -1914,15 +1914,15 @@ void registerBuildTools(McpRegistry& registry) {
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", number("Default: 5, or past the input.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
-            {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
+            {"input_delay_seconds", number("", 0, 120)},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
-            {"gap_ms", withDefault(number("", 0, 10000), 50)},
+            {"gap_ms", number("", 0, 10000)},
             {"screenshots_at", array(number(""), "")},
             {"screenshot", boolean("Default: true unless other screenshots.")},
             {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
-            {"log_lines", withDefault(integer("", 0, 2000), 80)}
+            {"log_lines", integer("", 0, 2000)}
         });
         tool.annotations.openWorld = true;
         tool.handler = runBuildTool;

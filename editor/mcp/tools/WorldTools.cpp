@@ -4096,11 +4096,11 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- terrain
     add("sculpt_terrain", "Sculpt / Paint Terrain",
-        "Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding "
-        "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
-        "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
-        "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
-        "Returns heights after each stroke. Whole maps: set_terrain_maps.",
+        "Terrain-window brush strokes: the brush moves along each stroke's points, holding seconds_per_point "
+        "at each. Heights are 0-1 of max_height; raise/lower move ~strength*1.5*seconds_per_point per point "
+        "(repeat points for big hills). ramp: first to last point; stamp needs mask; place/erase_object: "
+        "asset, one per point within size. Missing maps are created. Returns heights after each stroke. Whole "
+        "maps: set_terrain_maps.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -4135,10 +4135,10 @@ void registerWorldTools(McpRegistry& registry) {
         sculptTerrainTool, false, false);
 
     add("set_terrain_maps", "Set Terrain Maps",
-        "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
-        "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
-        "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
-        "normal/roughness/metallic/occlusion). Images under the assets dir.",
+        "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit "
+        "map (middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, "
+        "or {color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: "
+        "its normal/roughness/metallic/occlusion).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -4202,7 +4202,7 @@ void registerWorldTools(McpRegistry& registry) {
         "that dimension; built on play.",
         object({
             {"scene", sceneRef()},
-            {"joint", entityRef("Joint to edit.")},
+            {"joint", entityRef("")},
             {"name", string("")},
             {"dimension", stringEnum("", {"2d", "3d"})},
             {"type", string("")},
@@ -4252,7 +4252,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"origin", vec2(">= 0.")},
             {"ops", array(anyObject("{op, ...}"), "")},
             {"return_grid", withDefault(boolean(""), true)},
-            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
+            {"max_cells", integer("Largest grid as lines.")}
         }),
         editTilemapTool, false, false);
 
@@ -4265,17 +4265,16 @@ void registerWorldTools(McpRegistry& registry) {
             {"cell_size", vec2("")},
             {"origin", vec2("")},
             {"include_tiles", boolean("")},
-            {"limit", withDefault(integer(""), 200)},
-            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
+            {"limit", integer("")},
+            {"max_cells", integer("Largest grid as lines.")}
         }, {"entity"}),
         getTilemapTool, true, true);
 
     // ---------------------------------------------------------------- sprites
     add("set_sprite_frames", "Set Sprite Frames",
         "Give a Sprite its sheet and frames (Texture Slicer): slice cuts texture into row-major frames, or "
-        "frames lists pixel rects (top-left origin). It shows frame (sized to it with resize); pivot center "
-        "suits characters. create instead of entity makes one. Animate: set_sprite_animation; scripts: "
-        "Sprite:setFrame(index or name).",
+        "frames lists pixel rects (top-left origin). It shows frame (sized to it with resize). create instead "
+        "of entity makes one. Animate: set_sprite_animation; scripts: Sprite:setFrame(index or name).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4296,9 +4295,9 @@ void registerWorldTools(McpRegistry& registry) {
         setSpriteFramesTool, false, false);
 
     add("set_sprite_animation", "Set Sprite Animation",
-        "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or "
-        "names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) "
-        "starts it on play; make several (Idle, Run) and switch them in scripts.",
+        "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices "
+        "or names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when "
+        "new) starts it on play.",
         object({
             {"scene", sceneRef()},
             {"sprite", entityRef("Sprite with frames.")},
@@ -4322,7 +4321,7 @@ void registerWorldTools(McpRegistry& registry) {
         "set_frames/remove_actions: pre-call indices.",
         object({
             {"scene", sceneRef()},
-            {"animation", entityRef("Animation to edit.")},
+            {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
@@ -4350,7 +4349,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"duration", number("-1: until actions end.")},
             {"speed", number("")},
             {"autoplay", boolean("")},
-            {"max_keys", withDefault(integer("Per track."), 20)}
+            {"max_keys", integer("Per track.")}
         }),
         editAnimationTool, false, false);
 
@@ -4361,7 +4360,7 @@ void registerWorldTools(McpRegistry& registry) {
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Animation, or an animated GameObject.")},
-            {"max_keys", withDefault(integer("Per track."), 50)}
+            {"max_keys", integer("Per track.")}
         }, {"entity"}),
         getAnimationTool, true, true);
 
@@ -4413,7 +4412,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Runs in play (autoplay). emitter_entity: draw with an existing Points/Mesh.",
         object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Effect to reconfigure.")},
+            {"entity", entityRef("")},
             {"name", string("")},
             {"parent", entityRef()},
             {"position", vec3("")},

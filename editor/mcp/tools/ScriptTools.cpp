@@ -1779,7 +1779,7 @@ void registerScriptTools(McpRegistry& registry) {
             {"header_content", string("")},
             {"source_content", string("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("Attach to (needed for cpp_subclass).")},
+            {"entity", entityRef("")},
             {"overwrite", withDefault(boolean(""), false)}
         }, {"kind", "name"});
         tool.allowedWhilePlaying = false;
@@ -1797,7 +1797,7 @@ void registerScriptTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
-            {"path", assetPath(".lua, .h or .cpp.")},
+            {"path", assetPath("")},
             {"class_name", string("C++: the class, if several in the header.")},
             {"index", integer("Position (default: last); run order.")},
             {"enabled", withDefault(boolean(""), true)}
@@ -1893,7 +1893,7 @@ void registerScriptTools(McpRegistry& registry) {
             "header: class, kind, DPROPERTY fields (code: compile_scripts). path, or code + language.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"code", string("Source instead of a file.")},
+            {"code", string("")},
             {"language", stringEnum("Default: from the extension.", {"lua", "cpp_header", "cpp_source"})}
         });
         tool.annotations.readOnly = true;
@@ -1912,7 +1912,7 @@ void registerScriptTools(McpRegistry& registry) {
             "changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
-            {"full", withDefault(boolean("Scan the project, recheck all scripts."), true)}
+            {"full", withDefault(boolean(""), true)}
         });
         tool.annotations.idempotent = true;
         tool.handler = syncFilesTool;
@@ -1925,9 +1925,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.activity = ToolActivity::ScriptCompile;  // busy policy (McpServer::busyRefusal)
         tool.title = "Compile C++ Scripts";
         tool.description =
-            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): success, "
-            "errors and warnings [{file, line, column, message}], log tail; compile errors are no tool error. Past "
-            "timeout_seconds: a job id. Don't Play meanwhile.";
+            "Build the C++ scripts without playing (Play's CMake build; the next Play is incremental): "
+            "success, errors and warnings [{file, line, column, message}], log tail; compile errors are no "
+            "tool error. Don't Play meanwhile.";
         tool.inputSchema = object({
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 1, 3600), 300)}

@@ -837,17 +837,17 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "get_entity";
         tool.title = "Get Entity";
         tool.description =
-            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world "
-            "transform, prefab} and its components. detail: summary (names), values ({component: {property: "
-            "value}}), full (+ type, default, enum options, prefab-overridden flag), yaml (scene-file encoding). "
-            "Filter by components and properties (globs, e.g. \"submeshes[0].*\"); big custom values are elided "
-            "unless named.";
+            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, "
+            "world transform, prefab} and its components. detail: summary (names), values ({component: "
+            "{property: value}}), full (+ type, default, enum options, prefab-overridden flag), yaml. Filter "
+            "by components and properties (globs, e.g. \"submeshes[0].*\"); big custom values are elided unless "
+            "named.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"detail", withDefault(stringEnum("", {"summary", "values", "full", "yaml"}), "values")},
             {"components", componentsArgSchema("")},
-            {"properties", array(string(""), "Only these properties (names or globs).")},
+            {"properties", array(string(""), "")},
             {"runtime", withDefault(boolean("While playing: read the running scene."), false)}
         }, {"entity"});
         tool.annotations.readOnly = true;
@@ -979,7 +979,7 @@ void registerComponentTools(McpRegistry& registry) {
         tool.description =
             "Component names (with Unity display names, addable flag). With component: its properties with type, "
             "default and enum options.";
-        tool.inputSchema = object({{"component", componentName("Describe this one.")}});
+        tool.inputSchema = object({{"component", componentName("")}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = listComponentTypesTool;

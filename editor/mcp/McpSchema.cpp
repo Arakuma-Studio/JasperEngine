@@ -105,20 +105,19 @@ Json color(const std::string& description) {
     }, description);
 }
 
-// Refs carry no type: McpRefs accepts an id, a name, a path and the {"id"|"name"|"path"} objects
-// results return, and the server instructions (Addressing) explain them once. A type hint on each of
-// the ~150 ref arguments cost about 4,000 characters in every agent session. The default
-// descriptions are empty for the same reason.
+// Refs advertise "string": McpRefs reads a numeric string like an integer id ("12" = 12) and also
+// accepts the {"id"|"name"|"path"} objects results return. The server instructions (Addressing)
+// explain the conventions, so the default descriptions are empty.
 Json sceneRef(const std::string& description) {
-    return described(Json::object(), description);
+    return described({{"type", "string"}}, description);
 }
 
 Json entityRef(const std::string& description) {
-    return described(Json::object(), description);
+    return described({{"type", "string"}}, description);
 }
 
 Json entities(const std::string& description) {
-    return described({{"type", "array"}}, description);
+    return described({{"type", "array"}, {"items", {{"type", "string"}}}}, description);
 }
 
 Json componentName(const std::string& description) {

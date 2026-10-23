@@ -1889,7 +1889,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"path", assetPath("One root only. Default <directory>/<name>.prefab.")},
+            {"path", assetPath("One root only.")},
             {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")}
         });
         tool.allowedWhilePlaying = false;
@@ -1906,7 +1906,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "GameObjects. From base: the asset only (undo scope=project).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Outermost instance root.")},
+            {"entity", entityRef("")},
             {"base", assetPath("Base .prefab (instead of entity).")},
             {"path", assetPath("Default \"<base> Variant.prefab\" next to base.")}
         });
@@ -1926,7 +1926,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"prefab", prefabRef},
             {"scene", sceneRef()},
             {"parent", entityRef()},
-            {"position", vec3("Local position.")},
+            {"position", vec3("")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
         }, {"prefab"});
@@ -1944,7 +1944,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Instance root or Missing Prefab root.")},
+            {"entity", entityRef("")},
             {"entities", entities()},
             {"prefab", assetPath("New .prefab.")},
             {"match", withDefault(stringEnum("", {"name", "hierarchy", "none"}), "name")},
@@ -1985,7 +1985,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "outer one gets it as an override of its nested instance. Written when the scene is saved.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("GameObject to add (with children).")},
+            {"entity", entityRef("")},
             {"parent", entityRef("Instance GameObject (default: current parent).")},
             {"target", assetPath("Default: parent's own prefab.")}
         }, {"entity"});
@@ -2027,7 +2027,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"values", withDefault(boolean("Add current vs prefab values."), false)},
             {"usage", withDefault(boolean("Reads closed scene files."), true)},
             {"contents", withDefault(boolean("List the asset's GameObjects."), false)},
-            {"limit", withDefault(integer("Max overrides/contents.", 1, 5000), 200)}
+            {"limit", integer("Max overrides/contents.", 1, 5000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2073,17 +2073,17 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_mode";
         tool.title = "Prefab Mode";
         tool.description =
-            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks "
-            "inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from "
-            "the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) "
-            "writes ~0.35 s after each edit; save writes now. close keeps depth stages (unsaved ones follow "
-            "unsaved). status lists stages.";
+            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; "
+            "stacks inside a stage); returns the stage's scene_id for scene/GameObject/component tools and "
+            "undo (paths from the prefab root). Edits change the asset; nested instances record overrides. "
+            "Auto Save (default on) writes ~0.35 s after each edit; save writes now. close keeps depth "
+            "stages. status lists stages.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
             {"scene", sceneRef("open: entity's scene; save: stage (default: shown).")},
-            {"entity", entityRef("open: an instance GameObject.")},
-            {"in_context", withDefault(boolean("open from entity."), true)},
+            {"entity", entityRef("")},
+            {"in_context", withDefault(boolean(""), true)},
             {"depth", withDefault(integer("close: stages kept.", 0, 64), 0)},
             {"unsaved", withDefault(stringEnum("cancel: error.", {"save", "discard", "cancel"}), "save")},
             {"auto_save", boolean("")},

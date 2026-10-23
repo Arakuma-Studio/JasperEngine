@@ -1773,19 +1773,18 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in "
             "canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; "
             "detail full: box model + computed styles with the file:line of each rule. at: hit test. file: a "
-            ".html/.css's diagnostics without a document (as `jasperengine-editor check --ui`). Lua-made "
-            "content appears in play only.";
+            ".html/.css's diagnostics without a document. Lua-made content appears in play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
-            {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
+            {"file", assetPath("")},
             {"selector", string("CSS selector (default: whole document).")},
-            {"at", vec2("Hit test (canvas px): the element stack.")},
+            {"at", vec2("Canvas px.")},
             {"detail", withDefault(stringEnum("full: max 20 elements.",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
-            {"limit", withDefault(integer("", 1, 1000), 200)},
+            {"limit", integer("", 1, 1000)},
             {"models", boolean("Data-model values (play).")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
             {"screenshot", boolean("Game view image of the matches, outlined.")},
@@ -1846,10 +1845,10 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "create_ui_document";
         tool.title = "Create UI Document";
         tool.description =
-            "Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing "
-            "html is made from template (blank or an example: main_menu, pause_menu, hud, inventory, "
-            "settings, dialogue, shop, toasts, loading) with its .css, assets and Lua (script: attached); "
-            "existing files are kept unless overwrite. Returns the files and the first load's diagnostics.";
+            "Create a GameObject with a UI Document showing an HTML/CSS file. A missing html is made from "
+            "template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, "
+            "toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept "
+            "unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"parent", entityRef()},
@@ -1858,7 +1857,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},
-            {"overwrite", boolean("Replace existing files.")},
+            {"overwrite", boolean("")},
             {"properties", anyObject("Other UI Document properties.")}
         }, {"html"});
         tool.annotations.readOnly = false;

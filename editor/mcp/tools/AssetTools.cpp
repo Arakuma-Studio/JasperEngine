@@ -2896,7 +2896,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"query", string("Name substring.")},
             {"recursive", withDefault(boolean(""), true)},
             {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
-            {"limit", withDefault(integer("", 1, 2000), 200)}
+            {"limit", integer("", 1, 2000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2945,7 +2945,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
-            {"max_lines", withDefault(integer("", 1, 20000), 2000)}
+            {"max_lines", integer("", 1, 20000)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3035,7 +3035,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"overwrite", withDefault(boolean(""), false)},
             {"fonts", array(string(""), "")},
             {"icons", array(string(""), "")},
-            {"from_document", assetPath(".html/.css")},
+            {"from_document", assetPath("")},
             {"rewrite", withDefault(boolean(""), true)}
         });
         tool.annotations.openWorld = true;
@@ -3058,7 +3058,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Create a shared .material file (linked submeshes follow its edits) from defaults or a mesh submesh's "
             "material (entity + submesh; linked unless link=false), plus values.";
         tool.inputSchema = object({
-            {"path", assetPath("New .material path.")},
+            {"path", assetPath("")},
             {"values", materialValues},
             {"scene", sceneRef()},
             {"entity", entityRef("Mesh to copy from (and link).")},
@@ -3078,7 +3078,7 @@ void registerAssetTools(McpRegistry& registry) {
             "Change the given fields of a .material file; linked submeshes update. Current fields: get_asset_info.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"values", anyObject("The fields to change, as create_material's values (null removes).")}
+            {"values", anyObject("As create_material's values.")}
         }, {"path", "values"});
         tool.handler = updateMaterialTool;
         registry.addTool(std::move(tool));
@@ -3130,8 +3130,8 @@ void registerAssetTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"submesh", integer("One submesh (default: every submesh).", 0, 1024)},
-            {"path", assetPath("A .material file instead of entities.")}
+            {"submesh", integer("", 0, 1024)},
+            {"path", assetPath("")}
         }, {"preset"});
         tool.allowedWhilePlaying = false;
         tool.handler = applyMaterialPresetTool;
@@ -3211,11 +3211,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_shaders";
         tool.title = "List Shaders";
         tool.description =
-            "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a "
-            "material's shader; ui, points, lines, sky: a component's customShader; postprocess: a "
-            "post_process pass) and lighting modes; detail (or name) adds parameters, textures, "
-            "features/keywords, required inputs, default state and rules; scene_inputs/cost_note: reads the "
-            "scene (an extra pass per camera).";
+            "The engine's library shaders (\"library:<name>\"),: type (mesh: a material's shader; ui, points, "
+            "lines, sky: a component's customShader; postprocess: a post_process pass) and lighting modes; "
+            "detail (or name) adds parameters, textures, features/keywords, required inputs, default state "
+            "and rules; scene_inputs/cost_note: reads the scene (an extra pass per camera).";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
             {"name", string("One shader (\"toon\" or \"library:toon\"); implies detail.")},
@@ -3311,7 +3310,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"case_sensitive", withDefault(boolean(""), true)},
             {"glob", string("\"*.lua\", \"scripts/**\" or a path.")},
             {"context", integer("", 0, 10)},
-            {"max_results", withDefault(integer("", 1, 500), 50)}
+            {"max_results", integer("", 1, 500)}
         }, {"pattern"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

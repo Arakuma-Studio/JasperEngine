@@ -3352,9 +3352,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Play Mode";
         tool.description =
             "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits "
-            "until running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, "
-            "summarizes the session. step: advance a paused game `frames` frames. Script errors stop play.\n"
+            "until running; returns the state + console problems, or isError with compile/script errors "
+            "(wait:false: a job_id). stop: restores the edit-time state. step: advance a paused game `frames` "
+            "frames. Script errors stop play.\n"
             "Clock (any action; set = only that; kept until changed): time_scale, fixed_fps, auto_pause (see "
             "the guide).";
         tool.inputSchema = object({
@@ -3362,9 +3362,9 @@ void registerPlayTools(McpRegistry& registry) {
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
-            {"frames", withDefault(integer("step only.", 1, 600), 1)},
-            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
-            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
+            {"frames", withDefault(integer("", 1, 600), 1)},
+            {"time_scale", withDefault(number("", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
@@ -3408,7 +3408,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"timeout_seconds", number("Wall clock. Default: 30 (until alone); frames/game_seconds run in full "
                                        "(error if no frame for 60 s).", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
-            {"console_limit", withDefault(integer("", 0, 1000), 50)},
+            {"console_limit", integer("", 0, 1000)},
             {"only_problems", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
@@ -3431,8 +3431,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"scene", runtimeScene},
             {"allow_edit_mode", withDefault(boolean(""), false)},
             {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},
-            {"max_depth", withDefault(integer("Table nesting.", 1, 12), 4)},
-            {"max_items", withDefault(integer("Entries per table.", 1, 5000), 200)}
+            {"max_depth", integer("Table nesting.", 1, 12)},
+            {"max_items", integer("Entries per table.", 1, 5000)}
         }, {"code"});
         tool.annotations.destructive = true;
         tool.handler = evalLuaTool;
@@ -3449,10 +3449,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"name_contains", string("Case-insensitive.")},
-            {"component", componentName("Has this component.")},
+            {"component", componentName("")},
             {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
             {"with_components", withDefault(boolean(""), false)},
-            {"limit", withDefault(integer("", 1, 5000), 200)}
+            {"limit", integer("", 1, 5000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3473,7 +3473,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"components", array(string(""), "")},
             {"properties", array(string(""), "")},
             {"include_script_state", withDefault(boolean(""), true)},
-            {"max_depth", withDefault(integer("Script table nesting.", 1, 8), 2)}
+            {"max_depth", integer("Script table nesting.", 1, 8)}
         }, {"entity"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3509,8 +3509,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "send_input";
         tool.title = "Send Input";
         tool.description =
-            "Inject input into the running game across frames (no focus needed). events in order, each {type, "
-            "...} (first action = default):\n"
+            "Inject input into the running game across frames. events in order, each {type, ...} (first "
+            "action = default):\n"
             "key: key (space, a, 0, left, f1, kp_0...), action press|down|up, hold_frames (2), hold_ms, mods "
             "[shift,ctrl,alt,super]\n"
             "text: text (UTF-8); ime: text, cursor (code points; -1 selects); ime_commit: text; ime_cancel\n"

@@ -262,18 +262,18 @@ void registerConsoleTools(McpRegistry& registry) {
         tool.name = "read_console";
         tool.title = "Read Console";
         tool.description =
-            "Read the editor Console (build output, warnings, errors, Lua print/Log, script crashes): entries [{id, "
-            "type, message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
+            "Read the editor Console (build, warnings, errors, Lua print, crashes): entries [{id, type, "
+            "message, time}] oldest first, next_cursor (pass as since for newer ones; omitted: the newest "
             "`limit`), more. play, wait and send_input return their console lines already.";
         tool.inputSchema = object({
-            {"since", integer("A previous next_cursor.")},
-            {"limit", withDefault(integer("", 1, 1000), 100)},
+            {"since", integer("")},
+            {"limit", integer("", 1, 1000)},
             {"types", array(stringEnum("", {"info", "success", "warning", "error", "build"}), "")},
             {"only_problems", withDefault(boolean("Warnings, errors, build output."), false)},
             {"contains", string("Substring, case-insensitive.")},
             {"regex", string("ECMAScript, case-insensitive.")},
             {"include_shader_builds", withDefault(boolean("Per-variant shader build lines."), false)},
-            {"max_message_chars", withDefault(integer("Cut longer ones (build output keeps its end).", 100, 100000), 4000)}
+            {"max_message_chars", integer("Cut longer ones (build output keeps its end).", 100, 100000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

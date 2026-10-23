@@ -1114,9 +1114,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. "
-            "scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. "
-            "canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
+            "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
+            "whole window. canvas_rect_in_image maps image -> send_input coords.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
@@ -1140,7 +1140,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", viewScene},
             {"position", vec3("")},
-            {"target", vec3("Look-at point.")},
+            {"target", vec3("")},
             {"orbit", object({{"yaw", number("")}, {"pitch", number("")}})},
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
