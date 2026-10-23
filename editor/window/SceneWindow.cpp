@@ -31,6 +31,7 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
+#include "util/FluidEditorTools.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
@@ -1021,7 +1022,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // For the 2D gizmo, only the center move area duplicates; resize handles
     // keep editing the current selection. Alt + click on empty space keeps its
     // camera-orbit behavior, so the guard is gated on a hovered/active gizmo side.
-    bool altGizmoDrag = altHeld && gizmoSideActive;
+    // Paint Dye (FluidEditorTools): the left button paints the fluid, no selection or gizmo
+    bool fluidPainting = sceneProject->sceneRender->isFluidPainting();
+    bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting;
     bool altGizmoDuplicate = altGizmoDrag &&
         (gizmoSelected != GizmoSelected::OBJECT2D || gizmo2DSide == Gizmo2DSideSelected::CENTER);
 
@@ -1029,6 +1032,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         altHeld ||
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
+        fluidPainting ||
         gizmoSideActive ||
         sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
 
@@ -1328,7 +1332,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             mouseLeftDragPos = Vector2(logicalX, logicalY);
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing()){
+            // So do Paint Dye strokes: a short drag is a small splat.
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting){
                 mouseLeftDraggedInside = true;
             }
             if (mouseLeftDraggedInside){
@@ -1650,6 +1655,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                                 terrainEditWindow->adjustBrushSize(1.15f);
                             }
                         }
+                    }
+                }
+
+                // Paint Dye: [ / ] scale the fluid's splatRadius (one undo step a run of
+                // presses), Esc puts the brush down
+                if (sceneProject->sceneRender->isFluidPainting()){
+                    if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
+                        FluidEditorTools::adjustRadius(1.0f / 1.15f);
+                    }
+                    if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
+                        FluidEditorTools::adjustRadius(1.15f);
+                    }
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false) && ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows)){
+                        FluidEditorTools::disarm();
                     }
                 }
 
@@ -2381,6 +2400,10 @@ void editor::SceneWindow::show() {
                     }
                 }
 
+                if (!transitioning && !isCameraPreview){
+                    drawFluidBrushCursor(&sceneProject);
+                }
+
                 sceneEventHandler(&sceneProject);
             }
             ImGui::EndChild();
@@ -2409,6 +2432,30 @@ ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {
 float editor::SceneWindow::canvasDpi(uint32_t sceneId) const {
     auto it = canvasDpiScale.find(sceneId);
     return (it != canvasDpiScale.end() && it->second > 0.0f) ? it->second : 1.0f;
+}
+
+void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){
+    SceneRender* sceneRender = sceneProject->sceneRender;
+    if (!sceneRender || !sceneRender->isFluidPainting() || !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
+        return;
+    }
+
+    std::vector<Vector2> points;
+    if (!sceneRender->getFluidBrushCircle(points)){
+        return;
+    }
+
+    // engine pixels back to the view's (toEngineCanvas inverted), from the image's corner
+    const ImVec2 scale = canvasEngineScale(sceneProject->id);
+    const ImVec2 origin = ImGui::GetWindowPos();
+    std::vector<ImVec2> screen;
+    screen.reserve(points.size());
+    for (const Vector2& point : points){
+        screen.push_back(ImVec2(origin.x + point.x / scale.x, origin.y + point.y / scale.y));
+    }
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddPolyline(screen.data(), (int)screen.size(), IM_COL32(0, 0, 0, 140), ImDrawFlags_Closed, Theme::dpi(3.0f));
+    drawList->AddPolyline(screen.data(), (int)screen.size(), IM_COL32(89, 204, 255, 255), ImDrawFlags_Closed, Theme::dpi(1.5f));
 }
 
 ImVec2 editor::SceneWindow::canvasEngineScale(uint32_t sceneId) const {

@@ -312,6 +312,11 @@ namespace jasperengine::editor{
         // fitted and centered in a view of width x height
         Rect getGameLayerRect(int width, int height) const;
         bool isTerrainEditing() const;
+        // the Paint Dye brush is armed on a fluid of this scene (FluidEditorTools)
+        bool isFluidPainting() const;
+        // The Paint Dye brush's circle under the pointer, in pixels of this view (y down), for
+        // SceneWindow to draw over the image (a 2D scene draws sprites over its own lines)
+        bool getFluidBrushCircle(std::vector<Vector2>& points);
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen
