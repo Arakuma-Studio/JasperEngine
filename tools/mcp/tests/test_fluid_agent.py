@@ -13,7 +13,8 @@ of jasper://docs/fluid):
 - orientation: eval_lua splat(0.25, 0.75, ...) on a SCREEN fluid lands at canvas (0.25 W, 0.25 H);
 - pointer: a send_input drag over an interactive SCREEN fluid paints along the drag, nowhere else;
 - export: a source export of a scene with a fluid ships licenses/webgl-fluid-simulation-LICENSE.txt
-  (Pavel Dobryakov's MIT notice, the repository's file), one without a fluid does not.
+  (Pavel Dobryakov's MIT notice, the repository's file); a CLI export without the fluid's shader
+  variants has no notice, one with only them has it.
 
 Runs in a new empty project (EDITOR create).
 """
@@ -22,7 +23,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -62,6 +66,25 @@ async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -
         if time.monotonic() > deadline:
             ed.fail(f"job {job_id} still running after {timeout}s: {job}")
         await asyncio.sleep(poll)
+
+
+def copy_project(source: Path) -> Path:
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-fluid-export-"))
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        out = {".git"} & set(names)
+        if Path(directory).name == ".jasperengine":
+            out |= {"build", "export"} & set(names)
+        return out
+
+    shutil.copytree(source, tmp / "project", ignore=ignore, symlinks=True)
+    return tmp / "project"
+
+
+def cli_export(ed: Editor, project: Path, out: Path, *args: str) -> None:
+    cmd = harness.editor_command() + ["export", "--project", str(project), "--out", str(out), "--backend", "opengl", *args]
+    r = subprocess.run(cmd, cwd=str(project), capture_output=True, text=True, timeout=1800)
+    ed.check(r.returncode == 0, f"export failed ({r.returncode}):\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
 
 def close(a, b, tol=1e-4) -> bool:
@@ -333,13 +356,18 @@ async def test_export_ships_the_notice(ed: Editor):
     ed.check("Copyright (c) 2017 Pavel Dobryakov" in notice.read_text(), "Pavel Dobryakov's MIT notice")
     ed.check(not (out / "licenses" / "shaders.com-LICENSE.txt").exists(), "no UI effect: no shaders.com notice")
 
-    # without a fluid in the build's scenes: no notice
-    await ed.call("delete_entities", scene=S["scene"], entities=[S["fluid"]])
-    await ed.call("save_scene", scene=S["scene"])
-    out = await source_export(ed, "export-plain")
-    ed.check(not (out / NOTICE).exists(), "no fluid: no fluid notice")
-    ed.check(not (out / "licenses").exists(), "no notice at all: no licenses folder")
-    await ed.call("undo", scene=S["scene"])
-    await ed.call("save_scene", scene=S["scene"])
+    # the condition is the shipped variants (a scene keeps the keys it ever needed, so an explicit
+    # list): none of the fluid's, no notice; only the fluid's, the notice
+    await ed.call("save_project")
+    project = copy_project(ed.project)
+    plain = project.parent / "export-plain"
+    try:
+        cli_export(ed, project, plain, "--shader", "mesh")
+        ed.check(not (plain / "licenses").exists(), "no fluid variant: no notice")
+        only = project.parent / "export-fluid-only"
+        cli_export(ed, project, only, "--shader", "fluid")
+        ed.check((only / NOTICE).is_file(), "the fluid's variants alone: the notice")
+    finally:
+        shutil.rmtree(project.parent, ignore_errors=True)
     errors = [e.get("message", "") for e in await ed.console_since(None, types=["error"], limit=500)]
     ed.check(not [e for e in errors if re.search("fluid", e, re.I)], f"Console fluid errors: {errors}")
