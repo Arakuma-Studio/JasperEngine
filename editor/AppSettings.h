@@ -16,6 +16,7 @@ struct PanelVisibilitySettings {
     bool project = true;
     bool console = true;
     bool animation = true;
+    bool poseAnimation = false;
     bool terrain = false;
     bool mcp = false;
     bool game = true;
@@ -26,6 +27,7 @@ struct PanelVisibilitySettings {
             && project == other.project
             && console == other.console
             && animation == other.animation
+            && poseAnimation == other.poseAnimation
             && terrain == other.terrain
             && mcp == other.mcp
             && game == other.game;

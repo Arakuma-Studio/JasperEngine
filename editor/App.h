@@ -17,6 +17,7 @@
 #include "window/ImageViewerWindow.h"
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
@@ -163,6 +164,7 @@ namespace jasperengine::editor{
         ProjectWindow* projectWindow;
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
+        PoseAnimationWindow* poseAnimationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
@@ -222,7 +224,10 @@ namespace jasperengine::editor{
             None,
             AnySceneWindow, // Represents any of the scene-related windows (Scene, Properties, Hierarchy)
             Resources,
-            Code
+            Code,
+            // the Pose Animation window, or a Scene view posing its character: its keys and
+            // Ctrl/Cmd+Z/Y (the project history) are the window's
+            PoseAnimation
         } lastFocusedWindow;
 
         void saveFunc();
@@ -380,6 +385,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* getImageViewerWindow() const override;
         ProjectWindow* getProjectWindow() const;
         AnimationWindow* getAnimationWindow() const;
+        PoseAnimationWindow* getPoseAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

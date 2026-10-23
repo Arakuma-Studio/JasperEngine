@@ -594,6 +594,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -621,6 +622,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
+    ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
+    ${EDITOR_DIR}/pose/PoseBaker.cpp
+    ${EDITOR_DIR}/pose/PoseRigProvider.cpp
+    ${EDITOR_DIR}/pose/PoseEditSession.cpp
+    ${EDITOR_DIR}/pose/PoseThumbnails.cpp
+    ${EDITOR_DIR}/pose/PoseUiLogic.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
@@ -663,6 +670,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
@@ -743,6 +751,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
 
     ${IMGUI_SOURCES}
     ${BACKEND_SOURCES}

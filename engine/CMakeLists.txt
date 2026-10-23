@@ -827,6 +827,7 @@ set(JASPERENGINE_SRCS
     core/pose/PoseDofs.cpp
     core/pose/PoseFile.cpp
     core/pose/PoseIK.cpp
+    core/pose/PoseMetrics.cpp
     core/pose/PoseRanges.cpp
     core/pose/PoseRig.cpp
     core/pose/PoseSampler.cpp
