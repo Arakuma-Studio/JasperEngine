@@ -531,9 +531,9 @@ void registerDocsTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"query", string("e.g. \"Sprite setTexture\", \"KEY_SPACE\".")},
             {"parent", string("Only members of this class/enum.")},
-            {"max_results", integer("", 1, 50)},
+            {"max_results", withDefault(integer("", 1, 50), 16)},
             {"include_docs", withDefault(boolean(""), true)},
-            {"max_doc_results", integer("", 0, 40)}
+            {"max_doc_results", withDefault(integer("", 0, 40), 8)}
         }, {"query"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -551,7 +551,7 @@ void registerDocsTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"query", string("")},
             {"path_filter", string("Substring of the file path, e.g. \"math/\", \"binding\".")},
-            {"max_results", integer("", 1, 200)}
+            {"max_results", withDefault(integer("", 1, 200), 40)}
         }, {"query"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -568,7 +568,7 @@ void registerDocsTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
-            {"max_lines", integer("", 1, 20000)}
+            {"max_lines", withDefault(integer("", 1, 20000), 2000)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

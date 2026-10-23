@@ -3408,7 +3408,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"timeout_seconds", number("Wall clock. Default: 30 (until alone); frames/game_seconds run in full "
                                        "(error if no frame for 60 s).", 0.5, 3600)},
             {"poll_frames", withDefault(integer("until: check every N frames.", 1, 600), 1)},
-            {"console_limit", integer("", 0, 1000)},
+            {"console_limit", withDefault(integer("", 0, 1000), 50)},
             {"only_problems", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth}
@@ -3431,8 +3431,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"scene", runtimeScene},
             {"allow_edit_mode", withDefault(boolean(""), false)},
             {"timeout_seconds", withDefault(number("", 0.1, 60), 5)},
-            {"max_depth", integer("Table nesting.", 1, 12)},
-            {"max_items", integer("Entries per table.", 1, 5000)}
+            {"max_depth", withDefault(integer("Table nesting.", 1, 12), 4)},
+            {"max_items", withDefault(integer("Entries per table.", 1, 5000), 200)}
         }, {"code"});
         tool.annotations.destructive = true;
         tool.handler = evalLuaTool;
@@ -3452,7 +3452,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"component", componentName("")},
             {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
             {"with_components", withDefault(boolean(""), false)},
-            {"limit", integer("", 1, 5000)}
+            {"limit", withDefault(integer("", 1, 5000), 200)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3473,7 +3473,7 @@ void registerPlayTools(McpRegistry& registry) {
             {"components", array(string(""), "")},
             {"properties", array(string(""), "")},
             {"include_script_state", withDefault(boolean(""), true)},
-            {"max_depth", integer("Script table nesting.", 1, 8)}
+            {"max_depth", withDefault(integer("Script table nesting.", 1, 8), 2)}
         }, {"entity"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

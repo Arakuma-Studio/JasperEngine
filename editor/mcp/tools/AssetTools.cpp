@@ -2896,7 +2896,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"query", string("Name substring.")},
             {"recursive", withDefault(boolean(""), true)},
             {"details", withDefault(boolean("Add sizes and image dimensions."), false)},
-            {"limit", integer("", 1, 2000)}
+            {"limit", withDefault(integer("", 1, 2000), 200)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -2945,7 +2945,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"start_line", withDefault(integer("1-based.", 1, 100000000), 1)},
-            {"max_lines", integer("", 1, 20000)}
+            {"max_lines", withDefault(integer("", 1, 20000), 2000)}
         }, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3310,7 +3310,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"case_sensitive", withDefault(boolean(""), true)},
             {"glob", string("\"*.lua\", \"scripts/**\" or a path.")},
             {"context", integer("", 0, 10)},
-            {"max_results", integer("", 1, 500)}
+            {"max_results", withDefault(integer("", 1, 500), 50)}
         }, {"pattern"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

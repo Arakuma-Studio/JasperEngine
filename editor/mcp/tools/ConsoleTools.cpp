@@ -267,13 +267,13 @@ void registerConsoleTools(McpRegistry& registry) {
             "`limit`), more. play, wait and send_input return their console lines already.";
         tool.inputSchema = object({
             {"since", integer("")},
-            {"limit", integer("", 1, 1000)},
+            {"limit", withDefault(integer("", 1, 1000), 100)},
             {"types", array(stringEnum("", {"info", "success", "warning", "error", "build"}), "")},
             {"only_problems", withDefault(boolean("Warnings, errors, build output."), false)},
             {"contains", string("Substring, case-insensitive.")},
             {"regex", string("ECMAScript, case-insensitive.")},
             {"include_shader_builds", withDefault(boolean("Per-variant shader build lines."), false)},
-            {"max_message_chars", integer("Cut longer ones (build output keeps its end).", 100, 100000)}
+            {"max_message_chars", withDefault(integer("Cut longer ones (build output keeps its end).", 100, 100000), 4000)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

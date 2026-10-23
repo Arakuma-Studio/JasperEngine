@@ -1914,15 +1914,15 @@ void registerBuildTools(McpRegistry& registry) {
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", number("Default: 5, or past the input.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
-            {"input_delay_seconds", number("", 0, 120)},
+            {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
-            {"gap_ms", number("", 0, 10000)},
+            {"gap_ms", withDefault(number("", 0, 10000), 50)},
             {"screenshots_at", array(number(""), "")},
             {"screenshot", boolean("Default: true unless other screenshots.")},
             {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
-            {"log_lines", integer("", 0, 2000)}
+            {"log_lines", withDefault(integer("", 0, 2000), 80)}
         });
         tool.annotations.openWorld = true;
         tool.handler = runBuildTool;

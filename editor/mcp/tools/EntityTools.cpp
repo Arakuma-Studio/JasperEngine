@@ -1073,7 +1073,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"root", entityRef("Only this subtree.")},
             {"depth", integer("Max depth (0: start nodes only).", 0, 1000)},
-            {"limit", integer("", 1, 100000)},
+            {"limit", withDefault(integer("", 1, 100000), 400)},
             {"format", withDefault(stringEnum("", {"text", "json"}), "text")},
             {"components", withDefault(boolean(""), true)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
@@ -1099,7 +1099,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"under", entityRef("Only descendants of this.")},
             {"active", boolean("")},
             {"with_components", withDefault(boolean("Add component names."), false)},
-            {"limit", integer("", 1, 100000)},
+            {"limit", withDefault(integer("", 1, 100000), 100)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
         });
         tool.annotations.readOnly = true;

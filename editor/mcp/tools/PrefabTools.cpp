@@ -2027,7 +2027,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"values", withDefault(boolean("Add current vs prefab values."), false)},
             {"usage", withDefault(boolean("Reads closed scene files."), true)},
             {"contents", withDefault(boolean("List the asset's GameObjects."), false)},
-            {"limit", integer("Max overrides/contents.", 1, 5000)}
+            {"limit", withDefault(integer("Max overrides/contents.", 1, 5000), 200)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

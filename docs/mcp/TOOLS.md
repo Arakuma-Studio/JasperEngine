@@ -72,7 +72,7 @@ Status of a long operation (build, compile, play startup): status, progress 0-1|
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `job_id` | string |  | Omit to list jobs. |
-| `log_lines` | integer (0..200) |  |  |
+| `log_lines` | integer (0..200) |  | Default: `40`. |
 
 
 ### `redo`
@@ -502,7 +502,7 @@ Find GameObjects matching all given filters (globs: * ?, case-insensitive).
 | `active` | boolean |  |  |
 | `component` | string or array |  | Required component(s). |
 | `layer` | integer or string |  | 0-31 or name. |
-| `limit` | integer (1..100000) |  |  |
+| `limit` | integer (1..100000) |  | Default: `100`. |
 | `name` | string |  |  |
 | `path` | string |  |  |
 | `runtime` | boolean |  | While playing: the running copy. |
@@ -525,7 +525,7 @@ The Hierarchy: each GameObject's id, components (Transform omitted) and flags (i
 | `components` | boolean |  | Default: `true`. |
 | `depth` | integer (0..1000) |  | Max depth (0: start nodes only). |
 | `format` | `"text"` \| `"json"` |  | Default: `"text"`. |
-| `limit` | integer (1..100000) |  |  |
+| `limit` | integer (1..100000) |  | Default: `400`. |
 | `root` | string |  | Only this subtree. |
 | `runtime` | boolean |  | While playing: the running copy. |
 | `scene` | string |  |  |
@@ -843,7 +843,7 @@ Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesti
 |---|---|---|---|
 | `contents` | boolean |  | List the asset's GameObjects. |
 | `entity` | string |  |  |
-| `limit` | integer (1..5000) |  | Max overrides/contents. |
+| `limit` | integer (1..5000) |  | Max overrides/contents. Default: `200`. |
 | `only_entity` | boolean |  | Only this GameObject's overrides. |
 | `prefab` | string |  | Instead of entity. |
 | `scene` | string |  |  |
@@ -1003,8 +1003,8 @@ Run Lua in the running game: the values as JSON (handles as {type, entity, name,
 |---|---|---|---|
 | `allow_edit_mode` | boolean |  |  |
 | `code` | string | yes | Expression, or chunk with return. |
-| `max_depth` | integer (1..12) |  | Table nesting. |
-| `max_items` | integer (1..5000) |  | Entries per table. |
+| `max_depth` | integer (1..12) |  | Table nesting. Default: `4`. |
+| `max_items` | integer (1..5000) |  | Entries per table. Default: `200`. |
 | `scene` | string |  |  |
 | `timeout_seconds` | number (0.1..60.0) |  | Default: `5`. |
 
@@ -1033,7 +1033,7 @@ Live values of a GameObject in the running game (runtime-spawned too): component
 | `components` | array of string |  |  |
 | `entity` | string | yes |  |
 | `include_script_state` | boolean |  | Default: `true`. |
-| `max_depth` | integer (1..8) |  | Script table nesting. |
+| `max_depth` | integer (1..8) |  | Script table nesting. Default: `2`. |
 | `properties` | array of string |  |  |
 | `scene` | string |  |  |
 
@@ -1050,7 +1050,7 @@ GameObjects of the running game (id, name, path), runtime-spawned ones included 
 |---|---|---|---|
 | `component` | string |  |  |
 | `created_only` | boolean |  | Runtime-spawned only. |
-| `limit` | integer (1..5000) |  |  |
+| `limit` | integer (1..5000) |  | Default: `200`. |
 | `name_contains` | string |  | Case-insensitive. |
 | `scene` | string |  |  |
 | `with_components` | boolean |  |  |
@@ -1128,7 +1128,7 @@ Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a pause
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `console_limit` | integer (0..1000) |  |  |
+| `console_limit` | integer (0..1000) |  | Default: `50`. |
 | `frames` | integer (0..1000000) |  |  |
 | `game_seconds` | number (0.0..3600.0) |  |  |
 | `input` | array of object |  |  |
@@ -1255,8 +1255,8 @@ Read the editor Console (build, warnings, errors, Lua print, crashes): entries [
 |---|---|---|---|
 | `contains` | string |  | Substring, case-insensitive. |
 | `include_shader_builds` | boolean |  | Per-variant shader build lines. |
-| `limit` | integer (1..1000) |  |  |
-| `max_message_chars` | integer (100..100000) |  | Cut longer ones (build output keeps its end). |
+| `limit` | integer (1..1000) |  | Default: `100`. |
+| `max_message_chars` | integer (100..100000) |  | Cut longer ones (build output keeps its end). Default: `4000`. |
 | `only_problems` | boolean |  | Warnings, errors, build output. |
 | `regex` | string |  | ECMAScript, case-insensitive. |
 | `since` | integer |  |  |
@@ -1611,7 +1611,7 @@ List/search project files as the Project window shows them. pattern globs the fi
 |---|---|---|---|
 | `details` | boolean |  | Add sizes and image dimensions. |
 | `directory` | string |  | Default: project root. |
-| `limit` | integer (1..2000) |  |  |
+| `limit` | integer (1..2000) |  | Default: `200`. |
 | `pattern` | string |  |  |
 | `query` | string |  | Name substring. |
 | `recursive` | boolean |  | Default: `true`. |
@@ -1667,7 +1667,7 @@ Read a project text file (as on disk); the result text is the content.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_lines` | integer (1..20000) |  |  |
+| `max_lines` | integer (1..20000) |  | Default: `2000`. |
 | `path` | string | yes |  |
 | `start_line` | integer (1..100000000) |  | 1-based. Default: `1`. |
 
@@ -1685,7 +1685,7 @@ Grep project text files (scripts, shaders, docs, configs). ECMAScript regex; mat
 | `case_sensitive` | boolean |  | Default: `true`. |
 | `context` | integer (0..10) |  |  |
 | `glob` | string |  | "*.lua", "scripts/**" or a path. |
-| `max_results` | integer (1..500) |  |  |
+| `max_results` | integer (1..500) |  | Default: `50`. |
 | `pattern` | string | yes |  |
 | `regex` | boolean |  |  |
 
@@ -1782,7 +1782,7 @@ Read an engine source file (path relative to the engine root, e.g. core/math/Qua
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_lines` | integer (1..20000) |  |  |
+| `max_lines` | integer (1..20000) |  | Default: `2000`. |
 | `path` | string | yes |  |
 | `start_line` | integer (1..100000000) |  | 1-based. Default: `1`. |
 
@@ -1798,8 +1798,8 @@ Search the scripting API (Lua bindings, C++ headers) and the jasper://docs refer
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `include_docs` | boolean |  | Default: `true`. |
-| `max_doc_results` | integer (0..40) |  |  |
-| `max_results` | integer (1..50) |  |  |
+| `max_doc_results` | integer (0..40) |  | Default: `8`. |
+| `max_results` | integer (1..50) |  | Default: `16`. |
 | `parent` | string |  | Only members of this class/enum. |
 | `query` | string | yes | e.g. "Sprite setTexture", "KEY_SPACE". |
 
@@ -1814,7 +1814,7 @@ Case-insensitive substring search of the engine's C++ headers/sources and Lua bi
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `max_results` | integer (1..200) |  |  |
+| `max_results` | integer (1..200) |  | Default: `40`. |
 | `path_filter` | string |  | Substring of the file path, e.g. "math/", "binding". |
 | `query` | string | yes |  |
 
@@ -1887,10 +1887,10 @@ Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `args` | array of string |  | Player arguments. |
-| `gap_ms` | number (0.0..10000.0) |  |  |
+| `gap_ms` | number (0.0..10000.0) |  | Default: `50`. |
 | `input` | array of object |  |  |
-| `input_delay_seconds` | number (0.0..120.0) |  |  |
-| `log_lines` | integer (0..2000) |  |  |
+| `input_delay_seconds` | number (0.0..120.0) |  | Default: `1`. |
+| `log_lines` | integer (0..2000) |  | Default: `80`. |
 | `max_width` | integer (64..4096) |  | Default: `1280`. |
 | `path` | string |  | Executable or build dir (absolute). Default: last desktop build. |
 | `screenshot` | boolean |  | Default: true unless other screenshots. |
@@ -1963,7 +1963,7 @@ Author an Animation timeline (seconds); without animation, creates one as a chil
 | `delete_removed` | boolean |  | Default: `true`. |
 | `duration` | number |  | -1: until actions end. |
 | `loop` | boolean |  |  |
-| `max_keys` | integer |  | Per track. |
+| `max_keys` | integer |  | Per track. Default: `20`. |
 | `name` | string |  |  |
 | `remove_actions` | array of integer |  |  |
 | `scene` | string |  |  |
@@ -2004,7 +2004,7 @@ Build or edit a Tilemap: texture, tile rects (tileset slice or rects), then ops 
 | `cell_size` | array[2] of number |  |  |
 | `create` | object {name, parent, position} |  |  |
 | `entity` | string |  |  |
-| `max_cells` | integer |  | Largest grid as lines. |
+| `max_cells` | integer |  | Largest grid as lines. Default: `6000`. |
 | `ops` | array of object |  |  |
 | `origin` | array[2] of number |  | >= 0. |
 | `rects` | array of object {name, rect, submesh} |  |  |
@@ -2026,7 +2026,7 @@ An Animation's timeline: loop, duration, autoplay, target and actions (index, ki
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `entity` | string | yes | Animation, or an animated GameObject. |
-| `max_keys` | integer |  | Per track. |
+| `max_keys` | integer |  | Per track. Default: `50`. |
 | `scene` | string |  |  |
 
 
@@ -2058,8 +2058,8 @@ A Tilemap: texture, rects (index, name, pixel rect), tile count, cell size, col/
 | `cell_size` | array[2] of number |  |  |
 | `entity` | string | yes |  |
 | `include_tiles` | boolean |  |  |
-| `limit` | integer |  |  |
-| `max_cells` | integer |  | Largest grid as lines. |
+| `limit` | integer |  | Default: `200`. |
+| `max_cells` | integer |  | Largest grid as lines. Default: `6000`. |
 | `origin` | array[2] of number |  |  |
 | `scene` | string |  |  |
 
@@ -2300,7 +2300,7 @@ Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box 
 | `detail` | `"tree"` \| `"full"` |  | full: max 20 elements. Default: `"tree"`. |
 | `entity` | string |  | UI Document (default: the only one). |
 | `file` | string |  |  |
-| `limit` | integer (1..1000) |  |  |
+| `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
 | `scene` | string |  |  |

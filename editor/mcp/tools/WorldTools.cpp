@@ -4252,7 +4252,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"origin", vec2(">= 0.")},
             {"ops", array(anyObject("{op, ...}"), "")},
             {"return_grid", withDefault(boolean(""), true)},
-            {"max_cells", integer("Largest grid as lines.")}
+            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }),
         editTilemapTool, false, false);
 
@@ -4265,8 +4265,8 @@ void registerWorldTools(McpRegistry& registry) {
             {"cell_size", vec2("")},
             {"origin", vec2("")},
             {"include_tiles", boolean("")},
-            {"limit", integer("")},
-            {"max_cells", integer("Largest grid as lines.")}
+            {"limit", withDefault(integer(""), 200)},
+            {"max_cells", withDefault(integer("Largest grid as lines."), 6000)}
         }, {"entity"}),
         getTilemapTool, true, true);
 
@@ -4349,7 +4349,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"duration", number("-1: until actions end.")},
             {"speed", number("")},
             {"autoplay", boolean("")},
-            {"max_keys", integer("Per track.")}
+            {"max_keys", withDefault(integer("Per track."), 20)}
         }),
         editAnimationTool, false, false);
 
@@ -4360,7 +4360,7 @@ void registerWorldTools(McpRegistry& registry) {
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Animation, or an animated GameObject.")},
-            {"max_keys", integer("Per track.")}
+            {"max_keys", withDefault(integer("Per track."), 50)}
         }, {"entity"}),
         getAnimationTool, true, true);
 

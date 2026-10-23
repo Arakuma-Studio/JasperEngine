@@ -1784,7 +1784,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
-            {"limit", integer("", 1, 1000)},
+            {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
             {"screenshot", boolean("Game view image of the matches, outlined.")},

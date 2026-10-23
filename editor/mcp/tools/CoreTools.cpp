@@ -426,7 +426,7 @@ void registerCoreTools(McpRegistry& registry) {
             "tail, result when done. Without job_id: running and recent jobs.";
         tool.inputSchema = object({
             {"job_id", string("Omit to list jobs.")},
-            {"log_lines", integer("", 0, 200)}
+            {"log_lines", withDefault(integer("", 0, 200), 40)}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
