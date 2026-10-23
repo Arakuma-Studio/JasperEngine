@@ -908,13 +908,14 @@ struct FluidSimulator::Impl {
         c.pendingSteps = 0;
 
         // the pointers' strokes: spread over the frame's steps, or one splat now when nothing
-        // steps (paused, his splats while paused); a running clock between steps keeps them
+        // steps (paused, his splats while paused; no time, a paused scene or the editor's
+        // brush in edit mode); a running clock between steps keeps them
         struct Stroke {
             Vector2 from, delta;
             Vector3 color;
         };
         std::vector<Stroke> strokes;
-        const bool immediate = steps == 0 && (c.paused || !clock);
+        const bool immediate = steps == 0 && (c.paused || !clock || dt <= 0.0);
         if (steps > 0 || immediate){
             for (auto& entry : pointers){
                 Pointer& p = entry.second;

@@ -603,12 +603,12 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     sprite.setPivotPreset(PivotPreset::CENTER);
     sprite.setPosition(200.0f, 150.0f, 0.0f);
 
-    // red over the whole fluid (a wide splat), no steps
+    // red along the fluid's top edge (fluid y up), no steps
     FluidSimulationComponent c = plainFluid();
     c.output = FluidOutput::MATERIAL;
     c.paused = true;
-    FluidSplat red = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
-    red.radius = 1000.0f;
+    FluidSplat red = splatAt(0.5f, 1.0f, Vector3(1.0f, 0.0f, 0.0f));
+    red.radius = 5.0f;
     c.pendingSplats.push_back(red);
     const Entity entity = sprite.getEntity();
     scene.addComponent<FluidSimulationComponent>(entity, c);
@@ -637,9 +637,13 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     std::vector<uint8_t> rgba;
     ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
     PixelProbe probe{rgba, w};
-    const uint8_t* inside = probe.at(200, 150);
-    EXPECT_GT((int)inside[0], 150) << "the sprite shows the fluid";
-    EXPECT_LT((int)inside[1], 60);
+    // (a UI camera's sprite shows its texture's first row, the fluid's top, at its top: fluid
+    // y 0.85 at y 129, 0.15 at y 171)
+    const uint8_t* top = probe.at(200, 129);
+    EXPECT_GT((int)top[0], 150) << "the sprite shows the fluid's top at its top";
+    EXPECT_LT((int)top[1], 60);
+    const uint8_t* bottom = probe.at(200, 171);
+    EXPECT_LT((int)bottom[0], 60) << "and its bottom at its bottom";
     EXPECT_TRUE(probe.isBackground(400, 300));
 
     // a paused system (the editor's edit mode) does not step; a preview does
@@ -652,6 +656,17 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     EXPECT_TRUE(system->isPreview(entity));
     EXPECT_TRUE(framesUntil([&](){ return fluid.simulator->getStats().steps > before; }));
     system->setPreview(entity, false);
+
+    // the editor's brush in edit mode (paused system, no preview): its own pointer id paints at once
+    const uint64_t splats = fluid.simulator->getStats().splats;
+    const uint64_t steps = fluid.simulator->getStats().steps;
+    const int brush = 0x7ffffff0;
+    fluid.simulator->pointerDown(brush, Vector2(0.2f, 0.3f));
+    fluid.simulator->pointerMove(brush, Vector2(0.4f, 0.3f));
+    GpuEnvironment::drawFrames(2);
+    fluid.simulator->pointerUp(brush);
+    EXPECT_EQ(fluid.simulator->getStats().splats, splats + 1);
+    EXPECT_EQ(fluid.simulator->getStats().steps, steps);
     system->setPaused(false);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
 
@@ -660,7 +675,7 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(system->getMaterialTexture(entity), nullptr);
     ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
-    EXPECT_GT((int)probe.at(200, 150)[1], 150) << "the sprite's own (white) look is back";
+    EXPECT_GT((int)probe.at(200, 129)[1], 150) << "the sprite's own (white) look is back";
     fluid.output = FluidOutput::MATERIAL;
     GpuEnvironment::drawFrames(2);
 
