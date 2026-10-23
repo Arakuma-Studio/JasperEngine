@@ -938,6 +938,13 @@ if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
 endif()
 
+# jasperengine-editor-tests: googletest unit tests of editor logic (editor/tests, tools/build.sh
+# unit-tests)
+option(JASPERENGINE_TESTS "Build jasperengine-editor-tests" OFF)
+if(JASPERENGINE_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
+endif()
+
 # Windows GUI-subsystem executables do not behave like normal CLI programs
 # when launched from cmd.exe/PowerShell. Provide a console-subsystem twin for
 # automation while keeping Unix-like platforms on a single editor binary.
