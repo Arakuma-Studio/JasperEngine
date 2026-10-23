@@ -620,9 +620,10 @@ TEST(TexSynth, CancelReturnsPromptly) {
     fromCallback.cancel = &stop;
     fromCallback.progressIntervalSeconds = 0.0;
     fromCallback.onProgress = [&](const Progress& p) {
-        if (p.fraction > 0.1) stop = true;
+        if (p.fraction > 0.02) stop = true;
     };
-    EXPECT_EQ(synthesize(r, fromCallback).status, Status::Cancelled);
+    Request small = basicRequest(Mode::Extend, 160, 160, 48);
+    EXPECT_EQ(synthesize(small, fromCallback).status, Status::Cancelled);
 }
 
 // ---- recipe

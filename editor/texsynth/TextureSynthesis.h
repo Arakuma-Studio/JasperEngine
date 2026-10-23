@@ -129,12 +129,13 @@ namespace jasperengine::editor::texsynth {
 
     struct Example {
         ImageInput image;        // the primary map (albedo): drives the synthesis
-        // Optional sampling mask (any size is an error: it must match the example): white (>= 128)
-        // may be copied, black never. Inpaint additionally excludes the regenerated region.
+        // Optional sampling mask, the example's size (another size is an error): where its luma
+        // is white (>= 128) may be copied, black never. Inpaint also excludes what it regenerates.
         ImageInput sampleMask;
         // Guided mode: this example's guide (resized to the example if its size differs)
         ImageInput guide;
-        // false: never copied from (inpaint context only)
+        // false: never copied from (e.g. an inpainted image whose rest should come from other
+        // examples); its pixels still count as context, and companions still need an image for it
         bool sampleable = true;
 
         static Example fromPath(const std::filesystem::path& path) { Example ex; ex.image = ImageInput::fromPath(path); return ex; }

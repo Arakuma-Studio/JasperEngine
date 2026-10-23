@@ -320,7 +320,11 @@ namespace jasperengine::editor::texsynth::detail {
                 if (guideActive) std::memcpy(&s.guidePattern[j * 4], targetGuide + static_cast<size_t>(index) * 4, 4);
             }
 
-            // candidates: every neighbour's source shifted by its offset (coherence), then m random
+            // candidates: every neighbour's source shifted by its offset (coherence), then m random.
+            // Both compare the neighbourhood at candidate + (neighbour - pixel); upstream compared
+            // random candidates at candidate - (neighbour - pixel), the point-mirrored pattern (a
+            // sign slip in find_candidates). Duplicate coherence candidates are scored once (a
+            // later duplicate could never win: ties keep the first).
             int count = 0;
             for (int j = 0; j < n; j++) {
                 const SourceCoord c = coord[s.neighborIndex[j]];
@@ -586,7 +590,8 @@ namespace jasperengine::editor::texsynth::detail {
                 while (pos < count) {
                     if (cancelled()) return false;
                     // a batch reads what the batches before it committed: its size grows with the
-                    // resolved pixels, so a pixel misses few neighbours of its own batch
+                    // resolved pixels, so a pixel misses few neighbours of its own batch (1/32: the
+                    // mean uncertainty matched one-pixel batches within run-to-run noise)
                     const int64_t committed = lockedCount + std::max(pos, resolvedBefore);
                     const int64_t batch = std::clamp<int64_t>(committed / 32, 1, kMaxBatch);
                     const int64_t end = std::min(count, pos + batch);
