@@ -309,7 +309,9 @@ async def test_reload_resave_byte_identical(ed: Editor):
             # an edit and its revert make the scene modified with the same content
             await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.75}})
             await ed2.call("set_properties", scene=sid, entity="Cage", values={"lattice": {"fadeDistance": 0.5}})
+            before = (copy / "scenes/Lab.scene").stat().st_mtime_ns
             await ed2.call("save_scene", scene=sid)
+            ed2.check((copy / "scenes/Lab.scene").stat().st_mtime_ns != before, "the scene was not written again")
             resaved = (copy / "scenes/Lab.scene").read_text()
             if resaved != S["saved_text"]:
                 import difflib

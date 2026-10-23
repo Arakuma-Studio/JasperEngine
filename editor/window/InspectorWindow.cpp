@@ -14353,7 +14353,7 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
 
     {
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float buttonWidth = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f);
+        const float buttonWidth = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing) / 2.0f);
         ImGui::BeginDisabled(selected.empty());
         if (ImGui::Button(ICON_FA_ROTATE_LEFT " Reset Selected", ImVec2(buttonWidth, 0))){
             std::string error;
@@ -14365,12 +14365,19 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
             std::string error;
             reportLatticeEdit(LatticeEditorOps::resetPoints(project, sceneId, entity, {}, &error), error);
         }
-        ImGui::SameLine();
         if (ImGui::Button(ICON_FA_OBJECT_GROUP " Select All", ImVec2(buttonWidth, 0))){
             LatticeEditorOps::setSelectedPoints(sceneId, entity, lattice::selectAll(lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ));
         }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(selected.empty());
+        if (ImGui::Button(ICON_FA_XMARK " Select None", ImVec2(buttonWidth, 0))){
+            LatticeEditorOps::setSelectedPoints(sceneId, entity, {});
+        }
+        ImGui::EndDisabled();
     }
-    ImGui::TextDisabled(ICON_FA_CIRCLE_INFO " Edit Points: drag the cage points in the Scene view (W/E/R); right-click there for more");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " Edit Points: drag the cage's points in the Scene view with the Move, Rotate and Scale tools; right-click there for more.");
+    ImGui::PopStyleColor();
 
     // folded cells: the deformation turns the mesh inside out there
     if (latticeFoldCache.sceneId != sceneId || latticeFoldCache.entity != entity || latticeFoldCache.key != latticeFoldKey(lattice)){
@@ -14496,7 +14503,9 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
 
     if (latticePosesExpanded){
         if (lattice.poses.empty()){
-            ImGui::TextDisabled("No poses: Save Current As... keeps the current offsets under a name");
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            ImGui::TextWrapped("No poses: Save Current As... keeps the current offsets under a name.");
+            ImGui::PopStyleColor();
         }
         for (size_t p = 0; p < lattice.poses.size(); p++){
             const std::string name = lattice.poses[p].name;
@@ -14595,7 +14604,9 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
     const std::vector<Entity> targets = LatticeEditorOps::findTargets(scene, entity);
     ImGui::SeparatorText(("Deforming (" + std::to_string(targets.size()) + ")").c_str());
     if (targets.empty()){
-        ImGui::TextDisabled("Nothing: add a Lattice Modifier to a mesh and pick this lattice, or create the lattice around the selection");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("Nothing yet: add a Lattice Modifier to a mesh and pick this lattice, or create a lattice with the meshes selected.");
+        ImGui::PopStyleColor();
     }
     for (Entity target : targets){
         if (!scene->isEntityCreated(target)) continue;
@@ -14875,7 +14886,9 @@ void editor::InspectorWindow::drawLatticeFollowerComponent(ComponentType cpType,
     if (follower.lattice != NULL_ENTITY && (!scene->isEntityCreated(follower.lattice) || !scene->findComponent<LatticeComponent>(follower.lattice))){
         drawLatticeWarning("The lattice is missing or has no Lattice component: the follower stays where it is.");
     }else if (follower.lattice == NULL_ENTITY){
-        ImGui::TextDisabled("Pick a lattice and a rest GameObject to follow the deformation");
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped("Pick a lattice and a rest GameObject to follow the deformation.");
+        ImGui::PopStyleColor();
     }
     if (follower.rest != NULL_ENTITY && std::find(subtree.begin(), subtree.end(), follower.rest) != subtree.end()){
         drawLatticeWarning("The rest is this GameObject or one below it: the follower is left alone. Use Create Rest Here.");

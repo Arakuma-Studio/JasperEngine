@@ -8142,6 +8142,7 @@ YAML::Node editor::Stream::encodeLatticeOffsets(const std::vector<Vector3>& offs
     for (const Vector3& offset : offsets) {
         node.push_back(encodeVector3(offset));
     }
+    if (offsets.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
     return node;
 }
 
@@ -8175,6 +8176,7 @@ YAML::Node editor::Stream::encodeLatticeComponent(const LatticeComponent& lattic
         poseNode["offsets"] = encodeLatticeOffsets(pose.offsets);
         posesNode.push_back(poseNode);
     }
+    if (lattice.poses.empty()) posesNode.SetStyle(YAML::EmitterStyle::Flow);
     node["poses"] = posesNode;
 
     node["jiggle"] = YamlNumbers::text(lattice.jiggle);
@@ -8259,6 +8261,7 @@ YAML::Node editor::Stream::encodeLatticeModifierComponent(const LatticeModifierC
         bindingNode["mask"] = latticeMaskChannelToString(binding.mask);
         bindingsNode.push_back(bindingNode);
     }
+    if (modifier.bindings.empty()) bindingsNode.SetStyle(YAML::EmitterStyle::Flow);
     node["bindings"] = bindingsNode;
     node["includeChildren"] = YamlNumbers::text(modifier.includeChildren);
     node["subdivisions"] = YamlNumbers::integerText(modifier.subdivisions);
@@ -8333,6 +8336,7 @@ YAML::Node editor::Stream::encodeLatticeTrackKeys(const std::vector<std::vector<
     for (const std::vector<Vector3>& key : keys) {
         node.push_back(encodeLatticeOffsets(key));
     }
+    if (keys.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
     return node;
 }
 
