@@ -46,8 +46,10 @@ namespace jasperengine::htmlui {
         int line = 0;                // manifest line
     };
 
-    // Persistent per-element state (phase 6, docs/html-ui/phase-6-stateful-effects.md 3.2-3.3)
-    enum class EffectStateFormat : uint8_t { RGBA8, RGBA16F, RGBA32F, R32F };
+    // Persistent per-element state (phase 6, docs/html-ui/phase-6-stateful-effects.md 3.2-3.3).
+    // Appended only: a value is its bit in EffectStatePool::setUnsupportedFormatsForTesting.
+    // RG16F and R16F: half-float two- and one-channel images (velocity, pressure fields)
+    enum class EffectStateFormat : uint8_t { RGBA8, RGBA16F, RGBA32F, R32F, RG16F, R16F };
 
     // @state <name> <format> <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
     struct EffectStateDef {

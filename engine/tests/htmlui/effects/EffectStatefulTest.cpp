@@ -4,7 +4,8 @@
 // Stateful effects (phase 6, docs/html-ui/phase-6-stateful-effects.md 4): the manifest's state
 // grammar and its checks, the state images and their pool, resizes, pause and resume, 100 load
 // and unload cycles, the fixed step and its substep cap, the pinned clock's replay (byte-identical
-// captures), splats, resets and reseeds, the budgets (FX-0018) and unsupported formats (FX-0017).
+// captures), splats, resets and reseeds, the budgets (FX-0018) and unsupported formats (FX-0017),
+// the half-float two- and one-channel formats rg16f and r16f (fixtures/effects/fx/sim-half.frag).
 // fixtures/effects/fx/sim-probe.frag counts its steps and the splat strength it took on the GPU and
 // shows them (R = steps / 255, G = splats / 255), so the CPU's account and the images agree.
 
@@ -13,6 +14,7 @@
 #include "HtmlUIClock.h"
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/effects/EffectSimulator.h"
+#include "render/SystemRender.h"
 
 #include <array>
 
@@ -209,6 +211,47 @@ TEST(EffectStatefulManifest, ParsesStatesPassesAndClock){
     EXPECT_EQ(effectPassMacro("advect-vel"), "JFX_PASS_ADVECT_VEL");
     EXPECT_EQ(effectStateFormatBytes(EffectStateFormat::RGBA32F), 16);
     EXPECT_EQ(effectStateFormatBytes(EffectStateFormat::R32F), 4);
+}
+
+// rg16f and r16f: half float like rgba16f (linear by default, filterable), 4 and 2 bytes a texel
+TEST(EffectStatefulManifest, HalfFloatFormats){
+    EffectManifest m;
+    const std::string source = probeManifest("// @state      vel rg16f 128x64\n"
+                                             "// @state      prs r16f box*0.5 max 256\n"
+                                             "// @state      div r16f 64x64 nearest repeat\n",
+                                             "// @step       move vel\n"
+                                             "// @step       solve prs x4\n"
+                                             "// @step       measure div\n");
+    EXPECT_EQ(diagnosticsOf(source, &m), "");
+    ASSERT_EQ(m.states.size(), 3u);
+    EXPECT_EQ(m.states[0].format, EffectStateFormat::RG16F);
+    EXPECT_TRUE(m.states[0].linear) << "half-float states are linear by default";
+    EXPECT_EQ(m.states[1].format, EffectStateFormat::R16F);
+    EXPECT_TRUE(m.states[1].linear);
+    EXPECT_FALSE(m.states[1].fixedSize);
+    EXPECT_EQ(m.states[2].format, EffectStateFormat::R16F);
+    EXPECT_FALSE(m.states[2].linear);
+    EXPECT_TRUE(m.states[2].repeat);
+    EXPECT_STREQ(effectStateFormatName(EffectStateFormat::RG16F), "rg16f");
+    EXPECT_STREQ(effectStateFormatName(EffectStateFormat::R16F), "r16f");
+    EXPECT_EQ(effectStateFormatBytes(EffectStateFormat::RG16F), 4);
+    EXPECT_EQ(effectStateFormatBytes(EffectStateFormat::R16F), 2);
+    EXPECT_EQ(colorFormatOf(EffectStateFormat::RG16F), ColorFormat::RG16F);
+    EXPECT_EQ(colorFormatOf(EffectStateFormat::R16F), ColorFormat::R16F);
+    // 'linear' is allowed (the 32-bit formats must be 'nearest'), and so is an additive writer
+    EXPECT_EQ(diagnosticsOf(probeManifest("// @state      vel rg16f 64x64 linear\n// @state      acc r16f box linear\n",
+                                          "// @step       move vel\n// @step       gather acc add\n")), "");
+    // the unknown-format diagnostic and the grammar name them
+    EffectManifest bad;
+    std::vector<EffectDiagnostic> diags;
+    const std::string wrong = probeManifest("// @state      vel rg32f 64x64\n", "// @step       move vel\n");
+    EffectManifestParser::parse(wrong, "effects/sim-test.frag", true, bad, diags);
+    bool listed = false;
+    for (const EffectDiagnostic& d : diags)
+        listed = listed || (d.message.find("unknown state format 'rg32f'") != std::string::npos &&
+                            d.suggestion.find("rg16f") != std::string::npos && d.suggestion.find("r16f") != std::string::npos);
+    EXPECT_TRUE(listed) << diagnosticsOf(wrong);
+    EXPECT_NE(diagnosticsOf(probeManifest("// @state      vel rg16f\n", "// @step       move vel\n")).find("rg16f|r16f"), std::string::npos);
 }
 
 TEST(EffectStatefulManifest, ReportsEveryMistake){
@@ -631,4 +674,108 @@ TEST_F(EffectStateful, UnsupportedFormatIsReported){
     EXPECT_NEAR(counted(image, "p0").first, 0, 1) << "an effect whose states the device cannot hold drew";
     capture();
     EXPECT_EQ(countDiagnostics("HTMLUI-FX-0017"), 1u) << "reported again every frame";
+}
+
+// ── the half-float formats on the GPU ──
+
+namespace {
+
+    const char* kHalf = "fixtures/effects/fx/sim-half.frag";
+
+    std::string halfDocument(){
+        return "<!DOCTYPE html><html><head><style>\n"
+               "html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #000; }\n"
+               ".h { position: absolute; left: 20px; top: 20px; width: 160px; height: 80px; background-image: effect(sim-half); }\n"
+               "</style></head><body><div class=\"h\" id=\"h\"></div></body></html>";
+    }
+
+    struct EffectStatefulHalf : EffectStateful {
+        const EffectManifest* half = nullptr;
+
+        void SetUp() override{
+            EffectStateful::SetUp();
+            if (IsSkipped() || HasFatalFailure())
+                return;
+            std::vector<EffectDiagnostic> diags;
+            ASSERT_TRUE(EffectRegistry::get().declareProjectEffect("sim-half", kHalf, "EffectStatefulTest", 1, diags))
+                << (diags.empty() ? std::string() : diags[0].message);
+            half = EffectRegistry::get().find("sim-half");
+            ASSERT_NE(half, nullptr);
+            ASSERT_EQ(half->states.size(), 2u);
+            ASSERT_TRUE(warmUpEffect(*half)) << "sim-half.frag does not compile in every form";
+        }
+
+        std::array<int, 4> centre(const TestImage& image){
+            const Rml::Rectanglef box = scene->box("h");
+            return pixel(image, (int)(box.Left() + box.Width() * 0.5f), (int)(box.Top() + box.Height() * 0.5f));
+        }
+    };
+
+}
+
+// the device has the render-layer formats behind rg16f and r16f (glcore, lavapipe)
+TEST_F(EffectStatefulHalf, DeviceSupportsThem){
+    const RenderFeatures& f = SystemRender::getFeatures();
+    EXPECT_TRUE(f.renderRG16F && f.blendRG16F && f.filterRG16F);
+    EXPECT_TRUE(f.renderR16F && f.blendR16F && f.filterR16F);
+    EXPECT_TRUE(EffectStatePool::supports(EffectStateFormat::RG16F, true));
+    EXPECT_TRUE(EffectStatePool::supports(EffectStateFormat::R16F, true));
+}
+
+// rg16f and r16f states are allocated at their size, rendered to, ping-ponged step after step,
+// fetched with the missing channels as (0, 1) and (0, 0, 1), and sampled with a linear filter
+TEST_F(EffectStatefulHalf, RendersPingPongsAndFiltersLinearly){
+    ASSERT_TRUE(load(halfDocument()));
+    TestImage image;
+    {
+        FixedEffectClock clock(1.0);
+        image = capture();
+    }
+    const EffectSimulationInfo simulation = EffectRuntime::get().simulationInfo(scene->element("h"), "sim-half", 0);
+    ASSERT_TRUE(simulation.exists);
+    // vel 2 x 1 x 4 bytes, prs 2 x 1 x 2 bytes, each a ping-pong pair
+    EXPECT_EQ(simulation.bytes, 2u * 2u * 4u + 2u * 2u * 2u);
+    ASSERT_EQ(simulation.steps, 60);
+    const auto c = centre(image);
+    EXPECT_NEAR(c[0], 60 + 4, 1) << "vel (rg16f) sampled between its texels: not ping-ponged, or not linear";
+    EXPECT_NEAR(c[1], 60 + 12, 1) << "prs (r16f) sampled between its texels: not ping-ponged, or not linear";
+    EXPECT_NEAR(c[2], 1 + 2 * 60, 1) << "the missing channels did not read as (0, 1) / (0, 0, 1), or vel.y was lost";
+    // live: one step a 1/60 s, each reading the previous step's image
+    const double h = 1.0 / 60.0;
+    ASSERT_TRUE(load(halfDocument()));
+    at(10.0);
+    capture();
+    for (int n = 1; n <= 3; n++){
+        at(10.0 + n * h);
+        image = capture();
+        ASSERT_EQ(EffectRuntime::get().simulationInfo(scene->element("h"), "sim-half", 0).steps, n);
+        const auto live = centre(image);
+        EXPECT_NEAR(live[0], n + 4, 1) << "step " << n;
+        EXPECT_NEAR(live[1], n + 12, 1) << "step " << n;
+        EXPECT_NEAR(live[2], 1 + 2 * n, 1) << "step " << n;
+    }
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u) << logText(D_LOG_ERROR);
+}
+
+// a device without rg16f (or r16f) render targets: FX-0017, the effect is not drawn
+TEST_F(EffectStatefulHalf, UnsupportedHalfFormatsAreReported){
+    for (EffectStateFormat format : {EffectStateFormat::RG16F, EffectStateFormat::R16F}){
+        SCOPED_TRACE(effectStateFormatName(format));
+        EffectRuntime::get().clearStatefulDiagnostics();
+        EffectStatePool::setUnsupportedFormatsForTesting(1u << (unsigned)format);
+        EXPECT_FALSE(EffectStatePool::supports(format, false));
+        ASSERT_TRUE(load(halfDocument()));
+        at(10.0);
+        TestImage image = capture();
+        EXPECT_FALSE(EffectRuntime::get().simulationInfo(scene->element("h"), "sim-half", 0).exists);
+        EXPECT_EQ(countDiagnostics("HTMLUI-FX-0017"), 1u);
+        bool named = false;
+        for (const auto& d : EffectRuntime::get().statefulDiagnostics())
+            named = named || d.second.find(effectStateFormatName(format)) != std::string::npos;
+        EXPECT_TRUE(named) << "FX-0017 does not name the format";
+        const auto c = centre(image);
+        EXPECT_NEAR(c[0], 0, 1) << "an effect whose states the device cannot hold drew";
+        EXPECT_NEAR(c[1], 0, 1);
+        EffectStatePool::setUnsupportedFormatsForTesting(0);
+    }
 }

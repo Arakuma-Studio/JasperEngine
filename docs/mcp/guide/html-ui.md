@@ -1937,7 +1937,9 @@ vec4 jfx_paint(JfxContext c){
   `effects/lib/jfx_hash.glsl`, `effects/lib/jfx_sdf.glsl` (shapes), `effects/lib/jfx_geom.glsl`,
   `effects/lib/jfx_blend.glsl`, `effects/lib/jfx_tone.glsl`.
 - **Stateful effects** declare their images and passes in the manifest (`@cost stateful`):
-  `// @state <name> rgba8|rgba16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>] [linear|nearest]`,
+  `// @state <name> rgba8|rgba16f|rg16f|r16f|rgba32f|r32f <w>x<h>|box[*scale] [max <px>] [linear|nearest]`
+  (`rg16f`/`r16f`: half-float two- and one-channel fields, sampled as (r, g, 0, 1) and (r, 0, 0, 1);
+  the 32-bit formats must be `nearest`),
   `// @init <pass> <state>` (run once at the start), `// @step <pass> <state> [x<count>]
   [add] [scatter <placement>]` (each step, in order), optional `@warmup <steps> <dt>`,
   `@rate <hz> max <substeps>`, `@replay <s>` and `@reseed <param>`. Declare each image with
