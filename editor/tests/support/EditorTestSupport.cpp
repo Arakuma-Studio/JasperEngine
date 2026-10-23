@@ -16,24 +16,10 @@ namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-namespace {
-
-    class HeadlessSystem: public System {
-    public:
-        int getScreenWidth() override { return 1280; }
-        int getScreenHeight() override { return 720; }
-    };
-
-}
-
 void test::ensureEngine() {
-    static std::once_flag once;
-    std::call_once(once, [] {
-        // owned by the engine for the whole process, like a platform's System
-        static char name[] = "jasperengine-editor-tests";
-        static char* argv[] = {name, nullptr};
-        Engine::systemInit(1, argv, new HeadlessSystem());
-    });
+    // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
+    // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
+    // System would leave that capture reading the wrong object
 }
 
 fs::path test::fixture(const std::string& relative) {

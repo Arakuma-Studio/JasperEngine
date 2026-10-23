@@ -17,7 +17,7 @@
 
 namespace jasperengine::editor::test {
 
-    // Engine::systemInit with a System that has no window (idempotent)
+    // the engine is running (TestMain started it with the support library's TestSystem)
     void ensureEngine();
 
     // editor/tests/fixtures/<relative>
