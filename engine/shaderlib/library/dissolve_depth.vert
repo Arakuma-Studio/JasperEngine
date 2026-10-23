@@ -3,8 +3,11 @@
 // Depth program of library:dissolve: the UV (or, with WORLD_NOISE, the world position and
 // normal) the noise is sampled from, as in the colour pass; nothing moves.
 #undef SURFACE_COLOR
-#undef HAS_VERTEX_COLOR_VEC3
-#undef HAS_VERTEX_COLOR_VEC4
+// (a lattice's vertex colour mask still reads the colour, includes/lattice.glsl)
+#ifndef HAS_LATTICE
+    #undef HAS_VERTEX_COLOR_VEC3
+    #undef HAS_VERTEX_COLOR_VEC4
+#endif
 
 #ifdef WORLD_NOISE
     #define SURFACE_DISPLACE

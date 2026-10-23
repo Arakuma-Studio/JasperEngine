@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
+#include "lattice/LatticeTypes.h"
 #include "shader/ShaderManifest.h"
 
 #include <algorithm>
@@ -365,7 +366,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & (1 << 2))  defs.push_back({"HAS_UV_SET2", "1"});               // 'Uv2'
     if (prop & (1 << 3))  defs.push_back({"USE_PUNCTUAL", "1"});              // 'Puc'
     if (prop & (1 << 4))  defs.push_back({"USE_SHADOWS", "1"});               // 'Shw'
-    // bit 5 reserved (was USE_SHADOWS_PCF; the PCF filter is uniform-driven now)
+    // a terrain is never deformed (its variant keeps the bit inert, the bit was 'Pcf' once)
+    if ((prop & (1 << 5)) && !(prop & (1 << 17))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc'
     if (prop & (1 << 6))  defs.push_back({"HAS_NORMALS", "1"});               // 'Nor'
     if (prop & (1 << 7))  defs.push_back({"HAS_NORMAL_MAP", "1"});            // 'Nmp'
     if (prop & (1 << 8))  defs.push_back({"HAS_TANGENTS", "1"});              // 'Tan'
@@ -409,6 +411,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & (1 << 11)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"}); // 'Vc4'
     if (prop & (1 << 12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
     if (prop & (1 << 13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
+    if ((prop & (1 << 14)) && !(prop & (1 << 5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -422,6 +425,9 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & (1 << 7))  defs.push_back({"HAS_INSTANCING", "1"});                // 'Ist'
     if (prop & (1 << 8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
     if (prop & (1 << 9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
+    if ((prop & (1 << 10)) && !(prop & (1 << 6))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
+    if (prop & (1 << 11)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});         // 'Vc3' (a lattice mask's)
+    if (prop & (1 << 12)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
@@ -585,6 +591,12 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
         args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
     }
+    if (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER){
+        // the record layout of includes/lattice.glsl (lattice/LatticeTypes.h)
+        args.defines.push_back({"LATTICE_MAX_PER_MESH", std::to_string(LATTICE_MAX_PER_MESH)});
+        args.defines.push_back({"LATTICE_TEXTURE_WIDTH", std::to_string(LATTICE_TEXTURE_WIDTH)});
+        args.defines.push_back({"LATTICE_RECORD_HEADER", std::to_string(LATTICE_RECORD_HEADER)});
+    }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting
         args.defines.push_back({"SPOT_MASK_TILES", std::to_string(SPOT_MASK_ATLAS_TILES)});
@@ -672,7 +684,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
-            std::to_string(SPOT_MASK_ATLAS_TILES));
+            std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +
+            std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;

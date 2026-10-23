@@ -506,8 +506,8 @@ uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 32;
-        case ShaderType::DEPTH:  return 14;
-        case ShaderType::GBUFFER: return 10;
+        case ShaderType::DEPTH:  return 15;
+        case ShaderType::GBUFFER: return 13;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -537,7 +537,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // case 5 reserved (was 'Pcf'; the PCF filter is uniform-driven now)
+            // bit 5 was 'Pcf' (the PCF filter is uniform-driven now), retired until the
+            // lattice deformer took it: keys of a newer editor never had it set
+            case 5:  return shortName ? "Ltc" : "Lattice";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -585,6 +587,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 12: return shortName ? "Uv1" : "UV1";
             // the sprite texture rect the alpha-clip UV goes through
             case 13: return shortName ? "Txr" : "Texture Rect";
+            case 14: return shortName ? "Ltc" : "Lattice";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -598,6 +601,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 7: return shortName ? "Ist" : "Instancing";
             case 8: return shortName ? "Mrt" : "MetalRough Texture";
             case 9: return shortName ? "Tpb" : "Terrain PBR";
+            case 10: return shortName ? "Ltc" : "Lattice";
+            // the vertex colour a lattice's mask reads, never set without 'Ltc'
+            case 11: return shortName ? "Vc3" : "Vertex Color 3";
+            case 12: return shortName ? "Vc4" : "Vertex Color 4";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1248,8 +1255,8 @@ ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
 }
 
 uint32_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit (e.g. MESH bit 5, the
-    // old 'Pcf') is excluded automatically: it has no short name ("?").
+    // Derived from the property-name table so a retired bit is excluded automatically:
+    // it has no short name ("?").
     uint32_t mask = 0;
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
@@ -1273,7 +1280,7 @@ uint32_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity){
+    bool vertexLights, int lightCapacity, bool lattice){
     uint32_t prop = 0;
 
     prop |= unlit            ? (1 <<  0) : 0;
@@ -1281,8 +1288,9 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= uv2              ? (1 <<  2) : 0;
     prop |= punctual         ? (1 <<  3) : 0;
     prop |= shadows          ? (1 <<  4) : 0;
-    // bit 5 was USE_SHADOWS_PCF; the PCF filter is uniform-driven now (Scene
-    // shadowQuality). Kept reserved so the other bit positions stay stable.
+    // bit 5 was USE_SHADOWS_PCF (the PCF filter is uniform-driven now, Scene shadowQuality);
+    // the lattice deformer reuses it, so every other bit keeps its position
+    prop |= lattice          ? (1 <<  5) : 0;
     prop |= normals          ? (1 <<  6) : 0;
     prop |= normalMap        ? (1 <<  7) : 0;
     prop |= tangents         ? (1 <<  8) : 0;
@@ -1314,7 +1322,8 @@ uint32_t ShaderPool::getMeshProperties(
 }
 
 uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
-                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect){
+                                            bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
+                                            bool lattice){
     uint32_t prop = 0;
 
     prop |= texture          ? (1 <<  0) : 0;
@@ -1331,11 +1340,13 @@ uint32_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= vertexColorVec4  ? (1 << 11) : 0;
     prop |= uv1              ? (1 << 12) : 0;
     prop |= textureRect      ? (1 << 13) : 0;
+    prop |= lattice          ? (1 << 14) : 0;
 
     return prop;
 }
 
-uint32_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR){
+uint32_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
+                                              bool lattice, bool vertexColorVec3, bool vertexColorVec4){
     uint32_t prop = 0;
 
     prop |= baseColorTexture        ? (1 <<  0) : 0;
@@ -1348,6 +1359,9 @@ uint32_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= instanced               ? (1 <<  7) : 0;
     prop |= metallicRoughnessTexture ? (1 << 8) : 0;
     prop |= terrainPBR              ? (1 <<  9) : 0;
+    prop |= lattice                 ? (1 << 10) : 0;
+    prop |= (lattice && vertexColorVec3) ? (1 << 11) : 0;
+    prop |= (lattice && vertexColorVec4) ? (1 << 12) : 0;
 
     return prop;
 }
