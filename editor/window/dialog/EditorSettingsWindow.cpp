@@ -7,6 +7,7 @@
 #include "App.h"
 #include "Project.h"
 #include "Theme.h"
+#include "log/Logger.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
@@ -31,6 +32,7 @@ namespace {
         General,
         CodeEditor,
         ExternalTools,
+        Logging,
         ShaderCache,
         Count
     };
@@ -40,6 +42,7 @@ namespace {
         {"General", "", "editor vsync default build directory output"},
         {"Code Editor", "", "font size"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
+        {"Logging", "", "log level category console file backtrace errors source location debug trace"},
         {"Shader Cache", "", "clear shader cache"},
     };
     constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
@@ -186,6 +189,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
+    m_logging = AppSettings::getLoggingSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
 }
@@ -271,6 +275,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
+        case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
     }
@@ -530,6 +535,71 @@ void EditorSettingsWindow::drawVideoImportSettings() {
     }
 }
 
+namespace {
+    const char* const logLevelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Fatal", "Off"};
+
+    // A level combo over the level names of LoggingSettings; true when changed
+    bool levelCombo(const char* id, std::string& levelName) {
+        LogLevel level = LogLevel::Info;
+        parseLogLevel(levelName.c_str(), level);
+        int index = static_cast<int>(level);
+        ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+        if (ImGui::Combo(id, &index, logLevelLabels, IM_ARRAYSIZE(logLevelLabels))) {
+            levelName = logLevelName(static_cast<LogLevel>(index));
+            return true;
+        }
+        return false;
+    }
+}
+
+void EditorSettingsWindow::drawLoggingSettings() {
+    drawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
+        const LoggingSettings defaults;
+        if (beginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
+                             m_logging.fileLevel != defaults.fileLevel)) {
+            m_logging.fileLevel = defaults.fileLevel;
+        }
+        levelCombo("##LogFileLevel", m_logging.fileLevel);
+
+        if (beginSettingsRow("Capture Backtrace on Errors",
+                             "Errors logged by the engine and editor record their call stack; editor.log shows it.",
+                             m_logging.backtraceOnError != defaults.backtraceOnError)) {
+            m_logging.backtraceOnError = defaults.backtraceOnError;
+        }
+        ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
+
+        if (beginSettingsRow("Show Source Location",
+                             "The file and line a message was logged from, in the Console's details and editor.log.",
+                             m_logging.showSource != defaults.showSource)) {
+            m_logging.showSource = defaults.showSource;
+        }
+        ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
+
+        sectionRow("Category Levels");
+        beginSettingsRow("Reset", "Every category back to Info.");
+        ImGui::BeginDisabled(m_logging.categoryLevels.empty());
+        if (ImGui::Button("Reset All##LogLevels")) {
+            m_logging.categoryLevels.clear();
+        }
+        ImGui::EndDisabled();
+        for (size_t i = 0; i < Logger::categoryCount(); i++) {
+            const std::string name = Logger::categoryAt(i).name;
+            auto it = m_logging.categoryLevels.find(name);
+            std::string level = it != m_logging.categoryLevels.end() ? it->second : std::string("info");
+            if (beginSettingsRow(name.c_str(), "Messages of this category below the level are not logged anywhere.",
+                                 level != "info")) {
+                level = "info";
+            }
+            levelCombo(("##LogCategory" + name).c_str(), level);
+            if (level == "info") {
+                m_logging.categoryLevels.erase(name);
+            } else {
+                m_logging.categoryLevels[name] = level;
+            }
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
     drawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
         beginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
@@ -551,6 +621,7 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
+    AppSettings::setLoggingSettings(m_logging);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

@@ -4,6 +4,9 @@
 #ifndef luabinding_h
 #define luabinding_h
 
+#include "log/LogCategory.h"
+#include "log/LogFormatCheck.h"
+#include <string_view>
 #include "Export.h"
 #include "ecs/Entity.h"
 #include <string>
@@ -127,6 +130,10 @@ namespace jasperengine {
         static void clearLoadedProjectModules();
 
         static std::string getLuaStackErrorString(lua_State* L, int index = -1);
+        // A Lua error (its traceback is in the text): category lua, no C++ backtrace
+        static void logLuaError(const char* format, ...) JE_PRINTF_FORMAT(1, 2);
+        // Logs text with the calling Lua function's chunk and line as its source
+        static void logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text);
         
     };
     

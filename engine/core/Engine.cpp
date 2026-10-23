@@ -4,6 +4,7 @@
 #include "manager/ObjectManager.h"
 #include "Engine.h"
 #include "Log.h"
+#include "log/Logger.h"
 #include "Scene.h"
 #include "Input.h"
 #include "render/SystemRender.h"
@@ -37,6 +38,9 @@
 #endif
 
 #include "sokol_time.h"
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -1052,6 +1056,55 @@ void Engine::calculateCanvas(){
                       Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
 }
 
+namespace {
+    // the game started the logger (an editor starts its own before the engine)
+    bool engineOwnsLogger = false;
+    // frames systemDraw ran, stamped on log records
+    uint64_t drawnFrames = 0;
+
+    // A game's logger: the project's Player > Logging settings (injected by the Exporter as
+    // JASPERENGINE_LOG_*), then JASPER_LOG_LEVEL, then --log-level on the command line
+    void startGameLogger(System* system, const std::vector<std::string>& args){
+        Logger::Config config;
+    #if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        config.queueBytes = 256 * 1024;
+    #else
+        config.queueBytes = 1024 * 1024;
+    #endif
+    #ifdef JASPERENGINE_LOG_BACKTRACE
+        config.backtraceOnError = JASPERENGINE_LOG_BACKTRACE != 0;
+    #elif !defined(NDEBUG)
+        config.backtraceOnError = true;
+    #endif
+        Logger::init(config);
+        engineOwnsLogger = true;
+    #ifdef JASPERENGINE_LOG_LEVEL
+        Logger::applyLevelSpec(JASPERENGINE_LOG_LEVEL);
+    #endif
+        if (const char* level = std::getenv("JASPER_LOG_LEVEL")) {
+            std::string error;
+            if (level[0] != '\0' && !Logger::applyLevelSpec(level, &error)) {
+                fprintf(stderr, "JASPER_LOG_LEVEL: %s\n", error.c_str());
+            }
+        }
+        for (size_t i = 0; i < args.size(); i++) {
+            std::string spec;
+            if (args[i] == "--log-level" && i + 1 < args.size()) {
+                spec = args[i + 1];
+            } else if (args[i].rfind("--log-level=", 0) == 0) {
+                spec = args[i].substr(12);
+            } else {
+                continue;
+            }
+            std::string error;
+            if (!Logger::applyLevelSpec(spec, &error)) {
+                fprintf(stderr, "--log-level: %s\n", error.c_str());
+            }
+        }
+        system->installLogSinks();
+    }
+}
+
 void Engine::systemInit(int argc, char* argv[], System* system){
     #ifndef NO_THREAD_SUPPORT
         size_t maxThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
@@ -1059,6 +1112,11 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     #endif
 
     System::setSystemInstance(system);
+
+    if (!Logger::isInitialized()) {
+        startGameLogger(system, std::vector<std::string>(argv, argv + argc));
+    }
+    Logger::setThreadName("main");
 
     Engine::setCanvasSize(1000,480);
 
@@ -1218,6 +1276,8 @@ void Engine::signalReadyOnce(){
 
 void Engine::systemDraw(){
     const int MAX_UPDATES_PER_FRAME = 100;
+
+    Logger::setFrame(++drawnFrames);
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1434,6 +1494,12 @@ void Engine::systemShutdown(){
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
+
+    // what the game logged reaches its sinks before the process goes
+    if (engineOwnsLogger) {
+        engineOwnsLogger = false;
+        Logger::shutdown();
+    }
 }
 
 void Engine::systemPause(){

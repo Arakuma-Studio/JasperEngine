@@ -39,6 +39,7 @@ namespace jasperengine::editor {
         bool m_htmlUiAutoImport = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
+        LoggingSettings m_logging;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -57,6 +58,7 @@ namespace jasperengine::editor {
         void drawCMakeSettings();
         void drawWebSettings();
         void drawVideoImportSettings();
+        void drawLoggingSettings();
         void drawAdvancedSettings();
         bool applySettings();
 

@@ -798,6 +798,19 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/log/Logger.cpp
+    core/log/LogFormat.cpp
+    core/log/Backtrace.cpp
+    core/log/sinks/ConsoleSink.cpp
+    core/log/sinks/RotatingFileSink.cpp
+    core/log/sinks/MemorySink.cpp
+    core/log/sinks/CallbackSink.cpp
+    core/log/sinks/PlatformSink.cpp
+    core/log/sinks/PlatformSinks.cpp
+    core/log/sinks/AndroidLogSink.cpp
+    core/log/sinks/EmscriptenConsoleSink.cpp
+    core/log/sinks/DebuggerSink.cpp
+    core/log/sinks/AppleLogSink.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
     core/System.cpp
@@ -1067,6 +1080,15 @@ target_compile_definitions(jasperengine
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
+if(WIN32)
+    target_link_libraries(jasperengine PRIVATE dbghelp)
+elseif(ANDROID)
+    target_link_libraries(jasperengine PRIVATE log)
+elseif(NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(jasperengine PRIVATE -pthread)

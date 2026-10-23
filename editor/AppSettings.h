@@ -4,11 +4,26 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
+
+// Preferences > Logging (settings.yaml "logging"). Defaults are the editor's behaviour
+// before categories existed: Info everywhere, the log file at Info.
+struct LoggingSettings {
+    std::map<std::string, std::string> categoryLevels;   // category -> level name (only those changed)
+    std::string fileLevel = "info";
+    bool backtraceOnError = true;
+    bool showSource = true;
+
+    bool operator==(const LoggingSettings& other) const {
+        return categoryLevels == other.categoryLevels && fileLevel == other.fileLevel &&
+               backtraceOnError == other.backtraceOnError && showSource == other.showSource;
+    }
+};
 
 struct PanelVisibilitySettings {
     bool hierarchy = true;
@@ -124,6 +139,8 @@ private:
     static bool htmlUiAutoImport;
     static bool htmlUiVerboseDiagnostics;
 
+    static LoggingSettings loggingSettings;
+
     // Private methods
     static void ensureConfigDirectory();
 
@@ -230,6 +247,11 @@ public:
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
+
+    // Preferences > Logging; set applies them to the logger at once (then --log-level again)
+    static LoggingSettings getLoggingSettings();
+    static void setLoggingSettings(const LoggingSettings& settings);
+    static void applyLoggingSettings();
 
     // Load and save settings
     static bool loadSettings();

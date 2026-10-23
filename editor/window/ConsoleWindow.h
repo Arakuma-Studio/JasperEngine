@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <set>
 #include <vector>
 #include <string>
 #include "imgui.h"
@@ -19,10 +20,18 @@ namespace jasperengine::editor {
         Build
     };
 
+    struct LogEntry;
+
     struct LogData {
         LogType type;
         std::string message;
-        uint64_t id = 0;                     // increasing sequence number
+        uint64_t id = 0;                     // the logger's record id (increasing)
+        bool detail = false;                 // Debug or Trace: drawn grey
+        std::string category;
+        std::string file;                    // source, empty if none
+        uint32_t line = 0;
+        uint64_t frame = 0;
+        std::string threadName;
     };
 
     // The Console. Unity-style: a toolbar (Clear, Collapse, Clear on Play,
@@ -41,7 +50,7 @@ namespace jasperengine::editor {
 
         std::deque<LogData> logs;             // constant-time eviction of the oldest entry
         size_t storedLogLineCount;           // raw log lines kept, trimmed to MAX_STORED_LOG_LINES
-        uint64_t nextLogId;
+        uint64_t lastPulledId;               // the newest record taken from the log (Out)
         size_t severityCounts[SEVERITY_COUNT];
 
         static constexpr size_t MAX_STORED_LOG_LINES = 10000;
@@ -52,6 +61,9 @@ namespace jasperengine::editor {
         ImGuiTextFilter filter;
         bool searchMatchCase;
         bool severityFilters[SEVERITY_COUNT];
+        // Category filter: every category seen, and those unticked
+        std::set<std::string> seenCategories;
+        std::set<std::string> hiddenCategories;
 
         bool collapse;
         bool clearOnPlay;
@@ -85,6 +97,8 @@ namespace jasperengine::editor {
         bool passTextFilter(const char* text) const;
         const LogData* selectedLog() const;
 
+        void pullLogs();
+        void addEntry(LogEntry&& entry);
         void updatePlayState();
         void showToolbar();
         void showList(float height);
@@ -96,8 +110,7 @@ namespace jasperengine::editor {
 
         ConsoleWindow();
         void clear();
-        void addLog(LogType type, const char* fmt, ...);
-        void addLog(LogType type, const std::string& message);
+        // Takes what was logged since the last frame from the log (Out), then draws
         void show();
         void setOpen(bool open);
         bool isOpen() const;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "util/CrashHook.h"
 #include "Factory.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -7319,7 +7320,7 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
-        jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+        jasperengine::CrashHook::set(nullptr);
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->playState = ScenePlayState::STOPPED;
@@ -7868,7 +7869,7 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
 
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = 
+    jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
             SceneProject* sceneProject = getScene(sceneId);
@@ -7901,7 +7902,7 @@ void editor::Project::start(uint32_t sceneId) {
                     stop(sceneId);
                 }
             });
-        };
+        });
 
     auto session = std::make_shared<PlaySession>();
     session->mainSceneId = sceneId;
@@ -8056,7 +8057,7 @@ void editor::Project::stop(uint32_t sceneId) {
     }
 
     // Clear crash handler when stopping
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+    jasperengine::CrashHook::set(nullptr);
 
     // Request cancellation asynchronously (returns a future we can wait on later if needed)
     auto cancelFuture = generator.cancelBuild();
