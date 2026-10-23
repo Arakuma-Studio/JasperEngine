@@ -255,6 +255,8 @@ namespace jasperengine::editor{
         void drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities);
         void applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
+        // a texture slot showing a FluidSimulation's output ("fluid|<entity>", FluidTextureLink)
+        void applyFluidTexture(Entity fluidEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void dragDropResourcesTextureCube(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, int faceIndex = -1);
 
@@ -457,6 +459,23 @@ namespace jasperengine::editor{
                                         const PostProcessingSettings::Field& field, const char* label,
                                         const std::string& help, bool indent);
         void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
+
+        // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
+        // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
+        void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // why the fluid draws nothing (device, simulator error, no surface for Material)
+        void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawFluidStats(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // a fluid row's label cell (prefab override marker, help tooltip, reset arrow; true when
+        // the arrow is clicked), leaving the value cell current at full width
+        bool fluidRowHeader(const std::string& property, const std::string& label, const std::string& help, bool defChanged, bool indent);
+        // a value for every selected fluid: merged while the widget is held, else one step
+        template<typename T>
+        void commitFluidProperty(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& property,
+                                 const T& value, bool merge);
+        // a FluidPreset's fields on every selected fluid, one undo step
+        void applyFluidPreset(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& presetId);
 
         // Commits a planned fork as one undoable step and opens the new .vert/.frag in the
         // code editor. Alerts instead when the plan is invalid or the files cannot be written.
