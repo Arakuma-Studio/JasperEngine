@@ -164,7 +164,8 @@ namespace jasperengine{
         HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
-        UI_EFFECT        // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        FLUID            // FluidSimulator's passes (the solver and the display), the pass in the property bits
     };
 
     enum class AttributeType{
