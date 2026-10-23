@@ -225,9 +225,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
 
+        # DWARF limits the wasm optimizer, so release builds keep only the function names
+        # (still readable stack traces) and the wasm is about a third smaller
+        set(EM_DEBUG_INFO "--profiling-funcs")
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+            set(EM_DEBUG_INFO "-g")
+        endif()
+
         list(APPEND PLATFORM_PROPERTIES
             LINK_FLAGS
-                "-g \
+                "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
