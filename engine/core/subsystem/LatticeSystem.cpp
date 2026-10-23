@@ -380,7 +380,7 @@ bool LatticeSystem::isValidFollower(Entity follower, Entity lattice, Entity rest
 
 void LatticeSystem::updateTweens(double dt){
     auto lattices = scene->getComponentArray<LatticeComponent>();
-    for (int i = 0; i < lattices->size(); i++){
+    for (size_t i = 0; i < lattices->size(); i++){
         LatticeComponent& lattice = lattices->getComponentFromIndex(i);
         if (!lattice.tweening){
             continue;
@@ -531,7 +531,7 @@ void LatticeSystem::stepJiggle(LatticeComponent& lattice, const Transform& trans
 
 void LatticeSystem::updateJiggle(double dt){
     auto lattices = scene->getComponentArray<LatticeComponent>();
-    for (int i = 0; i < lattices->size(); i++){
+    for (size_t i = 0; i < lattices->size(); i++){
         LatticeComponent& lattice = lattices->getComponentFromIndex(i);
         const Entity entity = lattices->getEntity(i);
 
@@ -564,7 +564,7 @@ void LatticeSystem::updateFollowers(){
     // parents first, so a follower placed on another one's subtree sees it moved
     std::vector<std::pair<size_t, Entity>> order;
     order.reserve(followers->size());
-    for (int i = 0; i < followers->size(); i++){
+    for (size_t i = 0; i < followers->size(); i++){
         const Entity entity = followers->getEntity(i);
         if (transforms->hasEntity(entity)){
             order.emplace_back(transforms->getIndex(entity), entity);

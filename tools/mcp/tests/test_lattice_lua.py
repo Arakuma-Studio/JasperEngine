@@ -9,7 +9,11 @@ the pose and the follower has moved up; a poked jiggle moves, settles and sleeps
 dynamic offsets left); a jump of the cage wakes it through its acceleration and it sleeps
 again; back at rest the follower returns to its rest. Each step prints `LATTICE <key> <value>`.
 
-Edit mode (eval_lua with allow_edit_mode): applyPose shows at once, a tween does not advance.
+Edit mode (eval_lua with allow_edit_mode): applyPose shows at once, a tween does not advance,
+a follower follows. GameObject.instantiate (EntityCloner) remaps bindings and followers.
+
+Followers and the jiggle run in LatticeSystem::lateUpdate, which RenderSystem::update calls
+(WP-RENDER): without that call the follower and jiggle checks fail.
 """
 
 import json
@@ -115,7 +119,9 @@ function LatticeProbe:onUpdate()
 
     if self.phase == "tween" then
         if cage:isTweening() then
-            if self.phaseTime > 0.2 and not self.midTween then
+            -- a value on the way, strictly between the rest and the pose
+            local y = cage:getOffset(2, 4, 2).y
+            if not self.midTween and y > 0 and y < 0.25 then
                 self.midTween = true
                 out("midTween", v3(cage:getOffset(2, 4, 2)))
             end
@@ -324,8 +330,10 @@ async def test_lattice_from_lua_in_play(ed: Editor):
 
 
 async def test_lattice_edit_mode(ed: Editor):
-    """Edit mode: offsets and poses show at once (followers too); tweens wait for Play."""
+    """Edit mode: offsets, poses and followers show at once; tweens wait for Play."""
     s = await setup(ed)
+    if (await ed.call("get_play_state"))["state"] != "stopped":
+        await ed.call("play", action="stop")
     await ed.call("open_scene", scene=s["scene"])
     code = """
         local cage = Lattice(scene)
@@ -339,6 +347,9 @@ async def test_lattice_edit_mode(ed: Editor):
         cage:resetOffsets()
         cage:tweenToPose("p", 0.2)
         editCage = cage
+        editRest = GameObject(scene); editRest.entityOwned = false; editRest.position = Vector3(0.4, 0, 0)
+        editFollower = GameObject(scene); editFollower.entityOwned = false
+        cage:addFollower(editFollower, editRest)
         return applied, cage:isTweening()
     """
     applied, tweening = (await ed.call("eval_lua", code=code, allow_edit_mode=True))["values"]
@@ -350,6 +361,66 @@ async def test_lattice_edit_mode(ed: Editor):
     after = (await ed.call("eval_lua", code="return editCage:isTweening(), editCage:getOffset(2, 2, 2).x",
                            allow_edit_mode=True))["values"]
     ed.check_eq(after, [True, 0.0], "the tween waits for Play")
-    await ed.call("eval_lua", code="GameObject.destroyImmediate(editCage); editCage = nil; return true",
+    # followers run in edit mode: a pushed point moves the follower on the next frame
+    await ed.call("eval_lua", code="editCage:stopTween(); editCage:setOffset(2, 1, 1, Vector3(0.3, 0, 0)); return true",
                   allow_edit_mode=True)
+    await ed.call("screenshot", view="scene")
+    moved = (await ed.call("eval_lua", code="return editFollower:getWorldPosition().x, editCage:deformPoint(Vector3(0.4, 0, 0)).x",
+                           allow_edit_mode=True))["values"]
+    ed.check(moved[0] > 0.41 and abs(moved[0] - moved[1]) < 1e-4, f"the follower follows in edit mode: {moved}")
+    await ed.call("eval_lua", code="GameObject.destroyImmediate(editFollower); GameObject.destroyImmediate(editRest); "
+                  "GameObject.destroyImmediate(editCage); editCage = nil; return true", allow_edit_mode=True)
+    await ed.check_alive()
+
+
+async def test_instantiate_remaps_lattice_references(ed: Editor):
+    """GameObject.instantiate (EntityCloner): bindings and followers inside the copied hierarchy
+    point at the copies; a lattice outside it stays bound; the copy starts with its jiggle asleep."""
+    s = await setup(ed)
+    if (await ed.call("get_play_state"))["state"] != "stopped":
+        await ed.call("play", action="stop")
+    await ed.call("play", action="start", scene=s["scene"])
+    await ed.call("wait", frames=2)
+    code = """
+        local group = GameObject(scene); group.entityOwned = false; group.name = "CloneGroup"
+        local cage = Lattice(scene); cage.entityOwned = false; cage.name = "CloneCage"
+        local box = Primitive(scene); box.entityOwned = false; box.name = "CloneBox"; box:createBox(1, 1, 1)
+        local follower = GameObject(scene); follower.entityOwned = false; follower.name = "CloneFollower"
+        local rest = GameObject(scene); rest.entityOwned = false; rest.name = "CloneRest"
+        local outside = Lattice(scene); outside.entityOwned = false; outside.name = "OutsideCage"
+        group:addChild(cage); group:addChild(box); group:addChild(follower); group:addChild(rest)
+        cage:bind(box); outside:bind(box, 0.5)
+        cage:addFollower(follower, rest)
+        cage:setOffset(1, 1, 1, Vector3(0.1, 0, 0))
+        cage.jiggle = true; cage:poke(1, 1, 1, Vector3(1, 0, 0))
+
+        local copy = GameObject.instantiate(group)
+        local copyCage = scene:findEntity("CloneCage", copy.entity)
+        local copyBox = scene:findEntity("CloneBox", copy.entity)
+        local copyFollower = scene:findEntity("CloneFollower", copy.entity)
+        local copyRest = scene:findEntity("CloneRest", copy.entity)
+        local copyLattice = Lattice(scene, copyCage)
+        local bindings = copyLattice:getModifierComponent(copyBox).bindings
+        local followerComp = copyLattice:getFollowerComponent(copyFollower)
+        local comp = copyLattice:getLatticeComponent()
+        return {
+            distinct = copyCage ~= cage.entity and copyBox ~= box.entity,
+            first = bindings[1].lattice == copyCage,
+            second = bindings[2].lattice == outside.entity,
+            weight = bindings[2].weight,
+            follower = followerComp ~= nil and followerComp.lattice == copyCage and followerComp.rest == copyRest,
+            offset = copyLattice:getOffset(1, 1, 1).x,
+            sleeping = comp.jiggleSleeping,
+            dynamic = #comp.dynamicOffsets,
+        }
+    """
+    got = (await ed.call("eval_lua", code=code))["values"][0]
+    ed.check_eq(got.get("distinct"), True, f"copies are new entities: {got}")
+    ed.check_eq(got.get("first"), True, f"the copied binding points at the copied lattice: {got}")
+    ed.check_eq(got.get("second"), True, f"a lattice outside the copy stays bound: {got}")
+    ed.check(abs(got.get("weight", 0) - 0.5) < 1e-6, f"binding settings copied: {got}")
+    ed.check_eq(got.get("follower"), True, f"the follower's lattice and rest are the copies: {got}")
+    ed.check(abs(got.get("offset", 0) - 0.1) < 1e-6, f"offsets copied: {got}")
+    ed.check_eq([got.get("sleeping"), got.get("dynamic")], [True, 0], f"the copy's jiggle starts asleep: {got}")
+    await ed.call("play", action="stop")
     await ed.check_alive()
