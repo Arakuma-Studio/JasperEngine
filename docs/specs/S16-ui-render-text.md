@@ -1,0 +1,505 @@
+# S16 — HTML UI rendering cost & text sharpness
+
+Wave 2. Report: `docs/openengine-analysis/06-ui-framework.md` §1.5, §1.6, §2.1 "Rendering"/"Text",
+§3 (rows "Resolution-independent vector text", "GPU text shadow/glow/outline", "One-draw instanced
+SDF primitive renderer"), §4.1 items 1–2, §5.5, §5.6. Global decisions: `docs/specs/README.md`.
+
+## 1. Goal
+
+Make our RmlUi-fork HTML UI cheap to draw and sharp under scaling, on every backend including
+WebGL2/GLES3. Today a document costs about one draw call per element mesh. A rounded clip costs
+stencil passes. Every box shadow and blurred text shadow costs an offscreen layer. Text drawn under
+`transform: scale()` is a stretched bitmap. We will:
+
+- batch geometry by state;
+- replace stencil clips with scissor or analytic clips where possible;
+- draw solid boxes, borders, outlines and box shadows as instanced analytic-SDF primitives;
+- rasterize text at its exact on-screen scale, with MSDF glyphs while the scale animates;
+- move text effects to the GPU through a distance field.
+
+All of this must keep our CSS coverage (filters, masks, 3D transforms, gradients), world-space UI
+and the 661 golden images.
+
+## 2. Scope
+
+**In scope**
+- `RmlRenderer` command-stream batching: merged vertex runs, instanced runs, a run cache.
+- Scissor and stencil elision, and analytic rounded-rect clips.
+- An instanced SDF primitive pipeline `HTMLUI_PRIM` for solid backgrounds, solid borders,
+  outlines, and outer/inset box shadows. Textured quads (glyphs, images) also go through
+  `HTMLUI_PRIM`.
+- Glyph atlas: R8 pages, a memory budget with page LRU eviction, and per-handle versions.
+- Text rasterized at its exact on-screen scale, aware of the element's transform, with hysteresis.
+- An MSDF/MTSDF glyph atlas (msdfgen, MIT) for animating, large, 3D-transformed and
+  `text-rendering: geometricPrecision` text.
+- GPU text effects from the MTSDF distance: `font-effect` outline, glow, shadow, blur, and blurred
+  CSS `text-shadow`.
+- The fork patches these need.
+- Render statistics, a benchmark suite, perf gates, golden policy, editor/MCP visibility.
+
+**Out of scope**
+- The Slug technique (README global decision: patent not verified clear). Do not port
+  `FontAtlas_Slug.cpp` or `slug_functions.glsl`.
+- SSBO, bindless, compute or indirect paths (README "Platforms"). OpenEngine's SSBO clip chains,
+  transform chains and single `Draw(6, N)` over bindless textures are not ported.
+- Replacing RmlUi or our layout/CSS core with theirs (README do-not-copy: Yoga/CSS UI core).
+- Gradients, non-solid border styles (dashed, dotted, double, groove, ridge, inset, outset),
+  `border-image` and decorators as SDF primitives. They keep today's mesh path. Gradient SDF fill
+  is a possible follow-up, not part of this spec.
+- The legacy component UI (`UISystem`, `engine/shaderlib/ui.frag`; report §5.5). Separate work.
+- Text shaping, bidi and line breaking: unchanged.
+- HDR / colour-space-aware compositing (`UITargetSpace.cpp`): not needed until HDR output exists.
+
+## 3. Current state
+
+**Renderer**: `engine/core/htmlui/RmlRenderer.{h,cpp}` (566 + 3039 lines).
+- RmlUi's calls are recorded into a `Command` list (48-byte POD) and replayed in `endFrame`
+  (`replayCommands`, `RmlRenderer.cpp:2473`). That gives us a full-frame look-ahead today, but we
+  do not use it for merging.
+- Every `GEOMETRY` command is its own draw. `drawGeometry` (`RmlRenderer.cpp:1390-1420`) does, per
+  call: a texture bind, `beginDraw`, an 80-byte `u_vs_htmluiParams` upload (transform +
+  translation, `RmlRenderer.cpp:106-133`) and `draw`.
+- Draw counters: post passes `:1327`, geometry `:1413`, gradient shader `:2267`.
+- Untextured geometry binds `placeholderWhite`, so a text run and a background never share a draw.
+- Geometry persists in shared 64 KiB pages (`RmlGeometryPage`, `:62-90`). Translation is applied in
+  the vertex shader (`engine/shaderlib/htmlui.vert`).
+
+**Clips**: the fork already uses the scissor for axis-aligned overflow clips. It uses a stencil
+clip mask whenever the clipping ancestor has a `border-radius` or a transform
+(`engine/libs/rmlui/Source/Core/ElementUtilities.cpp:160-190`: "we can't easily predict if content
+is located on the curved region"). Each mask is a stencil clear plus a stencil draw
+(`renderToClipMaskNow`, `RmlRenderer.cpp:1493-1535`). With 1 sample the mask is aliased.
+
+**Box shadows**: `GeometryBoxShadow.cpp:180-330` renders every shadow into a texture.
+- It pushes a layer, draws stencil clip masks, and runs the blur filter's down/up-sample passes.
+- Shadows larger than the window are tiled.
+- The result is cached in `BoxShadowCache`. A size, colour or blur change bakes the texture again
+  and allocates a new one.
+
+**Blurred CSS `text-shadow`** (fork P3-TX6, `ElementText.cpp:359-395`): every text element and
+every frame pays for a layer push, the blur filter's passes and a composite.
+
+**Glyph atlas**: `engine/core/htmlui/RmlFontEngine.{h,cpp}`, stb_truetype rasterization in
+`engine/core/util/FontFace.cpp`.
+- Pages are 1024², up to 16, append-only, with no eviction (`RmlFontEngine.h:52-54`, `place`
+  `:568-596`). Overflow drops glyphs with one log line.
+- R8 coverage is expanded to RGBA8 at upload (`makeSource`, `:552-563`): 4 MiB per page instead
+  of 1 MiB.
+- There is one global version (`GetVersion`, `:816`). Any new page, scale change or reload
+  regenerates all text in all contexts.
+
+**Raster scale**: per context only.
+- `HtmlUIContextRender.cpp:104-108`: `rasterScale = clamp(round(pixelRatio*4)/4, 1, 4)`.
+- A pixel ratio of 1.37 rasterizes at 1.25 and stretches.
+- Element transforms are ignored. A `scale(2)` label is a 2× magnified bitmap, and a scale
+  pop-in animation is blurry for its whole duration.
+
+**Font effects**: `RmlFontEffects.cpp` (96 lines) runs RmlUi's CPU effects on coverage bitmaps
+into RGBA8 effect pages. These glyphs are made at **document resolution** whatever the raster
+scale (`RmlFontEngine.cpp:629-635`), so outlines and glows are soft at a pixel ratio of 2.
+
+**MSAA**: each context target defaults to 4× MSAA with a depth-stencil attachment
+(`HtmlUIContextRender.cpp:40`; project setting `htmlUiMsaaSamples`, `editor/Project.cpp:1840`).
+
+**Stats**: `HtmlUIRenderStats.h` (passes, drawCalls, pipelineApplies, textureBinds, layersPushed,
+filtersApplied, compositesFused, geometryLive, geometryBytes). They are shown in the Game view
+overlay (`editor/window/GameWindow.cpp:563`). No MCP tool reports them.
+
+**Benchmarks**: `tools/htmlui-bench` is the standalone **SVG library** benchmark (LunaSVG vs
+ThorVG vs nanosvg, `tools/htmlui-bench/README`). It has no UI documents and no draw-call
+measurement. The perf gates that exist are CPU-only: `engine/tests/htmlui/compat/compat_perf_test.cpp`
+(`CompatPerf.*`) and `engine/tests/htmlui/effects/EffectPerfTest.cpp`, which subtracts backend
+time through `RenderBackendTime`. Several tests assert exact draw counts:
+- `TestRenderRenderer.cpp:390,406`: `== 5000`;
+- `TestRenderGolden.cpp:280`: `>= 5000`;
+- `TestRenderP1Golden.cpp:542`: `>= 500`;
+- `TestIntegrationP1.cpp:756`: `>= 10`.
+
+**Goldens**: 661 PNGs under `engine/tests/htmlui/golden/`.
+- **277 are Chromium references** (`golden/browser/**`, written by
+  `tools/htmlui/render-reference.mjs`, strict metric in `BrowserParityTest.cpp`).
+- **384 are engine self-goldens** (p1, p6, effects 181, examples 11, compat, property, video,
+  root).
+- Default compare: channel 24, bad ≤ 0.05 %, mean ≤ 1.0 (`harness/ImageCompare.h:16-20`).
+- `JASPER_HTMLUI_UPDATE_GOLDEN=1` rewrites goldens (glcore only).
+- `fixtures/p3/known-failures.txt` is empty.
+
+**Instancing**: per-instance vertex buffers already work through
+`engine/renders/sokol/SokolObject.cpp:345` (`SG_VERTEXSTEP_PER_INSTANCE`). sokol allows 16
+vertex attributes.
+
+## 4. Reference (OpenEngine, MIT, `external/OpenEngine/`)
+
+| File | Take | Do not take / improve |
+|---|---|---|
+| `Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl` (338) | `roundedRectSDF` (elliptical corners), `pixelFootprint`, `rectEdgeFootprint`, `sdfCoverage` (box-filter, area-conserving), `erfApprox`, `gaussianShadowAlphaIntegrated`, `evaluateShadowAlpha`: pure math, copy with their header | `computeFillColor` gradient/HSV modes; `uint` packing |
+| `Shaders/UI/ui_derivatives.glsl` (43) | derivative helpers | — |
+| `Shaders/UI/ui_sdf_common.glsl` (358) | only the per-instance quad expansion idea and `uiTextEffectReachPx` sizing | `push_constant`, SSBO clip and transform chains, HDR paint helpers (we blend premultiplied sRGB like a browser, `engine/shaderlib/htmlui.frag`) |
+| `Shaders/UI/text_effects.glsl` (144) | the effect model: outline = threshold, glow = `exp(-2(g/R)^2)`, shadow = offset sample with an erf soft edge, sigma = blur/2. Re-derive it on an MTSDF distance | the Slug distance source |
+| `Shaders/UI/text_mask_gamma.glsl` (187) | read only; later tuning | not in this spec (changes every text golden) |
+| `Engine/Modules/UI/Include/UI/UIPrimitive.h` (665; 144-byte `UIPrimitive`, `static_assert`s) | the 9×vec4 budget and field set as a model for `HtmlUIPrimitive` | SSBO indices for clips and transforms |
+| `Source/UIManager_PrimitiveGen.cpp` (3495) | how per-side borders, inset/outer shadow and spread map to primitive fields | their CSS model |
+| `Source/UICompatDrawRuns.cpp` (131), `UIManager_RenderRG.cpp:350-385` | the run-splitting rule (a new run on a texture change) | the render-graph usage |
+
+Licences:
+- Copied GLSL keeps OpenEngine's MIT header, and `NOTICE.md` gets an OpenEngine entry if another
+  spec has not added one already.
+- msdfgen (MIT, Viktor Chlumský) is vendored at `engine/libs/msdfgen`. Only `core/` is taken; no
+  `ext/`, no FreeType, no Skia. It gets a `NOTICE.md` entry.
+- Glyph outlines come from `stbtt_GetGlyphShape` and are converted to `msdfgen::Shape`.
+
+## 5. Requirements
+
+### Functional — batching and clips
+- **R1** In recorded mode, the replay merges consecutive `GEOMETRY` commands into one draw when
+  all of these are equal:
+  - layer;
+  - pipeline state (blend, stencil, write mask);
+  - transform matrix;
+  - effective scissor;
+  - analytic clip;
+  - texture image and texture kind.
+
+  Translation is baked on the CPU into a per-frame gathered vertex/index stream (32-bit indices).
+  Geometry above 4096 vertices is drawn directly from its persistent buffer and ends the run.
+- **R2** Untextured geometry joins the run of the texture bound around it. Every glyph atlas page
+  reserves a 4×4 white texel block, and gathered untextured vertices get its centre UV. The
+  result must equal sampling `placeholderWhite`: both are exactly 1.0.
+- **R3** Run cache: a run whose (geometry handle, translation, texture) sequence hash equals the
+  one from the same position in the previous frame reuses last frame's gathered GPU range with no
+  copy or upload. Changing one element in a 500-element list re-gathers only its run.
+- **R4** Scissor elision: a draw whose transformed bounds (identity or translate/scale-only
+  transform) lie inside the current scissor is marked scissor-free. It may merge across scissor
+  changes.
+- **R5** Stencil elision.
+  - Fork patch S16-F2 attaches the clip shape to every `ClipMaskGeometry`: the border-box rect in
+    the clipping element's local space, its 4 elliptical radii, and the transform pointer.
+  - The shape reaches the renderer through a new optional
+    `RenderInterface::RenderToClipMaskShape(op, geometry, translation, const ClipShape&)`. Its
+    default forwards to `RenderToClipMask`.
+  - At replay, if every draw under a mask lies inside the shape's inner rectangle (the rect
+    without its corner boxes), the mask is not drawn. The scissor (shape bounds ∩ scissor) is
+    used instead.
+- **R6** Analytic clip: a mask list of at most 2 rounded-rect shapes (`Set`, then at most one
+  `Intersect`), each under the same transform as the content, becomes `u_fs_htmluiClip`. That is
+  2 × (rect, radiiX, radiiY), evaluated by `roundedRectSDF` + `sdfCoverage` on the pre-transform
+  document position (a new varying `v_docPos`). There is no stencil write, and the edge is
+  antialiased at any sample count. Any other list (SetInverse, more than 2, a different transform)
+  uses today's stencil path unchanged.
+- **R7** Batching never reorders draws, crosses a layer push/pop, composite, `SaveLayer*`, filter,
+  `SHADER` (gradient) or deferred-composite flush, or changes blending. The images of
+  `setBatchingForTesting(false)` and `true` match: max channel difference ≤ 1 on every golden
+  scene.
+
+### Functional — SDF primitives
+- **R8** Pipeline `ShaderType::HTMLUI_PRIM` (`engine/shaderlib/htmlui_prim.{vert,frag}`) draws
+  instanced primitives. It uses a static 4-vertex unit-quad buffer plus one per-instance buffer of
+  `HtmlUIPrimitive` (≤ 144 bytes, ≤ 14 instance attributes of `FLOAT4`/`FLOAT2`/`UBYTE4N`,
+  `static_assert`ed). Modes:
+  - `QUAD`: a textured or untextured parallelogram, with UV rect and colour. Used for glyphs,
+    images and sheared synthetic italic.
+  - `BOX`: fill + 4 border widths + 4 border colours + elliptical radii.
+  - `SHADOW_OUTER` and `SHADOW_INSET`: rect, radii, spread, sigma, colour; an outer shadow is
+    multiplied by `1 − coverage(border box)`.
+  - `MSDF_GLYPH`: see R16.
+- **R9** Fork patch S16-F1:
+  - `ElementBackgroundBorder::GenerateGeometry`, `GenerateOutline` and `GeometryBoxShadow` emit
+    `BoxPrimitive`s through `RenderManager::RenderPrimitives(span, translation)` →
+    `RenderInterface::RenderPrimitives`. This happens when the interface reports
+    `SupportsPrimitives()` and the box qualifies: background colour solid or none, no
+    `border-image`, every visible border side `solid`, outline `solid` or `auto`.
+  - A non-qualifying box takes today's mesh path, which is unchanged.
+  - Box shadows on qualifying boxes no longer create textures, layers or blur passes, at any
+    blur, spread or count.
+  - Inline boxes split over lines emit one primitive per fragment.
+- **R10** Quad-list detection: `CompileGeometry` classifies a mesh as a quad list when all of
+  these hold:
+  - its index pattern is RmlUi's `GenerateQuad` order (`MeshUtilities.cpp:66-71`) or
+    `RmlFontEngine::addQuad`'s;
+  - every quad is a parallelogram (ε = 1e-4 px);
+  - its colour is uniform across the 4 vertices;
+  - its UVs are affine with the positions.
+
+  It then also stores instances. A quad list or primitive run and a vertex run are separate
+  pipelines, so a run of `HTMLUI_PRIM` covers text, backgrounds and borders only when all of them
+  are instances. R8–R10 together make that the common case.
+- **R11** Primitives work under every transform. 2D, 3D and perspective use the same transform
+  uniform, with AA from screen derivatives (`rectEdgeFootprint`). They also work inside layers,
+  filters, `mask-image`, group opacity and analytic or stencil clips. They must be equivalent to
+  meshes at 1, 2, 4 and 8 samples.
+
+### Functional — text
+- **R12** Atlas pages are R8 (`SG_PIXELFORMAT_R8`, sampled `.r` by a coverage texture kind).
+  Effect pages that remain CPU (fallback) stay RGBA8.
+- **R13** Atlas budget and eviction.
+  - The budget is in MiB for base pages and MSDF pages. Defaults: 8 + 4 on Android, iOS and
+    HTML5; 16 + 8 on desktop. Project setting `htmlUiGlyphAtlasMiB`.
+  - On overflow the page least recently used is cleared and its glyphs are dropped. Only a page
+    unused in the current and previous frame may be cleared.
+  - Only the face handles that used it get their version bumped. `GetVersion(handle)` becomes per
+    handle; a global epoch stays for reloads and scale resets.
+  - More than 4 evictions in 120 frames logs diagnostic `HTMLUI-GEN-<next>` "glyph atlas budget
+    too small" once per context.
+- **R14** Exact-scale text (fork patch S16-F3).
+  - `ElementText` computes its effective device scale at render time: context raster scale ×
+    the larger singular value of the 2×2 Jacobian of its accumulated transform at the text box
+    centre.
+  - It passes that scale in a new `TextShapingContext::raster_scale`.
+  - The font engine keys glyphs by `round(size × scale × 4)` (¼ device px).
+  - The context raster scale is no longer quantized: `pixelRatio` clamped to [0.25, 8].
+- **R15** Hysteresis.
+  - Text is regenerated only when its effective scale differs from the generated one by more
+    than 3 %.
+  - While the scale has changed in any of the last 4 rendered frames, the text is "animating":
+    it draws MSDF glyphs when all its glyphs are in the MSDF atlas, otherwise it keeps its
+    current bitmap geometry stretched (today's look).
+  - After 6 stable frames it regenerates once as bitmap at the exact scale.
+  - A pending settle keeps `HtmlUIContext::updatedSinceRender` set until the settle frame is
+    drawn, so a static context does not keep a stale stretched frame.
+- **R16** MSDF/MTSDF atlas.
+  - msdfgen generates RGBA8 MTSDF glyphs: 40 px em, distance range 12 px (0.3 em), 1024² pages.
+  - Glyphs are made once per (face, glyph, synthetic-bold) and are size-independent.
+  - Generation runs on S06's background lane (fallback before S06: a budget of ≤ 1 ms per frame on
+    the main thread). It never blocks a frame.
+  - MSDF is used for:
+    - animating text (R15);
+    - device glyph size > 128 px;
+    - text under a perspective or non-affine 3D transform;
+    - `text-rendering: geometricPrecision`.
+  - `text-rendering: optimizeSpeed` turns R14–R15 off for the element (today's behaviour).
+  - `auto` and `optimizeLegibility` use the hybrid.
+  - Compat `PropertyTable.cpp:774` changes from "ignored" to supported. The support matrix is
+    regenerated.
+- **R17** GPU text effects.
+  - These are drawn as `MSDF_GLYPH` instances with effect parameters:
+    - `font-effect` outline, glow, shadow and blur;
+    - CSS `text-shadow`, sharp and blurred (fork S16-F3: `ElementText` asks
+      `FontEngineInterface::SupportsGpuTextShadow(face, blur)` and on true passes the blur in
+      `TextShapingContext` instead of pushing a layer).
+  - This applies when the effect's reach (outline width, glow radius, 3σ of the blur) is
+    ≤ 0.3 em, i.e. inside the distance range.
+  - Effect parameters travel with a per-(page, effect-set) `HtmlUITexture` variant. It shares the
+    GPU image, so the fork's `TexturedMeshList` API is unchanged.
+  - Beyond the reach, or while glyphs are not ready, today's CPU or layer path is used, and
+    `textEffectFallbacks` counts it.
+  - GPU effects are evaluated at device resolution, which fixes the document-resolution softness
+    of `RmlFontEngine.cpp:629`.
+- **R18** `reloadFontFile` (and S05 hot reload) drops that face's bitmap and MSDF glyphs and
+  bumps only the affected handles.
+
+### Platform & backends
+- **R19** Every path runs on GL 3.3, GLES3/WebGL2, Metal, D3D11 and Vulkan through sokol:
+  - instanced vertex attributes only;
+  - uniform blocks ≤ 1 KiB per draw;
+  - R8 and RGBA8 textures;
+  - 32-bit indices;
+  - `dFdx`/`dFdy`/`fwidth`.
+
+  No SSBO, texture arrays, integer attributes or compute. `HTMLUI_PRIM` compiles through
+  `engine/core/shader` like `HTMLUI`. msdfgen runs on the CPU only and builds with Emscripten and
+  the Android NDK.
+- **R20** Texture-mode (world-space) documents (`UIDocumentComponent` TEXTURE, `UIWorldRaycast.cpp`)
+  get all of R1–R18 with their own pixel ratio. UV hit testing is unchanged.
+
+### Performance (budgets; measured by the suite of §7)
+- **R21** Draw calls per frame (GPU draws, posts included):
+  - B1 examples: each ≤ 30 % of its baseline, and ≤ 40 draws;
+  - B2 `list-500`: ≤ 16 draws, 0 stencil draws, 0 box-shadow textures;
+  - B3 `text-wall`: ≤ 4 draws;
+  - B5 `text-effects`: 0 layers pushed for effects within the reach.
+- **R22** CPU (engine work less `RenderBackendTime`, median of 120 frames after 30 warm-ups,
+  Release):
+  - B2 animating one card: ≤ 50 % of baseline.
+  - B1: ≤ baseline + 5 %.
+  - Gathering: ≤ 0.2 ms per 10k gathered vertices on the CI desktop runner.
+  - B4 scale pop-in: no frame spends > 2 ms in glyph rasterization, and ≤ 256 bitmap glyph
+    rasterizations per frame (the rest wait for the settle).
+  - A static context still renders nothing (0 draws, `HtmlUIContextRender.cpp:139`).
+- **R23** Memory:
+  - glyph atlas GPU bytes for the same glyph set ≤ 30 % of baseline (R8);
+  - total atlas ≤ the budget of R13 at all times;
+  - B2 box-shadow texture bytes = 0;
+  - the gathered stream and run cache ≤ 2 × the frame's gathered bytes (capacity reuse, as
+    `RmlTransientBuffer`).
+- **R24** GPU: B2 fragment cost at 1280×720 on the CI GL runner (S15 GPU pass timings, when
+  available) is ≤ baseline. The SDF fragment shader early-outs to fill colour inside the inner
+  rect.
+
+### Editor UX (human)
+- **R25** Project Settings → HTML UI gets the following, all undoable through the settings undo
+  path:
+  - "Glyph atlas budget (MiB)" (R13);
+  - "SDF primitives" (on);
+  - "Transform-aware text" (on).
+- **R26** The Game view stats overlay (`GameWindow.cpp:563`) shows draws, merged runs, instances,
+  stencil draws and atlas MiB. `HtmlUIInspector.cpp` shows per text element "raster: bitmap ×1.37
+  / msdf / stretched (settling)" and per box "primitive / mesh (reason)".
+
+### Agent UX (MCP, Lua, CLI)
+- **R27** `inspect_ui` gains `render_stats: boolean`, which returns the document's
+  `HtmlUIRenderStats` (all fields of §6). With `detail: full`, each element gets `paint: {path:
+  "primitive"|"mesh", reason}` and text gets `raster: {mode, scale}`. S15's generic render-stats
+  tool includes the same struct.
+- **R28** Lua: `UIDocument:getRenderStats()` returns the same fields as a table, for in-game
+  profiling HUDs. No other Lua API: CSS `text-rendering` is the author control.
+- **R29** `jasperengine-editor benchmark` gains `--ui-stats`, which adds the averaged HTML UI
+  stats to its report (`editor/App.cpp:3101` loop).
+
+### Data & compatibility
+- **R30** New project fields `htmlUiGlyphAtlasMiB` (0 = platform default), `htmlUiSdfPrimitives`
+  (true) and `htmlUiTransformAwareText` (true) get defaults when missing (`editor/Stream.cpp`, like
+  `htmlUiMsaaSamples` at `:2556`). Old projects load unchanged and need no scene version bump. The
+  fields go into exported players through `Generator.cpp` (like `:2224`).
+- **R31** The fork patches S16-F1..F3 are recorded in `docs/html-ui/FORK.md` with tests. Each new
+  `RenderInterface`/`FontEngineInterface` method has a default that keeps the old behaviour, so
+  RmlUi's own tests (426) and the `RecordingRenderInterface` harness pass unchanged.
+
+## 6. Design constraints & decisions
+
+- **D1 Three stacked layers, each behind a test toggle and a project setting.**
+  - `RmlRenderer::setBatchingForTesting`;
+  - `setSdfPrimitivesForTesting` / `htmlUiSdfPrimitives`;
+  - `RmlFontEngine::setTransformAwareTextForTesting` / `htmlUiTransformAwareText`.
+
+  With all three off the output is bit-identical to today. That is the safety net and the
+  reference for every equivalence test. Batching is replay-only: immediate mode
+  (`setCommandRecordingForTesting(false)`) stays unbatched.
+- **D2 Batching is CPU gathering, not a vertex-format change.** Translation differs per geometry
+  and SSBOs are banned, so the CPU bakes it.
+  - The run cache (R3) makes the steady animated state cheap.
+  - Persistent pages stay for large and unbatched geometry.
+  - The gather target is a STREAM buffer, reused like `RmlTransientBuffer`.
+- **D3 Text and boxes share one pipeline only as instances.** `HTMLUI_PRIM` QUAD mode covers glyph
+  quads, so a menu is "one instanced draw per atlas page per clip/transform region".
+  - Images break runs on a texture change (UICompatDrawRuns rule).
+  - No texture arrays: WebGL2 has them, but sokol image-type switching per page would force every
+    texture to be an array.
+- **D4 Shadows are analytic.**
+  - Outer: erf-integrated Gaussian of the rounded-rect SDF (OpenEngine `evaluateShadowAlpha`,
+    sigma = blur/2).
+  - Inset: `1 − outer(shrunken shape)`, clipped to the padding box.
+
+  Corners of large blurs differ slightly from a true 2D Gaussian. That is accepted, gated by the
+  browser goldens (§7 AC2). If a browser fixture fails, that shadow class (inset, or blur > X)
+  falls back to the texture path. The threshold X becomes a constant in
+  `GeometryBoxShadow.cpp`, set by the fixtures; the default is no limit.
+- **D5 Bitmap stays the default for static text.** stb coverage is what the text goldens and the
+  Chromium comparisons were calibrated on. MSDF is only for motion, size, 3D and
+  `geometricPrecision`. This improves on Chromium, which shows stretched bitmaps during composited
+  scale animations and re-rasters at the end.
+- **D6 Effect parameters ride on texture-handle variants (R17).** No vertex-format change. The
+  batch key includes the variant.
+- **D7 MSAA default stays 4.** The suite also runs at 1 sample with SDF on, as a report (§7 AC14).
+  If a later change lowers the default (about 60 MiB saved per 1080p context), that is a separate
+  decision with its own golden pass.
+
+**API sketch**
+
+```cpp
+// engine/core/htmlui/HtmlUIRenderStats.h (added fields)
+uint32_t geometrySubmitted = 0;   // RenderGeometry + RenderPrimitives calls (old drawCalls meaning)
+uint32_t runsMerged = 0, runCacheHits = 0, instancesDrawn = 0, verticesGathered = 0;
+uint32_t stencilDraws = 0, stencilClipsElided = 0, analyticClips = 0, boxShadowTextures = 0;
+uint32_t glyphsRasterized = 0, msdfGlyphsPending = 0, textRegenerations = 0, textEffectFallbacks = 0;
+uint32_t atlasBytes = 0, atlasEvictions = 0;
+
+// engine/libs/rmlui Include/RmlUi/Core/RenderInterface.h (fork S16-F1/F2)
+struct BoxPrimitive { Rectanglef border_box; CornerSizes2 radii; Vector4f border_widths;
+    ColourbPremultiplied fill; Array<ColourbPremultiplied,4> border_colors;
+    enum class Kind : uint8_t { Box, ShadowOuter, ShadowInset } kind; float sigma, spread; Vector2f offset; };
+virtual bool SupportsPrimitives() { return false; }
+virtual void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation) {}
+struct ClipShape { Rectanglef rect; CornerSizes2 radii; const Matrix4f* transform; };
+virtual void RenderToClipMaskShape(ClipMaskOperation op, CompiledGeometryHandle g, Vector2f t, const ClipShape&)
+    { RenderToClipMask(op, g, t); }
+// FontEngineInterface (fork S16-F3)
+virtual bool SupportsGpuTextShadow(FontFaceHandle, float blur_radius) { return false; }
+// TextShapingContext: float raster_scale = 0 (0 = the render manager's); float shadow_blur = 0
+```
+
+New command type `PRIMITIVES` (pool index + count into a `commandPrimitives` side pool).
+`Command` stays ≤ 48 bytes.
+
+## 7. Acceptance criteria
+
+Benchmark suite: a new gtest `HtmlUIRenderPerf` (`engine/tests/htmlui/RenderPerfTest.cpp`,
+Release-only like `EffectPerfTest`). Its documents are in `engine/tests/htmlui/fixtures/bench/`:
+
+- **B1**: the 10 `editor/util/HtmlUiExamples` documents (goldens `golden/examples/*`).
+- **B2** `list-500.html`: 500 cards with `border-radius: 6px`, a 1px border,
+  `box-shadow: 0 2px 6px`, a 24px icon and two labels, in a rounded `overflow: auto` container.
+  One card's background is animated.
+- **B3** `text-wall.html`: 5k glyphs at 12, 16 and 24 px.
+- **B4** `scale-popin.html`: 40 buttons with `scale(0.5→1)` over 300 ms, and a
+  `rotateY(30deg) perspective` card.
+- **B5** `text-effects.html`: 50 labels with `text-shadow: 0 1px 2px`, `font-effect: outline(2px)`
+  and `glow`.
+- **B6**: B2 as a 1024² TEXTURE-mode document.
+
+Baselines (all toggles off) are measured in the same run. Results go to
+`build/<platform>/htmlui-render-bench.json`, and the before/after table goes to
+`docs/html-ui/render-benchmark.md`. `tools/htmlui-bench` stays the SVG benchmark; its README gets
+one line pointing here.
+
+| AC | Criterion | Verification |
+|---|---|---|
+| AC1 | All 661 goldens pass with all toggles off, unchanged files | full `engine/tests/htmlui` run with `JASPER_HTMLUI_S16_OFF=1` |
+| AC2 | With defaults on, every `golden/browser/**` fixture passes the strict metric. These files are Chromium output and are never regenerated by this work. `known-failures.txt` stays empty | `BrowserParityTest` |
+| AC3 | Self-goldens may be updated only with a ledger row in `docs/html-ui/goldens-S16.md`: name, metric before/after, category (`sdf-aa`, `analytic-clip`, `analytic-shadow`, `exact-scale-text`, `gpu-text-effect`), a reason, and for fixtures that `render-reference.mjs` can render, mean diff vs Chromium new ≤ old. ≤ 60 updates without a separate review. Updated files are touched in their own commit | reviewer check, CI script `tools/htmlui/check_golden_ledger.py` (new: every changed golden PNG has a ledger row) |
+| AC4 | Batching equivalence: max channel diff ≤ 1 between batching on and off | `RenderBatch.EquivalenceAllGoldenScenes` |
+| AC5 | Run merging, white-texel join, run cache hit, no merge across a layer, filter, gradient or blend change; cache invalidated on one translation change | `RenderBatch.*` unit tests on `RecordingRenderInterface` + `TestRenderRecord.cpp` |
+| AC6 | The draw-count tests are rewritten. `TestRenderRenderer.cpp:390,406` assert `geometrySubmitted == 5000` and `drawCalls <= 3`. `TestRenderGolden.cpp:280`, `TestRenderP1Golden.cpp:542` and `TestIntegrationP1.cpp:756` assert on `geometrySubmitted` | those tests |
+| AC7 | Stencil elision and analytic clip: B2 has `stencilDraws == 0`; a nested rounded clip ×3 still uses stencil and matches its golden; analytic clip at 1 sample shows antialiased corners (edge pixels strictly between in/out colours) | `RenderClip.*` + golden `p1/rounded_clip_{1,4}x` (new) |
+| AC8 | Primitives: border widths 0/1/3/7 per side, elliptical radii, outline `auto`, outer/inset/spread/multiple shadows, under `rotate`, `scale`, `rotateY+perspective`, inside `filter: blur`, `mask-image` and `opacity` groups, at 1/4/8 samples; each matches the mesh path within the default compare options | `RenderPrimitive.*` (renders both paths, compares) |
+| AC9 | R21 draw budgets, R22 CPU budgets and R23 memory budgets on the Linux CI runner (GL core and Vulkan), with a slack factor as `CompatPerf` | `HtmlUIRenderPerf.B1…B6` |
+| AC10 | Sharpness: acutance (mean Sobel magnitude over the ink box) of a `scale(2)` label ≥ 95 % of the same text at `font-size × 2`. It is ≤ 60 % with the toggle off, which proves the test discriminates. Animating mid-frames of B4 with MSDF ≥ 85 %. Pixel ratio 1.37 static text ≥ 95 % of pixel ratio 1.0 | `TextSharpness.*` (new helper in `TestGoldenCommon.h`) |
+| AC11 | Hysteresis: B4 ends with exactly one regeneration per label after settle; the context renders the settle frame without input; ≤ 256 rasterizations in every frame | `TextSharpness.SettleRegeneratesOnce` |
+| AC12 | Atlas: R8 pages (`getAtlasBytes()` = pages × 1 MiB); with a 2 MiB budget, 4 pages' worth of glyphs cycled across documents → evictions happen, no glyph missing in the drawn frame, only the users' handles bumped; diagnostic logged once | `TestFontEngine.AtlasBudget*` |
+| AC13 | GPU text effects: B5 `layersPushed == 0`; `TestGoldenFontEffects.FontEffects` at pixel ratio 2 is sharper (acutance ≥ old) and within ledger; an effect beyond 0.3 em uses the fallback and counts it; `p3/text/text-shadow-{hard,blur-glow,multiple}` pass AC2 | `TestFontEffects.*`, `BrowserParityTest` |
+| AC14 | 1-sample report: the suite at `samples=1` with SDF on is printed (pass/fail per golden), not gated | CI log artifact |
+| AC15 | World-space: `TestTextureMode.*`, `harness_component_ui_texture` golden, `UIWorldRaycast` tests pass; B6 meets the B2 budgets | existing tests + `HtmlUIRenderPerf.B6` |
+| AC16 | Web/mobile: the htmlui test subset (goldens included) passes in the S02 browser (WebGL2) gate; `HTMLUI_PRIM` compiles for all `engine/shaderlib` targets; B2 runs in the Wasm build with ≤ 16 draws | S02 web gate, shader build |
+| AC17 | `text-rendering` support: `geometricPrecision` → MSDF at rest, `optimizeSpeed` → stretched bitmap under scale (today's acutance), support matrix regenerated, `check --ui` reports no "ignored" for it | `CompatTables.*`, `TextSharpness.TextRenderingProperty` |
+| AC18 | MCP `inspect_ui {render_stats:true}` returns every field; `detail:full` shows `paint`/`raster`; Lua `getRenderStats()` matches | `tools/mcp/tests/test_ui_render_stats.py` (new), `TestScriptElement.RenderStats` |
+| AC19 | Old project without the new fields loads with defaults; settings round-trip; export carries them | `EditorLogicTests` + S02 serialization test |
+| AC20 | Fork: RmlUi's own tests (426) pass; FORK.md rows S16-F1..F3 with tests; `tools/smoke-test.sh` green | `tools/htmlui/run-rmlui-tests.sh`, smoke test |
+
+## 8. Dependencies & conflicts
+
+- **Depends on:**
+  - S01 (C++20);
+  - S02 (gtest, GPU CI runners, web gate, perf slack);
+  - S06 (background lane for MSDF generation). Before S06 lands, use R16's main-thread budget
+    fallback; do not block on it.
+- **Feeds:**
+  - S15 (render stats, frame pass viewer: `HtmlUIRenderStats` fields; S15 owns the generic MCP
+    render-stats tool);
+  - S17 (virtualized lists benefit from R3's run cache).
+- **Touches:** S05 (font hot reload R18), S03 (project fields; no scene version bump needed).
+- **Merge hotspots:**
+  - `engine/core/htmlui/RmlRenderer.{h,cpp}` (S15 adds timing scopes);
+  - `RmlFontEngine.{h,cpp}`;
+  - `HtmlUIContextRender.cpp`;
+  - fork `ElementText.cpp`, `ElementBackgroundBorder.cpp`, `GeometryBoxShadow.cpp`,
+    `ElementUtilities.cpp`, `RenderInterface.h` (S17 also patches the fork and compat tables);
+  - `compat/tables/PropertyTable.cpp`;
+  - `editor/mcp/tools/HtmlUiTools.cpp` (S17 adds tools);
+  - `editor/Project.cpp`, `editor/Stream.cpp`, `editor/Generator.cpp` (every settings spec);
+  - `NOTICE.md`.
+
+  Land in this order: batching + clips → primitives → atlas R8/eviction → exact-scale text →
+  MSDF + GPU effects. Each step is a separate PR with its own goldens ledger rows.
+
+## 9. Risks & defaults
+
+| Risk / question | Default decision |
+|---|---|
+| Analytic shadows differ from a true blurred shape at large blur radii on rounded corners, and browser fixtures fail | Gate on AC2. A failing class goes back to the texture path via a threshold constant (D4). Ship with the rest |
+| SDF AA vs MSAA'd feathered meshes changes many self-goldens | Expected; ledger (AC3). Over 60 updates means stop and review the AA function (`sdfCoverage` box filter) before continuing |
+| Gathering cost on low-end mobile CPUs | Run cache (R3) + 4096-vertex direct path; R22 gate on the Wasm build; batching can be turned off per project only through the test toggle, not a user setting |
+| MSDF quality at small sizes (< 12 px) or thin serifs | MSDF is not used for static small text (D5); animating small text accepts MSDF artefacts for ≤ 300 ms |
+| msdfgen speed (≈ 0.1–0.5 ms/glyph) | Background generation, size-independent cache, prewarm the glyphs of a string on its first scale change or `PrepareFontEffects` |
+| Per-handle versions miss a regeneration | AC12 asserts no missing glyph; fallback: global epoch bump on any doubt (logged in Debug) |
+| Effective scale is wrong under perspective (scale varies across the box) | Use the max singular value at the box centre; perspective text uses MSDF (R16) |
+| Slug patent status | Not used. Revisit only with a written legal clearance; MSDF covers the need |
+| Gamma/contrast tuning à la `text_mask_gamma.glsl` | Out of scope (would change every text golden); candidate follow-up |
