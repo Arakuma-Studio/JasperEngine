@@ -821,6 +821,7 @@ set(JASPERENGINE_SRCS
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
+    core/pose/ModelRig.cpp
     core/pose/PoseAnimationIO.cpp
     core/pose/PoseAnimatorRuntime.cpp
     core/pose/PoseDofs.cpp
