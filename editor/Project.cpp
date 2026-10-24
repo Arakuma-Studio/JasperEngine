@@ -6549,10 +6549,15 @@ bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
             content = YAML::Dump(ordered);
         }
 
-        if (!FileUtils::writeFileReplacing(fullPath, content + "\n", FileUtils::LineEndings::KeepExisting)) {
-            Out::error("Failed to write scene file: %s", fullPath.string().c_str());
+        // a Document write with the file's line endings; the hash the crash backups compare
+        // against follows the bytes on disk (S03 R13)
+        const std::string text = FileUtils::withLineEndings(fullPath, content + "\n");
+        const io::WriteResult written = DocumentFiles::write(fullPath, text);
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(fullPath, written));
             return false;
         }
+        sceneProject->diskSha1 = DocumentFiles::sha1(text);
     } catch (const std::exception& e) {
         Out::error("Failed to save shader keys of scene '%s': %s", sceneProject->name.c_str(), e.what());
         return false;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "UIProbe.h"
+#include "io/AtomicFile.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -88,14 +89,10 @@ void editor::UIProbe::flush() {
             first = false;
         }
         json << "}}\n";
-        // whole files only: written beside, then renamed over
-        const std::string temporary = probePath() + ".tmp";
-        {
-            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-            out << json.str();
-        }
-        std::error_code error;
-        std::filesystem::rename(temporary, probePath(), error);
+        // whole files only (a reader never sees half of one): an atomic Cache write
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        io::writeFileAtomic(probePath(), json.str(), options);
         written() = current();
     }
     current().clear();

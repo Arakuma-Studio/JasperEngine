@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeBakeGltf.h"
+#include "io/AtomicFile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1005,17 +1006,12 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
         error = "'" + file.generic_string() + "' already exists";
         return false;
     }
-    {
-        std::ofstream stream(file, std::ios::binary | std::ios::trunc);
-        if (stream.is_open()){
-            stream.write(reinterpret_cast<const char*>(out.data()), (std::streamsize)out.size());
-        }
-        if (!stream.is_open() || !stream.good()){
-            stream.close();
-            fs::remove(file, ec);
-            error = "cannot write '" + file.generic_string() + "'";
-            return false;
-        }
+    // a new asset of the project: an atomic Document write (a failure leaves no half file)
+    const io::WriteResult written = io::writeFileAtomic(file,
+            std::string_view(reinterpret_cast<const char*>(out.data()), out.size()));
+    if (!written.ok()){
+        error = "cannot write '" + file.generic_string() + "': " + io::describeWriteError(written);
+        return false;
     }
     return true;
 }

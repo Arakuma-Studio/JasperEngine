@@ -229,30 +229,45 @@ void AppSettings::loadMcpHttpToken() {
 bool AppSettings::writeMcpHttpTokenFile(const std::string& token) {
     const std::filesystem::path path = getMcpHttpTokenPath();
     const std::string content = token + "\n";
+    io::WriteResult result;
 #ifdef _WIN32
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    out << content;
-    out.close();
-    const bool ok = static_cast<bool>(out);
+    // (the user's profile directory keeps it from other users)
+    result = io::writeFileAtomic(path, content);
 #else
-    // Owner-only: the token gives full control of the editor to whoever reads it. The mode
-    // is set before the token is written, also on a file that was readable before.
-    bool ok = false;
-    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
-    if (fd >= 0) {
-        ok = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
-        size_t written = 0;
-        while (ok && written < content.size()) {
-            const ssize_t n = ::write(fd, content.data() + written, content.size() - written);
-            if (n < 0 && errno == EINTR) continue;
-            if (n <= 0) ok = false;
-            else written += static_cast<size_t>(n);
-        }
-        if (::close(fd) != 0) ok = false;
+    // Owner-only: the token gives full control of the editor to whoever reads it. The
+    // temporary file is owner-only before the token is written into it, and a file already
+    // there is made so first (the publish keeps the mode of the file it replaces).
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
     }
+    const std::filesystem::path temp = io::makeTemporarySiblingPath(path);
+    std::filesystem::create_directories(path.parent_path(), ec);
+    bool written = false;
+    const int fd = ::open(temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    if (fd >= 0) {
+        written = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
+        size_t done = 0;
+        while (written && done < content.size()) {
+            const ssize_t n = ::write(fd, content.data() + done, content.size() - done);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) written = false;
+            else done += static_cast<size_t>(n);
+        }
+        if (::close(fd) != 0) written = false;
+    }
+    if (!written) {
+        std::filesystem::remove(temp, ec);
+        Out::error("Failed to write the MCP HTTP token to %s", path.string().c_str());
+        return false;
+    }
+    // synced and renamed over the old token: a crash leaves the old one or the new one
+    result = io::publishFile(temp, path);
 #endif
-    if (!ok) Out::error("Failed to write the MCP HTTP token to %s", path.string().c_str());
-    return ok;
+    if (!result.ok()) {
+        Out::error("Failed to write the MCP HTTP token to %s: %s", path.string().c_str(), io::describeWriteError(result).c_str());
+    }
+    return result.ok();
 }
 
 bool AppSettings::initializeWithFile(const std::filesystem::path& file) {

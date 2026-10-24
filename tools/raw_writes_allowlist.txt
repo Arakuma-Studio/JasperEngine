@@ -2,7 +2,6 @@
 # <path> :: <code fragment found on the line> :: <reason>
 
 # append-only logs: a crash loses at most the last lines, never earlier ones
-editor/Out.cpp :: std::ofstream logFileStream; :: the editor log, append-only
 editor/mcp/tools/BuildTools.cpp :: std::ofstream logFile; :: build log, append-only while the build runs
 editor/mcp/tools/BuildTools.cpp :: std::ofstream out(run->logPath :: build run log, streamed while the process runs
 editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log, append-only
@@ -18,6 +17,7 @@ editor/cli/CommandLine.cpp :: std::ofstream file(options.docFile :: --doc output
 
 # a stream writer published atomically with io::publishFile
 editor/Exporter.cpp :: std::ofstream out(tempPath, std::ios::binary); :: resource pack streamed to resources.pak.tmp, then io::publishFile
+engine/core/physics/ConvexDecomposition.cpp :: std::ofstream out(temporary, :: hull cache entry under the cache's own temporary name (its cross-process cleanup reads them), then io::publishFile
 
 # export staging copies (S30 owns export staging and its swap)
 editor/Exporter.cpp :: fs::copy_file(source, targetPath :: export staging (S30)
@@ -36,6 +36,8 @@ editor/Exporter.cpp :: fs::copy_file(sdkRoot / "jasperengine.py" :: export stagi
 editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(src, threadsDir / (appName + ext) :: export staging (S30): the multithreaded web build's files
+editor/Exporter.cpp :: fs::copy_file(glbPath, importPath :: export staging (S30): the FBX imports a build ships
 
 # the game's own file API (File::open for writing, used by scripts): it streams
 engine/core/io/File.cpp :: platformFopen(systemPath.c_str(), "w+b") :: File, the engine's public read/write file API used by game code

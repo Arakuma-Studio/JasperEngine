@@ -888,109 +888,51 @@ UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::str
 }
 
 std::string editor::Stream::fluidOutputToString(FluidOutput output) {
-    switch (output) {
-        case FluidOutput::SCREEN: return "screen";
-        case FluidOutput::TEXTURE: return "texture";
-        case FluidOutput::MATERIAL:
-        default: return "material";
-    }
+    return StreamSchema::fluidOutput().toString(output);
 }
 
 FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {
-    if (str == "screen") return FluidOutput::SCREEN;
-    if (str == "texture") return FluidOutput::TEXTURE;
-    return FluidOutput::MATERIAL;
+    return StreamSchema::fluidOutput().fromString(str);
 }
 
 std::string editor::Stream::latticeInterpolationToString(LatticeInterpolation interpolation) {
-    switch (interpolation) {
-        case LatticeInterpolation::SHARP: return "sharp";
-        case LatticeInterpolation::SMOOTH: return "smooth";
-        case LatticeInterpolation::CUBIC:
-        default: return "cubic";
-    }
+    return StreamSchema::latticeInterpolation().toString(interpolation);
 }
 
 LatticeInterpolation editor::Stream::stringToLatticeInterpolation(const std::string& str) {
-    if (str == "sharp") return LatticeInterpolation::SHARP;
-    if (str == "smooth") return LatticeInterpolation::SMOOTH;
-    return LatticeInterpolation::CUBIC;
+    return StreamSchema::latticeInterpolation().fromString(str);
 }
 
 std::string editor::Stream::latticeOutsideToString(LatticeOutside outside) {
-    switch (outside) {
-        case LatticeOutside::EXTEND: return "extend";
-        case LatticeOutside::FADE:
-        default: return "fade";
-    }
+    return StreamSchema::latticeOutside().toString(outside);
 }
 
 LatticeOutside editor::Stream::stringToLatticeOutside(const std::string& str) {
-    if (str == "extend") return LatticeOutside::EXTEND;
-    return LatticeOutside::FADE;
+    return StreamSchema::latticeOutside().fromString(str);
 }
 
 std::string editor::Stream::latticeJiggleAnchorToString(LatticeJiggleAnchor anchor) {
-    switch (anchor) {
-        case LatticeJiggleAnchor::NEGATIVE_X: return "negative_x";
-        case LatticeJiggleAnchor::POSITIVE_X: return "positive_x";
-        case LatticeJiggleAnchor::NEGATIVE_Y: return "negative_y";
-        case LatticeJiggleAnchor::POSITIVE_Y: return "positive_y";
-        case LatticeJiggleAnchor::NEGATIVE_Z: return "negative_z";
-        case LatticeJiggleAnchor::POSITIVE_Z: return "positive_z";
-        case LatticeJiggleAnchor::NONE:
-        default: return "none";
-    }
+    return StreamSchema::latticeJiggleAnchor().toString(anchor);
 }
 
 LatticeJiggleAnchor editor::Stream::stringToLatticeJiggleAnchor(const std::string& str) {
-    if (str == "negative_x") return LatticeJiggleAnchor::NEGATIVE_X;
-    if (str == "positive_x") return LatticeJiggleAnchor::POSITIVE_X;
-    if (str == "negative_y") return LatticeJiggleAnchor::NEGATIVE_Y;
-    if (str == "positive_y") return LatticeJiggleAnchor::POSITIVE_Y;
-    if (str == "negative_z") return LatticeJiggleAnchor::NEGATIVE_Z;
-    if (str == "positive_z") return LatticeJiggleAnchor::POSITIVE_Z;
-    return LatticeJiggleAnchor::NONE;
+    return StreamSchema::latticeJiggleAnchor().fromString(str);
 }
 
 std::string editor::Stream::latticeStageToString(LatticeStage stage) {
-    switch (stage) {
-        case LatticeStage::BEFORE_SKINNING: return "before_skinning";
-        case LatticeStage::AFTER_SKINNING:
-        default: return "after_skinning";
-    }
+    return StreamSchema::latticeStage().toString(stage);
 }
 
 LatticeStage editor::Stream::stringToLatticeStage(const std::string& str) {
-    if (str == "before_skinning") return LatticeStage::BEFORE_SKINNING;
-    return LatticeStage::AFTER_SKINNING;
+    return StreamSchema::latticeStage().fromString(str);
 }
 
 std::string editor::Stream::latticeMaskChannelToString(LatticeMaskChannel mask) {
-    switch (mask) {
-        case LatticeMaskChannel::RED: return "red";
-        case LatticeMaskChannel::GREEN: return "green";
-        case LatticeMaskChannel::BLUE: return "blue";
-        case LatticeMaskChannel::ALPHA: return "alpha";
-        case LatticeMaskChannel::INVERTED_RED: return "inverted_red";
-        case LatticeMaskChannel::INVERTED_GREEN: return "inverted_green";
-        case LatticeMaskChannel::INVERTED_BLUE: return "inverted_blue";
-        case LatticeMaskChannel::INVERTED_ALPHA: return "inverted_alpha";
-        case LatticeMaskChannel::NONE:
-        default: return "none";
-    }
+    return StreamSchema::latticeMaskChannel().toString(mask);
 }
 
 LatticeMaskChannel editor::Stream::stringToLatticeMaskChannel(const std::string& str) {
-    if (str == "red") return LatticeMaskChannel::RED;
-    if (str == "green") return LatticeMaskChannel::GREEN;
-    if (str == "blue") return LatticeMaskChannel::BLUE;
-    if (str == "alpha") return LatticeMaskChannel::ALPHA;
-    if (str == "inverted_red") return LatticeMaskChannel::INVERTED_RED;
-    if (str == "inverted_green") return LatticeMaskChannel::INVERTED_GREEN;
-    if (str == "inverted_blue") return LatticeMaskChannel::INVERTED_BLUE;
-    if (str == "inverted_alpha") return LatticeMaskChannel::INVERTED_ALPHA;
-    return LatticeMaskChannel::NONE;
+    return StreamSchema::latticeMaskChannel().fromString(str);
 }
 
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
@@ -6486,7 +6428,7 @@ FluidSimulationComponent editor::Stream::decodeFluidSimulationComponent(const YA
         const YAML::Node value = node[key];
         return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
     };
-    fluid.output = given("output") ? stringToFluidOutput(node["output"].as<std::string>()) : defaults.output;
+    fluid.output = given("output") ? decodeEnum(node, "output", StreamSchema::fluidOutput()) : defaults.output;
     fluid.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
     fluid.aspectRatio = given("aspectRatio") ? decodeFinite(node["aspectRatio"], defaults.aspectRatio) : defaults.aspectRatio;
     fluid.simResolution = given("simResolution") ? YamlNumbers::as<unsigned int>(node["simResolution"]) : defaults.simResolution;
@@ -7935,8 +7877,8 @@ LatticeComponent editor::Stream::decodeLatticeComponent(const YAML::Node& node, 
     if (node["offsets"]) lattice.offsets = decodeLatticeOffsets(node["offsets"]);
     lattice.offsets.resize(pointCount, Vector3::ZERO);
 
-    if (node["interpolation"]) lattice.interpolation = stringToLatticeInterpolation(node["interpolation"].as<std::string>());
-    if (node["outside"]) lattice.outside = stringToLatticeOutside(node["outside"].as<std::string>());
+    if (node["interpolation"]) lattice.interpolation = decodeEnum(node, "interpolation", StreamSchema::latticeInterpolation());
+    if (node["outside"]) lattice.outside = decodeEnum(node, "outside", StreamSchema::latticeOutside());
     if (node["fadeDistance"]) lattice.fadeDistance = decodeFinite(node["fadeDistance"], lattice.fadeDistance);
 
     if (node["poses"]) {
@@ -7956,7 +7898,7 @@ LatticeComponent editor::Stream::decodeLatticeComponent(const YAML::Node& node, 
     if (node["jiggleStiffness"]) lattice.jiggleStiffness = decodeFinite(node["jiggleStiffness"], lattice.jiggleStiffness);
     if (node["jiggleDamping"]) lattice.jiggleDamping = decodeFinite(node["jiggleDamping"], lattice.jiggleDamping);
     if (node["jiggleInertia"]) lattice.jiggleInertia = decodeFinite(node["jiggleInertia"], lattice.jiggleInertia);
-    if (node["jiggleAnchor"]) lattice.jiggleAnchor = stringToLatticeJiggleAnchor(node["jiggleAnchor"].as<std::string>());
+    if (node["jiggleAnchor"]) lattice.jiggleAnchor = decodeEnum(node, "jiggleAnchor", StreamSchema::latticeJiggleAnchor());
     if (node["jiggleMaxOffset"]) lattice.jiggleMaxOffset = decodeFinite(node["jiggleMaxOffset"], lattice.jiggleMaxOffset);
 
     // the old one's springs and tween are laid out for its own points
@@ -8011,9 +7953,9 @@ LatticeModifierComponent editor::Stream::decodeLatticeModifierComponent(const YA
                 LatticeBinding binding;
                 if (bindingNode["lattice"]) binding.lattice = YamlNumbers::as<Entity>(bindingNode["lattice"]);
                 if (bindingNode["weight"]) binding.weight = std::clamp(decodeFinite(bindingNode["weight"], binding.weight), 0.0f, 2.0f);
-                if (bindingNode["stage"]) binding.stage = stringToLatticeStage(bindingNode["stage"].as<std::string>());
+                if (bindingNode["stage"]) binding.stage = decodeEnum(bindingNode, "stage", StreamSchema::latticeStage());
                 if (bindingNode["submesh"]) binding.submesh = YamlNumbers::as<int>(bindingNode["submesh"]);
-                if (bindingNode["mask"]) binding.mask = stringToLatticeMaskChannel(bindingNode["mask"].as<std::string>());
+                if (bindingNode["mask"]) binding.mask = decodeEnum(bindingNode, "mask", StreamSchema::latticeMaskChannel());
                 modifier.bindings.push_back(binding);
             }
         }

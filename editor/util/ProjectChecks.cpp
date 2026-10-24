@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "io/AtomicFile.h"
 
 #include "AppSettings.h"
 #include "Catalog.h"
@@ -1658,18 +1659,13 @@ void loadSynthesisCache(SynthesisCache& cache, const fs::path& projectRoot) {
 void saveSynthesisCache(const SynthesisCache& cache) {
     if (cache.file.empty() || !cache.dirty) return;
     const Json j = {{"version", 1}, {"pngs", cache.pngs}, {"hashes", cache.hashes}};
-    fs::path temporary = cache.file;
-    temporary += ".partial";
     // the keys are valid UTF-8 (cacheable() keeps the others out), so nothing is lost; replace
     // only makes sure a dump never throws
     const std::string text = editor::texsynth::jsonTextLossy(j);
-    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-    if (!out) return;
-    out << text;
-    out.close();
-    std::error_code ec;
-    fs::rename(temporary, cache.file, ec);
-    if (ec) fs::remove(temporary, ec);
+    // a cache: atomic, never synced (a failed write leaves the old one, read again next scan)
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(cache.file, text, options);
 }
 
 // JSON keys are UTF-8 text: a path that is not (a Latin-1 file name) is not cached, it is read

@@ -144,10 +144,16 @@ namespace jasperengine::editor {
         static const EnumTable<Collider3DType>& collider3DType();
         static const EnumTable<CullingMode>& cullingMode();
         static const EnumTable<EaseType>& easeType();
+        static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<FogType>& fogType();
         static const EnumTable<Joint2DType>& joint2DType();
         static const EnumTable<Joint3DType>& joint3DType();
         static const EnumTable<LayoutGroupType>& layoutGroupType();
+        static const EnumTable<LatticeInterpolation>& latticeInterpolation();
+        static const EnumTable<LatticeJiggleAnchor>& latticeJiggleAnchor();
+        static const EnumTable<LatticeMaskChannel>& latticeMaskChannel();
+        static const EnumTable<LatticeOutside>& latticeOutside();
+        static const EnumTable<LatticeStage>& latticeStage();
         static const EnumTable<LightShading>& lightShading();
         static const EnumTable<LightState>& lightState();
         static const EnumTable<LightType>& lightType();

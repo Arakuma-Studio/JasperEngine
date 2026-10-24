@@ -4,6 +4,7 @@
 #include "SynthesisRecipe.h"
 
 #include "EditorVersion.h"
+#include "io/AtomicFile.h"
 
 #include <algorithm>
 #include <array>
@@ -394,28 +395,11 @@ namespace jasperengine::editor::texsynth {
     bool writePngWithRecipe(const fs::path& path, const Image& image, const json& recipe, std::string& error) {
         std::vector<uint8_t> withRecipe;
         if (!encodePngWithRecipe(image, recipe, withRecipe, error)) return false;
-        fs::path temporary = path;
-        temporary += ".partial";
-        {
-            std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-            if (!file) {
-                error = "cannot write " + path.string();
-                return false;
-            }
-            file.write(reinterpret_cast<const char*>(withRecipe.data()), static_cast<std::streamsize>(withRecipe.size()));
-            if (!file) {
-                error = "cannot write " + path.string();
-                std::error_code ec;
-                file.close();
-                fs::remove(temporary, ec);
-                return false;
-            }
-        }
-        std::error_code ec;
-        fs::rename(temporary, path, ec);
-        if (ec) {
-            fs::remove(temporary, ec);
-            error = "cannot write " + path.string() + ": " + ec.message();
+        // an asset of the project: an atomic Document write (a failure keeps the old file)
+        const io::WriteResult written = io::writeFileAtomic(path,
+                std::string_view(reinterpret_cast<const char*>(withRecipe.data()), withRecipe.size()));
+        if (!written.ok()) {
+            error = "cannot write " + path.string() + ": " + io::describeWriteError(written);
             return false;
         }
         return true;
@@ -466,19 +450,15 @@ namespace jasperengine::editor::texsynth {
                 if (ec) return failWith(i, "can't create the directory " + parent.u8string() + ": " + ec.message());
             }
             if (fs::is_directory(target, ec)) return failWith(i, "it is a directory");
-            const fs::path temporary = sibling(target, "partial");
-            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-            if (!out) {
-                const int code = errno;
-                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "open failed"));
+            // staged under a temporary sibling name (hidden, and swept as an orphan after a
+            // crash), written and synced the atomic way
+            const fs::path temporary = io::makeTemporarySiblingPath(target);
+            const io::WriteResult written = io::writeFileAtomic(temporary,
+                    std::string_view(reinterpret_cast<const char*>(files[i].bytes.data()), files[i].bytes.size()));
+            if (!written.ok()) {
+                return failWith(i, "can't write it: " + io::describeWriteError(written));
             }
             staged[i] = temporary;
-            out.write(reinterpret_cast<const char*>(files[i].bytes.data()), static_cast<std::streamsize>(files[i].bytes.size()));
-            out.close();
-            if (!out) {
-                const int code = errno;
-                return failWith(i, "can't write it: " + std::string(code ? std::strerror(code) : "write failed"));
-            }
         }
         // 2. commit: the previous file moved aside, the staged one renamed into place
         for (size_t i = 0; i < files.size(); i++) {
@@ -486,12 +466,10 @@ namespace jasperengine::editor::texsynth {
             std::error_code ec;
             if (fs::exists(fs::symlink_status(target, ec))) {
                 const fs::path backup = sibling(target, "previous");
-                fs::rename(target, backup, ec);
-                if (ec) return failWith(i, "can't replace it: " + ec.message());
+                if (!io::renameWithRetry(target, backup, ec)) return failWith(i, "can't replace it: " + ec.message());
                 backups[i] = backup;
             }
-            fs::rename(staged[i], target, ec);
-            if (ec) return failWith(i, "can't replace it: " + ec.message());
+            if (!io::renameWithRetry(staged[i], target, ec)) return failWith(i, "can't replace it: " + ec.message());
             staged[i].clear();
             placed[i] = true;
         }

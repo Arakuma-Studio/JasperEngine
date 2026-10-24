@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConvexDecomposition.h"
+#include "io/AtomicFile.h"
 
 #include <algorithm>
 #include <array>
@@ -839,12 +840,16 @@ struct ConvexDecompositionCache::Impl {
             if (!written){
                 problem = "could not write " + temporary;
             }else{
-                std::filesystem::rename(temporary, path, ec);
-                if (!ec){
+                // published the atomic way (a cache: never synced; retried while a reader holds
+                // the target on Windows); a failed publish removes the temporary file
+                io::AtomicWriteOptions options;
+                options.durability = io::Durability::Cache;
+                const io::WriteResult published = io::publishFile(temporary, path, options);
+                if (published.ok()){
                     diskError.clear();
                     return;
                 }
-                problem = "could not rename " + temporary + ": " + ec.message();
+                problem = "could not rename " + temporary + ": " + io::describeWriteError(published);
             }
             std::filesystem::remove(temporary, ec);
         }

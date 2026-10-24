@@ -1,9 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Saving and the child scene graph: FileUtils::writeFileReplacing (what project.yaml, scenes,
-// prefabs, materials and scripts are written with) leaves the old file whole when a write fails,
-// retries a rename that fails for a moment and keeps a file's \r\n line endings, and
+// Saving and the child scene graph: FileUtils::writeFileReplacing (a forwarder to S03's
+// io::writeFileAtomic, whose own suites are engine/tests/core/io/AtomicFileTest.cpp) leaves the
+// old file whole when a write fails, retries a publish that fails for a moment and keeps a
+// file's \r\n line endings (FileUtils::withLineEndings, as every document save does), and
 // Project refuses a child scene that would make a cycle, also when an undo or redo would.
 // The Stop and model load cases run in the editor (tools/mcp/tests/test_project_save.py).
 
@@ -13,6 +14,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
+#include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 
 #include <unistd.h>
@@ -26,7 +28,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
-#include <thread>
+#include <memory>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -99,28 +101,30 @@ TEST(WriteFileReplacing, AFailedRenameKeepsTheTarget) {
     EXPECT_TRUE(fs::is_directory(target / "inside"));
     EXPECT_EQ(entryCount(dir), 1u) << "the temporary file is removed";
 
-    // no directory to write into: nothing is made
-    EXPECT_FALSE(FileUtils::writeFileReplacing(dir / "missing" / "Level.scene", "content\n"));
-    EXPECT_FALSE(fs::exists(dir / "missing"));
+    // no directory to write into: io::writeFileAtomic makes it (S03 R1)
+    EXPECT_TRUE(FileUtils::writeFileReplacing(dir / "missing" / "Level.scene", "content\n"));
+    EXPECT_EQ(readAll(dir / "missing" / "Level.scene"), "content\n");
     fs::remove_all(dir);
 }
 
-// Windows: a reader or a virus scan holding the file for a moment makes a rename fail; the
-// rename is tried again before the save gives up. Here a directory in the way goes soon after.
-TEST(WriteFileReplacing, RetriesARenameThatFailsForAMoment) {
+// Windows: a reader or a virus scan holding the file for a moment makes the publish fail with a
+// sharing violation; it is tried again before the save gives up (io::renameWithRetry's policy,
+// injected here as a busy target)
+TEST(WriteFileReplacing, RetriesAPublishThatFailsForAMoment) {
     const fs::path dir = tempDir("retry");
     const fs::path target = dir / "Main.scene";
-    fs::create_directories(target);
+    writeAll(target, "old\n");
 
-    std::thread release([target]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs / 2));
-        std::error_code ec;
-        fs::remove(target, ec);
+    auto renames = std::make_shared<int>(0);
+    io::setAtomicFileFaultInjector([renames](std::string_view step, const fs::path&) -> std::error_code {
+        if (step != "rename") return {};
+        return ++(*renames) <= 2 ? std::make_error_code(std::errc::device_or_resource_busy) : std::error_code();
     });
     const bool written = FileUtils::writeFileReplacing(target, "saved\n");
-    release.join();
+    io::setAtomicFileFaultInjector(nullptr);
 
     EXPECT_TRUE(written);
+    EXPECT_EQ(*renames, 3);
     EXPECT_EQ(readAll(target), "saved\n");
     EXPECT_EQ(entryCount(dir), 1u);
     fs::remove_all(dir);
