@@ -25,7 +25,7 @@
     #include <pthread.h>
     #include <time.h>
     #include <unistd.h>
-    #if defined(__linux__) || defined(__ANDROID__)
+    #if (defined(__linux__) || defined(__ANDROID__)) && !defined(__EMSCRIPTEN__)
         #include <sys/prctl.h>
         #include <sys/syscall.h>
     #endif
@@ -163,14 +163,14 @@ namespace je_logger {
     uint64_t logOsThreadId() {
 #if defined(_WIN32)
         return static_cast<uint64_t>(GetCurrentThreadId());
+#elif defined(__EMSCRIPTEN__)
+        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
 #elif defined(__APPLE__)
         uint64_t id = 0;
         pthread_threadid_np(nullptr, &id);
         return id;
 #elif defined(__linux__) || defined(__ANDROID__)
         return static_cast<uint64_t>(syscall(SYS_gettid));
-#elif defined(__EMSCRIPTEN__)
-        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(pthread_self()));
 #else
         return 0;
 #endif
@@ -178,7 +178,9 @@ namespace je_logger {
 
     void logOsThreadName(char* out, size_t size) {
         out[0] = '\0';
-#if defined(__linux__) || defined(__ANDROID__)
+#if defined(__EMSCRIPTEN__)
+        (void)size;
+#elif defined(__linux__) || defined(__ANDROID__)
         char name[17] = {0};
         if (prctl(PR_GET_NAME, name, 0, 0, 0) == 0) {
             std::snprintf(out, size, "%s", name);
@@ -191,7 +193,9 @@ namespace je_logger {
     }
 
     void logSetOsThreadName(const char* name) {
-#if defined(__APPLE__)
+#if defined(__EMSCRIPTEN__)
+        (void)name;
+#elif defined(__APPLE__)
         pthread_setname_np(name);
 #elif defined(__linux__) || defined(__ANDROID__)
         pthread_setname_np(pthread_self(), name);

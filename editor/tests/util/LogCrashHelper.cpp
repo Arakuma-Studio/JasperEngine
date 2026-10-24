@@ -14,6 +14,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <thread>
 
 using namespace jasperengine;
@@ -47,8 +48,9 @@ int main(int argc, char** argv) {
     }
     editor::CrashHandler::install(argv[1]);
 
+    // a burst the rate limit would hold back: these are what a crash must not lose
     for (int i = 1; i <= 5000; i++) {
-        Logger::writef(LogLevel::Info, logCategoryEditor(), nullptr, "line %d", i);
+        Logger::write(LogLevel::Info, logCategoryEditor(), "line " + std::to_string(i), nullptr, LogFlagNoRateLimit);
     }
     if (inSink) {
         Logger::write(LogLevel::Warn, logCategoryEditor(), "crash now");
