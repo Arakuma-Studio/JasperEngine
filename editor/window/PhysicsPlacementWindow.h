@@ -4,6 +4,7 @@
 #pragma once
 
 #include "Project.h"
+#include "command/CommandHistory.h"
 #include "physics/PlacementSession.h"
 #include "math/Ray.h"
 #include "math/Vector2.h"
@@ -62,9 +63,15 @@ namespace jasperengine::editor{
         void physicsModeChanged(bool on);
         void toolChanged(bool physicsTool);
 
-        // Save and Play (EditorHost::stopTransientPreviews): every gesture cancelled, the scenes
-        // back to their poses from before it
-        void cancelGestures();
+        // Before a save, Play or a project switch (EditorHost::stopTransientPreviews): a gesture
+        // whose input is still held is cancelled (its poses go back), a released one settles to
+        // its end and commits, so what is written holds committed poses only
+        void finaliseGestures();
+        // A physics session is simulating somewhere (Prefab Mode's Auto Save waits for it)
+        bool isAnyBusy() const;
+        // CommandHistory::beforeChange: before another edit of a scene whose gesture runs, the
+        // gesture is finalised; an undo cancels the gesture instead, a redo waits
+        bool beforeHistoryChange(uint32_t sceneId, CommandHistory::Change change);
         // The scene is about to be deleted (closed, reloaded, its stage exited): its session goes
         // while the scene still exists
         void sceneDeleting(uint32_t sceneId);
@@ -111,6 +118,13 @@ namespace jasperengine::editor{
 
         Project* project;
 
+        // Per scene: the meshes under each labelled object, until the structure changes
+        struct AnchorCache{
+            uint64_t structureVersion = 0;
+            std::map<Entity, std::vector<Entity>> meshes;
+        };
+        mutable std::map<uint32_t, AnchorCache> anchorCaches;
+
         bool windowOpen = false;
         bool focusRequested = false;
         bool settingsDirty = false;
@@ -127,10 +141,18 @@ namespace jasperengine::editor{
         SceneSession* findSession(uint32_t sceneId);
         const SceneSession* findSession(uint32_t sceneId) const;
         PlacementSession* sessionFor(uint32_t sceneId);
-        // Ends a held gesture, then runs its settle to the end at once (bounded by the session's
-        // maxSettleSeconds), so what the user did is committed before physics lets go
-        void finish(SceneSession& sceneSession);
-        void finishAll();
+        // Lets go of a scene's gesture at once: a held one is cancelled (cancelHeld) or ended,
+        // then a settle runs to its end (bounded in simulated and wall time) and commits
+        void finalise(SceneSession& sceneSession, bool cancelHeld);
+        // Commits a settle's current poses now (they are physically valid, only not at rest)
+        void commitNow(PlacementSession& session);
+        // > 0 inside a call into a session, whose own commit must not finalise it again
+        int sessionCalls = 0;
+        struct SessionCall{
+            int& depth;
+            explicit SessionCall(int& depth): depth(depth){ ++depth; }
+            ~SessionCall(){ --depth; }
+        };
         void dropSessions(bool cancel);
 
         void tick();

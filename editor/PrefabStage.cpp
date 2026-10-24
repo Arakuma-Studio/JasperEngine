@@ -652,6 +652,8 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
     if (!stage) {
         return false;
     }
+    // previews (a physics gesture's poses) settle or go back before the asset is written
+    editor::getEditorHost().stopTransientPreviews();
     stage->changePending = false;
     SceneProject& sceneProject = stage->sceneProject;
     const std::filesystem::path path = stage->assetPath;

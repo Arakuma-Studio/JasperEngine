@@ -34,6 +34,9 @@ namespace jasperengine::editor {
         // Begun (or refused) once per press.
         std::map<uint32_t, bool> physicsSnapArmed;
         std::map<uint32_t, bool> physicsSnapBegun;
+        // a menu or popup was open when the last frame's Scene views were drawn (its Esc is not
+        // the Physics tool's)
+        bool popupOpenLastFrame = false;
         std::map<uint32_t, bool> resyncLookDelta;
         std::map<uint32_t, bool> lookActive;
         std::map<uint32_t, ImVec2> lookReturnPos;
