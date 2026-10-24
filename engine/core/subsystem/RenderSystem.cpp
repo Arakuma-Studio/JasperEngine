@@ -12599,13 +12599,20 @@ void RenderSystem::update(double dt){
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
+            bool isText = false;
+            if (signature.test(scene->getComponentId<TextComponent>())){
+                isText = true;
+            }
+
             if (ui.needUpdateTexture){
+                // a text samples its atlas as 'Ftx', everything else its texture as 'Tex'
+                const uint64_t textureProperty = isText ? (1 << 1) : (1 << 0);
                 if (!ui.texture.empty()){
-                    if (!(ui.shaderProperties & (1 << 0))){ // not 'Tex'
+                    if (!(ui.shaderProperties & textureProperty)){
                         ui.needReload = true;
                     }
                 }else{
-                    if (ui.shaderProperties & (1 << 0)){ // 'Tex'
+                    if (ui.shaderProperties & textureProperty){
                         ui.needReload = true;
                     }
                 }
@@ -12615,10 +12622,6 @@ void RenderSystem::update(double dt){
                 destroyUI(entity, ui);
             }
             if (!ui.loadCalled){
-                bool isText = false;
-                if (signature.test(scene->getComponentId<TextComponent>())){
-                    isText = true;
-                }
                 loadUI(entity, ui, pipelines, isText);
             }
             if (ui.needUpdateAABB || transform.needUpdate){
