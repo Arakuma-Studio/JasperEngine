@@ -514,7 +514,7 @@ static void drawIntSetting(const char* label, const char* id, int& value, int de
 
 // A thread count: Auto (-1) or minValue..maxValue.
 static void drawCountSetting(const char* label, const char* id, int& value, int minValue, int maxValue, const char* tooltip) {
-    if (beginSettingsRow(label, value != -1)) {
+    if (projectBeginSettingsRow(label, value != -1)) {
         value = -1;
     }
     ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
@@ -1318,7 +1318,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 "Threads that read asset files. Auto: 2 on desktop, 1 on mobile, none on web (the decode job reads). "
                 "Applies on the next launch.");
 
-            if (beginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
+            if (projectBeginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
                 threading.webPumpBudgetMs = defaults.webPumpBudgetMs;
             }
             ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -1327,7 +1327,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ? std::min(std::max(threading.webPumpBudgetMs, 0.5f), 50.0f) : defaults.webPumpBudgetMs;
             endSettingsRow("Web builds without threads run Background jobs for this long each frame.");
 
-            if (beginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
+            if (projectBeginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
                 threading.webMultithreaded = defaults.webMultithreaded;
             }
             ImGui::Checkbox("##WebMultithreaded", &threading.webMultithreaded);
