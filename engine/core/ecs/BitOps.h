@@ -47,7 +47,8 @@ namespace jasperengine::ecs {
     // popCount of each word, summed
     JE_ECS_INLINE unsigned popCountWords(const uint64_t* words, size_t count){
 #if JE_ECS_SWAR_POPCOUNT
-        // the byte counts of up to 31 words fit a byte each: one multiply at the end
+        // per-byte counts of up to 31 words fit a byte each; they are folded into 16-bit
+        // lanes before the summing multiply (a byte would overflow past 255 set bits)
         uint64_t bytes = 0;
         unsigned total = 0;
         for (size_t i = 0; i < count; i++){
@@ -55,8 +56,9 @@ namespace jasperengine::ecs {
             word = word - ((word >> 1) & 0x5555555555555555ull);
             word = (word & 0x3333333333333333ull) + ((word >> 2) & 0x3333333333333333ull);
             bytes += (word + (word >> 4)) & 0x0F0F0F0F0F0F0F0Full;
-            if ((i & 31) == 30 || i + 1 == count){
-                total += (unsigned)((bytes * 0x0101010101010101ull) >> 56);
+            if (i % 31 == 30 || i + 1 == count){
+                const uint64_t lanes = (bytes & 0x00FF00FF00FF00FFull) + ((bytes >> 8) & 0x00FF00FF00FF00FFull);
+                total += (unsigned)((lanes * 0x0001000100010001ull) >> 48);
                 bytes = 0;
             }
         }

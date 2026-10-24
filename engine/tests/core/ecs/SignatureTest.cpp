@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include <random>
+
 #include <bitset>
 #include <string>
 #include <utility>
@@ -56,6 +58,16 @@ TEST(SignatureTest, Operators){
     c &= b;
     EXPECT_TRUE(c == b);
     EXPECT_TRUE(Signature().set().count() == 256u);
+    // count against a bit-by-bit count (the SWAR path on x86 without -mpopcnt)
+    std::mt19937 random(7);
+    for (int round = 0; round < 200; round++){
+        Signature sig;
+        size_t expected = 0;
+        for (size_t bit = 0; bit < kMaxComponentTypes; bit++){
+            if (random() % (round % 7 + 1) == 0){ sig.set(bit); expected++; }
+        }
+        EXPECT_EQ(sig.count(), expected);
+    }
 }
 
 TEST(SignatureTest, ForEachSetOrder){

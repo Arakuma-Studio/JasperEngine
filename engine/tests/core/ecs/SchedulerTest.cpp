@@ -268,7 +268,12 @@ TEST(SchedulerTest, WaveRunsOnWorkers){
         std::lock_guard<std::mutex> lock(mutex);
         mainThreadRuns.insert(std::this_thread::get_id());
     });
-    ASSERT_EQ(scene.getScheduler().getWaves(SystemPhase::Update).size(), 1u);
+    // one wave for the seven (the disabled SubSystems keep their own waves)
+    bool oneWave = false;
+    for (const auto& names : waveNames(scene.getScheduler(), SystemPhase::Update)){
+        if (!names.empty() && names[0] == "Pooled0") oneWave = names.size() == 7;
+    }
+    ASSERT_TRUE(oneWave);
 
     for (int frame = 0; frame < 5; frame++){
         scene.update(0.016);

@@ -23,16 +23,19 @@ static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
     // the types onComponentRemoved handles
-    declareHookType(scene->getComponentId<UIComponent>());
-    declareHookType(scene->getComponentId<RectTransformComponent>());
-    declareHookType(scene->getComponentId<ImageComponent>());
-    declareHookType(scene->getComponentId<Transform>());
-    declareHookType(scene->getComponentId<ButtonComponent>());
-    declareHookType(scene->getComponentId<PanelComponent>());
-    declareHookType(scene->getComponentId<ScrollbarComponent>());
-    declareHookType(scene->getComponentId<ProgressbarComponent>());
-    declareHookType(scene->getComponentId<InputFieldComponent>());
-    declareHookType(scene->getComponentId<TextComponent>());
+    uiId = scene->getComponentId<UIComponent>();
+    rectTransformId = scene->getComponentId<RectTransformComponent>();
+    imageId = scene->getComponentId<ImageComponent>();
+    transformId = scene->getComponentId<Transform>();
+    buttonId = scene->getComponentId<ButtonComponent>();
+    panelId = scene->getComponentId<PanelComponent>();
+    scrollbarId = scene->getComponentId<ScrollbarComponent>();
+    progressbarId = scene->getComponentId<ProgressbarComponent>();
+    inputFieldId = scene->getComponentId<InputFieldComponent>();
+    textId = scene->getComponentId<TextComponent>();
+    for (ComponentId id : {uiId, rectTransformId, imageId, transformId, buttonId, panelId, scrollbarId, progressbarId, inputFieldId, textId}){
+        declareHookType(id);
+    }
 
     lastUIFromPointer = NULL_ENTITY;
     lastUIFromPointerHover = NULL_ENTITY;
@@ -3373,10 +3376,10 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransfo
 }
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
-    if (componentId == scene->getComponentId<UIComponent>() ||
-        componentId == scene->getComponentId<RectTransformComponent>() ||
-        componentId == scene->getComponentId<ImageComponent>() ||
-        componentId == scene->getComponentId<Transform>()) {
+    if (componentId == uiId ||
+        componentId == rectTransformId ||
+        componentId == imageId ||
+        componentId == transformId) {
         if (entity == lastUIFromPointer) {
             lastUIFromPointer = NULL_ENTITY;
             pointerDragging = false;
@@ -3391,7 +3394,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         }
     }
 
-    if (componentId == scene->getComponentId<ButtonComponent>()) {
+    if (componentId == buttonId) {
         ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
         if (button.label != NULL_ENTITY){
             if (isEntityChild(button.label, entity)){
@@ -3400,7 +3403,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             button.label = NULL_ENTITY;
         }
         destroyButton(button);
-    } else if (componentId == scene->getComponentId<PanelComponent>()) {
+    } else if (componentId == panelId) {
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
         if (panel.headertext != NULL_ENTITY){
             if (isEntityChild(panel.headertext, entity)){
@@ -3420,7 +3423,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             panel.headerimage = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<ScrollbarComponent>()) {
+    } else if (componentId == scrollbarId) {
         ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
         if (scrollbar.bar != NULL_ENTITY){
             if (isEntityChild(scrollbar.bar, entity)){
@@ -3428,7 +3431,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             scrollbar.bar = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<ProgressbarComponent>()) {
+    } else if (componentId == progressbarId) {
         ProgressbarComponent& progressbar = scene->getComponent<ProgressbarComponent>(entity);
         if (progressbar.fill != NULL_ENTITY){
             if (isEntityChild(progressbar.fill, entity)){
@@ -3436,7 +3439,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             progressbar.fill = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<InputFieldComponent>()) {
+    } else if (componentId == inputFieldId) {
         InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
         if (inputfield.text != NULL_ENTITY){
             if (isEntityChild(inputfield.text, entity)){
@@ -3456,7 +3459,7 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
             }
             inputfield.cursor = NULL_ENTITY;
         }
-    } else if (componentId == scene->getComponentId<TextComponent>()) {
+    } else if (componentId == textId) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);
         destroyText(text);
     }
