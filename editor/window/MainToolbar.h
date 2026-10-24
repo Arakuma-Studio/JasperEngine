@@ -24,7 +24,12 @@ namespace jasperengine::editor {
     private:
         Project* project;
 
+        // Physics (G): a modifier on Move/Rotate/Scale, not a tool of its own (GizmoSelected
+        // keeps the tool). Global like the tool, for every 3D Scene view.
+        bool physicsMode = false;
+
         bool toolSupported(const SceneProject& sceneProject, Tool tool) const;
+        bool physicsSupported(const SceneProject& sceneProject) const;
         void applyTool(SceneProject& sceneProject, Tool tool) const;
 
         void drawTools(float rowHeight);
@@ -57,6 +62,13 @@ namespace jasperengine::editor {
         void setTool(Tool tool);
         bool isGlobalTransform() const;
         void toggleGlobalTransform();
+
+        // Physics Placement on the transform tools: 3D scenes, not in Play mode. Turning it
+        // off finishes any gesture (PhysicsPlacementWindow::physicsModeChanged).
+        bool isPhysicsMode() const;
+        bool canUsePhysics() const;
+        void setPhysicsMode(bool on);
+        void togglePhysicsMode();
     };
 
 }

@@ -18,6 +18,7 @@
 #include "util/CxxStandards.h"
 #include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
+#include "physics/PlacementSettings.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -615,6 +616,7 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         TerrainEditorSettings terrainEditorSettings;
+        PhysicsPlacementSettings physicsPlacementSettings;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
@@ -1158,6 +1160,10 @@ namespace jasperengine::editor{
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
+
+        // The Physics Placement panel's settings, per user (workspace.yaml)
+        PhysicsPlacementSettings& getPhysicsPlacementSettings();
+        const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;
 
         // Play acts as a touch device: the mouse is one finger and isTouchDevice() is true
         bool isSimulateTouch() const;

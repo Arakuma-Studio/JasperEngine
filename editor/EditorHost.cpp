@@ -26,6 +26,9 @@ void EditorHost::addNewSceneToDock(uint32_t) {
 void EditorHost::clearSceneWindowState(uint32_t) {
 }
 
+void EditorHost::sceneDeleting(uint32_t) {
+}
+
 void EditorHost::prepareForProjectSwitch() {
 }
 
