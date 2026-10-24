@@ -35,6 +35,8 @@ Projects made before the rename are migrated once with
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
+| Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets, templates): pose-to-pose animation of humanoid models, played by the Pose Animator or baked to an Animation. Unity has no equivalent; the closest is keyframing a humanoid clip in the Animation window (see [pose-animation.md](pose-animation.md)) | none (new) |
+| Humanoid map (bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model). Unity: Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new) |
 
 ## Scripting API (Lua and C++)
 
