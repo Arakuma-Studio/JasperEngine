@@ -291,9 +291,12 @@ void AtmosphereRenderer::update(double dt){
 
     // the bake runs once started (planPass starts it when clouds or a noise first draw)
     AtmosphereNoise& noise = AtmosphereNoise::get();
-    // (without workers the main thread bakes a slice a frame: 4 ms, a few items)
+    // Without workers the main thread bakes a slice a frame: half the last frame's time (4 to
+    // 100 ms), so the bake takes at most a third of the main thread whatever the frame rate (a
+    // slow frame, as in a debug WebGL build on a software rasteriser, would otherwise stretch a
+    // fixed slice's bake to many minutes)
     if (noise.isStarted() && !noise.isReady())
-        noise.advance(4.0);
+        noise.advance(std::clamp(dt * 1000.0 * 0.5, 4.0, 100.0));
     if (noise.isReady() && !noiseShape.isCreated()){
         static bool logged = false;
         if (!logged){
