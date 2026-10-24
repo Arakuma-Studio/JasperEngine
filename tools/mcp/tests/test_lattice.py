@@ -752,16 +752,25 @@ async def test_show_all_lattices_screenshot(ed: Editor):
     made = await ed.call("create_scene", name="LatticeShot", type="3D", path="scenes/LatticeShot")
     sid = made["scene"]["id"]
     await ed.call("create_entity", scene=sid, type="directional_light", name="Sun", rotation={"euler": [-50, 30, 0]})
-    post = (await ed.call("create_entity", scene=sid, type="model", name="Post", model="assets/models/uv_sphere.gltf",
-                          position=[0, 1, 0], scale=[1.2, 2, 1.2]))["entity_id"]
-    bent = await ed.call("edit_lattice", scene=sid, create={"targets": [post], "name": "PostCage", "resolution": [3, 4, 3]},
-                         ops=[{"op": "preset", "name": "bend", "axis": "y", "toward": "x", "amount": 90}])
+    # a thin rod in a cube cage: a 90 degree bend makes a clean quarter arc (in a non-cubic cage the
+    # arc is stretched with the cage, which reads as a lean)
+    rod = (await ed.call("create_entity", scene=sid, type="model", name="Rod", model="assets/models/uv_sphere.gltf",
+                         position=[0, 1.2, 0], scale=[0.45, 2.4, 0.45]))["entity_id"]
+    rod_cage = (await ed.call("create_entity", scene=sid, type="lattice", name="RodCage", position=[0, 1.2, 0],
+                              scale=[2.6, 2.6, 2.6]))["entity_id"]
+    bent = await ed.call("edit_lattice", scene=sid, lattice=rod_cage, resolution=[3, 8, 3],
+                         ops=[{"op": "bind", "target": rod},
+                              {"op": "preset", "name": "bend", "axis": "y", "toward": "x", "amount": 90}],
+                         sample=[[0, 2.5, 0]])
     ed.check_eq(bent["warnings"], [], f"{bent['warnings']}")
-    other = await ed.call("create_entity", scene=sid, type="lattice", name="Spare", position=[-1.8, 0.7, 0], scale=[1, 1.4, 1])
+    # the rod's top centre (local y 0.5) ends a quarter circle away: x = R, y = R - 0.5 with R = 2/pi (local)
+    check_close(ed, bent["samples"][0]["deformed"], [2.6 * 2 / math.pi, 1.2 + 2.6 * (2 / math.pi - 0.5), 0],
+                "the top of the cage's axis ends on the quarter arc (cubic: within 2%)", tol=0.06)
+    other = await ed.call("create_entity", scene=sid, type="lattice", name="Spare", position=[-2.4, 0.8, 0], scale=[1, 1.6, 1])
     await ed.call("edit_lattice", scene=sid, lattice=other["entity_id"],
                   ops=[{"op": "preset", "name": "twist", "amount": 40}])
     await ed.call("select_entities", scene=sid, entities=[])
-    cam = {"scene": sid, "position": [-0.2, 1.5, 5.2], "target": [-0.3, 0.9, 0],
+    cam = {"scene": sid, "position": [0.0, 1.6, 7.0], "target": [-0.3, 1.1, 0],
            "display": {"show_grid_3d": False, "hide_light_icons": True, "show_all_lattices": True}}
     got = await ed.call("set_scene_camera", cam)
     ed.check(got["display"]["show_all_lattices"] is True, f"the flag reads back: {got.get('display')}")
