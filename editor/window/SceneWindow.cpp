@@ -1074,16 +1074,26 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     int pointHit = sceneProject->sceneRender->hitTestLatticePoint(latticeEntity, x, y);
                     if (pointHit >= 0) {
                         latticePointHit = true;
+                        // with the points drawn on the same spot (a flat cage seen face on)
+                        std::vector<int> hit = sceneProject->sceneRender->getLatticeCoincidentPoints(latticeEntity, pointHit);
                         std::vector<int> points = LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity);
                         if (io.KeyShift || io.KeyCtrl) {
-                            auto it = std::find(points.begin(), points.end(), pointHit);
-                            if (it != points.end()) {
-                                points.erase(it);
-                            } else {
-                                points.push_back(pointHit);
+                            const bool wasSelected = std::find(points.begin(), points.end(), pointHit) != points.end();
+                            for (int index : hit) {
+                                auto it = std::find(points.begin(), points.end(), index);
+                                if (wasSelected && it != points.end()) {
+                                    points.erase(it);
+                                } else if (!wasSelected && it == points.end()) {
+                                    points.push_back(index);
+                                }
                             }
                         } else {
-                            points = {pointHit};
+                            points = hit;
+                        }
+                        // the point clicked is the last selected (pivot mode)
+                        if (!(io.KeyShift || io.KeyCtrl) || std::find(points.begin(), points.end(), pointHit) != points.end()) {
+                            points.erase(std::remove(points.begin(), points.end(), pointHit), points.end());
+                            points.push_back(pointHit);
                         }
                         LatticeEditorOps::setSelectedPoints(sceneId, latticeEntity, points);
                         subSelectionClickConsumesRelease[sceneId] = true;
