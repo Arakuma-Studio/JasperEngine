@@ -22,6 +22,10 @@ simulation straight through.
   always); another seed another;
 - the fixture's other scenes: the 20-box stack stands, thin plates and pencils lie on the floor
   without tunnelling, the balls roll down the ramp to the stop wall;
+- --context none / a list of GameObjects, --ignore-layers by index and name (a floor on an ignored
+  layer is not there; a mover on one is refused);
+- --decompose cached finishes the decompositions it queued into the project's cache (the next run
+  uses them); --decompose-timeout 0 drops them;
 - every mode from the command line: move (--delta, --target with --rotation-euler), snap (and a
   ray that hits nothing), gather, distribute, no gravity, push neighbours (they stay put);
 - --decompose always computes the ring's decomposition first, so it slides down over the peg;
@@ -165,6 +169,14 @@ async def test_usage_errors():
         (p + ["--context-margin", "-1"], "invalid --context-margin"),
         (p + ["--format", "yaml"], "--format must be text or json"),
         (p + ["--save", "--dry-run"], "--save and --dry-run exclude each other"),
+        (p + ["--mode", "move", "--delta", "1,0,0", "--target-space", "up"], "invalid --target-space 'up'"),
+        (p + ["--target-space", "local"], "--target-space is only used with --target, --delta or --rotation-euler"),
+        (p + ["--mode", "snap", "--ray-screen", "100,200"], "--ray-screen needs the Scene view of a running editor"),
+        (p + ["--context", ""], "invalid --context ''"),
+        (p + ["--context", "Floor,,Table"], "invalid --context"),
+        (p + ["--ignore-layers", "1,,2"], "invalid --ignore-layers"),
+        (p + ["--decompose-timeout", "-1"], "invalid --decompose-timeout"),
+        (p + ["--mode", "separate", "--gravity", "0,-1,0"], "--gravity is not used in separate mode"),
         (["--project", str(tmp()), "--scene", "TableCrate", "--entity", "Props/Box1"], "no project.yaml"),
     ]
     for args, expected in cases:
@@ -181,6 +193,8 @@ async def test_usage_errors():
         # what checkPlacementSpec refuses
         (p + ["--max-seconds", "500"], "max_seconds must be above 0 and at most 120"),
         (p + ["--jitter", "0,200"], "jitter.rotation_deg must be between 0 and 180"),
+        (p + ["--context", "Floor,NoSuchThing"], "--context: no GameObject 'NoSuchThing' in scene TableCrate"),
+        (p + ["--ignore-layers", "3,Lava"], "--ignore-layers: 'Lava' is not a layer (0-31 or a name; layers: 0=Default"),
     ]
     twin = project("twin")
     scene = twin / "TableCrate.scene"
@@ -367,6 +381,11 @@ async def test_every_mode_runs():
     box = by_path(turned)["Furniture/Box"]
     check(math.dist(after(box), [-2.0, 0.4, 3.0]) < 0.05 and abs(box["rotated_deg"] - 45.0) < 1.0,
           f"move --target --rotation-euler: at {after(box)}, turned {box['rotated_deg']}")
+    # local space: Overlap/A's parent stands at x = 3.5
+    local = by_path(place(proj, "TableCrate", ["Overlap/A"], "--mode", "move", "--target", "0,0.5,-2", "--target-space", "local"))
+    world = by_path(place(proj, "TableCrate", ["Overlap/A"], "--mode", "move", "--target", "0,0.5,-2", "--target-space", "world"))
+    check(math.dist(after(local["Overlap/A"]), [3.5, 0.5, -2.0]) < 0.05, f"--target-space local: {after(local['Overlap/A'])}")
+    check(math.dist(after(world["Overlap/A"]), [0.0, 0.5, -2.0]) < 0.05, f"--target-space world: {after(world['Overlap/A'])}")
     # snap: the ball lands where a ray from above hits the room's floor
     snapped = place(proj, "Room", ["Furniture/Ball"], "--mode", "snap", "--ray", "-1,5,-1,0,-1,0", "--colliders", "generated")
     ball = by_path(snapped)["Furniture/Ball"]
@@ -405,6 +424,49 @@ async def test_every_mode_runs():
                       f"push neighbours, margin {margin}: the neighbour {path} moved: {e}")
         for path in CRATE_BOXES:
             check(CRATE_FLOOR < after(entities[path])[1] < CRATE_RIM, f"margin {margin}: {path} not in the crate: {after(entities[path])}")
+
+
+async def test_context_and_layers():
+    proj = project("layers")
+    # none: nothing to land on; only the floor (and a wall): lands on it
+    alone = by_path(place(proj, "Room", ["Furniture/Ball"], "--context", "none", want=(3,)))["Furniture/Ball"]
+    check(alone["warnings"] and after(alone)[1] < -40, f"--context none: {after(alone)}, {alone['warnings']}")
+    floor = by_path(place(proj, "Room", ["Furniture/Ball"], "--context", "Room/Floor,Room/WallN", "--context-margin", "0"))["Furniture/Ball"]
+    check(abs(after(floor)[1] - 0.5) < 0.01 and [r["path"] for r in floor["resting_on"]] == ["Room/Floor"], f"--context Room/Floor: {floor}")
+    # the room's floor on layer 4 (Water): ignoring 4 (by index or name) leaves nothing to land on
+    scene = proj / "Room.scene"
+    text = scene.read_text()
+    check(text.count("        name: Floor\n") == 1, "the fixture's Room/Floor")
+    scene.write_text(text.replace("        name: Floor\n", "        name: Floor\n        layer: 4\n"))
+    for layers in ("4", "Water", "1,4"):
+        ball = by_path(place(proj, "Room", ["Furniture/Ball"], "--ignore-layers", layers, want=(3,)))["Furniture/Ball"]
+        check(after(ball)[1] < -40, f"--ignore-layers {layers}: the ball landed at {after(ball)}")
+    kept = by_path(place(proj, "Room", ["Furniture/Ball"], "--ignore-layers", "5"))["Furniture/Ball"]
+    check([r["path"] for r in kept["resting_on"]] == ["Room/Floor"], f"--ignore-layers 5: {kept['resting_on']}")
+    # a mover on an ignored layer is refused
+    lone = place(proj, "Room", ["Furniture/Ball"], "--ignore-layers", "Default", want=(2,), quiet_stderr=False)
+    check(lone["refused"] == [{"path": "Furniture/Ball", "reason": "ignored layer"}], f"refused: {lone['refused']}")
+
+
+async def test_decomposition_cache():
+    # cached (the default): the run uses a hull, then the decomposition it queued is finished into
+    # the project's cache, and the next run uses it
+    proj = project("cache")
+    colliders = proj / ".jasperengine" / "cache" / "colliders"
+    r = run("--project", str(proj), "--scene", "RingPeg", "--entity", "Ring", "--format", "json")
+    check(r.returncode == 0, f"cached: exit {r.returncode}\n{r.stderr[-2000:]}")
+    check(by_path(json.loads(r.stdout))["Ring"]["collider"] == "convex_hull", f"the first run: {r.stdout[-1500:]}")
+    check("place-physics: finishing 1 queued decomposition(s) for later runs" in r.stderr, f"stderr: {r.stderr[-1000:]}")
+    check(len(list(colliders.glob("*.hulls"))) == 1, f"the cache: {list(colliders.glob('*')) if colliders.exists() else 'none'}")
+    second = by_path(place(proj, "RingPeg", ["Ring"]))["Ring"]
+    check(second["collider"].startswith("decomposed("), f"the second run: {second['collider']}")
+    check(after(second)[1] < 0.2, f"the second run's ring did not go over the peg: {after(second)}")
+    # --decompose-timeout 0: dropped, nothing cached
+    fresh = project("nocache")
+    r = run("--project", str(fresh), "--scene", "RingPeg", "--entity", "Ring", "--decompose-timeout", "0", "--format", "json")
+    check(r.returncode == 0 and "finishing" not in r.stderr, f"--decompose-timeout 0: exit {r.returncode}: {r.stderr[-1000:]}")
+    nothing = fresh / ".jasperengine" / "cache" / "colliders"
+    check(not list(nothing.glob("*.hulls")) if nothing.exists() else True, f"--decompose-timeout 0 cached {list(nothing.glob('*'))}")
 
 
 async def test_ring_decomposition():
