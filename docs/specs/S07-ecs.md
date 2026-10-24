@@ -601,7 +601,7 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   move_branch 0.13 / 0.34. R26: destroy 10k 530x, metadata at 100k 14x, index loop 1.2x /
   1.2-1.3x faster than before, view 1.8x / 1.7-2.4x the baseline index loop. R27: 17.3 B per
   component and 76 B per entity at 100k. Destroy at 100k varies most between processes
-  (21.5-27.7 ms across the 21 samples; the run medians were 23.4, 26.3 and 22.0): it is bound
+  (21.0-27.7 ms within one run's seven samples; the run medians were 23.4, 26.3 and 22.0): it is bound
   by cache misses on randomly ordered entities. What got it there: Vector3, Quaternion and
   Matrix4 construct and copy inline and trivially (a Transform move is a plain copy); a destroy
   allocates nothing (an intrusive entity free list, arena chunks reserving their page lists,
