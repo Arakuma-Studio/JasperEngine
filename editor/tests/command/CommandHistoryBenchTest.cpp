@@ -74,7 +74,7 @@ TEST(CommandHistoryBench, PushWithTrimming) {
     const double average = microseconds(Clock::now() - start) / pushes;
     EXPECT_EQ(history.appliedCount(), 1000u);
     std::printf("[ bench ] push with trimming: %.2f us average (budget 50)\n", average);
-    if (checkBudgets) EXPECT_LE(average, 50.0);
+    if (checkBudgets) { EXPECT_LE(average, 50.0); }
 }
 
 TEST(CommandHistoryBench, BigStepReleasedOffTheMainThread) {
@@ -89,7 +89,7 @@ TEST(CommandHistoryBench, BigStepReleasedOffTheMainThread) {
     history.addCommand(new UndoFake(state, "next", 2));
     const double elapsed = microseconds(Clock::now() - start);
     std::printf("[ bench ] 1000-GameObject step released in %.1f us on the main thread (budget 500)\n", elapsed);
-    if (checkBudgets) EXPECT_LE(elapsed, 500.0);
+    if (checkBudgets) { EXPECT_LE(elapsed, 500.0); }
 }
 
 TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
@@ -120,5 +120,5 @@ TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
     EXPECT_GT(bytes, 1000u * 64u);
     std::printf("[ bench ] yamlFootprint %.0f us, encode %.0f us (%.1f%%, budget 10%%)\n", footprintTime, encodeTime,
                 100.0 * footprintTime / encodeTime);
-    if (checkBudgets) EXPECT_LE(footprintTime, encodeTime * 0.10);
+    if (checkBudgets) { EXPECT_LE(footprintTime, encodeTime * 0.10); }
 }
