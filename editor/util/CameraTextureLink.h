@@ -8,6 +8,8 @@
 
 namespace jasperengine::editor {
 
+    enum class ComponentType : int;
+
     // A texture can use a camera framebuffer as source (render to texture).
     // The link is kept in the texture id as "camera|<entity>" so it survives
     // serialization; the framebuffer pointer is (re)bound by resolve().
@@ -36,6 +38,11 @@ namespace jasperengine::editor {
 
         // display name for the texture slot ("camera|7" -> camera entity name)
         static std::string cameraName(EntityRegistry* registry, const Texture& texture);
+
+        // the entity is what texture links can name: a Camera or a FluidSimulation. Removing,
+        // adding or replacing one changes what links resolve to (resolve() the scene then)
+        static bool isLinkSource(EntityRegistry* registry, Entity entity);
+        static bool isLinkSourceType(ComponentType type);
 
         // true if any texture in the registry links to this camera entity
         static bool isCameraUsed(EntityRegistry* registry, Entity cameraEntity);

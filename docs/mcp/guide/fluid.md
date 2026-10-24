@@ -28,7 +28,8 @@ top-right. Velocities are Pavel's force units (a pointer delta in fluid coordina
 | `texture` | nothing by itself: the output is a texture other components show through a `fluid\|<entity>` link | none (scripts splat) | one fluid shown in several places, on a mesh material, a UI Image elsewhere |
 
 The image is RGBA8 at the dye's size. Opaque: the dye over `backColor`. `transparent`: no
-background, alpha = max(r, g, b), premultiplied (dark dye is see-through).
+background, alpha = max(r, g, b) (dark dye is see-through); premultiplied over the `screen`,
+straight colour for `material` and `texture` (sprites, images and meshes blend by alpha).
 
 ## Properties
 
@@ -73,8 +74,11 @@ the clock; cost in fullscreen passes (see Performance).
 | `sunraysResolution` | 196 | 98-512 | the rays' mask, short side | |
 | `sunraysWeight` | 1 | 0.3-1 | ray strength | |
 
-Changing `seed`, `splatsOnStart` or `randomSplatCount` in edit mode restarts the fluid; at
-runtime a new seed takes effect at the next `reset()`. A new resolution or aspect recreates the
+Changing `seed`, `splatsOnStart` or `randomSplatCount` from the editor (Inspector,
+set_properties, and set_runtime_property while playing) restarts the fluid at once; the Lua
+setters do not: a new seed takes effect at the next `reset()`. Play starts every fluid afresh
+(its seed and start burst, not the edit-mode preview's state) and Stop restarts it to its
+edit-mode start. A new resolution or aspect recreates the
 targets at the next frame, resampling the dye and the velocity into them (Pavel's resize). Lua setters refuse NaN,
 infinite and negative values (and 0 for resolutions, `simulationRate`, `maxSubsteps`,
 `splatRadius`); set_properties checks the types only.
@@ -126,7 +130,8 @@ fluid start from an empty GameObject (no sprite to draw):
 - On a UI Image: add the component to the Image's GameObject (output `material`).
 - A Lua script attached to it can wrap it: `FluidSimulation(self.scene, self.entity)`.
 - Runtime state: get_entity and get_runtime_entity return `fluid_stats` (read only): `preset`,
-  `supported` (+ `unsupported_reason`), `running`, `steps`, `time`, `splats`, `seed`,
+  `supported` (+ `unsupported_reason`), `running` (drawn now: enabled, active, built, no
+  `error`; the other stats are its last frame's), `steps`, `time`, `splats`, `seed`,
   `sim_size`, `dye_size`, `output_size` ([w, h]), `gpu_bytes`, `passes_last_frame`,
   `shading_active`, `bloom_active`, `sunrays_active` (after fallbacks), `manual_filtering`,
   `compact_formats`, `error`.

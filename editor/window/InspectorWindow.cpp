@@ -14426,7 +14426,10 @@ void editor::InspectorWindow::show(){
                 }else if (cpType == ComponentType::InstancedMeshComponent){
                     drawInstancedMeshComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::FluidSimulationComponent){
-                    drawFluidSimulationComponent(cpType, sceneProject, entities);
+                    // its preview bar is no edit: it works on a read-only (play-created) fluid too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawFluidSimulationComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }
 
                 if (compReadOnly) ImGui::EndDisabled();

@@ -91,6 +91,15 @@ std::string editor::CameraTextureLink::cameraName(EntityRegistry* registry, cons
     return "< Missing camera >";
 }
 
+bool editor::CameraTextureLink::isLinkSource(EntityRegistry* registry, Entity entity){
+    return registry && registry->isEntityCreated(entity) &&
+           (registry->findComponent<CameraComponent>(entity) || registry->findComponent<FluidSimulationComponent>(entity));
+}
+
+bool editor::CameraTextureLink::isLinkSourceType(ComponentType type){
+    return type == ComponentType::CameraComponent || type == ComponentType::FluidSimulationComponent;
+}
+
 bool editor::CameraTextureLink::isCameraUsed(EntityRegistry* registry, Entity cameraEntity){
     for (Entity entity : registry->getEntityList()){
         for (ComponentType cpType : Catalog::findComponents(registry, entity)){
@@ -127,8 +136,7 @@ bool editor::CameraTextureLink::resolve(EntityRegistry* registry){
 bool editor::CameraTextureLink::resolve(EntityRegistry* registry, const std::vector<Entity>& entities){
     // A camera or a fluid among them may be what textures anywhere name
     for (Entity entity : entities){
-        if (registry->isEntityCreated(entity) && (registry->findComponent<CameraComponent>(entity) ||
-                                                  registry->findComponent<FluidSimulationComponent>(entity))){
+        if (isLinkSource(registry, entity)){
             return resolve(registry);
         }
     }
