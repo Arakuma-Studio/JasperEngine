@@ -5,8 +5,8 @@ angles, snapped between with springy transitions ("feel"), optionally humanised 
 in-betweens, sway, follow-through, joint limits). The same asset plays live on a model (Pose
 Animator component, Lua `PoseAnimator`) or bakes to a normal Animation.
 
-Tools: `get_pose_animation` (read) and `edit_pose_animation` (every change, one project undo step
-per call: `undo {scope: "project"}`). The `.poseanim` file is JSON and safe to read, but edit it with
+Tools: `get_pose_animation` (read), `edit_pose_animation` (every change, one project undo step
+per call: `undo {scope: "project"}`) and `render_pose_animation` (pictures of the poses or the motion). The `.poseanim` file is JSON and safe to read, but edit it with
 the tool: it validates, clamps, echoes what it clamped and keeps the undo history.
 
 ## The loop
@@ -17,8 +17,15 @@ the tool: it validates, clamps, echoes what it clamped and keeps the undo histor
    model it is, how many slots are `mapped` (`bones`: slot -> bone), the `missing` required slots and
    `human_scale` (or the `error` that kept the model from being a usable humanoid).
 2. `edit_pose_animation {path, ops: [...]}`: change several poses and settings in one call.
-3. Check the metrics of the touched poses the result returns (and the motion in play mode or after
-   baking). Fix, repeat.
+3. Check the metrics of the touched poses the result returns. Fix, repeat.
+4. Look when the numbers are not enough: `render_pose_animation {path}` draws the key poses (front and
+   side rows); `mode: "motion"` (evenly spaced `frames`, side row) or `mode: "times"` (`times` in
+   seconds) draws the frames the bake and the runtime play, with feet in contact marked `[L]`, `[R]`,
+   `[LR]` in the labels. The skeleton overlay is coral for the character's left limbs and cyan for the
+   right (the front view faces you: its left is on image right); the orange line is the floor; every
+   view row has one scale, so a jump shows its height. The result also has per-column `metrics`. Each
+   image costs tokens: render the poses you changed (`poses`), few `frames`, one or two `views`.
+   For detail keep it to 8 columns or fewer per row (clients downscale images wider than about 1568 px).
 
 Start a new file with `create`: `{path: "assets/anim/walk.poseanim", create: {preview_model:
 "assets/models/hero.gltf"}, ops: [{op: "add_pose", name: "Contact R", angles: {...}}, ...]}`.
