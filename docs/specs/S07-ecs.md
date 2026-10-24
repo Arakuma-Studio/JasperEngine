@@ -600,9 +600,10 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   `GameObject.destroyImmediate` and adds or removes a `Rigidbody2D` on the script's own
   GameObject. Run with an ASan/UBSan editor (`SANITIZE=address,undefined tools/build.sh
   linux`, `JASPER_EDITOR=build/linux/editor-address-undefined/jasperengine-editor`,
-  `ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0`; ThorVG replaces `operator new` with
-  `malloc` in the static engine) it plays 1000 frames with no console error and no sanitizer
-  report. The first run stopped in UBSan on an unrelated read: `ShaderData` copied an
+  and S02's runtime options as `tools/build.sh` passes them, leak detection included, plus
+  `alloc_dealloc_mismatch=0`: ThorVG replaces `operator new` with `malloc` in the static
+  engine) it plays 1000 frames with no console error and no sanitizer report, and the editor's
+  stderr holds no report after it exits either (run on the S24 merge, server B). The first run stopped in UBSan on an unrelated read: `ShaderData` copied an
   indeterminate `es` flag; its scalar fields are now initialized. AC10 is an MCP test rather
   than a manual step, so it is repeatable; it is in the default suite (with a normal editor it
   checks the same behaviour without the sanitizers).

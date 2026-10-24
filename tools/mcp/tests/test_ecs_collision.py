@@ -4,8 +4,11 @@ or removes a component on its own GameObject, for 1000 frames, without an error.
 tools/fixtures/ecs-collision: boxes fall on a floor every third frame; each beginContact2D destroys
 the box and toggles a Rigidbody2D on the script's GameObject. The destroys are deferred to the end
 of the step's contact callbacks (StructuralDeferScope). Run it with an ASan/UBSan editor
-(SANITIZE=address,undefined tools/build.sh linux, JASPER_EDITOR=<its jasperengine-editor>,
-ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0): the editor's stderr must hold no report.
+(SANITIZE=address,undefined tools/build.sh linux, JASPER_EDITOR=<its jasperengine-editor>, and
+S02's runtime options as tools/build.sh passes them, plus alloc_dealloc_mismatch=0 for ThorVG:
+ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:strict_string_checks=1:alloc_dealloc_mismatch=0,
+UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:suppressions=tools/sanitizers/ubsan.supp,
+LSAN_OPTIONS=suppressions=tools/sanitizers/lsan.supp): the editor's stderr must hold no report.
 """
 
 from pathlib import Path
