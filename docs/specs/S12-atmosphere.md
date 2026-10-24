@@ -574,6 +574,11 @@ The `gpuMs` value is present when S15 timings exist.
 - **Web gate (AC14).** `tools/web/gates/atmosphere.json` checks the Low-tier valley scene's centre
   pixel and the tier's console line in a WebGL2 browser; the forced RGBA8 path is compared with
   the float one by `AtmosphereGpu.LowPrecisionTargetsMatchFloatOnes` (glcore).
+- **Vulkan goldens (AC11).** The goldens are glcore's. The Vulkan run (lavapipe) holds the
+  atmosphere goldens to AC11's cross-backend bound (mean 3/255, 95% of pixels within 8/255: the
+  Low Sky Map's thin horizon edges move, 2.7% of `atmosphere_clouds_cloudy_low`) and the legacy
+  fog goldens to 1/255 (the unchanged mesh shaders round a few fogged pixels the other way there;
+  the no-fog scene matches to the bit).
 - **D3D11/Metal compile (AC11).** Checked on Linux with the engine's shader compiler (glslang +
   SPIRV-Cross, as an export does): every atmosphere program and the height fog mesh variants for
   GLSL 410, GLSL 300 es, HLSL 5, MSL macOS/iOS and SPIR-V (`editor/tests/shader/
