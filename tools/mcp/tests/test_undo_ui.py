@@ -186,6 +186,7 @@ async def test_esc_cancels_a_gizmo_drag(ed: Editor):
     ui.focus()
     await ui.press(center)
     await ui.drag_to(center, 160, 0)
+    await frames(ed, 3)
     during = await position(ed, sid, cube)
     await ed.screenshot("editor", path=str(s["out"] / "ac5-1-gizmo-dragging.png"))
     ed.check(during != before, f"the drag moved the cube ({before} -> {during}): the press missed the gizmo's centre")
@@ -223,6 +224,7 @@ async def test_esc_cancels_an_inspector_drag(ed: Editor):
     ui.focus()
     await ui.press(field)
     await ui.drag_to(field, 90, 0)
+    await frames(ed, 3)
     during = await position(ed, sid, cube)
     await ed.screenshot("editor", path=str(s["out"] / "ac5-3-inspector-dragging.png"))
     ed.check(during[0] != before[0], f"the drag changed Position X ({before} -> {during}): the field moved")
@@ -254,6 +256,13 @@ async def test_esc_cancels_a_terrain_stroke(ed: Editor):
     await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "flat", "base_height": 0.2})
     await ed.call("select_entities", scene=sid, entities=[terrain])
     await ed.call("set_scene_camera", scene=sid, position=[0, 14, -16], target=[0, 0, 0])
+    # the generated map loads asynchronously: a stroke needs its pixels
+    for _ in range(100):
+        info = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=2))["info"]
+        if info.get("height_map_loaded"):
+            break
+        await asyncio.sleep(0.2)
+    ed.check(info.get("height_map_loaded"), f"the height map loaded: {info}")
     window = await rect(ed, "terrain")
     ui.focus()
     await ui.click(ui.at(window, TERRAIN_RAISE_BRUSH))
@@ -265,7 +274,9 @@ async def test_esc_cancels_a_terrain_stroke(ed: Editor):
     label = await undo_label(ed)
 
     await ui.press(start)
+    await frames(ed, 3)
     await ui.drag_to(start, 120, 30, steps=20)
+    await frames(ed, 3)
     during = await heights(ed, sid, terrain)
     await ed.screenshot("editor", path=str(s["out"] / "ac5-5-terrain-stroke.png"))
     ed.check(during != before, "the stroke raised the terrain: the brush or the press missed")
