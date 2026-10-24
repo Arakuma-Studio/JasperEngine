@@ -403,6 +403,133 @@ TEST(PhysicsSync, AKinematicBodyMovedFarByItsTransformIsTeleported) {
     EXPECT_NEAR(body.getLinearVelocity().length(), 0.0f, 1e-4f);
 }
 
+namespace {
+
+    // a weightless kinematic box its Transform moved along x for a frame (followed)
+    struct FollowingBox {
+        Scene scene;
+        std::vector<Entity> entities;
+        Entity box = NULL_ENTITY;
+
+        explicit FollowingBox(Vector3 colliderOffset = Vector3::ZERO, Quaternion rotation = Quaternion()) {
+            scene.setGravity3D(Vector3::ZERO);
+            box = createEntity(scene, Vector3(0, 0, 0));
+            scene.getComponent<Transform>(box).rotation = rotation;
+            RigidbodyComponent component;
+            component.type = BodyType::KINEMATIC;
+            scene.addComponent<RigidbodyComponent>(box, component);
+            Rigidbody(&scene, box).createBoxCollider(colliderOffset, Quaternion(), 1, 1, 1);
+            entities.push_back(box);
+            updateTransforms(scene, entities);
+            scene.getSystem<PhysicsSystem>()->load();
+            frame(scene, entities, 1);
+        }
+
+        void moveTransform(float x) {
+            Transform& transform = scene.getComponent<Transform>(box);
+            transform.position = Vector3(x, transform.position.y, transform.position.z);
+            transform.needUpdate = true;
+            updateTransforms(scene, entities);
+        }
+
+        Rigidbody body() { return Rigidbody(&scene, box); }
+        RigidbodyComponent& component() { return scene.getComponent<RigidbodyComponent>(box); }
+    };
+
+}
+
+TEST(PhysicsSync, AReleasedKinematicBodyKeepsTheVelocityAScriptGaveIt) {
+    FollowingBox carried;
+    carried.moveTransform(0.1f);
+    frame(carried.scene, carried.entities, 1);
+    EXPECT_TRUE(carried.component().followingPosition);
+
+    // released and thrown by a script after the frame
+    Rigidbody body = carried.body();
+    body.setType(BodyType::DYNAMIC);
+    body.setLinearVelocity(Vector3(0, 4, 0));
+    frame(carried.scene, carried.entities, 1);
+
+    EXPECT_NEAR(body.getLinearVelocity().y, 4.0f, 0.01f);
+    EXPECT_NEAR(body.getLinearVelocity().x, 0.0f, 1e-3f);
+}
+
+TEST(PhysicsSync, AKinematicBodyPlacedByAScriptAfterFollowingStaysThere) {
+    FollowingBox respawned;
+    respawned.moveTransform(0.1f);
+    frame(respawned.scene, respawned.entities, 1);
+
+    // the documented teleport, the frame after its Transform last moved it
+    Rigidbody body = respawned.body();
+    body.setPosition(Vector3(-3, 0, 0));
+    expectNear(respawned.scene.getComponent<Transform>(respawned.box).worldPosition, Vector3(-3, 0, 0));
+    frame(respawned.scene, respawned.entities, 1);
+    frame(respawned.scene, respawned.entities, 1);
+
+    expectNear(body.getPosition(), Vector3(-3, 0, 0));
+    EXPECT_NEAR(body.getLinearVelocity().length(), 0.0f, 1e-5f);
+}
+
+TEST(PhysicsSync, AKinematicBodyWithItsCentreOfMassOffItsOriginStopsFollowing) {
+    // the collider off the origin moves the centre of mass there; turned, its pose reads back rounded
+    FollowingBox offset(Vector3(0.7f, 0.3f, 0), Quaternion(Angle::radToDefault(0.6f), Vector3(0, 1, 0)));
+    for (int i = 1; i <= 3; i++) {
+        offset.moveTransform(0.05f * i);
+        frame(offset.scene, offset.entities, 1);
+    }
+    frame(offset.scene, offset.entities, 1);
+    EXPECT_FALSE(offset.component().followingPosition);
+    EXPECT_FALSE(offset.component().followingRotation);
+
+    // and is driven by its velocity again
+    Rigidbody body = offset.body();
+    const float start = body.getPosition().x;
+    body.setLinearVelocity(Vector3(1, 0, 0));
+    for (int i = 0; i < 5; i++) frame(offset.scene, offset.entities, 1);
+    EXPECT_NEAR(body.getPosition().x - start, 5 * step, 1e-4f);
+    EXPECT_NEAR(body.getLinearVelocity().x, 1.0f, 1e-5f);
+}
+
+TEST(PhysicsSync, AKinematicBodyFollowsUpToItsSizeAStepAndJumpsBeyond) {
+    // the box is 1 m wide
+    FollowingBox box;
+    box.moveTransform(0.9f);
+    box.scene.getSystem<PhysicsSystem>()->fixedUpdate(step);
+    EXPECT_NEAR(box.body().getLinearVelocity().x, 0.9f / step, 1e-2f);
+
+    FollowingBox far;
+    far.moveTransform(1.2f);
+    far.scene.getSystem<PhysicsSystem>()->fixedUpdate(step);
+    EXPECT_NEAR(far.body().getLinearVelocity().length(), 0.0f, 1e-5f);
+    EXPECT_NEAR(far.body().getPosition().x, 1.2f, 1e-4f);
+}
+
+TEST(PhysicsSync2D, AKinematicBodyWithoutCollidersFollowsItsTransform) {
+    // a joint anchor (a crane hook) animated by its Transform
+    Scene scene;
+    Entity hook = createEntity(scene, Vector3(0, 0, 0));
+    Rigidbody2DComponent component;
+    component.type = BodyType::KINEMATIC;
+    scene.addComponent<Rigidbody2DComponent>(hook, component);
+    std::vector<Entity> entities{hook};
+    updateTransforms(scene, entities);
+    scene.getSystem<PhysicsSystem>()->load();
+    frame(scene, entities, 1);
+    ASSERT_TRUE(b2Body_IsValid(scene.getComponent<Rigidbody2DComponent>(hook).body));
+
+    Rigidbody2D body(&scene, hook);
+    for (int i = 1; i <= 3; i++) {
+        Transform& transform = scene.getComponent<Transform>(hook);
+        transform.position = Vector3(5.0f * i, 0, 0);
+        transform.needUpdate = true;
+        updateTransforms(scene, entities);
+        frame(scene, entities, 1);
+        // moved with a velocity, not teleported
+        EXPECT_NEAR(body.getLinearVelocity().x, 5.0f / step, 1e-2f);
+        EXPECT_NEAR(body.getPosition().x, 5.0f * i, 1e-3f);
+    }
+}
+
 TEST(PhysicsSync2D, SeveralStepsInOneFrameMoveAsFarAsOneStepPerFrame) {
     auto run = [](int frames, int stepsPerFrame) {
         Scene scene;

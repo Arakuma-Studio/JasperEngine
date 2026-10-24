@@ -637,6 +637,8 @@ void Rigidbody2D::setPosition(Vector2 position){
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
+    // the script takes the position over from the Transform a kinematic body was following
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
     b2Body_SetAwake(body.body, true);
@@ -657,6 +659,7 @@ void Rigidbody2D::setAngle(float angle){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
     b2Body_SetAwake(body.body, true);
@@ -670,6 +673,7 @@ void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
     // points per second, like positions
     b2Body_SetLinearVelocity(body.body, {linearVelocity.x / pointsToMeterScale, linearVelocity.y / pointsToMeterScale});
 }
@@ -678,6 +682,7 @@ void Rigidbody2D::setAngularVelocity(float angularVelocity){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
     b2Body_SetAngularVelocity(body.body, angularVelocity);
 }
 
@@ -725,6 +730,9 @@ void Rigidbody2D::setBullet(bool bullet){
 
 void Rigidbody2D::setType(BodyType type){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    // the script takes over a body that was following its Transform
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, true);
 
     if (b2Body_IsValid(body.body)){
         b2Body_SetType(body.body, getBodyTypeToB2(type));

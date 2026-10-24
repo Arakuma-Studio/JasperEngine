@@ -120,6 +120,11 @@ namespace jasperengine{
         // part on its own: a part not followed keeps its own velocity)
         bool followingPosition = false;
         bool followingRotation = false;
+        // the last step of a frame put the followed parts at the Transform
+        bool followReached = false;
+        // the velocities the following set: a part stops with them unless a script changed them
+        Vector3 followedLinearVelocity;
+        Vector3 followedAngularVelocity;
         // pose before the last step, drawn towards the current one
         Vector3 previousPosition;
         Quaternion previousRotation;
