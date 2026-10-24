@@ -233,11 +233,15 @@ namespace jasperengine::pose {
             }
             const float* angles = &body.angles[b * DOFS_PER_BONE];
             bool hit[DOFS_PER_BONE] = {};
+            double limited[DOFS_PER_BONE] = {};   // the per-DOF clamp of clampBoneToLimits
             for (int k = 0; k < DOFS_PER_BONE; k++){
                 const DofInfo& info = dofInfo(dofIndex(bone, k));
                 hit[k] = !(angles[k] >= info.minDegrees - LIMIT_HIT_TOLERANCE && angles[k] <= info.maxDegrees + LIMIT_HIT_TOLERANCE);
+                limited[k] = std::isnan(angles[k]) ? 0.0 : std::min(std::max(static_cast<double>(angles[k]), static_cast<double>(info.minDegrees)), static_cast<double>(info.maxDegrees));
             }
-            const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+            // the swing cap, as clampBoneToLimits applies it: after the per-DOF clamp (a knee bent
+            // 179.8 is a bend hit only, its clamped swing of 155 is below the cap)
+            const double swing = std::sqrt(limited[0] * limited[0] + limited[1] * limited[1]);
             if (swing > static_cast<double>(MAX_SWING_DEGREES) + LIMIT_HIT_TOLERANCE){
                 hit[0] = hit[1] = true;
             }

@@ -144,6 +144,18 @@ TEST(PoseMetrics, LimitHitsTolerateReadBackNoise){
     EXPECT_TRUE(hits(metricsOf(rig, lean), "hips.lean"));
     EXPECT_TRUE(hits(metricsOf(rig, lean), "hips.side"));
     EXPECT_FALSE(hits(metricsOf(rig, lean), "hips.turn"));
+    // the swing is measured after the per-DOF clamp, as clampToLimits does: a knee bent 179.8
+    // (clamped to 155, below the cap) is a bend hit only, not a side hit
+    const BodyPose knee = with({{"left_lower_leg.bend", 179.8f}});
+    const PoseMetrics kneeMetrics = metricsOf(rig, knee);
+    BodyPose kneeClamped = knee;
+    EXPECT_EQ(kneeMetrics.limitHits, clampToLimits(kneeClamped));
+    EXPECT_TRUE(hits(kneeMetrics, "left_lower_leg.bend"));
+    EXPECT_FALSE(hits(kneeMetrics, "left_lower_leg.side"));
+    // and per-DOF values inside the hips ranges whose swing exceeds the cap hit both swing DOFs
+    const BodyPose wide = with({{"hips.lean", 170.0f}, {"hips.side", 60.0f}});
+    BodyPose wideClamped = wide;
+    EXPECT_EQ(metricsOf(rig, wide).limitHits, clampToLimits(wideClamped));
     // a knee clamped to 0, realised and read back as the frames metrics do (toBodyPose)
     for (const TestRig* t : allRigs()){
         BodyPose bent = with({{"left_lower_leg.bend", -15.0f}, {"right_lower_leg.bend", -15.0f}, {"left_lower_arm.bend", -15.0f}});
