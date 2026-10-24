@@ -557,9 +557,11 @@ Land S09 early in wave 1 so the others build on it.
   `platformLog`, so a new virtual `System::installLogSinks()` decides the game's sinks: the
   default installs the platform's (`installPlatformLogSinks`), an override adds a `PlatformSink`
   (the test `TestSystem` does). `platformLog` stays virtual and keeps today's default output.
-- **R6 console streams in the editor.** The editor style keeps today's stream split (errors and
-  build output on stderr, the rest on stdout) so CLI users and scripts see what they saw; the game
-  style sends Warn and above to stderr as specified.
+- **R6 console sink in the editor.** The editor style is Inline, not Async: the editor's CLI
+  commands print their own results with `std::cout` (JSON documents, reports) and redirect fds 1/2
+  around quiet phases, and their log lines must stay in order with that, as they did. It also keeps
+  today's stream split (errors and build output on stderr, the rest on stdout). The game style is
+  Async and sends Warn and above to stderr as specified.
 - **R9, build output** (category `build`) is never rate limited: a compiler's lines share long path
   prefixes and come in bursts, and `BuildTools` parses every one of them.
 - **R12, drain latency.** Info and below wake the drain thread at most every 20 ms (and whenever

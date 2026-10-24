@@ -31,11 +31,11 @@ namespace jasperengine {
 
     // ------------------------------------------------------------ sinks
 
-    // stdout / stderr, written per batch (to file descriptors 1 and 2, whatever they are
-    // redirected to at that moment).
-    // Game:   "(ERROR): msg" ("msg" for Info), Warn and above to stderr.
+    // stdout / stderr (file descriptors 1 and 2, whatever they are redirected to at the time).
+    // Game:   "(ERROR): msg" ("msg" for Info), Warn and above to stderr; Async, per batch.
     // Editor: "[ERROR] msg" (the editor's CLI and headless output), Error and above and
-    //         build output to stderr.
+    //         build output to stderr; Inline, a line at a time, so it stays in order with what
+    //         the CLI prints itself (JSON on stdout, reports).
     class JASPERENGINE_API ConsoleSink : public LogSink {
     public:
         enum class Style { Game, Editor };
@@ -43,6 +43,7 @@ namespace jasperengine {
         explicit ConsoleSink(Style style);
         void write(const LogRecord& record) override;
         void flush() override;
+        Delivery delivery() const override { return style == Style::Editor ? Delivery::Inline : Delivery::Async; }
         const char* name() const override { return "console"; }
 
     private:

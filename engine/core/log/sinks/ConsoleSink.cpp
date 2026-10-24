@@ -48,6 +48,8 @@ void ConsoleSink::write(const LogRecord& record) {
     }
     pending.append(record.text.data(), record.text.size());
     pending += '\n';
+    // Inline (the editor): nobody batches, the line goes out now
+    if (style == Style::Editor) flush();
 }
 
 void ConsoleSink::flush() {

@@ -44,7 +44,7 @@ sink inline.
 | Sink | Where | Delivery |
 |---|---|---|
 | memory | the editor's Console and the MCP `read_console` / `wait_for_log` tools (16 MB, 20,000 records) | Inline |
-| console | stdout/stderr: games `(ERROR): msg`, the editor's CLI and headless runs `[ERROR] msg` | Async |
+| console | stdout/stderr: games `(ERROR): msg`, the editor's CLI and headless runs `[ERROR] msg` | Async (editor: Inline) |
 | file | `editor.log` next to `settings.yaml` (2 MB x 3), a desktop game's `<userdata>/logs/player.log` (1 MB x 2) | Async |
 | mcp | `notifications/message` to MCP clients that called `logging/setLevel` | Async |
 | logcat / browser / debugger / oslog | Android logcat (tag `JasperEngine`), the browser console, the Windows debugger, Apple's unified log | Async (browser: Inline) |
