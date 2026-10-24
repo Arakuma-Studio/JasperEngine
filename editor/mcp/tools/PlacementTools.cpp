@@ -550,8 +550,10 @@ Json specEcho(const PlacementCall& state) {
     return data;
 }
 
-// The scene the run reads is still there, unchanged, in the same project, out of Play mode
-bool sceneStillValid(PlacementCall& state, std::string& why) {
+// The scene the run reads is still there, unchanged, in the same project, out of Play mode.
+// `busy`: it is being saved or loaded right now (wait a frame, neither step nor commit)
+bool sceneStillValid(PlacementCall& state, bool& busy, std::string& why) {
+    busy = false;
     Project* project = state.ctx->project();
     if (!project || state.generation != texsynth::projectGeneration()) {
         why = "Another project was opened during the simulation: nothing was changed. Call place_with_physics again in the open project.";
@@ -562,10 +564,11 @@ bool sceneStillValid(PlacementCall& state, std::string& why) {
         why = "The scene closed during the simulation: nothing was changed. Open it and call place_with_physics again.";
         return false;
     }
-    if (project->getPlaySessionSceneId() != NULL_PROJECT_SCENE || sp->playState != ScenePlayState::STOPPED) {
+    if (project->isAnyScenePlaying() || sp->playState == ScenePlayState::PLAYING || sp->playState == ScenePlayState::PAUSED) {
         why = "Play mode started during the simulation: nothing was changed. Stop play and call place_with_physics again.";
         return false;
     }
+    busy = sp->playState != ScenePlayState::STOPPED;
     if (sp->structureVersion != state.structureVersion) {
         why = "The scene changed during the simulation (GameObjects or components added, removed or re-parented): nothing was "
               "changed. Call place_with_physics again.";
@@ -717,6 +720,16 @@ void finishPlacement(const PlacementCallPtr& state) {
     }
     result["applied"] = state->apply;
     state->text = summaryText(*state, r);
+    // decompose: cached asks for missing decompositions and uses hulls meanwhile: once they are
+    // in, the same arguments build other shapes
+    ConvexDecompositionCache* cache = placementDecompositionCache(project);
+    if (!state->apply && state->spec.settings.decomposition == PlacementDecomposition::CACHED && cache && cache->pendingCount() > 0) {
+        const std::string warning = "Convex decompositions are still being computed in the background: an apply may use them and differ "
+                                    "from this preview. For an exact repeat pass decompose: always (waits for them) or never.";
+        if (!result.contains("warnings") || !result["warnings"].is_array()) result["warnings"] = Json::array();
+        result["warnings"].push_back(warning);
+        state->text += "\nWarning: " + warning;
+    }
 
     if (state->screenshot.wanted) {
         if (!state->call->completed() && !state->call->cancelled()) {
@@ -752,7 +765,8 @@ void tick(const PlacementCallPtr& state) {
     }
     if (state->phase == PlacementCall::Phase::Finishing) return;   // the capture ends the job
     std::string why;
-    if (!sceneStillValid(*state, why)) {
+    bool busy = false;
+    if (!sceneStillValid(*state, busy, why)) {
         state->phase = PlacementCall::Phase::Done;
         state->run.reset();
         job->fail(why, specEcho(*state));
@@ -764,9 +778,9 @@ void tick(const PlacementCallPtr& state) {
         job->markCancelled("Physics placement cancelled; nothing was changed.");
         return;
     }
-    // another call's preview poses are in the scene for a screenshot: the run reads the scene
-    // (context is gathered as it goes), so it waits for them to go back
-    if (previewShownIn(state->sceneId)) {
+    // the scene is being saved, or another call's preview poses are in it for a screenshot: the
+    // run reads the scene (context is gathered as it goes), so it waits
+    if (busy || previewShownIn(state->sceneId)) {
         scheduleTick(state);
         return;
     }
@@ -868,9 +882,11 @@ void placeWithPhysicsTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    state->apply = args.value("apply", false);
-    if (args.contains("apply") && !args["apply"].is_boolean()) {
-        call->fail("apply must be true or false.");
+    bool wait = true;
+    double timeout = 120.0;
+    if (!boolArg(args, "apply", state->apply, error) || !boolArg(args, "wait", wait, error) ||
+        !numberArg(args, "timeout_seconds", 1.0, 3600.0, timeout, error)) {
+        call->fail(error);
         return;
     }
     const std::vector<std::string> problems = checkPlacementSpec(project, state->spec);
@@ -888,8 +904,6 @@ void placeWithPhysicsTool(const CallPtr& call) {
     // frames otherwise
     McpValues::refreshTransforms(sp);
 
-    const bool wait = args.value("wait", true);
-    const double timeout = args.value("timeout_seconds", 120.0);
     const std::string title = std::string("Physics ") + placementModeName(state->spec.mode) + " of " +
                               std::to_string(state->spec.entities.size()) + " GameObject(s)" + (state->apply ? "" : " (preview)");
     state->job = ctx.jobs().create("place_with_physics", title);
@@ -940,11 +954,11 @@ void registerPlacementTools(McpRegistry& registry) {
         return o;
     };
     Json context;
-    context["description"] = "auto: what is around the movers; none; or these GameObjects.";
+    context["description"] = "auto: what is around the movers.";
     context["default"] = "auto";
     context["anyOf"] = Json::array({stringEnum("", {"auto", "none"}), entities()});
     Json screenshot;
-    screenshot["description"] = "Scene view framed on the movers (a preview shows its poses).";
+    screenshot["description"] = "Scene view image framed on the movers.";
     screenshot["anyOf"] = Json::array({Json{{"type", "boolean"}},
                                        loose(object({{"max_width", integer("", 0, 4096)}, {"frame", boolean("")}}))});
     tool.inputSchema = object({
@@ -952,7 +966,7 @@ void registerPlacementTools(McpRegistry& registry) {
         {"entities", entities("The movers.")},
         {"use_selection", withDefault(boolean("Instead of entities."), false)},
         {"mode", withDefault(stringEnum("", {"drop", "separate", "move", "snap", "gather", "distribute"}), "drop")},
-        {"target", loose(object({{"position", vec3("Group centre goal.")}, {"delta", vec3("Or an offset.")}, {"rotation", quat("About the centre.")},
+        {"target", loose(object({{"position", vec3("Group centre goal.")}, {"delta", vec3("Or an offset.")}, {"rotation", any("[x,y,z,w] or {\"euler\":[x,y,z]}, about the centre.")},
                                  {"space", withDefault(stringEnum("local: the first mover's parent.", {"world", "local"}), "world")}}))},
         {"ray", loose(object({{"origin", vec3("")}, {"direction", vec3("")}, {"screen", vec2("Or a Scene view pixel.")}}))},
         {"axis", stringEnum("distribute.", {"x", "y", "z"})},
@@ -964,8 +978,8 @@ void registerPlacementTools(McpRegistry& registry) {
         {"ignore_layers", array(Json{{"type", {"integer", "string"}}}, "")},
         {"push_neighbours", withDefault(boolean("Loose objects in the way move too."), false)},
         {"colliders", withDefault(stringEnum("", {"auto", "authored", "generated", "both"}), "auto")},
-        {"decompose", withDefault(stringEnum("always: wait for convex decompositions.", {"never", "cached", "always"}), "cached")},
-        {"jitter", loose(object({{"position", number("m.", 0, 100)}, {"rotation_deg", number("", 0, 180)}}))},
+        {"decompose", withDefault(stringEnum("always: waits for them.", {"never", "cached", "always"}), "cached")},
+        {"jitter", loose(object({{"position", number("m.")}, {"rotation_deg", number("")}}))},
         {"seed", withDefault(integer("", 0, 4294967295LL), 1)},
         {"max_seconds", withDefault(number("Simulated.", 0.01, 300), 10)},
         {"feel", withDefault(stringEnum("", {"precise", "balanced", "fast"}), "balanced")},
