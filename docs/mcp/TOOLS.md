@@ -2231,11 +2231,11 @@ Case-insensitive substring search of the engine's C++ headers/sources and Lua bi
 
 Group: `core`. Hints: open-world
 
-File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.
+File > Build Settings > Build, as a job. desktop: a player for this computer (the first one compiles the engine: minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `allow_missing_assets` | boolean |  | Build even when it references missing assets (list_missing_assets). |
+| `allow_missing_assets` | boolean |  | Build despite missing assets (list_missing_assets). |
 | `backends` | array of string |  | source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered. |
 | `build_jobs` | integer |  | desktop: 0 = auto. Default: preferences.build_jobs. |
 | `build_type` | `"Release"` \| `"Debug"` \| `"RelWithDebInfo"` \| `"MinSizeRel"` |  | Default: `"Release"`. |
@@ -2245,7 +2245,7 @@ File > Build Settings > Build, as a job. desktop: a player for this computer (th
 | `overwrite` | boolean |  | source: allow a non-empty output_dir. |
 | `platform` | `"windows"` \| `"macos"` \| `"linux"` \| `"android"` \| `"ios"` \| `"web"` |  | source: shader target platform. |
 | `shaders` | object {add, exclude, reset} |  |  |
-| `start_scene` | integer or string |  | Also becomes the project's start scene. Default: project's. |
+| `start_scene` | integer or string |  | Also set as the start scene. Default: project's. |
 | `timeout_seconds` | number (0.0..3600.0) |  | Default: `120`. |
 | `wait` | boolean |  | Default: `true`. |
 
