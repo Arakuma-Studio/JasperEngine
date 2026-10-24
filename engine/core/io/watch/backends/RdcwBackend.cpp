@@ -95,7 +95,7 @@ namespace jasperengine::watch {
         std::atomic<bool> running{false};
 
         // the completion handling (the thread and flush())
-        std::timed_mutex readMutex;
+        std::mutex readMutex;
         fs::path pendingOldName;
         bool hasPendingOldName = false;
         ULONGLONG pendingOldNameAt = 0;
@@ -133,7 +133,7 @@ bool RdcwBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::string& 
         return false;
     }
     {
-        std::lock_guard<std::timed_mutex> lock(readMutex);
+        std::lock_guard<std::mutex> lock(readMutex);
         if (!issueReadLocked()) {
             error = "ReadDirectoryChangesW failed (error " + std::to_string(GetLastError()) + ")";
             readPending = false;
@@ -155,7 +155,7 @@ void RdcwBackend::stop() {
         thread.join();
     }
     running = false;
-    std::lock_guard<std::timed_mutex> lock(readMutex);
+    std::lock_guard<std::mutex> lock(readMutex);
     if (directory != INVALID_HANDLE_VALUE) {
         if (readPending) {
             CancelIoEx(directory, &overlapped);
@@ -287,7 +287,7 @@ void RdcwBackend::run() {
     while (running) {
         DWORD timeout = INFINITE;   // idle: no wakeup (S05 R21)
         {
-            std::lock_guard<std::timed_mutex> lock(readMutex);
+            std::lock_guard<std::mutex> lock(readMutex);
             if (hasPendingOldName) timeout = RENAME_HOLD_MS;
         }
         const DWORD wait = WaitForMultipleObjects(2, handles, FALSE, timeout);
@@ -295,7 +295,7 @@ void RdcwBackend::run() {
         if (wait == WAIT_FAILED) break;
         std::vector<RawEvent> events;
         {
-            std::lock_guard<std::timed_mutex> lock(readMutex);
+            std::lock_guard<std::mutex> lock(readMutex);
             if (wait == WAIT_OBJECT_0) completeLocked(events);
             flushOldNameLocked(false, events);
             if (!readPending) {
@@ -308,8 +308,8 @@ void RdcwBackend::run() {
 }
 
 bool RdcwBackend::flush(std::chrono::milliseconds timeout) {
-    std::unique_lock<std::timed_mutex> lock(readMutex, std::defer_lock);
-    if (!lock.try_lock_for(timeout)) return false;
+    if (!lockWithin(readMutex, timeout)) return false;
+    std::unique_lock<std::mutex> lock(readMutex, std::adopt_lock);
     if (directory == INVALID_HANDLE_VALUE) return false;
     // drain the completions that are there (zero timeout), re-issuing after each (S05 R7)
     std::vector<RawEvent> events;
@@ -322,7 +322,7 @@ bool RdcwBackend::flush(std::chrono::milliseconds timeout) {
 }
 
 void RdcwBackend::injectOverflowForTesting() {
-    std::lock_guard<std::timed_mutex> lock(readMutex);
+    std::lock_guard<std::mutex> lock(readMutex);
     // what completeLocked does with a zero-byte completion
     std::vector<RawEvent> events{RawEvent{RawEvent::Type::Rescan, root, {}, true}};
     sink->onRawEvents(std::move(events));

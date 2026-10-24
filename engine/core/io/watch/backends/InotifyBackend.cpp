@@ -62,7 +62,7 @@ namespace jasperengine::watch {
         std::atomic<size_t> watches{0};
 
         // the fd reads, the folder maps and the pending moves (the thread and flush())
-        std::timed_mutex readMutex;
+        std::mutex readMutex;
         std::unordered_map<int, fs::path> folders;   // wd -> folder
         std::unordered_map<std::string, int> wdOf;    // folder (generic) -> wd
         std::vector<PendingMove> pendingMoves;
@@ -99,7 +99,7 @@ bool InotifyBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::strin
         return false;
     }
     {
-        std::lock_guard<std::timed_mutex> lock(readMutex);
+        std::lock_guard<std::mutex> lock(readMutex);
         if (!addTree(root, nullptr)) {
             error = failed ? "the inotify watch limit is reached (raise fs.inotify.max_user_watches)"
                            : "the project folder cannot be watched";
@@ -134,7 +134,7 @@ void InotifyBackend::stop() {
         thread.join();
     }
     running = false;
-    std::lock_guard<std::timed_mutex> lock(readMutex);
+    std::lock_guard<std::mutex> lock(readMutex);
     if (fd >= 0) close(fd);
     if (wakeFd >= 0) close(wakeFd);
     fd = wakeFd = -1;
@@ -305,7 +305,7 @@ void InotifyBackend::run() {
     while (running) {
         int timeout = -1;   // idle: blocked in the kernel, no wakeup (S05 R21)
         {
-            std::lock_guard<std::timed_mutex> lock(readMutex);
+            std::lock_guard<std::mutex> lock(readMutex);
             if (!pendingMoves.empty()) {
                 const auto now = std::chrono::steady_clock::now();
                 auto earliest = pendingMoves.front().at;
@@ -324,14 +324,14 @@ void InotifyBackend::run() {
                 // a spurious wake: nothing to consume
             }
         }
-        std::lock_guard<std::timed_mutex> lock(readMutex);
+        std::lock_guard<std::mutex> lock(readMutex);
         drainLocked();
     }
 }
 
 bool InotifyBackend::flush(std::chrono::milliseconds timeout) {
-    std::unique_lock<std::timed_mutex> lock(readMutex, std::defer_lock);
-    if (!lock.try_lock_for(timeout)) return false;
+    if (!lockWithin(readMutex, timeout)) return false;
+    std::unique_lock<std::mutex> lock(readMutex, std::adopt_lock);
     if (fd < 0) return false;
     drainLocked();
     // every IN_MOVED_TO that belongs to a completed rename is read by now
@@ -342,7 +342,7 @@ bool InotifyBackend::flush(std::chrono::milliseconds timeout) {
 }
 
 void InotifyBackend::injectOverflowForTesting() {
-    std::lock_guard<std::timed_mutex> lock(readMutex);
+    std::lock_guard<std::mutex> lock(readMutex);
     // what drainLocked does with IN_Q_OVERFLOW
     std::vector<RawEvent> events{RawEvent{RawEvent::Type::Rescan, root, {}, true}};
     sink->onRawEvents(std::move(events));

@@ -47,7 +47,7 @@ namespace jasperengine::watch {
         WatchSink* sink = nullptr;
         FSEventStreamRef stream = nullptr;
         dispatch_queue_t queue = nullptr;
-        std::timed_mutex flushMutex;
+        std::mutex flushMutex;
 
         static void callback(ConstFSEventStreamRef, void* info, size_t count, void* paths, const FSEventStreamEventFlags* flags,
                              const FSEventStreamEventId*);
@@ -161,8 +161,9 @@ fs::path FsEventsBackend::underRoot(const fs::path& path) const {
 }
 
 bool FsEventsBackend::flush(std::chrono::milliseconds timeout) {
-    std::unique_lock<std::timed_mutex> lock(flushMutex, std::defer_lock);
-    if (!lock.try_lock_for(timeout) || !stream) return false;
+    if (!lockWithin(flushMutex, timeout)) return false;
+    std::unique_lock<std::mutex> lock(flushMutex, std::adopt_lock);
+    if (!stream) return false;
     // runs the callback for every pending event before it returns (S05 R7)
     FSEventStreamFlushSync(stream);
     return true;

@@ -81,7 +81,7 @@ namespace jasperengine::watch {
         bool stopRequested = false;
 
         // the scan state (the thread and flush())
-        std::timed_mutex scanMutex;
+        std::mutex scanMutex;
         bool built = false;
         ProjectFileIndex index;
         int64_t rootMtime = 0;
@@ -127,7 +127,7 @@ void PollingBackend::stop() {
         thread.join();
     }
     running = false;
-    std::lock_guard<std::timed_mutex> lock(scanMutex);
+    std::lock_guard<std::mutex> lock(scanMutex);
     index.reset({});
     hot.clear();
     built = false;
@@ -136,7 +136,7 @@ void PollingBackend::stop() {
 void PollingBackend::run() {
     {
         // the first look at the tree is the baseline, on this thread (not the caller's)
-        std::lock_guard<std::timed_mutex> lock(scanMutex);
+        std::lock_guard<std::mutex> lock(scanMutex);
         index.reset(root);
         index.build();
         PathStat rootStat;
@@ -149,7 +149,7 @@ void PollingBackend::run() {
             wakeCv.wait_for(lock, interval, [this]() { return stopRequested; });
             if (stopRequested) break;
         }
-        std::lock_guard<std::timed_mutex> lock(scanMutex);
+        std::lock_guard<std::mutex> lock(scanMutex);
         scanLocked(false);
     }
 }
@@ -368,15 +368,15 @@ void PollingBackend::scanLocked(bool flushing) {
 }
 
 bool PollingBackend::flush(std::chrono::milliseconds timeout) {
-    std::unique_lock<std::timed_mutex> lock(scanMutex, std::defer_lock);
-    if (!lock.try_lock_for(timeout)) return false;
+    if (!lockWithin(scanMutex, timeout)) return false;
+    std::unique_lock<std::mutex> lock(scanMutex, std::adopt_lock);
     if (!built) return false;
     scanLocked(true);
     return true;
 }
 
 void PollingBackend::injectOverflowForTesting() {
-    std::lock_guard<std::timed_mutex> lock(scanMutex);
+    std::lock_guard<std::mutex> lock(scanMutex);
     // the scanner has no overflow of its own: the same answer, a rescan of everything
     if (built) index.build();
     std::vector<RawEvent> events{RawEvent{RawEvent::Type::Rescan, root, {}, true}};
