@@ -969,8 +969,26 @@ Verification (all on this host, GL 4.1 core through Mesa llvmpipe under Xvfb):
   shadows, vertex lights, sprite rect, 2D lights, terrain): 84 compiles, 0 failed (GLSL 4.10,
   GLSL ES 3.00, HLSL 5, MSL macOS/iOS, SPIR-V). This caught `active` (a GLSL reserved word)
   and a dynamic index into the block GL flattens (`latticeStarts[b]`): both fixed.
-- `shaders --library all --backend all`: 41 library shaders, 16230 compiles, OK (the matrix
-  includes the four lattice cases). `docs/shaders/library.md` regenerated.
+- `shaders --library all --backend all`: every library shader, OK. `ShaderLibraryMatrix`
+  pairs every non-terrain mesh case (skinning, morph targets, instancing and fade, vertex
+  colours, texture rect, UV2, no normals or UV, fog, shadows, 2D lights, post colour) with a
+  lattice twin on a mesh with vertex colours (3595 compiles on GL, x6 backends).
+  `docs/shaders/library.md` regenerated.
+- `tools/mcp/tests/test_lattice_shaders.py` (new): every combination of `Ltc` with the
+  vertex-stage bits of MESH (lighting outputs Ult / Puc+Shw / Vtl, skinning, 5 morph forms,
+  instancing and fade, normals / tangents / normal map, vertex colour 3/4, texture rect,
+  UV1/UV2: 6480), DEPTH (texture and alpha mask, skinning, morph, instancing and fade, vertex
+  colour, UV1 and rect, normals: 1620) and GBUFFER (textures, normals, skinning, morph,
+  instancing, vertex colour: 360), each with its twin without the lattice, on GL (8460
+  pairs, 7 minutes), and a reduced set on every backend. A lattice variant must never fail
+  where its twin compiles; 1728 twins fail by themselves (over 16 vertex attributes, e.g.
+  eight morph targets with instancing) and their lattice variants fail the same way. A
+  separate run paired DEPTH/GBUFFER variants without vertex colour against their lattice
+  variants with it (what a coloured mesh switches between): no lattice-only failure. The
+  variant WP-BAKE reported (`mesh:Uv1,Puc,Shw,Nor,Tan,Vc4,Mta,Ist,Aop` + `Ltc`) fails
+  identically without `Ltc`: `a_morphTarget7` at location 16, 18 attributes (8 morph
+  targets, 6 instancing, position, normal, tangent, uv1, colour), a pre-existing limit of
+  instanced meshes with 8 position morph targets, not a lattice bug.
 - `jasperengine-htmlui-tests --gtest_filter=LatticeRender*` (standalone engine build,
   `cmake -S engine -B build/htmlui-tests -DJASPERENGINE_HTMLUI_TESTS=ON`): 6 tests: a lattice
   at rest draws pixel-identical to no lattice and unbinding restores the variant and image;
