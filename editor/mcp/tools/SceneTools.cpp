@@ -1170,6 +1170,8 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::PostProcessing:
         case SettingKind::PostProcessingField:
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
+        case SettingKind::ShadowDebugView:
+            break; // editor state, applied by setSceneSettingsTool without an undo step
         case SettingKind::PostProcess: {
             if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;

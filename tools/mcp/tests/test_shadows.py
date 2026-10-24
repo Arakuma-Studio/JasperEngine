@@ -2,17 +2,21 @@
 and Lua (AC17); the shadow cache's paths seen through get_shadow_stats (AC11, AC12, AC13); the
 stable cascades' shimmer metric under a moving and a turning fit camera (AC2, AC3); the cascade
 blend and distance fade (AC4); acne and contact (AC6); point light faces (AC9); one golden image
-per quality tier (AC5); a scene saved before the shadows (AC18).
+per quality tier (AC5); a scene saved before the shadows (AC18); the shadow loops of the
+cross-compiled shaders (AC7).
 
 The scenes are built here with the tools (the Scene view with the shadow debug views and its
 gizmos hidden). JASPER_SHADOW_UPDATE_GOLDEN=1 rewrites the goldens of tools/fixtures/shadows/golden."""
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import harness
@@ -566,3 +570,48 @@ async def test_shadow_migration(ed: Editor):
     await aim(ed, scene, [0, 6, 9], [0, 0, 0])
     img = await shot(ed, scene, frames=8)
     ed.check(not pngdiff.flat(img), "the migrated scene renders")
+
+
+# ------------------------------------------------------------------ cross-compile (AC7)
+
+async def test_shader_cross_compile():
+    """The Lit variants with and without the High filters ('Shq') on every backend: the HLSL keeps
+    its shadow loops as loops (explicit LOD 0 comparisons: SampleCmpLevelZero in [loop], no forced
+    [unroll]), Metal compares at level(0), and only the High variants declare the raw-depth view."""
+    out = Path(tempfile.mkdtemp(prefix="jasper-shadow-shaders-"))
+    try:
+        specs = {"high": "mesh:Puc,Shw,Shq,Nor,Tan", "medium": "mesh:Puc,Shw,Nor,Tan",
+                 "high_terrain": "mesh:Puc,Shw,Shq,Nor,Ter,Fog", "high_skinned": "mesh:Puc,Shw,Shq,Nor,Ski"}
+        args = ["shaders", "--out", str(out), "--format", "json", "--backend", "all"]
+        for spec in specs.values():
+            args += ["--shader", spec]
+        r = subprocess.run(harness.editor_command() + args, capture_output=True, text=True, timeout=1500)
+        harness.check(r.returncode == 0, f"the shadow variants compile on every backend: {r.stdout[-3000:]}{r.stderr[-3000:]}")
+
+        def fragment(name: str, lang: str) -> str:
+            matches = sorted(out.glob(f"*_{lang}.json"))
+            props = specs[name].split(":")[1].split(",")
+            for path in matches:
+                stem = path.stem
+                if all(f"{p}" in stem for p in props) and (("Shq" in stem) == ("Shq" in props)) and \
+                        (("Ter" in stem) == ("Ter" in props)) and (("Ski" in stem) == ("Ski" in props)):
+                    data = json.loads(path.read_text())
+                    stages = data.get("stages", [])
+                    frag = [st for st in stages if "frag" in str(st.get("type", "")).lower() or st.get("name", "").endswith("frag")]
+                    return (frag or stages)[-1]["source"]
+            harness.check(False, f"no {lang} output of {specs[name]} in {[p.name for p in matches]}")
+            return ""
+
+        for name in ("high", "high_terrain", "high_skinned"):
+            hlsl = fragment(name, "hlsl5")
+            harness.check("SampleCmpLevelZero" in hlsl, f"{name}: HLSL compares at LOD 0")
+            harness.check("[loop]" in hlsl, f"{name}: HLSL keeps the shadow loops as loops")
+            harness.check("[unroll]" not in hlsl, f"{name}: no loop is forced to unroll")
+            for lang in ("msl21macos", "msl21ios"):
+                msl = fragment(name, lang)
+                harness.check("sample_compare" in msl and "level(0" in msl, f"{name}: {lang} compares at level(0)")
+        harness.check("u_shadowAtlasRaw" in fragment("high", "glsl410"), "a High variant reads the raw depths (PCSS)")
+        harness.check("u_shadowAtlasRaw" not in fragment("medium", "glsl410"), "a Medium variant has no raw-depth view")
+        harness.check("u_shadowAtlasRaw" not in fragment("high", "glsl300es"), "GLES has no texture unit for it")
+    finally:
+        shutil.rmtree(out, ignore_errors=True)

@@ -325,7 +325,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, float>) return 0.0f;
                 if constexpr (std::is_same_v<T, int>) return 0;
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
-                if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+            if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
@@ -372,7 +372,7 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) {
-                    return scene->getShadowDebugView();
+                    return scene ? scene->getShadowDebugView() : ShadowDebugView::NONE;
                 }
             }
             else if (propertyName == "global_illumination_color") {
@@ -559,11 +559,12 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, float>) return 0.0f;
             if constexpr (std::is_same_v<T, int>) return 0;
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
-                if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+            if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
+            if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             // Add other types as needed
         }

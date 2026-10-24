@@ -340,6 +340,7 @@ namespace jasperengine{
 		bool lights = false;            // punctual lights (Light components, or lighting forced on)
 		int lightCapacity = 8;          // per-object lights tier (RenderSystem::getLightCapacity)
 		bool shadows = false;           // a light casts shadows
+		bool shadowsHQ = false;         // the shadow tier filters with the High filters ('Shq' variants)
 		bool ibl = false;               // the skybox's environment maps are ready
 		bool reflectionProbes = false;
 		bool fog = false;
@@ -1163,6 +1164,10 @@ namespace jasperengine{
 		// the quality tier this update (Scene Quality, else the project's tier of the platform)
 		ShadowTier shadowTier = ShadowTier::HIGH;
 		bool shadowHardOnly = false;
+		// the mesh variants receiving shadows have the High filters (MeshShaderEnvironment::shadowsHQ)
+		bool shadowHQVariants = false;
+		// the requested tier was capped by the shaders this build cooked (warned once)
+		bool shadowTierCapWarned = false;
 		// the shadow cache's copy and clear program (and the atlas debug view's)
 		ObjectRender shadowRestoreRender;
 		std::shared_ptr<ShaderRender> shadowRestoreShader;

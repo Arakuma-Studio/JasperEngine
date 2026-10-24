@@ -288,7 +288,6 @@ void editor::InspectorWindow::drawShadowSplitBar(SceneProject* sceneProject, std
     }
     drawList->AddRect(origin, ImVec2(origin.x + width, origin.y + height), ImGui::GetColorU32(ImGuiCol_Border));
 
-    bool dragging = false;
     if (light.cascadeSplitMode == CascadeSplitMode::MANUAL){
         for (unsigned int c = 0; c + 1 < cascades; c++){
             const float x = origin.x + (splitFar[c] / distance) * width;
@@ -301,7 +300,6 @@ void editor::InspectorWindow::drawShadowSplitBar(SceneProject* sceneProject, std
                 drawList->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + height), IM_COL32(255, 255, 255, 255), 2.0f);
             }
             if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 0.0f)){
-                dragging = true;
                 // between its neighbours, a hair apart
                 const float lower = (c == 0) ? 0.005f : light.cascadeSplits[c - 1] + 0.005f;
                 const float upper = (c + 2 < cascades) ? light.cascadeSplits[c + 1] - 0.005f : 0.995f;
@@ -325,7 +323,6 @@ void editor::InspectorWindow::drawShadowSplitBar(SceneProject* sceneProject, std
     }
     ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + height));
     ImGui::Dummy(ImVec2(width, 0.0f));
-    (void)dragging;
 }
 
 void editor::InspectorWindow::drawSceneShadows(SceneProject* sceneProject){

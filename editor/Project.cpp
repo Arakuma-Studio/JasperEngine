@@ -3394,7 +3394,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
-                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
+                                         scriptsSetShadowQuality());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -3415,6 +3416,12 @@ bool editor::Project::scriptsSetLightCapacity() const {
     // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
     // light capacity tier of the lit variants changes at runtime
     return scriptsMention("axLightsPerObject");
+}
+
+bool editor::Project::scriptsSetShadowQuality() const {
+    // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
+    // the High filters' variant bit, can change at runtime
+    return scriptsMention("hadowQuality");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {

@@ -7,6 +7,8 @@
 //
 //   SHADOW_DATA_POINT   the point-light block and atlas (lightShadow of a point light)
 //   SHADOW_DATA_RAW     the raw-depth view of the atlas (PCSS; never on GLES: 16 texture units)
+//   SHADOW_SAMPLING_HQ  (includes/shadow_sampling.glsl) the High filters, the Vogel disk and
+//                       PCSS; without it a soft light filters with the Medium 5x5 grid
 //
 // includes/lights.glsl declares all of them under USE_SHADOWS (Lit and the shader library).
 // A volumetric pass needs only the default part and sampleDirectionalShadow1(worldPos).

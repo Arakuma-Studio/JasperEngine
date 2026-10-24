@@ -107,6 +107,28 @@ void RenderSystem::updateShadowTier(){
             shadowTier = ShadowTiers::getPlatformTier(static_cast<int>(Engine::getPlatform()));
             break;
     }
+
+    // a build with no shader compiler has the High filters only where its export cooked them
+    // (spec S10 R25): above that it renders the Medium tier
+#if !defined(JASPERENGINE_EDITOR) && !defined(JASPERENGINE_RUNTIME_SHADERS)
+    if (ShadowTiers::usesHighFilters(shadowTier) && !ShadowTiers::cooksHighFilters(static_cast<int>(ShaderPool::getShaderBackend()))){
+        if (!shadowTierCapWarned){
+            Log::warn("Shadow quality %s: this build's shaders have no High filters for %s (Project Settings > Graphics > Shadows "
+                      "sets the platforms' tiers), shadows render at Medium", ShadowTiers::getName(shadowTier),
+                      ShaderPool::getShaderBackendName(ShaderPool::getShaderBackend()).c_str());
+            shadowTierCapWarned = true;
+        }
+        shadowTier = ShadowTier::MEDIUM;
+    }
+#endif
+
+    // one global variant change when the tier crosses into or out of the High filters; every
+    // mesh keeps drawing its variant until its new one is built
+    const bool highFilters = ShadowTiers::usesHighFilters(shadowTier) && !shadowHardOnly;
+    if (highFilters != shadowHQVariants){
+        shadowHQVariants = highFilters;
+        needReloadMeshVariants();
+    }
 }
 
 const ShadowTierSettings& RenderSystem::shadowTierSettings() const{
@@ -718,8 +740,8 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
 
     fs_shadow_data_t& data = view.fs_shadow_data;
     fs_point_shadow_data_t& pointData = view.fs_point_shadow_data;
-    std::memset(&data, 0, sizeof(data));
-    std::memset(&pointData, 0, sizeof(pointData));
+    data = fs_shadow_data_t();
+    pointData = fs_point_shadow_data_t();
     for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
         data.lightVP[s] = Matrix4();
     }

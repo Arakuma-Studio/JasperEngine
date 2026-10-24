@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "StreamMigrations.h"
+#include "pool/ShaderPool.h"
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
@@ -55,9 +57,36 @@ namespace {
         }
     }
 
+    // The scene's mesh variant keys without bit 5: written before the bit was retired it was
+    // the PCF filter ('Pcf'), and it means the High shadow filters ('Shq') now
+    void clearRetiredMeshBit(YAML::Node keys){
+        if (!keys || !keys.IsSequence())
+            return;
+        const uint32_t bit = ShaderPool::getShadowsHQProperty();
+        for (YAML::Node entry : keys){
+            try {
+                if (entry.IsMap() && entry["type"] && entry["type"].IsScalar() && entry["type"].Scalar() == "mesh" && entry["properties"]){
+                    const uint32_t properties = entry["properties"].as<uint32_t>();
+                    if (properties & bit)
+                        entry["properties"] = properties & ~bit;
+                }else if (entry.IsScalar()){
+                    // a packed key (scenes saved before forks were named by path)
+                    const ShaderKey key = entry.as<uint64_t>();
+                    if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (ShaderPool::getPropertiesFromKey(key) & bit)){
+                        entry = (uint64_t)ShaderPool::getShaderKey(ShaderType::MESH, ShaderPool::getPropertiesFromKey(key) & ~bit,
+                                                                   ShaderPool::getCustomIdFromKey(key));
+                    }
+                }
+            } catch (const YAML::Exception&) {
+                // not a number: left for the decoder to report
+            }
+        }
+    }
+
     // Scene 1 -> 2 (S10 shadows): light shadow biases in texels; the old default quality Low
-    // becomes Auto (the platform's tier)
+    // becomes Auto (the platform's tier); the retired mesh variant bit 5 cleared
     void sceneV1ToV2(YAML::Node& root, MigrationLog& log){
+        clearRetiredMeshBit(root["shaderKeys"]);
         YAML::Node settings = root["scene"];
         if (settings && settings.IsMap() && settings["shadowQuality"] && settings["shadowQuality"].IsScalar() &&
                 settings["shadowQuality"].Scalar() == "low"){

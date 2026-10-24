@@ -101,10 +101,15 @@ uniform u_fs_objectLights {
 
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #define SHADOW_DATA_POINT
+    // the High and Ultra filters (the Vogel disk, PCSS) only in the 'Shq' variants
+    // (USE_SHADOWS_HQ: the tier is High or above); the others filter with the Medium grid
+    #ifdef USE_SHADOWS_HQ
+        #define SHADOW_SAMPLING_HQ
+    #endif
     // PCSS reads raw depths through a second view of the atlas: a texture unit GLES3/WebGL2
     // (16 units) and the painted terrain (at 16 textures already) cannot spare; they filter
     // the Ultra tier with the High tier's Vogel disk
-    #if !defined(IS_GLES) && !defined(HAS_TERRAIN_PBR)
+    #if defined(USE_SHADOWS_HQ) && !defined(IS_GLES) && !defined(HAS_TERRAIN_PBR)
         #define SHADOW_DATA_RAW
     #endif
 #endif

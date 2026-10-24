@@ -2347,6 +2347,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     environment.shadows = hasShadows;
+    environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
     environment.fog = hasFog;
@@ -2970,6 +2971,9 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
+    // the High and Ultra shadow filters (S10): only a variant receiving shadows has them
+    if (environment.shadowsHQ && p_receiveShadows)
+        variant.properties |= ShaderPool::getShadowsHQProperty();
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a

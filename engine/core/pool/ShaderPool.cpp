@@ -498,6 +498,10 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
     }
 }
 
+uint32_t ShaderPool::getShadowsHQProperty(){
+    return 1u << 5;
+}
+
 uint32_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 1u << 31;
@@ -543,7 +547,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // case 5 reserved (was 'Pcf'; the PCF filter is uniform-driven now)
+            case 5:  return shortName ? "Shq" : "Shadows HQ";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -1258,8 +1262,8 @@ ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
 }
 
 uint32_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit (e.g. MESH bit 5, the
-    // old 'Pcf') is excluded automatically: it has no short name ("?").
+    // Derived from the property-name table so a retired bit is excluded automatically: it has
+    // no short name ("?").
     uint32_t mask = 0;
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
@@ -1273,6 +1277,9 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     ShaderType type = getShaderTypeFromKey(key);
     uint16_t customId = getCustomIdFromKey(key);
     uint32_t properties = getPropertiesFromKey(key) & getValidPropertyMask(type);
+    // the high-quality shadow filters only exist in a variant that receives shadows
+    if (type == ShaderType::MESH && !(properties & (1u << 4)))
+        properties &= ~getShadowsHQProperty();
     return getShaderKey(type, properties, customId);
 }
 
@@ -1291,8 +1298,8 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= uv2              ? (1 <<  2) : 0;
     prop |= punctual         ? (1 <<  3) : 0;
     prop |= shadows          ? (1 <<  4) : 0;
-    // bit 5 was USE_SHADOWS_PCF; the PCF filter is uniform-driven now (Scene
-    // shadowQuality). Kept reserved so the other bit positions stay stable.
+    // bit 5 ('Shq', USE_SHADOWS_HQ): set after, by the render system's shadow tier
+    // (getShadowsHQProperty)
     prop |= normals          ? (1 <<  6) : 0;
     prop |= normalMap        ? (1 <<  7) : 0;
     prop |= tangents         ? (1 <<  8) : 0;

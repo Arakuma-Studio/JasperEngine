@@ -1072,6 +1072,7 @@ namespace jasperengine::editor{
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
+        bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
         // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
         // getScriptableEffectFields), for the uber variants an export ships

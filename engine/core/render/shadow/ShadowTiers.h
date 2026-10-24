@@ -65,6 +65,15 @@ namespace jasperengine {
         static ShadowTier getPlatformTier(int platform);
         static constexpr int PLATFORM_COUNT = 6;
 
+        // Whether a tier filters with the High filters (the Vogel disk, PCSS), which only the
+        // mesh variants with ShaderPool::getShadowsHQProperty ('Shq') have
+        static bool usesHighFilters(ShadowTier tier);
+        // Whether an export cooks those variants for a shader backend (ShaderBackend as an
+        // int: GLCore, GLES3, D3D11, MetalMacOS, MetalIOS, Vulkan): a platform the backend
+        // ships to has a tier of High or above. GLES3 ships to Android and the web (a desktop
+        // GLES3 build falls back to Medium), Vulkan to Android, Linux and Windows.
+        static bool cooksHighFilters(int shaderBackend);
+
         // lower-case names, as saved and as MCP and Lua take them: low, medium, high, ultra
         static const char* getName(ShadowTier tier);
         static bool fromName(const char* name, ShadowTier& tier);

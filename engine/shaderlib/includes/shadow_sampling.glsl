@@ -141,6 +141,7 @@ float shadowGridPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradi
     return sum / (taps * taps);
 }
 
+#ifdef SHADOW_SAMPLING_HQ
 // taps of a Vogel disk of radiusTexels, rotated by noise keyed on the shadow texel position
 float shadowVogelPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, float radiusTexels, int taps){
     float texel = 1.0 / resolution;
@@ -154,20 +155,26 @@ float shadowVogelPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 grad
     }
     return sum / float(taps);
 }
+#endif
 
 // The filter of a slot: mode 0 hard, 1 grid of radius gridRadius, 2 Vogel of radiusTexels
+// (without SHADOW_SAMPLING_HQ: the Medium tier's 5x5 grid)
 float shadowFilter(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, int mode, int gridRadius, float radiusTexels){
     if (mode == 1){
         return shadowGridPcf(pointAtlas, rect, uv, depth, gradient, resolution, gridRadius);
     }
     if (mode >= 2){
-        return shadowVogelPcf(pointAtlas, rect, uv, depth, gradient, resolution, radiusTexels, SHADOW_VOGEL_TAPS);
+        #ifdef SHADOW_SAMPLING_HQ
+            return shadowVogelPcf(pointAtlas, rect, uv, depth, gradient, resolution, radiusTexels, SHADOW_VOGEL_TAPS);
+        #else
+            return shadowGridPcf(pointAtlas, rect, uv, depth, gradient, resolution, 2);
+        #endif
     }
     float texel = 1.0 / resolution;
     return shadowCompare(pointAtlas, rect, shadowClampToSlot(uv, resolution), depth - dot(abs(gradient), vec2(texel)));
 }
 
-#ifdef SHADOW_DATA_RAW
+#if defined(SHADOW_DATA_RAW) && defined(SHADOW_SAMPLING_HQ)
 // a raw depth of the projective atlas (slot-local uv)
 float shadowRawDepth(vec4 rect, vec2 uv){
     return textureLod(sampler2D(u_shadowAtlasRaw, u_shadowAtlasRaw_smp), shadowAtlasCoord(rect, uv), 0.0).r;
@@ -252,7 +259,7 @@ float shadowSlotVisibility(int slot, vec3 worldPos, vec3 dpdx, vec3 dpdy, float 
         float tanHalf = filterParams.z / max(lightDistance, 0.001);
         radiusTexels = clamp(tanHalf * SHADOW_SOFT_REFERENCE_DISTANCE / max(texelWorld, 0.000001), 1.0, SHADOW_VOGEL_MAX_TEXELS);
     }
-    #ifdef SHADOW_DATA_RAW
+    #if defined(SHADOW_DATA_RAW) && defined(SHADOW_SAMPLING_HQ)
         if (mode == 3 && shadowData.header.z >= 8.0){
             vec2 spotNearFar = (lightDistance > 0.0) ? shadowData.split[slot].xy : vec2(0.0);
             return shadowPcss(slot, uv, depth, gradient, texelWorld, filterParams.z, spotNearFar);

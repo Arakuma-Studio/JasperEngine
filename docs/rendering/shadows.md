@@ -74,6 +74,18 @@ GLES3 and WebGL2 have 16 texture units and render the Ultra tier's soft shadows 
 tier's Vogel disk (no PCSS); so does a painted terrain everywhere. Point lights never take PCSS
 (their filter would cross cube faces): they use the Vogel disk at High and Ultra.
 
+**Shader variants.** The High and Ultra filters (the Vogel disk, PCSS and the raw-depth view of
+the atlas PCSS reads) live only in the mesh variants with the `Shq` bit (`USE_SHADOWS_HQ`); Low and
+Medium variants carry the grid filters alone, so mobile and web shaders stay small. When the
+effective tier crosses into or out of High, every lit mesh switches variant (each keeps drawing
+its old one until the new one is built). Scenes of Quality Auto, and scenes whose scripts set
+`shadowQuality`, ship both; an export then cooks the `Shq` variants only for the shader backends of
+platforms whose tier is High or above (GLES3 ships to Android and the web, Vulkan to Android,
+Linux and Windows, OpenGL to the desktops, Metal and Direct3D to theirs). A game without the
+runtime shader compiler that is asked for a High tier its backend was not cooked for renders
+Medium and logs one warning; with the runtime compiler (Project Settings > Player, on by default)
+it compiles the variants it lacks.
+
 ## How it works
 
 **Cascades.** Each cascade is the bounding sphere of its slice of the camera frustum, seen from
@@ -152,7 +164,8 @@ member (`fs_shadow_data_t` in `RenderSystem.h` must match it):
 Depths are window depths in [0, 1], nearer the light smaller; the comparison sampler returns the
 lit fraction. Declare only what you read (an unread block or texture breaks the bind slots on
 GL): `SHADOW_DATA_POINT` adds the point light block and atlas, `SHADOW_DATA_RAW` the raw-depth
-view (`u_shadowAtlasRaw`, never on GLES). The array sizes come from the defines the engine gives
+view (`u_shadowAtlasRaw`, never on GLES), and `SHADOW_SAMPLING_HQ` the Vogel and PCSS filters
+(`includes/lights.glsl` defines it in `Shq` variants; without it a soft light takes the 5×5 grid). The array sizes come from the defines the engine gives
 mesh shaders (`MAX_SHADOW_ATLAS_SLOTS`, `MAX_SHADOWCASCADES`, `MAX_POINT_SHADOW_ATLAS_SLOTS`,
 `MAX_POINT_SHADOW_LIGHTS`, `SHADOW_CUBE_FACES`); a pass of another shader type defines them too.
 
@@ -167,6 +180,7 @@ shader to get point shadows, the cascade blend and PCSS.
 
 Scenes saved before these shadows (scene format 1 and earlier) migrate on load (S03's
 migration table, scene 1 → 2; prefab 3 → 4): a light's Bias was in depth units and is reset to
-1 texel (logged once per document), and the old default Quality Low becomes Auto. Shadow
+1 texel (logged once per document), the old default Quality Low becomes Auto, and the scene's
+cached mesh variant keys lose bit 5 (the retired PCF bit, `Shq` now). Shadow
 distances become finite: the tier's, as in Unity. Set `shadowDistance` per light or per scene to
 keep longer shadows.

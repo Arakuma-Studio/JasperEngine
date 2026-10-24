@@ -5,9 +5,11 @@
 // it is MigrationsTest.cpp
 
 #include "StreamMigrations.h"
+#include "pool/ShaderPool.h"
 
 #include <gtest/gtest.h>
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
@@ -128,4 +130,18 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
     EXPECT_TRUE(result.migrated());
     EXPECT_EQ(root["version"].as<int>(), 4);
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
+}
+
+TEST(StreamMigrations, SceneV1ToV2ClearsTheRetiredMeshBit){
+    // mesh bit 5 was the PCF filter ('Pcf') before it was retired, the High shadow filters
+    // ('Shq') since S10: an old key loses it, other types' bit 5 and the other bits stay
+    const uint32_t old = (1u << 3) | (1u << 4) | (1u << 5);
+    const ShaderKey packed = ShaderPool::getShaderKey(ShaderType::MESH, old);
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 1, scene: {shadowQuality: high}, entities: [], shaderKeys: ["
+        "{type: mesh, properties: " + std::to_string(old) + "}, {type: blit, properties: 32}, " + std::to_string(packed) + "]}");
+    StreamMigrations::migrate(DocumentKind::Scene, root);
+    EXPECT_EQ(root["shaderKeys"][0]["properties"].as<uint32_t>(), (1u << 3) | (1u << 4));
+    EXPECT_EQ(root["shaderKeys"][1]["properties"].as<uint32_t>(), 32u);
+    EXPECT_EQ(root["shaderKeys"][2].as<uint64_t>(), ShaderPool::getShaderKey(ShaderType::MESH, (1u << 3) | (1u << 4)));
 }

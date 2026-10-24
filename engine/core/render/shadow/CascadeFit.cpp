@@ -239,7 +239,8 @@ CascadeFitResult CascadeFit::fit(const CascadeFitInput& input, const CascadeFitR
         result.blendStart[c] = (c + 1 < cascades) ? result.splitNear[c + 1] : result.splitFar[c];
     }
 
-    double casterMin[3], casterMax[3];
+    double casterMin[3] = {0.0, 0.0, 0.0};
+    double casterMax[3] = {0.0, 0.0, 0.0};
     const bool hasCasters = lightSpaceBounds(result.view, input.casterBounds, casterMin, casterMax);
 
     // a previous fit the frozen cascades can be taken from: same light, resolution and count

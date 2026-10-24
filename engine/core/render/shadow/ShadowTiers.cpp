@@ -69,6 +69,30 @@ ShadowTier ShadowTiers::getPlatformTier(int platform){
     return defaultTier(platform);
 }
 
+bool ShadowTiers::usesHighFilters(ShadowTier tier){
+    return tier == ShadowTier::HIGH || tier == ShadowTier::ULTRA;
+}
+
+bool ShadowTiers::cooksHighFilters(int shaderBackend){
+    // the platforms (Engine::Platform: MacOS, iOS, Web, Android, Linux, Windows) of each
+    // ShaderBackend (GLCore, GLES3, D3D11, MetalMacOS, MetalIOS, Vulkan)
+    static const int platforms[][3] = {
+        {0, 4, 5},    // GLCore
+        {2, 3, -1},   // GLES3
+        {5, -1, -1},  // D3D11
+        {0, -1, -1},  // MetalMacOS
+        {1, -1, -1},  // MetalIOS
+        {3, 4, 5},    // Vulkan
+    };
+    if (shaderBackend < 0 || shaderBackend >= (int)(sizeof(platforms) / sizeof(platforms[0])))
+        return true;
+    for (int platform : platforms[shaderBackend]){
+        if (platform >= 0 && usesHighFilters(getPlatformTier(platform)))
+            return true;
+    }
+    return false;
+}
+
 const char* ShadowTiers::getName(ShadowTier tier){
     int index = static_cast<int>(tier);
     if (index < 0 || index > 3)
