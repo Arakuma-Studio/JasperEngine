@@ -14,11 +14,13 @@
 #include "subsystem/RenderSystem.h"
 
 #include "GpuEnvironment.h"
+#include "HeadlessContext.h"
 #include "ImageCompare.h"
 #include "LogCapture.h"
 
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -73,11 +75,14 @@ namespace {
             });
         }
 
+        // to the bit on glcore, the goldens' backend. Vulkan (lavapipe) rounds a few fogged pixels
+        // of the same, unchanged mesh shaders 1/255 the other way (the no-fog scene matches it to
+        // the bit): there a pixel may differ by 1.
         static CompareOptions exact(){
             CompareOptions options;
-            options.pixelThreshold = 0;
+            options.pixelThreshold = std::strcmp(HeadlessContext::getBackendName(), "glcore") == 0 ? 0 : 1;
             options.maxBadFraction = 0.0;
-            options.maxMeanDiff = 0.0;
+            options.maxMeanDiff = options.pixelThreshold == 0 ? 0.0 : 0.01;
             return options;
         }
     };
