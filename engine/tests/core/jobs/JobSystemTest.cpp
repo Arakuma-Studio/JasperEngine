@@ -15,11 +15,18 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <cstdio>
 #include <mutex>
 #include <set>
 #include <stdexcept>
 #include <thread>
 #include <vector>
+
+#if defined(__linux__)
+    #include <pthread.h>
+    #include <time.h>
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::jobs;
@@ -375,6 +382,83 @@ TEST(JobsShutdown, PendingCancelledDetachedRun){
     EXPECT_EQ(tasksRan.load(), 0);
     blocker.reset();
 }
+
+// ---- idle workers park
+
+#if defined(__linux__)
+namespace{
+    // The CPU clocks of every worker of `system`: one job per worker, each holding its worker
+    // until all of them have started (so no two run on the same thread)
+    std::vector<clockid_t> workerCpuClocks(JobSystem& system){
+        const int workers = system.getWorkerCount();
+        std::mutex mutex;
+        std::vector<clockid_t> clocks;
+        std::atomic<int> started{0};
+        Event release;
+        std::vector<Task<void>> holders;
+        for (int i = 0; i < workers; i++){
+            holders.push_back(system.submit([&]{
+                clockid_t clock;
+                if (pthread_getcpuclockid(pthread_self(), &clock) == 0){
+                    std::lock_guard<std::mutex> lock(mutex);
+                    clocks.push_back(clock);
+                }
+                started++;
+                release.wait();
+            }, {Lane::High, GateClass::Default, "cpu-clock"}));
+        }
+        // polled: a wait would run a holder on this thread
+        const bool allStarted = testsupport::spinUntil([&]{ return started.load() == workers; }, 10000.0);
+        release.set();
+        for (auto& holder : holders)
+            holder.wait();
+        EXPECT_TRUE(allStarted);
+        return clocks;
+    }
+
+    double cpuMs(const std::vector<clockid_t>& clocks){
+        double total = 0.0;
+        for (clockid_t clock : clocks){
+            timespec time{};
+            clock_gettime(clock, &time);
+            total += (double)time.tv_sec * 1000.0 + (double)time.tv_nsec / 1.0e6;
+        }
+        return total;
+    }
+}
+
+TEST(JobsIdle, IdleWorkersUseUnderOnePercentOfACore){
+    JobSystem system(configFor(8));
+    const std::vector<clockid_t> clocks = workerCpuClocks(system);
+    ASSERT_EQ(clocks.size(), 8u);
+    // busy first: idle starts the way it does between frames or tests
+    for (int round = 0; round < 20; round++)
+        system.parallelFor(256, [](size_t){ testsupport::spinFor(10.0); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    const double before = cpuMs(clocks);
+    const auto start = std::chrono::steady_clock::now();
+    std::this_thread::sleep_for(std::chrono::milliseconds(600));
+    const double wallMs = testsupport::elapsedMs(start);
+    const double used = cpuMs(clocks) - before;
+    std::printf("[idle] 8 idle workers: %.2f ms of CPU in %.0f ms (%.3f%% of a core)\n", used, wallMs, 100.0 * used / wallMs);
+    EXPECT_LT(used / wallMs, 0.01) << "idle workers used " << used << " ms of CPU in " << wallMs << " ms";
+}
+
+TEST(JobsIdle, AParkedPoolWakesForNewWorkAtOnce){
+    JobSystem system(configFor(8));
+    for (int round = 0; round < 6; round++){
+        // long enough for every worker to have parked, and to have parked for long
+        std::this_thread::sleep_for(std::chrono::milliseconds(round % 2 ? 250 : 30));
+        const auto submitted = std::chrono::steady_clock::now();
+        Task<void> task = system.submit([]{}, {round % 3 == 0 ? Lane::Background : Lane::Normal, GateClass::Default, "wake"});
+        // polled, so a worker has to wake for it
+        ASSERT_TRUE(testsupport::spinUntil([&]{ return task.isReady(); }, 10000.0));
+        const double latencyMs = testsupport::elapsedMs(submitted);
+        EXPECT_LT(latencyMs, 50.0 * testsupport::timeScale()) << "round " << round << ": a parked worker took " << latencyMs << " ms to wake";
+    }
+}
+#endif
 
 // ---- AC6 single-thread mode
 

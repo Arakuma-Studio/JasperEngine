@@ -25,6 +25,10 @@ blocking thread, a video decoder, a spare an asset reader may take), so a worker
 `JE_JOB_WORKERS=n` overrides the worker count (`0` forces single-thread mode on any platform),
 `JE_ASSET_IO_THREADS=n` the readers. Workers run at normal priority, readers and blocking
 threads below it (Apple: QoS user-initiated / utility). No CPU affinity is ever set.
+A worker that runs out of work spins once for at most 50 µs, then parks on a condition
+variable; producers wake parked workers. Its backstop timeout starts at 1 ms and doubles with
+every wake-up that finds nothing (up to 128 ms), so an idle pool costs a few wake-ups per
+second and well under 1 % of a core (`JobsIdle.*`).
 Jolt's physics jobs run on the workers (`JoltJobAdapter`); `-DJE_JOLT_OWN_POOL=ON` restores
 Jolt's own pool for one release.
 
