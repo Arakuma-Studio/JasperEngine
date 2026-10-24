@@ -8,7 +8,7 @@ a new project whose scene is built here from engine primitives (cubes, a cylinde
   state_hash and poses); after an edit in between, or with other arguments, they simulate again;
 - one undo puts every mover back; prefab instances get transform overrides;
 - the job: progress through get_job, cancel_job stops a run and nothing changes, a scene edit
-  during a run fails it;
+  or Play starting during a run fails it;
 - refused during Play;
 - screenshot: a Scene view image; a preview's poses are put back afterwards, also when a save
   happens meanwhile (the saved file holds the real poses) or the call is cancelled mid-capture;
@@ -64,7 +64,8 @@ SCENE = [
     {"name": "Wall", "type": "cube", "position": [4, 1.5, 10], "scale": [0.5, 3, 4]},
     # snap: a table top at y = 1
     {"name": "Table", "type": "cube", "position": [-10, 0.5, -10], "scale": [2, 1, 2]},
-    {"name": "Snapper", "type": "cube", "position": [-6, 0.5, -10]},
+    # high enough to travel over the table's edge to where the ray hits (snap drives it there)
+    {"name": "Snapper", "type": "cube", "position": [-6, 4, -10]},
     # separate: two cubes overlapping by half a metre
     {"name": "OverA", "type": "cube", "position": [10, 0.5, -10]},
     {"name": "OverB", "type": "cube", "position": [10.5, 0.5, -10]},
@@ -355,22 +356,35 @@ async def test_prefab_overrides_recorded(ed: Editor):
 
 async def test_job_progress_and_cancel(ed: Editor):
     # a slow rain of cubes onto an empty corner of the floor: long enough to watch and cancel
-    rain = [{"name": f"Rain{i}", "type": "cube", "position": [20 + (i % 6) * 1.5, 4 + i * 1.2, 20 + (i // 6) * 1.5]} for i in range(60)]
+    rain = [{"name": f"Rain{i}", "type": "cube", "position": [15 + (i % 6) * 1.5, 4 + i * 1.2, 12 + (i // 6) * 1.5]} for i in range(60)]
     await ed.batch([("create_entity", item) for item in rain])
     names = [item["name"] for item in rain]
     before = await poses(ed, names[:5])
-    args = {"entities": names, "gravity": [0, -0.4, 0], "max_seconds": 300}
-    r = await ed.call_raw("place_with_physics", {**args, "timeout_seconds": 1})
+    args = {"entities": names, "gravity": [0, -0.4, 0], "max_seconds": 120}
+    r = await ed.call_raw("place_with_physics", {**args, "wait": False})
     check(not r.is_error, r.text)
     v = r.structured
-    check(v.get("status") == "running" and v.get("job_id"), f"a long run returns a job: {v}")
-    state = await ed.call("get_job", job_id=v["job_id"])
-    check(state["kind"] == "place_with_physics" and "preview" in state["title"], f"the job: {state}")
-    check(0.0 <= state["progress"] <= 1.0 and "step" in state["message"], f"progress text: {state}")
-    finished = await wait_job(ed, v["job_id"], 600)
-    check(finished["status"] == "succeeded" and finished["result"]["state_hash"], f"the job finishes with the result: {finished}")
+    check(v.get("status") == "running" and v.get("job_id"), f"wait: false returns a job: {v}")
+    progress = []
+    while True:
+        state = await ed.call("get_job", job_id=v["job_id"])
+        if state["status"] != "running":
+            break
+        check(state["kind"] == "place_with_physics" and "preview" in state["title"], f"the job: {state}")
+        progress.append((state["progress"], state["message"]))
+        await asyncio.sleep(0.05)
+    check(state["status"] == "succeeded" and state["result"]["state_hash"], f"the job finishes with the result: {state}")
+    stepping = [(p, m) for p, m in progress if m.startswith("step ")]
+    check(len(stepping) >= 3, f"progress while it ran (\"step k/n, a of b asleep\"): {progress[:5]}")
+    check(all(0.0 <= p <= 1.0 for p, _ in stepping) and stepping[-1][0] >= stepping[0][0], f"progress grows: {stepping}")
+    check(any("asleep" in m for _, m in stepping), f"{stepping[:3]}")
+    # wait with a short timeout_seconds: the call returns the running job
+    r = await ed.call_raw("place_with_physics", {**args, "seed": 4, "timeout_seconds": 1})
+    check(r.structured.get("status") == "running" and r.structured.get("job_id"), f"a run longer than the timeout: {r.structured}")
+    await wait_job(ed, r.structured["job_id"], 600)
 
-    r = await ed.call_raw("place_with_physics", {**args, "apply": True, "wait": False})
+    # another seed than the preview's: not its stored result, a run to cancel
+    r = await ed.call_raw("place_with_physics", {**args, "seed": 2, "apply": True, "wait": False})
     job = r.structured["job_id"]
     cancel = await ed.call("cancel_job", job_id=job)
     check("ancel" in json.dumps(cancel), f"cancel_job: {cancel}")
@@ -379,13 +393,25 @@ async def test_job_progress_and_cancel(ed: Editor):
     check(await poses(ed, names[:5]) == before, "a cancelled apply changes nothing")
 
     # a structural edit while it runs: the run is abandoned (its world no longer matches the scene)
-    r = await ed.call_raw("place_with_physics", {**args, "apply": True, "wait": False})
+    r = await ed.call_raw("place_with_physics", {**args, "seed": 3, "apply": True, "wait": False})
     job = r.structured["job_id"]
     await ed.call("create_entity", name="Intruder", type="cube", position=[40, 0.5, 40])
     state = await wait_job(ed, job, 60)
     check(state["status"] == "failed" and "scene changed" in state["message"], f"the scene changed during the run: {state}")
     check(await poses(ed, names[:5]) == before, "nothing committed")
-    await ed.call("delete_entities", entities=names + ["Intruder"])
+    await ed.call("delete_entities", entities=["Intruder"])
+
+    # Play starting during a run fails it
+    r = await ed.call_raw("place_with_physics", {**args, "seed": 5, "apply": True, "wait": False})
+    job = r.structured["job_id"]
+    await ed.call("play", action="start")
+    try:
+        state = await wait_job(ed, job, 60)
+    finally:
+        await ed.call("play", action="stop")
+    check(state["status"] == "failed" and "Play mode started" in state["message"], f"Play started during the run: {state}")
+    check(await poses(ed, names[:5]) == before, "nothing committed")
+    await ed.call("delete_entities", entities=names)
 
 
 async def test_refused_during_play(ed: Editor):
@@ -393,17 +419,6 @@ async def test_refused_during_play(ed: Editor):
     try:
         msg = await ed.call("place_with_physics", {"entities": ["Crate"]}, expect_error=True)
         check("Play mode" in msg or "playing" in msg, f"refused while playing: {msg}")
-    finally:
-        await ed.call("play", action="stop")
-    # play starting during a run fails it
-    r = await ed.call_raw("place_with_physics", {"entities": ["Crate"], "gravity": [0, -0.05, 0], "max_seconds": 300, "wait": False})
-    job = r.structured["job_id"]
-    await ed.call("play", action="start")
-    try:
-        state = await wait_job(ed, job, 60)
-        check(state["status"] in ("failed", "succeeded"), f"the job ends: {state}")
-        if state["status"] == "failed":
-            check("Play mode started" in state["message"], f"it says why: {state}")
     finally:
         await ed.call("play", action="stop")
     check(await poses(ed, ["Crate"]) == {"Crate": S["start"]["Crate"]}, "nothing changed")
@@ -440,14 +455,14 @@ async def test_screenshot(ed: Editor):
 
     # the call cancelled while the image is taken: the job still ends and the poses go back
     seen = False
-    for attempt in range(8):
+    for attempt in range(40):
         call = asyncio.ensure_future(ed.call_raw("place_with_physics", {"entities": ["Crate"], "screenshot": True, "max_seconds": 30}, timeout=600))
         job = None
         for _ in range(500):
             jobs = await ed.call("get_job")
             running = [j for j in jobs["jobs"] if j["kind"] == "place_with_physics" and j["status"] == "running"]
             if running and "screenshot" in running[0].get("message", ""):
-                job = running[0]["id"]
+                job = running[0]["job_id"]
                 call.cancel()
                 break
             if call.done():
@@ -486,9 +501,9 @@ def saved_position(scene_file: Path, name: str) -> list:
 
 
 async def test_scatter_batch_deterministic(ed: Editor):
-    pebbles = [{"name": "Pebble", "type": "sphere", "position": [-20 + (i % 5) * 0.8, 2 + (i // 5) * 0.6, -20], "scale": [0.4, 0.4, 0.4]}
+    pebbles = [{"name": f"Pebble{i}", "type": "sphere", "position": [-20 + (i % 5) * 0.8, 2 + (i // 5) * 0.6, -20], "scale": [0.4, 0.4, 0.4]}
                for i in range(15)]
-    paths = ["Pebble"] + [f"Pebble#{i}" for i in range(1, 15)]
+    paths = [f"Pebble{i}" for i in range(15)]
 
     async def scatter() -> tuple[dict, dict]:
         calls = [("create_entity", p) for p in pebbles]
@@ -506,8 +521,9 @@ async def test_scatter_batch_deterministic(ed: Editor):
     tree = await ed.call("get_scene_tree")
     check("Pebble" not in tree["tree"], "one undo step for the whole batch")
     second, second_poses = await scatter()
-    check(second["state_hash"] == first["state_hash"], f"the same scatter again: same state_hash ({first['state_hash']} vs {second['state_hash']})")
-    check(second_poses == first_poses, "and the same poses")
+    # new GameObjects (new ids, which state_hash includes), the same arrangement to the bit
+    check(second_poses == first_poses, f"the same scatter again: the same poses ({first_poses} vs {second_poses})")
+    check([e["after"] for e in second["entities"]] == [e["after"] for e in first["entities"]], "the same result poses")
     third = (await place(ed, entities=paths, jitter={"position": 0.3, "rotation_deg": 45}, seed=8)).structured
     check(third["state_hash"] != second["state_hash"], "another seed, another arrangement")
     await ed.call("undo")
@@ -529,6 +545,10 @@ async def test_move_stops_at_wall(ed: Editor):
     pos = by_path(r.structured, "Slider")["after"]["position"]
     check(2.5 < pos[0] <= 3.25 + 0.01, f"it slid toward the target and stopped at the wall's face (x 3.75 - 0.5): {pos}")
     check(abs(pos[2] - 10) < 0.1 and abs(pos[1] - 0.5) < 0.01, f"along its lane, on the floor: {pos}")
+    # a target far behind the wall: batch move never teleports, the wall still stops it
+    r = await place(ed, entities=["Slider"], mode="move", target={"delta": [30, 0, 0]})
+    far = by_path(r.structured, "Slider")
+    check(2.5 < far["after"]["position"][0] <= 3.25 + 0.01, f"a long move stops at the wall too: {far}")
     # a free path: it gets there
     r = await place(ed, entities=["Slider"], mode="move", target={"position": [0, 0.5, 13]})
     pos = by_path(r.structured, "Slider")["after"]["position"]
@@ -542,8 +562,8 @@ async def test_snap_lands_on_surface(ed: Editor):
     check(abs(pos[1] - 1.5) < 0.01 and abs(pos[0] + 10) < 0.1 and abs(pos[2] + 10) < 0.1, f"on the table top (y 1), where the ray hits: {pos}")
     check(any(e["path"] == "Table" for e in by_path(v, "Snapper")["resting_on"]), "resting on the table")
     check(near(v["ray"]["direction"], [0, -1000, 0], 1e-3), f"the ray used: {v.get('ray')}")
-    # a Scene view pixel: the centre of the view, after framing the table
-    await ed.call("frame_entity", entity="Table")
+    # a Scene view pixel: the centre of a view looking straight down at the table
+    await ed.call("set_scene_camera", position=[-10, 25, -9.999], target=[-10, 0, -10])
     shot = await ed.screenshot("scene", max_width=0)
     w, h, _, _ = decode_png(shot)
     r = await place(ed, entities=["Snapper"], mode="snap", ray={"screen": [w / 2, h / 2]}, screenshot=True)
@@ -582,9 +602,9 @@ async def test_decompose_always(ed: Editor):
     # another concave mesh, not decomposed yet: decompose: cached uses a hull and warns that an
     # apply could differ once the decomposition is in
     await ed.call("create_entity", name="Ring2", type="torus", position=[24, 3, -20])
-    await ed.call("set_mesh_geometry", entity="Ring2", torus={"radius": 1.0, "ring_radius": 0.15, "sides": 40, "rings": 24})
+    await ed.call("set_mesh_geometry", entity="Ring2", shape="torus", radius=1.0, ring_radius=0.15, sides=40, rings=24)
     fresh = (await place(ed, entities=["Ring2"])).structured
     ring2 = by_path(fresh, "Ring2")
-    if not ring2["collider"].startswith("decomposed"):
-        check(any("decompose: always" in w for w in fresh["warnings"]), f"the preview warns: {fresh['warnings']}")
+    check(not ring2["collider"].startswith("decomposed"), f"not decomposed yet: a hull meanwhile: {ring2['collider']}")
+    check(any("decompose: always" in w for w in fresh["warnings"]), f"the preview warns: {fresh['warnings']}")
     await ed.call("delete_entities", entities=["Ring", "Ring2"])

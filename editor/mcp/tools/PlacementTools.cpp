@@ -405,7 +405,7 @@ bool specFromArgs(Project* project, SceneProject* sp, SceneWindow* sceneWindow, 
         spec.seed = static_cast<uint32_t>(seed.get<uint64_t>());
     }
     double maxSeconds = spec.maxSeconds;
-    if (!numberArg(args, "max_seconds", 0.01, 300.0, maxSeconds, error)) return false;
+    if (!numberArg(args, "max_seconds", 0.01, 120.0, maxSeconds, error)) return false;
     spec.maxSeconds = static_cast<float>(maxSeconds);
     settings.maxSettleSeconds = spec.maxSeconds;
     if (args.contains("feel") && !args["feel"].is_null()) {
@@ -716,7 +716,7 @@ bool sceneStillValid(PlacementCall& state, bool& busy, std::string& why) {
     return true;
 }
 
-std::string summaryText(const PlacementCall& state, const PlacementResult& r) {
+std::string summaryText(const PlacementCall& state, const PlacementResult& r, const std::string& hint) {
     size_t movers = 0, neighbours = 0, settled = 0;
     for (const PlacementEntityResult& e : r.entities) {
         (e.mover ? movers : neighbours)++;
@@ -734,7 +734,7 @@ std::string summaryText(const PlacementCall& state, const PlacementResult& r) {
         text += "\nRefused " + (state.ctx->project() ? McpRefs::entityPath(state.ctx->project()->getScene(state.sceneId), refusal.entity)
                                                      : std::to_string(refusal.entity)) + ": " + refusal.reason + ".";
     }
-    if (!r.hint.empty()) text += "\nHint: " + r.hint;
+    if (!hint.empty()) text += "\nHint: " + hint;
     for (const std::string& w : r.warnings) text += "\nWarning: " + w;
     return text;
 }
@@ -859,7 +859,7 @@ void finishPlacement(const PlacementCallPtr& state) {
     }
     result["applied"] = state->apply;
     result["from_preview"] = state->fromPreview.has_value();
-    state->text = summaryText(*state, r);
+    state->text = summaryText(*state, r, result.value("hint", r.hint));
     if (state->fromPreview) state->text += " (The stored preview of these arguments, committed without simulating again.)";
     if (!state->apply) {
         // kept for an apply with the same arguments, if the scene still reads the same then
@@ -1071,6 +1071,9 @@ void placeWithPhysicsTool(const CallPtr& call) {
     state->job->setProgress(0.0, "starting");
     scheduleTick(state);
 
+    // the job ends the call (replyWhenJobDone), also when the screenshot at its end completes
+    // inside another of the call's deferred steps
+    call->detach();
     replyWhenJobDone(call, state->job, wait, timeout, [state](const McpJob& finished) {
         Json result = finished.result();
         result["job_id"] = finished.id();
@@ -1136,7 +1139,7 @@ void registerPlacementTools(McpRegistry& registry) {
         {"decompose", withDefault(stringEnum("always: waits for them.", {"never", "cached", "always"}), "cached")},
         {"jitter", loose(object({{"position", number("m.")}, {"rotation_deg", number("")}}))},
         {"seed", withDefault(integer("", 0, 4294967295LL), 1)},
-        {"max_seconds", withDefault(number("Simulated.", 0.01, 300), 10)},
+        {"max_seconds", withDefault(number("Simulated.", 0.01, 120), 10)},
         {"feel", withDefault(stringEnum("", {"precise", "balanced", "fast"}), "balanced")},
         {"apply", withDefault(boolean("false: preview only."), false)},
         {"screenshot", screenshot},

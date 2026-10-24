@@ -114,12 +114,12 @@ against a wall, or rest it on the surface a ray hits. 3D scenes only, not during
 | `drop` (default) | | gravity (`gravity`, default `[0, -9.81, 0]`) until every mover rests |
 | `separate` | | no gravity: overlapping movers are pushed apart until no pair overlaps more than 1 mm |
 | `move` | `target` | the group slides rigidly toward `target.position` (where its centre goes) or by `target.delta`, turned by `target.rotation` about its centre; it stops at what it hits, then settles. `space: local` reads them in the first mover's parent space |
-| `snap` | `ray` | the movers land where `ray` hits (`{origin, direction}` in world space, up to 1 km, or `{screen: [x, y]}`, a Scene view pixel, y down), then settle |
+| `snap` | `ray` | the movers land where `ray` hits (`{origin, direction}` in world space, up to 1 km, or `{screen: [x, y]}`, a Scene view pixel, y down), resting on that surface (aligned to its normal); they travel there like `move`, so something in the way stops them; a ray that hits nothing is an error |
 | `gather` | | pulled toward their common centre (`amount`, 1 = all the way), stopping on contact, then settle |
 | `distribute` | `axis` | spaced evenly along `x`, `y` or `z` between the outermost two, keeping their order, then settle |
 
 `settle: false` stops after the gesture instead of running until resting. `max_seconds`
-(default 10) caps the simulated time. `feel` (`precise`, `balanced`, `fast`) trades accuracy for
+(default 10, at most 120) caps the simulated time. `feel` (`precise`, `balanced`, `fast`) trades accuracy for
 speed when moving. `jitter: {position, rotation_deg}` offsets and turns every mover by a random
 amount (from `seed`, default 1) before the first step.
 
@@ -152,10 +152,11 @@ The same batch with the same `seed` gives the same arrangement; another seed ano
 {"tool": "place_with_physics", "arguments": {"entities": ["Books/Book", "Books/Book#1", "Books/Book#2"], "mode": "separate", "apply": true}}
 ```
 
-**Slide a sofa against the wall** (a target just behind the wall): it stops at the wall.
+**Slide a sofa against the wall:** aim anywhere behind the wall; a move never jumps through
+what is in the way, it stops at the wall.
 
 ```json
-{"tool": "place_with_physics", "arguments": {"entities": ["Room/Sofa"], "mode": "move", "target": {"delta": [2, 0, 0]}, "apply": true}}
+{"tool": "place_with_physics", "arguments": {"entities": ["Room/Sofa"], "mode": "move", "target": {"delta": [5, 0, 0]}, "apply": true}}
 ```
 
 **Snap onto the surface under a point:** a world ray, or a pixel of the Scene view (the size
@@ -178,7 +179,7 @@ the view, so the same pixel means the same ray on the apply call).
 | `entities[]` | `{id, name, path, before, after, moved_m, rotated_deg, settled, settle_step, resting_on, max_penetration_m, collider, warnings}`: world poses (`position`, `rotation` as `[x,y,z,w]`) and `after.local`, the parent-space pose that is committed |
 | `context` | `{bodies, region}`: the static bodies used and the region they were gathered from |
 | `refused` | movers that could not move, with the reason ("no mesh or collider", "too large (> 25 m)...") |
-| `warnings`, `hint` | what to do next: an initial overlap deeper than 5 cm (run `separate` first), nothing to land on (raise `context_margin`), bodies that fell out of the world, never came to rest within `max_seconds`, or teleported, a mesh still loading |
+| `warnings`, `hint` | what to do next: an initial overlap deeper than 5 cm (run `separate` first), nothing to land on under a mover (move it over a surface, or add one below), movers simulated with a caveat (skinned meshes in their bind pose, joints ignored), bodies that fell out of the world or never came to rest within `max_seconds`, a mesh still loading |
 | `ray` | snap: the world ray used |
 | `screenshot` | with `screenshot`: what the image shows |
 

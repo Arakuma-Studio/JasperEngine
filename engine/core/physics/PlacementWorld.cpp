@@ -1337,7 +1337,15 @@ struct PlacementWorld::Impl {
     }
 
     void summariseContacts() {
+        // A body Jolt put to sleep reports no contacts any more (they are removed with it), yet
+        // it still rests where it did: it keeps its summary from its last awake step
+        JPH::BodyInterface& bi = bodyInterface();
+        std::unordered_set<const DynamicBody*> sleeping;
         for (DynamicBody* body : dynamicBodies()) {
+            if (!body->fellOut && !bi.IsActive(body->id)) {
+                sleeping.insert(body);
+                continue;
+            }
             body->contacts = 0;
             body->maxPenetration = 0.0f;
             body->contextNormalSum = JPH::Vec3::sZero();
@@ -1353,7 +1361,7 @@ struct PlacementWorld::Impl {
             const JPH::Vec3 normal(contact.normal);
             auto account = [&](const BodyRef& self, const BodyRef& other, JPH::Vec3Arg intoSelf) {
                 DynamicBody* body = self.dynamic;
-                if (!body || body->fellOut) return;
+                if (!body || body->fellOut || sleeping.count(body)) return;
                 if (!other.dynamic || !other.dynamic->mover) {
                     body->contextNormalSum += intoSelf;
                     body->touchingContext = true;
@@ -1368,6 +1376,7 @@ struct PlacementWorld::Impl {
             account(first->second, second->second, -normal);
         });
         for (DynamicBody* body : dynamicBodies()) {
+            if (sleeping.count(body)) continue;
             for (std::vector<Entity>* list : {&body->restingOn, &body->touching}) {
                 std::sort(list->begin(), list->end());
                 list->erase(std::unique(list->begin(), list->end()), list->end());
