@@ -21,8 +21,8 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Docs](#docs) (3): `read_engine_source`, `search_engine_api`, `search_engine_source`
 - [Build and export](#build-and-export) (4): `build_project`, `generate_shaders`, `get_build_info`, `run_build`
 - [World: terrain, tilemaps, sprites, animation, particles, physics, UI, models](#world-terrain-tilemaps-sprites-animation-particles-physics-ui-models) (18): `create_particles`, `create_ui`, `edit_animation`, `edit_colliders`, `edit_tilemap`, `get_animation`, `get_model_info`, `get_tilemap`, `preview_animation`, `sample_terrain`, `sculpt_terrain`, `set_joint`, `set_model`, `set_rect_layout`, `set_shape_points`, `set_sprite_animation`, `set_sprite_frames`, `set_terrain_maps`
+- [Atmosphere: fog and clouds](#atmosphere-fog-and-clouds) (3): `apply_atmosphere_preset`, `get_atmosphere_info`, `list_atmosphere_presets`
 - [HTML/CSS UI](#htmlcss-ui) (5): `assert_ui`, `create_ui_document`, `inspect_ui`, `list_ui_effects`, `set_ui_effect_time`
-- [Other](#other) (3): `apply_atmosphere_preset`, `get_atmosphere_info`, `list_atmosphere_presets`
 
 ## Core
 
@@ -2550,6 +2550,48 @@ Assign or generate terrain maps in one undo step. heightmap: an image path, or {
 | `scene` | integer or string |  |  |
 
 
+## Atmosphere: fog and clouds
+
+### `apply_atmosphere_preset`
+
+*Apply Atmosphere Preset*
+
+Set the fields of a Fog (makes it a height fog) or Volumetric Clouds preset on that GameObject's component, as one undo step. Preset ids: list_atmosphere_presets.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `entity` | integer or string | yes | The GameObject with the Fog or Volumetric Clouds. |
+| `preset` | string | yes | Preset id, e.g. morning_haze or overcast. |
+| `scene` | integer or string |  |  |
+
+
+### `get_atmosphere_info`
+
+*Get Atmosphere Info*
+
+Hints: read-only
+
+What the height fog, volumetric fog and clouds of a view ran last frame: the quality tier, the volumetric fog's target size, steps, format and volumes, the clouds' mode and noise bake, the Atmosphere/* passes and their VRAM.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `scene` | integer or string |  | Default: the playing scene, else the Game view's. |
+| `view` | `"game"` \| `"scene"` |  | Default: `"game"`. |
+
+
+### `list_atmosphere_presets`
+
+*List Atmosphere Presets*
+
+Hints: read-only
+
+The presets apply_atmosphere_preset takes: fog (Fog of type Height looks) or clouds (Volumetric Clouds).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `kind` | `"fog"` \| `"clouds"` |  | Default: `"fog"`. |
+
+
 ## HTML/CSS UI
 
 ### `assert_ui`
@@ -2640,45 +2682,3 @@ Pin the clock of the HTML/CSS UI effects (edit and play views) so screenshots ar
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `time` | number or null | yes | Seconds, or null: live. |
-
-
-## Other
-
-### `apply_atmosphere_preset`
-
-*Apply Atmosphere Preset*
-
-Set the fields of a Fog (makes it a height fog) or Volumetric Clouds preset on that GameObject's component, as one undo step. Preset ids: list_atmosphere_presets.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `entity` | integer or string | yes | The GameObject with the Fog or Volumetric Clouds. |
-| `preset` | string | yes | Preset id, e.g. morning_haze or overcast. |
-| `scene` | integer or string |  |  |
-
-
-### `get_atmosphere_info`
-
-*Get Atmosphere Info*
-
-Hints: read-only
-
-What the height fog, volumetric fog and clouds of a view ran last frame: the quality tier, the volumetric fog's target size, steps, format and volumes, the clouds' mode and noise bake, the Atmosphere/* passes and their VRAM.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `scene` | integer or string |  | Default: the playing scene, else the Game view's. |
-| `view` | `"game"` \| `"scene"` |  | Default: `"game"`. |
-
-
-### `list_atmosphere_presets`
-
-*List Atmosphere Presets*
-
-Hints: read-only
-
-The presets apply_atmosphere_preset takes: fog (Fog of type Height looks) or clouds (Volumetric Clouds).
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `kind` | `"fog"` \| `"clouds"` |  | Default: `"fog"`. |
