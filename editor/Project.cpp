@@ -1806,7 +1806,8 @@ bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous)
 
         for (Entity entity : users) {
             const ModelComponent& model = sceneProject->scene->getComponent<ModelComponent>(entity);
-            CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            // Not a user edit: the redo steps stay (undoing it puts the parts of the old import back)
+            CommandHandle::get(sceneProject->id)->insertCommand(
                 new ModelLoadCmd(this, sceneProject->id, entity, model.filename, model.mergeStaticMeshes));
         }
     }
@@ -2054,10 +2055,14 @@ void editor::Project::refreshFbxImports() {
                     continue;
                 }
                 bool written = false;
-                importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                {
+                    // One import of a file at a time, with importFbxModel (Play startup, a drop...)
+                    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+                    importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                }
                 if (written) {
                     queueModelReload(fbxPath);
-                } else {
+                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
                     failures[fbxPath] = stamp;
                 }
             }

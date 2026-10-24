@@ -99,6 +99,27 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
     addCommand(cmd);
 }
 
+bool editor::CommandHistory::insertCommand(Command* cmd){
+    if (!cmd->execute()){
+        delete cmd;
+        return false;
+    }
+    cmd->setNoMerge();
+
+    // The scene Stop restores was captured with this step applied, so it is an edit-time step
+    const size_t position = inPlaySession ? playFloor : index;
+    list.insert(list.begin() + position, cmd);
+    if (inPlaySession){
+        playFloor++;
+    }
+    index++;
+
+    if (onSceneModified){
+        onSceneModified(sceneId, cmd->affectsStructure());
+    }
+    return true;
+}
+
 bool editor::CommandHistory::undo(){
     if (index > undoFloor() && list[index-1]->canUndo()){
         const bool structural = list[index-1]->affectsStructure();

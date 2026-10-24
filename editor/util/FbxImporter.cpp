@@ -11,6 +11,7 @@
 #include "json.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstdint>
@@ -213,10 +214,16 @@ ImportInfo readImportInfo(const tinygltf::Model& model) {
     return info;
 }
 
-// Written aside and renamed, so a reader never sees half a file
+// Written aside and renamed, so a reader never sees half a file. The name of the file aside is
+// its own: another writer (a second editor on the project) cannot truncate or take it.
 bool writeFile(const fs::path& path, const std::vector<unsigned char>& bytes, std::string& error) {
+    static std::atomic<uint64_t> writes{0};
+    const uint64_t unique = static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
+        (static_cast<uint64_t>(std::hash<std::thread::id>()(std::this_thread::get_id())) << 1) ^ (writes++ << 48);
+    char suffix[32];
+    std::snprintf(suffix, sizeof(suffix), ".%016llx.tmp", static_cast<unsigned long long>(unique));
     fs::path tempPath = path;
-    tempPath += ".tmp";
+    tempPath += suffix;
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
     {
