@@ -114,7 +114,7 @@ namespace jasperengine {
         bool touchingContext = false;
         Vector3 averageContactNormal;     // unit, pointing away from the context into the body; zero when none
         std::vector<Entity> restingOn;    // context or dynamic bodies it touches from above, stable order
-        uint32_t contacts = 0;
+        uint32_t contacts = 0;            // bodies it touches
         float maxPenetration = 0.0f;      // m, deepest current contact
         PlacementShapeKind shape = PlacementShapeKind::NONE;
         int hullCount = 0;                // DECOMPOSED: hull count; CONVEX_HULL: 1
@@ -149,6 +149,8 @@ namespace jasperengine {
         // when refused: no mesh or collider, larger than maxMoverSize, ignored layer, inactive,
         // mesh still loading, already a mover, a descendant or ancestor of a mover. If the root
         // was context it stops being context.
+        // True with a non-empty *why when accepted with a caveat the caller should pass on (a
+        // skinned mesh simulates in its bind pose; joints are not recreated); else *why is cleared.
         bool addMover(Entity root, std::string* why = nullptr);
         void removeMover(Entity root);
         bool isMover(Entity root) const;
@@ -166,8 +168,8 @@ namespace jasperengine {
         const std::vector<Entity>& getNeighbours() const;
         AABB getContextRegion() const;   // union of every region passed to ensureContext
 
-        // Rebuilds every mover's shape: a decomposition that finished since is picked up. Poses
-        // and velocities are kept.
+        // Rebuilds every mover's (and neighbour's) shape: a decomposition that finished since is
+        // picked up. Poses and velocities are kept.
         void refreshShapes();
         bool hasPendingDecompositions() const;
 
