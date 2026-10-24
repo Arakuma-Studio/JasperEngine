@@ -100,8 +100,8 @@ namespace jasperengine::physicstest {
             return p.getEntity();
         }
 
-        Entity torus(float radius, float ringRadius, const Vector3& position) {
-            Primitive& p = primitive(position);
+        Entity torus(float radius, float ringRadius, const Vector3& position, Entity parent = NULL_ENTITY) {
+            Primitive& p = primitive(position, parent);
             p.createTorus(radius, ringRadius);
             return p.getEntity();
         }

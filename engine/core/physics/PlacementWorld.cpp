@@ -188,6 +188,10 @@ namespace {
         return layer >= 0 && layer < 32 && ((mask >> layer) & 1u) != 0;
     }
 
+    bool editorOverlay(Scene* scene, Entity entity) {
+        return scene->getSystem<RenderSystem>()->isEditorOverlay(entity);
+    }
+
     bool isSkinned(MeshComponent* mesh) {
         for (size_t i = 0; i < mesh->numSubmeshes; i++) {
             if (mesh->submeshes[i].hasSkinning) return true;
@@ -472,6 +476,7 @@ namespace {
         JPH::Matrix<3, 3> matrix;
         for (int r = 0; r < 3; r++) for (int c = 0; c < 3; c++) matrix(r, c) = (float)(covariance[r][c] / (double)points.size());
         JPH::Matrix<3, 3> eigenVectors;
+        eigenVectors.SetIdentity();   // EigenValueSymmetric starts from it
         JPH::Vector<3> eigenValues;
         if (!JPH::EigenValueSymmetric(matrix, eigenVectors, eigenValues)) {
             return axisAlignedBox(points);
@@ -551,6 +556,445 @@ namespace {
         }
         return (float)std::fabs(volume);
     }
+
+
+    struct DynamicShape {
+        JPH::ShapeRefC shape;
+        PlacementShapeKind kind = PlacementShapeKind::NONE;
+        int hullCount = 0;
+        std::vector<uint64_t> keys;
+        std::vector<DecompositionRequest> requests;
+        std::string warning;
+    };
+
+    // What one entity of a body's subtree gives it
+    struct PartSource {
+        Entity entity = NULL_ENTITY;
+        RigidbodyComponent* body = nullptr;   // authored colliders to use
+        MeshComponent* mesh = nullptr;        // a mesh to generate a shape from
+    };
+
+    // A mesh part's generated shape: primitive set when a primitive fits, else hull
+    struct GeneratedFit {
+        JPH::ShapeRefC primitive;
+        PlacementShapeKind kind = PlacementShapeKind::NONE;
+        JPH::Vec3 position = JPH::Vec3::sZero();
+        JPH::Quat rotation = JPH::Quat::sIdentity();
+        JPH::ShapeRefC hull;
+        float hullVolume = 0.0f;
+        float longest = 0.0f;
+    };
+
+    // The shapes of bodies, read from a scene with a world's settings; no world needed, so the
+    // editor's bake buttons reach the same geometry and cache keys the movers use
+    struct BodyShapes {
+        Scene* scene;
+        const PlacementWorldSettings& settings;
+
+    // The pose of entity relative to the body at (bodyPosition, bodyRotation), world scale apart
+    void relativePose(Entity entity, JPH::RVec3Arg bodyPosition, JPH::QuatArg bodyRotation, JPH::Vec3& position, JPH::Quat& rotation) const {
+        Transform& transform = scene->getComponent<Transform>(entity);
+        const JPH::Quat inverse = bodyRotation.Conjugated();
+        position = inverse * JPH::Vec3(toJolt(transform.worldPosition) - bodyPosition);
+        rotation = (inverse * toJolt(transform.worldRotation)).Normalized();
+    }
+
+    // Authored colliders of one entity as parts in the body's space. Movers can't be triangle
+    // meshes or heightfields: an authored mesh becomes the hull of the same vertices, a
+    // heightfield is left out.
+    void authoredParts(Entity entity, RigidbodyComponent& body, bool dynamic, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
+                       std::vector<ShapePart>& parts) const {
+        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+        for (size_t i = 0; i < body.numColliders; i++) {
+            Collider3D collider = body.colliders[i];
+            if (dynamic) {
+                if (collider.type == Collider3DType::HEIGHTFIELD) continue;
+                if (collider.type == Collider3DType::MESH) {
+                    collider.type = Collider3DType::CONVEX_HULL;
+                    if (collider.source == Collider3DSource::RAW_MESH) collider.source = Collider3DSource::RAW_VERTICES;
+                }
+            }
+            JPH::ShapeRefC shape = JoltShapeBuilder::buildColliderShape(scene, entity, collider, nullptr);
+            if (!shape) continue;
+            if (dynamic) {
+                if (shape->MustBeStatic()) continue;
+                withDensity(shape);
+            }
+            ShapePart part;
+            part.shape = shape;
+            part.position = partPosition + partRotation * toJolt(collider.position * scale);
+            part.rotation = (partRotation * toJolt(collider.rotation)).Normalized();
+            part.kind = PlacementShapeKind::AUTHORED;
+            parts.push_back(part);
+        }
+    }
+
+    bool partGeometry(Entity entity, MeshComponent* mesh, PartGeometry& out) const {
+        JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
+        weldExact(out.local, out.indices);
+        if (out.local.empty()) return false;
+        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+        out.scaled.resize(out.local.size());
+        for (size_t i = 0; i < out.local.size(); i++) out.scaled[i] = out.local[i] * scale;
+        return true;
+    }
+
+    DecompositionParams decompositionParams() const {
+        DecompositionParams params;
+        params.maxHulls = settings.decompositionMaxHulls;
+        params.resolution = settings.decompositionResolution;
+        params.maxVerticesPerHull = settings.decompositionMaxVerticesPerHull;
+        return params;
+    }
+
+    // A mesh part's generated shape, before any decomposition (spec section 5.2): a fitted
+    // primitive when it is within 5% of the hull's volume (a box for flat meshes and for meshes
+    // too small for a hull), else the convex hull. False when there is nothing to build.
+    bool fitGenerated(const PartGeometry& geometry, GeneratedFit& out) const {
+        const std::vector<Vector3>& points = geometry.scaled;
+        const OrientedBox aligned = axisAlignedBox(points);
+        const OrientedBox principal = principalBox(points);
+        const float longest = 2.0f * std::max(aligned.halfExtent.ReduceMax(), principal.halfExtent.ReduceMax());
+        out.longest = longest;
+        if (longest <= 0.0f) return false;
+
+        // flat (a plane, a sheet of paper): an oriented box with a minimum thickness
+        const float alignedThin = 2.0f * aligned.halfExtent.ReduceMin();
+        const float principalThin = 2.0f * principal.halfExtent.ReduceMin();
+        if (std::min(alignedThin, principalThin) < 0.01f * longest) {
+            const OrientedBox& flat = alignedThin <= principalThin ? aligned : principal;
+            const float minHalf = 0.5f * std::max(0.01f * longest, 0.001f);
+            const JPH::Vec3 half = JPH::Vec3::sMax(flat.halfExtent, JPH::Vec3::sReplicate(minHalf));
+            out.primitive = boxShape(half);
+            out.kind = PlacementShapeKind::BOX;
+            out.position = flat.center;
+            out.rotation = flat.rotation.GetQuaternion();
+            return out.primitive != nullptr;
+        }
+
+        const float thinnest = std::min(alignedThin, principalThin);
+        out.hull = withDensity(JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(thinnest)));
+        if (!out.hull) {
+            // too small or thin for Jolt's hull builder: its bounding box
+            out.primitive = boxShape(JPH::Vec3::sMax(aligned.halfExtent, JPH::Vec3::sReplicate(0.0005f)));
+            out.kind = PlacementShapeKind::BOX;
+            out.position = aligned.center;
+            out.rotation = JPH::Quat::sIdentity();
+            return out.primitive != nullptr;
+        }
+        const float hullVolume = out.hull->GetVolume();
+        out.hullVolume = hullVolume;
+
+        // primitive fits, each enclosing every vertex; the error is its extra volume over the hull
+        struct Fit { PlacementShapeKind kind; float error; JPH::ShapeRefC shape; JPH::Vec3 position; JPH::Quat rotation; };
+        std::vector<Fit> fits;
+        if (hullVolume > 0.0f) {
+            {   // sphere about the bounds' centre
+                float radius = 0.0f;
+                for (const Vector3& p : points) radius = std::max(radius, (toJolt(p) - aligned.center).Length());
+                const float volume = 4.0f / 3.0f * JPH::JPH_PI * radius * radius * radius;
+                JPH::SphereShapeSettings settings(radius);
+                JPH::ShapeSettings::ShapeResult result = settings.Create();
+                if (result.IsValid()) fits.push_back({PlacementShapeKind::SPHERE, volume / hullVolume - 1.0f, withDensity(result.Get()), aligned.center, JPH::Quat::sIdentity()});
+            }
+            {   // the tighter of the axis-aligned and principal boxes
+                const float alignedVolume = 8.0f * aligned.halfExtent.GetX() * aligned.halfExtent.GetY() * aligned.halfExtent.GetZ();
+                const float principalVolume = 8.0f * principal.halfExtent.GetX() * principal.halfExtent.GetY() * principal.halfExtent.GetZ();
+                const bool useAligned = alignedVolume <= principalVolume * 1.0001f;
+                const OrientedBox& box = useAligned ? aligned : principal;
+                if (JPH::ShapeRefC shape = boxShape(box.halfExtent)) {
+                    fits.push_back({PlacementShapeKind::BOX, std::min(alignedVolume, principalVolume) / hullVolume - 1.0f, shape, box.center,
+                                    useAligned ? JPH::Quat::sIdentity() : box.rotation.GetQuaternion()});
+                }
+            }
+            {   // capsule along the longest principal axis
+                int axisIndex = 0;
+                for (int i = 1; i < 3; i++) if (principal.halfExtent[i] > principal.halfExtent[axisIndex]) axisIndex = i;
+                const JPH::Vec3 axis = principal.rotation.GetColumn3(axisIndex);
+                float radius = 0.0f;
+                for (const Vector3& p : points) {
+                    const JPH::Vec3 d = toJolt(p) - principal.center;
+                    radius = std::max(radius, (d - d.Dot(axis) * axis).Length());
+                }
+                float halfHeight = 0.0f;
+                for (const Vector3& p : points) {
+                    const JPH::Vec3 d = toJolt(p) - principal.center;
+                    const float along = d.Dot(axis);
+                    const float across = (d - along * axis).Length();
+                    halfHeight = std::max(halfHeight, std::fabs(along) - std::sqrt(std::max(0.0f, radius * radius - across * across)));
+                }
+                if (radius > 0.0f && halfHeight > 1e-4f * radius) {
+                    const float volume = JPH::JPH_PI * radius * radius * 2.0f * halfHeight + 4.0f / 3.0f * JPH::JPH_PI * radius * radius * radius;
+                    JPH::CapsuleShapeSettings settings(halfHeight, radius);
+                    JPH::ShapeSettings::ShapeResult result = settings.Create();
+                    if (result.IsValid()) {
+                        fits.push_back({PlacementShapeKind::CAPSULE, volume / hullVolume - 1.0f, withDensity(result.Get()), principal.center,
+                                        JPH::Quat::sFromTo(JPH::Vec3::sAxisY(), axis)});
+                    }
+                }
+            }
+        }
+        // the simplest wins a tie: sphere, box, capsule
+        const Fit* best = nullptr;
+        for (const Fit& fit : fits) {
+            if (!best || fit.error < best->error - 1e-3f) best = &fit;
+        }
+        if (best && best->error < PRIMITIVE_FIT_ERROR) {
+            out.primitive = best->shape;
+            out.kind = best->kind;
+            out.position = best->position;
+            out.rotation = best->rotation;
+        }
+        return true;
+
+    }
+
+    // The generated collider of a mesh part (policy AUTO): the fitted primitive, else the
+    // cached decomposition of a concave mesh, else the convex hull, with a decomposition
+    // requested meanwhile
+    void generatedParts(Entity entity, MeshComponent* mesh, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
+                        std::vector<ShapePart>& parts, std::vector<uint64_t>& keys, std::vector<DecompositionRequest>& requests) const {
+        PartGeometry geometry;
+        GeneratedFit fit;
+        if (!partGeometry(entity, mesh, geometry) || !fitGenerated(geometry, fit)) return;
+
+        auto place = [&](JPH::ShapeRefC shape, JPH::Vec3Arg localPosition, JPH::QuatArg localRotation, PlacementShapeKind kind, int hulls) {
+            ShapePart part;
+            part.shape = shape;
+            part.position = partPosition + partRotation * localPosition;
+            part.rotation = (partRotation * localRotation).Normalized();
+            part.kind = kind;
+            part.hulls = hulls;
+            parts.push_back(part);
+        };
+
+        if (fit.primitive) {
+            place(fit.primitive, fit.position, fit.rotation, fit.kind, 0);
+            return;
+        }
+
+        ConvexDecompositionCache* cache = settings.decompositionCache;
+        if (cache && settings.decomposition != PlacementDecomposition::NEVER) {
+            bool wanted = settings.decomposition == PlacementDecomposition::ALWAYS;
+            if (!wanted) {
+                bool closed = false;
+                const float volume = closedMeshVolume(geometry.scaled, geometry.indices, fit.longest, closed);
+                wanted = !closed || volume < CONCAVE_FILL * fit.hullVolume;
+            }
+            if (wanted) {
+                const DecompositionParams params = decompositionParams();
+                const uint64_t key = hashDecompositionInput(geometry.local, geometry.indices, params);
+                std::vector<ConvexHullPoints> hulls;
+                if (cache->find(key, hulls)) {
+                    const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+                    std::vector<ShapePart> pieces;
+                    for (const ConvexHullPoints& h : hulls) {
+                        std::vector<Vector3> scaled(h.points.size());
+                        for (size_t i = 0; i < h.points.size(); i++) scaled[i] = h.points[i] * scale;
+                        OrientedBox bounds = axisAlignedBox(scaled);
+                        JPH::ShapeRefC piece = withDensity(JoltShapeBuilder::buildConvexHullShape(scaled, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin())));
+                        if (!piece) continue;
+                        ShapePart part;
+                        part.shape = piece;
+                        part.position = partPosition;
+                        part.rotation = partRotation;
+                        part.kind = PlacementShapeKind::DECOMPOSED;
+                        part.hulls = 1;
+                        pieces.push_back(part);
+                    }
+                    if (!pieces.empty()) {
+                        parts.insert(parts.end(), pieces.begin(), pieces.end());
+                        return;
+                    }
+                } else if (cache->status(key) != DecompositionStatus::FAILED) {
+                    keys.push_back(key);
+                    requests.push_back({geometry.local, geometry.indices});
+                }
+            }
+        }
+
+        place(fit.hull, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), PlacementShapeKind::CONVEX_HULL, 1);
+    }
+
+    // The entities of root's subtree a body is built from, and what each gives: its authored
+    // colliders, its mesh to generate a shape from (policy rules), both or neither. False and
+    // *why when root's subtree can't move (terrain, instanced meshes, geometry still loading).
+    bool collectSources(Entity root, std::vector<Entity>& entities, std::vector<PartSource>& sources, std::string* why) const {
+        const PlacementColliderPolicy policy = settings.colliders;
+        resolveTransform(scene, root);
+
+        for (Entity e : subtreeOf(scene, root)) {
+            if (editorOverlay(scene, e)) continue;
+            if (e != root && (!scene->isEntityActiveInHierarchy(e) || layerIgnored(scene, e, settings.ignoreLayerMask))) continue;
+            entities.push_back(e);
+        }
+
+        if (terrainOf(scene, root)) {
+            if (why) *why = "terrain, treated as environment";
+            return false;
+        }
+        for (Entity e : entities) {
+            if (instancedMesh(scene, e)) {
+                if (why) *why = "instanced mesh, treated as environment";
+                return false;
+            }
+        }
+        for (Entity e : entities) {
+            if (JoltShapeBuilder::isGeometryLoading(scene, e)) {
+                if (why) *why = "mesh still loading";
+                return false;
+            }
+        }
+
+        // meshes an authored collider already stands for (AUTO generates nothing for them)
+        std::set<Entity> authoredSources;
+        for (Entity e : entities) {
+            RigidbodyComponent* body = authoredBody(scene, e);
+            if (!body) continue;
+            for (size_t i = 0; i < body->numColliders; i++) {
+                const Collider3D& c = body->colliders[i];
+                if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
+                    c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
+                    for (Entity source : JoltShapeBuilder::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
+                        authoredSources.insert(source);
+                    }
+                }
+            }
+        }
+
+        for (Entity e : entities) {
+            if (terrainOf(scene, e)) continue;
+            PartSource source;
+            source.entity = e;
+            source.body = policy != PlacementColliderPolicy::GENERATED ? authoredBody(scene, e) : nullptr;
+            const bool generate = policy == PlacementColliderPolicy::GENERATED || policy == PlacementColliderPolicy::BOTH ||
+                                  (policy == PlacementColliderPolicy::AUTO && !source.body && !authoredSources.count(e));
+            source.mesh = generate ? triangleMesh(scene, e) : nullptr;
+            if (source.body || source.mesh) sources.push_back(source);
+        }
+        return true;
+    }
+
+    // The checks addMover makes of root itself before building
+    bool canMove(Entity root, std::string* why) const {
+        if (!scene || root == NULL_ENTITY || !scene->isEntityCreated(root) || !scene->findComponent<Transform>(root)) {
+            if (why) *why = "no mesh or collider";
+            return false;
+        }
+        if (!scene->isEntityActiveInHierarchy(root)) {
+            if (why) *why = "inactive";
+            return false;
+        }
+        if (layerIgnored(scene, root, settings.ignoreLayerMask)) {
+            if (why) *why = "ignored layer";
+            return false;
+        }
+        return true;
+    }
+
+    // Every generated mesh part of root's subtree a decomposition would replace (no primitive
+    // fits it), with its cache key and geometry, for baking. False when root can't move.
+    template<typename F>
+    bool forEachDecomposable(Entity root, std::vector<std::string>* notes, F visit) const {
+        std::string why;
+        std::vector<Entity> entities;
+        std::vector<PartSource> sources;
+        if (!canMove(root, &why) || !collectSources(root, entities, sources, &why)) {
+            if (notes) notes->push_back(scene && scene->isEntityCreated(root) ? scene->getEntityName(root) + ": " + why : why);
+            return false;
+        }
+        const DecompositionParams params = decompositionParams();
+        for (const PartSource& source : sources) {
+            if (!source.mesh) continue;
+            PartGeometry geometry;
+            GeneratedFit fit;
+            if (!partGeometry(source.entity, source.mesh, geometry) || !fitGenerated(geometry, fit)) {
+                if (notes) notes->push_back(scene->getEntityName(source.entity) + ": no geometry");
+                continue;
+            }
+            if (fit.primitive) {
+                if (notes) notes->push_back(scene->getEntityName(source.entity) + ": fits a " + placementShapeKindName(fit.kind) + ", nothing to decompose");
+                continue;
+            }
+            visit(source.entity, hashDecompositionInput(geometry.local, geometry.indices, params), geometry);
+        }
+        return true;
+    }
+
+    bool buildDynamicShape(Entity root, DynamicShape& out, std::string* why) const {
+        const PlacementColliderPolicy policy = settings.colliders;
+        std::vector<Entity> entities;
+        std::vector<PartSource> sources;
+        if (!collectSources(root, entities, sources, why)) return false;
+        Transform& rootTransform = scene->getComponent<Transform>(root);
+        const JPH::RVec3 rootPosition(toJolt(rootTransform.worldPosition));
+        const JPH::Quat rootRotation = toJolt(rootTransform.worldRotation);
+
+        std::vector<ShapePart> parts;
+        bool skinned = false;
+        for (const PartSource& source : sources) {
+            resolveTransform(scene, source.entity);
+            JPH::Vec3 position;
+            JPH::Quat rotation;
+            relativePose(source.entity, rootPosition, rootRotation, position, rotation);
+            if (source.body) authoredParts(source.entity, *source.body, true, position, rotation, parts);
+            if (source.mesh) {
+                skinned = skinned || isSkinned(source.mesh);
+                generatedParts(source.entity, source.mesh, position, rotation, parts, out.keys, out.requests);
+            }
+        }
+
+        if (parts.empty()) {
+            if (why) *why = policy == PlacementColliderPolicy::AUTHORED ? "no authored collider" : "no mesh or collider";
+            return false;
+        }
+
+        if (parts.size() == 1 && parts[0].position.IsNearZero(0.0f) && parts[0].rotation.IsClose(JPH::Quat::sIdentity(), 0.0f)) {
+            out.shape = parts[0].shape;
+        } else if (parts.size() == 1) {
+            JPH::RotatedTranslatedShapeSettings settings(parts[0].position, parts[0].rotation, parts[0].shape);
+            JPH::ShapeSettings::ShapeResult result = settings.Create();
+            if (result.IsValid()) out.shape = result.Get();
+        } else {
+            JPH::StaticCompoundShapeSettings compound;
+            for (const ShapePart& part : parts) compound.AddShape(part.position, part.rotation, part.shape);
+            JPH::ShapeSettings::ShapeResult result = compound.Create();
+            if (result.IsValid()) out.shape = result.Get();
+        }
+        if (!out.shape) {
+            if (why) *why = "no mesh or collider";
+            return false;
+        }
+
+        // what the body reports: decomposed if any part is, authored if any part is, the
+        // primitive when every part is the same one, else hull
+        bool anyDecomposed = false, anyAuthored = false, same = true;
+        for (const ShapePart& part : parts) {
+            anyDecomposed = anyDecomposed || part.kind == PlacementShapeKind::DECOMPOSED;
+            anyAuthored = anyAuthored || part.kind == PlacementShapeKind::AUTHORED;
+            same = same && part.kind == parts[0].kind;
+            out.hullCount += part.hulls;
+        }
+        out.kind = anyDecomposed ? PlacementShapeKind::DECOMPOSED : anyAuthored ? PlacementShapeKind::AUTHORED
+                 : same ? parts[0].kind : PlacementShapeKind::CONVEX_HULL;
+
+        // caveats: accepted, but the caller should say so
+        std::vector<std::string> warnings;
+        if (skinned) warnings.push_back("skinned mesh: simulated in its bind pose");
+        auto joints = scene->getComponentArray<Joint3DComponent>();
+        for (size_t i = 0; i < joints->size(); i++) {
+            const Joint3DComponent& joint = joints->getComponentFromIndex(i);
+            if (std::find(entities.begin(), entities.end(), joint.bodyA) != entities.end() ||
+                std::find(entities.begin(), entities.end(), joint.bodyB) != entities.end()) {
+                warnings.push_back("has joints: simulated free (joints are not recreated)");
+                break;
+            }
+        }
+        for (size_t i = 0; i < warnings.size(); i++) out.warning += (i ? "; " : "") + warnings[i];
+        return true;
+    }
+
+    };
 
 }
 
@@ -690,341 +1134,10 @@ struct PlacementWorld::Impl {
         return false;
     }
 
-    // ---- shapes -------------------------------------------------------------------------
+    BodyShapes shapes() const { return BodyShapes{scene, settings}; }
 
-    // The pose of entity relative to the body at (bodyPosition, bodyRotation), world scale apart
-    void relativePose(Entity entity, JPH::RVec3Arg bodyPosition, JPH::QuatArg bodyRotation, JPH::Vec3& position, JPH::Quat& rotation) const {
-        Transform& transform = scene->getComponent<Transform>(entity);
-        const JPH::Quat inverse = bodyRotation.Conjugated();
-        position = inverse * JPH::Vec3(toJolt(transform.worldPosition) - bodyPosition);
-        rotation = (inverse * toJolt(transform.worldRotation)).Normalized();
-    }
-
-    // Authored colliders of one entity as parts in the body's space. Movers can't be triangle
-    // meshes or heightfields: an authored mesh becomes the hull of the same vertices, a
-    // heightfield is left out.
-    void authoredParts(Entity entity, RigidbodyComponent& body, bool dynamic, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
-                       std::vector<ShapePart>& parts) const {
-        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
-        for (size_t i = 0; i < body.numColliders; i++) {
-            Collider3D collider = body.colliders[i];
-            if (dynamic) {
-                if (collider.type == Collider3DType::HEIGHTFIELD) continue;
-                if (collider.type == Collider3DType::MESH) {
-                    collider.type = Collider3DType::CONVEX_HULL;
-                    if (collider.source == Collider3DSource::RAW_MESH) collider.source = Collider3DSource::RAW_VERTICES;
-                }
-            }
-            JPH::ShapeRefC shape = JoltShapeBuilder::buildColliderShape(scene, entity, collider, nullptr);
-            if (!shape) continue;
-            if (dynamic) {
-                if (shape->MustBeStatic()) continue;
-                withDensity(shape);
-            }
-            ShapePart part;
-            part.shape = shape;
-            part.position = partPosition + partRotation * toJolt(collider.position * scale);
-            part.rotation = (partRotation * toJolt(collider.rotation)).Normalized();
-            part.kind = PlacementShapeKind::AUTHORED;
-            parts.push_back(part);
-        }
-    }
-
-    bool partGeometry(Entity entity, MeshComponent* mesh, PartGeometry& out) const {
-        JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
-        weldExact(out.local, out.indices);
-        if (out.local.empty()) return false;
-        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
-        out.scaled.resize(out.local.size());
-        for (size_t i = 0; i < out.local.size(); i++) out.scaled[i] = out.local[i] * scale;
-        return true;
-    }
-
-    DecompositionParams decompositionParams() const {
-        DecompositionParams params;
-        params.maxHulls = settings.decompositionMaxHulls;
-        params.resolution = settings.decompositionResolution;
-        params.maxVerticesPerHull = settings.decompositionMaxVerticesPerHull;
-        return params;
-    }
-
-    // The generated collider of a mesh part (spec section 5.2, policy AUTO): a fitted
-    // primitive when it is within 5% of the hull's volume (a box for flat meshes), else the
-    // cached decomposition of a concave mesh, else the convex hull, with a decomposition
-    // requested meanwhile
-    void generatedParts(Entity entity, MeshComponent* mesh, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
-                        std::vector<ShapePart>& parts, std::vector<uint64_t>& keys, std::vector<DecompositionRequest>& requests) const {
-        PartGeometry geometry;
-        if (!partGeometry(entity, mesh, geometry)) return;
-        const std::vector<Vector3>& points = geometry.scaled;
-
-        auto place = [&](JPH::ShapeRefC shape, JPH::Vec3Arg localPosition, JPH::QuatArg localRotation, PlacementShapeKind kind, int hulls) {
-            ShapePart part;
-            part.shape = shape;
-            part.position = partPosition + partRotation * localPosition;
-            part.rotation = (partRotation * localRotation).Normalized();
-            part.kind = kind;
-            part.hulls = hulls;
-            parts.push_back(part);
-        };
-
-        const OrientedBox aligned = axisAlignedBox(points);
-        const OrientedBox principal = principalBox(points);
-        const float longest = 2.0f * std::max(aligned.halfExtent.ReduceMax(), principal.halfExtent.ReduceMax());
-        if (longest <= 0.0f) return;
-
-        // flat (a plane, a sheet of paper): an oriented box with a minimum thickness
-        const float alignedThin = 2.0f * aligned.halfExtent.ReduceMin();
-        const float principalThin = 2.0f * principal.halfExtent.ReduceMin();
-        if (std::min(alignedThin, principalThin) < 0.01f * longest) {
-            const OrientedBox& flat = alignedThin <= principalThin ? aligned : principal;
-            const float minHalf = 0.5f * std::max(0.01f * longest, 0.001f);
-            const JPH::Vec3 half = JPH::Vec3::sMax(flat.halfExtent, JPH::Vec3::sReplicate(minHalf));
-            if (JPH::ShapeRefC box = boxShape(half)) {
-                place(box, flat.center, flat.rotation.GetQuaternion(), PlacementShapeKind::BOX, 0);
-            }
-            return;
-        }
-
-        const float thinnest = std::min(alignedThin, principalThin);
-        JPH::ShapeRefC hull = withDensity(JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(thinnest)));
-        if (!hull) {
-            // too small or thin for Jolt's hull builder: its bounding box
-            if (JPH::ShapeRefC box = boxShape(JPH::Vec3::sMax(aligned.halfExtent, JPH::Vec3::sReplicate(0.0005f)))) {
-                place(box, aligned.center, JPH::Quat::sIdentity(), PlacementShapeKind::BOX, 0);
-            }
-            return;
-        }
-        const float hullVolume = hull->GetVolume();
-
-        // primitive fits, each enclosing every vertex; the error is its extra volume over the hull
-        struct Fit { PlacementShapeKind kind; float error; JPH::ShapeRefC shape; JPH::Vec3 position; JPH::Quat rotation; };
-        std::vector<Fit> fits;
-        if (hullVolume > 0.0f) {
-            {   // sphere about the bounds' centre
-                float radius = 0.0f;
-                for (const Vector3& p : points) radius = std::max(radius, (toJolt(p) - aligned.center).Length());
-                const float volume = 4.0f / 3.0f * JPH::JPH_PI * radius * radius * radius;
-                JPH::SphereShapeSettings settings(radius);
-                JPH::ShapeSettings::ShapeResult result = settings.Create();
-                if (result.IsValid()) fits.push_back({PlacementShapeKind::SPHERE, volume / hullVolume - 1.0f, withDensity(result.Get()), aligned.center, JPH::Quat::sIdentity()});
-            }
-            {   // the tighter of the axis-aligned and principal boxes
-                const float alignedVolume = 8.0f * aligned.halfExtent.GetX() * aligned.halfExtent.GetY() * aligned.halfExtent.GetZ();
-                const float principalVolume = 8.0f * principal.halfExtent.GetX() * principal.halfExtent.GetY() * principal.halfExtent.GetZ();
-                const bool useAligned = alignedVolume <= principalVolume * 1.0001f;
-                const OrientedBox& box = useAligned ? aligned : principal;
-                if (JPH::ShapeRefC shape = boxShape(box.halfExtent)) {
-                    fits.push_back({PlacementShapeKind::BOX, std::min(alignedVolume, principalVolume) / hullVolume - 1.0f, shape, box.center,
-                                    useAligned ? JPH::Quat::sIdentity() : box.rotation.GetQuaternion()});
-                }
-            }
-            {   // capsule along the longest principal axis
-                int axisIndex = 0;
-                for (int i = 1; i < 3; i++) if (principal.halfExtent[i] > principal.halfExtent[axisIndex]) axisIndex = i;
-                const JPH::Vec3 axis = principal.rotation.GetColumn3(axisIndex);
-                float radius = 0.0f;
-                for (const Vector3& p : points) {
-                    const JPH::Vec3 d = toJolt(p) - principal.center;
-                    radius = std::max(radius, (d - d.Dot(axis) * axis).Length());
-                }
-                float halfHeight = 0.0f;
-                for (const Vector3& p : points) {
-                    const JPH::Vec3 d = toJolt(p) - principal.center;
-                    const float along = d.Dot(axis);
-                    const float across = (d - along * axis).Length();
-                    halfHeight = std::max(halfHeight, std::fabs(along) - std::sqrt(std::max(0.0f, radius * radius - across * across)));
-                }
-                if (radius > 0.0f && halfHeight > 1e-4f * radius) {
-                    const float volume = JPH::JPH_PI * radius * radius * 2.0f * halfHeight + 4.0f / 3.0f * JPH::JPH_PI * radius * radius * radius;
-                    JPH::CapsuleShapeSettings settings(halfHeight, radius);
-                    JPH::ShapeSettings::ShapeResult result = settings.Create();
-                    if (result.IsValid()) {
-                        fits.push_back({PlacementShapeKind::CAPSULE, volume / hullVolume - 1.0f, withDensity(result.Get()), principal.center,
-                                        JPH::Quat::sFromTo(JPH::Vec3::sAxisY(), axis)});
-                    }
-                }
-            }
-        }
-        // the simplest wins a tie: sphere, box, capsule
-        const Fit* best = nullptr;
-        for (const Fit& fit : fits) {
-            if (!best || fit.error < best->error - 1e-3f) best = &fit;
-        }
-        if (best && best->error < PRIMITIVE_FIT_ERROR) {
-            place(best->shape, best->position, best->rotation, best->kind, 0);
-            return;
-        }
-
-        ConvexDecompositionCache* cache = settings.decompositionCache;
-        if (cache && settings.decomposition != PlacementDecomposition::NEVER) {
-            bool wanted = settings.decomposition == PlacementDecomposition::ALWAYS;
-            if (!wanted) {
-                bool closed = false;
-                const float volume = closedMeshVolume(points, geometry.indices, longest, closed);
-                wanted = !closed || volume < CONCAVE_FILL * hullVolume;
-            }
-            if (wanted) {
-                const DecompositionParams params = decompositionParams();
-                const uint64_t key = hashDecompositionInput(geometry.local, geometry.indices, params);
-                std::vector<ConvexHullPoints> hulls;
-                if (cache->find(key, hulls)) {
-                    const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
-                    std::vector<ShapePart> pieces;
-                    for (const ConvexHullPoints& h : hulls) {
-                        std::vector<Vector3> scaled(h.points.size());
-                        for (size_t i = 0; i < h.points.size(); i++) scaled[i] = h.points[i] * scale;
-                        OrientedBox bounds = axisAlignedBox(scaled);
-                        JPH::ShapeRefC piece = withDensity(JoltShapeBuilder::buildConvexHullShape(scaled, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin())));
-                        if (!piece) continue;
-                        ShapePart part;
-                        part.shape = piece;
-                        part.position = partPosition;
-                        part.rotation = partRotation;
-                        part.kind = PlacementShapeKind::DECOMPOSED;
-                        part.hulls = 1;
-                        pieces.push_back(part);
-                    }
-                    if (!pieces.empty()) {
-                        parts.insert(parts.end(), pieces.begin(), pieces.end());
-                        return;
-                    }
-                } else if (cache->status(key) != DecompositionStatus::FAILED) {
-                    keys.push_back(key);
-                    requests.push_back({geometry.local, geometry.indices});
-                }
-            }
-        }
-
-        place(hull, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), PlacementShapeKind::CONVEX_HULL, 1);
-    }
-
-    struct DynamicShape {
-        JPH::ShapeRefC shape;
-        PlacementShapeKind kind = PlacementShapeKind::NONE;
-        int hullCount = 0;
-        std::vector<uint64_t> keys;
-        std::vector<DecompositionRequest> requests;
-        std::string warning;
-    };
-
-    // The shape of a dynamic body for root's subtree, in the root's space (rotation-free,
-    // world scale baked in). False and *why when there is nothing to build it from.
     bool buildDynamicShape(Entity root, DynamicShape& out, std::string* why) const {
-        const PlacementColliderPolicy policy = settings.colliders;
-        resolveTransform(scene, root);
-        Transform& rootTransform = scene->getComponent<Transform>(root);
-        const JPH::RVec3 rootPosition(toJolt(rootTransform.worldPosition));
-        const JPH::Quat rootRotation = toJolt(rootTransform.worldRotation);
-
-        std::vector<Entity> entities;
-        for (Entity e : subtreeOf(scene, root)) {
-            if (e != root && (!scene->isEntityActiveInHierarchy(e) || layerIgnored(scene, e, settings.ignoreLayerMask))) continue;
-            entities.push_back(e);
-        }
-
-        if (terrainOf(scene, root)) {
-            if (why) *why = "terrain, treated as environment";
-            return false;
-        }
-        for (Entity e : entities) {
-            if (instancedMesh(scene, e)) {
-                if (why) *why = "instanced mesh, treated as environment";
-                return false;
-            }
-        }
-        for (Entity e : entities) {
-            if (JoltShapeBuilder::isGeometryLoading(scene, e)) {
-                if (why) *why = "mesh still loading";
-                return false;
-            }
-        }
-
-        // meshes an authored collider already stands for (AUTO generates nothing for them)
-        std::set<Entity> authoredSources;
-        for (Entity e : entities) {
-            RigidbodyComponent* body = authoredBody(scene, e);
-            if (!body) continue;
-            for (size_t i = 0; i < body->numColliders; i++) {
-                const Collider3D& c = body->colliders[i];
-                if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
-                    c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
-                    for (Entity source : JoltShapeBuilder::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
-                        authoredSources.insert(source);
-                    }
-                }
-            }
-        }
-
-        std::vector<ShapePart> parts;
-        bool skinned = false;
-        for (Entity e : entities) {
-            if (terrainOf(scene, e)) continue;
-            resolveTransform(scene, e);
-            JPH::Vec3 position;
-            JPH::Quat rotation;
-            relativePose(e, rootPosition, rootRotation, position, rotation);
-
-            RigidbodyComponent* body = policy != PlacementColliderPolicy::GENERATED ? authoredBody(scene, e) : nullptr;
-            if (body) authoredParts(e, *body, true, position, rotation, parts);
-
-            const bool generate = policy == PlacementColliderPolicy::GENERATED || policy == PlacementColliderPolicy::BOTH ||
-                                  (policy == PlacementColliderPolicy::AUTO && !body && !authoredSources.count(e));
-            MeshComponent* mesh = generate ? triangleMesh(scene, e) : nullptr;
-            if (mesh) {
-                skinned = skinned || isSkinned(mesh);
-                generatedParts(e, mesh, position, rotation, parts, out.keys, out.requests);
-            }
-        }
-
-        if (parts.empty()) {
-            if (why) *why = policy == PlacementColliderPolicy::AUTHORED ? "no authored collider" : "no mesh or collider";
-            return false;
-        }
-
-        if (parts.size() == 1 && parts[0].position.IsNearZero(0.0f) && parts[0].rotation.IsClose(JPH::Quat::sIdentity(), 0.0f)) {
-            out.shape = parts[0].shape;
-        } else if (parts.size() == 1) {
-            JPH::RotatedTranslatedShapeSettings settings(parts[0].position, parts[0].rotation, parts[0].shape);
-            JPH::ShapeSettings::ShapeResult result = settings.Create();
-            if (result.IsValid()) out.shape = result.Get();
-        } else {
-            JPH::StaticCompoundShapeSettings compound;
-            for (const ShapePart& part : parts) compound.AddShape(part.position, part.rotation, part.shape);
-            JPH::ShapeSettings::ShapeResult result = compound.Create();
-            if (result.IsValid()) out.shape = result.Get();
-        }
-        if (!out.shape) {
-            if (why) *why = "no mesh or collider";
-            return false;
-        }
-
-        // what the body reports: decomposed if any part is, authored if any part is, the
-        // primitive when every part is the same one, else hull
-        bool anyDecomposed = false, anyAuthored = false, same = true;
-        for (const ShapePart& part : parts) {
-            anyDecomposed = anyDecomposed || part.kind == PlacementShapeKind::DECOMPOSED;
-            anyAuthored = anyAuthored || part.kind == PlacementShapeKind::AUTHORED;
-            same = same && part.kind == parts[0].kind;
-            out.hullCount += part.hulls;
-        }
-        out.kind = anyDecomposed ? PlacementShapeKind::DECOMPOSED : anyAuthored ? PlacementShapeKind::AUTHORED
-                 : same ? parts[0].kind : PlacementShapeKind::CONVEX_HULL;
-
-        // caveats: accepted, but the caller should say so
-        std::vector<std::string> warnings;
-        if (skinned) warnings.push_back("skinned mesh: simulated in its bind pose");
-        auto joints = scene->getComponentArray<Joint3DComponent>();
-        for (size_t i = 0; i < joints->size(); i++) {
-            const Joint3DComponent& joint = joints->getComponentFromIndex(i);
-            if (std::find(entities.begin(), entities.end(), joint.bodyA) != entities.end() ||
-                std::find(entities.begin(), entities.end(), joint.bodyB) != entities.end()) {
-                warnings.push_back("has joints: simulated free (joints are not recreated)");
-                break;
-            }
-        }
-        for (size_t i = 0; i < warnings.size(); i++) out.warning += (i ? "; " : "") + warnings[i];
-        return true;
+        return shapes().buildDynamicShape(root, out, why);
     }
 
     std::unique_ptr<DynamicBody> createDynamicBody(Entity root, bool mover, DynamicShape& built) {
@@ -1058,7 +1171,7 @@ struct PlacementWorld::Impl {
 
     void issueRequests(const DynamicShape& built) const {
         if (!settings.decompositionCache) return;
-        const DecompositionParams params = decompositionParams();
+        const DecompositionParams params = shapes().decompositionParams();
         for (const DecompositionRequest& request : built.requests) {
             settings.decompositionCache->request(request.positions, request.indices, params);
         }
@@ -1155,21 +1268,21 @@ struct PlacementWorld::Impl {
         if (!transform) return true;
 
         const PlacementColliderPolicy policy = settings.colliders;
-        std::vector<JPH::ShapeRefC> shapes;
+        std::vector<JPH::ShapeRefC> contextShapes;
 
         RigidbodyComponent* body = policy != PlacementColliderPolicy::GENERATED ? authoredBody(scene, entity) : nullptr;
         if (body) {
             std::vector<ShapePart> parts;
-            authoredParts(entity, *body, false, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), parts);
+            shapes().authoredParts(entity, *body, false, JPH::Vec3::sZero(), JPH::Quat::sIdentity(), parts);
             if (parts.size() == 1) {
                 JPH::RotatedTranslatedShapeSettings single(parts[0].position, parts[0].rotation, parts[0].shape);
                 JPH::ShapeSettings::ShapeResult result = single.Create();
-                if (result.IsValid()) shapes.push_back(result.Get());
+                if (result.IsValid()) contextShapes.push_back(result.Get());
             } else if (parts.size() > 1) {
                 JPH::StaticCompoundShapeSettings compound;
                 for (const ShapePart& part : parts) compound.AddShape(part.position, part.rotation, part.shape);
                 JPH::ShapeSettings::ShapeResult result = compound.Create();
-                if (result.IsValid()) shapes.push_back(result.Get());
+                if (result.IsValid()) contextShapes.push_back(result.Get());
             }
         }
 
@@ -1185,18 +1298,18 @@ struct PlacementWorld::Impl {
                     if (terrain->heightMap.load().state == ResourceLoadState::Loading) return false;
                 }
                 JPH::ShapeRefC shape = JoltShapeBuilder::buildHeightFieldShape(scene, *terrain, transform->worldScale, 0, nullptr);
-                if (shape) shapes.push_back(shape);
+                if (shape) contextShapes.push_back(shape);
             } else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && mesh->enabled && instancedMesh(scene, entity)) {
                 JPH::ShapeRefC shape = instancedShape(entity, mesh, *instancedMesh(scene, entity));
-                if (shape) shapes.push_back(shape);
+                if (shape) contextShapes.push_back(shape);
             } else if (MeshComponent* triangles = triangleMesh(scene, entity)) {
                 JPH::ShapeRefC shape = contextMeshShape(entity, triangles);
-                if (shape) shapes.push_back(shape);
+                if (shape) contextShapes.push_back(shape);
             }
         }
 
         JPH::BodyInterface& bi = bodyInterface();
-        for (const JPH::ShapeRefC& shape : shapes) {
+        for (const JPH::ShapeRefC& shape : contextShapes) {
             JPH::BodyCreationSettings creation(shape, JPH::RVec3(toJolt(transform->worldPosition)), toJolt(transform->worldRotation),
                                                JPH::EMotionType::Static, Layers::STATIC);
             creation.mFriction = FRICTION;
@@ -1219,7 +1332,10 @@ struct PlacementWorld::Impl {
         added.clear();
     }
 
+    // Something a shape can be built from, and not an editor overlay (selection outlines, the
+    // terrain brush, the Physics Placement lines drawn into the edited scene)
     bool contributes(Entity entity) const {
+        if (editorOverlay(scene, entity)) return false;
         return terrainOf(scene, entity) || authoredBody(scene, entity) || triangleMesh(scene, entity) ||
                (scene->findComponent<MeshComponent>(entity) && instancedMesh(scene, entity));
     }
@@ -1314,9 +1430,10 @@ struct PlacementWorld::Impl {
         }
 
         for (Entity entity : candidates) {
-            if (processed.count(entity) || foliage.count(entity)) continue;
+            // cheapest first: most entities give no shape
+            if (processed.count(entity) || !contributes(entity) || foliage.count(entity)) continue;
             if (!scene->isEntityActiveInHierarchy(entity) || layerIgnored(scene, entity, settings.ignoreLayerMask)) continue;
-            if (insideMover(entity) || findDynamic(entity) || !contributes(entity)) continue;
+            if (insideMover(entity) || findDynamic(entity)) continue;
             if (region && !region->intersects(entityWorldBounds(scene, entity))) continue;
 
             if (region && settings.pushNeighbours && movableObject(entity, movableCache)) {
@@ -1641,11 +1758,10 @@ bool PlacementWorld::addMover(Entity root, std::string* why) {
         if (isAncestorOf(scene, mover, root)) return refuse("part of another mover");
         if (isAncestorOf(scene, root, mover)) return refuse("contains another mover");
     }
-    if (!scene->isEntityActiveInHierarchy(root)) return refuse("inactive");
-    if (layerIgnored(scene, root, impl->settings.ignoreLayerMask)) return refuse("ignored layer");
-
-    Impl::DynamicShape built;
     std::string reason;
+    if (!impl->shapes().canMove(root, &reason)) return refuse(reason);
+
+    DynamicShape built;
     if (!impl->buildDynamicShape(root, built, &reason)) return refuse(reason);
 
     // the size limit on the world bounds of the shape at the root's pose
@@ -1735,7 +1851,7 @@ void PlacementWorld::refreshShapes() {
 #ifdef JASPERENGINE_PHYSICS_3D
     JPH::BodyInterface& bi = impl->bodyInterface();
     for (Impl::DynamicBody* body : impl->dynamicBodies()) {
-        Impl::DynamicShape built;
+        DynamicShape built;
         if (!impl->buildDynamicShape(body->entity, built, nullptr)) continue;
         // the scene's transform may have moved since; the body keeps its own pose
         const JPH::RVec3 position = bi.GetPosition(body->id);
@@ -1766,6 +1882,52 @@ bool PlacementWorld::hasPendingDecompositions() const {
     }
 #endif
     return false;
+}
+
+size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const PlacementWorldSettings& settings,
+                                             std::vector<std::string>* notes) {
+#ifdef JASPERENGINE_PHYSICS_3D
+    ConvexDecompositionCache* cache = settings.decompositionCache;
+    if (!cache) {
+        if (notes) notes->push_back("no decomposition cache");
+        return 0;
+    }
+    const BodyShapes shapes{scene, settings};
+    const DecompositionParams params = shapes.decompositionParams();
+    size_t count = 0;
+    shapes.forEachDecomposable(root, notes, [&](Entity part, uint64_t key, const PartGeometry& geometry) {
+        if (cache->status(key) != DecompositionStatus::READY) cache->request(geometry.local, geometry.indices, params);
+        if (cache->status(key) == DecompositionStatus::FAILED) {
+            if (notes) notes->push_back(scene->getEntityName(part) + ": " + cache->failureReason(key));
+            return;
+        }
+        count++;
+    });
+    return count;
+#else
+    (void)scene;
+    (void)root;
+    (void)settings;
+    if (notes) notes->push_back("3D physics is not available in this build");
+    return 0;
+#endif
+}
+
+bool PlacementWorld::decompositionReady(Scene* scene, Entity root, const PlacementWorldSettings& settings) {
+#ifdef JASPERENGINE_PHYSICS_3D
+    ConvexDecompositionCache* cache = settings.decompositionCache;
+    if (!cache) return false;
+    bool ready = true;
+    const bool movable = BodyShapes{scene, settings}.forEachDecomposable(root, nullptr, [&](Entity, uint64_t key, const PartGeometry&) {
+        ready = ready && cache->status(key) == DecompositionStatus::READY;
+    });
+    return movable && ready;
+#else
+    (void)scene;
+    (void)root;
+    (void)settings;
+    return false;
+#endif
 }
 
 void PlacementWorld::setGravity(const Vector3& gravity) {
