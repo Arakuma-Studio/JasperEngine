@@ -50,7 +50,7 @@
 --     filmic (the Filmic grain), halation (its own two passes), halation_bloom (on bloom's
 --     levels), cube_display (luts/look_display.cube, a display-referred .cube), cube_log
 --     (luts/look_acescct.cube, an ACEScct .cube applied before the tone mapping, with ACES),
---     adaptive (dynamic resolution on: the uber pass at any scale), s13_script (from frame 30
+--     adaptive (dynamic resolution on: the uber pass at any scale), s13_script (from frame 3
 --     the script turns VHS and the Lens grain on and logs scene:getDynamicResolution())
 --   PP_SCENE=saved  Saved.scene: the same objects (this script) with post-processing saved in
 --                   the scene file (the "mobile" set without grain): YAML, export code, runtime
@@ -652,7 +652,7 @@ end
 function PostProcessing:onUpdate()
     self.frames = self.frames + 1
     -- S13: a script switching the new effects at runtime, and reading dynamic resolution
-    if self.current == "s13_script" and self.frames == 30 then
+    if self.current == "s13_script" and self.frames == 3 then
         local p = self.scene.postProcessing
         p.vhsEnabled = true
         p.filmGrainEnabled = true
