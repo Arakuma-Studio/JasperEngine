@@ -14672,6 +14672,44 @@ static size_t latticeBindingCount(Scene* scene, Entity mesh){
     return count;
 }
 
+// the Bake Deformation row of the Lattice Modifier (spec §9.4): disabled with the reason when
+// nothing can be baked; the bake reports what it wrote and kept in the Console
+static void drawLatticeBakeRow(editor::Project* project, editor::SceneProject* sceneProject, Entity entity){
+    ImGui::SeparatorText("Bake");
+    std::string reason;
+    const bool stopped = sceneProject->playState == editor::ScenePlayState::STOPPED;
+    const bool canBake = stopped && editor::LatticeEditorOps::canBake(sceneProject->scene, entity, &reason);
+    if (!stopped){
+        reason = "Stop the scene to bake: it writes a model file and edits the scene.";
+    }
+    bool clicked = false;
+    ImGui::BeginDisabled(!canBake);
+    clicked = ImGui::Button(ICON_FA_FILE_EXPORT " Bake Deformation##lattice_bake", ImVec2(-FLT_MIN, 0));
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
+        ImGui::SetTooltip("%s", canBake ? "Writes the current deformation into a new model file next to the original (<name>_lattice.glb), "
+                                          "switches the Model to it and removes the baked bindings (one undo step; the file stays)."
+                                        : reason.c_str());
+    }
+    if (clicked){
+        std::string path;
+        std::string note;
+        std::string error;
+        if (editor::LatticeEditorOps::bake(project, sceneProject->id, entity, &path, &note, &error)){
+            Log::print("Lattice: baked the deformation into %s", path.c_str());
+            size_t start = 0;
+            while (start < note.size()){
+                size_t end = note.find('\n', start);
+                if (end == std::string::npos) end = note.size();
+                Log::warn("Lattice bake: %s", note.substr(start, end - start).c_str());
+                start = end + 1;
+            }
+        }else{
+            Log::error("Lattice bake: %s", error.c_str());
+        }
+    }
+}
+
 void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
     const uint32_t sceneId = sceneProject->id;
@@ -14760,6 +14798,7 @@ void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType,
     }
 
     if (!latticeBindingsExpanded){
+        drawLatticeBakeRow(project, sceneProject, entity);
         return;
     }
 
@@ -14846,6 +14885,8 @@ void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType,
         endTable();
         ImGui::PopID();
     }
+
+    drawLatticeBakeRow(project, sceneProject, entity);
 }
 
 void editor::InspectorWindow::drawLatticeFollowerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){

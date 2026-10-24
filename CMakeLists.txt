@@ -423,6 +423,7 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
@@ -666,9 +667,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
+    ${EDITOR_DIR}/lattice/LatticeBake.cpp
+    ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
-    ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
@@ -747,6 +749,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
 
     ${IMGUI_SOURCES}
     ${BACKEND_SOURCES}
