@@ -4,11 +4,26 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
+
+// Preferences > Logging (settings.yaml "logging"). Defaults are the editor's behaviour
+// before categories existed: Info everywhere, the log file at Info.
+struct LoggingSettings {
+    std::map<std::string, std::string> categoryLevels;   // category -> level name (only those changed)
+    std::string fileLevel = "info";
+    bool backtraceOnError = true;
+    bool showSource = true;
+
+    bool operator==(const LoggingSettings& other) const {
+        return categoryLevels == other.categoryLevels && fileLevel == other.fileLevel &&
+               backtraceOnError == other.backtraceOnError && showSource == other.showSource;
+    }
+};
 
 struct PanelVisibilitySettings {
     bool hierarchy = true;
@@ -65,6 +80,13 @@ class AppSettings {
 private:
     static std::filesystem::path configFilePath;
     static YAML::Node settingsData;
+    // settingsData as last read from (or written to) the file
+    static YAML::Node loadedSettings;
+    static bool autosaveEnabled;
+    static int autosaveIntervalSeconds;
+    // settingsData parsed into the members
+    static bool applySettings(const YAML::Node& node);
+    static bool writeMerged();
     
     // Recent projects list (max 10)
     static std::vector<std::filesystem::path> recentProjects;
@@ -125,6 +147,8 @@ private:
     static bool htmlUiAutoImport;
     static bool htmlUiVerboseDiagnostics;
 
+    static LoggingSettings loggingSettings;
+
     // Private methods
     static void ensureConfigDirectory();
 
@@ -139,6 +163,8 @@ public:
     // preferUserDirectory: keep the files in the per-user config directory unless the working
     // directory already has a settings.yaml (MCP mode, started in the client's folder)
     static bool initialize(bool preferUserDirectory = false);
+    // An explicit settings file (tests)
+    static bool initializeWithFile(const std::filesystem::path& file);
 
     // Directory where editor config files live (settings.yaml, layout ini, ...)
     static std::filesystem::path getConfigDirectory();
@@ -238,9 +264,26 @@ public:
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
 
+    // Preferences > Logging; set applies them to the logger at once (then --log-level again)
+    static LoggingSettings getLoggingSettings();
+    static void setLoggingSettings(const LoggingSettings& settings);
+    static void applyLoggingSettings();
+
     // Load and save settings
     static bool loadSettings();
+    // Locked read-merge-write: only the top-level keys this process changed since its load
+    // are written over the file's, recent projects merge as an ordered union (docs/data-safety.md)
     static bool saveSettings();
+
+    // Scene Auto Save (Editor Settings > General): a backup of each modified scene, never the
+    // scene file itself
+    static constexpr int defaultAutosaveInterval = 60;
+    static constexpr int minAutosaveInterval = 30;
+    static constexpr int maxAutosaveInterval = 300;
+    static bool isAutosaveEnabled();
+    static void setAutosaveEnabled(bool enabled);
+    static int getAutosaveIntervalSeconds();
+    static void setAutosaveIntervalSeconds(int seconds);
 };
 
 } // namespace jasperengine::editor

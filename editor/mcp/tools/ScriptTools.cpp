@@ -3,6 +3,8 @@
 
 // W4: Lua/C++ scripts, compile check, code editor sync
 #include "McpTools.h"
+#include "DocumentFile.h"
+#include "jobs/JobSystem.h"
 #include "W4Shared.h"
 
 #include "mcp/McpAutoSync.h"
@@ -45,6 +47,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 
 #include "lua.hpp"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <atomic>
@@ -69,11 +72,12 @@ namespace fs = std::filesystem;
 namespace w4 {
 
 bool writeFile(const fs::path& path, const std::string& content) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    // agent writes are user documents: atomic, synced, never over a read-only file
+    const io::WriteResult written = DocumentFiles::write(path, content);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(path, written));
+    }
+    return written.ok();
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {
@@ -425,7 +429,7 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
 
 bool isHtmlUiFile(const std::string& path) {
     if (ProjectChecks::isUiFile(path) || Util::isImageFile(path) || Util::isFontFile(path)) return true;
-    const std::string ext = extensionOf(fs::u8path(path));
+    const std::string ext = extensionOf(FileUtils::pathFromUtf8(path));
     // .frag and .glsl: a project UI effect (@effect src) and its includes, which the documents
     // declaring it read (phase 5)
     return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
@@ -448,7 +452,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     for (const fs::path& path : changed) {
         const fs::path rel = path.lexically_normal().lexically_relative(assets);
         if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
-        const std::string assetPath = jasperengine::normalizeHtmlUIPath(rel.generic_u8string());
+        const std::string assetPath = jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel));
         if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
     }
     if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
@@ -462,7 +466,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
                             {"code", finding.code}, {"message", finding.message}, {"suggestion", finding.suggestion}});
     };
     auto shown = [&](const std::string& assetPath) {
-        return projectRelative(project, (assets / fs::u8path(assetPath)).lexically_normal());
+        return projectRelative(project, (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
     };
 
     std::set<std::string> covered;   // changed files a live document reads
@@ -520,7 +524,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
                 addProblem(ProjectChecks::uiFinding(projectRoot, assets, diagnostic));
             }
             std::error_code ec;
-            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / fs::u8path(document.filename), ec)) {
+            if (changedAssets.count(document.filename) && !fs::is_regular_file(assets / FileUtils::pathFromUtf8(document.filename), ec)) {
                 ProjectChecks::Finding missing;
                 missing.tool = "ui";
                 missing.path = shown(document.filename);
@@ -537,7 +541,7 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     std::vector<fs::path> unused;
     for (const std::string& assetPath : assetPaths) {
         std::error_code ec;
-        const fs::path file = (assets / fs::u8path(assetPath)).lexically_normal();
+        const fs::path file = (assets / FileUtils::pathFromUtf8(assetPath)).lexically_normal();
         if (!covered.count(assetPath) && ProjectChecks::isUiFile(assetPath) && fs::is_regular_file(file, ec)) unused.push_back(file);
     }
     if (!unused.empty()) {
@@ -719,7 +723,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     int uiCurrent = 0;
     std::vector<fs::path> uiChanged;
     for (const fs::path& path : changed) {
-        if (isHtmlUiFile(path.generic_u8string())) uiChanged.push_back(path);
+        if (isHtmlUiFile(FileUtils::genericPathToUtf8(path))) uiChanged.push_back(path);
     }
     if (!uiChanged.empty()) {
         const Json ui = syncHtmlUi(ctx, uiChanged);
@@ -1639,7 +1643,12 @@ void compileScriptsTool(const CallPtr& call) {
     job->setProgress(-1.0, "Configuring and building " + std::to_string(plan.scripts.size()) + " script(s)");
     ProjectChecks::startCppBuild(project, *generator, plan);
 
-    std::thread([job, generator, firstLog, projectPath, scriptList, started]() {
+    // polls the build (on the process channel) until it ends: a channel of its own, which
+    // cannot hold the process slot the build waits for
+    static jobs::JobChannel* watchChannel = new jobs::JobChannel("script-build-watch", 1);
+    jobs::SubmitOptions watchOptions;
+    watchOptions.name = "script-build-watch";
+    watchChannel->submit([job, generator, firstLog, projectPath, scriptList, started]() {
         const std::vector<std::string> output =
             ProjectChecks::waitCppBuild(*generator, firstLog, [&job](const std::string& line) { job->log(line); });
         const bool success = generator->didLastBuildSucceed();
@@ -1665,7 +1674,7 @@ void compileScriptsTool(const CallPtr& call) {
                                                        ": " + errors[0]["message"].get<std::string>();
             job->fail(message, result);
         }
-    }).detach();
+    }, watchOptions);
 
     replyWhenJobDone(call, job, wait, timeout, [](const McpJob& finished) {
         Json result = finished.result();

@@ -3,6 +3,9 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "McpTools.h"
+#include "window/dialog/EditorSettingsWindow.h"
+#include "Out.h"
+#include "io/AtomicFile.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -27,6 +30,7 @@
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "window/SceneWindow.h"
 
 #include "imgui.h"
@@ -279,9 +283,12 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         }
         std::error_code ec;
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ".");
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(target,
+                std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
+        if (!written.ok()) {
+            job->fail("Could not write the PNG to " + target.generic_string() + ": " + io::describeWriteError(written) + ".");
             return;
         }
         info["saved_to"] = target.generic_string();
@@ -973,6 +980,23 @@ void frameEntityTool(const CallPtr& call) {
     });
 }
 
+// The Console as it shows: rows after its filters (the newest 50), categories, the selection's origin
+Json consoleStateJson(ConsoleWindow& console) {
+    const ConsoleWindow::ViewState state = console.viewState(50);
+    Json rows = Json::array();
+    for (const ConsoleWindow::ViewRow& row : state.rows) {
+        Json item = {{"id", row.id}, {"type", Out::logTypeName(row.type)}, {"category", row.category}, {"text", row.text}};
+        if (row.grey) item["grey"] = true;
+        if (row.count > 1) item["count"] = row.count;
+        rows.push_back(std::move(item));
+    }
+    Json json = {{"rows_shown", state.rowCount}, {"rows", rows}, {"categories", state.categories},
+                 {"hidden_categories", state.hiddenCategories}, {"collapse", state.collapse},
+                 {"clear_on_play", state.clearOnPlay}, {"error_pause", state.errorPause}};
+    if (state.hasSelection) json["selected"] = {{"id", state.selectedId}, {"origin", state.selectedOrigin}};
+    return json;
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -993,8 +1017,39 @@ void focusWindowTool(const CallPtr& call) {
         }
         imguiName = sceneTabName(project, sp->id);
     } else if (window == "console") {
-        ctx.consoleWindow()->setOpen(true);
+        ConsoleWindow* console = ctx.consoleWindow();
+        console->setOpen(true);
         imguiName = ConsoleWindow::WINDOW_NAME;
+        // what a user does in the Console: the Category menu, Collapse, a click on a row
+        const Json options = args.value("console", Json::object());
+        if (options.contains("hidden_categories") && options["hidden_categories"].is_array()) {
+            std::vector<std::string> hidden;
+            for (const Json& item : options["hidden_categories"]) {
+                if (item.is_string()) hidden.push_back(item.get<std::string>());
+            }
+            console->setHiddenCategories(hidden);
+        }
+        if (options.contains("collapse") && options["collapse"].is_boolean()) {
+            console->setCollapse(options["collapse"].get<bool>());
+        }
+        if (options.contains("select") && options["select"].is_number_integer() && !console->selectLog(options["select"].get<uint64_t>())) {
+            call->fail("console.select: no row with id " + options["select"].dump() + " is shown (filtered out, or cleared).");
+            return;
+        }
+    } else if (window == "preferences") {
+        EditorSettingsWindow& preferences = app.getEditorSettingsWindow();
+        if (args.value("close", false)) {
+            preferences.close();
+            call->ok("Closed Preferences.", Json{{"window", window}, {"shown", false}});
+            return;
+        }
+        if (!preferences.isOpen()) preferences.open(project);
+        const std::string page = args.value("page", "");
+        if (!page.empty() && !preferences.showPage(page)) {
+            call->fail("page must be one of: General, Code Editor, External Tools, Logging, Shader Cache.");
+            return;
+        }
+        imguiName = "Preferences##EditorSettingsModal";
     } else if (window == "hierarchy") {
         ctx.hierarchyWindow()->setOpen(true);
         imguiName = HierarchyWindow::WINDOW_NAME;
@@ -1012,11 +1067,14 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "jobs_memory") {
+        app.getJobsMemoryWindow()->setOpen(true);
+        imguiName = JobsMemoryWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
+                   "jobs_memory, preferences.");
         return;
     }
-    (void)app;
     // A window opened just now exists after its next draw
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
@@ -1025,6 +1083,8 @@ void focusWindowTool(const CallPtr& call) {
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
             if (w) data["size"] = {w->Size.x, w->Size.y};
+            if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
+            if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
@@ -1180,10 +1240,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.title = "Focus Window";
         tool.description =
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
-            "screenshot.";
+            "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
-            {"scene", sceneRef("window scene: whose tab.")}
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "jobs_memory", "preferences"})},
+            {"scene", sceneRef("window scene: whose tab.")},
+            {"console", object({
+                {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
+                {"collapse", boolean("")},
+                {"select", integer("Select the row of this message id (as a click).")}
+            })},
+            {"page", string("preferences: General, Code Editor, External Tools, Logging, Shader Cache.")},
+            {"close", boolean("preferences: close it.")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;

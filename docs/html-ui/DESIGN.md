@@ -341,7 +341,8 @@ Engine, for implementers (paths relative to the repo root):
 - Libraries: vendored as source under `engine/libs/<lib>` with their own `CMakeLists.txt`,
   wired in `engine/CMakeLists.txt` (include dirs ~659, add_subdirectory ~690, warnings ~711,
   link ~907). The editor builds the engine as a shared library: vendored libs need hidden
-  visibility (see `engine/libs/harfbuzz/CMakeLists.txt`). C++17 default.
+  visibility (see `engine/libs/harfbuzz/CMakeLists.txt`). Every library compiles at
+  `JASPERENGINE_CXX_STANDARD` (C++20 by default, `engine/cmake/JasperEngineToolchain.cmake`).
 - Input: `Engine::system*` (`Engine.h` ~455), UI dispatch loop in `Engine.cpp` ~1300–1500;
   wheel, key up, enter/leave never reach `UISystem`; `systemKeyDown` calls the game first.
   No clipboard API anywhere. IME: committed text only.

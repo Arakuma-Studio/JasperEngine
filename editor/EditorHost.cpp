@@ -4,6 +4,7 @@
 #include "EditorHost.h"
 
 #include "Out.h"
+#include "util/Scheduler.h"
 
 using namespace jasperengine::editor;
 
@@ -103,6 +104,18 @@ void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callbac
     }
 }
 
+DegradedSavePolicy EditorHost::confirmDegradedSave(const DegradedSaveRequest&) {
+    return DegradedSavePolicy::Refuse;
+}
+
+RecoveryChoice EditorHost::resolveSceneRecovery(const SceneBackupInfo&) {
+    return RecoveryChoice::Keep;
+}
+
+bool EditorHost::confirmOpenLockedProject(const ProjectLockInfo&) {
+    return false;
+}
+
 void EditorHost::registerProjectSaveDialog(std::function<void()> callback) {
     if (callback) {
         callback();
@@ -130,4 +143,10 @@ void jasperengine::editor::setEditorHost(EditorHost* host) {
 
 EditorHost& jasperengine::editor::getEditorHost() {
     return *s_activeHost;
+}
+
+jasperengine::Scheduler& jasperengine::editor::scheduler() {
+    // Never destroyed: tasks posted by threads still running at exit
+    static Scheduler* instance = new Scheduler("editor");
+    return *instance;
 }

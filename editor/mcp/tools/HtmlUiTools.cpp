@@ -38,6 +38,7 @@
 
 #include "stb_image.h"
 #include "stb_image_write.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -114,7 +115,7 @@ std::string viewportText(double width, double height) {
 // An asset-relative engine path shown project-relative ("ui/menu.css" -> "assets/ui/menu.css")
 std::string assetToProject(Project* project, const std::string& assetPath) {
     if (assetPath.empty()) return assetPath;
-    return w4::projectRelative(project, (project->getAssetsPath() / fs::u8path(assetPath)).lexically_normal());
+    return w4::projectRelative(project, (project->getAssetsPath() / FileUtils::pathFromUtf8(assetPath)).lexically_normal());
 }
 
 bool isRunning(ScenePlayState state) {
@@ -825,7 +826,7 @@ void inspectFile(const CallPtr& call) {
     file = file.lexically_normal();
     const std::string rel = w4::projectRelative(project, file);
     std::error_code ec;
-    if (!ProjectChecks::isUiFile(file.generic_u8string()) || !fs::is_regular_file(file, ec)) {
+    if (!ProjectChecks::isUiFile(FileUtils::genericPathToUtf8(file)) || !fs::is_regular_file(file, ec)) {
         call->fail(rel + " is not a .html, .htm or .css file.");
         return;
     }
@@ -842,7 +843,7 @@ void inspectFile(const CallPtr& call) {
 
     // the live documents reading it
     const fs::path assetRel = file.lexically_relative(project->getAssetsPath().lexically_normal());
-    const std::string assetPath = assetRel.generic_u8string();
+    const std::string assetPath = FileUtils::genericPathToUtf8(assetRel);
     Json using_ = Json::array();
     std::string usingText;
     std::vector<SceneProject*> scenes = documentScenes(project);
@@ -1386,8 +1387,8 @@ void createUiDocumentTool(const CallPtr& call) {
         return;
     }
     htmlAbs = htmlAbs.lexically_normal();
-    const std::string stem = htmlAbs.stem().u8string();
-    if (!endsWithHtml(htmlAbs.filename().u8string())) {
+    const std::string stem = FileUtils::pathToUtf8(htmlAbs.stem());
+    if (!endsWithHtml(FileUtils::pathToUtf8(htmlAbs.filename()))) {
         call->fail("html must be an .html (or .htm) file, e.g. " + assetsDir + "/ui/" + (stem.empty() ? "menu" : stem) +
                    ".html; its .css is created next to it.");
         return;
@@ -1438,7 +1439,7 @@ void createUiDocumentTool(const CallPtr& call) {
         const bool isLua = !instance.luaPath.empty() && rel == instance.luaPath;
         if (isLua && !wantScript) continue;
         if (!isLua && htmlExists && !overwrite) continue;   // an existing html: nothing from the template but its Lua
-        const fs::path abs = (project->getProjectPath() / fs::u8path(rel)).lexically_normal();
+        const fs::path abs = (project->getProjectPath() / FileUtils::pathFromUtf8(rel)).lexically_normal();
         if (fs::exists(abs, ec) && !overwrite) {
             kept.push_back(rel);
             continue;
@@ -1592,7 +1593,7 @@ void createUiDocumentTool(const CallPtr& call) {
 // ------------------------------------------------------------------ resources
 
 std::string mimeOf(const std::string& path) {
-    const std::string ext = lowerCopy(fs::u8path(path).extension().u8string());
+    const std::string ext = lowerCopy(FileUtils::pathToUtf8(FileUtils::pathFromUtf8(path).extension()));
     if (ext == ".html" || ext == ".htm") return "text/html";
     if (ext == ".css") return "text/css";
     if (ext == ".lua") return "text/x-lua";

@@ -170,8 +170,8 @@ ed.check("get_frame_stats" in {t.name for t in await ed.tools(groups=None)}, "li
   stale `exceptions` or `groups` entry); `test_tool_budget.py` runs it, with a red control.
 
 ```sh
-uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py --groups all --top 20
-uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py --check tools/mcp/budget.json
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --groups all --top 20
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --check tools/mcp/budget.json
 ```
 
 ## Docs and test coverage

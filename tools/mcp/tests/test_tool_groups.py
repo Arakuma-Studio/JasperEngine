@@ -15,6 +15,8 @@ default and listed once tool_groups enables the group (docs/mcp/conventions.md).
 
 from __future__ import annotations
 
+CI = True
+
 import asyncio
 import subprocess
 import tempfile

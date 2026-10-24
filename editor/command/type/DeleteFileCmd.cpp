@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "DeleteFileCmd.h"
+#include "util/FileUtils.h"
 
 #include "util/Util.h"
 
@@ -65,7 +66,7 @@ bool editor::DeleteFileCmd::execute(){
                         fs::create_directory(trash);
                     }
                     file.trashFile = generateUniqueTrashPath(trash, file.originalFile);
-                    fs::rename(file.originalFile, file.trashFile);
+                    FileUtils::renameWithRetry(file.originalFile, file.trashFile);
                 }
 
                 deletedPaths.push_back(file.originalFile);
@@ -98,7 +99,7 @@ void editor::DeleteFileCmd::undo(){
         try {
             // Only attempt to restore if the file was moved to trash (not permanently deleted)
             if (!file.trashFile.empty() && fs::exists(file.trashFile)) {
-                fs::rename(file.trashFile, file.originalFile);
+                FileUtils::renameWithRetry(file.trashFile, file.originalFile);
                 restoredShaderSource |= fs::is_directory(file.originalFile) ||
                                         Util::isShaderFile(file.originalFile.string());
                 // Prefabs come back with their GUIDs: their Missing Prefab instances relink

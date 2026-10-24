@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: MIT
 
 #include "AppSettings.h"
+#include "DocumentFile.h"
 #include "Out.h"
+#include "io/AtomicFile.h"
+#include "io/ScopedFileLock.h"
+#include "util/FileUtils.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
 #include <cstdlib>
+#include <ctime>
 
 namespace jasperengine::editor {
 
@@ -44,11 +49,61 @@ bool isWritableDirectory(const std::filesystem::path& dir) {
     return true;
 }
 
+std::filesystem::path lockFileFor(const std::filesystem::path& settingsFile) {
+    std::filesystem::path lock = settingsFile;
+    lock += ".lock";
+    return lock;
+}
+
+// An unreadable settings file is set aside, never written over: <file>.corrupt-<YYYYmmdd-HHMMSS>
+void setAsideCorrupt(const std::filesystem::path& file, const std::string& reason) {
+    const std::time_t now = std::time(nullptr);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &now);
+#else
+    localtime_r(&now, &local);
+#endif
+    char stamp[32];
+    std::strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", &local);
+    std::filesystem::path aside = file;
+    aside += std::string(".corrupt-") + stamp;
+    std::error_code ec;
+    if (io::renameWithRetry(file, aside, ec)) {
+        Out::warning("Editor settings \"%s\" could not be read (%s); set aside as \"%s\", starting from defaults.",
+                     file.string().c_str(), reason.c_str(), aside.string().c_str());
+    } else {
+        Out::warning("Editor settings \"%s\" could not be read (%s) nor set aside: %s",
+                     file.string().c_str(), reason.c_str(), ec.message().c_str());
+    }
+}
+
+// The file's settings, null when absent; a file that does not parse is set aside
+YAML::Node readSettingsFile(const std::filesystem::path& file) {
+    std::string bytes;
+    if (!DocumentFiles::readBytes(file, bytes)) {
+        return YAML::Node();
+    }
+    try {
+        YAML::Node node = YAML::Load(bytes);
+        if (node.IsNull() || node.IsMap()) {
+            return node;
+        }
+        setAsideCorrupt(file, "not a map");
+    } catch (const YAML::Exception& e) {
+        setAsideCorrupt(file, e.what());
+    }
+    return YAML::Node();
+}
+
 } // namespace
 
 // Initialize static members
 std::filesystem::path AppSettings::configFilePath;
 YAML::Node AppSettings::settingsData;
+YAML::Node AppSettings::loadedSettings;
+bool AppSettings::autosaveEnabled = true;
+int AppSettings::autosaveIntervalSeconds = AppSettings::defaultAutosaveInterval;
 std::vector<std::filesystem::path> AppSettings::recentProjects;
 std::filesystem::path AppSettings::lastProjectPath;
 std::string AppSettings::lastCMakeCCompiler;
@@ -78,6 +133,7 @@ std::string AppSettings::mcpHttpToken;
 std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
+LoggingSettings AppSettings::loggingSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
@@ -108,6 +164,12 @@ bool AppSettings::initialize(bool preferUserDirectory) {
     return loadSettings();
 }
 
+bool AppSettings::initializeWithFile(const std::filesystem::path& file) {
+    configFilePath = file;
+    ensureConfigDirectory();
+    return loadSettings();
+}
+
 std::filesystem::path AppSettings::getConfigDirectory() {
     if (configFilePath.empty()) {
         return std::filesystem::current_path();
@@ -127,13 +189,32 @@ void AppSettings::ensureConfigDirectory() {
 }
 
 bool AppSettings::loadSettings() {
+    if (!std::filesystem::exists(configFilePath)) {
+        settingsData = YAML::Node();
+        loadedSettings = YAML::Node();
+        return false;
+    }
+    // under the lock: another editor may be writing it
+    YAML::Node node;
+    {
+        io::ScopedFileLock lock(lockFileFor(configFilePath), io::ScopedFileLock::Mode::Shared);
+        node = readSettingsFile(configFilePath);
+    }
+    if (!node.IsMap()) {
+        settingsData = YAML::Node();
+        loadedSettings = YAML::Node();
+        return false;
+    }
+    return applySettings(node);
+}
+
+bool AppSettings::applySettings(const YAML::Node& node) {
     try {
-        if (!std::filesystem::exists(configFilePath)) {
-            settingsData = YAML::Node();
-            return false;
-        }
-        
-        settingsData = YAML::LoadFile(configFilePath.string());
+        // rebound, not assigned (assigning a bound handle overwrites the node it refers to)
+        settingsData.reset(node);
+        // what each top-level key held when this process last read the file: a save writes
+        // only the keys that changed since (another editor's changes to the others stay)
+        loadedSettings.reset(YAML::Clone(node));
         
         // Load last project path
         if (settingsData["last_project_path"]) {
@@ -235,6 +316,11 @@ bool AppSettings::loadSettings() {
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
             }
+            if (editorNode["autosave"]) {
+                auto autosaveNode = editorNode["autosave"];
+                if (autosaveNode["enabled"]) autosaveEnabled = autosaveNode["enabled"].as<bool>();
+                if (autosaveNode["interval_seconds"]) setAutosaveIntervalSeconds(autosaveNode["interval_seconds"].as<int>());
+            }
             if (editorNode["panels"]) {
                 auto panelsNode = editorNode["panels"];
                 if (panelsNode["hierarchy"]) panelVisibility.hierarchy = panelsNode["hierarchy"].as<bool>();
@@ -279,6 +365,28 @@ bool AppSettings::loadSettings() {
             if (htmlUiNode["verbose_diagnostics"]) htmlUiVerboseDiagnostics = htmlUiNode["verbose_diagnostics"].as<bool>();
         }
         UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
+
+        loggingSettings = LoggingSettings();
+        if (settingsData["logging"]) {
+            auto loggingNode = settingsData["logging"];
+            if (loggingNode["levels"] && loggingNode["levels"].IsMap()) {
+                for (const auto& item : loggingNode["levels"]) {
+                    LogLevel level;
+                    const std::string name = item.second.as<std::string>();
+                    if (parseLogLevel(name.c_str(), level)) {
+                        loggingSettings.categoryLevels[item.first.as<std::string>()] = logLevelName(level);
+                    }
+                }
+            }
+            if (loggingNode["file_level"]) {
+                LogLevel level;
+                const std::string name = loggingNode["file_level"].as<std::string>();
+                if (parseLogLevel(name.c_str(), level)) loggingSettings.fileLevel = logLevelName(level);
+            }
+            if (loggingNode["backtrace_on_error"]) loggingSettings.backtraceOnError = loggingNode["backtrace_on_error"].as<bool>();
+            if (loggingNode["show_source"]) loggingSettings.showSource = loggingNode["show_source"].as<bool>();
+        }
+        applyLoggingSettings();
 
         return true;
     } catch (const std::exception& e) {
@@ -381,6 +489,10 @@ bool AppSettings::saveSettings() {
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
         editorNode["vsync"] = editorVSyncEnabled;
+        YAML::Node autosaveNode;
+        autosaveNode["enabled"] = autosaveEnabled;
+        autosaveNode["interval_seconds"] = autosaveIntervalSeconds;
+        editorNode["autosave"] = autosaveNode;
         YAML::Node panelsNode;
         panelsNode["hierarchy"] = panelVisibility.hierarchy;
         panelsNode["inspector"] = panelVisibility.inspector;
@@ -411,26 +523,87 @@ bool AppSettings::saveSettings() {
         htmlUiNode["auto_import"] = htmlUiAutoImport;
         htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
         settingsData["html_ui"] = htmlUiNode;
+
+        if (loggingSettings == LoggingSettings()) {
+            if (settingsData["logging"]) settingsData.remove("logging");
+        } else {
+            YAML::Node loggingNode;
+            YAML::Node levelsNode(YAML::NodeType::Map);
+            for (const auto& [category, level] : loggingSettings.categoryLevels) levelsNode[category] = level;
+            loggingNode["levels"] = levelsNode;
+            loggingNode["file_level"] = loggingSettings.fileLevel;
+            loggingNode["backtrace_on_error"] = loggingSettings.backtraceOnError;
+            loggingNode["show_source"] = loggingSettings.showSource;
+            settingsData["logging"] = loggingNode;
+        }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
-        // Save to file
-        std::ofstream fout(configFilePath.string());
-        if (!fout) {
-            Out::error("Failed to open editor settings for writing: %s", configFilePath.string().c_str());
-            return false;
-        }
-        fout << YAML::Dump(settingsData);
-        fout.close();
-        if (!fout) {
-            Out::error("Failed to write editor settings: %s", configFilePath.string().c_str());
-            return false;
-        }
-        
-        return true;
+        return writeMerged();
     } catch (const std::exception& e) {
         Out::error("Failed to save settings: %s", e.what());
         return false;
     }
+}
+
+bool AppSettings::writeMerged() {
+    // read-merge-write under the lock (R11): two editors share this file
+    io::ScopedFileLock lock(lockFileFor(configFilePath));
+    if (!lock.isLocked() && lock.getStatus() != io::ScopedFileLock::Status::Unsupported) {
+        Out::warning("Editor settings lock: %s", lock.failureReason().c_str());
+    }
+    YAML::Node current = readSettingsFile(configFilePath);
+    YAML::Node merged = current.IsMap() ? current : YAML::Node(YAML::NodeType::Map);
+
+    auto sameText = [](const YAML::Node& a, const YAML::Node& b) {
+        return (a ? YAML::Dump(a) : std::string()) == (b ? YAML::Dump(b) : std::string());
+    };
+    if (settingsData.IsMap()) {
+        for (auto it = settingsData.begin(); it != settingsData.end(); ++it) {
+            const std::string key = it->first.as<std::string>();
+            if (key == "recent_projects") {
+                continue;
+            }
+            if (!sameText(it->second, loadedSettings[key])) {
+                merged[key] = it->second;
+            }
+        }
+    }
+    // keys this process removed since its load, unless another editor changed them since
+    if (loadedSettings.IsMap()) {
+        for (auto it = loadedSettings.begin(); it != loadedSettings.end(); ++it) {
+            const std::string key = it->first.as<std::string>();
+            if (!settingsData[key] && sameText(merged[key], it->second)) {
+                merged.remove(key);
+            }
+        }
+    }
+    // recent projects: an ordered union, this process's first
+    YAML::Node recent(YAML::NodeType::Sequence);
+    std::vector<std::string> seen;
+    auto addRecent = [&](const YAML::Node& list) {
+        if (!list || !list.IsSequence()) return;
+        for (const auto& entry : list) {
+            const std::string path = entry.as<std::string>();
+            if (std::find(seen.begin(), seen.end(), path) == seen.end()) {
+                seen.push_back(path);
+                recent.push_back(path);
+            }
+        }
+    };
+    addRecent(settingsData["recent_projects"]);
+    addRecent(current["recent_projects"]);
+    merged["recent_projects"] = recent;
+
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Document;
+    const io::WriteResult written = io::writeFileAtomic(configFilePath, YAML::Dump(merged), options);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(configFilePath, written));
+        return false;
+    }
+    // what is on disk now, the other editor's changes included
+    applySettings(merged);
+    return true;
 }
 
 std::filesystem::path AppSettings::getLastProjectPath() {
@@ -644,6 +817,34 @@ void AppSettings::setHtmlUiVerboseDiagnostics(bool enabled) {
     UIDocumentSystem::setVerboseDiagnostics(enabled);
 }
 
+LoggingSettings AppSettings::getLoggingSettings() {
+    return loggingSettings;
+}
+
+void AppSettings::setLoggingSettings(const LoggingSettings& settings) {
+    loggingSettings = settings;
+    applyLoggingSettings();
+}
+
+void AppSettings::applyLoggingSettings() {
+    // every category back to Info, then the ones the preferences change
+    for (size_t i = 0; i < Logger::categoryCount(); i++) {
+        Logger::setCategoryLevel(Logger::categoryAt(i), LogLevel::Info);
+    }
+    for (const auto& [category, levelName] : loggingSettings.categoryLevels) {
+        LogLevel level;
+        if (parseLogLevel(levelName.c_str(), level)) {
+            Logger::setCategoryLevel(Logger::registerCategory(category, LogLevel::Info), level);
+        }
+    }
+    LogLevel fileLevel = LogLevel::Info;
+    parseLogLevel(loggingSettings.fileLevel.c_str(), fileLevel);
+    Out::setFileLevel(fileLevel);
+    Out::setFileShowsSource(loggingSettings.showSource);
+    Logger::setBacktraceOnError(loggingSettings.backtraceOnError);
+    Out::applyLevelOverride();
+}
+
 bool AppSettings::getEditorVSyncEnabled() {
     return editorVSyncEnabled;
 }
@@ -740,16 +941,11 @@ bool storeLocalSettings(const std::filesystem::path& projectFile, const YAML::No
         return false;
     }
 
-    std::ofstream fout(file.string());
-    if (!fout) {
-        Out::error("Failed to open local build settings for writing: %s", file.string().c_str());
-        return false;
-    }
-    fout << "# Build configuration for this machine only. Version control ignores .jasperengine/.\n";
-    fout << YAML::Dump(node) << "\n";
-    fout.close();
-    if (!fout) {
-        Out::error("Failed to write local build settings: %s", file.string().c_str());
+    const std::string text = "# Build configuration for this machine only. Version control ignores .jasperengine/.\n" +
+            YAML::Dump(node) + "\n";
+    const io::WriteResult written = DocumentFiles::write(file, text);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(file, written));
         return false;
     }
     return true;
@@ -849,6 +1045,22 @@ bool AppSettings::setBuildSettings(const std::filesystem::path& projectFile, con
     YAML::Node local = loadLocalSettings(projectFile);
     local["build"] = entry;
     return storeLocalSettings(projectFile, local);
+}
+
+bool AppSettings::isAutosaveEnabled() {
+    return autosaveEnabled;
+}
+
+void AppSettings::setAutosaveEnabled(bool enabled) {
+    autosaveEnabled = enabled;
+}
+
+int AppSettings::getAutosaveIntervalSeconds() {
+    return autosaveIntervalSeconds;
+}
+
+void AppSettings::setAutosaveIntervalSeconds(int seconds) {
+    autosaveIntervalSeconds = std::clamp(seconds, minAutosaveInterval, maxAutosaveInterval);
 }
 
 } // namespace jasperengine::editor

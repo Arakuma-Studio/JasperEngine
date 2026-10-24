@@ -28,6 +28,7 @@ namespace jasperengine{
 
         Plane ();
         Plane (const Plane& rhs);
+        Plane& operator= (const Plane& rhs) = default;
         Plane (const Vector3& rkNormal, float fConstant);
         Plane (float a, float b, float c, float d);
         Plane (const Vector3& rkNormal, const Vector3& rkPoint);

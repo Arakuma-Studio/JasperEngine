@@ -39,13 +39,16 @@ namespace jasperengine::editor::mcp::w3 {
         bool onlyProblems = false;       // warnings, errors and build output (compiler messages)
         bool includeNoise = false;       // "Shader ... generated successfully" build lines
         std::vector<LogType> types;      // empty: every type
+        std::vector<LogLevel> levels;    // empty: every level
+        std::vector<std::string> categories;  // empty: every category
+        int hasSource = -1;              // 1: only entries with a source, 0: only without, -1: both
         std::string contains;            // case-insensitive substring
         std::string regex;               // ECMAScript regex (case-insensitive), already validated
         size_t maxMessageChars = 4000;   // longer messages are cut (the tail is kept for build output)
     };
 
     struct ConsoleResult {
-        Json entries = Json::array();    // [{id, type, message, time}]
+        Json entries = Json::array();    // [{id, type, level, category, message, time, frame, source?}]
         uint64_t nextCursor = 0;         // pass as `since` to continue
         bool more = false;               // the limit cut the read: call again with nextCursor
         size_t skippedNoise = 0;
@@ -60,6 +63,8 @@ namespace jasperengine::editor::mcp::w3 {
     std::string formatConsoleText(const Json& entries, size_t maxChars = 6000);
     // Parses "info"/"warning"/... ; false for an unknown name
     bool parseLogType(const std::string& name, LogType& out);
+    // An entry as read_console returns it
+    Json consoleEntryJson(const LogEntry& entry, size_t maxChars);
 
     // ------------------------------------------------------------ views (ViewTools.cpp)
 

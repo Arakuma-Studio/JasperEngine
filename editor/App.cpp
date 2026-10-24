@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/Scheduler.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -17,6 +18,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 
@@ -102,6 +104,7 @@ ImFont* editor::App::codeFont = nullptr;
 ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
+    scheduler().setOwnerThread();
     mainThreadId = std::this_thread::get_id();
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
@@ -118,6 +121,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    jobsMemoryWindow = new JobsMemoryWindow();
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -247,6 +251,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
+    ToggleJobsMemory,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -569,6 +574,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Analysis", {
+            menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -734,6 +742,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
+            break;
+        case AppMenuCommand::ToggleJobsMemory:
+            showEditorWindow(jobsMemoryWindow);
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
@@ -1892,7 +1903,8 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        if (projectWindow->isFocused()) {
+        // the Jobs & Memory panel shows the threading settings: its undo is the project's
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -1969,7 +1981,7 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic:
@@ -2008,7 +2020,7 @@ void editor::App::show(){
         }
     }
 
-    if (!popupOpen && projectWindow->isFocused()) {
+    if (!popupOpen && (projectWindow->isFocused() || jobsMemoryWindow->isFocused())) {
         if (isUndo) {
             project.getProjectCommandHistory()->undo();
             projectWindow->refreshCurrentDirectory();
@@ -2041,6 +2053,7 @@ void editor::App::show(){
 
     sceneSaveDialog.show();
     projectSaveDialog.show();
+    dataSafetyDialogs.show(project);
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
@@ -2062,6 +2075,7 @@ void editor::App::show(){
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    jobsMemoryWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2308,7 +2322,19 @@ void editor::App::loadStartupProject() {
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
+        project.setIgnoreProjectLock(mcpOptions.ignoreLock);
         if (!loadMcpStartupProject(mcpOptions)) {
+            if (project.wasProjectLocked()) {
+                // another editor writes this project: an agent here would overwrite its work
+                std::fprintf(stderr, "[mcp] project_locked: %s Pass --ignore-lock to open it anyway.\n",
+                             project.getProjectLockMessage().c_str());
+                std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
+                startupExitCode = 3;
+                // the main loop exits after the next frame (consumeBenchmarkExit): closing
+                // before the first frame leaves the render queue waiting on shutdown, and that
+                // frame wants a project (the empty temporary one, as when a load fails)
+                benchmarkExit = true;
+            }
             project.createTempProject("MyJasperEngineProject");
         }
         projectLoading = false;
@@ -2339,8 +2365,10 @@ bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
             Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
             return true;
         }
-        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
-                     options.project.string().c_str(), error.c_str());
+        if (!project.wasProjectLocked()) {
+            std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                         options.project.string().c_str(), error.c_str());
+        }
         return false;
     }
 
@@ -2528,6 +2556,19 @@ void editor::App::engineRender(){
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput);
+    // scene Auto Save (backups only), never in the middle of a drag or a field being typed
+    project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
+        || ImGui::GetIO().WantTextInput);
+    // the title says when the scene shown did not load completely (its tab does too)
+    {
+        const SceneProject* shown = project.getSelectedScene();
+        const std::string suffix = shown && shown->loadReport.dropped() > 0 ?
+            " - " + (shown->filepath.empty() ? shown->name : shown->filepath.filename().string()) + " (Partial Load)" : std::string();
+        if (suffix != windowTitleSuffix) {
+            windowTitleSuffix = suffix;
+            Backend::updateWindowTitle((windowTitleProject.empty() ? project.getName() : windowTitleProject) + windowTitleSuffix);
+        }
+    }
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -3179,18 +3220,19 @@ void editor::App::finishBenchmark() {
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        mainThreadTasks.push(std::move(task));
-    }
+    scheduler().post(std::move(task));
     // Wake an idle backend loop so cross-thread work runs promptly.
     std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
 bool editor::App::hasPendingMainThreadTasks() {
-    std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    return !mainThreadTasks.empty();
+    return scheduler().hasPosted();
+}
+
+double editor::App::idleWaitSeconds(double maxSeconds) const {
+    const double next = scheduler().nextDueRealTime();
+    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
@@ -3221,6 +3263,8 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // a clean quit: this session's crash backups and the project lock go
+    project.endProjectSession();
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
@@ -3370,7 +3414,8 @@ void editor::App::updateResourcesPath(){
 }
 
 void editor::App::updateWindowTitle(const std::string& projectName) {
-    Backend::updateWindowTitle(projectName);
+    windowTitleProject = projectName;
+    Backend::updateWindowTitle(projectName + windowTitleSuffix);
 }
 
 void editor::App::stopTransientPreviews() {
@@ -3457,6 +3502,31 @@ void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t co
     enqueueMainThreadTask([this, path, contextSceneId, contextRoot, inContext]() {
         project.openPrefabStage(path, contextSceneId, contextRoot, inContext);
     });
+}
+
+// An editor serving an MCP client on stdio has nobody to answer a modal: it decides like a
+// headless host (Refuse, Keep, no) and the agent passes allow_data_loss / recovery / --ignore-lock
+editor::DegradedSavePolicy editor::App::confirmDegradedSave(const DegradedSaveRequest& request) {
+    // the modal's Save Anyway runs the save again; this attempt writes nothing
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestDegradedSave(request);
+    }
+    return DegradedSavePolicy::Refuse;
+}
+
+editor::RecoveryChoice editor::App::resolveSceneRecovery(const SceneBackupInfo& backup) {
+    // the saved file opens now; the modal's Restore reloads the scene from the backup
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestRecovery(backup);
+    }
+    return RecoveryChoice::Keep;
+}
+
+bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestLockedProject(info);
+    }
+    return false;
 }
 
 void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {
@@ -3649,6 +3719,10 @@ editor::AnimationWindow* editor::App::getAnimationWindow() const{
     return animationWindow;
 }
 
+editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
+    return jobsMemoryWindow;
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -3813,26 +3887,18 @@ void editor::App::processNextSaveDialog() {
 void editor::App::processMainThreadTasks() {
     if (projectLoading) return;
 
-    std::queue<std::function<void()>> tasks;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        std::swap(tasks, mainThreadTasks);
+    // FIFO, one failing task neither drops the ones behind it (an MCP call waiting for its
+    // turn would never be answered) nor takes the editor down (Scheduler logs it)
+    Scheduler& tasks = scheduler();
+    tasks.processPosted();
+    const auto now = std::chrono::steady_clock::now();
+    if (lastSchedulerTime != std::chrono::steady_clock::time_point{}) {
+        tasks.advance(TimeDomain::Real, std::chrono::duration<double>(now - lastSchedulerTime).count());
     }
-
-    while (!tasks.empty()) {
-        auto task = std::move(tasks.front());
-        tasks.pop();
-        if (!task) continue;
-        // One failing task must not drop the ones queued behind it (an MCP call waiting
-        // for its turn would never be answered) nor take the editor down
-        try {
-            task();
-        } catch (const std::exception& e) {
-            Out::error("A main-thread task failed: %s", e.what());
-        } catch (...) {
-            Out::error("A main-thread task failed with an unknown error.");
-        }
-    }
+    lastSchedulerTime = now;
+    tasks.process(TimeDomain::Real);
+    tasks.advance(TimeDomain::Frames, 1.0);
+    tasks.process(TimeDomain::Frames);
 }
 
 bool editor::App::isMainThread() const {

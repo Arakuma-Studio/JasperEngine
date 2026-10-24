@@ -6,6 +6,8 @@ test_tool_groups.py covers). Entries of the exempt list must name existing tools
 
 from __future__ import annotations
 
+CI = True
+
 import re
 from pathlib import Path
 

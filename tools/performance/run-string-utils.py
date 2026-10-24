@@ -16,7 +16,7 @@ out.mkdir(parents=True, exist_ok=True)
 before = out / 'before.cpp'
 before.write_bytes(subprocess.check_output(['git', 'show', f'{args.baseline}:engine/core/util/StringUtils.cpp'], cwd=root))
 flags = ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.check else ['-O3', '-DNDEBUG']
-common = [os.environ.get('CXX', 'c++'), '-std=c++17', *flags, '-I' + str(root / 'engine/core'), '-I' + str(root / 'engine/core/util')]
+common = [os.environ.get('CXX', 'c++'), '-std=c++20', *flags, '-I' + str(root / 'engine/core'), '-I' + str(root / 'engine/core/util')]
 if args.allocations:
     common.append('-DTRACK_ALLOCATIONS')
 objects = []

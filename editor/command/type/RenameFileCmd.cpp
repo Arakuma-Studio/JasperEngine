@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenameFileCmd.h"
+#include "util/FileUtils.h"
 
 #include "util/Util.h"
 
@@ -31,7 +32,7 @@ void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs
     }
 
     fs::create_directories(newThumbnail.parent_path(), ec);
-    fs::rename(oldThumbnail, newThumbnail, ec);
+    io::renameWithRetry(oldThumbnail, newThumbnail, ec);
 }
 
 void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
@@ -39,7 +40,7 @@ void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
         bool isDir = fs::is_directory(sourceFs);
         // Resolve the thumbnail path before the rename, while the source still exists.
         fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-        fs::rename(sourceFs, destFs);
+        FileUtils::renameWithRetry(sourceFs, destFs);
         if (project) {
             moveThumbnail(oldThumbnail, destFs);
             std::string extension = sourceFs.extension().string();

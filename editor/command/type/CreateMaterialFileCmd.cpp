@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateMaterialFileCmd.h"
+#include "DocumentFile.h"
+#include "Out.h"
 
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -50,7 +52,7 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 
         decodedMaterial = material;
         hasDecodedMaterial = true;
-        this->payload = YAML::Dump(Stream::encodeMaterial(material));
+        this->payload = DocumentFiles::materialText(Stream::encodeMaterial(material), fs::path());
     } catch (const std::exception&) {
     }
 
@@ -69,13 +71,11 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 }
 
 bool editor::CreateMaterialFileCmd::execute() {
-    std::ofstream out(targetFile, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
+    const io::WriteResult written = DocumentFiles::write(targetFile, payload);
+    if (!written.ok()) {
+        Out::error(DocumentFiles::saveFailureMessage(targetFile, written));
         return false;
     }
-
-    out.write(payload.c_str(), payload.size());
-    out.close();
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;

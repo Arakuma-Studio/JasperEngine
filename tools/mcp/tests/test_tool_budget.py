@@ -13,6 +13,8 @@ this editor and fails, naming the tool, when a tool outgrows its limit.
 
 from __future__ import annotations
 
+CI = True
+
 import asyncio
 import json
 import os

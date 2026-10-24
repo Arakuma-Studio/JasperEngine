@@ -245,7 +245,7 @@ description and parameters. Regenerate it after you change tools (`--check` tell
 it is stale):
 
 ```sh
-uv run --no-project --with mcp --with pyyaml python tools/mcp/gen_tool_docs.py
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_tool_docs.py
 ```
 
 **Tool groups.** `tools/list` shows the `core` tools plus the groups a session enabled. The
@@ -268,6 +268,12 @@ Main ideas:
 - **Assets** use paths relative to the project.
 - `batch` runs many calls in one round trip, as one undo step.
 - Long operations return a job: poll it with `get_job` and stop it with `cancel_job`.
+- The engine's job system and memory are separate from those jobs:
+  - `get_job_system_stats` shows the workers, lanes, the Background gate and the asset reads.
+  - `get_memory_stats` shows the named memory records (textures, meshes, Lua, Jolt, arenas).
+  - `set_job_system_config` changes Reserved Frame Workers live (undo with scope `project`).
+
+  See [../jobs-memory.md](../jobs-memory.md).
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
 so keep them lean. [conventions.md](conventions.md) has the rules every tool follows (names,
@@ -278,8 +284,8 @@ gates them. Shared conventions (scene/entity references, value shapes, undo) bel
 server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh
-uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py [--top 20] [--groups all]
-uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py --check tools/mcp/budget.json
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20] [--groups all]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --check tools/mcp/budget.json
 ```
 
 ## Troubleshooting
@@ -308,7 +314,24 @@ in a scratch copy of a project under Xvfb:
 tools/mcp/run-tests.sh                 # every tools/mcp/tests/test_*.py
 tools/mcp/run-tests.sh -k batch -j 4   # filter by name, run 4 files at a time
 tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py  # protocol checks against a fake server
+tools/mcp/run-tests.sh --suite ci -j 2 # the CI suite (below)
 ```
 
 The harness API and conventions are described in the docstrings of `tools/mcp/harness.py`
-and `tools/mcp/run_tests.py`. Every tool needs a test.
+and `tools/mcp/run_tests.py`. Every tool needs a test. The harness's Python packages are pinned
+in `tools/mcp/requirements.txt`.
+
+### The CI suite (`CI = True`)
+
+CI runs only the test files that declare `CI = True` at module level
+(`tools/mcp/run-tests.sh --suite ci`, or `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`). CI has no
+copy of the default fixture project (`build/fixture-unity`, which is not in git), so a CI file
+must not need it: its editor tests run on a project they make, `EDITOR = {"create": True, ...}`,
+or on a committed one, `EDITOR = {"project": ".../tools/fixtures/<name>"}`. Tests without an
+editor parameter need neither. The runner checks this and exits with status 2 when a `CI = True`
+file relies on the default fixture.
+
+Write new test files CI-capable by default: create the project (or use `tools/fixtures/*`), then
+declare `CI = True`. The full suite, default-fixture files included, still runs on the build
+servers (`MCP_SUITE=all JASPER_FIXTURE=<fixture> tools/build.sh mcp-tests`). `docs/testing.md`
+covers every other test suite.

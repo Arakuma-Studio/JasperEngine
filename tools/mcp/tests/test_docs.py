@@ -21,7 +21,7 @@ import gen_tool_docs  # noqa: E402
 TIMEOUT = 900
 TOOLS_MD = harness.REPO / "docs" / "mcp" / "TOOLS.md"
 
-DOCS = ["cpp-scripting", "html-ui", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
+DOCS = ["cpp-scripting", "data-safety", "html-ui", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:

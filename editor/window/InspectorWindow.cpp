@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "command/type/RemovePreservedComponentCmd.h"
+#include "StreamPreserved.h"
+#include "DocumentFile.h"
 #include "SceneWindow.h"
 
 #include "imgui_internal.h"
@@ -410,11 +413,24 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
     std::filesystem::path absolutePath = project->getProjectPath() / entry.relativePath;
 
     try {
-        std::ofstream out(absolutePath, std::ios::binary | std::ios::trunc);
-        if (out.is_open()) {
-            std::string payload = YAML::Dump(Stream::encodeMaterial(material));
-            out.write(payload.c_str(), payload.size());
-            out.close();
+        std::string error;
+        const SaveResult saved = DocumentFiles::saveMaterial(absolutePath, Stream::encodeMaterial(material), DegradedSavePolicy::Refuse, &error);
+        if (saved == SaveResult::RefusedDegraded) {
+            // the editor's lossy-save modal decides (Save Anyway writes it)
+            DegradedSaveRequest request;
+            request.documentName = absolutePath.filename().string();
+            request.path = entry.relativePath;
+            const LoadReport report = DocumentFiles::materialFileReport(absolutePath);
+            for (const LoadIssue& issue : report.issues) {
+                if (issue.fate == LoadIssueFate::Dropped) request.dropped.push_back(issue);
+            }
+            const YAML::Node encoded = Stream::encodeMaterial(material);
+            request.saveAnyway = [absolutePath, encoded]() {
+                DocumentFiles::saveMaterial(absolutePath, encoded, DegradedSavePolicy::SaveAnyway);
+            };
+            editor::getEditorHost().confirmDegradedSave(request);
+        }
+        if (saved == SaveResult::Saved) {
 
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
             project->refreshLinkedMaterials(true);
@@ -2236,6 +2252,28 @@ bool editor::InspectorWindow::drawComponentHeader(SceneProject* sceneProject, co
 
 void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject, const std::vector<Entity>& entities, bool readOnly, bool forceOpen){
     const ImGuiStyle& style = ImGui::GetStyle();
+
+    // Components this editor does not know, kept in the file (docs/data-safety.md)
+    if (entities.size() == 1 && sceneProject && sceneProject->scene) {
+        if (const PreservedStore* store = findPreservedStore(sceneProject->scene)) {
+            for (const std::string& name : store->preservedComponentNames(entities[0])) {
+                ImGui::PushID(name.c_str());
+                ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
+                ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", name.c_str());
+                ImGui::SameLine();
+                ImGui::TextDisabled("not loaded: this editor does not know it; kept in the file");
+                ImGui::SameLine();
+                ImGui::BeginDisabled(readOnly);
+                if (ImGui::SmallButton("Remove")) {
+                    CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+                        new RemovePreservedComponentCmd(project, sceneProject->id, entities[0], name));
+                }
+                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("Remove it from the GameObject: the next save leaves it out");
+                ImGui::PopID();
+            }
+        }
+    }
 
     ImGui::Dummy(ImVec2(0.0f, style.ItemSpacing.y));
     ImGui::Separator();
@@ -4881,7 +4919,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                             try {
                                 if (cachedMatDropPath != droppedRelativePath) {
                                     cachedMatDropPath = droppedRelativePath;
-                                    YAML::Node materialNode = YAML::LoadFile((project->getProjectPath() / relativePath).string());
+                                    YAML::Node materialNode = DocumentFiles::read(project->getProjectPath() / relativePath, DocumentKind::Material).root;
                                     cachedMatDropMaterial = Stream::decodeMaterial(materialNode);
                                     cachedMatDropMaterial.name = droppedRelativePath;
                                 }
@@ -9999,7 +10037,6 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     if (allDefault) ImGui::BeginDisabled();
     if (ImGui::Button("Apply")){
         for (auto& entity : entities){
-            PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, "texture");
             Texture newTex;
 
             ProjectUtils::setDefaultSkyTexture(newTex);
@@ -14066,7 +14103,6 @@ void editor::InspectorWindow::drawMorphTracksComponent(ComponentType cpType, Sce
 
     if (trackValuesExpanded["morph"]){
         float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-        float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
 
         for (size_t i = 0; i < comp.values.size(); i++){
             ImGui::TableNextRow();

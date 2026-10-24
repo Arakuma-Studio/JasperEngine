@@ -19,6 +19,9 @@ import zlib
 
 from harness import Editor
 
+CI = True
+EDITOR = {"create": True, "name": "Html Ui Basic CI"}
+
 TIMEOUT = 900
 
 S: dict = {}

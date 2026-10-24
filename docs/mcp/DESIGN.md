@@ -16,7 +16,7 @@ through MCP tools, well enough to build and ship a game with no human in the loo
   overrides recorded, Hierarchy/Inspector refreshed. A human watching the editor sees it live.
 - Never blocks the UI thread waiting on something the UI thread must do (play startup,
   export, C++ build, rendering a frame).
-- Works on Linux, Windows, macOS (portable C++17; only Linux is tested here).
+- Works on Linux, Windows, macOS (portable C++20; only Linux is tested here).
 
 ## Process model and transports
 

@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+#include <cstdio>
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
 #include "Out.h"
+#include "AppSettings.h"
 #include "Backend.h"
 #include "Theme.h"
-#include <cstdarg>
 #include <cmath>
 #include <algorithm>
 #include <cstring>
@@ -91,7 +92,7 @@ std::string countLabel(size_t count) {
 
 ConsoleWindow::ConsoleWindow() {
     storedLogLineCount = 0;
-    nextLogId = 1;
+    lastPulledId = 0;
     needsRebuild = true;
     searchMatchCase = false;
     for (int i = 0; i < SEVERITY_COUNT; i++) {
@@ -132,6 +133,12 @@ void ConsoleWindow::setOpen(bool open) {
 
 bool ConsoleWindow::isOpen() const {
     return windowOpen;
+}
+
+void ConsoleWindow::setSearchText(const std::string& text) {
+    std::snprintf(filter.InputBuf, sizeof(filter.InputBuf), "%s", text.c_str());
+    filter.Build();
+    needsRebuild = true;
 }
 
 void ConsoleWindow::requestFocus() {
@@ -220,20 +227,30 @@ void ConsoleWindow::recountSeverities() {
     }
 }
 
-void ConsoleWindow::addLog(LogType type, const char* fmt, ...) {
-    va_list args;
-    va_start(args, fmt);
-    char temp[4096];
-    vsnprintf(temp, IM_ARRAYSIZE(temp), fmt, args);
-    va_end(args);
-
-    addLog(type, std::string(temp));
+void ConsoleWindow::pullLogs() {
+    // everything logged since the last frame, from any thread (the log keeps the newest 20,000)
+    std::vector<LogEntry> entries = Out::getLogsSince(lastPulledId);
+    for (LogEntry& entry : entries) {
+        lastPulledId = entry.id;
+        addEntry(std::move(entry));
+    }
 }
 
-void ConsoleWindow::addLog(LogType type, const std::string& message) {
-    LogData logEntry{type, message, nextLogId++};
+void ConsoleWindow::addEntry(LogEntry&& entry) {
+    LogData logEntry;
+    logEntry.type = entry.type;
+    logEntry.id = entry.id;
+    logEntry.detail = entry.level <= LogLevel::Debug;
+    logEntry.category = std::move(entry.category);
+    logEntry.file = std::move(entry.file);
+    logEntry.line = entry.line;
+    logEntry.frame = entry.frame;
+    logEntry.threadName = std::move(entry.threadName);
+    logEntry.message = std::move(entry.message);
+    const LogType type = logEntry.type;
+    if (seenCategories.insert(logEntry.category).second) needsRebuild = true;
+    storedLogLineCount += countRawLines(logEntry.message);
     logs.push_back(std::move(logEntry));
-    storedLogLineCount += countRawLines(message);
     severityCounts[severityOf(type)]++;
     enforceStoredLineLimit();
 
@@ -244,6 +261,59 @@ void ConsoleWindow::addLog(LogType type, const std::string& message) {
     if (type == LogType::Error && errorPause) {
         pendingErrorPause = true;
     }
+}
+
+std::string ConsoleWindow::originText(const LogData& log) const {
+    std::string origin = log.category;
+    if (!log.file.empty() && AppSettings::getLoggingSettings().showSource) {
+        origin += "  " + log.file + ":" + std::to_string(log.line);
+    }
+    origin += "  frame " + std::to_string(log.frame);
+    if (!log.threadName.empty()) origin += "  thread " + log.threadName;
+    return origin;
+}
+
+ConsoleWindow::ViewState ConsoleWindow::viewState(size_t maxRows) {
+    pullLogs();
+    if (needsRebuild) rebuildRows();
+    ViewState state;
+    state.open = windowOpen;
+    state.rowCount = rows.size();
+    const size_t first = rows.size() > maxRows ? rows.size() - maxRows : 0;
+    for (size_t i = first; i < rows.size(); i++) {
+        const LogData& log = logs[rows[i].logIndex];
+        state.rows.push_back(ViewRow{log.id, log.type, log.category, log.detail, firstLine(log.message), rows[i].count});
+    }
+    state.categories.assign(seenCategories.begin(), seenCategories.end());
+    state.hiddenCategories.assign(hiddenCategories.begin(), hiddenCategories.end());
+    if (const LogData* log = selectedLog()) {
+        state.hasSelection = true;
+        state.selectedId = log->id;
+        state.selectedOrigin = originText(*log);
+    }
+    state.collapse = collapse;
+    state.clearOnPlay = clearOnPlay;
+    state.errorPause = errorPause;
+    return state;
+}
+
+void ConsoleWindow::setHiddenCategories(const std::vector<std::string>& categories) {
+    hiddenCategories = std::set<std::string>(categories.begin(), categories.end());
+    needsRebuild = true;
+}
+
+bool ConsoleWindow::selectLog(uint64_t id) {
+    pullLogs();
+    if (needsRebuild) rebuildRows();
+    for (const Row& row : rows) {
+        if (logs[row.logIndex].id != id) continue;
+        selectedLogId = id;
+        hasSelection = true;
+        scrollToSelection = true;
+        autoScroll = false;
+        return true;
+    }
+    return false;
 }
 
 bool ConsoleWindow::getLatestLog(LogType& type, std::string& message) const {
@@ -301,19 +371,23 @@ bool ConsoleWindow::passTextFilter(const char* text) const {
 
 void ConsoleWindow::rebuildRows() {
     rows.clear();
-    // Collapse merges every identical message (same type and text) into the row
-    // of its first occurrence, like Unity.
+    // Collapse merges every identical message (same type, category and text) into the
+    // row of its first occurrence, like Unity.
     std::unordered_map<std::string, size_t> collapsedRows;
 
     for (size_t i = 0; i < logs.size(); i++) {
         const LogData& log = logs[i];
         if (!severityFilters[severityOf(log.type)]) continue;
+        if (!hiddenCategories.empty() && hiddenCategories.count(log.category)) continue;
         if (!passTextFilter(log.message.c_str())) continue;
 
         if (collapse) {
+            // same type, category and text
             std::string key;
-            key.reserve(log.message.size() + 2);
+            key.reserve(log.message.size() + log.category.size() + 3);
             key.push_back(static_cast<char>('0' + static_cast<int>(log.type)));
+            key.push_back('|');
+            key += log.category;
             key.push_back('|');
             key += log.message;
             auto it = collapsedRows.find(key);
@@ -370,7 +444,7 @@ void ConsoleWindow::updatePlayState() {
         autoScroll = true;
     }
     if (!playing) {
-        lastIdBeforePlay = nextLogId - 1;
+        lastIdBeforePlay = lastPulledId;
     }
     wasPlaying = playing;
 
@@ -422,6 +496,31 @@ void ConsoleWindow::showToolbar() {
     ImGui::SameLine();
     if (toolbarButton("Error Pause", errorPause, "Pause Play mode when an error is logged")) {
         errorPause = !errorPause;
+    }
+    toolbarSeparator();
+    if (toolbarButton(hiddenCategories.empty() ? "Category " ICON_FA_CARET_DOWN : "Category* " ICON_FA_CARET_DOWN,
+                      !hiddenCategories.empty(), "Show messages of these log categories")) {
+        ImGui::OpenPopup("##ConsoleCategories");
+    }
+    if (ImGui::BeginPopup("##ConsoleCategories")) {
+        if (ImGui::MenuItem("Everything", nullptr, false, !hiddenCategories.empty())) {
+            hiddenCategories.clear();
+            needsRebuild = true;
+        }
+        if (ImGui::MenuItem("Nothing", nullptr, false, hiddenCategories.size() != seenCategories.size())) {
+            hiddenCategories = seenCategories;
+            needsRebuild = true;
+        }
+        ImGui::Separator();
+        for (const std::string& category : seenCategories) {
+            bool shown = hiddenCategories.count(category) == 0;
+            if (ImGui::MenuItem(category.empty() ? "(none)" : category.c_str(), nullptr, &shown, true)) {
+                if (shown) hiddenCategories.erase(category);
+                else hiddenCategories.insert(category);
+                needsRebuild = true;
+            }
+        }
+        ImGui::EndPopup();
     }
 
     // Right side: search field, then the Log / Warning / Error counters.
@@ -534,6 +633,7 @@ void ConsoleWindow::showList(float height) {
     const ImU32 altBg = ImGui::GetColorU32(Theme::Colors::RowBackgroundAlt);
     const ImU32 selBg = ImGui::GetColorU32(listFocused ? Theme::Colors::Selection : Theme::Colors::SelectionUnfocused);
     const ImU32 textCol = ImGui::GetColorU32(ImGuiCol_Text);
+    const ImU32 detailCol = ImGui::GetColorU32(ImGuiCol_TextDisabled);
     const ImU32 badgeBg = ImGui::GetColorU32(style.Colors[ImGuiCol_Button]);
     const float iconColumn = ImGui::GetFontSize() + Theme::dpi(10.0f);
 
@@ -591,7 +691,9 @@ void ConsoleWindow::showList(float height) {
             const std::string text = firstLine(log.message);
             ImVec2 textPos(min.x + iconColumn, min.y + textOffsetY);
             ImVec4 clip(textPos.x, min.y, textRight, max.y);
-            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPos, textCol, text.c_str(), nullptr, 0.0f, &clip);
+            // Debug and Trace rows are grey
+            dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(), textPos, log.detail ? detailCol : textCol, text.c_str(),
+                        nullptr, 0.0f, &clip);
         }
     }
     clipper.End();
@@ -656,6 +758,15 @@ void ConsoleWindow::showDetails() {
     ImGui::PopStyleVar();
     if (log) {
         ImGui::PushID(static_cast<int>(log->id));
+        // where it comes from: category, the call site (file:line), frame and thread
+        const std::string origin = originText(*log);
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(8.0f));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextUnformatted(origin.c_str());
+        ImGui::PopStyleColor();
+        if (!log->file.empty() && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s:%u", log->file.c_str(), log->line);
+        }
         ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, Theme::dpi(ImVec2(8.0f, 6.0f)));
@@ -670,6 +781,7 @@ void ConsoleWindow::showDetails() {
 }
 
 void ConsoleWindow::show() {
+    pullLogs();
     updatePlayState();
 
     if (!windowOpen) {

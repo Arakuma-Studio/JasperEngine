@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 #include "Backend.h"
+#include "Out.h"
 #include "cli/CommandLine.h"
 #include "mcp/McpLaunch.h"
 #include "util/ShellEnv.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <string>
+#include <vector>
 
 using namespace jasperengine;
 
-int main(int argc, char* argv[]) {
+namespace {
+
+int runEditor(int argc, char* argv[]) {
     // A desktop launcher starts the editor without the user's shell environment,
     // so the build tools go back on PATH before anything can spawn a command.
     editor::ShellEnv::bootstrapPath();
@@ -69,4 +76,53 @@ int main(int argc, char* argv[]) {
     }
 
     return editor::Backend::init(argc, argv);
+}
+
+// --log-level <level>[,category=level...] (or --log-level=...), anywhere on the command line:
+// applied (after JASPER_LOG_LEVEL) and removed before the subcommands parse their arguments
+bool takeLogLevelFlag(std::vector<char*>& args) {
+    std::string spec;
+    if (const char* fromEnvironment = std::getenv("JASPER_LOG_LEVEL")) spec = fromEnvironment;
+    for (size_t i = 1; i < args.size();) {
+        const std::string arg = args[i];
+        if (arg == "--log-level") {
+            if (i + 1 >= args.size()) {
+                std::fprintf(stderr, "--log-level needs a level: trace, debug, info, warn, error, fatal or off "
+                                     "(and category=level items, comma separated)\n");
+                return false;
+            }
+            spec = args[i + 1];
+            args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i) + 2);
+            continue;
+        }
+        if (arg.rfind("--log-level=", 0) == 0) {
+            spec = arg.substr(12);
+            args.erase(args.begin() + static_cast<long>(i));
+            continue;
+        }
+        i++;
+    }
+    if (spec.empty()) return true;
+    std::string error;
+    if (!editor::Out::setLevelOverride(spec, &error)) {
+        std::fprintf(stderr, "--log-level: %s\n", error.c_str());
+        return false;
+    }
+    return true;
+}
+
+}
+
+int main(int argc, char* argv[]) {
+    // before anything logs: the in-memory store and the terminal until a Console window exists
+    editor::Out::startLogging();
+    std::vector<char*> args(argv, argv + argc);
+    if (!takeLogLevelFlag(args)) {
+        editor::Out::stopLogging();
+        return 2;
+    }
+    args.push_back(nullptr);
+    const int result = runEditor(static_cast<int>(args.size()) - 1, args.data());
+    editor::Out::stopLogging();
+    return result;
 }

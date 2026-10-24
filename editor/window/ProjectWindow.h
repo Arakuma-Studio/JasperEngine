@@ -201,7 +201,10 @@ namespace jasperengine::editor {
         ModelRender modelRender;
 
         // Thumbnail generation
-        std::thread thumbnailThread;
+        // thumbnail generation: one request per step of a Background strand
+        jobs::SerialQueue thumbnails{"thumbnails", jobs::Lane::Background};
+        std::atomic<bool> thumbnailStepScheduled{false};
+        bool thumbnailWarmupDone = false; // the strand's steps only
         std::mutex thumbnailMutex;
         std::queue<ThumbnailRequest> thumbnailQueue;
         std::atomic<bool> stopThumbnailThread;
@@ -282,7 +285,10 @@ namespace jasperengine::editor {
         static bool writeImageThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
 
         void queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate = false);
-        void thumbnailWorker();
+        void thumbnailStep();
+        void scheduleThumbnailStep();
+        // state a thumbnail step waits on changed: wakes cancelThumbnailWork's wait, schedules a step
+        void notifyThumbnailWork();
         ImTextureID getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight);
         void evictThumbnailTexture(const std::string& thumbnailKey);
         void enforceThumbnailCacheLimit();

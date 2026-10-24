@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "SceneBackup.h"
+#include "Out.h"
 
 #include "AppSettings.h"
 #include "App.h"
 #include "Project.h"
 #include "Theme.h"
+#include "log/Logger.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
@@ -18,28 +21,42 @@
 #include <filesystem>
 #include <functional>
 
+#include <cstdlib>
+#if defined(_WIN32)
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+        #define NOMINMAX
+    #endif
+    #include <windows.h>
+    #include <shellapi.h>
+#endif
+
 namespace jasperengine::editor {
 
 namespace {
     namespace fs = std::filesystem;
 
-    static constexpr float dialogWidth = 860.0f;
-    static constexpr float dialogHeight = 520.0f;
-    static constexpr float categoryListWidth = 190.0f;
+    static constexpr float prefsDialogWidth = 860.0f;
+    static constexpr float prefsDialogHeight = 520.0f;
+    static constexpr float prefsCategoryListWidth = 190.0f;
 
     enum class PreferencesCategory {
         General,
         CodeEditor,
         ExternalTools,
+        Logging,
         ShaderCache,
         Count
     };
 
     // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
     const settingsui::Category preferencesCategories[] = {
-        {"General", "", "editor vsync default build directory output"},
+        {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
         {"Code Editor", "", "font size"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
+        {"Logging", "", "log level category console file backtrace errors source location debug trace"},
         {"Shader Cache", "", "clear shader cache"},
     };
     constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
@@ -53,20 +70,20 @@ namespace {
         settingsui::boldText(title);
         ImGui::TableNextColumn();
     }
-    static constexpr float settingsLabelWidth = 190.0f;
-    static constexpr float settingsPanelPadding = 12.0f;
-    static constexpr float settingsButtonWidth = 120.0f;
-    static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    static constexpr float prefsSettingsLabelWidth = 190.0f;
+    static constexpr float prefsSettingsPanelPadding = 12.0f;
+    static constexpr float prefsSettingsButtonWidth = 120.0f;
+    static constexpr ImGuiWindowFlags prefsNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
     template <typename DrawContents>
-    void drawSettingsPanel(const char* panelId, DrawContents drawContents) {
+    void prefsDrawSettingsPanel(const char* panelId, DrawContents drawContents) {
         const ImGuiStyle& style = ImGui::GetStyle();
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(settingsPanelPadding, settingsPanelPadding)));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(prefsSettingsPanelPadding, prefsSettingsPanelPadding)));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x, Theme::dpi(6.0f)));
 
         bool panelVisible = ImGui::BeginChild(panelId, ImVec2(0, 0), ImGuiChildFlags_Borders);
-        float labelWidth = std::min(Theme::dpi(settingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
+        float labelWidth = std::min(Theme::dpi(prefsSettingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
         if (panelVisible && ImGui::BeginTable("##EditorSettingsTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -77,7 +94,7 @@ namespace {
         ImGui::PopStyleVar(3);
     }
 
-    bool beginSettingsRow(const char* label, const char* tooltip = nullptr, bool defChanged = false) {
+    bool prefsBeginSettingsRow(const char* label, const char* tooltip = nullptr, bool defChanged = false) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -183,11 +200,28 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_autosaveEnabled = AppSettings::isAutosaveEnabled();
+    m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
+    m_logging = AppSettings::getLoggingSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
+}
+
+bool EditorSettingsWindow::showPage(const std::string& name) {
+    for (int i = 0; i < preferencesCategoryCount; i++) {
+        if (name == preferencesCategories[i].name) {
+            m_category = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* EditorSettingsWindow::pageName() const {
+    return preferencesCategories[m_category].name;
 }
 
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
@@ -231,15 +265,15 @@ void EditorSettingsWindow::show() {
     ImVec2 center = viewport->GetWorkCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
-        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(prefsDialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(prefsDialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal |
                              ImGuiWindowFlags_NoResize |
-                             noScrollFlags;
+                             prefsNoScrollFlags;
 
     bool popupOpen = ImGui::BeginPopupModal("Preferences##EditorSettingsModal", &m_isOpen, flags);
 
@@ -258,9 +292,9 @@ void EditorSettingsWindow::drawSettings() {
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, noScrollFlags);
+    ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, prefsNoScrollFlags);
 
-    const float listWidth = std::min(Theme::dpi(categoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
+    const float listWidth = std::min(Theme::dpi(prefsCategoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
     settingsui::categoryList("##PreferencesCategories", preferencesCategories, preferencesCategoryCount, m_category,
                              m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
     ImGui::SameLine();
@@ -271,6 +305,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
+        case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
     }
@@ -282,7 +317,7 @@ void EditorSettingsWindow::drawSettings() {
     ImGui::Separator();
 
     // Unity-style footer: buttons on the right, primary first.
-    const float buttonWidth = Theme::dpi(settingsButtonWidth);
+    const float buttonWidth = Theme::dpi(prefsSettingsButtonWidth);
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
@@ -301,9 +336,31 @@ void EditorSettingsWindow::drawSettings() {
     }
 }
 
+// The system's file manager on a folder
+void EditorSettingsWindow::openInFileManager(const fs::path& folder) {
+#if defined(_WIN32)
+    ShellExecuteW(nullptr, L"open", folder.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#else
+    std::string quoted = "'";
+    for (char c : folder.string()) {
+        if (c == '\'') quoted += "'\\''";
+        else quoted += c;
+    }
+    quoted += "'";
+    #if defined(__APPLE__)
+    const std::string command = "open " + quoted + " &";
+    #else
+    const std::string command = "xdg-open " + quoted + " >/dev/null 2>&1 &";
+    #endif
+    if (std::system(command.c_str()) != 0) {
+        Out::warning("Could not open %s", folder.string().c_str());
+    }
+#endif
+}
+
 void EditorSettingsWindow::drawGeneralSettings() {
-    drawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
-        if (beginSettingsRow("Default Build Directory",
+    prefsDrawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
+        if (prefsBeginSettingsRow("Default Build Directory",
                              "Used by Build Settings when the current project has no saved output directory.",
                              !m_defaultExportDirectory.empty())) {
             m_defaultExportDirectory.clear();
@@ -322,22 +379,49 @@ void EditorSettingsWindow::drawGeneralSettings() {
             }
         );
 
-        if (beginSettingsRow("Editor VSync",
+        if (prefsBeginSettingsRow("Editor VSync",
                              "VSync for the editor UI. Play mode and exported builds use the project VSync setting.",
                              m_editorVSyncEnabled != true)) {
             m_editorVSyncEnabled = true;
         }
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
 
+        sectionRow("Auto Save");
+        if (prefsBeginSettingsRow("Auto Save Scenes",
+                             "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
+                             "by Save). After a crash, opening the scene offers to restore it.",
+                             m_autosaveEnabled != true)) {
+            m_autosaveEnabled = true;
+        }
+        ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
+        if (prefsBeginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
+                             m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
+            m_autosaveInterval = AppSettings::defaultAutosaveInterval;
+        }
+        ImGui::BeginDisabled(!m_autosaveEnabled);
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
+                       AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::EndDisabled();
+        prefsBeginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
+        ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
+        if (ImGui::Button("Open Backup Folder")) {
+            const fs::path folder = SceneBackups::root(m_project->getProjectPath());
+            std::error_code ec;
+            fs::create_directories(folder, ec);
+            openInFileManager(folder);
+        }
+        ImGui::EndDisabled();
+
         sectionRow("HTML UI");
-        if (beginSettingsRow("Import Remote Resources",
+        if (prefsBeginSettingsRow("Import Remote Resources",
                              "When a document loads, download the Google Fonts, stylesheets, images and Lottie animations it "
                              "references by URL into assets/htmlui-imports (the game never uses the network).",
                              m_htmlUiAutoImport != true)) {
             m_htmlUiAutoImport = true;
         }
         ImGui::Checkbox("##HtmlUiAutoImport", &m_htmlUiAutoImport);
-        if (beginSettingsRow("Verbose Diagnostics",
+        if (prefsBeginSettingsRow("Verbose Diagnostics",
                              "Log every note of the HTML/CSS compatibility layer (rewrites, approximations) to the Console, "
                              "not only errors, warnings and the per-document summary.",
                              m_htmlUiVerboseDiagnostics != false)) {
@@ -348,9 +432,9 @@ void EditorSettingsWindow::drawGeneralSettings() {
 }
 
 void EditorSettingsWindow::drawCodeEditorSettings() {
-    drawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
+    prefsDrawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
         const bool fontChanged = std::fabs(m_codeEditorFontSize - AppSettings::defaultCodeEditorFontSize) > 1e-4f;
-        if (beginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
+        if (prefsBeginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
             m_codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
         }
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
@@ -360,7 +444,7 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
 }
 
 void EditorSettingsWindow::drawExternalToolsSettings() {
-    drawSettingsPanel("##EditorExternalToolsPanel", [this]() {
+    prefsDrawSettingsPanel("##EditorExternalToolsPanel", [this]() {
         sectionRow("Desktop Build");
         drawCMakeSettings();
         sectionRow("Web Build");
@@ -372,7 +456,7 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
 
 void EditorSettingsWindow::drawCMakeSettings() {
     {
-        beginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
+        prefsBeginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
         fs::path cmakeDisplay = m_cmakeOverride.empty()
             ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
             : fs::path(m_cmakeOverride);
@@ -409,7 +493,7 @@ void EditorSettingsWindow::drawCMakeSettings() {
             ImGui::PopStyleColor();
         }
 
-        if (beginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
+        if (prefsBeginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
                 "Set the language standard in Project Settings > Scripting > C++ Standard.", m_cmakeKitIndex != 0)) {
             m_cmakeKitIndex = 0;
         }
@@ -468,7 +552,7 @@ void EditorSettingsWindow::drawCMakeSettings() {
 
 void EditorSettingsWindow::drawWebSettings() {
     {
-        beginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
+        prefsBeginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
 
         fs::path emsdkDisplay = m_emsdkOverride.empty()
             ? fs::path("<Auto-detect>")
@@ -500,7 +584,7 @@ void EditorSettingsWindow::drawWebSettings() {
 }
 
 void EditorSettingsWindow::drawVideoImportSettings() {
-    beginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
+    prefsBeginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
         "Empty means JASPER_FFMPEG, then PATH. It runs as a separate program; it is never shipped.", !m_ffmpegOverride.empty());
     const fs::path display = m_ffmpegOverride.empty() ? fs::path("<Auto-detect>") : fs::path(m_ffmpegOverride);
     drawPathPicker(
@@ -530,9 +614,74 @@ void EditorSettingsWindow::drawVideoImportSettings() {
     }
 }
 
+namespace {
+    const char* const prefsLogLevelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Fatal", "Off"};
+
+    // A level combo over the level names of LoggingSettings; true when changed
+    bool prefsLogLevelCombo(const char* id, std::string& levelName) {
+        LogLevel level = LogLevel::Info;
+        parseLogLevel(levelName.c_str(), level);
+        int index = static_cast<int>(level);
+        ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+        if (ImGui::Combo(id, &index, prefsLogLevelLabels, IM_ARRAYSIZE(prefsLogLevelLabels))) {
+            levelName = logLevelName(static_cast<LogLevel>(index));
+            return true;
+        }
+        return false;
+    }
+}
+
+void EditorSettingsWindow::drawLoggingSettings() {
+    prefsDrawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
+        const LoggingSettings defaults;
+        if (prefsBeginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
+                             m_logging.fileLevel != defaults.fileLevel)) {
+            m_logging.fileLevel = defaults.fileLevel;
+        }
+        prefsLogLevelCombo("##LogFileLevel", m_logging.fileLevel);
+
+        if (prefsBeginSettingsRow("Capture Backtrace on Errors",
+                             "Errors logged by the engine and editor record their call stack; editor.log shows it.",
+                             m_logging.backtraceOnError != defaults.backtraceOnError)) {
+            m_logging.backtraceOnError = defaults.backtraceOnError;
+        }
+        ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
+
+        if (prefsBeginSettingsRow("Show Source Location",
+                             "The file and line a message was logged from, in the Console's details and editor.log.",
+                             m_logging.showSource != defaults.showSource)) {
+            m_logging.showSource = defaults.showSource;
+        }
+        ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
+
+        sectionRow("Category Levels");
+        prefsBeginSettingsRow("Reset", "Every category back to Info.");
+        ImGui::BeginDisabled(m_logging.categoryLevels.empty());
+        if (ImGui::Button("Reset All##LogLevels")) {
+            m_logging.categoryLevels.clear();
+        }
+        ImGui::EndDisabled();
+        for (size_t i = 0; i < Logger::categoryCount(); i++) {
+            const std::string name = Logger::categoryAt(i).name;
+            auto it = m_logging.categoryLevels.find(name);
+            std::string level = it != m_logging.categoryLevels.end() ? it->second : std::string("info");
+            if (prefsBeginSettingsRow(name.c_str(), "Messages of this category below the level are not logged anywhere.",
+                                 level != "info")) {
+                level = "info";
+            }
+            prefsLogLevelCombo(("##LogCategory" + name).c_str(), level);
+            if (level == "info") {
+                m_logging.categoryLevels.erase(name);
+            } else {
+                m_logging.categoryLevels[name] = level;
+            }
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
-    drawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
-        beginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
+    prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
+        prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
         ImGui::BeginDisabled(m_project && m_project->isAnyScenePlaying());
         if (ImGui::Button("Clear Shader Cache")) {
             std::error_code ec;
@@ -548,9 +697,12 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setAutosaveEnabled(m_autosaveEnabled);
+    AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
+    AppSettings::setLoggingSettings(m_logging);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

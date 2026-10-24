@@ -65,6 +65,8 @@ void printUsage(const std::string& name) {
         << "      --http-port <n>    Also serve MCP over HTTP on http://127.0.0.1:<n>/mcp.\n"
         << "      --tool-groups <g>  Tool groups to list besides core: a,b or all (default: Editor\n"
         << "                         Settings mcp.tool_groups). Every tool is callable either way.\n"
+        << "      --ignore-lock      Open the project even when another editor has it open\n"
+        << "                         (without it that fails with project_locked, exit code 3).\n"
         << "  -h, --help             Show this help.\n\n"
         << "Without --project or --create the last opened project opens, as in a normal start.\n\n"
         << "Client configuration (e.g. .mcp.json):\n"
@@ -237,6 +239,8 @@ int prepareMcpCommand(int argc, char** argv, const char* executableName) {
                 return 2;
             }
             options.toolGroupsSet = true;
+        } else if (arg == "--ignore-lock") {
+            options.ignoreLock = true;
         } else if (arg == "--http-port") {
             if (!value(text)) return 2;
             if (!parsePort(text, options.httpPort)) {

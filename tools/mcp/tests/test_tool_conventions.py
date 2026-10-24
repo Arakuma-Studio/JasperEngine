@@ -20,6 +20,8 @@ rule, not checked here.
 
 from __future__ import annotations
 
+CI = True
+
 import re
 
 from harness import Editor, tool_meta

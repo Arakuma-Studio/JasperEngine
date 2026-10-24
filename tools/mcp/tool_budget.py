@@ -1,7 +1,7 @@
 """Measure the size of the editor's MCP tool definitions (what an agent pays per session), and
 gate it against the limits of tools/mcp/budget.json.
 
-    uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py
         [--top N] [--json FILE] [--url URL] [--project DIR | --fixture] [--full]
         [--groups default|all|a,b] [--check tools/mcp/budget.json]
 

@@ -25,6 +25,7 @@ from harness import Editor, skip
 sys.path.insert(0, str(Path(__file__).parent))
 from test_post_process_passes import write_png  # noqa: E402
 
+CI = True
 EDITOR = {"xvfb": "harness", "create": True, "name": "Post Process Inspector"}
 TIMEOUT = 600
 
