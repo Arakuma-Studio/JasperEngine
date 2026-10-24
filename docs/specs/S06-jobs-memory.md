@@ -699,12 +699,12 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   - `SANITIZE=thread UNIT_SUITE=core tools/build.sh unit-tests` (GPU suites filtered out):
     606 of 606, no race report.
   - The unity builds (`UNITY=1`) of the engine, the editor and the core tests compile.
-- **AC11-AC14.** `je-bench-jobs`, `je-bench-memory` and `check_bench.py`: all budgets hold in
-  three consecutive runs.
-  - R23: 5.9-8.5 M jobs/s, dispatch 24 ns, round trip p99 1-2.3 µs.
-  - R24: 0.94-0.96 flat, 0.76-0.82 nested, 0 deadlocks.
-  - R25: 2.25-2.5 ms p99.
-  - R26: arena 2.9 ns, pool 4.7-4.9 ns, range p99 153-177 ns, stats 0.9-1.4 %.
+- **AC11-AC14.** `je-bench-jobs`, `je-bench-memory` and `check_bench.py` (6 workers on the
+  8-vCPU server, runs started at load < 1): all budgets hold in three consecutive runs.
+  - R23: 7.7-8.1 M jobs/s, dispatch 26 ns, round trip p99 1-2.7 µs.
+  - R24: 0.91-1.02 flat, 0.78-0.79 nested, 0 deadlocks.
+  - R25: 2.13-2.27 ms p99.
+  - R26: arena 2.9 ns, pool 4.7-4.9 ns, range p99 164-175 ns, stats 1.1-1.7 %.
 - **AC15.** `rg "std::async|ThreadPoolManager" engine/core editor` finds only the Lua shim.
   S03's Auto Save backup writes, which arrived in a detached `std::thread`, run on the
   io-write channel.
