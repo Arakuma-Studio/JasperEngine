@@ -3,6 +3,9 @@
 
 #include "AppSettings.h"
 #include "DocumentFile.h"
+#include "Project.h"
+#include "command/CommandHistory.h"
+#include "command/PlayChangeReview.h"
 #include "Out.h"
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
@@ -132,6 +135,10 @@ int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
+int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+bool AppSettings::undoRecordSelection = true;
+bool AppSettings::undoReviewPlayChanges = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
 LoggingSettings AppSettings::loggingSettings;
 
@@ -331,6 +338,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
+                if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
             }
             if (editorNode["game_view"]) {
                 auto gameNode = editorNode["game_view"];
@@ -366,6 +374,14 @@ bool AppSettings::applySettings(const YAML::Node& node) {
         }
         UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
 
+        if (settingsData["undo"]) {
+            auto undoNode = settingsData["undo"];
+            if (undoNode["max_steps"]) undoMaxSteps = undoNode["max_steps"].as<int>();
+            if (undoNode["memory_limit_mb"]) undoMemoryLimitMB = undoNode["memory_limit_mb"].as<int>();
+            if (undoNode["record_selection"]) undoRecordSelection = undoNode["record_selection"].as<bool>();
+            if (undoNode["review_play_changes"]) undoReviewPlayChanges = undoNode["review_play_changes"].as<bool>();
+        }
+        applyUndoSettings();
         loggingSettings = LoggingSettings();
         if (settingsData["logging"]) {
             auto loggingNode = settingsData["logging"];
@@ -502,6 +518,7 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
+        panelsNode["undo_history"] = panelVisibility.undoHistory;
         editorNode["panels"] = panelsNode;
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
@@ -524,6 +541,12 @@ bool AppSettings::saveSettings() {
         htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
         settingsData["html_ui"] = htmlUiNode;
 
+        YAML::Node undoNode;
+        undoNode["max_steps"] = undoMaxSteps;
+        undoNode["memory_limit_mb"] = undoMemoryLimitMB;
+        undoNode["record_selection"] = undoRecordSelection;
+        undoNode["review_play_changes"] = undoReviewPlayChanges;
+        settingsData["undo"] = undoNode;
         if (loggingSettings == LoggingSettings()) {
             if (settingsData["logging"]) settingsData.remove("logging");
         } else {
@@ -798,6 +821,42 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+int AppSettings::getUndoMaxSteps() {
+    return undoMaxSteps;
+}
+
+int AppSettings::getUndoMemoryLimitMB() {
+    return undoMemoryLimitMB;
+}
+
+bool AppSettings::getUndoRecordSelection() {
+    return undoRecordSelection;
+}
+
+bool AppSettings::getUndoReviewPlayChanges() {
+    return undoReviewPlayChanges;
+}
+
+void AppSettings::setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges) {
+    undoMaxSteps = maxSteps;
+    undoMemoryLimitMB = memoryLimitMB;
+    undoRecordSelection = recordSelection;
+    undoReviewPlayChanges = reviewPlayChanges;
+    applyUndoSettings();
+}
+
+void AppSettings::applyUndoSettings() {
+    undoMaxSteps = std::clamp(undoMaxSteps, minUndoMaxSteps, maxUndoMaxSteps);
+    // 0 = unlimited, else within the range
+    if (undoMemoryLimitMB != 0) {
+        undoMemoryLimitMB = std::clamp(undoMemoryLimitMB, minUndoMemoryLimitMB, maxUndoMemoryLimitMB);
+    }
+    CommandHistory::maxEntries = static_cast<size_t>(undoMaxSteps);
+    CommandHistory::memoryLimit = static_cast<size_t>(undoMemoryLimitMB) * 1024 * 1024;
+    Project::recordSelectionInUndo = undoRecordSelection;
+    PlayChangeReview::enabled = undoReviewPlayChanges;
 }
 
 bool AppSettings::getHtmlUiAutoImport() {

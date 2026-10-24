@@ -53,6 +53,9 @@ namespace jasperengine::editor::mcp {
         std::string group;
         // Section of docs/mcp/TOOLS.md; buildToolRegistry fills it from the registering module
         std::string module;
+        // The call's undo steps are the agent's (S24 R24): edit tools always; a control tool
+        // whose steps are edits of the user's state too (select_entities) sets this
+        bool attributesUndo = false;
         std::function<void(CallPtr)> handler;  // runs on the MAIN thread
     };
 

@@ -7,6 +7,8 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "util/YamlFootprint.h"
+#include "command/PlayChangeReview.h"
 
 #include <algorithm>
 #include <map>
@@ -172,4 +174,37 @@ bool editor::RemoveComponentCmd::mergeWith(Command* otherCommand){
     }
 
     return false;
+}
+
+std::string editor::RemoveComponentCmd::describe() const{
+    return "Remove Component " + CommandNames::component(componentType) + " (" +
+        CommandNames::entities(project, (uint32_t)sceneId, getEntities()) + ")";
+}
+
+size_t editor::RemoveComponentCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this) + entities.capacity() * sizeof(RemoveComponentData);
+    for (const RemoveComponentData& entityData : entities){
+        bytes += yamlFootprint(entityData.oldComponent);
+    }
+    for (const std::unique_ptr<DeleteEntityCmd>& ownedDelete : ownedEntityDeletes){
+        bytes += ownedDelete->memoryBytes();
+    }
+    return bytes;
+}
+
+std::vector<Entity> editor::RemoveComponentCmd::getEntities() const{
+    std::vector<Entity> result;
+    result.reserve(entities.size());
+    for (const RemoveComponentData& entityData : entities){
+        result.push_back(entityData.entity);
+    }
+    return result;
+}
+
+void editor::RemoveComponentCmd::collectKeepCommands(KeepContext& context) const{
+    for (const RemoveComponentData& entityData : entities){
+        if (entityData.removed){
+            context.addRemovedComponent(entityData.entity, componentType);
+        }
+    }
 }

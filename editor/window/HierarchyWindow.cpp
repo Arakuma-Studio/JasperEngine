@@ -10,6 +10,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
+#include "command/PlayChangeReview.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "command/type/AddChildSceneCmd.h"
@@ -1960,6 +1961,19 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, targets));
                 }
                 entityDeleted = true;
+            }
+
+            // Play Mode Changes: what scripts change here is offered at Stop too
+            SceneProject* playingScene = project->getScene(sceneId);
+            if (!entityDeleted && playingScene && !node.isPlayCreated && !project->isPlayRuntimeScene(sceneId) &&
+                (playingScene->playState == ScenePlayState::PLAYING || playingScene->playState == ScenePlayState::PAUSED)) {
+                ImGui::Separator();
+                if (ImGui::MenuItem(ICON_FA_THUMBTACK "  Keep Values After Play (all components)")) {
+                    for (Entity target : targets) {
+                        PlayChangeReview::get().markGameObject(sceneId, target);
+                    }
+                }
+                ImGui::SetItemTooltip("At Stop, Play Mode Changes offers to keep every component's values as they are then");
             }
 
             // Create children of this GameObject

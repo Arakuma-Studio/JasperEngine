@@ -277,7 +277,10 @@ Main ideas:
 - **Properties** use catalog property paths (`position`,
   `submeshes[0].material.baseColorFactor`, `scripts[0].speed`).
 - **Assets** use paths relative to the project.
-- `batch` runs many calls in one round trip, as one undo step.
+- `batch` runs many calls in one round trip, as one undo step (`undo_group`).
+- Every edit is an undo step named after your client ("Claude Code: Move Player"), returned as
+  `undo` {id, name}; `undo`/`redo` with `scope: "timeline"` are the editor's Ctrl+Z/Ctrl+Y, and
+  `expect_top_id` undoes only your own last call. See [docs/undo.md](../undo.md).
 - Long operations return a job: poll it with `get_job` and stop it with `cancel_job`.
 - The engine's job system and memory are separate from those jobs:
   - `get_job_system_stats` shows the workers, lanes, the Background gate and the asset reads.

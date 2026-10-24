@@ -516,7 +516,9 @@ in `tools/mcp/tests/`.
 - **A `data_safety` group (S03).** §6.4 names no group for S03. Its three tools
   (`get_load_report`, `list_scene_backups`, `discard_scene_backup`) went into `data_safety`, and
   the S06/S09 tools (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`,
-  `get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`) into `diagnostics`, when
+  `get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`) into `diagnostics` and the
+  S24 ones (`get_undo_history`, `get_play_changes`, `apply_play_changes`,
+  `discard_play_changes`) into `editor_ux`, when
   S31 merged oe-port: those streams had registered them into core and raised the limit inside
   `test_html_ui_tools.py`, which took the default listing over 100,000 characters.
 - **The terrain tools moved out of core** (`sculpt_terrain`, `set_terrain_maps`,

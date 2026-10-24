@@ -22,6 +22,7 @@
 #include "Stream.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/CommandNames.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -1156,6 +1157,17 @@ public:
         project->cleanupPrefabFilePath(to);
     }
     bool affectsStructure() const override { return false; }
+
+    // "Copy File a.png → b.png"
+    std::string describe() const override {
+        return "Copy File " + CommandNames::file(from) + CommandNames::ARROW + CommandNames::file(to);
+    }
+    const char* typeName() const override { return "CopyAsCmd"; }
+    size_t memoryBytes() const override {
+        size_t bytes = sizeof(*this) + from.native().size() + to.native().size();
+        for (const auto& [path, guid] : copyGuids) bytes += path.size() + guid.size();
+        return bytes;
+    }
 
 private:
     Project* project;

@@ -16,6 +16,7 @@
 #include "PostProcessingPresets.h"
 #include "Project.h"
 #include "StreamPreserved.h"
+#include "command/CommandNames.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -565,6 +566,9 @@ public:
     void undo() override {
         if (removed) restore();
     }
+
+    std::string describe() const override { return "Remove Scene " + CommandNames::file(scenePath); }
+    const char* typeName() const override { return "RemoveProjectSceneCmd"; }
 
 private:
     void restore() {

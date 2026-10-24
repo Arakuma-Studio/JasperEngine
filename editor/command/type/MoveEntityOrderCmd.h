@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include <cstdint>
 #include <filesystem>
@@ -46,6 +47,12 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Parent Player" when it goes into another GameObject, "Reorder Player" otherwise
+        std::string describe() const override {
+            return std::string(type == InsertionType::INTO ? "Parent " : "Reorder ") + CommandNames::entity(project, sceneId, source);
+        }
+        const char* typeName() const override { return "MoveEntityOrderCmd"; }
 
     };
 

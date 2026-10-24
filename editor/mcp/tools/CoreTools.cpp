@@ -14,12 +14,14 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpToolGroups.h"
+#include "mcp/McpUndo.h"
 
 #include "App.h"
 #include "EditorVersion.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/UndoTimeline.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
@@ -53,32 +55,64 @@ struct BatchState {
     size_t failed = 0;
     bool stopped = false;
     std::vector<ToolImage> images;
-    // undo_group: each history's position when the batch started
+    // undo_group: each history's position when the batch started, kept from trimming
     std::map<uint32_t, size_t> sceneMarks;
     size_t projectMark = 0;
+    std::vector<std::unique_ptr<UndoGroupScope>> trimHolds;
+    std::string undoName;
 };
 
 void beginUndoGroup(BatchState& state, Project* project) {
     for (SceneProject* scene : project->getScenesAndPrefabStages()) {
-        state.sceneMarks[scene->id] = CommandHandle::get(scene->id)->mark();
+        CommandHistory* history = CommandHandle::get(scene->id);
+        state.sceneMarks[scene->id] = history->mark();
+        state.trimHolds.push_back(std::make_unique<UndoGroupScope>(history));
     }
     state.projectMark = project->getProjectCommandHistory()->mark();
+    state.trimHolds.push_back(std::make_unique<UndoGroupScope>(project->getProjectCommandHistory()));
 }
 
-// One undo step per history the batch changed. Scenes the batch created start at 0.
+// One undo step per history the batch changed, linked so one Ctrl+Z undoes the whole batch
+// (S24 R25). Scenes the batch created start at 0.
 Json endUndoGroup(BatchState& state, Project* project) {
     Json grouped = Json::array();
     bool complete = true;
+    const std::string label = !state.undoName.empty() ? state.undoName
+        : "Batch (" + std::to_string(state.calls.size()) + " calls)";
+    std::vector<CommandHistory*> histories;
     for (SceneProject* scene : project->getScenesAndPrefabStages()) {
         auto it = state.sceneMarks.find(scene->id);
         const size_t mark = it != state.sceneMarks.end() ? it->second : 0;
         CommandHistory* history = CommandHandle::get(scene->id);
         if (history->position() <= mark) continue;
-        if (history->groupSince(mark)) grouped.push_back(scene->id);
-        else complete = false;
+        if (history->groupSince(mark, label)) {
+            grouped.push_back(scene->id);
+            histories.push_back(history);
+        } else {
+            complete = false;
+        }
     }
-    if (!project->getProjectCommandHistory()->groupSince(state.projectMark)) complete = false;
-    return Json{{"scene_ids", grouped}, {"complete", complete}};
+    CommandHistory* projectHistory = project->getProjectCommandHistory();
+    if (projectHistory->position() > state.projectMark) {
+        if (projectHistory->groupSince(state.projectMark, label)) histories.push_back(projectHistory);
+        else complete = false;
+    } else if (!projectHistory->groupSince(state.projectMark)) {
+        complete = false;
+    }
+    state.trimHolds.clear();
+    Json data = {{"scene_ids", grouped}, {"complete", complete}};
+    if (histories.size() > 1) {
+        data["link_id"] = UndoTimeline::link(histories);
+    }
+    const UndoEntry* newest = nullptr;
+    for (CommandHistory* history : histories) {
+        const UndoEntry* top = history->top();
+        if (top && (!newest || top->info.id > newest->info.id)) newest = top;
+    }
+    if (newest) {
+        data["undo"] = {{"id", newest->info.id}, {"name", newest->name()}};
+    }
+    return data;
 }
 
 void finishBatch(const std::shared_ptr<BatchState>& state) {
@@ -179,6 +213,7 @@ void batchTool(const CallPtr& call) {
     state->calls = args["calls"];
     state->stopOnError = args.value("stop_on_error", true);
     state->undoGroup = args.value("undo_group", false);
+    state->undoName = args.value("undo_name", std::string());
     if (state->undoGroup) beginUndoGroup(*state, call->ctx().project());
     call->detach();
     runBatchStep(state);
@@ -225,6 +260,16 @@ void cancelJobTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ undo / redo
 
+// One step of a single history (scope scene or project), with what it took
+bool historyStep(CommandHistory* history, bool undo, std::vector<UndoTimeline::Step>& steps, bool project, uint32_t sceneId) {
+    const UndoEntry* next = undo ? history->top() : history->nextRedo();
+    if (!next) return false;
+    UndoTimeline::Step step{next->info.id, next->name(), project, sceneId};
+    if (!(undo ? history->undo() : history->redo())) return false;
+    steps.push_back(step);
+    return true;
+}
+
 void undoRedo(const CallPtr& call, bool undo) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -233,40 +278,173 @@ void undoRedo(const CallPtr& call, bool undo) {
     const char* verb = undo ? "undo" : "redo";
 
     CommandHistory* history = nullptr;
+    uint32_t sceneId = NULL_PROJECT_SCENE;
     Json data = {{"scope", scope}};
     if (scope == "project") {
         history = project->getProjectCommandHistory();
-    } else if (scope == "scene") {
+    } else if (scope == "scene" || scope == "timeline") {
         std::string error;
         SceneProject* scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
         if (!scene) {
             call->fail(error);
             return;
         }
-        history = CommandHandle::get(scene->id);
+        sceneId = scene->id;
+        if (scope == "scene") history = CommandHandle::get(scene->id);
         data["scene"] = McpRefs::sceneJson(project, *scene);
     } else {
-        call->fail("scope must be \"scene\" (GameObject and component edits) or \"project\" (asset file operations).");
+        call->fail("scope must be \"timeline\" (the scene's and the asset steps in order, like Ctrl+Z), \"scene\" "
+                   "(GameObject and component edits) or \"project\" (asset file operations).");
         return;
     }
 
-    int done = 0;
-    for (; done < steps; done++) {
-        if (undo ? !history->canUndo() : !history->canRedo()) break;
-        if (undo) history->undo();
-        else history->redo();
+    // The step undo/redo takes next in the scope
+    auto nextId = [&]() -> uint64_t {
+        if (history) {
+            const UndoEntry* next = undo ? history->top() : history->nextRedo();
+            return next ? next->info.id : 0;
+        }
+        UndoTimeline::EntryView next = undo ? UndoTimeline::nextUndo(sceneId) : UndoTimeline::nextRedo(sceneId);
+        return next ? next.entry->info.id : 0;
+    };
+    auto inScope = [&](uint64_t id) -> const UndoEntry* {
+        if (history) return history->find(id);
+        UndoTimeline::EntryView view = UndoTimeline::find(sceneId, id);
+        return view.entry;
+    };
+    auto applied = [&](uint64_t id) {
+        if (history) return history->isApplied(id);
+        UndoTimeline::EntryView view = UndoTimeline::find(sceneId, id);
+        return view && view.applied;
+    };
+
+    // expect_top_id: change nothing unless the next step is that one (an agent undoing only its own call)
+    if (args.contains("expect_top_id") && !args["expect_top_id"].is_null()) {
+        const uint64_t expected = args["expect_top_id"].get<uint64_t>();
+        const uint64_t actual = nextId();
+        if (actual != expected) {
+            data["next_id"] = actual == 0 ? Json(nullptr) : Json(actual);
+            call->fail(std::string("The next step to ") + verb + " is " +
+                       (actual == 0 ? std::string("none") : std::to_string(actual)) + ", not " + std::to_string(expected) +
+                       ": nothing changed. get_undo_history lists the steps.", data);
+            return;
+        }
     }
-    if (scope == "project" && call->ctx().projectWindow()) {
+
+    std::vector<UndoTimeline::Step> done;
+    std::string why;
+    if (args.contains("to_id") && !args["to_id"].is_null()) {
+        const uint64_t target = args["to_id"].get<uint64_t>();
+        if (!inScope(target)) {
+            call->fail("No step " + std::to_string(target) + " in the " + scope + " history (get_undo_history lists them).", data);
+            return;
+        }
+        if (undo != applied(target)) {
+            call->fail("Step " + std::to_string(target) + (undo ? " is not applied: redo to it instead." : " is applied already: undo to it instead."), data);
+            return;
+        }
+        if (history) {
+            // undo until it is the newest applied step, or redo until it is applied
+            while (undo ? (history->top() && history->top()->info.id != target) : !history->isApplied(target)) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId)) break;
+            }
+        } else {
+            UndoTimeline::jumpTo(sceneId, target, &why, &done);
+        }
+    } else {
+        for (int i = 0; i < steps; i++) {
+            if (history) {
+                if (!historyStep(history, undo, done, scope == "project", sceneId)) break;
+            } else if (!(undo ? UndoTimeline::undo(sceneId, &why, &done) : UndoTimeline::redo(sceneId, &why, &done))) {
+                break;
+            }
+        }
+    }
+    bool touchedProject = false;
+    Json list = Json::array();
+    for (const UndoTimeline::Step& step : done) {
+        list.push_back(McpUndo::stepJson(step));
+        touchedProject = touchedProject || step.project;
+    }
+    // the timeline refreshes the Project window itself
+    if (history && touchedProject && call->ctx().projectWindow()) {
         call->ctx().projectWindow()->refreshCurrentDirectory();
     }
-    data["steps"] = done;
-    data["can_undo"] = history->canUndo();
-    data["can_redo"] = history->canRedo();
-    if (done == 0) {
-        call->fail(std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+    data["steps"] = done.size();
+    data["undone"] = undo ? list : Json::array();
+    data["redone"] = undo ? Json::array() : list;
+    if (history) {
+        data["can_undo"] = history->canUndo();
+        data["can_redo"] = history->canRedo();
+    } else {
+        data["can_undo"] = UndoTimeline::canUndo(sceneId);
+        data["can_redo"] = UndoTimeline::canRedo(sceneId);
+    }
+    if (done.empty()) {
+        call->fail(why.rfind("Busy", 0) == 0 ? why : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
         return;
     }
-    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history.", data);
+    std::string names;
+    for (const UndoTimeline::Step& step : done) {
+        if (!names.empty()) names += ", ";
+        names += "\"" + step.name + "\"";
+    }
+    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done.size()) + " step(s) in the " + scope +
+             " history: " + names + ".", data);
+}
+
+// ------------------------------------------------------------------ get_undo_history
+
+void getUndoHistoryTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    const std::string scope = args.value("scope", "timeline");
+    const int limit = std::max(1, std::min(500, args.value("limit", 30)));
+    const bool includeSelection = args.value("include_selection", false);
+    const bool includeRedo = args.value("include_redo", true);
+
+    uint32_t sceneId = NULL_PROJECT_SCENE;
+    Json data = {{"scope", scope}};
+    if (scope != "project") {
+        std::string error;
+        SceneProject* scene = McpRefs::resolveScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!scene) {
+            call->fail(error);
+            return;
+        }
+        sceneId = scene->id;
+        data["scene"] = McpRefs::sceneJson(project, *scene);
+    }
+    if (scope != "timeline" && scope != "scene" && scope != "project") {
+        call->fail("scope must be \"timeline\", \"scene\" or \"project\".");
+        return;
+    }
+
+    std::vector<UndoTimeline::EntryView> views = UndoTimeline::entries(sceneId, includeSelection);
+    Json entries = Json::array();
+    std::string text;
+    int listed = 0;
+    for (auto it = views.rbegin(); it != views.rend() && listed < limit; ++it) {
+        if (scope == "scene" && it->project) continue;
+        if (scope == "project" && !it->project) continue;
+        if (!includeRedo && !it->applied) continue;
+        entries.push_back(McpUndo::entryJson(*it));
+        text += "\n" + std::to_string(it->entry->info.id) + (it->applied ? "  " : " (redo) ") + it->entry->name() +
+                (it->project ? " [project]" : "");
+        listed++;
+    }
+    UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(sceneId);
+    UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(sceneId);
+    data["entries"] = entries;
+    data["undo_name"] = nextUndo ? Json(nextUndo.entry->name()) : Json(nullptr);
+    data["redo_name"] = nextRedo ? Json(nextRedo.entry->name()) : Json(nullptr);
+    data["can_undo"] = UndoTimeline::canUndo(sceneId);
+    data["can_redo"] = UndoTimeline::canRedo(sceneId);
+    data["memory"] = {{"used", CommandHistory::totalBytes()}, {"limit", CommandHistory::memoryLimit}};
+    if (CommandHistory* history = UndoTimeline::sceneHistory(sceneId); history && history->isInPlaySession()) {
+        data["play_floor_id"] = history->getPlayStartId();
+    }
+    call->ok(std::to_string(listed) + " step(s), newest first" + (listed ? ":" : ".") + text, data);
 }
 
 // ------------------------------------------------------------------ job system and memory
@@ -367,6 +545,7 @@ void getMemoryStatsTool(const CallPtr& call) {
     call->ok(std::to_string(records.size()) + " memory record(s).", Json{{"records", records}, {"totals", totalsJson}});
 }
 
+
 // ------------------------------------------------------------------ editor_status
 
 void editorStatusTool(const CallPtr& call) {
@@ -408,7 +587,18 @@ void editorStatusTool(const CallPtr& call) {
     }
 
     const SceneProject* selected = project->getSelectedScene();
+    // the Edit menu's labels come from the same calls (UndoTimeline::undoLabel)
+    const uint32_t undoScene = selected ? selected->id : NULL_PROJECT_SCENE;
+    UndoTimeline::EntryView nextUndo = UndoTimeline::nextUndo(undoScene);
+    UndoTimeline::EntryView nextRedo = UndoTimeline::nextRedo(undoScene);
+    Json undoStatus = {
+        {"undo_name", nextUndo ? Json(nextUndo.entry->name()) : Json(nullptr)},
+        {"redo_name", nextRedo ? Json(nextRedo.entry->name()) : Json(nullptr)},
+        {"undo_label", UndoTimeline::undoLabel(undoScene)},
+        {"redo_label", UndoTimeline::redoLabel(undoScene)}
+    };
     Json data = {
+        {"undo", undoStatus},
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
         {"project", {
             {"name", project->getName()},
@@ -587,8 +777,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.title = "Batch";
         tool.description =
             "Run tool calls in order in one round-trip: results [{ok, text, structured}], succeeded, failed (the "
-            "batch itself doesn't fail: check failed). undo_group: one undo step per scene; undo/redo or Play "
-            "start/stop inside prevent it. Not nestable.";
+            "batch itself doesn't fail: check failed). undo_group: one linked undo step (one Ctrl+Z) over the "
+            "histories it changed, named undo_name; undo/redo or Play start/stop inside prevent it. Not nestable.";
         tool.inputSchema = object({
             {"calls", Json{
                 {"type", "array"},
@@ -600,7 +790,8 @@ void registerCoreTools(McpRegistry& registry) {
                 }, {"tool"})}
             }},
             {"stop_on_error", withDefault(boolean(""), true)},
-            {"undo_group", withDefault(boolean(""), false)}
+            {"undo_group", withDefault(boolean(""), false)},
+            {"undo_name", string("undo_group's step name (default \"Batch (N calls)\").")}
         }, {"calls"});
         tool.handler = batchTool;
         registry.addTool(std::move(tool));
@@ -641,15 +832,40 @@ void registerCoreTools(McpRegistry& registry) {
         tool.name = undo ? "undo" : "redo";
         tool.title = undo ? "Undo" : "Redo";
         tool.description = undo
-            ? "Undo like Ctrl+Z. scope scene: one scene's edits (a step per edit call; a batch with undo_group is "
-              "one); project: asset file operations. Returns steps undone and whether more undo/redo is possible."
-            : "Redo what undo undid, like Ctrl+Y; same scopes. Any new edit clears the redo history.";
+            ? "Undo. scope timeline (recommended): exactly Ctrl+Z, the scene's and the asset steps in order; scene: "
+              "one scene's edits; project: asset file operations. to_id: until that step is the newest applied; "
+              "expect_top_id: refuse unless the next step is that id. Returns undone [{id, name}]."
+            : "Redo what undo undid, like Ctrl+Y; same scopes, to_id (until applied) and expect_top_id. Any new edit "
+              "clears the redo history.";
         tool.inputSchema = object({
-            {"scope", withDefault(stringEnum("", {"scene", "project"}), "scene")},
+            {"scope", withDefault(stringEnum("", {"timeline", "scene", "project"}), "scene")},
             {"scene", sceneRef()},
-            {"steps", withDefault(integer("", 1, 100), 1)}
+            {"steps", withDefault(integer("", 1, 100), 1)},
+            {"to_id", integer("A step id from get_undo_history.")},
+            {"expect_top_id", integer("Refuse unless the next step is this id.")}
         });
         tool.handler = [undo](CallPtr call) { undoRedo(call, undo); };
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_undo_history";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Undo History";
+        tool.description =
+            "Undo steps newest first: {id, name, type, history (project|scene id), origin {kind, client, tool}, time, "
+            "bytes, applied, link_id}, the next undo/redo names, memory. scope timeline: what Ctrl+Z walks.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"scope", withDefault(stringEnum("", {"timeline", "scene", "project"}), "timeline")},
+            {"limit", withDefault(integer("", 1, 500), 30)},
+            {"include_selection", withDefault(boolean("Selection steps too."), false)},
+            {"include_redo", withDefault(boolean(""), true)}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getUndoHistoryTool;
         registry.addTool(std::move(tool));
     }
 

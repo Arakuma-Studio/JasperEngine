@@ -27,7 +27,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, Unity glossary).
+prefabs, HTML/CSS UI, data safety, undo, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -59,11 +59,10 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
 
 ## The loop
-1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
-   touch.
+1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
-   (undo_group: one undo step). Edit code with your own tools (see Code).
+   (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
@@ -74,6 +73,12 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
 past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+
+## Undo
+Edit results carry `undo` {id, name}: one named step per call (a `batch` with undo_group: one,
+named by undo_name). undo/redo scope "timeline" = the human's Ctrl+Z/Ctrl+Y; expect_top_id
+undoes only your own last step. Play-time edits roll back at play stop and are offered back
+(get_play_changes). More: jasper://docs/undo.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
@@ -204,8 +209,6 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity.
-- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -228,28 +231,25 @@ shaderUniforms. Outlines and stencil effects: apply_material_preset (list_materi
 tune its extraPass and stencil. Shaders with scene_inputs (cost_note) add a depth
 pass or colour copy per camera and must draw transparent; avoid on low-end mobile. Fork only
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
-before editing: keep its declarations, includes, varyings and output, change the math near the
-end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
-forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
+before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
+block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform (a long
-job). The 2D/3D physics switches strip backends from the
-export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
+(Build Settings, build_project) makes a CMake project or players per platform (a long job).
+Before exporting: every scene saved, Console clean in play, the start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes
 assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_changes reports.
-inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert_ui (text_fits,
-no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
-brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
-set_ui_effect_time).
+inspect_ui (boxes in canvas px = send_input coords) and assert_ui (text_fits, no_overlap...)
+check layouts; import_files brings fonts, icons and videos; effect(<name>, ...) draws GPU effects
+(list_ui_effects, set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
 ## Data safety

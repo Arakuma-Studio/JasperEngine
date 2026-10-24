@@ -4,6 +4,7 @@
 #pragma once
 
 #include "McpJson.h"
+#include "command/UndoOrigin.h"
 
 #include <atomic>
 #include <chrono>
@@ -101,6 +102,18 @@ namespace jasperengine::editor::mcp {
         void setSession(SessionPtr clientSession) { callSession = std::move(clientSession); }
         void setNotifier(std::function<bool(const Json&)> fn);
 
+        // Unique per editor session (the undo steps' attribution)
+        uint64_t serial() const { return callSerial; }
+        // Who the call's undo steps are from (McpServer::execute sets it for edit tools; the
+        // kind stays User for read-only and control tools, which are not attributed)
+        void setUndoOrigin(UndoOrigin origin) { undoOrigin = std::move(origin); }
+        const UndoOrigin& getUndoOrigin() const { return undoOrigin; }
+        bool attributed() const { return undoOrigin.kind == UndoOriginKind::Agent; }
+        // The client's name (MCP initialize clientInfo.name) and the request id
+        void setClient(std::string name, std::string requestId) { clientName = std::move(name); callRequestId = std::move(requestId); }
+        const std::string& client() const { return clientName; }
+        const std::string& requestId() const { return callRequestId; }
+
     private:
         McpServer& owner;
         std::string toolName;
@@ -116,6 +129,10 @@ namespace jasperengine::editor::mcp {
         bool isDetached = false;
         std::weak_ptr<McpCall> parentCall;
         std::chrono::steady_clock::time_point startTime;
+        uint64_t callSerial = 0;
+        UndoOrigin undoOrigin;
+        std::string clientName;
+        std::string callRequestId;
     };
 
     using CallPtr = std::shared_ptr<McpCall>;

@@ -94,7 +94,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `assets_pipeline` | S04, S05, S14 |
 | `data_safety` | S03 (`get_load_report`, `list_scene_backups`, `discard_scene_backup`) |
 | `diagnostics` | S06 (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`), S07, S09 (`get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`), S28 |
-| `editor_ux` | S24, S25, S26 |
+| `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S25, S26 |
 | `profiling` | S15 |
 | `rendering_fx` | S12, S13 |
 | `splines` | S18 |
