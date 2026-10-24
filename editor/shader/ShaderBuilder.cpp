@@ -259,7 +259,7 @@ void editor::ShaderBuilder::requestShutdown() {
     // no wait runs a build inline while this holds cacheMutex)
     for (auto& [key, task] : pendingBuilds){
         if (task.cancel())
-            ResourceProgress::failBuild(key);
+            ResourceProgress::failBuild(progressId(key));
     }
     for (auto& [key, task] : pendingBuilds)
         task.wait();
@@ -463,7 +463,7 @@ void editor::ShaderBuilder::invalidateCustomShaders() {
     for (auto it = pendingBuilds.begin(); it != pendingBuilds.end(); ) {
         if (projectCustom(it->first)){
             if (it->second.cancel())
-                ResourceProgress::failBuild(it->first);
+                ResourceProgress::failBuild(progressId(it->first));
             it = pendingBuilds.erase(it);
         }else{
             ++it;

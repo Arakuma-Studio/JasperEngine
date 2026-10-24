@@ -1965,14 +1965,14 @@ void ProjectSettingsWindow::drawIOSSettings() {
     ImGui::Checkbox("##IOSHighRefreshRate", &m_iosSupportsHighRefreshRate);
     endSettingsRow("Allow 120 Hz displays when supported.");
 
-    if (beginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
+    if (projectBeginSettingsRow("Google AdMob", m_iosAdmobEnabled)) {
         m_iosAdmobEnabled = false;
     }
     ImGui::Checkbox("##IOSAdMob", &m_iosAdmobEnabled);
     endSettingsRow("Links Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing.");
 
     ImGui::BeginDisabled(!m_iosAdmobEnabled);
-    beginSettingsRow("AdMob App ID");
+    projectBeginSettingsRow("AdMob App ID");
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     ImGui::InputTextWithHint("##IOSAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_iosAdmobAppIdBuffer, sizeof(m_iosAdmobAppIdBuffer));
     endSettingsRow((std::string("GADApplicationIdentifier from the AdMob console, required with AdMob. Google's sample app ") +
@@ -2083,14 +2083,14 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::SetItemTooltip("Uses the fullscreen Android theme and hides system bars in MainActivity.");
     endSettingsRow("Android screen/window behavior.");
 
-    if (beginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
+    if (projectBeginSettingsRow("Google AdMob", m_androidAdmobEnabled != defaults.admobEnabled)) {
         m_androidAdmobEnabled = defaults.admobEnabled;
     }
     ImGui::Checkbox("##AndroidAdMob", &m_androidAdmobEnabled);
     endSettingsRow("Compiles in Google Mobile Ads for System.initializeAdMob and the interstitial ad calls. Without it the export leaves the SDK out and those calls do nothing. Declare ads and Ad ID use in the Play Console.");
 
     ImGui::BeginDisabled(!m_androidAdmobEnabled);
-    beginSettingsRow("AdMob App ID");
+    projectBeginSettingsRow("AdMob App ID");
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     ImGui::InputTextWithHint("##AndroidAdMobAppId", "ca-app-pub-0000000000000000~0000000000", m_androidAdmobAppIdBuffer, sizeof(m_androidAdmobAppIdBuffer));
     endSettingsRow((std::string("APPLICATION_ID from the AdMob console, required with AdMob. Google's sample app ") +

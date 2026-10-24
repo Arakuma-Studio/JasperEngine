@@ -507,9 +507,12 @@ void TextureDataPool::invalidate(const std::string& id){
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto pendingIt = pendingBuilds.find(id);
         if (pendingIt != pendingBuilds.end()) {
-            if (pendingIt->second.valid()) {
-                pendingIt->second.wait();
+            // as remove(): a load not started never runs, a running one is waited for
+            pendingIt->second.cancel.cancel();
+            if (pendingIt->second.task.cancel()) {
+                ResourceProgress::failBuild(std::hash<std::string>{}(id));
             }
+            pendingIt->second.task.wait();
             pendingBuilds.erase(pendingIt);
         }
     }
