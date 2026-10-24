@@ -9,6 +9,7 @@
 #include "App.h"
 #include "Project.h"
 #include "Theme.h"
+#include "log/Logger.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileDialogs.h"
 #include "window/Widgets.h"
@@ -46,6 +47,7 @@ namespace {
         CodeEditor,
         Undo,
         ExternalTools,
+        Logging,
         ShaderCache,
         Count
     };
@@ -56,6 +58,7 @@ namespace {
         {"Code Editor", "", "font size"},
         {"Undo", "", "undo redo history max steps memory limit record selection review play mode changes keep values"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
+        {"Logging", "", "log level category console file backtrace errors source location debug trace"},
         {"Shader Cache", "", "clear shader cache"},
     };
     constexpr int preferencesCategoryCount = static_cast<int>(PreferencesCategory::Count);
@@ -208,8 +211,23 @@ void EditorSettingsWindow::open(Project* project) {
     m_undoMemoryLimitMB = AppSettings::getUndoMemoryLimitMB();
     m_undoRecordSelection = AppSettings::getUndoRecordSelection();
     m_undoReviewPlayChanges = AppSettings::getUndoReviewPlayChanges();
+    m_logging = AppSettings::getLoggingSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
+}
+
+bool EditorSettingsWindow::showPage(const std::string& name) {
+    for (int i = 0; i < preferencesCategoryCount; i++) {
+        if (name == preferencesCategories[i].name) {
+            m_category = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* EditorSettingsWindow::pageName() const {
+    return preferencesCategories[m_category].name;
 }
 
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
@@ -294,6 +312,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
         case PreferencesCategory::Undo: drawUndoSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
+        case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
     }
@@ -641,6 +660,71 @@ void EditorSettingsWindow::drawUndoSettings() {
     });
 }
 
+namespace {
+    const char* const prefsLogLevelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Fatal", "Off"};
+
+    // A level combo over the level names of LoggingSettings; true when changed
+    bool prefsLogLevelCombo(const char* id, std::string& levelName) {
+        LogLevel level = LogLevel::Info;
+        parseLogLevel(levelName.c_str(), level);
+        int index = static_cast<int>(level);
+        ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+        if (ImGui::Combo(id, &index, prefsLogLevelLabels, IM_ARRAYSIZE(prefsLogLevelLabels))) {
+            levelName = logLevelName(static_cast<LogLevel>(index));
+            return true;
+        }
+        return false;
+    }
+}
+
+void EditorSettingsWindow::drawLoggingSettings() {
+    prefsDrawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
+        const LoggingSettings defaults;
+        if (prefsBeginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
+                             m_logging.fileLevel != defaults.fileLevel)) {
+            m_logging.fileLevel = defaults.fileLevel;
+        }
+        prefsLogLevelCombo("##LogFileLevel", m_logging.fileLevel);
+
+        if (prefsBeginSettingsRow("Capture Backtrace on Errors",
+                             "Errors logged by the engine and editor record their call stack; editor.log shows it.",
+                             m_logging.backtraceOnError != defaults.backtraceOnError)) {
+            m_logging.backtraceOnError = defaults.backtraceOnError;
+        }
+        ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
+
+        if (prefsBeginSettingsRow("Show Source Location",
+                             "The file and line a message was logged from, in the Console's details and editor.log.",
+                             m_logging.showSource != defaults.showSource)) {
+            m_logging.showSource = defaults.showSource;
+        }
+        ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
+
+        sectionRow("Category Levels");
+        prefsBeginSettingsRow("Reset", "Every category back to Info.");
+        ImGui::BeginDisabled(m_logging.categoryLevels.empty());
+        if (ImGui::Button("Reset All##LogLevels")) {
+            m_logging.categoryLevels.clear();
+        }
+        ImGui::EndDisabled();
+        for (size_t i = 0; i < Logger::categoryCount(); i++) {
+            const std::string name = Logger::categoryAt(i).name;
+            auto it = m_logging.categoryLevels.find(name);
+            std::string level = it != m_logging.categoryLevels.end() ? it->second : std::string("info");
+            if (prefsBeginSettingsRow(name.c_str(), "Messages of this category below the level are not logged anywhere.",
+                                 level != "info")) {
+                level = "info";
+            }
+            prefsLogLevelCombo(("##LogCategory" + name).c_str(), level);
+            if (level == "info") {
+                m_logging.categoryLevels.erase(name);
+            } else {
+                m_logging.categoryLevels[name] = level;
+            }
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
     prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
         prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
@@ -665,6 +749,7 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setUndo(m_undoMaxSteps, m_undoMemoryLimitMB, m_undoRecordSelection, m_undoReviewPlayChanges);
+    AppSettings::setLoggingSettings(m_logging);
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

@@ -24,6 +24,10 @@ jasperengine_add_test_target(jasperengine-core-tests
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
 )
 
+# the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
+# sees the executable's symbols
+set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)
+
 find_package(Threads REQUIRED)
 add_executable(je-bench-jobs ${CMAKE_CURRENT_SOURCE_DIR}/bench/JobsBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-memory ${CMAKE_CURRENT_SOURCE_DIR}/bench/MemoryBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})

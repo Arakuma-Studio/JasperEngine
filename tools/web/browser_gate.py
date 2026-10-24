@@ -16,7 +16,9 @@ Exit 1 on: an uncaught exception; a console message of level error; a console li
 ERROR_MARKERS (WebGL errors, the engine's (ERROR) lines, Lua errors, missing shaders, Emscripten
 aborts, wasm traps); no ready line before --timeout (with --until-ready); a missing --expect line;
 a centre pixel outside the baseline's rgb +- tolerance; crossOriginIsolated differing from the
-baseline's isolated. Exit 2 when the gate itself cannot run (no Chrome, no page target).
+baseline's isolated; a line of the baseline's "console" list ({"text", "level"}: log, info,
+warning, error) missing, at another console level, or (with "ordered": true) out of order. An
+error the "console" list names is expected and fails nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
 The transcript is printed before anything that needs the page's main thread (evaluation, the
 screenshot), so a wedged page still yields its console. The only capture path is
@@ -392,9 +394,30 @@ def main() -> int:
             centre_x, centre_y = width // 2, height // 2
         centre = png_pixel(png, centre_x, centre_y) if png else None
 
+        # the baseline's required console lines, at their level (and in order)
+        required = baseline.get("console", [])
+        expected_errors = [item["text"] for item in required if item.get("level") == "error"]
+
+        def expected(text: str) -> bool:
+            return any(e in text for e in expected_errors)
+
+        console_failures = []
+        position = 0
+        for item in required:
+            start = position if baseline.get("ordered") else 0
+            found = next((i for i in range(start, len(records)) if item["text"] in records[i][2]), None)
+            if found is None:
+                earlier = any(item["text"] in r[2] for r in records)
+                console_failures.append(f"'{item['text']}' " + ("is out of order" if earlier else "is missing"))
+                continue
+            if records[found][1] != item.get("level", records[found][1]):
+                console_failures.append(f"'{item['text']}' is a console {records[found][1]}, not {item['level']}")
+            position = found + 1
+
         exceptions = [text for _, level, text in records if level == "exception"]
-        errors = [text for _, level, text in records if level == "error"]
-        marked = [text for _, level, text in records if level not in ("exception", "error") and ERROR_MARKERS.search(text)]
+        errors = [text for _, level, text in records if level == "error" and not expected(text)]
+        marked = [text for _, level, text in records
+                  if level not in ("exception", "error") and ERROR_MARKERS.search(text) and not expected(text)]
         lines = [text for _, _, text in records]
         missing = [text for text in args.expect + baseline.get("expect", []) if not any(text in line for line in lines)]
 
@@ -409,6 +432,7 @@ def main() -> int:
             failures.append(f"no '{READY_LINE}' line within {args.timeout:g} s")
         for text in missing:
             failures.append(f"no console line contains '{text}'")
+        failures += [f"console: {failure}" for failure in console_failures]
         if "rgb" in baseline:
             tolerance = int(baseline.get("tolerance", 0))
             if centre is None:

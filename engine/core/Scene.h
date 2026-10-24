@@ -104,6 +104,7 @@ namespace jasperengine{
         void update(double dt);
         void fixedUpdate(double dt);
 
+        // Deprecated, as Engine::removeSubscriptionsByTag: SubscriptionOwnerIndex::releaseOwner
         void removeSubscriptionsByTag(const std::string& substring);
 
         void updateCameraSize();

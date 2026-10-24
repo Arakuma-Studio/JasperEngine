@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CommandLine.h"
+#include "log/Logger.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 
@@ -1983,6 +1984,8 @@ fs::path canonicalOr(const fs::path& path) {
 class QuietOutput {
 public:
     QuietOutput() {
+        // the logger writes the console from its own thread: what came before goes out first
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);
@@ -2008,6 +2011,8 @@ public:
 #endif
     }
     ~QuietOutput() {
+        // and what was logged while quiet is written while the descriptors still point at null
+        Logger::flush();
         std::cout.flush();
         std::cerr.flush();
         std::fflush(stdout);

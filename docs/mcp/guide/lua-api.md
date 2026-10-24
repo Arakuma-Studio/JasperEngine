@@ -400,12 +400,23 @@ returns the Background lane's queue; `initialize` and `shutdown` warn once and d
 
 ### 2.3 Log (static, one string argument each)
 
-`Log.print(s)`, `Log.verbose(s)`, `Log.debug(s)`, `Log.warn(s)`, `Log.error(s)`.
+`Log.print(s)` (= `Log.info(s)`), `Log.verbose(s)` (trace), `Log.debug(s)` (debug builds
+only), `Log.warn(s)`, `Log.error(s)`.
 Pass ONE string: `Log.print("score " .. tostring(n))` or `Log.print(string.format("%d", n))`.
 Plain Lua `print(...)` goes to the engine log too, as an info line (the editor's Console, in
 Play and at edit time; a game's platform log in an exported build): it takes any number of
-values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
-levels.
+values of any type and joins them with tabs, like standard Lua. `Log.*` add the levels.
+
+Lua's records are in the `lua` category and carry the chunk and line they were logged from
+(the Console's details pane, `read_console`'s `source`). More than 200 identical messages a
+second are held back and summed up in one `suppressed N similar messages` line.
+
+- `Log.category(name)`: a category of your own, created on first use, with
+  `:trace(s) :debug(s) :info(s) :warn(s) :error(s)` (`local net = Log.category("net")`,
+  `net:warn("lag")`). The Console filters by category.
+- `Log.setLevel(level [, category])`: the lowest level logged (`"trace"`, `"debug"`, `"info"`,
+  `"warn"`, `"error"`, `"fatal"`, `"off"`) for `lua` or the named category; false for an
+  unknown level name. `Log.getLevel([category])` reads it back.
 
 ### 2.4 UserSettings (static, persistent key/value)
 
@@ -550,8 +561,36 @@ if hit.hit then local e = hit.body end
 `Color.linearTosRGB(...)`, `Color.sRGBToLinear(...)`: accept `Vector3`, `Vector4`, `(r,g,b)`
 or `(r,g,b,a)`.
 
-No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
-`GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+### 2.13 Timer (static): delayed calls, repeats, coroutines
+
+```lua
+local h = Timer.after(2.0, function() self:explode() end, { owner = self })   -- once, in 2 s of game time
+Timer.every(0.5, function() self:blink() end, { count = 10, owner = self })    -- 10 times
+Timer.nextFrame(fn [, opts]);  Timer.afterFrames(3, fn [, opts]);  Timer.afterFixedSteps(1, fn [, opts])
+local co = Timer.run(function()              -- a coroutine the scheduler drives
+    Timer.wait(1.0)                          -- game seconds (or the run's clock)
+    Timer.waitRealtime(0.5)                  -- wall-clock seconds, even while paused
+    Timer.waitFrames(2)                      -- simulated frames
+    Timer.waitFixedStep()                    -- one fixed update
+    Timer.waitUntil(function() return self.ready end)   -- checked once per frame
+end, { owner = self })
+h:cancel(); h:isActive(); co:cancel(); co:isActive(); Timer.cancelAll(self)
+```
+
+- Options: `owner` (cancelled when that script goes away), `clock` (`"game"`: scaled by
+  `Engine.timeScale`, the default; `"unscaled"`; `"real"`), `count` (every), `catchUp` (every:
+  after a stall, up to 8 missed periods at once; by default a repeat fires at most once a frame
+  and keeps its phase).
+- The game and unscaled clocks run only while the game runs: not in the editor's Pause (Step
+  advances one frame), not while loading or held. Timers run after the scenes' update, before
+  `onPostUpdate`; fixed-step ones after each fixed update.
+- `Timer.run` starts at once and runs up to its first wait. `Timer.wait*` outside `Timer.run`
+  raises `Timer.wait must be called inside Timer.run`.
+- An error in a callback or coroutine is reported with its traceback (in the editor it pauses
+  Play, like an error in an event) and cancels that timer or coroutine.
+- Without an owner a timer lives until Play stops. `list_timers` (MCP) shows what is pending.
+
+For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
 ---
 
@@ -1163,8 +1202,12 @@ Rigidbody wrappers by index.
     `init`; use `Engine.preferredCanvasWidth/Height` there.
 20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
 21. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
-    called. Event subscriptions are cleaned up automatically.
+    called. Event subscriptions (`RegisterEvent`/`RegisterEngineEvent`, with or without a tag)
+    are removed automatically when the script goes away.
 22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
+24. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+    Play stops) and calls into a script that is gone. With `owner = self` it dies with the
+    script, like the script's event subscriptions.

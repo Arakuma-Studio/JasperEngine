@@ -4,6 +4,7 @@
 #include "TestSystem.h"
 
 #include "TestPaths.h"
+#include "log/LogSinks.h"
 
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
 #include "VulkanContext.h"
@@ -12,6 +13,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -90,6 +92,12 @@ bool TestSystem::isUserDataLoaded(){
     return true;
 }
 
+void TestSystem::installLogSinks(){
+    // every line is recorded, Log::verbose (Trace) included, as before the logger had levels
+    Logger::setDefaultLevel(LogLevel::Trace);
+    Logger::addSink(std::make_unique<PlatformSink>(*this));
+}
+
 void TestSystem::platformLog(const int type, const char* fmt, va_list args){
     va_list copy;
     va_copy(copy, args);
@@ -106,11 +114,13 @@ void TestSystem::platformLog(const int type, const char* fmt, va_list args){
 }
 
 std::vector<TestSystem::LogEntry> TestSystem::getLogs() const{
+    Logger::flush();
     std::lock_guard<std::mutex> lock(logMutex);
     return logs;
 }
 
 size_t TestSystem::countLogs(int type, const std::string& text) const{
+    Logger::flush();
     std::lock_guard<std::mutex> lock(logMutex);
     size_t count = 0;
     for (const LogEntry& entry : logs){
@@ -121,17 +131,20 @@ size_t TestSystem::countLogs(int type, const std::string& text) const{
 }
 
 void TestSystem::clearLogs(){
+    Logger::flush();
     std::lock_guard<std::mutex> lock(logMutex);
     clearedLogs += logs.size();
     logs.clear();
 }
 
 size_t TestSystem::getLogSequence() const{
+    Logger::flush();
     std::lock_guard<std::mutex> lock(logMutex);
     return clearedLogs + logs.size();
 }
 
 std::vector<TestSystem::LogEntry> TestSystem::getLogsSince(size_t sequence) const{
+    Logger::flush();
     std::lock_guard<std::mutex> lock(logMutex);
     const size_t first = sequence > clearedLogs ? sequence - clearedLogs : 0;
     if (first >= logs.size())

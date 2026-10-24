@@ -584,6 +584,18 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // Project Settings > Player > Logging (project.yaml "playerLogging"). The defaults are what
+    // games did before: everything from Info on to the platform log, no file, no backtraces.
+    struct PlayerLoggingSettings {
+        std::string level = "info";      // trace, debug, info, warn, error, off
+        bool fileLog = false;            // desktop: <userdata>/logs/player.log, 1 MB x 2
+        bool backtrace = false;          // errors record their call stack
+
+        bool operator==(const PlayerLoggingSettings& other) const {
+            return level == other.level && fileLog == other.fileLog && backtrace == other.backtrace;
+        }
+    };
+
     class Project{
     private:
 
@@ -602,6 +614,7 @@ namespace jasperengine::editor{
         Scaling scalingMode;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        PlayerLoggingSettings playerLogging;
         int htmlUiMsaaSamples;
         WindowMode windowMode;
         unsigned int windowWidth;
@@ -1082,6 +1095,10 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
+        void setPlayerLogging(const PlayerLoggingSettings& settings);
+        const PlayerLoggingSettings& getPlayerLogging() const;
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports

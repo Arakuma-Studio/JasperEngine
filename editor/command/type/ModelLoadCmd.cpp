@@ -414,15 +414,15 @@ bool editor::ModelLoadCmd::execute(){
 
     Signature signature = scene->getSignature(entity);
     if (!signature.test(scene->getComponentId<Transform>())){
-        Log::error("Entity %lu does not have a Transform component", entity);
+        Log::error("Entity %u does not have a Transform component", entity);
         return false;
     }
     if (!signature.test(scene->getComponentId<MeshComponent>())){
-        Log::error("Entity %lu does not have a MeshComponent", entity);
+        Log::error("Entity %u does not have a MeshComponent", entity);
         return false;
     }
     if (!signature.test(scene->getComponentId<ModelComponent>())){
-        Log::error("Entity %lu does not have a ModelComponent", entity);
+        Log::error("Entity %u does not have a ModelComponent", entity);
         return false;
     }
 

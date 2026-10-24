@@ -4,9 +4,11 @@
 #ifndef TESTS_ALLOCATIONCOUNTER_H
 #define TESTS_ALLOCATIONCOUNTER_H
 
-// The test binaries replace the global operator new/delete with counting versions: an
-// AllocationCountScope counts every heap allocation of the process (every thread) while it
-// is open, so "0 allocations at steady state" can be checked through the whole job system.
+// The test binaries count heap allocations (AllocationCounter.cpp): an AllocationCountScope
+// counts every allocation of the process (every thread) while it is open, so "0 allocations at
+// steady state" can be checked through the whole job system; a ThreadAllocationCount counts
+// only the calling thread's, for code that must not allocate while other threads (the logger's
+// drain thread, workers) may.
 
 #include <cstdint>
 
@@ -32,6 +34,23 @@ namespace testsupport {
 
     // false where the test binary cannot count (no GNU ld --wrap): the zero-allocation tests skip
     bool countsAllocations();
+
+    // the calling thread's allocations so far
+    uint64_t threadAllocations();
+
+    // The calling thread's allocations since construction: ThreadAllocationCount c; ...; c.count()
+    class ThreadAllocationCount {
+    public:
+        ThreadAllocationCount(): start(threadAllocations()) {}
+        uint64_t count() const { return threadAllocations() - start; }
+
+    private:
+        uint64_t start;
+    };
+
+    // How much slower the build server may be than the performance budgets (JASPER_TEST_PERF_SLACK,
+    // default 1); 0 under a sanitizer, where budgets are only printed
+    double perfSlack();
 
 }
 

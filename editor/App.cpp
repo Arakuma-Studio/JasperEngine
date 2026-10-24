@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/Scheduler.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -107,6 +108,7 @@ ImFont* editor::App::codeFont = nullptr;
 ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
+    scheduler().setOwnerThread();
     mainThreadId = std::this_thread::get_id();
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
@@ -3327,18 +3329,19 @@ void editor::App::finishBenchmark() {
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        mainThreadTasks.push(std::move(task));
-    }
+    scheduler().post(std::move(task));
     // Wake an idle backend loop so cross-thread work runs promptly.
     std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
 bool editor::App::hasPendingMainThreadTasks() {
-    std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    return !mainThreadTasks.empty();
+    return scheduler().hasPosted();
+}
+
+double editor::App::idleWaitSeconds(double maxSeconds) const {
+    const double next = scheduler().nextDueRealTime();
+    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
@@ -3993,26 +3996,18 @@ void editor::App::processNextSaveDialog() {
 void editor::App::processMainThreadTasks() {
     if (projectLoading) return;
 
-    std::queue<std::function<void()>> tasks;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        std::swap(tasks, mainThreadTasks);
+    // FIFO, one failing task neither drops the ones behind it (an MCP call waiting for its
+    // turn would never be answered) nor takes the editor down (Scheduler logs it)
+    Scheduler& tasks = scheduler();
+    tasks.processPosted();
+    const auto now = std::chrono::steady_clock::now();
+    if (lastSchedulerTime != std::chrono::steady_clock::time_point{}) {
+        tasks.advance(TimeDomain::Real, std::chrono::duration<double>(now - lastSchedulerTime).count());
     }
-
-    while (!tasks.empty()) {
-        auto task = std::move(tasks.front());
-        tasks.pop();
-        if (!task) continue;
-        // One failing task must not drop the ones queued behind it (an MCP call waiting
-        // for its turn would never be answered) nor take the editor down
-        try {
-            task();
-        } catch (const std::exception& e) {
-            Out::error("A main-thread task failed: %s", e.what());
-        } catch (...) {
-            Out::error("A main-thread task failed with an unknown error.");
-        }
-    }
+    lastSchedulerTime = now;
+    tasks.process(TimeDomain::Real);
+    tasks.advance(TimeDomain::Frames, 1.0);
+    tasks.process(TimeDomain::Frames);
 }
 
 bool editor::App::isMainThread() const {
