@@ -444,11 +444,13 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/joltphysics)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/stb)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/harfbuzz)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sheenbidi/Headers)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/soloud/include)
@@ -511,8 +513,9 @@ endif()
 
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
+add_subdirectory(libs/ufbx)
 
-foreach(lib IN ITEMS nfd yaml-cpp)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -550,6 +553,16 @@ set_property(
 include_directories (${EDITOR_DIR})
 
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
+
+# The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md), also
+# built alone into jasperengine-texsynth-tests (-DJASPERENGINE_TEXSYNTH_TESTS=ON); its CLI is
+# SynthesisCli.cpp (CommandLine)
+set(JASPERENGINE_TEXSYNTH_SOURCES
+    ${EDITOR_DIR}/texsynth/SynthImage.cpp
+    ${EDITOR_DIR}/texsynth/Synthesizer.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisRecipe.cpp
+    ${EDITOR_DIR}/texsynth/TextureSynthesis.cpp
+)
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
@@ -613,8 +626,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
@@ -622,6 +637,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CrashHandler.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
+    ${EDITOR_DIR}/util/FluidTextureLink.cpp
+    ${EDITOR_DIR}/util/FluidEditorTools.cpp
+    ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
@@ -629,13 +647,20 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GlbBuilder.cpp
+    ${JASPERENGINE_TEXSYNTH_SOURCES}
+    ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
+    ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
@@ -679,6 +704,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
+    ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -696,6 +722,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
+    ${EDITOR_DIR}/lattice/LatticeBake.cpp
+    ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
+    ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
+    ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
+    ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
@@ -745,6 +777,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
+    ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
@@ -780,6 +813,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
 
     ${IMGUI_SOURCES}
     ${BACKEND_SOURCES}
@@ -818,6 +854,7 @@ function(configure_jasperengine_editor_target target_name)
         jasperengine
         nfd
         yaml-cpp
+        ufbx
     )
 
     if(WIN32)
@@ -976,6 +1013,21 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
+endif()
+
+# jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images:
+# determinism across thread counts, the modes, companions, the recipe chunk (tools/build.sh
+# texsynth-tests, or -DJASPERENGINE_TEXSYNTH_TESTS=ON and the target)
+option(JASPERENGINE_TEXSYNTH_TESTS "Build jasperengine-texsynth-tests (texture synthesis tests)" OFF)
+if(JASPERENGINE_TEXSYNTH_TESTS)
+    include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
+endif()
+
+# jasperengine-editor-tests: unit tests of the editor and the engine core it drives (shader
+# variant keys, .sdat files, scene encoding), built with the editor (tools/build.sh editor-tests)
+option(JASPERENGINE_EDITOR_TESTS "Build jasperengine-editor-tests (editor and engine core unit tests)" OFF)
+if(JASPERENGINE_EDITOR_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs

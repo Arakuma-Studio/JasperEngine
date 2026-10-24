@@ -68,6 +68,12 @@ namespace jasperengine::editor{
             case ComponentType::TranslateTracksComponent:
             case ComponentType::RotateTracksComponent:
             case ComponentType::ScaleTracksComponent:
+            case ComponentType::LatticeTracksComponent:
+            // Lattice points, dragged in the viewport, and its settings; bindings and followers
+            // reference other GameObjects but the tree shows nothing of them.
+            case ComponentType::LatticeComponent:
+            case ComponentType::LatticeModifierComponent:
+            case ComponentType::LatticeFollowerComponent:
             // Sizes written by the UI resize drag.
             case ComponentType::RectTransformComponent:
             case ComponentType::SpriteComponent:

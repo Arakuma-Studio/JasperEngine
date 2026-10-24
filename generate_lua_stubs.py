@@ -2819,6 +2819,8 @@ class Emitter:
                 doc = doc + ['(static: call with a dot, `' + c.name + '.' + m.name + '(...)`)']
             doc += self.cond_notes(m.call.cond)
             L += doc_lines(doc)
+            if any(d.lower().startswith('deprecated') for d in doc):
+                L.append('---@deprecated')   # a binding commented "deprecated: ..." (an old alias)
             for u in m.unresolved:
                 L.append(f'-- unresolved: {c.name}.{m.name}: {u}')
             if not sigs:

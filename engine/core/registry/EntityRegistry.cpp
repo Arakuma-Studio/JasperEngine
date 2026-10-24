@@ -65,6 +65,11 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
     registerComponent<UIDocumentComponent>();
+    registerComponent<FluidSimulationComponent>();
+    registerComponent<LatticeComponent>();
+    registerComponent<LatticeModifierComponent>();
+    registerComponent<LatticeFollowerComponent>();
+    registerComponent<LatticeTracksComponent>();
     registerComponent<PoseAnimatorComponent>();
 }
 

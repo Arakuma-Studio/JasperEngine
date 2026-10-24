@@ -10,6 +10,7 @@
 #include "script/ScriptProperty.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderData.h"
+#include "shader/ShaderBuildTypes.h"
 
 #include "json.hpp"
 
@@ -192,6 +193,27 @@ namespace jasperengine::editor {
         // features present)
         static nlohmann::json uiSupportJson();
 
+        // ---- texture synthesis recipes
+
+        // PNGs written by the texture synthesis carry their recipe (texsynth/SynthesisRecipe.h):
+        // the sources' SHA-1s at synthesis time. A source changed or deleted since makes the
+        // texture stale: a warning (tool "texture") at the PNG, code synthesis-source-changed or
+        // synthesis-source-missing, with how to regenerate it; a garbled recipe (CRC, not JSON,
+        // wrong types) is a warning synthesis-recipe-invalid. Fast on large projects: only the
+        // chunks before IDAT are read, sources are hashed only for PNGs with a recipe, and both
+        // are cached by mtime and size in .jasperengine/synthesis-check-cache.json (when that
+        // directory exists).
+        struct SynthesisCheck {
+            std::vector<Finding> findings;
+            size_t recipes = 0;   // PNGs with a recipe that were checked
+            size_t pngs = 0;      // PNGs looked at
+        };
+        // files empty: every PNG of the project outside skipped directories; a companion or
+        // uncertainty output whose primary output exists is covered by the primary's findings.
+        // files given (absolute): those PNGs, plus every project PNG whose recipe names one of the
+        // files as a source (an edited example reports the textures made from it).
+        static SynthesisCheck checkSynthesisRecipes(const std::filesystem::path& projectRoot, const std::vector<std::filesystem::path>& files);
+
         // ---- HTML UI effects (phase 5)
 
         // An effect as `ui-effects --json` and MCP list_ui_effects give it: every manifest field
@@ -207,7 +229,7 @@ namespace jasperengine::editor {
         struct ShaderUse {
             std::string base;
             int shaderType = -1;
-            uint32_t properties = 0;   // UI effects: 1 = the filter form ('Flt')
+            uint64_t properties = 0;   // UI effects: 1 = the filter form ('Flt')
         };
         // The ShaderType a component's customShader is used as (false: no custom shaders)
         static bool shaderTypeForComponent(ComponentType component, ShaderType& out);
@@ -247,13 +269,13 @@ namespace jasperengine::editor {
         // so the checks (and the scenes) compile the files on disk
         static void invalidateShaderCaches(Project* project);
         // Main thread: resolves an unknown type and registers the fork; returns its ShaderKey
-        static uint64_t prepareShaderCheck(Project* project, ShaderUse& use);
+        static ShaderKey prepareShaderCheck(Project* project, ShaderUse& use);
         // Any thread: compiles the fork with the editor's shader builder for the editor's
         // backend (ShaderBuilder::buildShaderForExport), the files read from the project. A UI
         // effect's manifest is checked first (HTMLUI-FX-0014 effect-manifest at its line, no
         // compile then); a compile error is HTMLUI-FX-0015 effect-shader-compile at the .frag
         // line, and the compiled variant is checked against the manifest (its parameter block)
-        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey);
+        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey);
         // {shader, type, ok, errors, log} (log and errors only on failure); a UI effect adds
         // effect, form (paint/filter) and, on failure, code
         static nlohmann::json toJson(const ShaderCheck& check);
@@ -273,6 +295,16 @@ namespace jasperengine::editor {
         // The project file a compiler message source (an entry point or include key) of a fork is
         // ("engine/shaderlib/<key>" for an engine library include)
         static std::string shaderSourcePath(Project* project, const std::string& base, const std::string& source);
+
+        // ---- Stochastic Tiling (materials, terrain layers, library shaders' STOCHASTIC feature)
+
+        // Warnings (tool "shader", at the scene or prefab file) for the loaded scenes and prefab
+        // stages: code "stochastic-tilted-normal-map" where Rotation is above 0 and the normal map
+        // the cells turn has an average normal at least NormalMapTilt::WARNING_DEGREES off +Z
+        // (built-in Lit materials, terrain layers, library shader materials with the feature);
+        // code "stochastic-no-effect" where a material asks Lit's Stochastic Tiling but it does
+        // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
+        static std::vector<Finding> stochasticTilingFindings(Project* project);
     };
 
 }

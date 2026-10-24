@@ -9,8 +9,10 @@
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
@@ -36,8 +38,10 @@ void Scene::init(){
     // after the clips' blend is flushed, before the world matrices and the skinning
     registerSystem<PoseAnimatorSystem>();
     registerSystem<MeshSystem>();
+    registerSystem<LatticeSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
+    registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();
@@ -483,6 +487,14 @@ void Scene::setGravity3D(Vector3 gravity){
 
 void Scene::setGravity3D(float x, float y, float z){
     getSystem<PhysicsSystem>()->setGravity3D(x, y, z);
+}
+
+void Scene::setPhysicsInterpolation(bool interpolation){
+    getSystem<PhysicsSystem>()->setInterpolation(interpolation);
+}
+
+bool Scene::isPhysicsInterpolation() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
 }
 
 void Scene::setDefaultMeshShader(const std::string& path){

@@ -3,6 +3,8 @@
 
 #include "McpSchema.h"
 
+#include <cmath>
+
 namespace jasperengine::editor::mcp::schema {
 
 namespace {
@@ -56,8 +58,16 @@ Json number(const std::string& description) {
     return described({{"type", "number"}}, description);
 }
 
+namespace {
+// whole bounds as integers: 3600, not 3600.0 (the same JSON Schema, shorter in every session)
+Json bound(double value) {
+    if (std::isfinite(value) && std::floor(value) == value && std::fabs(value) < 1e15) return static_cast<long long>(value);
+    return value;
+}
+}
+
 Json number(const std::string& description, double minimum, double maximum) {
-    return described({{"type", "number"}, {"minimum", minimum}, {"maximum", maximum}}, description);
+    return described({{"type", "number"}, {"minimum", bound(minimum)}, {"maximum", bound(maximum)}}, description);
 }
 
 Json boolean(const std::string& description) {
@@ -87,13 +97,12 @@ Json vec2(const std::string& description) { return fixedVector(2, description); 
 Json vec3(const std::string& description) { return fixedVector(3, description); }
 Json vec4(const std::string& description) { return fixedVector(4, description); }
 
+// The two shapes in words (McpValues validates them): an anyOf of both costs ~200 characters more
 Json quat(const std::string& description) {
-    return described({
-        {"anyOf", Json::array({
-            fixedVector(4, ""),
-            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}}}
-        })}
-    }, description);
+    return {
+        {"type", {"array", "object"}},
+        {"description", description.empty() ? "[x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description}
+    };
 }
 
 Json color(const std::string& description) {

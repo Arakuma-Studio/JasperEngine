@@ -5,6 +5,7 @@
 
 #include "Backend.h"
 #include "AppSettings.h"
+#include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "Generator.h"
 #include "util/ScriptParser.h"
@@ -1028,12 +1029,10 @@ void editor::CodeEditor::addScriptEvent(const std::string& filepath, size_t even
             }
             if (isTarget) target = &open->second;
         } else if (change.texts[i] != texts[i]) {
-            std::ofstream file(resolveFilepath(paths[i]), std::ios::trunc);
-            if (!file.is_open()) {
+            if (!FileUtils::writeFileReplacing(resolveFilepath(paths[i]), change.texts[i], FileUtils::LineEndings::KeepExisting)) {
                 Out::error("Could not write file: %s", key.c_str());
                 continue;
             }
-            file << change.texts[i];
         }
     }
 
@@ -1328,12 +1327,11 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
             }
         }
 
-        std::ofstream file(resolveFilepath(headerPath), std::ios::trunc);
-        if (!file.is_open()) {
+        if (!FileUtils::writeFileReplacing(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos),
+                                           FileUtils::LineEndings::KeepExisting)) {
             Out::error("Could not write header file: %s", headerPath.string().c_str());
             return;
         }
-        file << headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos);
     }
 
     SceneProject* selectedScene = project->getSelectedScene();
@@ -1395,14 +1393,10 @@ void editor::CodeEditor::closeAll() {
 bool editor::CodeEditor::save(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
-        std::ofstream file(fullPath);
-        if (!file.is_open()) {
+        // A failed write keeps the script as it was on disk
+        if (!FileUtils::writeFileReplacing(fullPath, instance.editor->GetText(), FileUtils::LineEndings::KeepExisting)) {
             return false;
         }
-
-        file << instance.editor->GetText();
-        file.close();
-        if (!file) return false;
 
         instance.savedUndoIndex = instance.editor->GetUndoIndex();
         instance.isModified = false;

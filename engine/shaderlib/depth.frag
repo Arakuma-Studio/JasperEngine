@@ -20,19 +20,37 @@ in vec2 v_projZW;
     in vec2 v_uv1;
 #endif
 
+// Stochastic Tiling (USE_STOCHASTIC_TILING): the alpha clip reads the base colour through the
+// same lattice, taps and luminance weights as Lit's colour pass (includes/pbr.glsl, UV set 1),
+// so what it cuts out of shadows and depth pre-passes is what the colour pass cuts out
+#if defined(USE_STOCHASTIC_TILING) && defined(ALPHA_MASK) && defined(HAS_TEXTURE)
+    #define DEPTH_STOCHASTIC
+#endif
+
 #if defined(ALPHA_MASK)
     uniform u_fs_depthMaterial {
         vec4 alphaParams; // x = baseColorFactor.a, y = alphaCutoff
+        #ifdef DEPTH_STOCHASTIC
+            vec4 stochastic; // the material's cell size, blend sharpness, contrast, rotation
+        #endif
     } depthMaterial;
 #endif
 
 #include "includes/depth_util.glsl"
+#ifdef DEPTH_STOCHASTIC
+    #include "includes/stochastic.glsl"
+#endif
 
 void main() {
     #if defined(ALPHA_MASK)
         float alpha = depthMaterial.alphaParams.x;
     #endif
-    #if defined(HAS_TEXTURE)
+    #if defined(DEPTH_STOCHASTIC)
+        StochasticTiling stochastic = stochasticSetup(v_uv1, stochasticParams(depthMaterial.stochastic.x,
+            depthMaterial.stochastic.y, depthMaterial.stochastic.z, depthMaterial.stochastic.w), 0u);
+        vec4 texColor = stochasticTextureLuminance(u_depthTexture, u_depth_smp, stochastic);
+        alpha *= texColor.a;
+    #elif defined(HAS_TEXTURE)
         vec4 texColor = texture(sampler2D(u_depthTexture, u_depth_smp), v_uv1);
 
         #if defined(ALPHA_MASK)

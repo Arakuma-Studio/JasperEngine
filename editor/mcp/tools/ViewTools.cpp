@@ -24,6 +24,7 @@
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -274,10 +275,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        const fs::path requested(job->req.savePath);
-        if (requested.is_absolute()) {
-            target = requested;
-        } else if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes
+        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
@@ -285,10 +284,10 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
         std::ofstream file(target, std::ios::binary | std::ios::trunc);
         if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ".");
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ".");
             return;
         }
-        info["saved_to"] = target.generic_string();
+        info["saved_to"] = FileUtils::pathToGenericUtf8(target);
     }
 
     result.image.data = Base64::encode(png.data(), png.size());
@@ -764,6 +763,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_all_bodies", &SceneDisplaySettings::showAllBodies},
         {"show_all_joints", &SceneDisplaySettings::showAllJoints},
         {"show_all_bones", &SceneDisplaySettings::showAllBones},
+        {"show_all_lattices", &SceneDisplaySettings::showAllLattices},
         {"hide_camera_view", &SceneDisplaySettings::hideCameraView},
         {"hide_light_icons", &SceneDisplaySettings::hideLightIcons},
         {"hide_sound_icons", &SceneDisplaySettings::hideSoundIcons},
@@ -1488,8 +1488,12 @@ void focusWindowTool(const CallPtr& call) {
         if (!(args.contains("pose") && args["pose"].is_object() && args["pose"].contains("input"))) pw->requestFocus();
         imguiName = PoseAnimationWindow::WINDOW_NAME;
         if (args.contains("pose") && !focusPoseAnimation(call, pw, hookResult)) return;
+    } else if (window == "texture_synthesis") {
+        app.getTextureSynthesisWindow()->open();
+        imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, "
+                   "mcp, texture_synthesis.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
@@ -1607,11 +1611,14 @@ void registerViewTools(McpRegistry& registry) {
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
-            {"save_path", string("Also write the PNG (project-relative or absolute).")},
+            {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
             {"timeout_seconds", withDefault(number("", 1, 600), 30)}
         });
         tool.annotations.readOnly = true;
+        tool.writesFiles = [](const Json& args) {
+            return args.contains("save_path") && !(args["save_path"].is_string() && args["save_path"].get<std::string>().empty());
+        };
         tool.handler = screenshotTool;
         registry.addTool(std::move(tool));
     }
@@ -1671,8 +1678,8 @@ void registerViewTools(McpRegistry& registry) {
             "Show a panel (not needed for screenshot). pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
-                                       "terrain", "mcp"})},
-            {"scene", sceneRef()},
+                                       "terrain", "mcp", "texture_synthesis"})},
+            {"scene", sceneRef("window scene: whose tab.")},
             {"pose", {{"type", "object"}}}
         }, {"window"});
         tool.annotations.idempotent = true;

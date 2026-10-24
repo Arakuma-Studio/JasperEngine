@@ -17,8 +17,10 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "lattice/LatticeEditorOps.h"
 #include "util/GraphicUtils.h"
 #include "window/TerrainEditWindow.h"
+#include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
 
 #include <algorithm>
@@ -79,6 +81,7 @@ editor::SceneRender::~SceneRender(){
         layerSelLines[i] = nullptr;
     }
 
+    destroyLatticeCages();
     delete terrainBrushLines;
     delete camera;
 }
@@ -506,6 +509,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setViewGizmoImageVisible(false);
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
+    hideLatticeCages();
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){
@@ -813,6 +817,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     multipleEntitiesSelected = toolEntities.size() > 1;
 
+    // the selected points of the lattice the tools edit, which the gizmo then acts on
+    const Entity editedLattice = getPointEditLattice(toolEntities);
+    const uint32_t latticeScene = getLatticeSceneId();
+    const bool latticePointsSelected = editedLattice != NULL_ENTITY && latticeScene != NULL_PROJECT_SCENE &&
+        !LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice).empty();
+
     bool showAnchorGizmo = false;
     Vector4 anchorData = Vector4::ZERO; // x: left, y: top, z: right, w: bottom
     Rect anchorArea = Rect(0.0f, 0.0f, 0.0f, 0.0f);
@@ -886,6 +896,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             if (selectedTrackPointIndex >= 0 && toolEntities[0] == selectedTrackPointEntity){
                 showCross = true;
             }
+            if (latticePointsSelected){
+                showCross = true;
+            }
 
             showRects = canResize2D && !isCamera && !isInstancedMesh && !showCross;
         }
@@ -896,7 +909,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     syncObject2DGizmoMode();
 
+    // the terrain and Paint Dye brushes take the left button: no gizmo to grab
     bool terrainEditing = isTerrainEditing();
+    bool fluidPainting = isFluidPainting();
 
     totalSelBB.setHalfExtents(totalSelBB.getHalfExtents() + Vector3(selectionOffset));
 
@@ -986,6 +1001,16 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
+        if (latticePointsSelected){
+            Vector3 pivot;
+            Quaternion pivotRotation;
+            OBB pointsOBB;
+            if (getLatticePointsPivot(editedLattice, LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice), pivot, pivotRotation, pointsOBB)){
+                tools.updateGizmo(camera, pivot, pivotRotation, computeGizmoScale(pivot), pointsOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }
+        }
+
         if (selBB.size() > 0) {
             if (editLayer.active){
                 fillSelectionLines(layerSelLines[layerToolsIndex()], selBB, !editLayer.view.isOrthographic());
@@ -1037,7 +1062,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
         }
     }
 
-    if (terrainEditing){
+    if (terrainEditing || fluidPainting){
         tools.setGizmoVisible(false);
     }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D && !sameRotation){
         tools.setGizmoVisible(false);
@@ -1050,6 +1075,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     }
 
     syncObject2DGizmoMode();
+
+    updateLatticeCages(selEntities, entities, editedLattice);
 
     uilayer.setViewGizmoImageVisible(true);
 }
@@ -1094,12 +1121,21 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         }
     }
 
+    // Paint Dye: a press on the fluid's Sprite starts a stroke; elsewhere it does nothing
+    // (the brush holds the left button until Esc or its toggle)
+    if (FluidEditorTools::isPainting(scene)){
+        FluidEditorTools::beginStroke(scene, ownerMouseRay);
+        return;
+    }
+
     // the tools work on the edit layer's selection while one is set
     Scene* const target = gizmoScene();
     ToolsLayer& tools = gizmoTools();
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    // a driven Lattice Follower: the gizmo moves its rest (LatticeSceneRender.cpp)
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 viewDir = gizmoViewDirection();
 
@@ -1262,6 +1298,17 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 }
             }
         }
+
+        // a gizmo handle grabbed on selected lattice points: their drag begins
+        latticeDrag = LatticeDrag();
+        Entity latticeEntity = getPointEditLattice(selEntities);
+        const bool handleGrabbed = tools.getGizmoSelected() == GizmoSelected::OBJECT2D
+            ? tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER
+            : tools.getGizmoSideSelected() != GizmoSideSelected::NONE;
+        if (latticeEntity != NULL_ENTITY && handleGrabbed && getLatticeSceneId() != NULL_PROJECT_SCENE &&
+            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), latticeEntity).empty()){
+            beginLatticeDrag(latticeEntity, gizmoPosition, gizmoRotation);
+        }
     }
 
 }
@@ -1277,6 +1324,7 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
+    FluidEditorTools::endStroke();
 
     mouseClicked = false;
 
@@ -1291,6 +1339,9 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         lastCommand->setNoMerge();
         lastCommand = nullptr;
     }
+
+    // one drag of lattice points, one undo step
+    endLatticeDrag();
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1354,6 +1405,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
         }
     }
 
+    if (FluidEditorTools::isPainting(scene)){
+        FluidEditorTools::paintStroke(scene, ownerMouseRay);
+        return;
+    }
+
     // the box selects while playing too, as on release (Project::selectObjectsByRect)
     if (!disableSelection){
         uilayer.setSelectionBoxVisible(true);
@@ -1368,9 +1424,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 gizmoPosition = tools.getGizmoPosition();
     Matrix4 gizmoRMatrix = tools.getGizmoRotation().getRotationMatrix();
+
+    // Lattice point drag: the gizmo's change goes to the points, not to the lattice entity
+    if (latticeDrag.active){
+        dragLatticeGizmo(project, commandSceneId, invertRotationSnap);
+        return;
+    }
 
     // TranslateTracks keyframe point drag: the tracks entity has no Transform,
     // so it is handled outside the per-entity transform loop below.
@@ -2114,11 +2177,20 @@ bool editor::SceneRender::isAnyGizmoSideSelected() const{
     return (tools.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || tools.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
 }
 
+bool editor::SceneRender::isFluidPainting() const{
+    return FluidEditorTools::isPainting(scene);
+}
+
 bool editor::SceneRender::isTerrainEditing() const{
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         return terrainEditWindow->isEditingScene(scene);
     }
     return false;
+}
+
+bool editor::SceneRender::hasHoverFeedback() const{
+    // the Paint Dye brush's circle follows the pointer like the terrain brush's
+    return gizmoTools().isGizmoVisible() || isTerrainEditing() || isFluidPainting();
 }
 
 float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSnap) const{
@@ -2163,6 +2235,38 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
 
     terrainBrushLines->setVisible(true);
+}
+
+bool editor::SceneRender::getFluidBrushCircle(std::vector<Vector2>& points){
+    points.clear();
+    std::vector<Vector3> world;
+    if (!FluidEditorTools::cursorCircle(scene, ownerMouseRay, world) || world.size() < 2){
+        return false;
+    }
+
+    points.reserve(world.size());
+    for (const Vector3& point : world){
+        Vector2 projected;
+        if (!projectToView(point, projected)){
+            points.clear();
+            return false;
+        }
+        points.push_back(projected);
+    }
+    return true;
+}
+
+bool editor::SceneRender::projectToView(const Vector3& world, Vector2& point){
+    // through the editor camera the pointer's ray comes from (screenToRay), into its pixels
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    const CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector4 clip = cameraComponent.viewProjectionMatrix * Vector4(world.x, world.y, world.z, 1.0f);
+    if (clip.w <= 0.0f){
+        return false;
+    }
+    point = Vector2((clip.x / clip.w + 1.0f) * 0.5f * width, (1.0f - clip.y / clip.w) * 0.5f * height);
+    return true;
 }
 
 TextureRender& editor::SceneRender::getTexture(){
@@ -2739,18 +2843,36 @@ void editor::SceneRender::clearTrackPointSelection(){
 Matrix4 editor::SceneRender::getTrackPointsWorldMatrix(Entity entity){
     // values[] drive the action target's Transform::position, which is local to
     // the target's parent: that parent's model matrix maps them to world space
-    if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
-        if (action->target != NULL_ENTITY && scene->isEntityCreated(action->target)){
-            if (Transform* targetTransform = scene->findComponent<Transform>(action->target)){
-                if (targetTransform->parent != NULL_ENTITY){
-                    if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
-                        return parentTransform->modelMatrix;
-                    }
-                }
-            }
+    ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+    if (!action || action->target == NULL_ENTITY || !scene->isEntityCreated(action->target)){
+        return Matrix4();
+    }
+    Transform* targetTransform = scene->findComponent<Transform>(action->target);
+    if (!targetTransform){
+        return Matrix4();
+    }
+
+    Matrix4 matrix;
+    if (targetTransform->parent != NULL_ENTITY){
+        if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
+            matrix = parentTransform->modelMatrix;
         }
     }
-    return Matrix4();
+
+    // relative values are offsets from where the track started, or from the target before it starts
+    KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
+    if (keyframe && keyframe->relative){
+        ActionSystem* actions = scene->getSystem<ActionSystem>().get();
+        Vector3 base = keyframe->basePosition;
+        if (!keyframe->hasBase){
+            Vector3 scale;
+            Quaternion rotation;
+            actions->getRelativeTrackPose(action->target, base, rotation, scale);
+        }
+        matrix = matrix * actions->getRelativeTrackMatrix(action->target, base);
+    }
+
+    return matrix;
 }
 
 bool editor::SceneRender::getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint){

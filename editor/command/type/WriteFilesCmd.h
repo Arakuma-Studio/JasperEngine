@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -21,8 +22,11 @@ namespace jasperengine::editor{
     // one has the same key and writes the same files: the merged step undoes to the contents
     // before the first of them (drags, slider edits).
     //
-    // All or nothing: when one file cannot be written, the files the command already wrote get
-    // their previous contents back and execute() fails.
+    // All or nothing: when a file can't be written (a path component that is a file, a
+    // read-only directory, a full disk), the files written before it get their previous
+    // content back and what it created is removed, so a failed execute changes nothing
+    // (CommandHistory::addCommand then drops it without an undo step); reportFailureTo()
+    // receives which file failed and why.
     class WriteFilesCmd: public Command{
     public:
         struct Item {
@@ -39,6 +43,9 @@ namespace jasperengine::editor{
 
         void setMergeKey(const std::string& key) { mergeKey = key; }
         const std::string& getMergeKey() const { return mergeKey; }
+        // Where execute() writes its failure ("can't write <path>: <reason>; ..."): the
+        // command is deleted by the history when it fails, the sink outlives it
+        void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
 
     private:
         struct Previous {
@@ -47,14 +54,18 @@ namespace jasperengine::editor{
         };
         std::vector<Item> items;
         std::vector<Previous> previous;
-        std::vector<std::filesystem::path> createdDirs;
+        std::vector<std::filesystem::path> createdDirs;   // every directory execute() created
         bool captured = false;
         std::string mergeKey;
         std::function<void(const std::vector<std::filesystem::path>&)> afterChange;
+        std::shared_ptr<std::string> failureSink;
 
         std::vector<std::filesystem::path> paths() const;
-        // puts back the first `count` files and removes the directories this command created
-        void restore(size_t count);
+        // items[i] back to what it was before execute (false when that failed)
+        bool restore(size_t i);
+        // the created directories that are empty, deepest first
+        void removeCreatedDirs();
+        void fail(const std::string& message);
     };
 
 }

@@ -7,6 +7,8 @@ editor, doing what you would do by hand:
 - create and edit scenes, GameObjects, components, prefabs (variants included), materials,
   shaders, and Lua or C++ scripts
 - build HTML/CSS game UI (menus, HUDs) and check its layout
+- synthesize textures from example images (seamless tiling, inpainting, PBR sets), as Window >
+  Texture Synthesis does for you ([guide/texture-synthesis.md](guide/texture-synthesis.md))
 - play the game, send keyboard, mouse and touch input, inspect runtime state, and take
   screenshots of the Scene and Game views
 - read the Console, then export and build the game
@@ -27,8 +29,9 @@ The design is in [DESIGN.md](DESIGN.md).
 | | stdio (the agent starts the editor) | Streamable HTTP (attach to your open editor) |
 |---|---|---|
 | Use it for | Agents working alone, CI, servers without a screen | Working next to the agent in the editor |
-| Start | The client runs `jasperengine-editor mcp --project <dir> [--headless]` | Editor Settings > MCP (enable it, port 47615 by default), or `jasperengine-editor --mcp-port 47615` |
+| Start | The client runs `jasperengine-editor mcp --project <dir> [--headless]` | The MCP Server window (Window > MCP: Serve over HTTP, port 47615 by default), or `jasperengine-editor --mcp-port 47615` |
 | Endpoint | The editor process's stdin and stdout | `http://127.0.0.1:47615/mcp` |
+| Authentication | None: only the client that started the editor can talk to it | A bearer token, made the first time HTTP is enabled; the MCP Server window copies it and the connect command |
 | Lifetime | The editor quits when the client disconnects | The editor stays open and agents come and go |
 
 ### The `mcp` command line
@@ -75,12 +78,11 @@ claude mcp add jasper -- /opt/jasperengine/bin/jasperengine-editor mcp --project
 claude
 ```
 
-Attach to an editor you have open, after enabling MCP in Editor Settings:
+Attach to an editor you have open, after enabling HTTP in the MCP Server window (Window >
+MCP). Its "Copy connect command" button copies this line with your token filled in:
 
 ```sh
-claude mcp add --transport http jasper http://127.0.0.1:47615/mcp
-# with a token set in Editor Settings > MCP:
-claude mcp add --transport http jasper http://127.0.0.1:47615/mcp --header "Authorization: Bearer $JASPER_MCP_TOKEN"
+claude mcp add --transport http jasper http://127.0.0.1:47615/mcp --header "Authorization: Bearer <token>"
 ```
 
 To share the setup with your team, put a `.mcp.json` file in the game's repository:
@@ -124,7 +126,7 @@ Attach to an editor you have open over Streamable HTTP:
 ```toml
 [mcp_servers.jasper]
 url = "http://127.0.0.1:47615/mcp"
-# bearer_token_env_var = "JASPER_MCP_TOKEN"   # if you set a token in Editor Settings > MCP
+bearer_token_env_var = "JASPER_MCP_TOKEN"   # export JASPER_MCP_TOKEN=<the token from the MCP Server window>
 ```
 
 You can also add the stdio server from the command line:
@@ -146,8 +148,8 @@ project's `.cursor/mcp.json`, and Claude Desktop from `claude_desktop_config.jso
 }
 ```
 
-For HTTP, use `{"mcpServers": {"jasper": {"url": "http://127.0.0.1:47615/mcp"}}}`. Add
-`"headers": {"Authorization": "Bearer <token>"}` if you set a token.
+For HTTP, use `{"mcpServers": {"jasper": {"url": "http://127.0.0.1:47615/mcp",
+"headers": {"Authorization": "Bearer <token>"}}}}` with the token from the MCP Server window.
 
 VS Code reads `.vscode/mcp.json` and uses a `servers` key with
 `"type": "stdio"` or `"type": "http"`.
@@ -227,10 +229,18 @@ no effect there.
 
 - **stdio** opens no network port. Only the client that started the editor can talk to it.
 - **HTTP** listens on `127.0.0.1` only. It rejects requests whose `Origin` header is not
-  localhost, which blocks DNS-rebinding attacks from web pages you visit. You can set a
-  bearer token in Editor Settings > MCP, after which clients must send
-  `Authorization: Bearer <token>`. To reach an editor on another machine, use an SSH tunnel
-  (`ssh -L 47615:127.0.0.1:47615 host`). Never expose the port directly.
+  localhost, which blocks DNS-rebinding attacks from web pages you visit, and every request
+  must send `Authorization: Bearer <token>`, so other programs and users on the machine can't
+  drive the editor. The editor makes the token the first time HTTP is enabled and keeps it in
+  `mcp_http_token` next to `settings.yaml`, a file only your user can read (mode 0600); the MCP Server window shows it, copies it and the connect command,
+  and "New token" replaces it (clients then need the new one). To reach an editor on another
+  machine, use an SSH tunnel (`ssh -L 47615:127.0.0.1:47615 host`). Never expose the port
+  directly.
+- **Read-only mode**: turn off "Allow changes" in the MCP Server window and HTTP clients
+  only get the tools that change nothing (inspecting, screenshots, reading files and the
+  Console, checks): `tools/list` leaves the others out, calling one fails, `batch` is
+  not available, and arguments that write files (`screenshot`'s `save_path`) are refused. Clients that cached the tool list may need to list it again (reconnect).
+  stdio clients keep every tool: they started the editor themselves.
 - Give the agent the same trust you would give a developer on the project. It can write any
   file in the project (with its own tools, or through `write_file`), and C++ scripts it writes are compiled and run inside the editor
   process when you press Play. The agent cannot leave the project folder: asset paths must
@@ -263,8 +273,8 @@ Main ideas:
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
 so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
-under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K and the UI effects
-tools of phase 5 to ~99.8K: new tools must pay for themselves by trimming). Shared conventions (scene/entity references, value
+under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K, the UI effects
+tools of phase 5 to ~99.8K and the lattice tools to ~100.5K, paid by trimming: new tools must pay for themselves). Shared conventions (scene/entity references, value
 shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh
@@ -279,8 +289,10 @@ uv run --no-project --with mcp --with pyyaml python tools/mcp/tool_budget.py [--
 | `cannot open display`, or the server exits at once | No `DISPLAY`. Add `--headless` and install `Xvfb`. Read the editor's stderr: Claude Code `claude --debug`, Codex `~/.codex/log`, or run the command yourself in a terminal. |
 | OpenGL or GLX errors under Xvfb | Set `LIBGL_ALWAYS_SOFTWARE=1` in the server's env and install Mesa (`libgl1-mesa-dri`). |
 | `Failed to parse JSONRPC message` in the client | Something wrote to stdout that is not protocol. Report it as a bug; stdio mode redirects all output to stderr. |
-| HTTP: connection refused | MCP is off in Editor Settings > MCP, the port is different, or another program already uses it (the editor logs this in the Console). |
-| HTTP: 403 | The request's `Origin` is not localhost, or the bearer token is missing or wrong. |
+| HTTP: connection refused | HTTP is off in the MCP Server window, the port is different, or another program already uses it (the editor logs this in the Console). |
+| HTTP: 401 | The bearer token is missing or wrong (or was replaced with "New token"). Copy the connect command again from the MCP Server window. |
+| HTTP: 403 | The request's `Origin` or `Host` is not localhost. |
+| HTTP tools fail with "Changes are turned off" | "Allow changes" is off in the MCP Server window: only read-only tools run over HTTP. |
 | Edits don't show in the Hierarchy | They went to another scene. Pass `scene` explicitly, or check the selected scene with `editor_status`. |
 | A script "works" but nothing happens | Play, then read the Console with the console tool: Lua errors and `Script crash in scene ...` entries are there. |
 | Two editors fight over settings | Give each editor its own working directory containing a `settings.yaml`; otherwise they share the per-user one. |

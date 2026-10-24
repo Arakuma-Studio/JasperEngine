@@ -48,19 +48,25 @@ SEND_INPUT_BEFORE = 1780
 IMPORT_FILES_BEFORE = 452
 # phase 5 (p5-tooling, spec 3.13): the effects tools within their caps, inspect_ui's `effects`
 # within +150 of its size before (1806), the total raised by what they measure (+837:
-# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9)
+# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9); fluid-fx: set_ui_effect_time's scripted
+# pointer_path and splats (cap 750), paid for inside the total
 INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
-          "list_ui_effects": 900, "set_ui_effect_time": 500}
+          "list_ui_effects": 900, "set_ui_effect_time": 750}
 # pose animation phase 2 (spec 6.3): measured 810 + 2442 with tools/mcp/tool_budget.py, with room for
-# small additions; the total fits in the room freed for the pose tools (phase 3 adds ~2.5K)
-LIMITS.update({"get_pose_animation": 1100, "edit_pose_animation": 3000})
-# pose animation phase 3 (spec 4): render_pose_animation measured 1492, within the ~2.5K reserved for it
-LIMITS.update({"render_pose_animation": 1700})
-# pose animation phase 6 (spec 5): the template ops and list measured get 873 + edit 2735, within the limits above
-# pose animation tools (phase 2-3) use the room freed in 1d0ac4d13, 789902d0d and the review fixes after them (140 tools: 100,579 -> 92,267 chars)
-TOTAL_LIMIT = 99800 + 837
+# small additions; phase 3: render_pose_animation measured 1492; phase 6 (spec 5): the template ops
+# and list measured get 873 + edit 2735, within these limits
+LIMITS.update({"get_pose_animation": 1100, "edit_pose_animation": 3000, "render_pose_animation": 1700})
+# raised to what main measured after phase 6 and Texture Synthesis (104736, synthesize_texture and
+# the tools that grew since), plus the upstream catch-up's additions (+731: FBX imports in
+# import_files/get_asset_info, create_entity type water, physics_interpolation, edit_animation
+# loop/relative/ping-pong/spin, screenshot save_path project-relative), plus the fluid's (+51:
+# create_entity type fluid_simulation, {"fluid": <entity>} texture links, set_ui_effect_time's
+# pointer_path and splats, net of the tightened inspect_ui/assert_ui/create_ui_document texts)
+# the pose animation merge (145 tools, get/edit/render_pose_animation included) measured 104321,
+# within it
+TOTAL_LIMIT = 105518
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

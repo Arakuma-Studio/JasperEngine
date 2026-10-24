@@ -11,6 +11,8 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - A Unity-style editor: Hierarchy, Inspector, Project, Console, and separate Scene and Game views, with Unity's menus, toolbar, and shortcuts
 - Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
 - Edit components, assets, animations, bones, and terrain without leaving the editor
+- Synthesize textures from an example: extend, make tileable, inpaint, or guide them, with matching normal/roughness/height maps (Window > Texture Synthesis, the `synthesize-texture` CLI, or the `synthesize_texture` MCP tool)
+- Tune a fluid simulation from presets in the Inspector, preview it in edit mode and paint dye into it with a Scene view brush
 - Animate humanoid characters pose to pose: drag hands and feet in the Scene view (IK, automatic grounding, onion skin), pick a feel (snappy, cartoon, rubbery, heavy, stop-motion), humanize it, or start from 10 built-in templates (walk, run, jump, wave...): see [docs/pose-animation.md](docs/pose-animation.md)
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
@@ -20,14 +22,17 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 
 - Shared ECS runtime for 2D and 3D scenes, with scene layers and serialization
 - Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
-- GLTF and OBJ models with skeletal animation, morph targets, and mesh instancing
+- glTF, OBJ, and FBX models with skeletal animation, morph targets, and mesh instancing (the editor converts FBX to glTF with [ufbx](https://github.com/ufbx/ufbx): meshes, materials and textures, skins, animations, blend shapes, node hierarchy, units and axes; reimported when the file or its textures change)
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
+- Lattice deformers (free-form deformation cages) that bend, squash, twist, or wobble meshes, skinned models, and sprites on the GPU, with Scene-view point editing, presets, poses, keyframes, jiggle physics, and baking to a mesh; agents drive them through the `edit_lattice` MCP tool (see [docs/mcp/guide/lattice.md](docs/mcp/guide/lattice.md))
+- Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Pose animations that play live on any humanoid model (the Pose Animator component and Lua `PoseAnimator`: play, go to a pose with a spring, blend by weight) or bake to keyframes; poses are rig-independent joint angles, so one animation fits every humanoid rig
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
+- A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
-- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints
+- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.

@@ -292,7 +292,7 @@ bool editor::ComponentValuesCmd::execute(){
         return false;
     }
 
-    if (type == ComponentType::CameraComponent) {
+    if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = true;
@@ -318,7 +318,7 @@ void editor::ComponentValuesCmd::undo(){
     }
     prefabUndo.restore(project, sceneId);
 
-    if (type == ComponentType::CameraComponent) {
+    if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = wasModified;

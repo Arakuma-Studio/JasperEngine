@@ -20,6 +20,8 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/ImportPrefabCmd.h"
+#include "lattice/LatticeEditorOps.h"
+#include "lattice/LatticeSceneTools.h"
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -32,15 +34,27 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
+#include "util/FluidEditorTools.h"
+#include "util/UIProbe.h"
+#include "component/FluidSimulationComponent.h"
 
 #include "math/Vector2.h"
 #include "util/Angle.h"
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 
 using namespace jasperengine;
 
 namespace {
+
+// with repeat, linear filtering bleeds the opposite edge into the border
+Texture edgeClampedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    return texture;
+}
 
 constexpr float VIEWPORT_GIZMO_SIZE = 100.0f;
 
@@ -108,7 +122,14 @@ void editor::SceneWindow::resetProjectState() {
     resyncLookDelta.clear();
     lookActive.clear();
     lookReturnPos.clear();
+    rightClickTravel.clear();
+    latticeMenuRequested.clear();
+    latticeMenuPos.clear();
     focusCanvasOnNextFrame.clear();
+    // points are selected in the views shown (the next project's ids would name others)
+    for (const auto& entry : width) {
+        LatticeEditorOps::clearSelectedPoints(entry.first);
+    }
     width.clear();
     height.clear();
     framebufferScale.clear();
@@ -131,6 +152,10 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     resyncLookDelta.erase(sceneId);
     lookActive.erase(sceneId);
     lookReturnPos.erase(sceneId);
+    rightClickTravel.erase(sceneId);
+    latticeMenuRequested.erase(sceneId);
+    latticeMenuPos.erase(sceneId);
+    LatticeEditorOps::clearSelectedPoints(sceneId);
     focusCanvasOnNextFrame.erase(sceneId);
     width.erase(sceneId);
     height.erase(sceneId);
@@ -577,7 +602,8 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         }
                                         originalTex = mesh->submeshes[0].material.baseColorTexture;
                                     }
-                                    Texture newTex(droppedAssetPath);
+                                    const bool isSprite = sceneProject->scene->findComponent<SpriteComponent>(selEntity) != nullptr;
+                                    Texture newTex = isSprite ? edgeClampedTexture(droppedAssetPath) : Texture(droppedAssetPath);
                                     if (mesh->submeshes[0].material.baseColorTexture != newTex) {
                                         mesh->submeshes[0].material.baseColorTexture = newTex;
                                         mesh->submeshes[0].needUpdateTexture = true;
@@ -606,7 +632,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selUI = ui;
                                         originalTex = ui->texture;
                                     }
-                                    Texture newTex(droppedAssetPath);
+                                    Texture newTex = edgeClampedTexture(droppedAssetPath);
                                     if (ui->texture != newTex) {
                                         ui->texture = newTex;
                                         ui->needUpdateTexture = true;
@@ -714,14 +740,14 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Sprite", EntityCreationType::SPRITE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", Texture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", edgeClampedTexture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "height", tempImage->getHeight());
                                 } else {
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Image", EntityCreationType::IMAGE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", Texture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", edgeClampedTexture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "height", tempImage->getHeight());
                                 }
@@ -1006,19 +1032,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool isMouseInWindow = ImGui::IsWindowHovered() && (mousePos.x >= windowPos.x && mousePos.x <= windowPos.x + windowSize.x &&
                             mousePos.y >= windowPos.y && mousePos.y <= windowPos.y + windowSize.y);
 
-    // Keep the viewport redrawing while it is hovered or manipulated (hover highlight,
-    // camera drag/fly, gizmo drag). draggingMouse tracks a drag so it survives the
+    // Keep the viewport redrawing while it is used (hover highlight, camera drag/fly,
+    // gizmo drag, shortcuts). draggingMouse tracks a drag so it survives the
     // cursor leaving the window; edits flag the scene through the command system.
     // A resting pointer changes nothing under it, so hovering alone does not redraw:
     // a headless editor's pointer rests in this view and kept the loop from idling.
+    // Nor does a moving one, unless something under it follows the mouse.
     {
         bool viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
         bool anyMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        bool mouseMoved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
         bool pointerActive = anyMouseDown ||
-                             io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
-                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+                             (mouseMoved && sceneProject->sceneRender->hasHoverFeedback());
         for (int key = ImGuiKey_NamedKey_BEGIN; !pointerActive && key < ImGuiKey_GamepadStart; key++) {
             pointerActive = ImGui::IsKeyDown(static_cast<ImGuiKey>(key)) || ImGui::IsKeyReleased(static_cast<ImGuiKey>(key));
         }
@@ -1047,12 +1075,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool handPanEnabled = sceneProject->sceneRender->getCursorSelected() == CursorSelected::HAND;
     GizmoSelected gizmoSelected = sceneProject->sceneRender->getToolsLayer()->getGizmoSelected();
     Gizmo2DSideSelected gizmo2DSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
-    bool gizmoSideActive = sceneProject->sceneRender->isAnyGizmoSideSelected();
+    // The hand tool only pans: a drag on a gizmo handle moves the view, not the handle
+    bool gizmoSideActive = !handPanEnabled && sceneProject->sceneRender->isAnyGizmoSideSelected();
     // Alt + click on a gizmo handle duplicates the target and drags the copy.
     // For the 2D gizmo, only the center move area duplicates; resize handles
     // keep editing the current selection. Alt + click on empty space keeps its
     // camera-orbit behavior, so the guard is gated on a hovered/active gizmo side.
-    bool altGizmoDrag = altHeld && gizmoSideActive;
+    // Paint Dye (FluidEditorTools): the left button paints the fluid, no selection or gizmo
+    bool fluidPainting = sceneProject->sceneRender->isFluidPainting();
+    bool altGizmoDrag = altHeld && gizmoSideActive && !fluidPainting;
     bool altGizmoDuplicate = altGizmoDrag &&
         (gizmoSelected != GizmoSelected::OBJECT2D || gizmo2DSide == Gizmo2DSideSelected::CENTER);
 
@@ -1061,6 +1092,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
         sceneProject->sceneRender->isPoseDragging() ||
+        fluidPainting ||
         gizmoSideActive ||
         sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
 
@@ -1088,11 +1120,64 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
         }
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !poseHandleClick){
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick){
             subSelectionClickConsumesRelease[sceneId] = false;
 
+            // Lattice point picking within the selected lattice, with any tool: a click on a
+            // point selects it (Shift/Ctrl toggle it); the gizmo then sits on it, so the same
+            // press can drag it. A handle of the points' gizmo under the cursor keeps the click;
+            // the lattice's own gizmo (no point selected) gives way to the points under it.
+            bool latticePointHit = false;
+            {
+                Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
+                bool blockPointHit = false;
+                if (!LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty()) {
+                    if (gizmoSelected == GizmoSelected::OBJECT2D) {
+                        Gizmo2DSideSelected side = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
+                        blockPointHit = !(side == Gizmo2DSideSelected::NONE || side == Gizmo2DSideSelected::CENTER);
+                    } else {
+                        blockPointHit = gizmoSideActive;
+                    }
+                }
+                // Space + drag pans a 2D view (disableSelection's rule)
+                const bool spacePan = sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+                if (latticeEntity != NULL_ENTITY && !blockPointHit && !altHeld && !handPanEnabled && !spacePan &&
+                        !sceneProject->sceneRender->hasEditLayer() && !sceneProject->sceneRender->isTerrainEditing()) {
+                    int pointHit = sceneProject->sceneRender->hitTestLatticePoint(latticeEntity, x, y);
+                    if (pointHit >= 0) {
+                        latticePointHit = true;
+                        // with the points drawn on the same spot (a flat cage seen face on)
+                        std::vector<int> hit = sceneProject->sceneRender->getLatticeCoincidentPoints(latticeEntity, pointHit);
+                        std::vector<int> points = LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity);
+                        if (io.KeyShift || io.KeyCtrl) {
+                            const bool wasSelected = std::find(points.begin(), points.end(), pointHit) != points.end();
+                            for (int index : hit) {
+                                auto it = std::find(points.begin(), points.end(), index);
+                                if (wasSelected && it != points.end()) {
+                                    points.erase(it);
+                                } else if (!wasSelected && it == points.end()) {
+                                    points.push_back(index);
+                                }
+                            }
+                        } else {
+                            points = hit;
+                        }
+                        // the point clicked is the last selected (pivot mode)
+                        if (!(io.KeyShift || io.KeyCtrl) || std::find(points.begin(), points.end(), pointHit) != points.end()) {
+                            points.erase(std::remove(points.begin(), points.end(), pointHit), points.end());
+                            points.push_back(pointHit);
+                        }
+                        LatticeEditorOps::setSelectedPoints(sceneId, latticeEntity, points);
+                        subSelectionClickConsumesRelease[sceneId] = true;
+                        // Re-update so the gizmo jumps to the point
+                        project->updateSceneRender(sceneId);
+                        sceneProject->sceneRender->mouseHoverEvent(x, y);
+                    }
+                }
+            }
+
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
-            if (!disableSelection && gizmoSelected == GizmoSelected::OBJECT2D) {
+            if (!disableSelection && !latticePointHit && gizmoSelected == GizmoSelected::OBJECT2D) {
                 uint32_t hitSceneId = sceneId;
                 Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
                 if (hitEntity != NULL_ENTITY) {
@@ -1368,7 +1453,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             sceneProject->sceneRender->mouseHoverEvent(x, y);
         }
 
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;
@@ -1376,7 +1461,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             mouseLeftDragPos = Vector2(logicalX, logicalY);
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() ||
+            // So do Paint Dye strokes: a short drag is a small splat.
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() || fluidPainting ||
                     sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
@@ -1414,7 +1500,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 int prevTrackPointIndex = sceneProject->sceneRender->getSelectedTrackPointIndex();
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
 
-                selectObjectByRay(sceneId, x, y, io.KeyShift);
+                // a click on empty space while lattice points are selected clears the points
+                // and keeps the lattice (the next one deselects it as usual)
+                Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
+                bool clearedLatticePoints = false;
+                if (latticeEntity != NULL_ENTITY && !LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty() && !io.KeyShift) {
+                    if (findSelectableObjectByRay(sceneId, x, y) == NULL_ENTITY) {
+                        LatticeEditorOps::clearSelectedPoints(sceneId);
+                        sceneProject->needUpdateRender = true;
+                        clearedLatticePoints = true;
+                    }
+                }
+
+                if (!clearedLatticePoints) {
+                    selectObjectByRay(sceneId, x, y, io.KeyShift);
+                }
 
                 // Sub-selection is only meaningful while its host entity is the sole
                 // selected entity. Clear it whenever that invariant no longer holds
@@ -1457,7 +1557,19 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             mouseLeftDraggedInside = false;
         }else{
 
-            if (mouseLeftDraggedInside && !disableSelection){
+            Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
+            if (mouseLeftDraggedInside && !disableSelection && latticeEntity != NULL_ENTITY && !sceneProject->sceneRender->hasEditLayer()){
+                // the box selects the lattice's points (Shift adds), the lattice stays selected
+                Vector2 clickStartPos = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
+                Vector2 clickEndPos = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
+                std::vector<int> points = sceneProject->sceneRender->getLatticePointsInRect(latticeEntity, clickStartPos, clickEndPos);
+                if (io.KeyShift) {
+                    const std::vector<int>& previous = LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity);
+                    points.insert(points.begin(), previous.begin(), previous.end());
+                }
+                LatticeEditorOps::setSelectedPoints(sceneId, latticeEntity, points);
+                sceneProject->needUpdateRender = true;
+            }else if (mouseLeftDraggedInside && !disableSelection){
                 Vector2 clickStartPos = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
                 Vector2 clickEndPos = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
                 sceneProject->sceneRender->clearTileSelection();
@@ -1495,6 +1607,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             // Remember where the look began so we can restore it on release (see below)
             lookActive[sceneId] = true;
             lookReturnPos[sceneId] = mousePos;
+            rightClickTravel[sceneId] = 0.0f;
         }
 
         ImGui::SetWindowFocus();
@@ -1505,6 +1618,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         draggingMouse[sceneId] = false;
         Backend::enableMouseCursor();
         io.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+
+        // A right click that turned nothing opens the selected lattice's menu
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) && lookActive[sceneId] && rightClickTravel[sceneId] < 4.0f &&
+                LatticeSceneTools::getMenuLattice(project, sceneId) != NULL_ENTITY) {
+            latticeMenuRequested[sceneId] = true;
+            latticeMenuPos[sceneId] = lookReturnPos[sceneId];
+        }
 
         // The captured cursor left io.MousePos far outside the window, which would fail the
         // isMouseInWindow test, so snap it back before the backend restore lands next frame.
@@ -1553,6 +1673,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                 }
 
+                rightClickTravel[sceneId] += std::fabs(lookDeltaX) + std::fabs(lookDeltaY);
                 camera->rotateView(-0.1 * lookDeltaX);
                 camera->elevateView(-0.1 * lookDeltaY);
 
@@ -1646,11 +1767,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         // The zoom speed itself can remain constant
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
             if (isMouseInWindow && mouseWheel != 0.0f) {
-                sceneRender3D->zoomCamera(2.0f * mouseWheel * distanceScaleFactor);
+                if (sceneRender3D->isLatticeDragActive() && LatticeEditorOps::falloff().enabled) {
+                    // dragging lattice points: the wheel sizes the proportional falloff
+                    LatticeFalloff& falloff = LatticeEditorOps::falloff();
+                    falloff.radius = std::clamp(falloff.radius * std::pow(1.1f, mouseWheel), 0.01f, 10.0f);
+                } else {
+                    sceneRender3D->zoomCamera(2.0f * mouseWheel * distanceScaleFactor);
+                }
             }
         }
 
     }else{
+
+        // a right button held moves nothing in 2D: what it travels tells a click from a drag
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+            rightClickTravel[sceneId] += std::fabs(mouseDelta.x) + std::fabs(mouseDelta.y);
+        }
 
         if (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || 
             (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left)) ||
@@ -1672,7 +1804,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             camera->slideUp(slideY);
         }
 
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)){
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && isMouseInWindow && mouseWheel != 0.0f &&
+                sceneProject->sceneRender->isLatticeDragActive() && LatticeEditorOps::falloff().enabled){
+            // dragging lattice points: the wheel sizes the proportional falloff
+            LatticeFalloff& falloff = LatticeEditorOps::falloff();
+            falloff.radius = std::clamp(falloff.radius * std::pow(1.1f, mouseWheel), 0.01f, 10.0f);
+        }else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)){
             if (isMouseInWindow && mouseWheel != 0.0f){
                 float zoomFactor = 1.0f - (0.1f * mouseWheel);
 
@@ -1689,6 +1826,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
         }
 
+    }
+
+    // Paint Dye: [ / ] scale the fluid's splatRadius (one undo step a run of presses), Esc puts
+    // the brush down, while the view is focused or under the pointer and nothing is being typed
+    // (a keyboard key shows ImGui's nav cursor, which IsAnyItemFocused below would count)
+    if (sceneProject->sceneRender->isFluidPainting() && !ImGui::IsAnyItemActive() && !io.WantTextInput &&
+        (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) || isMouseInWindow)){
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket)){
+            FluidEditorTools::adjustRadius(1.0f / 1.15f);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
+            FluidEditorTools::adjustRadius(1.15f);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+            FluidEditorTools::disarm();
+        }
     }
 
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
@@ -1719,7 +1872,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 // Tool shortcuts (Q/W/E/R/T, X) live in the main toolbar.
 
-                // F key: Focus camera on selected entities
+                // Lattice point shortcuts (Esc, O, Alt+A, Ctrl+I, Ctrl+=/-) while this view has the keyboard
+                if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+                    LatticeSceneTools::handleShortcuts(project, sceneId);
+                }
+
+                // F key: Focus camera on selected entities (the selected lattice points first)
                 if (ImGui::IsKeyPressed(ImGuiKey_F)) {
                     frameSelection(sceneId);
                 }
@@ -1784,6 +1942,15 @@ bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
 }
 
 void editor::SceneWindow::frameSelection(uint32_t sceneId) {
+    // the selected points of the edited lattice
+    if (SceneProject* sceneProject = project->getScene(sceneId)) {
+        Entity lattice = LatticeEditorOps::getEditedLattice(project, sceneId);
+        const std::vector<int>& points = LatticeEditorOps::getSelectedPoints(sceneId, lattice);
+        if (lattice != NULL_ENTITY && !points.empty() && sceneProject->sceneRender) {
+            focusOnBounds(sceneProject, sceneProject->sceneRender->getLatticePointsAABB(lattice, points));
+            return;
+        }
+    }
     const uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
     if (propertiesSceneId != sceneId && project->isSceneViewLayer(sceneId, propertiesSceneId)
             && project->hasSelectedEntities(propertiesSceneId)) {
@@ -1815,19 +1982,37 @@ void editor::SceneWindow::frameEntities(uint32_t viewSceneId, uint32_t entitySce
 void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std::vector<Entity>& entities) {
     if (entities.empty() || !sceneProject || !sceneProject->sceneRender) return;
 
+    AABB bounds;
+    for (Entity entity : entities) {
+        AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({entity});
+        if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
+            bounds.merge(entityAABB);
+        }
+        if (sceneProject->scene->findComponent<LatticeComponent>(entity)) {
+            // a lattice has no mesh: its cage is what it shows
+            AABB cage = sceneProject->sceneRender->getLatticePointsAABB(entity, {});
+            if (!cage.isNull() && !cage.isInfinite()) {
+                bounds.merge(cage);
+                continue;
+            }
+        }
+        if ((entityAABB.isNull() || entityAABB.isInfinite())) {
+            if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)) {
+                // entities without bounds, like lights, still have a world origin to focus on
+                bounds.merge(transform->worldPosition);
+            }
+        }
+    }
+    focusOnBounds(sceneProject, bounds);
+}
+
+void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& bounds) {
+    if (!sceneProject || !sceneProject->sceneRender) return;
+
     Camera* camera = sceneProject->sceneRender->getCamera();
 
     if (sceneProject->sceneType != SceneType::SCENE_3D) {
         // 2D: center the view on the bounds and zoom so they fit with a margin
-        AABB bounds;
-        for (Entity entity : entities) {
-            AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({entity});
-            if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
-                bounds.merge(entityAABB);
-            } else if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)) {
-                bounds.merge(transform->worldPosition);
-            }
-        }
         const int viewWidth = getWidth(sceneProject->id);
         const int viewHeight = getHeight(sceneProject->id);
         if (bounds.isNull() || bounds.isInfinite() || viewWidth <= 0 || viewHeight <= 0) return;
@@ -1853,20 +2038,10 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
         return;
     }
 
-    AABB aabb;
-    for (Entity entity : entities) {
-        AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({entity});
-        if (!entityAABB.isNull() && !entityAABB.isInfinite()) {
-            aabb.merge(entityAABB);
-        } else if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)) {
-            // entities without bounds, like lights, still have a world origin to focus on
-            aabb.merge(transform->worldPosition);
-        }
-    }
-    if (aabb.isNull() || aabb.isInfinite()) return;
+    if (bounds.isNull() || bounds.isInfinite()) return;
 
-    Vector3 center = aabb.getCenter();
-    Vector3 size = aabb.getSize();
+    Vector3 center = bounds.getCenter();
+    Vector3 size = bounds.getSize();
     float radius = size.length() * 0.5f;
     radius = std::max(radius, 0.5f);
 
@@ -1981,6 +2156,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         drawSettingRow(ICON_FA_LINK " Show all joints", sceneProject.displaySettings.showAllJoints);
         drawSettingRow(ICON_FA_BONE " Show all bones", sceneProject.displaySettings.showAllBones);
         drawSettingRow(ICON_FA_CUBES " Show all rigidbodies", sceneProject.displaySettings.showAllBodies);
+        drawSettingRow(ICON_FA_BORDER_NONE " Show all lattices", sceneProject.displaySettings.showAllLattices);
 
         drawSettingRow(ICON_FA_CAMERA " Hide camera view", sceneProject.displaySettings.hideCameraView);
         drawSettingRow(ICON_FA_LIGHTBULB " Hide light icons", sceneProject.displaySettings.hideLightIcons, sceneProject.sceneType != SceneType::SCENE_3D);
@@ -2127,6 +2303,27 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+}
+
+void editor::SceneWindow::drawLatticeContextMenu(SceneProject& sceneProject) {
+    const std::string popupId = "LatticeMenu" + std::to_string(sceneProject.id);
+    if (latticeMenuRequested[sceneProject.id]) {
+        latticeMenuRequested[sceneProject.id] = false;
+        if (sceneProject.playState != ScenePlayState::SAVING && sceneProject.playState != ScenePlayState::LOADING &&
+                sceneProject.playState != ScenePlayState::CANCELLING) {
+            ImGui::OpenPopup(popupId.c_str());
+            ImGui::SetNextWindowPos(latticeMenuPos[sceneProject.id]);
+        }
+    }
+    if (ImGui::BeginPopup(popupId.c_str())) {
+        Entity lattice = LatticeSceneTools::getMenuLattice(project, sceneProject.id);
+        if (lattice == NULL_ENTITY) {
+            ImGui::CloseCurrentPopup();
+        } else {
+            LatticeSceneTools::drawContextMenu(project, sceneProject.id, lattice);
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void editor::SceneWindow::show() {
@@ -2445,7 +2642,15 @@ void editor::SceneWindow::show() {
                     }
                 }
 
+                if (!transitioning && !isCameraPreview){
+                    drawFluidBrushCursor(&sceneProject);
+                    if (UIProbe::enabled() && sceneProject.id == project->getSelectedSceneId()){
+                        probeSceneView(&sceneProject);
+                    }
+                }
+
                 sceneEventHandler(&sceneProject);
+                drawLatticeContextMenu(sceneProject);
             }
             ImGui::EndChild();
         } else {
@@ -2473,6 +2678,56 @@ ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {
 float editor::SceneWindow::canvasDpi(uint32_t sceneId) const {
     auto it = canvasDpiScale.find(sceneId);
     return (it != canvasDpiScale.end() && it->second > 0.0f) ? it->second : 1.0f;
+}
+
+void editor::SceneWindow::probeSceneView(SceneProject* sceneProject){
+    // the view, and the selected fluid's Sprite on it (its bounds in the view)
+    const ImRect view = ImGui::GetCurrentWindow()->InnerClipRect;
+    UIProbe::rect("scene.view", view.Min.x, view.Min.y, view.Max.x, view.Max.y);
+
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    std::vector<Vector3> corners;
+    if (selected.size() != 1 || !sceneProject->scene->findComponent<FluidSimulationComponent>(selected[0]) ||
+        !FluidEditorTools::spriteCorners(sceneProject->scene, selected[0], corners)){
+        return;
+    }
+    const ImVec2 scale = canvasEngineScale(sceneProject->id);
+    const ImVec2 origin = ImGui::GetWindowPos();
+    ImVec2 min(FLT_MAX, FLT_MAX), max(-FLT_MAX, -FLT_MAX);
+    for (const Vector3& corner : corners){
+        Vector2 point;
+        if (!sceneProject->sceneRender->projectToView(corner, point)){
+            return;
+        }
+        const ImVec2 screen(origin.x + point.x / scale.x, origin.y + point.y / scale.y);
+        min = ImVec2(std::min(min.x, screen.x), std::min(min.y, screen.y));
+        max = ImVec2(std::max(max.x, screen.x), std::max(max.y, screen.y));
+    }
+    UIProbe::rect("scene.fluidSprite", min.x, min.y, max.x, max.y);
+}
+
+void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){
+    SceneRender* sceneRender = sceneProject->sceneRender;
+    if (!sceneRender || !sceneRender->isFluidPainting() || !ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
+        return;
+    }
+
+    std::vector<Vector2> points;
+    if (!sceneRender->getFluidBrushCircle(points)){
+        return;
+    }
+
+    // engine pixels back to the view's (toEngineCanvas inverted), from the image's corner
+    const ImVec2 scale = canvasEngineScale(sceneProject->id);
+    const ImVec2 origin = ImGui::GetWindowPos();
+    std::vector<ImVec2> screen;
+    screen.reserve(points.size());
+    for (const Vector2& point : points){
+        screen.push_back(ImVec2(origin.x + point.x / scale.x, origin.y + point.y / scale.y));
+    }
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddPolyline(screen.data(), (int)screen.size(), IM_COL32(0, 0, 0, 140), ImDrawFlags_Closed, Theme::dpi(3.0f));
+    drawList->AddPolyline(screen.data(), (int)screen.size(), IM_COL32(89, 204, 255, 255), ImDrawFlags_Closed, Theme::dpi(1.5f));
 }
 
 ImVec2 editor::SceneWindow::canvasEngineScale(uint32_t sceneId) const {

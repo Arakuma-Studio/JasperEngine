@@ -37,6 +37,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
@@ -50,7 +51,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <fstream>
 #include <map>
@@ -69,17 +72,18 @@ namespace fs = std::filesystem;
 
 namespace w4 {
 
+// A failed write keeps the file as it was
 bool writeFile(const fs::path& path, const std::string& content) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    return FileUtils::writeFileReplacing(path, content);
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {
-    if (!project) return absolute.generic_string();
-    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
+    // UTF-8 for the agent (generic_string() is the ANSI code page on Windows)
+    if (!project) return FileUtils::pathToGenericUtf8(absolute);
+    const fs::path rel = absolute.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
+    if (rel.empty() || *rel.begin() == "..") return FileUtils::pathToGenericUtf8(absolute);
+    if (rel == ".") return "";
+    return FileUtils::pathToGenericUtf8(rel);
 }
 
 std::string extensionOf(const fs::path& path) {
@@ -141,7 +145,7 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
-            error = item.path.generic_string() + " is a directory.";
+            error = FileUtils::pathToGenericUtf8(item.path) + " is a directory.";
             return false;
         }
     }
@@ -150,9 +154,12 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         syncFiles(*context, changed, false);
     });
     cmd->setNoMerge();
-    // addCommand runs execute() and deletes the command when it fails
+    auto failure = std::make_shared<std::string>();
+    cmd->reportFailureTo(failure);
+    // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
     if (!ctx.project()->getProjectCommandHistory()->addCommand(cmd)) {
-        error = "Writing the file(s) failed (permissions, a read-only disk, or a parent path that is a file).";
+        error = "Writing the file(s) failed: " +
+                (failure->empty() ? std::string("permissions, a read-only disk, or a parent path that is a file") : *failure) + ".";
         return false;
     }
     return true;
@@ -203,7 +210,7 @@ void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths,
     for (const fs::path& path : paths) {
         const std::string rel = projectRelative(project, path);
         if (!seen.insert(rel).second) continue;
-        const bool inside = !rel.empty() && rel != path.generic_string();
+        const bool inside = !rel.empty() && rel != FileUtils::pathToGenericUtf8(path);
         std::error_code ec;
         if (fs::is_regular_file(path, ec)) {
             FileStamp stamp;
@@ -911,7 +918,7 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
             }
         }
         if (source.empty()) {
-            error = "No source file next to " + projectRelative(project, file) + " (expected " + file.stem().string() + ".cpp).";
+            error = "No source file next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
             return false;
         }
     } else if (Util::isSourceFile(file.string())) {
@@ -925,7 +932,7 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
             }
         }
         if (header.empty()) {
-            error = "No header next to " + projectRelative(project, file) + " (expected " + file.stem().string() + ".h).";
+            error = "No header next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
             return false;
         }
     } else {
@@ -933,8 +940,9 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
         return false;
     }
     entry.type = ScriptType::CPP;
-    entry.headerPath = projectRelative(project, header);
-    entry.path = projectRelative(project, source);
+    // Stored as the editor stores them (projectRelative is the agent's UTF-8)
+    entry.headerPath = ProjectChecks::projectRelative(project->getProjectPath(), header);
+    entry.path = ProjectChecks::projectRelative(project->getProjectPath(), source);
     std::string className = classNameArg;
     if (className.empty()) {
         if (auto found = ScriptParser::findScriptClassName(header)) className = *found;
@@ -1393,7 +1401,7 @@ void listScriptsTool(const CallPtr& call) {
         data["files"] = files;
         data["lua_dir"] = luaRootRelative(project);
         Json dirs = Json::array();
-        for (const fs::path& dir : project->getScriptDirs()) dirs.push_back(dir.generic_string());
+        for (const fs::path& dir : project->getScriptDirs()) dirs.push_back(FileUtils::pathToGenericUtf8(dir));
         data["script_dirs"] = dirs;
         text += " " + std::to_string(files.size()) + " script file(s) in the project.";
     }
@@ -1563,8 +1571,8 @@ void compileScriptsTool(const CallPtr& call) {
 
     Json scriptList = Json::array();
     for (const SceneScriptSource& script : plan.scripts) {
-        scriptList.push_back({{"class_name", script.className}, {"path", script.path.generic_string()},
-                              {"header_path", script.headerPath.generic_string()}});
+        scriptList.push_back({{"class_name", script.className}, {"path", FileUtils::pathToGenericUtf8(script.path)},
+                              {"header_path", FileUtils::pathToGenericUtf8(script.headerPath)}});
     }
 
     JobPtr job = ctx.jobs().create("compile_scripts", "Compile C++ scripts", JobBusy::ScriptCompile);
@@ -1639,7 +1647,7 @@ void codeEditorTool(const CallPtr& call) {
     auto status = [&]() {
         Json buffers = Json::array();
         for (const CodeEditor::BufferState& state : editor->getBufferStates()) {
-            buffers.push_back({{"path", state.path}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
+            buffers.push_back({{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
         }
         return buffers;
     };
@@ -1708,10 +1716,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "create_script";
         tool.title = "Create Script";
         tool.description =
-            "Create a script from the engine template, optionally attached to entity. kind lua: module table "
-            "in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the GameObject's "
-            "class (e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) replace "
-            "the template.";
+            "Create a script from the engine template, optionally attached to entity; then edit the file "
+            "yourself. kind lua: module table in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: "
+            "subclass of the GameObject's class (e.g. Mesh), needs entity. content (Lua) or header_content + "
+            "source_content (C++) replace the template.";
         tool.inputSchema = object({
             {"kind", stringEnum("", {"lua", "cpp_script", "cpp_subclass"})},
             {"name", string("Class/module name = file name.")},
@@ -1792,9 +1800,8 @@ void registerScriptTools(McpRegistry& registry) {
         tool.title = "Set Script Properties";
         tool.description =
             "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
-            "set_properties scripts[i].<name>). Prefab properties take a .prefab path, GameObject ones an "
-            "entity ref; \"enabled\" toggles the script. Properties added to the file are picked up before your "
-            "next call.";
+            "set_properties scripts[i].<name>, same values); \"enabled\" toggles the script. Properties added to "
+            "the file are picked up before your next call.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1848,9 +1855,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "sync_files";
         tool.title = "Sync Files";
         tool.description =
-            "Rarely needed (disk edits are picked up before every call): a full rescan of code editor "
-            "buffers, script properties, Lua syntax, materials, shaders, textures, assets; returns what "
-            "changed and the problems. Not for .scene/.prefab/project.yaml.";
+            "Rarely needed (files edited on disk are picked up before every call: external_changes): a full "
+            "rescan of code editor buffers, script properties, Lua syntax, materials, shaders, textures, assets; "
+            "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
             {"full", withDefault(boolean(""), true)}

@@ -8,6 +8,7 @@
 #include "McpJson.h"
 #include "McpRegistry.h"
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -45,13 +46,15 @@ namespace jasperengine::editor::mcp {
     // The agent guide sent as initialize.instructions (McpInstructions.cpp)
     const char* mcpServerInstructions();
 
-    // One MCP client connection: the stdio client, or one HTTP Mcp-Session-Id.
+    // One MCP client connection: the stdio client, or one HTTP Mcp-Session-Id. A 2026-07-28
+    // HTTP request has no session: it gets a stateless one of its own, never listed.
     struct McpSession {
         std::string id;
         std::string transport;            // "stdio" or "http"
         std::string clientName;
         std::string clientVersion;
         std::string protocolVersion;
+        bool stateless = false;
     };
     using SessionPtr = std::shared_ptr<McpSession>;
 
@@ -61,6 +64,12 @@ namespace jasperengine::editor::mcp {
     public:
         virtual ~McpReply() = default;
         virtual void respond(const Json& message) = 0;
+        // A protocol error that 2026-07-28 answers with an HTTP status (400, 404) over HTTP;
+        // other transports send it like any response
+        virtual void respondError(const Json& message, int httpStatus) {
+            (void)httpStatus;
+            respond(message);
+        }
         virtual void notify(const Json& notification) = 0;
         // The client cancelled the request: MCP says no response is sent. Transports that
         // hold a connection open for the answer release it here.
@@ -85,6 +94,7 @@ namespace jasperengine::editor::mcp {
         bool stdio = false;
         bool stdioOpen = false;
         bool httpRunning = false;
+        bool httpAllowChanges = true;
         int httpPort = 0;
         std::string httpError;
         std::vector<McpSession> sessions;  // copies
@@ -98,6 +108,8 @@ namespace jasperengine::editor::mcp {
     public:
         static constexpr const char* SERVER_NAME = "jasperengine-editor";
         static constexpr int DEFAULT_HTTP_PORT = 47615;
+        // Stateless revision: no initialize, every request names it in its _meta
+        static constexpr const char* MODERN_PROTOCOL_VERSION = "2026-07-28";
 
         static McpServer& get();
 
@@ -114,14 +126,25 @@ namespace jasperengine::editor::mcp {
         McpRegistry& registry() { return reg; }
         McpJobs& jobs() { return jobList; }
 
-        // HTTP transport control (Activity window / Editor Settings). Main thread.
+        // HTTP transport control (Activity window / Editor Settings). Main thread. Enabling
+        // it makes the bearer token first if settings.yaml has none.
         void setHttpEnabled(bool enabled, int port);
+        // The bearer token HTTP clients send, and a fresh one replacing it (saved; applies to
+        // the next request, so connected clients need the new one). Main thread.
+        std::string httpToken() const;
+        std::string newHttpToken();
+        // Off: HTTP clients only see and run the tools annotated read-only (stdio clients
+        // launched the editor themselves and keep every tool). Saved. Main thread.
+        void setHttpAllowChanges(bool allow);
+        bool httpAllowsChanges() const { return httpChangesAllowed.load(); }
         McpServerStatus status() const;
         std::vector<McpActivityEntry> activity() const;
         void clearActivity();
 
         // --- transports ---
         SessionPtr createSession(const std::string& transport);
+        // A 2026-07-28 request's own session (unique id, not listed, nothing to close)
+        SessionPtr createStatelessSession(const std::string& transport);
         SessionPtr findSession(const std::string& id) const;
         void closeSession(const std::string& id);
         // Handles one parsed JSON-RPC message (request, notification or response) from
@@ -130,6 +153,9 @@ namespace jasperengine::editor::mcp {
         void handleMessage(const SessionPtr& session, const Json& message, const ReplyPtr& reply);
         // The stdio client went away (stdin EOF): the editor quits.
         void onStdioClosed();
+        // Cancels the in-flight request with this JSON-RPC id (notifications/cancelled, or a
+        // 2026-07-28 HTTP client closing the connection). Any thread.
+        void cancelRequest(const std::string& sessionId, const Json& requestId);
 
         // --- calls (main thread) ---
         // Runs a tool inside another call (batch): same gates as a top-level call, but no
@@ -163,9 +189,21 @@ namespace jasperengine::editor::mcp {
         bool refuseIfBusy(const CallPtr& call, ToolActivity activity);
         // The activity the busy policy applies to a tool (resolves ToolActivity::Auto)
         static ToolActivity effectiveActivity(const ToolDef& def);
+        // Whether this call may change the project or write files: a tool not annotated
+        // read-only, or a read-only one with arguments that write (ToolDef::writesFiles)
+        static bool mayChange(const ToolDef& def, const Json& args);
 
         static Json makeError(const Json& id, int code, const std::string& message, Json data = nullptr);
         static Json makeResult(const Json& id, Json result);
+
+        // --- protocol versions ---
+        // 2026-07-28 first, then the initialize-era versions, newest first
+        static Json supportedProtocolVersions();
+        static bool isLegacyProtocolVersion(const std::string& version);
+        // params._meta["io.modelcontextprotocol/protocolVersion"] of a message (empty: none,
+        // so an initialize-era request)
+        static std::string requestProtocolVersion(const Json& message);
+        static Json serverInfo();
 
         // --- helpers for transports (any thread) ---
         // JASPER_MCP_TRACE=1: one stderr line per request read, run, answered and written
@@ -204,13 +242,19 @@ namespace jasperengine::editor::mcp {
 
         std::vector<Deferred> deferred;   // main thread only
 
+        std::atomic<bool> httpChangesAllowed{true};
+
         mutable std::mutex activityMutex;
         std::deque<McpActivityEntry> activityLog;
         uint64_t activitySeq = 0;
 
         void registerAllTools();
-        void handleRequest(const SessionPtr& session, const Json& message, const ReplyPtr& reply);
+        void handleRequest(const SessionPtr& session, const Json& message, const ReplyPtr& reply, bool modern);
         void handleToolsCall(const SessionPtr& session, const Json& id, const Json& params, const ReplyPtr& reply);
+        // HTTP clients get only the read-only tools while changes are off
+        bool toolHidden(const McpSession& session, const ToolDef& def) const;
+        // The agent guide, saying so when the session is read-only
+        std::string instructionsFor(const McpSession& session) const;
         void runOnMainThread(std::function<void()> task);
         // Gates + handler. complete() is already wired into the call.
         void execute(const CallPtr& call, const ToolDef& def);

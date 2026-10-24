@@ -14,12 +14,15 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreateTrackKeyCmd.h"
+#include "command/type/AddActionFrameCmd.h"
 
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/MorphTracksComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LatticeComponent.h"
 #include "component/ModelComponent.h"
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
@@ -36,6 +39,9 @@
 #include "action/Animation.h"
 #include "util/EntityPayload.h"
 #include "util/ProjectUtils.h"
+#include "util/LatticeTrackKeys.h"
+#include "lattice/LatticeEditorOps.h"
+#include "lattice/LatticeSolver.h"
 
 #include <algorithm>
 #include <cmath>
@@ -282,6 +288,10 @@ std::string editor::AnimationWindow::getActionLabel(Entity actionEntity, Scene* 
         return "Morph Tracks";
     }
 
+    if (sig.test(scene->getComponentId<LatticeTracksComponent>())) {
+        return "Lattice Tracks";
+    }
+
     if (sig.test(scene->getComponentId<KeyframeTracksComponent>())) {
         return "Keyframe Tracks";
     }
@@ -414,6 +424,7 @@ editor::AnimationWindow::PreviewEntityState editor::AnimationWindow::buildPrevie
     components.remove(Catalog::getComponentName(ComponentType::RotateTracksComponent, true));
     components.remove(Catalog::getComponentName(ComponentType::ScaleTracksComponent, true));
     components.remove(Catalog::getComponentName(ComponentType::MorphTracksComponent, true));
+    components.remove(Catalog::getComponentName(ComponentType::LatticeTracksComponent, true));
     state.components = components;
 
     return state;
@@ -426,6 +437,12 @@ void editor::AnimationWindow::restorePreviewState(Scene* scene) const {
         }
 
         Stream::decodeComponents(state.entity, state.parent, scene, state.components);
+
+        // tracks are left out of the snapshot: a relative one takes its base again from the
+        // restored pose when the preview starts it
+        if (KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
+            keyframe->hasBase = false;
+        }
     }
 }
 
@@ -632,6 +649,94 @@ void writeTrackKey(editor::Project* project, editor::SceneProject* sceneProject,
     }
 }
 
+// The lattice a lattice track animates, null when its target has none
+LatticeComponent* latticeTrackTarget(Scene* scene, Entity trackEntity, Entity* targetOut = nullptr){
+    ActionComponent* action = scene->findComponent<ActionComponent>(trackEntity);
+    if (!action || action->target == NULL_ENTITY || !scene->isEntityCreated(action->target)) return nullptr;
+    if (targetOut) *targetOut = action->target;
+    return scene->findComponent<LatticeComponent>(action->target);
+}
+
+// Key a lattice track with its target's current offsets (spec §7): the points selected in
+// the Scene view, else every moved point plus the track's own points (LatticeTrackKeys).
+// Arrays are rewritten whole, one property command each, in `batch` when given; nothing is
+// written when the key already holds these values. False when nothing was queued.
+bool writeLatticeTrackKey(editor::Project* project, editor::SceneProject* sceneProject, Scene* scene,
+                          Entity trackEntity, float time, editor::MultiPropertyCmd* batch = nullptr){
+    KeyframeTracksComponent* kf = scene->findComponent<KeyframeTracksComponent>(trackEntity);
+    LatticeTracksComponent* tracks = scene->findComponent<LatticeTracksComponent>(trackEntity);
+    Entity latticeEntity = NULL_ENTITY;
+    LatticeComponent* lattice = latticeTrackTarget(scene, trackEntity, &latticeEntity);
+    if (!kf || !tracks || !lattice) return false;
+
+    std::vector<int> points = editor::LatticeTrackKeys::pointsToKey(sceneProject->id, latticeEntity, *lattice, tracks);
+    std::vector<Vector3> values;
+    for (int point : points){
+        values.push_back(editor::LatticeTrackKeys::currentOffset(*lattice, point));
+    }
+
+    editor::LatticeTrackData data(*kf, *tracks);
+    editor::LatticeTrackKeys::setKey(data, time, points, values, *lattice, kKeyTimeEpsilon);
+
+    auto modifiedCb = [sceneProject]() { sceneProject->isModified = true; };
+    editor::MultiPropertyCmd* multiCmd = batch ? batch : new editor::MultiPropertyCmd();
+    bool queued = false;
+    auto write = [&](auto value, const auto& live, editor::ComponentType type, const char* property){
+        if (value != live){
+            multiCmd->addPropertyCmd<decltype(value)>(project, sceneProject->id, trackEntity, type, property, value,
+                                                      queued ? nullptr : std::function<void()>(modifiedCb));
+            queued = true;
+        }
+    };
+    write(data.times, kf->times, editor::ComponentType::KeyframeTracksComponent, "times");
+    write(data.easings, kf->easings, editor::ComponentType::KeyframeTracksComponent, "easings");
+    write(data.points, tracks->points, editor::ComponentType::LatticeTracksComponent, "points");
+    write(data.values, tracks->values, editor::ComponentType::LatticeTracksComponent, "values");
+    write(data.inTangents, tracks->inTangents, editor::ComponentType::LatticeTracksComponent, "inTangents");
+    write(data.outTangents, tracks->outTangents, editor::ComponentType::LatticeTracksComponent, "outTangents");
+
+    if (!batch){
+        if (queued){
+            multiCmd->setNoMerge();
+            editor::CommandHandle::get(sceneProject->id)->addCommand(multiCmd);
+        }else{
+            delete multiCmd;
+        }
+    }
+    return queued;
+}
+
+// The values a key stores for the target's pose. A relative track keys offsets from
+// the pose the target had when the track started, or from this one before it starts.
+struct KeyValues {
+    Vector3 position;
+    Quaternion rotation;
+    Vector3 scale;
+};
+
+KeyValues getKeyValues(Scene* scene, Entity trackEntity, Entity target){
+    Transform& transform = scene->getComponent<Transform>(target);
+    KeyValues values = {transform.position, transform.rotation, transform.scale};
+
+    KeyframeTracksComponent* kf = scene->findComponent<KeyframeTracksComponent>(trackEntity);
+    if (!kf || !kf->relative){
+        return values;
+    }
+    if (!kf->hasBase){
+        return {Vector3(0, 0, 0), Quaternion(), Vector3(1, 1, 1)};
+    }
+
+    // an anchored element's position is its layout offset here, as the base is
+    scene->getSystem<ActionSystem>()->getRelativeTrackPose(target, values.position, values.rotation, values.scale);
+    values.position = values.position - kf->basePosition;
+    values.rotation = kf->baseRotation.inverse() * values.rotation;
+    values.scale = Vector3(
+        kf->baseScale.x != 0 ? values.scale.x / kf->baseScale.x : 1,
+        kf->baseScale.y != 0 ? values.scale.y / kf->baseScale.y : 1,
+        kf->baseScale.z != 0 ? values.scale.z / kf->baseScale.z : 1);
+    return values;
+}
+
 // Where a key goes: keys are stored in the track's local time, so the owning
 // frame's startTime must be subtracted from the animation time.
 struct TrackLookup {
@@ -649,6 +754,7 @@ TrackLookup findTrackEntity(Scene* scene, AnimationComponent& anim, Entity targe
         if (tracksType == editor::ComponentType::TranslateTracksComponent) return scene->findComponent<TranslateTracksComponent>(e) != nullptr;
         if (tracksType == editor::ComponentType::RotateTracksComponent) return scene->findComponent<RotateTracksComponent>(e) != nullptr;
         if (tracksType == editor::ComponentType::ScaleTracksComponent) return scene->findComponent<ScaleTracksComponent>(e) != nullptr;
+        if (tracksType == editor::ComponentType::LatticeTracksComponent) return scene->findComponent<LatticeTracksComponent>(e) != nullptr;
         return false;
     };
 
@@ -821,8 +927,8 @@ void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sce
     }
 }
 
-// Snapshot is available only when at least one supported transform track has a
-// valid target and its frame spans the playhead.
+// Snapshot is available only when at least one supported transform or lattice track
+// has a valid target and its frame spans the playhead.
 bool editor::AnimationWindow::hasSnapshotTracks(Scene* scene, const AnimationComponent& anim) const {
     std::unordered_set<Entity> checkedActions;
     for (const ActionFrame& frame : anim.actions) {
@@ -834,6 +940,11 @@ bool editor::AnimationWindow::hasSnapshotTracks(Scene* scene, const AnimationCom
         if (currentTime + kKeyTimeEpsilon < frame.startTime) continue;
         if (frame.duration > 0.0f
             && currentTime > frame.startTime + frame.duration + kKeyTimeEpsilon) continue;
+
+        if (scene->findComponent<LatticeTracksComponent>(actionEntity)
+            && latticeTrackTarget(scene, actionEntity)) {
+            return true;
+        }
 
         ActionComponent* action = scene->findComponent<ActionComponent>(actionEntity);
         Entity target = action ? action->target : NULL_ENTITY;
@@ -850,13 +961,14 @@ bool editor::AnimationWindow::hasSnapshotTracks(Scene* scene, const AnimationCom
 }
 
 // Key every keyframe track the playhead has reached with its target's current
-// transform values, as one undo step. Auto-duration blocks grow to include the
-// new key; blocks with an explicit duration are only keyed within their span.
+// transform values (lattice tracks: lattice offsets), as one undo step. Auto-duration
+// blocks grow to include the new key; blocks with an explicit duration are only keyed
+// within their span.
 void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim){
     struct SnapshotTarget {
         Entity action;
         float localTime;
-        int channel; // 0 = position, 1 = rotation, 2 = scale
+        int channel; // 0 = position, 1 = rotation, 2 = scale, 3 = lattice
         Vector3 position;
         Quaternion rotation;
         Vector3 scale;
@@ -874,6 +986,15 @@ void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* scenePr
         if (currentTime + kKeyTimeEpsilon < frame.startTime) continue;
         if (frame.duration > 0 && currentTime > frame.startTime + frame.duration + kKeyTimeEpsilon) continue;
 
+        // lattice tracks read the offsets when written (LatticeTrackKeys)
+        if (scene->findComponent<LatticeTracksComponent>(actionEntity)){
+            if (latticeTrackTarget(scene, actionEntity)){
+                pending.push_back({actionEntity, std::max(0.0f, currentTime - frame.startTime), 3,
+                                   Vector3(), Quaternion(), Vector3()});
+            }
+            continue;
+        }
+
         ActionComponent* action = scene->findComponent<ActionComponent>(actionEntity);
         Entity target = action ? action->target : NULL_ENTITY;
         if (target == NULL_ENTITY || !scene->isEntityCreated(target)) continue;
@@ -889,9 +1010,9 @@ void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* scenePr
         }
         if (channel < 0) continue;
 
-        Transform& transform = scene->getComponent<Transform>(target);
+        KeyValues values = getKeyValues(scene, actionEntity, target);
         pending.push_back({actionEntity, std::max(0.0f, currentTime - frame.startTime), channel,
-                           transform.position, transform.rotation, transform.scale});
+                           values.position, values.rotation, values.scale});
     }
 
     if (pending.empty()){
@@ -899,7 +1020,13 @@ void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* scenePr
     }
 
     MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+    bool queuedKey = false;
     for (const SnapshotTarget& entry : pending){
+        if (entry.channel == 3){
+            queuedKey = writeLatticeTrackKey(project, sceneProject, scene, entry.action, entry.localTime, multiCmd) || queuedKey;
+            continue;
+        }
+        queuedKey = true;
         if (entry.channel == 0){
             writeTrackKey<TranslateTracksComponent, Vector3>(project, sceneProject, scene, entry.action,
                 ComponentType::TranslateTracksComponent, entry.localTime, entry.position, multiCmd);
@@ -912,12 +1039,17 @@ void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* scenePr
         }
     }
 
+    if (!queuedKey){
+        // only lattice keys that already held these offsets
+        delete multiCmd;
+        return;
+    }
     multiCmd->setNoMerge();
     CommandHandle::get(sceneProject->id)->addCommand(multiCmd);
 }
 
-// Store one or more of the target's current transform channels at `time`.
-// Existing tracks share one MultiPropertyCmd; missing tracks use CreateTrackKeyCmd
+// Store one or more of the target's current transform channels (or lattice offsets,
+// channel 3) at `time`. Existing tracks share one MultiPropertyCmd; missing tracks use CreateTrackKeyCmd
 // (create + first key + ActionFrame) in that same batch for a single undo step.
 void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim,
                                                 Entity target, float time, const std::vector<int>& channels){
@@ -946,6 +1078,10 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
             tracksType = ComponentType::ScaleTracksComponent;
             creationType = EntityCreationType::SCALE_TRACKS;
             name = "Scale Tracks";
+        }else if (channel == 3 && scene->findComponent<LatticeComponent>(target)){
+            tracksType = ComponentType::LatticeTracksComponent;
+            creationType = EntityCreationType::LATTICE_TRACKS;
+            name = "Lattice Tracks";
         }else{
             continue;
         }
@@ -964,15 +1100,20 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
 
         if (track.entity != NULL_ENTITY){
             float localTime = std::max(0.0f, time - track.startTime);
+            if (channel == 3){
+                queuedKey = writeLatticeTrackKey(project, sceneProject, scene, track.entity, localTime, batch) || queuedKey;
+                continue;
+            }
+            KeyValues values = getKeyValues(scene, track.entity, target);
             if (channel == 0){
                 writeTrackKey<TranslateTracksComponent, Vector3>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->position, batch);
+                    tracksType, localTime, values.position, batch);
             }else if (channel == 1){
                 writeTrackKey<RotateTracksComponent, Quaternion>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->rotation, batch);
+                    tracksType, localTime, values.rotation, batch);
             }else{
                 writeTrackKey<ScaleTracksComponent, Vector3>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->scale, batch);
+                    tracksType, localTime, values.scale, batch);
             }
             queuedKey = true;
             continue;
@@ -982,7 +1123,16 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
         // New auto-duration frames start at 0, so local time equals animation time.
         float localTime = std::max(0.0f, time);
         std::unique_ptr<CreateTrackKeyCmd> createCmd;
-        if (channel == 1){
+        if (channel == 3){
+            const LatticeComponent& lattice = scene->getComponent<LatticeComponent>(target);
+            std::vector<int> points = LatticeTrackKeys::pointsToKey(sceneProject->id, target, lattice, nullptr);
+            std::vector<Vector3> values;
+            for (int point : points){
+                values.push_back(LatticeTrackKeys::currentOffset(lattice, point));
+            }
+            createCmd = std::make_unique<CreateTrackKeyCmd>(
+                project, sceneProject->id, selectedEntity, target, name, localTime, points, values);
+        }else if (channel == 1){
             createCmd = std::make_unique<CreateTrackKeyCmd>(
                 project, sceneProject->id, selectedEntity, target, creationType, name, localTime,
                 transform->rotation);
@@ -1028,22 +1178,28 @@ void editor::AnimationWindow::keyTrackChannel(Scene* scene, SceneProject* sceneP
         return;
     }
 
+    if (channel == 3){
+        writeLatticeTrackKey(project, sceneProject, scene, trackEntity, localTime);
+        return;
+    }
+
     ActionComponent* action = scene->findComponent<ActionComponent>(trackEntity);
     Transform* transform = action ? scene->findComponent<Transform>(action->target) : nullptr;
     if (!transform || !scene->findComponent<KeyframeTracksComponent>(trackEntity)){
         return;
     }
 
+    KeyValues values = getKeyValues(scene, trackEntity, action->target);
     auto* batch = new MultiPropertyCmd();
     if (channel == 0 && scene->findComponent<TranslateTracksComponent>(trackEntity)){
         writeTrackKey<TranslateTracksComponent, Vector3>(project, sceneProject, scene, trackEntity,
-            ComponentType::TranslateTracksComponent, localTime, transform->position, batch);
+            ComponentType::TranslateTracksComponent, localTime, values.position, batch);
     }else if (channel == 1 && scene->findComponent<RotateTracksComponent>(trackEntity)){
         writeTrackKey<RotateTracksComponent, Quaternion>(project, sceneProject, scene, trackEntity,
-            ComponentType::RotateTracksComponent, localTime, transform->rotation, batch);
+            ComponentType::RotateTracksComponent, localTime, values.rotation, batch);
     }else if (channel == 2 && scene->findComponent<ScaleTracksComponent>(trackEntity)){
         writeTrackKey<ScaleTracksComponent, Vector3>(project, sceneProject, scene, trackEntity,
-            ComponentType::ScaleTracksComponent, localTime, transform->scale, batch);
+            ComponentType::ScaleTracksComponent, localTime, values.scale, batch);
     }else{
         delete batch;
         return;
@@ -1051,6 +1207,35 @@ void editor::AnimationWindow::keyTrackChannel(Scene* scene, SceneProject* sceneP
 
     batch->setNoMerge();
     CommandHandle::get(sceneProject->id)->addCommand(batch);
+}
+
+// Selecting a lattice track's block selects its points in the Scene view (spec §7): the
+// lattice becomes the selected GameObject (its cage shows) with the track's points picked.
+void editor::AnimationWindow::selectLatticeTrackPoints(SceneProject* sceneProject, Entity trackEntity){
+    Scene* scene = sceneProject->scene;
+    if (trackEntity == NULL_ENTITY || !scene->isEntityCreated(trackEntity)) return;
+    LatticeTracksComponent* tracks = scene->findComponent<LatticeTracksComponent>(trackEntity);
+    Entity latticeEntity = NULL_ENTITY;
+    LatticeComponent* lattice = tracks ? latticeTrackTarget(scene, trackEntity, &latticeEntity) : nullptr;
+    if (!lattice) return;
+
+    // the points the lattice has at its current resolution, once each
+    const int count = lattice::pointCount(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ);
+    std::vector<char> inTrack(count, 0);
+    for (int point : tracks->points){
+        if (point >= 0 && point < count) inTrack[point] = 1;
+    }
+    std::vector<int> points;
+    for (int point = 0; point < count; point++){
+        if (inTrack[point]) points.push_back(point);
+    }
+
+    std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+    if (selected.size() != 1 || selected[0] != latticeEntity){
+        project->setSelectedEntity(sceneProject->id, latticeEntity);
+    }
+    LatticeEditorOps::setSelectedPoints(sceneProject->id, latticeEntity, points);
+    sceneProject->needUpdateRender = true;
 }
 
 void editor::AnimationWindow::seekPreview(Scene* scene, SceneProject* sceneProject, float time, Entity clipEntity) {
@@ -1359,7 +1544,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
     ImGui::SameLine();
 
     // Add Keyframe (snapshot): key every track reached by the playhead with its target's
-    // current transform values (single undo step). A scrub creates a paused
+    // current transform values or lattice offsets (single undo step). A scrub creates a paused
     // preview, which is safe to snapshot; only active playback is blocked.
     bool hasSnapshotTarget = hasSnapshotTracks(scene, anim);
     bool canSnapshot = sceneIsStopped && !isPlaying && hasSnapshotTarget;
@@ -1380,8 +1565,8 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
                               "is holding the clip's end pose. Adjust the pose before adding the keyframe if you want\n"
                               "different values at this later time.", currentTime, clipDuration);
         } else {
-            ImGui::SetTooltip("Add Keyframe (%.2fs): store the current position, rotation and scale of every\n"
-                              "track reached by the playhead as keyframes at this time.\n"
+            ImGui::SetTooltip("Add Keyframe (%.2fs): store the current position, rotation, scale or lattice\n"
+                              "offsets of every track reached by the playhead as keyframes at this time.\n"
                               "Right-click the timeline to key a single track or channel.", currentTime);
         }
     }
@@ -1661,11 +1846,10 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         ImGui::OpenPopup("##add_action_popup");
         addPropertyRequested = false;
     }
+    EntityCreationType selectedType = EntityCreationType::EMPTY;
+    std::string entityName;
+    bool selected = false;
     if (ImGui::BeginPopup("##add_action_popup")) {
-        EntityCreationType selectedType = EntityCreationType::EMPTY;
-        std::string entityName;
-        bool selected = false;
-
         if (ImGui::MenuItem(ICON_FA_PLUS "  Empty Action")) {
             selected = true;
         }
@@ -1730,57 +1914,31 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
             entityName = "Morph Tracks";
             selected = true;
         }
-
-        if (selected) {
-            // If a frame is selected, add to the same track, otherwise track 0
-            uint32_t targetTrack = 0;
-            if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
-                targetTrack = anim.actions[selectedFrameIndex].track;
-            }
-
-            Entity actionEntity = NULL_ENTITY;
-            if (selectedType != EntityCreationType::EMPTY) {
-                Entity target = scene->findComponent<ActionComponent>(selectedEntity)
-                    ? scene->getComponent<ActionComponent>(selectedEntity).target
-                    : NULL_ENTITY;
-                auto* cmd = new CreateEntityCmd(project, selectedSceneId, entityName, selectedType, target);
-                CommandHandle::get(selectedSceneId)->addCommandNoMerge(cmd);
-                actionEntity = cmd->getEntity();
-            }
-
-            // Duration 0 = auto: the frame follows the action's own duration.
-            // Empty frames have no action to resolve, so give a visible default.
-            float newDuration = (actionEntity != NULL_ENTITY) ? 0.0f : 1.0f;
-            ActionFrame newFrame = {0.0f, newDuration, actionEntity, targetTrack};
-
-            // Find non-overlapping track (zero-length frames floored so they still
-            // spread onto free tracks)
-            float newFrameDur = std::max(effectiveFrameDuration(newFrame, scene), 0.01f);
-            bool overlap;
-            do {
-                overlap = false;
-                for (const auto& a : anim.actions) {
-                    if (a.track == newFrame.track) {
-                        float startA = a.startTime;
-                        float endA = a.startTime + std::max(effectiveFrameDuration(a, scene), 0.01f);
-                        float startB = newFrame.startTime;
-                        float endB = newFrame.startTime + newFrameDur;
-                        if (std::max(startA, startB) < std::min(endA, endB)) {
-                            overlap = true;
-                            newFrame.track++;
-                            break;
-                        }
-                    }
-                }
-            } while (overlap);
-
-            anim.actions.push_back(newFrame);
-            selectedFrameIndex = anim.actions.size() - 1;
+        if (ImGui::MenuItem(ICON_FA_CUBES_STACKED "  Lattice Tracks")) {
+            selectedType = EntityCreationType::LATTICE_TRACKS;
+            entityName = "Lattice Tracks";
+            selected = true;
         }
 
         ImGui::EndPopup();
     }
     ImGui::EndDisabled();
+
+    // Done last: an Animation action adds an AnimationComponent, which can move anim
+    if (selected) {
+        // If a frame is selected, add to the same track, otherwise track 0
+        uint32_t targetTrack = 0;
+        if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
+            targetTrack = anim.actions[selectedFrameIndex].track;
+        }
+        Entity target = scene->findComponent<ActionComponent>(selectedEntity)
+            ? scene->getComponent<ActionComponent>(selectedEntity).target
+            : NULL_ENTITY;
+
+        selectedFrameIndex = (int)anim.actions.size();
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(new AddActionFrameCmd(
+            project, sceneProject->id, selectedEntity, target, selectedType, entityName, targetTrack));
+    }
 }
 
 void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
@@ -1883,6 +2041,8 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             return IM_COL32(180, 80, 180, 200);  // Magenta: ScaleTracks
         if (sig.test(scene->getComponentId<MorphTracksComponent>()))
             return IM_COL32(80, 190, 190, 200);  // Teal: MorphTracks
+        if (sig.test(scene->getComponentId<LatticeTracksComponent>()))
+            return IM_COL32(200, 110, 120, 200); // Rose: LatticeTracks
         if (sig.test(scene->getComponentId<KeyframeTracksComponent>()))
             return IM_COL32(70, 130, 180, 200);  // Steel blue: KeyframeTracks
         if (sig.test(scene->getComponentId<TweenComponent>())) {
@@ -2166,6 +2326,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                                           hoveredKeyIndex, frame.startTime + localTime, localTime);
 
                         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                            selectLatticeTrackPoints(sceneProject, frame.action);
                             selectedFrameIndex = (int)i;
                             selectedKeyFrameIndex = (int)i;
                             selectedKeyIndex = hoveredKeyIndex;
@@ -2247,6 +2408,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             // Selection is index-based against selectedEntity's frame list, so it is
             // disabled while the timeline displays a different clip (transition preview).
             if (allowSelection && !mouseOverKey && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+                selectLatticeTrackPoints(sceneProject, frame.action);
                 selectedFrameIndex = (int)i;
                 selectedKeyFrameIndex = -1;
                 selectedKeyIndex = -1;
@@ -2340,14 +2502,18 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                 } else if (scene->findComponent<ScaleTracksComponent>(actionEntity)) {
                     channel = 2;
                     channelLabel = ICON_FA_KEY "  Insert Scale Key";
+                } else if (scene->findComponent<LatticeTracksComponent>(actionEntity)) {
+                    channel = 3;
+                    channelLabel = ICON_FA_KEY "  Insert Lattice Key";
                 }
             }
 
             bool withinExplicitSpan = keyFrame.duration <= 0.0f
                 || keyPopupTime <= keyFrame.startTime + keyFrame.duration + kKeyTimeEpsilon;
-            bool canKey = allowKeying && withinExplicitSpan && channel >= 0
-                && target != NULL_ENTITY && scene->isEntityCreated(target)
-                && scene->findComponent<Transform>(target) != nullptr;
+            bool validTarget = target != NULL_ENTITY && scene->isEntityCreated(target)
+                && (channel == 3 ? scene->findComponent<LatticeComponent>(target) != nullptr
+                                 : scene->findComponent<Transform>(target) != nullptr);
+            bool canKey = allowKeying && withinExplicitSpan && channel >= 0 && validTarget;
             if (channel >= 0) {
                 ImGui::BeginDisabled(!canKey);
                 if (ImGui::MenuItem(channelLabel)) {
@@ -2358,7 +2524,10 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                 if (!withinExplicitSpan) {
                     ImGui::TextDisabled("The clicked time is outside this block's explicit duration");
                 } else if (!canKey) {
-                    ImGui::TextDisabled("The track needs a target with a Transform");
+                    ImGui::TextDisabled(channel == 3 ? "The track needs a target with a Lattice"
+                                                     : "The track needs a target with a Transform");
+                } else if (channel == 3) {
+                    ImGui::TextDisabled("Keys the points selected in the Scene view,\nelse the moved points and the track's own");
                 }
             } else {
                 ImGui::TextDisabled("No keyable channel on this action");
@@ -2385,6 +2554,14 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             ImGui::Separator();
             if (ImGui::MenuItem(ICON_FA_KEY "  Key Transform")) {
                 keyTargetChannels(scene, sceneProject, anim, target, keyPopupTime, {0, 1, 2});
+            }
+            if (canKey && scene->findComponent<LatticeComponent>(target)) {
+                ImGui::Separator();
+                if (ImGui::MenuItem(ICON_FA_KEY "  Key Lattice")) {
+                    keyTargetChannels(scene, sceneProject, anim, target, keyPopupTime, {3});
+                }
+                ImGui::SetItemTooltip("Key the lattice offsets: the points selected in the Scene view,\n"
+                                      "else the moved points and the ones its lattice track already has");
             }
             ImGui::EndDisabled();
             if (!canKey) {
@@ -2836,6 +3013,8 @@ void editor::AnimationWindow::show() {
 
     // Draw toolbar
     drawToolbar(ImGui::GetContentRegionAvail().x, *animComp, scene, sceneProject);
+    // The toolbar can add an AnimationComponent, which can move this one
+    animComp = &scene->getComponent<AnimationComponent>(selectedEntity);
 
     ImGui::Separator();
 

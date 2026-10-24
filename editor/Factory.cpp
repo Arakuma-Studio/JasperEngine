@@ -8,6 +8,8 @@
 #include "Configs.h"
 #include "Stream.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "component/FluidSimulationComponent.h"
 #include "editor/Out.h"
 #include <cmath>
 #include <sstream>
@@ -1177,6 +1179,18 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].material.occlusionTexCoord = " << formatInt(submeshMaterial.occlusionTexCoord) << ";\n";
         if (submeshMaterial.normalTexCoord != 0)
             code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
+        // Stochastic Tiling, away from its defaults
+        static const Material defaultMaterial = Material();
+        if (submeshMaterial.stochasticTiling)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticTiling = true;\n";
+        if (submeshMaterial.stochasticCellSize != defaultMaterial.stochasticCellSize)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticCellSize = " << formatFloat(submeshMaterial.stochasticCellSize) << ";\n";
+        if (submeshMaterial.stochasticBlendSharpness != defaultMaterial.stochasticBlendSharpness)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticBlendSharpness = " << formatFloat(submeshMaterial.stochasticBlendSharpness) << ";\n";
+        if (submeshMaterial.stochasticContrast != defaultMaterial.stochasticContrast)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticContrast = " << formatFloat(submeshMaterial.stochasticContrast) << ";\n";
+        if (submeshMaterial.stochasticRotation != defaultMaterial.stochasticRotation)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticRotation = " << formatFloat(submeshMaterial.stochasticRotation) << ";\n";
         // shader library: the shader, its values and the render state, when set
         code << formatMaterialShaderLibrary(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
@@ -1705,6 +1719,22 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".occlusionStrength = " << formatFloat(layer.occlusionStrength) << ";\n";
         code << ind << var << ".uvScale = " << formatVector2(layer.uvScale) << ";\n";
         code << ind << var << ".uvOffset = " << formatVector2(layer.uvOffset) << ";\n";
+        if (layer.stochasticTiling){
+            code << ind << var << ".stochasticTiling = true;\n";
+        }
+        static const TerrainSurfaceLayer defaults;
+        if (layer.stochasticCellSize != defaults.stochasticCellSize){
+            code << ind << var << ".stochasticCellSize = " << formatFloat(layer.stochasticCellSize) << ";\n";
+        }
+        if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness){
+            code << ind << var << ".stochasticBlendSharpness = " << formatFloat(layer.stochasticBlendSharpness) << ";\n";
+        }
+        if (layer.stochasticContrast != defaults.stochasticContrast){
+            code << ind << var << ".stochasticContrast = " << formatFloat(layer.stochasticContrast) << ";\n";
+        }
+        if (layer.stochasticRotation != defaults.stochasticRotation){
+            code << ind << var << ".stochasticRotation = " << formatFloat(layer.stochasticRotation) << ";\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";
@@ -1876,6 +1906,54 @@ std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityR
     if (document.inputSurface != defaults.inputSurface) code << ind << "uidocument.inputSurface = " << formatEntity(document.inputSurface, entityVarNames) << ";\n";
     if (document.pixelRatio != defaults.pixelRatio) code << ind << "uidocument.pixelRatio = " << formatFloat(document.pixelRatio) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "UIDocumentComponent", "uidocument", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<FluidSimulationComponent>(entity)) return "";
+    FluidSimulationComponent& fluid = scene->getComponent<FluidSimulationComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "FluidSimulationComponent fluid;\n";
+    if (!fluid.enabled) code << ind << "fluid.enabled = false;\n";
+    // only what differs from the defaults (Pavel's); the runtime fields start fresh
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) code << ind << "fluid.output = " << "FluidOutput::" << (fluid.output == FluidOutput::SCREEN ? "SCREEN" : fluid.output == FluidOutput::TEXTURE ? "TEXTURE" : "MATERIAL") << ";\n";
+    if (fluid.interactive != defaults.interactive) code << ind << "fluid.interactive = " << formatBool(fluid.interactive) << ";\n";
+    if (fluid.aspectRatio != defaults.aspectRatio) code << ind << "fluid.aspectRatio = " << formatFloat(fluid.aspectRatio) << ";\n";
+    if (fluid.simResolution != defaults.simResolution) code << ind << "fluid.simResolution = " << formatUInt(fluid.simResolution) << "u" << ";\n";
+    if (fluid.dyeResolution != defaults.dyeResolution) code << ind << "fluid.dyeResolution = " << formatUInt(fluid.dyeResolution) << "u" << ";\n";
+    if (fluid.densityDissipation != defaults.densityDissipation) code << ind << "fluid.densityDissipation = " << formatFloat(fluid.densityDissipation) << ";\n";
+    if (fluid.velocityDissipation != defaults.velocityDissipation) code << ind << "fluid.velocityDissipation = " << formatFloat(fluid.velocityDissipation) << ";\n";
+    if (fluid.pressure != defaults.pressure) code << ind << "fluid.pressure = " << formatFloat(fluid.pressure) << ";\n";
+    if (fluid.pressureIterations != defaults.pressureIterations) code << ind << "fluid.pressureIterations = " << formatUInt(fluid.pressureIterations) << "u" << ";\n";
+    if (fluid.curl != defaults.curl) code << ind << "fluid.curl = " << formatFloat(fluid.curl) << ";\n";
+    if (fluid.gradientScale != defaults.gradientScale) code << ind << "fluid.gradientScale = " << formatFloat(fluid.gradientScale) << ";\n";
+    if (fluid.simulationRate != defaults.simulationRate) code << ind << "fluid.simulationRate = " << formatFloat(fluid.simulationRate) << ";\n";
+    if (fluid.maxSubsteps != defaults.maxSubsteps) code << ind << "fluid.maxSubsteps = " << formatUInt(fluid.maxSubsteps) << "u" << ";\n";
+    if (fluid.timeScale != defaults.timeScale) code << ind << "fluid.timeScale = " << formatFloat(fluid.timeScale) << ";\n";
+    if (fluid.paused != defaults.paused) code << ind << "fluid.paused = " << formatBool(fluid.paused) << ";\n";
+    if (fluid.splatRadius != defaults.splatRadius) code << ind << "fluid.splatRadius = " << formatFloat(fluid.splatRadius) << ";\n";
+    if (fluid.splatForce != defaults.splatForce) code << ind << "fluid.splatForce = " << formatFloat(fluid.splatForce) << ";\n";
+    if (fluid.colorful != defaults.colorful) code << ind << "fluid.colorful = " << formatBool(fluid.colorful) << ";\n";
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) code << ind << "fluid.colorUpdateSpeed = " << formatFloat(fluid.colorUpdateSpeed) << ";\n";
+    if (fluid.splatsOnStart != defaults.splatsOnStart) code << ind << "fluid.splatsOnStart = " << formatBool(fluid.splatsOnStart) << ";\n";
+    if (fluid.randomSplatCount != defaults.randomSplatCount) code << ind << "fluid.randomSplatCount = " << formatUInt(fluid.randomSplatCount) << "u" << ";\n";
+    if (fluid.seed != defaults.seed) code << ind << "fluid.seed = " << formatUInt(fluid.seed) << "u" << ";\n";
+    if (fluid.shading != defaults.shading) code << ind << "fluid.shading = " << formatBool(fluid.shading) << ";\n";
+    if (fluid.backColor != defaults.backColor) code << ind << "fluid.backColor = " << formatVector3(fluid.backColor) << ";\n";
+    if (fluid.transparent != defaults.transparent) code << ind << "fluid.transparent = " << formatBool(fluid.transparent) << ";\n";
+    if (fluid.bloom != defaults.bloom) code << ind << "fluid.bloom = " << formatBool(fluid.bloom) << ";\n";
+    if (fluid.bloomIterations != defaults.bloomIterations) code << ind << "fluid.bloomIterations = " << formatUInt(fluid.bloomIterations) << "u" << ";\n";
+    if (fluid.bloomResolution != defaults.bloomResolution) code << ind << "fluid.bloomResolution = " << formatUInt(fluid.bloomResolution) << "u" << ";\n";
+    if (fluid.bloomIntensity != defaults.bloomIntensity) code << ind << "fluid.bloomIntensity = " << formatFloat(fluid.bloomIntensity) << ";\n";
+    if (fluid.bloomThreshold != defaults.bloomThreshold) code << ind << "fluid.bloomThreshold = " << formatFloat(fluid.bloomThreshold) << ";\n";
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) code << ind << "fluid.bloomSoftKnee = " << formatFloat(fluid.bloomSoftKnee) << ";\n";
+    if (fluid.sunrays != defaults.sunrays) code << ind << "fluid.sunrays = " << formatBool(fluid.sunrays) << ";\n";
+    if (fluid.sunraysResolution != defaults.sunraysResolution) code << ind << "fluid.sunraysResolution = " << formatUInt(fluid.sunraysResolution) << "u" << ";\n";
+    if (fluid.sunraysWeight != defaults.sunraysWeight) code << ind << "fluid.sunraysWeight = " << formatFloat(fluid.sunraysWeight) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "FluidSimulationComponent", "fluid", assignExisting);
     return code.str();
 }
 
@@ -2194,6 +2272,9 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.gravityFactor = " << formatFloat(body.gravityFactor) << ";\n";
     code << ind << "rigidbody.friction = " << formatFloat(body.friction) << ";\n";
     code << ind << "rigidbody.restitution = " << formatFloat(body.restitution) << ";\n";
+    code << ind << "rigidbody.buoyancy = " << formatFloat(body.buoyancy) << ";\n";
+    code << ind << "rigidbody.waterDrag = " << formatFloat(body.waterDrag) << ";\n";
+    code << ind << "rigidbody.waterAngularDrag = " << formatFloat(body.waterAngularDrag) << ";\n";
     // The bit mask, rather than six OR'd enumerators in the generated source.
     code << ind << "rigidbody.allowedDOFs = " << static_cast<unsigned int>(body.allowedDOFs) << ";\n";
     code << ind << "rigidbody.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
@@ -2358,6 +2439,7 @@ std::string editor::Factory::createTweenComponent(int indentSpaces, EntityRegist
     code << ind << "TweenComponent timedcomp;\n";
     code << ind << "timedcomp.duration = " << formatFloat(timed.duration) << ";\n";
     code << ind << "timedcomp.loop = " << formatBool(timed.loop) << ";\n";
+    code << ind << "timedcomp.pingPong = " << formatBool(timed.pingPong) << ";\n";
     code << ind << "timedcomp.function = " << formatEase(timed.function) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TweenComponent", "timedcomp", assignExisting);
     return code.str();
@@ -2384,6 +2466,9 @@ std::string editor::Factory::createRotationTweenComponent(int indentSpaces, Enti
     code << ind << "rotcomp.endRotation = " << formatQuaternion(rotAction.endRotation) << ";\n";
     code << ind << "rotcomp.startRotation = " << formatQuaternion(rotAction.startRotation) << ";\n";
     code << ind << "rotcomp.shortestPath = " << formatBool(rotAction.shortestPath) << ";\n";
+    code << ind << "rotcomp.spin = " << formatBool(rotAction.spin) << ";\n";
+    code << ind << "rotcomp.axis = " << formatVector3(rotAction.axis) << ";\n";
+    code << ind << "rotcomp.angle = " << formatFloat(rotAction.angle) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "RotationTweenComponent", "rotcomp", assignExisting);
     return code.str();
 }
@@ -2557,6 +2642,8 @@ std::string editor::Factory::createKeyframeTracksComponent(int indentSpaces, Ent
     code << ind << "KeyframeTracksComponent kfcomp;\n";
     code << ind << "kfcomp.index = " << formatInt(kf.index) << ";\n";
     code << ind << "kfcomp.interpolation = " << formatFloat(kf.interpolation) << ";\n";
+    code << ind << "kfcomp.loop = " << formatBool(kf.loop) << ";\n";
+    code << ind << "kfcomp.relative = " << formatBool(kf.relative) << ";\n";
     if (!kf.times.empty()) {
         code << ind << "kfcomp.times = {";
         for (size_t i = 0; i < kf.times.size(); i++) {
@@ -2633,6 +2720,155 @@ std::string editor::Factory::createMorphTracksComponent(int indentSpaces, Entity
     return code.str();
 }
 
+static const char* formatLatticeInterpolation(LatticeInterpolation interpolation) {
+    switch (interpolation) {
+        case LatticeInterpolation::SHARP: return "LatticeInterpolation::SHARP";
+        case LatticeInterpolation::SMOOTH: return "LatticeInterpolation::SMOOTH";
+        case LatticeInterpolation::CUBIC: break;
+    }
+    return "LatticeInterpolation::CUBIC";
+}
+
+static const char* formatLatticeOutside(LatticeOutside outside) {
+    return outside == LatticeOutside::EXTEND ? "LatticeOutside::EXTEND" : "LatticeOutside::FADE";
+}
+
+static const char* formatLatticeJiggleAnchor(LatticeJiggleAnchor anchor) {
+    switch (anchor) {
+        case LatticeJiggleAnchor::NEGATIVE_X: return "LatticeJiggleAnchor::NEGATIVE_X";
+        case LatticeJiggleAnchor::POSITIVE_X: return "LatticeJiggleAnchor::POSITIVE_X";
+        case LatticeJiggleAnchor::NEGATIVE_Y: return "LatticeJiggleAnchor::NEGATIVE_Y";
+        case LatticeJiggleAnchor::POSITIVE_Y: return "LatticeJiggleAnchor::POSITIVE_Y";
+        case LatticeJiggleAnchor::NEGATIVE_Z: return "LatticeJiggleAnchor::NEGATIVE_Z";
+        case LatticeJiggleAnchor::POSITIVE_Z: return "LatticeJiggleAnchor::POSITIVE_Z";
+        case LatticeJiggleAnchor::NONE: break;
+    }
+    return "LatticeJiggleAnchor::NONE";
+}
+
+static const char* formatLatticeStage(LatticeStage stage) {
+    return stage == LatticeStage::BEFORE_SKINNING ? "LatticeStage::BEFORE_SKINNING" : "LatticeStage::AFTER_SKINNING";
+}
+
+static const char* formatLatticeMaskChannel(LatticeMaskChannel mask) {
+    switch (mask) {
+        case LatticeMaskChannel::RED: return "LatticeMaskChannel::RED";
+        case LatticeMaskChannel::GREEN: return "LatticeMaskChannel::GREEN";
+        case LatticeMaskChannel::BLUE: return "LatticeMaskChannel::BLUE";
+        case LatticeMaskChannel::ALPHA: return "LatticeMaskChannel::ALPHA";
+        case LatticeMaskChannel::INVERTED_RED: return "LatticeMaskChannel::INVERTED_RED";
+        case LatticeMaskChannel::INVERTED_GREEN: return "LatticeMaskChannel::INVERTED_GREEN";
+        case LatticeMaskChannel::INVERTED_BLUE: return "LatticeMaskChannel::INVERTED_BLUE";
+        case LatticeMaskChannel::INVERTED_ALPHA: return "LatticeMaskChannel::INVERTED_ALPHA";
+        case LatticeMaskChannel::NONE: break;
+    }
+    return "LatticeMaskChannel::NONE";
+}
+
+std::string editor::Factory::createLatticeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeComponent>(entity)) return "";
+    LatticeComponent& lattice = scene->getComponent<LatticeComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeComponent lattice;\n";
+    code << ind << "lattice.resolutionX = " << formatInt(lattice.resolutionX) << ";\n";
+    code << ind << "lattice.resolutionY = " << formatInt(lattice.resolutionY) << ";\n";
+    code << ind << "lattice.resolutionZ = " << formatInt(lattice.resolutionZ) << ";\n";
+    // zero offsets are the rest positions: only the moved points are written
+    code << ind << "lattice.offsets.assign(" << lattice.offsets.size() << ", Vector3(0.0f, 0.0f, 0.0f));\n";
+    for (size_t i = 0; i < lattice.offsets.size(); i++) {
+        if (lattice.offsets[i] != Vector3::ZERO) {
+            code << ind << "lattice.offsets[" << i << "] = " << formatVector3(lattice.offsets[i]) << ";\n";
+        }
+    }
+    code << ind << "lattice.interpolation = " << formatLatticeInterpolation(lattice.interpolation) << ";\n";
+    code << ind << "lattice.outside = " << formatLatticeOutside(lattice.outside) << ";\n";
+    code << ind << "lattice.fadeDistance = " << formatFloat(lattice.fadeDistance) << ";\n";
+    if (!lattice.poses.empty()) {
+        code << ind << "lattice.poses.resize(" << lattice.poses.size() << ");\n";
+        for (size_t i = 0; i < lattice.poses.size(); i++) {
+            const std::string pose = "lattice.poses[" + std::to_string(i) + "]";
+            code << ind << pose << ".name = " << formatString(lattice.poses[i].name) << ";\n";
+            emitValueList(code, ind, pose + ".offsets", lattice.poses[i].offsets, formatVector3);
+        }
+    }
+    code << ind << "lattice.jiggle = " << formatBool(lattice.jiggle) << ";\n";
+    code << ind << "lattice.jiggleStiffness = " << formatFloat(lattice.jiggleStiffness) << ";\n";
+    code << ind << "lattice.jiggleDamping = " << formatFloat(lattice.jiggleDamping) << ";\n";
+    code << ind << "lattice.jiggleInertia = " << formatFloat(lattice.jiggleInertia) << ";\n";
+    code << ind << "lattice.jiggleAnchor = " << formatLatticeJiggleAnchor(lattice.jiggleAnchor) << ";\n";
+    code << ind << "lattice.jiggleMaxOffset = " << formatFloat(lattice.jiggleMaxOffset) << ";\n";
+    if (!lattice.enabled) code << ind << "lattice.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeComponent", "lattice", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeModifierComponent>(entity)) return "";
+    LatticeModifierComponent& modifier = scene->getComponent<LatticeModifierComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeModifierComponent latticemodifier;\n";
+    if (!modifier.bindings.empty()) {
+        code << ind << "latticemodifier.bindings.resize(" << modifier.bindings.size() << ");\n";
+        for (size_t i = 0; i < modifier.bindings.size(); i++) {
+            const LatticeBinding& binding = modifier.bindings[i];
+            const std::string target = "latticemodifier.bindings[" + std::to_string(i) + "]";
+            code << ind << target << ".lattice = " << formatEntity(binding.lattice, entityVarNames) << ";\n";
+            code << ind << target << ".weight = " << formatFloat(binding.weight) << ";\n";
+            code << ind << target << ".stage = " << formatLatticeStage(binding.stage) << ";\n";
+            code << ind << target << ".submesh = " << formatInt(binding.submesh) << ";\n";
+            code << ind << target << ".mask = " << formatLatticeMaskChannel(binding.mask) << ";\n";
+        }
+    }
+    code << ind << "latticemodifier.includeChildren = " << formatBool(modifier.includeChildren) << ";\n";
+    code << ind << "latticemodifier.subdivisions = " << formatInt(modifier.subdivisions) << ";\n";
+    if (!modifier.enabled) code << ind << "latticemodifier.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeModifierComponent", "latticemodifier", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
+    LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeFollowerComponent latticefollower;\n";
+    code << ind << "latticefollower.lattice = " << formatEntity(follower.lattice, entityVarNames) << ";\n";
+    code << ind << "latticefollower.rest = " << formatEntity(follower.rest, entityVarNames) << ";\n";
+    code << ind << "latticefollower.applyPosition = " << formatBool(follower.applyPosition) << ";\n";
+    code << ind << "latticefollower.applyRotation = " << formatBool(follower.applyRotation) << ";\n";
+    code << ind << "latticefollower.applyScale = " << formatBool(follower.applyScale) << ";\n";
+    code << ind << "latticefollower.weight = " << formatFloat(follower.weight) << ";\n";
+    if (!follower.enabled) code << ind << "latticefollower.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeFollowerComponent", "latticefollower", assignExisting);
+    return code.str();
+}
+
+template<typename FormatFn>
+static void emitVector3Lists(std::ostringstream& code, const std::string& ind, const std::string& target, const std::vector<std::vector<Vector3>>& lists, FormatFn format){
+    if (lists.empty()) return;
+    code << ind << target << ".resize(" << lists.size() << ");\n";
+    for (size_t i = 0; i < lists.size(); i++) {
+        emitValueList(code, ind, target + "[" + std::to_string(i) + "]", lists[i], format);
+    }
+}
+
+std::string editor::Factory::createLatticeTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeTracksComponent>(entity)) return "";
+    LatticeTracksComponent& lt = scene->getComponent<LatticeTracksComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeTracksComponent ltcomp;\n";
+    emitValueList(code, ind, "ltcomp.points", lt.points, formatInt);
+    emitVector3Lists(code, ind, "ltcomp.values", lt.values, formatVector3);
+    // Hermite tangents only exist on cubic tracks
+    emitVector3Lists(code, ind, "ltcomp.inTangents", lt.inTangents, formatVector3);
+    emitVector3Lists(code, ind, "ltcomp.outTangents", lt.outTangents, formatVector3);
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeTracksComponent", "ltcomp", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     switch (componentType) {
         case ComponentType::Transform: return createTransform(indentSpaces, scene, entity, sceneName, entityName, false, assignExisting, entityVarNames);
@@ -2659,6 +2895,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::MirrorComponent: return createMirrorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ReflectionProbeComponent: return createReflectionProbeComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::FluidSimulationComponent: return createFluidSimulationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PoseAnimatorComponent: return createPoseAnimatorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
@@ -2684,6 +2921,10 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::RotateTracksComponent: return createRotateTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScaleTracksComponent: return createScaleTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::MorphTracksComponent: return createMorphTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeComponent: return createLatticeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeModifierComponent: return createLatticeModifierComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeFollowerComponent: return createLatticeFollowerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeTracksComponent: return createLatticeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ParticleSystemComponent: return createParticleSystemComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LineRendererComponent: return createLineRendererComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PointsComponent: return createPointsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
@@ -2715,12 +2956,12 @@ std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistr
     return code.str();
 }
 
-const char* const editor::Factory::sceneSourceHeader = "// This file is auto-generated by JasperEngine Editor (scene source 2). Do not edit manually.";
+const char* const editor::Factory::sceneSourceHeader = "// This file is auto-generated by JasperEngine Editor (scene source 3). Do not edit manually.";
 
-std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources) {
+std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_t sceneId, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources) {
     std::ostringstream out;
 
-    std::string funcId = toIdentifier(name);
+    std::string funcId = sceneToFileName(sceneId, name);
     const std::string ind = indentation(indentSpaces);
 
     // Build lookup sets for prefab entities
@@ -3098,6 +3339,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
     out << ind2 << "scene->setGravity2D(" << formatVector2(scene->getGravity2D()) << ");\n";
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";
@@ -3193,6 +3436,10 @@ std::string editor::Factory::prefabToFileName(const fs::path& prefabPath) {
     return "prefab_" + toIdentifier(pathStr);
 }
 
+std::string editor::Factory::sceneToFileName(uint32_t sceneId, const std::string& sceneName) {
+    return "scene_" + toIdentifier(sceneName) + "_" + std::to_string(sceneId);
+}
+
 std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRegistry* registry, const std::vector<Entity>& entities, const std::unordered_map<Entity, std::string>* entityVarNames, bool namedCamerasOnly) {
     std::ostringstream links;
     const std::string ind = indentation(indentSpaces);
@@ -3206,6 +3453,20 @@ std::string editor::Factory::createCameraTextureLinks(int indentSpaces, EntityRe
                     continue;
 
                 Texture* texture = static_cast<Texture*>(prop.ref);
+                Entity fluidEntity = FluidTextureLink::parse(texture->getId());
+                if (fluidEntity != NULL_ENTITY) {
+                    // a FluidSimulation's output: its simulator object made here when the
+                    // fluid has none yet (as FluidSimulation::getTexture does)
+                    if (!registry->isEntityCreated(fluidEntity) || !registry->findComponent<FluidSimulationComponent>(fluidEntity))
+                        continue;
+                    if (namedCamerasOnly && (!entityVarNames || !entityVarNames->count(fluidEntity)))
+                        continue;
+                    const std::string fluidExpr = "scene->getComponent<FluidSimulationComponent>(" + formatEntity(fluidEntity, entityVarNames) + ")";
+                    links << ind << "if (!" << fluidExpr << ".simulator) " << fluidExpr << ".simulator = std::make_shared<FluidSimulator>();\n";
+                    links << ind << "scene->getComponent<" << Catalog::getComponentName(cpType) << ">(" << formatEntity(entity, entityVarNames) << ")."
+                          << propName << ".setFramebuffer(" << fluidExpr << ".simulator->getOutputFramebuffer());\n";
+                    continue;
+                }
                 Entity cameraEntity = CameraTextureLink::parse(texture->getId());
                 if (cameraEntity == NULL_ENTITY)
                     continue;

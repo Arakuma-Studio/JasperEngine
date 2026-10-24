@@ -3,6 +3,11 @@
 
 #include "WriteFilesCmd.h"
 
+#include "util/FileUtils.h"
+
+#include <algorithm>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 
@@ -12,19 +17,12 @@ namespace fs = std::filesystem;
 
 namespace {
 
-bool writeWhole(const fs::path& path, const std::string& content) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
-}
-
+// the whole file, as bytes (the pose tests link this file without the editor's utilities)
 bool readWhole(const fs::path& path, std::string& content) {
     std::ifstream in(path, std::ios::binary);
     if (!in) return false;
     content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-    return !in.bad();
+    return true;
 }
 
 }
@@ -40,6 +38,28 @@ std::vector<fs::path> editor::WriteFilesCmd::paths() const {
     return out;
 }
 
+void editor::WriteFilesCmd::fail(const std::string& message) {
+    if (failureSink) *failureSink = message;
+}
+
+bool editor::WriteFilesCmd::restore(size_t i) {
+    std::error_code ec;
+    if (previous[i].existed) return FileUtils::writeFileReplacing(items[i].path, previous[i].content);
+    // a file it created (or began to): gone again; never a directory that was there
+    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
+    return !fs::exists(fs::symlink_status(items[i].path, ec));
+}
+
+void editor::WriteFilesCmd::removeCreatedDirs() {
+    std::vector<fs::path> dirs = createdDirs;
+    std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
+    for (const fs::path& dir : dirs) {
+        std::error_code ec;
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+    }
+    createdDirs.clear();
+}
+
 bool editor::WriteFilesCmd::execute() {
     if (!captured) {
         previous.clear();
@@ -48,55 +68,61 @@ bool editor::WriteFilesCmd::execute() {
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
             if (prev.existed && !readWhole(item.path, prev.content)) {
+                fail("can't read " + FileUtils::pathToGenericUtf8(item.path) + " (its content is kept for undo); nothing was written");
                 return false;
             }
             previous.push_back(std::move(prev));
         }
         captured = true;
     }
+    createdDirs.clear();
+    // on a failure at item `failed`: items [0, touched) back to their previous state, the
+    // directories created removed
+    auto rollback = [&](size_t touched, const std::string& why) {
+        std::string unrestored;
+        for (size_t j = touched; j-- > 0;) {
+            if (!restore(j)) unrestored += (unrestored.empty() ? "" : ", ") + FileUtils::pathToGenericUtf8(items[j].path);
+        }
+        removeCreatedDirs();
+        fail(why + (unrestored.empty() ? "; nothing was changed (the files written before it were put back)"
+                                       : "; and " + unrestored + " could not be put back"));
+        return false;
+    };
     for (size_t i = 0; i < items.size(); i++) {
         const Item& item = items[i];
         std::error_code ec;
         const fs::path parent = item.path.parent_path();
-        if (!fs::exists(parent, ec)) {
-            // remember every directory created (outermost first), for undo
+        if (!parent.empty() && !fs::exists(parent, ec)) {
+            // every directory created, for undo (and a rollback)
             std::vector<fs::path> missing;
             for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
-                missing.insert(missing.begin(), dir);
+                missing.push_back(dir);
                 if (dir.parent_path() == dir) break;
             }
             fs::create_directories(parent, ec);
-            if (ec) {
-                restore(i);
-                return false;
+            for (const fs::path& dir : missing) {
+                std::error_code exists;
+                if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
             }
-            createdDirs.insert(createdDirs.end(), missing.begin(), missing.end());
+            if (ec) return rollback(i, "can't create the directory " + FileUtils::pathToGenericUtf8(parent) + " for " +
+                                       FileUtils::pathToGenericUtf8(item.path) + ": " + ec.message());
         }
-        if (!writeWhole(item.path, item.content)) {
-            // all or nothing: what this command already wrote (this file included) goes back
-            restore(i + 1);
-            return false;
+        errno = 0;
+        if (!FileUtils::writeFileReplacing(item.path, item.content)) {
+            const int code = errno;
+            std::string reason = code ? std::strerror(code) : std::string("write failed");
+            if (fs::is_directory(item.path, ec)) reason = "it is a directory";
+            // the file itself may be half written: restored too
+            return rollback(i + 1, "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + reason);
         }
     }
     if (afterChange) afterChange(paths());
     return true;
 }
 
-void editor::WriteFilesCmd::restore(size_t count) {
-    for (size_t i = 0; i < count && i < items.size() && i < previous.size(); i++) {
-        std::error_code ec;
-        if (previous[i].existed) writeWhole(items[i].path, previous[i].content);
-        else fs::remove(items[i].path, ec);
-    }
-    for (auto it = createdDirs.rbegin(); it != createdDirs.rend(); ++it) {
-        std::error_code ec;
-        if (fs::is_directory(*it, ec) && fs::is_empty(*it, ec)) fs::remove(*it, ec);
-    }
-    createdDirs.clear();
-}
-
 void editor::WriteFilesCmd::undo() {
-    restore(items.size());
+    for (size_t i = 0; i < items.size() && i < previous.size(); i++) restore(i);
+    removeCreatedDirs();
     if (afterChange) afterChange(paths());
 }
 

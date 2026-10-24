@@ -24,6 +24,11 @@
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
+#include "texsynth/SynthesisRecipe.h"
+#include "util/NormalMapTilt.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "subsystem/MeshSystem.h"
 
 #include "lua.hpp"
 #include "yaml-cpp/yaml.h"
@@ -1012,6 +1017,8 @@ namespace {
                 std::string size;
                 if (st.fixedSize) {
                     size = std::to_string(st.width) + "x" + std::to_string(st.height);
+                } else if (st.aspectShort > 0) {
+                    size = "aspect " + std::to_string(st.aspectShort) + " max " + std::to_string(st.boxMax);
                 } else {
                     char scale[32];
                     std::snprintf(scale, sizeof(scale), "%g", st.boxScale);
@@ -1024,6 +1031,8 @@ namespace {
             nlohmann::json passes = nlohmann::json::array();
             for (const fx::EffectPassDef& pass : m.passes) {
                 nlohmann::json p = {{"name", pass.name}, {"state", m.states[(size_t)pass.state].name}, {"init", pass.init}};
+                if (pass.frame) p["frame"] = true;
+                if (!pass.ifParam.empty()) p["if"] = pass.ifParam;
                 if (!pass.repeatParam.empty()) p["repeat"] = pass.repeatParam;
                 else if (pass.repeat > 1) p["repeat"] = pass.repeat;
                 if (pass.additive) p["add"] = true;
@@ -1035,6 +1044,16 @@ namespace {
             if (m.warmupSteps > 0)
                 state["warmup"] = {{"steps", m.warmupSteps}, {"dt", m.warmupDt}};
             entry["state"] = std::move(state);
+        }
+        // @preset: the options of the `preset` parameter and the values each one sets
+        if (!m.presets.empty()) {
+            nlohmann::json presets = nlohmann::json::object();
+            for (const fx::EffectPresetDef& preset : m.presets) {
+                nlohmann::json values = nlohmann::json::object();
+                for (const auto& value : preset.values) values[value.first] = value.second;
+                presets[preset.option] = std::move(values);
+            }
+            entry["presets"] = std::move(presets);
         }
         return entry;
     }
@@ -1299,11 +1318,11 @@ void editor::ProjectChecks::invalidateShaderCaches(Project* project) {
     project->invalidateCustomShaders();
 }
 
-uint64_t editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
+ShaderKey editor::ProjectChecks::prepareShaderCheck(Project* project, ShaderUse& use) {
     if (use.shaderType < 0) use.shaderType = guessShaderType(project, use.base);
     const uint16_t customId = ShaderPool::registerCustomShader(use.base);
     // a UI effect: its form (use.properties)
-    uint32_t properties = use.properties;
+    uint64_t properties = use.properties;
     if (use.shaderType == static_cast<int>(ShaderType::MESH)) {
         // a mesh shader with a manifest: the variant a mesh with UVs, normals and colours
         // draws with in its default lighting mode (lit modes in a scene with lights), so
@@ -1438,7 +1457,7 @@ bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks
 
 } // namespace
 
-editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, uint64_t shaderKey) {
+editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey) {
     ShaderCheck check;
     check.use = use;
     const bool effect = isUiEffectUse(use);
@@ -1598,4 +1617,372 @@ Json editor::ProjectChecks::toJson(const ShaderCheck& check) {
         }
     }
     return item;
+}
+
+// ======================================================================== texture synthesis recipes
+
+namespace {
+
+int64_t stampTime(const fs::path& path, std::uintmax_t& size, bool& exists) {
+    std::error_code ec;
+    const auto time = fs::last_write_time(path, ec);
+    exists = !ec;
+    size = exists ? fs::file_size(path, ec) : 0;
+    if (ec) exists = false;
+    return exists ? static_cast<int64_t>(time.time_since_epoch().count()) : 0;
+}
+
+// .jasperengine/synthesis-check-cache.json: {"version": 1, "pngs": {rel: [time, size, recipe 0|1]},
+// "hashes": {path: [time, size, sha1]}}
+struct SynthesisCache {
+    fs::path file;
+    Json pngs = Json::object();
+    Json hashes = Json::object();
+    bool dirty = false;
+};
+
+void loadSynthesisCache(SynthesisCache& cache, const fs::path& projectRoot) {
+    const fs::path dir = projectRoot / ".jasperengine";
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return;
+    cache.file = dir / "synthesis-check-cache.json";
+    std::string text;
+    if (!editor::ProjectChecks::readFile(cache.file, text)) return;
+    const Json j = Json::parse(text, nullptr, false);
+    if (!j.is_object() || !j.contains("version") || j["version"] != 1) return;
+    if (j.contains("pngs") && j["pngs"].is_object()) cache.pngs = j["pngs"];
+    if (j.contains("hashes") && j["hashes"].is_object()) cache.hashes = j["hashes"];
+}
+
+void saveSynthesisCache(const SynthesisCache& cache) {
+    if (cache.file.empty() || !cache.dirty) return;
+    const Json j = {{"version", 1}, {"pngs", cache.pngs}, {"hashes", cache.hashes}};
+    fs::path temporary = cache.file;
+    temporary += ".partial";
+    // the keys are valid UTF-8 (cacheable() keeps the others out), so nothing is lost; replace
+    // only makes sure a dump never throws
+    const std::string text = editor::texsynth::jsonTextLossy(j);
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out) return;
+    out << text;
+    out.close();
+    std::error_code ec;
+    fs::rename(temporary, cache.file, ec);
+    if (ec) fs::remove(temporary, ec);
+}
+
+// JSON keys are UTF-8 text: a path that is not (a Latin-1 file name) is not cached, it is read
+// again on every scan instead (a lossy key could match another file)
+bool cacheable(const std::string& key) {
+    return editor::texsynth::isValidUtf8(key);
+}
+
+bool cachedStamp(const Json& entry, int64_t time, std::uintmax_t size) {
+    return entry.is_array() && entry.size() == 3 && entry[0].is_number_integer() && entry[0].get<int64_t>() == time &&
+           entry[1].is_number_unsigned() && entry[1].get<std::uintmax_t>() == size;
+}
+
+std::string lowerExt(const fs::path& path) {
+    std::string ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return ext;
+}
+
+}
+
+editor::ProjectChecks::SynthesisCheck editor::ProjectChecks::checkSynthesisRecipes(const fs::path& projectRoot, const std::vector<fs::path>& files) {
+    SynthesisCheck check;
+    SynthesisCache cache;
+    loadSynthesisCache(cache, projectRoot);
+
+    // the recipe of a PNG, nullopt without one (cached: PNGs without a recipe are not reopened).
+    // A garbled one (CRC mismatch, not JSON, wrong types) comes back as a string: why
+    auto recipeOf = [&](const fs::path& png) -> std::optional<Json> {
+        std::uintmax_t size = 0;
+        bool exists = false;
+        const int64_t time = stampTime(png, size, exists);
+        if (!exists) return std::nullopt;
+        const std::string key = projectRelative(projectRoot, png);
+        check.pngs++;
+        if (cache.pngs.contains(key) && cachedStamp(cache.pngs[key], time, size) && cache.pngs[key][2] == 0) return std::nullopt;
+        std::string readError;
+        const std::optional<std::string> text = editor::texsynth::readRecipeTextHead(png, &readError);
+        std::optional<Json> recipe;
+        if (text) {
+            Json parsed = Json::parse(*text, nullptr, false);
+            std::string invalid;
+            if (parsed.is_discarded()) recipe = Json("the jasper.synthesis chunk is not JSON");
+            else if (!editor::texsynth::validateRecipe(parsed, invalid)) recipe = Json(invalid);
+            else recipe = parsed;
+        } else if (!readError.empty() && readError.find("jasper.synthesis") != std::string::npos) {
+            recipe = Json(readError);   // garbled chunk (CRC mismatch, compressed, malformed)
+        }
+        if (cacheable(key)) {
+            cache.pngs[key] = Json::array({time, size, recipe ? 1 : 0});
+            cache.dirty = true;
+        }
+        return recipe;
+    };
+    // a source's SHA-1 (cached by mtime and size); "" when it is gone
+    auto hashOf = [&](const fs::path& source) -> std::string {
+        std::uintmax_t size = 0;
+        bool exists = false;
+        const int64_t time = stampTime(source, size, exists);
+        if (!exists) return std::string();
+        const std::string key = source.lexically_normal().generic_string();
+        if (cache.hashes.contains(key) && cachedStamp(cache.hashes[key], time, size) && cache.hashes[key][2].is_string()) {
+            return cache.hashes[key][2].get<std::string>();
+        }
+        std::string content;
+        if (!readFile(source, content)) return std::string();
+        const std::string sha1 = editor::texsynth::sha1Hex(reinterpret_cast<const uint8_t*>(content.data()), content.size());
+        if (cacheable(key)) {
+            cache.hashes[key] = Json::array({time, size, sha1});
+            cache.dirty = true;
+        }
+        return sha1;
+    };
+
+    struct Stale {
+        fs::path png;
+        Json recipe;
+    };
+    std::vector<Stale> checked;
+    std::set<std::string> givenSources;   // files mode: changed sources
+    std::set<fs::path> givenPngs;
+    if (files.empty()) {
+        for (const fs::path& png : findProjectFiles(projectRoot, {".png"})) {
+            if (std::optional<Json> recipe = recipeOf(png)) checked.push_back({png, *recipe});
+        }
+    } else {
+        for (const fs::path& file : files) {
+            if (lowerExt(file) == ".png") {
+                if (std::optional<Json> recipe = recipeOf(file)) {
+                    checked.push_back({file, *recipe});
+                    givenPngs.insert(file.lexically_normal());
+                }
+            }
+            // a synthesized PNG may be the source of others too (synthesized from a synthesized one)
+            givenSources.insert(file.lexically_normal().generic_string());
+        }
+        if (!givenSources.empty()) {
+            // the textures made from the given files
+            for (const fs::path& png : findProjectFiles(projectRoot, {".png"})) {
+                if (givenPngs.count(png.lexically_normal())) continue;
+                std::optional<Json> recipe = recipeOf(png);
+                if (!recipe) continue;
+                bool uses = false;
+                for (const editor::texsynth::SourceState& s :
+                     editor::texsynth::checkRecipeSources(*recipe, png, projectRoot, [](const fs::path&) { return std::string("-"); })) {
+                    if (givenSources.count(s.resolved.lexically_normal().generic_string())) uses = true;
+                }
+                if (uses) checked.push_back({png, *recipe});
+            }
+        }
+    }
+
+    for (const Stale& item : checked) {
+        const Json& recipe = item.recipe;
+        if (recipe.is_string()) {
+            // garbled: can't be checked nor regenerated from it
+            check.recipes++;
+            Finding finding;
+            finding.tool = "texture";
+            finding.path = projectRelative(projectRoot, item.png);
+            finding.severity = "warning";
+            finding.code = "synthesis-recipe-invalid";
+            finding.message = "its texture synthesis recipe (jasper.synthesis chunk) is garbled: " + recipe.get<std::string>() +
+                              "; its sources can't be checked nor the texture regenerated from it";
+            finding.suggestion = "synthesize it again (Synthesize Texture... in the Project window, or synthesize_texture) to write a "
+                                 "fresh recipe; a PNG re-saved without the chunk is no longer checked";
+            check.findings.push_back(std::move(finding));
+            continue;
+        }
+        const std::string role = editor::texsynth::jsonString(recipe, "role", "primary");
+        // a companion / uncertainty output: its primary output reports the set
+        if (files.empty() && role != "primary" && recipe.contains("outputs") && recipe["outputs"].is_object() &&
+            recipe["outputs"].contains("primary") && recipe["outputs"]["primary"].is_string()) {
+            const fs::path recorded = fs::u8path(recipe["outputs"]["primary"].get<std::string>());
+            const bool fromProject = editor::texsynth::jsonString(recipe, "pathBase", "file") == "project";
+            const fs::path primary = recorded.is_absolute() ? recorded : (fromProject ? projectRoot : item.png.parent_path()) / recorded;
+            std::error_code ec;
+            if (primary.lexically_normal() != item.png.lexically_normal() && fs::is_regular_file(primary, ec)) continue;
+        }
+        check.recipes++;
+        const std::string rel = projectRelative(projectRoot, item.png);
+        const std::optional<uint64_t> seedValue = editor::texsynth::recipeSeed(recipe);
+        const std::string seed = seedValue ? std::to_string(*seedValue) : "?";
+        const std::string suggestion =
+            "regenerate it: right-click it in the Project window > Edit Synthesis... > Regenerate > Save, or synthesize_texture with the "
+            "`regenerate` arguments get_asset_info gives (mode " + editor::texsynth::jsonString(recipe, "mode", "?") + ", seed " + seed + ", overwrite: true)";
+        for (const editor::texsynth::SourceState& s : editor::texsynth::checkRecipeSources(recipe, item.png, projectRoot, hashOf)) {
+            if (s.state != "changed" && s.state != "missing") continue;
+            Finding finding;
+            finding.tool = "texture";
+            finding.path = rel;
+            finding.severity = "warning";
+            const std::string source = s.resolved.empty() ? s.path : projectRelative(projectRoot, s.resolved);
+            if (s.state == "changed") {
+                finding.code = "synthesis-source-changed";
+                finding.message = "synthesized from " + source + " (" + s.role + "), which changed since: the texture no longer matches its source";
+                finding.suggestion = suggestion;
+            } else {
+                finding.code = "synthesis-source-missing";
+                finding.message = "synthesized from " + source + " (" + s.role + "), which no longer exists";
+                finding.suggestion = "restore " + source + " (or Edit Synthesis... and pick another source) before regenerating; the texture "
+                                     "itself still works";
+            }
+            check.findings.push_back(std::move(finding));
+        }
+    }
+    // forget PNGs that are gone (whole-project scans only)
+    if (files.empty()) {
+        for (auto it = cache.pngs.begin(); it != cache.pngs.end();) {
+            std::error_code ec;
+            if (!fs::exists(projectRoot / fs::u8path(it.key()), ec)) {
+                it = cache.pngs.erase(it);
+                cache.dirty = true;
+            } else {
+                ++it;
+            }
+        }
+    }
+    saveSynthesisCache(cache);
+    sortFindings(check.findings);
+    return check;
+}
+
+// ---- Stochastic Tiling
+
+namespace {
+
+    // the tilt of a normal map a material or layer turns, when it is at least the warning's
+    bool tiltedNormalMap(editor::Project* project, const Texture& texture, fs::path& file, float& degrees) {
+        if (texture.empty() || texture.isFramebuffer()) return false;
+        const std::string path = texture.getPath(0);
+        if (path.empty()) return false;
+        file = project->resolveAssetPath(fs::u8path(path));
+        const editor::NormalMapTiltResult tilt = editor::NormalMapTilt::measure(file);
+        degrees = tilt.degrees;
+        return tilt.ready && tilt.valid && tilt.degrees >= editor::NormalMapTilt::WARNING_DEGREES;
+    }
+
+    std::string formatValue(float value) {
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", value);
+        return text;
+    }
+
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTilingFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+    const char* const tiltCode = "stochastic-tilted-normal-map";
+    const char* const noEffectCode = "stochastic-no-effect";
+    const std::string tiltFix = "set Rotation (stochasticRotation) to 0, or use a normal map whose average normal is +Z";
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
+        auto warn = [&](const std::string& message, const char* code, const std::string& suggestion) {
+            findings.push_back({"shader", path, 0, 0, "warning", message, code, suggestion});
+        };
+
+        for (Entity entity : sceneProject->entities) {
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+
+            if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity)) {
+                for (size_t i = 0; i < terrain->surfaceLayers.size(); i++) {
+                    const TerrainSurfaceLayer& layer = terrain->surfaceLayers[i];
+                    fs::path file;
+                    float degrees = 0.0f;
+                    // a layer reads its normal map with its PBR surface only
+                    if (layer.stochasticTiling && layer.pbr && layer.stochasticRotation > 0.0f &&
+                            tiltedNormalMap(project, layer.normalTexture, file, degrees)) {
+                        warn(name + " terrain layer " + std::to_string(i) + ": " + NormalMapTilt::describe(file, degrees) +
+                             ", and Stochastic Tiling turns its cells (Rotation " + formatValue(layer.stochasticRotation) +
+                             "): the rotated cells look tilted", tiltCode, tiltFix);
+                    }
+                }
+            }
+
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh) continue;
+            const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+            const bool atlas = scene->findComponent<SpriteComponent>(entity) != nullptr || scene->findComponent<TilemapComponent>(entity) != nullptr;
+            for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
+                const Submesh& submesh = mesh->submeshes[s];
+                const Material& material = submesh.material;
+                const std::string where = name + " submesh " + std::to_string(s);
+                const std::string& shader = RenderSystem::getSubmeshShader(*mesh, submesh, sceneMeshShader);
+                const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+                const bool hasManifest = manifest && manifest->present;
+
+                // a library shader's STOCHASTIC feature (its own parameters and normal map)
+                if (hasManifest) {
+                    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(shader, material.shaderFeatures);
+                    if (std::find(features.begin(), features.end(), "STOCHASTIC") != features.end()) {
+                        const float rotation = ShaderUniforms::has(material.shaderParams, "stochasticRotation")
+                            ? ShaderUniforms::get(material.shaderParams, "stochasticRotation").x : 0.0f;
+                        const auto normal = std::find_if(material.shaderTextures.begin(), material.shaderTextures.end(),
+                            [](const std::pair<std::string, Texture>& entry) { return entry.first == "u_normalTexture"; });
+                        fs::path file;
+                        float degrees = 0.0f;
+                        if (rotation > 0.0f && normal != material.shaderTextures.end() && tiltedNormalMap(project, normal->second, file, degrees)) {
+                            warn(where + " (" + shader + "): " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
+                                 formatValue(rotation) + "): the rotated cells look tilted", tiltCode,
+                                 "set the shader's Rotation (stochasticRotation) to 0, or use a normal map whose average normal is +Z");
+                        }
+                    }
+                }
+
+                if (!material.stochasticTiling) continue;
+
+                // where Lit's Stochastic Tiling does not apply (RenderSystem::getSubmeshShaderVariant)
+                if (hasManifest) {
+                    warn(where + ": Stochastic Tiling is on, but the submesh draws with " + shader +
+                         ", whose maps the built-in Lit's Stochastic Tiling does not sample", noEffectCode,
+                         "turn the shader's own Stochastic Tiling feature on (a library shader with STOCHASTIC), or turn the material's off");
+                    continue;
+                }
+                // a fork of Lit made before the feature (no LIT_STOCHASTIC_PARAMS): none of its passes take it
+                if (!RenderSystem::supportsStochasticTiling(shader)) {
+                    warn(where + ": Stochastic Tiling is on, but the material's custom shader " + shader +
+                         " predates Stochastic Tiling: update the fork (see docs) or turn the feature off", noEffectCode,
+                         "update the fork: add the 'vec4 stochastic;' member to its u_fs_pbrParams under #ifdef USE_STOCHASTIC_TILING "
+                         "and '#define LIT_STOCHASTIC_PARAMS pbrParams.stochastic' in its .frag, as the engine's mesh.frag does "
+                         "(docs/mcp/guide/shaders.md, Forking); or turn stochasticTiling off");
+                    continue;
+                }
+                if (terrain) {
+                    warn(where + ": Stochastic Tiling is on for a terrain's base material, which does not take it", noEffectCode,
+                         "turn it on per terrain layer (surfaceLayers[N].stochasticTiling) instead");
+                    continue;
+                }
+                if (atlas || MeshSystem::usesTextureRect(submesh)) {
+                    warn(where + ": Stochastic Tiling is on, but the submesh draws through a texture rect (a sprite's atlas frame, "
+                         "a tilemap's tiles), whose offset reads would show the neighbouring frames: it is left off", noEffectCode,
+                         "turn it off, or draw the texture on a mesh without a texture rect");
+                    continue;
+                }
+                const bool anyTexture = !material.baseColorTexture.empty() || !material.metallicRoughnessTexture.empty() ||
+                                        !material.occlusionTexture.empty() || !material.emissiveTexture.empty() || !material.normalTexture.empty();
+                if (!anyTexture) {
+                    warn(where + ": Stochastic Tiling is on, but the material has no texture to tile", noEffectCode,
+                         "give it a tiled texture, or turn Stochastic Tiling off");
+                    continue;
+                }
+                fs::path file;
+                float degrees = 0.0f;
+                if (material.stochasticRotation > 0.0f && tiltedNormalMap(project, material.normalTexture, file, degrees)) {
+                    warn(where + ": " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
+                         formatValue(material.stochasticRotation) + "): the rotated cells look tilted", tiltCode, tiltFix);
+                }
+            }
+        }
+    }
+    return findings;
 }

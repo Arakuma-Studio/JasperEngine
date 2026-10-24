@@ -12,12 +12,19 @@ option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
 option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
+# The editor export turns it off unless the project enables AdMob for iOS (Android's
+# Gradle build gets the same switch from the export)
+option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 # googletest suite of the pose animation core (engine/tests/pose): pure maths, no GPU or window;
 # builds from the editor top-level build and from the standalone engine build
 option(JASPERENGINE_POSE_TESTS "Build jasperengine-pose-tests" OFF)
+# googletest suite of the lattice math (engine/tests/lattice): math and lattice sources only, no
+# GPU or display; works from the editor build, the standalone engine build or on its own
+# (cmake -S engine/tests/lattice)
+option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -77,6 +84,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     if(NOT DEFINED JASPERENGINE_WINDOW_TITLE)
         set(JASPERENGINE_WINDOW_TITLE "JasperEngine")
     endif()
+    # Prefix of the web build's saved keys (the export writes one made safe for a define)
+    if(NOT DEFINED JASPERENGINE_STORAGE_ID)
+        set(JASPERENGINE_STORAGE_ID "${APP_NAME}")
+    endif()
     # ON only when the editor export generated project/app_icon.h (+ .ico/.rc)
     if(NOT DEFINED JASPERENGINE_WINDOW_ICON)
         set(JASPERENGINE_WINDOW_ICON OFF)
@@ -91,6 +102,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions("-DJASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
     add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
     add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
+    add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
     add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
@@ -228,9 +240,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
 
+        # DWARF limits the wasm optimizer, so release builds keep only the function names
+        # (still readable stack traces) and the wasm is about a third smaller
+        set(EM_DEBUG_INFO "--profiling-funcs")
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+            set(EM_DEBUG_INFO "-g")
+        endif()
+
         list(APPEND PLATFORM_PROPERTIES
             LINK_FLAGS
-                "-g \
+                "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
@@ -446,7 +465,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+        # Xcode 27 starts at macOS 12
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0")
 
         # Only the Xcode generator assembles the real .app that the storyboard
         # entry point in platform/apple needs, shared with iOS. Every other
@@ -486,6 +506,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
             )
+            set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_CONTENT_DIR:${APP_NAME}>/Resources)
 
             list(APPEND PLATFORM_PROPERTIES
                 MACOSX_BUNDLE_INFO_PLIST "${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist"
@@ -572,13 +593,13 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/main.m
             ${PLATFORM_ROOT}/ios/AppDelegate.h
             ${PLATFORM_ROOT}/ios/AppDelegate.m
+            ${PLATFORM_ROOT}/ios/SceneDelegate.h
+            ${PLATFORM_ROOT}/ios/SceneDelegate.m
             ${PLATFORM_ROOT}/ios/EngineView.h
             ${PLATFORM_ROOT}/ios/EngineView.mm
             ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
             ${PLATFORM_ROOT}/ios/ViewController.h
             ${PLATFORM_ROOT}/ios/ViewController.m
-            ${PLATFORM_ROOT}/ios/AdMobAdapter.h
-            ${PLATFORM_ROOT}/ios/AdMobAdapter.m
             ${PLATFORM_ROOT}/Renderer.h
             ${PLATFORM_ROOT}/Renderer.mm
             ${PLATFORM_ROOT}/JasperEngineApple.h
@@ -591,28 +612,41 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/LaunchScreen.storyboard
             ${PLATFORM_ROOT}/ios/Main.storyboard
         )
+        set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_DIR:${APP_NAME}>)
 
         list(APPEND PLATFORM_LIBS
             -ObjC
 
             # GameController framework for gamepad input (JasperEngineGameController.mm)
             "-framework GameController"
+        )
+
+        if(JASPERENGINE_ADMOB)
+            add_definitions("-DJASPERENGINE_ADMOB")
+
+            list(APPEND PLATFORM_SOURCE
+                ${PLATFORM_ROOT}/ios/AdMobAdapter.h
+                ${PLATFORM_ROOT}/ios/AdMobAdapter.m
+            )
 
             # To run on iOS simulator
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
-        )
+            list(APPEND PLATFORM_LIBS
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
+            )
+        endif()
 
         add_compile_options(-fmodules)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
+        # Xcode 27 starts at iOS 15
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 
         list(APPEND PLATFORM_PROPERTIES
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}
@@ -702,6 +736,8 @@ endif()
 if(JASPERENGINE_PHYSICS_3D)
     list(APPEND JASPERENGINE_PHYSICS_LIBS joltphysics)
     include_directories(SYSTEM libs/joltphysics)
+    # Otherwise Jolt defines _HAS_EXCEPTIONS=0 PUBLIC, which breaks try/catch on MSVC
+    set(CPP_EXCEPTIONS_ENABLED ON)
 endif()
 
 include_directories(SYSTEM libs/harfbuzz)
@@ -814,7 +850,9 @@ set(JASPERENGINE_SRCS
     core/action/ScaleTween.cpp
     core/action/SpriteAnimation.cpp
     core/action/Tween.cpp
+    core/action/keyframe/KeyframeTracks.cpp
     core/action/keyframe/MorphTracks.cpp
+    core/action/keyframe/LatticeTracks.cpp
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
@@ -926,6 +964,8 @@ set(JASPERENGINE_SRCS
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
+    core/object/FluidSimulation.cpp
+    core/object/Lattice.cpp
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
     core/object/GameObject.cpp
@@ -939,6 +979,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Fog.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
+    core/object/environment/Water.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/Image.cpp
@@ -1000,8 +1041,15 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/FluidSystem.cpp
+    core/fluid/FluidSimulator.cpp
+    core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/LatticeSystem.cpp
+    core/lattice/LatticeSolver.cpp
+    core/lattice/LatticePresets.cpp
+    core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
@@ -1277,6 +1325,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         install(DIRECTORY ${LUA_DEST_DIR} DESTINATION bin)
     endif()
 
+    # Apple apps read the assets and scripts from inside their bundle
+    if(DEFINED BUNDLE_RESOURCES_DIR)
+        foreach(PROJECT_CONTENT assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${PROJECT_CONTENT}")
+                add_custom_command(
+                    TARGET ${APP_NAME} POST_BUILD
+                    COMMAND "${CMAKE_COMMAND}" -E remove_directory ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/${PROJECT_CONTENT} ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                )
+            endif()
+        endforeach()
+    endif()
+
     set_target_properties(
         ${APP_NAME}
 
@@ -1324,4 +1385,8 @@ endif()
 
 if(JASPERENGINE_POSE_TESTS)
     add_subdirectory(tests/pose)
+endif()
+
+if(JASPERENGINE_LATTICE_TESTS)
+    add_subdirectory(tests/lattice)
 endif()

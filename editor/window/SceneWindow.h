@@ -32,6 +32,10 @@ namespace jasperengine::editor {
         std::map<uint32_t, bool> resyncLookDelta;
         std::map<uint32_t, bool> lookActive;
         std::map<uint32_t, ImVec2> lookReturnPos;
+        // a right click that did not move the camera opens the lattice menu where it was
+        std::map<uint32_t, float> rightClickTravel;
+        std::map<uint32_t, bool> latticeMenuRequested;
+        std::map<uint32_t, ImVec2> latticeMenuPos;
         std::map<uint32_t, bool> focusCanvasOnNextFrame;
 
         std::map<uint32_t, int> width;
@@ -77,11 +81,19 @@ namespace jasperengine::editor {
         void cancelPrefabDrag();
         Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ);
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
+        // the Paint Dye brush's circle (splatRadius) over the image, under the pointer
+        void drawFluidBrushCursor(SceneProject* sceneProject);
+        // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it
+        void probeSceneView(SceneProject* sceneProject);
         void snapCameraToDirection(Camera* camera, const Vector3& direction);
         void focusSceneWindow(const SceneProject& sceneProject) const;
         void requestOpenParentScene(uint32_t childSceneId, uint32_t parentSceneId);
         void drawParentSceneButton(const SceneProject& sceneProject);
         void drawGizmosMenu(SceneProject& sceneProject);
+        // the right-click menu of the selected lattice (LatticeSceneTools draws its items)
+        void drawLatticeContextMenu(SceneProject& sceneProject);
+        // the camera moves to show bounds whole (focusOnEntities' framing)
+        void focusOnBounds(SceneProject* sceneProject, const AABB& bounds);
         std::string getWindowTitle(const SceneProject& sceneProject) const;
         Entity resolveStructureSelection(uint32_t viewportSceneId, uint32_t sceneId, Entity entity) const;
         Entity findSelectableObjectByRay(uint32_t sceneId, float x, float y, uint32_t* outSceneId = nullptr);

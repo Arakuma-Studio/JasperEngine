@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -18,6 +19,7 @@ struct PanelVisibilitySettings {
     bool animation = true;
     bool poseAnimation = false;
     bool terrain = false;
+    bool textureSynthesis = false;
     bool mcp = false;
     bool game = true;
 
@@ -29,6 +31,7 @@ struct PanelVisibilitySettings {
             && animation == other.animation
             && poseAnimation == other.poseAnimation
             && terrain == other.terrain
+            && textureSynthesis == other.textureSynthesis
             && mcp == other.mcp
             && game == other.game;
     }
@@ -50,6 +53,31 @@ struct GameViewSettings {
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
+};
+
+// How the Scene view draws lattice cages and edits their points (Preferences > Lattice)
+struct LatticeViewSettings {
+    std::array<float, 4> lineColor = {0.85f, 0.85f, 0.85f, 1.0f};     // edges at rest length
+    float lineThickness = 1.0f;                                       // pixels, 1..4
+    float behindOpacity = 0.35f;                                      // parts hidden by geometry, 0..1
+    float pointSize = 7.0f;                                           // pixels, 3..20
+    std::array<float, 4> pointColor = {1.0f, 1.0f, 1.0f, 1.0f};
+    std::array<float, 4> selectedPointColor = {1.0f, 0.6f, 0.0f, 1.0f};
+    bool stretchColoring = true;                                      // edge colour by length / rest length
+    std::array<float, 4> squashColor = {0.25f, 0.45f, 1.0f, 1.0f};    // at half the rest length
+    std::array<float, 4> stretchColor = {1.0f, 0.25f, 0.2f, 1.0f};    // at twice the rest length
+    int falloffCurve = 0;                                             // LatticeFalloffCurve: smooth, linear, sharp, constant
+    float falloffRadius = 1.0f;                                       // lattice local units (the cage is 1 across)
+
+    bool operator==(const LatticeViewSettings& other) const {
+        return lineColor == other.lineColor && lineThickness == other.lineThickness
+            && behindOpacity == other.behindOpacity && pointSize == other.pointSize
+            && pointColor == other.pointColor && selectedPointColor == other.selectedPointColor
+            && stretchColoring == other.stretchColoring && squashColor == other.squashColor
+            && stretchColor == other.stretchColor && falloffCurve == other.falloffCurve
+            && falloffRadius == other.falloffRadius;
+    }
+    bool operator!=(const LatticeViewSettings& other) const { return !(*this == other); }
 };
 
 // Compiler paths and job count are machine-specific, so they live in the project's
@@ -113,14 +141,19 @@ private:
     // Editor viewport settings
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
+    static float uiScale;
     static bool poseDockGrown;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static LatticeViewSettings latticeViewSettings;
 
     // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
     static bool mcpHttpEnabled;
     static int mcpHttpPort;
     static std::string mcpHttpToken;
+    static bool mcpHttpAllowChanges;
+    static void loadMcpHttpToken();
+    static bool writeMcpHttpTokenFile(const std::string& token);
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -217,6 +250,10 @@ public:
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
 
+    // Editor UI Scale (Preferences): multiplies the display scale the system reports
+    static float getUiScale();
+    static void setUiScale(float scale);
+
     // Panels toggled from the View menu
     static PanelVisibilitySettings getPanelVisibility();
     static void setPanelVisibility(const PanelVisibilitySettings& visibility);
@@ -224,12 +261,23 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
-    // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
-    // clients send "Authorization: Bearer <token>".
+    // Lattice cage drawing and point editing; set clamps every value to its range
+    static LatticeViewSettings getLatticeViewSettings();
+    static void setLatticeViewSettings(const LatticeViewSettings& settings);
+
+    // MCP server HTTP transport: off by default, port 47615. Clients send
+    // "Authorization: Bearer <token>"; the server makes the token the first time HTTP is
+    // enabled. It is kept in its own file next to settings.yaml, readable by its owner only
+    // (POSIX mode 0600; an mcp.http_token left in settings.yaml by older editors moves there).
+    // With allow changes off, HTTP clients only get the read-only tools.
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
     static void setMcpHttp(bool enabled, int port);
+    static void setMcpHttpToken(const std::string& token);
+    static std::filesystem::path getMcpHttpTokenPath();
+    static bool getMcpHttpAllowChanges();
+    static void setMcpHttpAllowChanges(bool allow);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)

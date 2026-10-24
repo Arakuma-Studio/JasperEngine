@@ -4,6 +4,7 @@
 #include "McpRefs.h"
 
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -146,7 +147,7 @@ SceneProject* McpRefs::resolveScene(Project* project, const Json& ref, std::stri
     }
     if (matches.empty()) {
         // A .scene path, project-relative (or as stored)
-        const fs::path wanted = fs::path(text).lexically_normal();
+        const fs::path wanted = FileUtils::pathFromUtf8(text).lexically_normal();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
             if (scene->filepath.empty()) continue;
             const fs::path stored = scene->filepath.lexically_normal();
@@ -332,7 +333,7 @@ bool McpRefs::resolveEntityArgs(SceneProject* scene, const Json& args, std::vect
 std::string McpRefs::notOpenError(Project* project, const SceneProject& scene) {
     const std::string path = scene.filepath.empty() || !project
         ? std::string()
-        : project->normalizeToProjectRelative(scene.filepath).generic_string();
+        : FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath));
     const std::string ref = path.empty() ? std::to_string(scene.id) : "\"" + path + "\"";
     return "Scene " + std::to_string(scene.id) + " \"" + scene.name + "\" is not open (its contents are not loaded). Open it "
            "first: open_scene {\"scene\": " + ref + ", \"close_previous\": false} (then select_scene to switch back).";
@@ -349,14 +350,13 @@ Json McpRefs::sceneJson(Project* project, const SceneProject& scene) {
     };
     out["path"] = scene.filepath.empty() || !project
         ? std::string()
-        : project->normalizeToProjectRelative(scene.filepath).generic_string();
+        : FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath));
     return out;
 }
 
 std::vector<std::string> McpRefs::componentTypeNames() {
     std::vector<std::string> names;
-    const int last = static_cast<int>(ComponentType::PoseAnimatorComponent);
-    for (int i = 0; i <= last; i++) {
+    for (int i = 0; i < ComponentTypeCount; i++) {
         std::string name = lower(Catalog::getComponentName(static_cast<ComponentType>(i), true));
         if (name.empty()) continue;
         // only names Catalog::getComponentType reads back
@@ -385,7 +385,7 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             {"rigidbody3d", "rigidbody"}, {"collider", "rigidbody"}, {"collider2d", "rigidbody2d"},
             {"canvasrenderer", "ui"},
             {"sky", "skybox"}, {"audio", "audiosource"}, {"sound", "audiosource"}, {"scripts", "script"},
-            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}
+            {"lua", "script"}, {"particles", "particlesystem"}, {"lines", "linerenderer"}, {"fluid", "fluidsimulation"}
         };
         auto alias = aliases.find(key);
         for (const std::string& candidate : {given, key, alias != aliases.end() ? alias->second : key}) {
@@ -396,8 +396,7 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
             }
         }
         // Unity's display names ("Rigidbody 2D", "Audio Source")
-        const int last = static_cast<int>(ComponentType::PoseAnimatorComponent);
-        for (int i = 0; i <= last; i++) {
+        for (int i = 0; i < ComponentTypeCount; i++) {
             std::string display;
             for (char c : lower(Catalog::getComponentDisplayName(static_cast<ComponentType>(i)))) {
                 if (c != ' ' && c != '_' && c != '-') display.push_back(c);
@@ -421,7 +420,8 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
         error = "No project is open.";
         return false;
     }
-    const fs::path rel = fs::path(relative).lexically_normal();
+    // Agents send UTF-8; a std::string path is the ANSI code page on Windows
+    const fs::path rel = FileUtils::pathFromUtf8(relative).lexically_normal();
     if (relative.empty() || rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {
         error = "\"" + relative + "\" must be a project-relative path (not absolute).";
         return false;

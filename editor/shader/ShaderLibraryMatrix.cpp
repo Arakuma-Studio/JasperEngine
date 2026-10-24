@@ -57,39 +57,56 @@ namespace {
     }
 
     struct MeshCase{
-        const char* label;
+        std::string label;
         std::function<void(SubmeshShaderInputs&, MeshShaderEnvironment&)> apply;
     };
 
     const std::vector<MeshCase>& meshCases(){
-        static const std::vector<MeshCase> cases = {
-            {"skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.skinning = true; }},
-            {"morph targets", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.morphTarget = true; i.morphNormal = true; }},
-            {"instancing", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.instanced = true; i.instanceFade = true; }},
-            {"vertex colour + uv2", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor4 = true; i.texCoord2 = true; }},
-            {"vertex colour vec3", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor3 = true; }},
-            {"texture rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; }},
-            {"no normals or uv", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.normal = false; i.tangent = false; i.texCoord1 = false; }},
-            {"fog", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
-            {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
-            {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
-            {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
-            // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
-            {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
-            {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
-            // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
-            // block or a block of its own, and its LUT texture, next to everything else
-            {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
-            {"post colour, fog, shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){
-                e.postColor = true; e.fog = true; e.lights = true; e.shadows = true; }},
-            {"post colour, 2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
-            {"post colour, instanced, skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
-            {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
-                e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
-        };
+        static const std::vector<MeshCase> cases = [](){
+            std::vector<MeshCase> list = {
+                {"skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.skinning = true; }},
+                {"morph targets", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.morphTarget = true; i.morphNormal = true; }},
+                {"instancing", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.instanced = true; i.instanceFade = true; }},
+                {"vertex colour + uv2", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor4 = true; i.texCoord2 = true; }},
+                {"vertex colour vec3", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vertexColor3 = true; }},
+                {"texture rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; }},
+                {"no normals or uv", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.normal = false; i.tangent = false; i.texCoord1 = false; }},
+                {"fog", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
+                {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
+                {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
+                {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
+                // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
+                {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
+                {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+                // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
+                // block or a block of its own, and its LUT texture, next to everything else
+                {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
+                {"post colour, fog, shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){
+                    e.postColor = true; e.fog = true; e.lights = true; e.shadows = true; }},
+                {"post colour, 2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
+                {"post colour, instanced, skinning", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.instanced = true; i.instanceFade = true; i.skinning = true; }},
+                {"post colour, terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    e.postColor = true; i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+            };
+            // every case again bound to lattices (includes/lattice.glsl, never on a terrain), on a
+            // mesh with vertex colours: its variants then read them in every pass for a mask
+            const size_t unbound = list.size();
+            for (size_t c = 0; c < unbound; c++){
+                const MeshCase base = list[c];
+                if (base.label.find("terrain") != std::string::npos)
+                    continue;
+                list.push_back({"lattice, " + base.label, [base](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    base.apply(i, e);
+                    i.lattice = true;
+                    if (!i.vertexColor3)
+                        i.vertexColor4 = true;
+                }});
+            }
+            return list;
+        }();
         return cases;
     }
 
@@ -115,8 +132,8 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
     std::shared_ptr<const ShaderManifest> shared = ShaderManifests::get(base);
 
     std::vector<Variant> variants;
-    std::set<std::tuple<int, uint32_t, std::string>> seen;
-    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint32_t properties){
+    std::set<std::tuple<int, uint64_t, std::string>> seen;
+    auto add = [&](const std::string& label, const std::string& reference, ShaderType type, uint64_t properties){
         if (seen.insert({static_cast<int>(type), properties, reference}).second)
             variants.push_back({label, reference, type, properties});
     };
@@ -281,7 +298,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             add("pass [" + features.first + "]", ShaderReference::getVariantReference(base, features.second), type, 0);
     }else{
         // the variants RenderSystem loads a component of the type with
-        std::vector<std::pair<std::string, uint32_t>> properties;
+        std::vector<std::pair<std::string, uint64_t>> properties;
         if (type == ShaderType::UI){
             properties = {{"plain", ShaderPool::getUIProperties(false, false, false, true)},
                           {"texture", ShaderPool::getUIProperties(true, false, false, true)},
@@ -306,7 +323,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
                 add(properties.front().first + " [" + blendLabel(blend) + ", all features]", referenceOf(allOn, blend), type, properties.front().second);
         }
         // the post-processing colour (phase 4): every variant with it, each blend mode with all features
-        const uint32_t postColor = ShaderPool::getPostColorProperty(type);
+        const uint64_t postColor = ShaderPool::getPostColorProperty(type);
         if (postColor){
             for (const auto& variant : properties){
                 add(variant.first + " [post colour]", referenceOf({}), type, variant.second | postColor);

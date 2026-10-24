@@ -10,6 +10,7 @@
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -82,6 +83,7 @@ bool Engine::uiEventReceived = false;
 
 uint64_t Engine::lastTime = 0;
 double Engine::updateTimeCount = 0;
+int Engine::fixedStepsLeft = 1;
 
 double Engine::deltatime = 0;
 float Engine::framerate = 0;
@@ -507,6 +509,10 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+int Engine::getFixedStepsLeft(){
+    return fixedStepsLeft;
 }
 
 double Engine::getInterpolationAlpha(){
@@ -978,6 +984,9 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         action.onStep.clear();
     }
 
+    // contact and activation events a script subscribed to on the scene's physics
+    scene->getSystem<PhysicsSystem>()->clearSubscriptions();
+
     auto animators = scene->getComponentArray<PoseAnimatorComponent>();
     for (size_t i = 0; i < animators->size(); i++) {
         animators->getComponentFromIndex(i).onFinish.clear();
@@ -1223,6 +1232,14 @@ void Engine::signalReadyOnce(){
 }
 
 void Engine::systemDraw(){
+    runFrame(true);
+}
+
+void Engine::systemUpdate(){
+    runFrame(false);
+}
+
+void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
 
     //Deltatime in seconds
@@ -1267,7 +1284,8 @@ void Engine::systemDraw(){
     SceneManager::applyPendingLoad();
 
     // before the update, which bakes the PIP_RTT pipelines from the target in use
-    beginCompositeFramebuffer();
+    if (draw)
+        beginCompositeFramebuffer();
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
@@ -1282,6 +1300,12 @@ void Engine::systemDraw(){
 
             int fixedLoops = 0;
             while (updateTimeCount >= updateTime && fixedLoops < MAX_UPDATES_PER_FRAME) {
+                // counted like this loop, so its last step sees 1
+                fixedStepsLeft = 0;
+                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < MAX_UPDATES_PER_FRAME; remaining -= updateTime) {
+                    fixedStepsLeft++;
+                }
+
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
@@ -1290,10 +1314,18 @@ void Engine::systemDraw(){
                 fixedLoops++;
             }
 
+            fixedStepsLeft = 1;
+
             if (fixedLoops >= MAX_UPDATES_PER_FRAME) {
                 Log::warn("Dropping fixed-update steps - more than %i per frame", MAX_UPDATES_PER_FRAME);
                 // Discard remaining backlog so we don't fall further behind next frame.
                 updateTimeCount = 0.0;
+            }
+
+            // bodies drawn between their last two steps, as far as the time left over
+            double alpha = getInterpolationAlpha();
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<PhysicsSystem>()->interpolate(alpha);
             }
         }
 
@@ -1309,21 +1341,24 @@ void Engine::systemDraw(){
         ObjectManager::update(frameDelta);
     }
 
-    Engine::onDraw.call();
+    if (draw){
+        Engine::onDraw.call();
 
-    // again for a scene stack loaded during the update
-    beginCompositeFramebuffer();
+        // again for a scene stack loaded during the update
+        beginCompositeFramebuffer();
 
-    beginFrameStats();
-    for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->draw();
+        beginFrameStats();
+        for (int i = 0; i < scenes.size(); i++){
+            scenes[i]->draw();
+        }
+
+        endCompositeFramebuffer();
     }
-
-    endCompositeFramebuffer();
 
     SystemRender::commit();
 
-    {
+    // a one-shot stays until a frame draws it
+    if (draw){
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
         // Retire one-shots that finished loading: they got the frame they asked for.
@@ -1350,7 +1385,9 @@ void Engine::systemDraw(){
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
 
-    signalReadyOnce();
+    // it counts drawn frames
+    if (draw)
+        signalReadyOnce();
 
     frameRunning = false;
 

@@ -173,7 +173,8 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
         return history->addCommand(command);
     };
     auto rollback = [&](const std::string& message){
-        while (history->position() > start && history->canUndo()) history->undo();
+        // undo() is false when the history did not move (a command refused): stop there
+        while (history->position() > start && history->undo()) {}
         history->dropRedo();   // the rolled-back commands are not a redo step
         error = message;
         return false;

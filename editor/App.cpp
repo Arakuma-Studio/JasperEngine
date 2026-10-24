@@ -15,6 +15,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
+#include "lattice/LatticeSceneTools.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "pose/PoseEditSession.h"
@@ -84,20 +85,26 @@ int scaleSavedWindowSize(int saved, float uiScale) {
     return std::max(1, static_cast<int>(std::lround(saved * ratio)));
 }
 
-// The dockspace lives on the main viewport, so that is the scale it has to match.
+// The dockspace lives on the main viewport, so that is the scale it has to match,
+// times the UI Scale of Editor Settings.
 float mainViewportScale() {
-    return sanitizeUiScale(ImGui::GetMainViewport()->DpiScale);
+    return sanitizeUiScale(ImGui::GetMainViewport()->DpiScale) * editor::Theme::uiScale();
 }
 
-// SizeRef against a central node is read as an absolute size, so it has to grow
-// with the text; siblings split by ratio stay proportional under the same factor.
-void scaleDockChildren(ImGuiDockNode* node, float ratio) {
-    for (ImGuiDockNode* child : node->ChildNodes) {
-        if (!child) continue;
-        child->Size = ImVec2(child->Size.x * ratio, child->Size.y * ratio);
-        child->SizeRef = ImVec2(child->SizeRef.x * ratio, child->SizeRef.y * ratio);
-        scaleDockChildren(child, ratio);
-    }
+// DPI times UI scale, so a wider range than sanitizeUiScale().
+float sanitizeLayoutScale(float scale) {
+    return (scale >= 0.25f && scale <= 24.0f) ? scale : 1.0f;
+}
+
+// Share of the window a panel beside the scene may take (buildDefaultLayout()
+// and scaleDockChildren()).
+constexpr float panelMaxShare = 0.45f;
+
+// HasCentralNodeChild is not set yet when a restored layout is rescaled.
+bool holdsCentralNode(const ImGuiDockNode* node) {
+    if (!node) return false;
+    if (node->LocalFlags & ImGuiDockNodeFlags_CentralNode) return true;
+    return holdsCentralNode(node->ChildNodes[0]) || holdsCentralNode(node->ChildNodes[1]);
 }
 
 }
@@ -122,6 +129,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    textureSynthesisWindow = new TextureSynthesisWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
     // window see the files (MCP writes templates through the pose document, which syncs itself)
@@ -258,6 +266,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     TogglePoseAnimation,
     ToggleTerrain,
+    ToggleTextureSynthesis,
     ToggleMcpActivity,
     FocusScene,
     FocusGame,
@@ -585,6 +594,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -754,6 +764,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleTextureSynthesis:
+            textureSynthesisWindow->open();
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
             break;
@@ -794,6 +807,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             animationWindow->setOpen(true);
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
+            textureSynthesisWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
@@ -1281,6 +1295,7 @@ void editor::App::buildDockspace(bool resetLayout){
         dock_id_middle_top = getCentralDockId();
     } else {
         buildDefaultLayout();
+        cappedDockSizes.clear();
         // Built from the current font size, so it needs no DPI correction.
         layoutUiScale = mainViewportScale();
         layoutScaleApplied = true;
@@ -1303,7 +1318,7 @@ void editor::App::rescaleRestoredLayout(){
     if (!root) return;
 
     const float currentScale = mainViewportScale();
-    const float savedScale = sanitizeUiScale(layoutUiScale);
+    const float savedScale = sanitizeLayoutScale(layoutUiScale);
     layoutUiScale = currentScale;
     layoutScaleApplied = true;
 
@@ -1312,6 +1327,89 @@ void editor::App::rescaleRestoredLayout(){
 
     // The root node is pinned to the viewport, so only its descendants move.
     scaleDockChildren(root, ratio);
+}
+
+// SizeRef against a central node is read as an absolute size, so it has to grow
+// with the text; siblings split by ratio stay proportional under the same factor.
+void editor::App::scaleDockChildren(ImGuiDockNode* node, float ratio){
+    const ImVec2 available = ImGui::GetMainViewport()->WorkSize;
+    for (int i = 0; i < 2; i++) {
+        ImGuiDockNode* child = node->ChildNodes[i];
+        if (!child) continue;
+        const ImVec2 sizeRef = child->SizeRef;
+        child->Size = ImVec2(child->Size.x * ratio, child->Size.y * ratio);
+        child->SizeRef = ImVec2(sizeRef.x * ratio, sizeRef.y * ratio);
+
+        // Panels beside the scene only grow up to the cap, or the scene gets
+        // squeezed out. One already past its cap keeps its size.
+        if (holdsCentralNode(node->ChildNodes[i ^ 1]) && !holdsCentralNode(child)) {
+            const int axis = node->SplitAxis;
+            const float cap = available[axis] * panelMaxShare;
+            float uncapped = sizeRef[axis] * ratio;
+            // Resume from the uncapped size unless the panel was resized (the ini keeps whole pixels).
+            auto it = cappedDockSizes.find(child->ID);
+            if (it != cappedDockSizes.end() && std::fabs(it->second.capped - sizeRef[axis]) < 1.0f) {
+                uncapped = it->second.uncapped * ratio;
+            }
+            const float size = std::min(uncapped, std::max(sizeRef[axis], cap));
+            child->Size[axis] = size;
+            child->SizeRef[axis] = size;
+            if (size < uncapped) {
+                cappedDockSizes[child->ID] = { size, uncapped };
+            } else {
+                cappedDockSizes.erase(child->ID);
+            }
+        }
+        scaleDockChildren(child, ratio);
+    }
+}
+
+// The layout scale and the capped panel sizes are saved in the ini with the dock
+// sizes they describe. Inis from older versions fall back to settings.yaml.
+void editor::App::registerLayoutSettings(){
+    ImGuiSettingsHandler handler;
+    handler.TypeName = "JasperEngineLayout";
+    handler.TypeHash = ImHashStr("JasperEngineLayout");
+    handler.UserData = this;
+    handler.ReadOpenFn = [](ImGuiContext*, ImGuiSettingsHandler*, const char*) -> void* {
+        return reinterpret_cast<void*>(1);
+    };
+    handler.ReadLineFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, void*, const char* line) {
+        App* app = static_cast<App*>(handler->UserData);
+        ImGuiID id;
+        float scale, capped, uncapped;
+        if (std::sscanf(line, "Scale=%f", &scale) == 1) {
+            app->layoutUiScale = scale;
+        } else if (std::sscanf(line, "Panel=0x%08X Capped=%f Uncapped=%f", &id, &capped, &uncapped) == 3) {
+            app->cappedDockSizes[id] = { capped, uncapped };
+        }
+    };
+    handler.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buf) {
+        const App* app = static_cast<const App*>(handler->UserData);
+        buf->appendf("[%s][Data]\n", handler->TypeName);
+        buf->appendf("Scale=%g\n", sanitizeLayoutScale(app->layoutUiScale));
+        for (const auto& [id, size] : app->cappedDockSizes) {
+            buf->appendf("Panel=0x%08X Capped=%.1f Uncapped=%.1f\n", id, size.capped, size.uncapped);
+        }
+        buf->append("\n");
+    };
+    ImGui::AddSettingsHandler(&handler);
+}
+
+// A new UI scale (Editor Settings) resizes the docked panels along with the text.
+void editor::App::applyUiScale(){
+    const float uiScale = AppSettings::getUiScale();
+    if (uiScale == Theme::uiScale()) return;
+
+    // Until the layout is restored, rescaleRestoredLayout() takes care of it.
+    if (layoutScaleApplied) {
+        const float ratio = uiScale / Theme::uiScale();
+        if (ImGuiDockNode* root = ImGui::DockBuilderGetNode(dockspace_id)) {
+            scaleDockChildren(root, ratio);
+        }
+        layoutUiScale *= ratio;
+    }
+    Theme::setUiScale(uiScale);
 }
 
 void editor::App::buildDefaultLayout(){
@@ -1330,7 +1428,7 @@ void editor::App::buildDefaultLayout(){
     // Hierarchy top-left and the Scene/Game tabs in the centre. Each share is
     // held to a minimum in font sizes so small windows keep readable panels.
     auto share = [](float fraction, float available, float minFontSizes){
-        return std::min(std::max(fraction * available, minFontSizes * ImGui::GetFontSize()), available * 0.45f);
+        return std::min(std::max(fraction * available, minFontSizes * ImGui::GetFontSize()), available * panelMaxShare);
     };
     const float rightWidth = share(0.22f, viewport.x, 16);
     const float leftWidth = share(0.18f, viewport.x, 12);
@@ -1359,6 +1457,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(HierarchyWindow::WINDOW_NAME, dock_id_left_top);
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
+    // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
+    ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -1622,6 +1722,7 @@ void editor::App::setup() {
     // titles) is left behind instead of restored: bump when the default changes.
     layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
     io.IniFilename = layoutIniPath.c_str();
+    registerLayoutSettings();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.
@@ -1713,6 +1814,7 @@ void editor::App::setup() {
     if (ImGui::GetPlatformIO().Monitors.Size > 0) {
         dpiScale = ImGui::GetPlatformIO().Monitors[0].DpiScale;
     }
+    Theme::setUiScale(AppSettings::getUiScale());
     Theme::applyDpiScale(dpiScale);
 }
 
@@ -1870,6 +1972,8 @@ bool editor::App::canPasteSelection(bool asChild) {
 void editor::App::selectAll() {
     if (!canSelectAll()) return;
     SceneProject* scene = project.getSelectedScene();
+    // in the Scene view, a selected lattice's points (its own Select All)
+    if (sceneWindow->isFocused() && LatticeSceneTools::selectAllPoints(&project, scene->id)) return;
     // A child is selected through its parent, as in the Hierarchy
     project.replaceSelectedEntities(scene->id, Project::getTopLevelEntities(scene->scene, scene->entities));
 }
@@ -1897,6 +2001,8 @@ void editor::App::pasteSelection(bool asChild) {
 }
 
 void editor::App::show(){
+    applyUiScale();
+
     float dpiScale = 1.0f;
     if (const ImGuiViewport* mainViewport = ImGui::GetMainViewport()) {
         dpiScale = mainViewport->DpiScale;
@@ -2115,6 +2221,7 @@ void editor::App::show(){
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
+    textureSynthesisWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
     codeEditor->show();
@@ -2593,6 +2700,7 @@ void editor::App::engineRender(){
 
     processMainThreadTasks();
     project.refreshLinkedMaterials();
+    project.refreshFbxImports();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
@@ -3302,6 +3410,9 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    if (!editor::texsynth::SynthesisRun::cancelAll()) {
+        Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
@@ -3360,6 +3471,9 @@ void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
     imageViewerWindow->closeAll();
+    // a synthesis started in this project is cancelled and never written into the next one
+    textureSynthesisWindow->resetForProjectSwitch();
+    editor::texsynth::projectSwitching();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
@@ -3689,7 +3803,31 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
+    // v34: Stochastic Tiling (includes/stochastic.glsl) — u_fs_terrainLayers gains
+    //      stochastic[MAX_TERRAIN_LAYERS], read by the PBR terrain path of the color pass and
+    //      the G-buffer; library shaders gain the STOCHASTIC feature.
+    //      Also .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
+    //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
+    // v35: Stochastic Tiling of the built-in Lit material — MESH bit 5 'Sto' (USE_STOCHASTIC_TILING:
+    //      includes/pbr.glsl, u_fs_pbrParams gains a vec4), DEPTH bit 14 and GBUFFER bit 10 'Sto'
+    //      (u_fs_depthMaterial / u_fs_gbufferMaterial gain one); lighting2d.glsl's normal map.
+    //      Also supersedes v34, which two branches each bumped to (the terrain/library Stochastic
+    //      Tiling and the 64-bit shader keys): a v34 cache from either could be trusted by the other.
+    // v36: terrain triplanar: the vertex normal from central differences, the three projections
+    //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
+    //      projections under 2% skipped.
+    // v37: mesh.frag skips the shadow lookup of a surface facing away from the light (unless
+    //      foliage transmission reads it); ssr.frag fades out rough surfaces (SSR_MAX_ROUGHNESS)
+    //      and skips their march; probe_filter (PROBE_FILTER) prefilters runtime reflection probe
+    //      captures into roughness mips, each source level downsampled from the one above.
+    //      library:water's REFLECTION, CAUSTICS, UNDERSIDE and BUILTIN_TEXTURES features, its
+    //      distant detail fade and new parameters (u_fs_customParams grows); includes/lights.glsl
+    //      gains ggxSpecular; the library post-process shader library:underwater.
+    // v38: lattice deformer (includes/lattice.glsl): HAS_LATTICE paths in mesh/depth/gbuffer.vert
+    //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
+    //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
+    //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -3749,12 +3887,31 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
 
+editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
+    return textureSynthesisWindow;
+}
+
+void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
+    if (!editRecipe) {
+        textureSynthesisWindow->openWithExample(image);
+        return;
+    }
+    std::string error;
+    if (!textureSynthesisWindow->openRecipe(image, error)) {
+        registerAlert("Edit Synthesis", "Can't restore the synthesis of " + image.filename().string() + ": " + error);
+    }
+}
+
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
     return hierarchyWindow;
 }
 
 editor::SceneWindow* editor::App::getSceneWindow() const{
     return sceneWindow;
+}
+
+void editor::App::openPreferences(const std::string& category){
+    editorSettingsWindow.open(&project, category);
 }
 
 editor::ConsoleWindow* editor::App::getConsoleWindow() const{
@@ -3955,6 +4112,7 @@ void editor::App::applyPanelVisibilitySettings() {
     animationWindow->setOpen(visibility.animation);
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
+    textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
 }
@@ -3968,6 +4126,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.animation = animationWindow->isOpen();
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
+    visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
 
@@ -3996,7 +4155,7 @@ void editor::App::saveWindowSettings(int width, int height, bool maximized, floa
     // The ini is written at the scale the layout has held all session, not the
     // monitor scale above, which is read fresh and may have changed since.
     if (layoutScaleApplied) {
-        AppSettings::setLayoutUiScale(sanitizeUiScale(layoutUiScale));
+        AppSettings::setLayoutUiScale(sanitizeLayoutScale(layoutUiScale));
     }
     AppSettings::saveSettings();
 }
