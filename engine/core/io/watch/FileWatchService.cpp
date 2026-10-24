@@ -31,6 +31,8 @@ namespace {
     constexpr size_t MAIN_BATCH_MAX = 512;
     constexpr size_t WORKER_BATCH_MAX = 4096;
     constexpr std::chrono::milliseconds PROBE_TIMEOUT{2000};
+    // a polling watcher's removal waits one interval and this for the file to come back
+    constexpr std::chrono::milliseconds POLL_HOLD_MARGIN{100};
     const char* const PROBE_NAME = "watch-probe";
 
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
@@ -431,6 +433,7 @@ void FileWatchService::dispatcherLoop() {
         std::lock_guard<std::mutex> lock(s.stateMutex);
         s.backend = backend;
         s.state = state;
+        s.coalescer.setDeleteHold(backend && !backend->isNative() ? interval + POLL_HOLD_MARGIN : std::chrono::milliseconds(0));
     }
 
     // 2. the index, off the lock (the editor's writes meanwhile go to the old, empty one
@@ -538,6 +541,7 @@ void FileWatchService::switchToPolling(const std::string& reason) {
         std::lock_guard<std::mutex> lock(s.stateMutex);
         s.backend = ok ? polling : nullptr;
         s.state = ok ? State::Degraded : State::Off;
+        s.coalescer.setDeleteHold(interval + POLL_HOLD_MARGIN);
     }
     // what changed while no watcher ran
     std::lock_guard<std::mutex> lock(s.rawMutex);

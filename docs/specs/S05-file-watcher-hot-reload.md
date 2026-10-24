@@ -599,3 +599,6 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **Unity build**: S05's sources shifted the unity chunks, putting `jobs/Primitives.cpp` next to
   a file including `Engine.h`, whose `util/ThreadUtils.h` has a `jasperengine::Semaphore` too:
   the `jobs::Semaphore` definitions are qualified. The hot reload helpers have unity-safe names.
+- **Delete hold under polling** is the poll interval + 100 ms (R4's 200 ms with native events):
+  a scan between a save's delete and its rewrite would otherwise report a removal and an
+  addition (`FileWatcherTests.DeleteRecreate/Polling` under TSan's slowdown).

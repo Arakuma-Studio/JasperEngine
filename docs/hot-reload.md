@@ -54,7 +54,8 @@ once.
 - **Watcher**: *Auto* uses the system's file notifications (inotify, ReadDirectoryChangesW,
   FSEvents) and checks with a probe file at start that they arrive; where they do not (network
   drives, WSL `/mnt/c`, container mounts) it polls. *Native* never probes, *Polling* always polls.
-- **Polling Interval** (Polling only, 0.25-10 s, default 1 s).
+- **Polling Interval** (Polling only, 0.25-10 s, default 1 s). A file deleted while polling is
+  reported one interval later, so a save that deletes and writes the file again is one change.
 - **Log Reloads** (on): the Console lines above (failures are always shown).
 
 The status bar at the bottom shows the watcher: *Watching (inotify)*, *Polling 1 s* or

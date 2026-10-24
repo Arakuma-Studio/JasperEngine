@@ -31,6 +31,10 @@ void FileChangeCoalescer::setQuietWindow(std::chrono::milliseconds quiet) {
     settings.quiet = std::clamp(quiet, std::chrono::milliseconds(50), std::chrono::milliseconds(2000));
 }
 
+void FileChangeCoalescer::setDeleteHold(std::chrono::milliseconds hold) {
+    settings.deleteHold = std::max(hold, std::chrono::milliseconds(200));
+}
+
 size_t FileChangeCoalescer::pendingCount() const {
     return entries.size() + rescans.size();
 }

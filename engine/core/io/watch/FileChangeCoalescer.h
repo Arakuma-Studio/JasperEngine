@@ -65,6 +65,9 @@ namespace jasperengine {
         void clear();
 
         void setQuietWindow(std::chrono::milliseconds quiet);
+        // At least 200 ms. A polling watcher holds a removal for one poll more: the save that
+        // deletes and writes the file again is seen by two scans, an interval apart
+        void setDeleteHold(std::chrono::milliseconds hold);
         const Settings& getSettings() const { return settings; }
 
     private:
