@@ -3724,6 +3724,10 @@ editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
 
+editor::SystemsWindow* editor::App::getSystemsWindow() const{
+    return systemsWindow;
+}
+
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
     return hierarchyWindow;
 }

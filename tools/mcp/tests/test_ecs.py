@@ -3,9 +3,14 @@
 Runs against the TappyPlane fixture (a 2D Lua game). Tests run in order and share one editor.
 """
 
+from pathlib import Path
+
 from harness import Editor
 
 TIMEOUT = 900
+
+# screenshots of the Systems window kept as evidence (AC17)
+EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
 
@@ -153,5 +158,44 @@ async def test_system_schedule_and_options(ed: Editor):
         fresh = await ed.call("get_system_schedule", runtime=True)
         ed.check(system_entry(fresh, "Update", "ActionSystem")["enabled"], "re-enabled when Play started again")
         ed.check_eq(system_entry(fresh, "Update", "AudioSystem")["every_n_frames"], 1, "every_n_frames reset")
+    finally:
+        await ed.call("play", action="stop")
+
+
+async def test_systems_window(ed: Editor):
+    """AC17 scripted: Window > Analysis > Systems in Play, with the data it shows checked through the tools."""
+    ed.require_tools("focus_window", "screenshot", "get_system_schedule", "set_system_options", "get_ecs_stats", "play", "wait")
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    await ed.call("play", action="start")
+    try:
+        await ed.call("wait", seconds=1)
+        shown = await ed.call("focus_window", window="systems")
+        ed.check(shown["shown"], f"the Systems window is shown: {shown}")
+        shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window.png")})
+        ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
+
+        # the table: the seven systems with their timings
+        schedule = await ed.call("get_system_schedule", runtime=True)
+        for system in SYSTEMS:
+            timing = system_entry(schedule, "Update", system)["timing"]
+            ed.check(timing["calls"] > 0 and timing["avg_ms"] > 0, f"{system}: non-zero average: {timing}")
+        # the footer: component types registered, as list_component_types lists them
+        stats = await ed.call("get_ecs_stats", runtime=True)
+        listed = await ed.call("list_component_types")
+        ed.check_eq(stats["component_types"]["registered"], len(listed["components"]), "component types in the footer")
+
+        # unchecking AudioSystem: it stops (and pauses its sounds) until Play stops
+        await ed.call("set_system_options", name="AudioSystem", enabled=False)
+        calls = system_entry(await ed.call("get_system_schedule", runtime=True), "Update", "AudioSystem")["timing"]["calls"]
+        await ed.call("wait", seconds=0.5)
+        after = system_entry(await ed.call("get_system_schedule", runtime=True), "Update", "AudioSystem")
+        ed.check(not after["enabled"] and after["timing"]["calls"] == calls, f"AudioSystem disabled: {after}")
+        await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window-audio-off.png")})
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("play", action="start")
+    try:
+        fresh = await ed.call("get_system_schedule", runtime=True)
+        ed.check(system_entry(fresh, "Update", "AudioSystem")["enabled"], "AudioSystem enabled again after Play stopped")
     finally:
         await ed.call("play", action="stop")

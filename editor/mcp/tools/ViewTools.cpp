@@ -29,6 +29,7 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/SceneWindow.h"
+#include "window/SystemsWindow.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -1016,8 +1017,11 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "systems") {
+        ctx.systemsWindow()->setOpen(true);
+        imguiName = SystemsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, systems.");
         return;
     }
     (void)app;
@@ -1186,7 +1190,7 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "systems"})},
             {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;
