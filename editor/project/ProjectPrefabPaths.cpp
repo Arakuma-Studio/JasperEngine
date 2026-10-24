@@ -9,6 +9,7 @@
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/YamlNumbers.h"
 
@@ -123,7 +124,7 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
             continue;
         }
         if (std::any_of(sceneProject.prefabs.begin(), sceneProject.prefabs.end(), affected)) {
-            generator.clearSceneSource(sceneProject.name, getProjectInternalPath());
+            generator.clearSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
             invalidated = true;
         }
     }
@@ -457,10 +458,7 @@ void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
     YAML::Node encodedNode = encodePrefabNode(filepath);
     if (encodedNode && !encodedNode.IsNull()) {
         std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
-        std::ofstream fout(fullPrefabPath.string());
-        if (fout.is_open()) {  // Check if file opened successfully
-            fout << YAML::Dump(encodedNode);
-            fout.close();
+        if (FileUtils::writeFileReplacing(fullPrefabPath, YAML::Dump(encodedNode), FileUtils::LineEndings::KeepExisting)) {
             prefab->isModified = false;
             prefab->needsUpgrade = false;
             markReferencedSceneIdsPersisted(prefab->registry.get());

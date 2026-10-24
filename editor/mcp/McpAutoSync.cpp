@@ -8,6 +8,7 @@
 #include "tools/W4Shared.h"
 
 #include "Project.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
 
@@ -60,7 +61,7 @@ struct FileStat {
 bool statPath(const std::string& path, FileStat& out) {
 #ifdef _WIN32
     WIN32_FILE_ATTRIBUTE_DATA data;
-    if (!GetFileAttributesExW(fs::path(path).c_str(), GetFileExInfoStandard, &data)) return false;
+    if (!GetFileAttributesExW(FileUtils::pathFromUtf8(path).c_str(), GetFileExInfoStandard, &data)) return false;
     ULARGE_INTEGER time;
     time.LowPart = data.ftLastWriteTime.dwLowDateTime;
     time.HighPart = data.ftLastWriteTime.dwHighDateTime;
@@ -202,7 +203,8 @@ bool McpAutoSync::insideSkippedDir(const std::string& rel) const {
 
 std::string McpAutoSync::absolute(const std::string& rel) const {
 #ifdef _WIN32
-    return (rel.empty() ? root : root / fs::path(rel)).string();
+    // UTF-8 like the keys (the ANSI code page can't hold every file name)
+    return FileUtils::pathToUtf8(rel.empty() ? root : root / FileUtils::pathFromUtf8(rel));
 #else
     return rel.empty() ? root.string() : root.string() + "/" + rel;
 #endif
@@ -273,9 +275,9 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
     if (depth >= MAX_DEPTH) return;
 
     std::error_code ec;
-    fs::directory_iterator it(fs::path(absolute(rel)), fs::directory_options::skip_permission_denied, ec);
+    fs::directory_iterator it(FileUtils::pathFromUtf8(absolute(rel)), fs::directory_options::skip_permission_denied, ec);
     for (fs::directory_iterator end; !ec && it != end; it.increment(ec)) {
-        const std::string name = it->path().filename().string();
+        const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
         if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;   // no cycles
@@ -385,9 +387,9 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
 
     std::set<std::string> presentFiles, presentDirs;
     std::error_code ec;
-    fs::directory_iterator it(fs::path(absolute(rel)), fs::directory_options::skip_permission_denied, ec);
+    fs::directory_iterator it(FileUtils::pathFromUtf8(absolute(rel)), fs::directory_options::skip_permission_denied, ec);
     for (fs::directory_iterator end; !ec && it != end; it.increment(ec)) {
-        const std::string name = it->path().filename().string();
+        const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
         if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;
@@ -487,7 +489,7 @@ void McpAutoSync::restamp(const std::string& rel) {
         return;
     }
     if (st.isDir) {
-        if (isSkippedDirName(fs::path(rel).filename().string())) return;
+        if (isSkippedDirName(FileUtils::pathToUtf8(FileUtils::pathFromUtf8(rel).filename()))) return;
         walkDir(rel, nullptr, 1);
         return;
     }
@@ -541,7 +543,7 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
     std::vector<fs::path> paths;
     std::set<std::string> reportable;
     for (const Change& change : changes) {
-        paths.push_back((root / fs::path(change.rel)).lexically_normal());
+        paths.push_back((root / FileUtils::pathFromUtf8(change.rel)).lexically_normal());
         if (change.report) reportable.insert(change.rel);
     }
     Json result = w4::syncFiles(ctx, paths, false);
@@ -650,7 +652,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             // A syntax check runs nothing: safe during Play
             if (pending.kind != 'r' && Util::isLuaFile(rel)) {
                 std::string text;
-                if (ProjectChecks::readFile(root / fs::path(rel), text)) {
+                if (ProjectChecks::readFile(root / FileUtils::pathFromUtf8(rel), text)) {
                     const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(text, rel);
                     if (!syntax.ok) problems.push_back({{"path", rel}, {"line", syntax.line}, {"message", "Lua syntax error: " + syntax.message}});
                 }
@@ -769,10 +771,6 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     }
 }
 
-bool McpAutoSync::mayWriteFiles(bool readOnly, const Json& args) {
-    return !readOnly || (args.is_object() && args.contains("save_path"));
-}
-
 void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& paths, bool full) {
     bool rebased = false;
     if (!ensureRoot(ctx, &rebased) || rebased) return;
@@ -789,7 +787,7 @@ void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& path
     for (const fs::path& path : paths) {
         const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
         if (rel.empty() || rel.is_absolute()) continue;
-        const std::string key = rel.generic_string();
+        const std::string key = FileUtils::pathToGenericUtf8(rel);
         if (key == "." || key.rfind("..", 0) == 0) continue;
         restamp(key);
         pendingExternal.erase(key);

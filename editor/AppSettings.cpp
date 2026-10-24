@@ -7,7 +7,15 @@
 #include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
+#include <cerrno>
+#include <cmath>
 #include <cstdlib>
+
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 namespace jasperengine::editor {
 
@@ -70,11 +78,13 @@ float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
+float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+bool AppSettings::mcpHttpAllowChanges = true;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
 
@@ -104,7 +114,64 @@ bool AppSettings::initialize(bool preferUserDirectory) {
     }
 
     ensureConfigDirectory();
-    return loadSettings();
+    const bool loaded = loadSettings();
+    loadMcpHttpToken();
+    return loaded;
+}
+
+std::filesystem::path AppSettings::getMcpHttpTokenPath() {
+    return getConfigDirectory() / "mcp_http_token";
+}
+
+void AppSettings::loadMcpHttpToken() {
+    const std::filesystem::path path = getMcpHttpTokenPath();
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        std::ifstream in(path, std::ios::binary);
+        std::string token;
+        std::getline(in, token);
+        while (!token.empty() && (token.back() == '\r' || token.back() == ' ' || token.back() == '\t')) token.pop_back();
+        if (!token.empty()) mcpHttpToken = token;
+#ifndef _WIN32
+        // One others could read (made by hand, or copied): owner-only from now on
+        struct stat st;
+        if (::stat(path.c_str(), &st) == 0 && (st.st_mode & (S_IRWXG | S_IRWXO)) != 0) {
+            ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+        }
+#endif
+        return;
+    }
+    // Older settings kept it in settings.yaml (mcp.http_token): it moves to its own file
+    if (!mcpHttpToken.empty() && writeMcpHttpTokenFile(mcpHttpToken)) saveSettings();
+}
+
+bool AppSettings::writeMcpHttpTokenFile(const std::string& token) {
+    const std::filesystem::path path = getMcpHttpTokenPath();
+    const std::string content = token + "\n";
+#ifdef _WIN32
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out << content;
+    out.close();
+    const bool ok = static_cast<bool>(out);
+#else
+    // Owner-only: the token gives full control of the editor to whoever reads it. The mode
+    // is set before the token is written, also on a file that was readable before.
+    bool ok = false;
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, S_IRUSR | S_IWUSR);
+    if (fd >= 0) {
+        ok = ::fchmod(fd, S_IRUSR | S_IWUSR) == 0;
+        size_t written = 0;
+        while (ok && written < content.size()) {
+            const ssize_t n = ::write(fd, content.data() + written, content.size() - written);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) ok = false;
+            else written += static_cast<size_t>(n);
+        }
+        if (::close(fd) != 0) ok = false;
+    }
+#endif
+    if (!ok) Out::error("Failed to write the MCP HTTP token to %s", path.string().c_str());
+    return ok;
 }
 
 std::filesystem::path AppSettings::getConfigDirectory() {
@@ -234,6 +301,9 @@ bool AppSettings::loadSettings() {
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
             }
+            if (editorNode["ui_scale"]) {
+                setUiScale(editorNode["ui_scale"].as<float>());
+            }
             if (editorNode["panels"]) {
                 auto panelsNode = editorNode["panels"];
                 if (panelsNode["hierarchy"]) panelVisibility.hierarchy = panelsNode["hierarchy"].as<bool>();
@@ -261,6 +331,7 @@ bool AppSettings::loadSettings() {
             if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
+            if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
         }
 
         if (settingsData["html_ui"]) {
@@ -371,6 +442,7 @@ bool AppSettings::saveSettings() {
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
         editorNode["vsync"] = editorVSyncEnabled;
+        editorNode["ui_scale"] = uiScale;
         YAML::Node panelsNode;
         panelsNode["hierarchy"] = panelVisibility.hierarchy;
         panelsNode["inspector"] = panelVisibility.inspector;
@@ -394,7 +466,8 @@ bool AppSettings::saveSettings() {
         YAML::Node mcpNode;
         mcpNode["http_enabled"] = mcpHttpEnabled;
         mcpNode["http_port"] = mcpHttpPort;
-        if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        // The token lives in its own owner-only file (getMcpHttpTokenPath), not here
+        mcpNode["allow_changes"] = mcpHttpAllowChanges;
         settingsData["mcp"] = mcpNode;
 
         YAML::Node htmlUiNode;
@@ -642,6 +715,15 @@ void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
 }
 
+float AppSettings::getUiScale() {
+    return uiScale;
+}
+
+void AppSettings::setUiScale(float scale) {
+    // clamp lets NaN through
+    uiScale = std::isnan(scale) ? 1.0f : std::clamp(scale, 0.5f, 3.0f);
+}
+
 PanelVisibilitySettings AppSettings::getPanelVisibility() {
     return panelVisibility;
 }
@@ -675,6 +757,20 @@ std::string AppSettings::getMcpHttpToken() {
 void AppSettings::setMcpHttp(bool enabled, int port) {
     mcpHttpEnabled = enabled;
     mcpHttpPort = port;
+    saveSettings();
+}
+
+void AppSettings::setMcpHttpToken(const std::string& token) {
+    mcpHttpToken = token;
+    writeMcpHttpTokenFile(token);
+}
+
+bool AppSettings::getMcpHttpAllowChanges() {
+    return mcpHttpAllowChanges;
+}
+
+void AppSettings::setMcpHttpAllowChanges(bool allow) {
+    mcpHttpAllowChanges = allow;
     saveSettings();
 }
 

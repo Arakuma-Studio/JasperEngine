@@ -6,6 +6,8 @@
 
 #include "Engine.h"
 #include "action/Ease.h"
+#include "math/Vector3.h"
+#include "math/Quaternion.h"
 
 namespace jasperengine{
 
@@ -18,8 +20,18 @@ namespace jasperengine{
         // the eased factor feeds the cubic curve, so leave this empty for
         // spec-faithful playback.
         std::vector<EaseType> easings;
+        bool loop = false; // starts over after the last key
+        // Transform tracks only: values add to the target's pose when the track starts,
+        // position plus value, rotation times value and scale times value
+        bool relative = false;
         int index = 0;
         float interpolation = 0;
+
+        // Runtime (not serialized): the pose relative values add to, taken when the track starts
+        bool hasBase = false;
+        Vector3 basePosition;
+        Quaternion baseRotation;
+        Vector3 baseScale = Vector3(1, 1, 1);
 
         void setTimes(const std::vector<float>& values){
             times = values;

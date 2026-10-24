@@ -5,11 +5,14 @@
 
 #include "Scene.h"
 #include "Engine.h"
+#include "System.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
 #include "pool/ModelPool.h"
+#include "pool/TexturePool.h"
+#include "pool/TextureDataPool.h"
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 #include "subsystem/RenderSystem.h"
@@ -17,13 +20,17 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -141,6 +148,45 @@ std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     // loader does. This keeps the model/texture pools from treating the same
     // file as separate absolute and relative resources.
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
+}
+
+std::string MeshSystem::getImportedModelPath(const std::string& filename){
+    const std::string importPath = System::instance().getImportPath();
+    if (importPath.empty()){
+        return filename + ".glb";
+    }
+    // The editor's cache mirrors the assets directory
+    const std::filesystem::path source = std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal();
+    const std::filesystem::path assets = std::filesystem::path(System::instance().getAssetPath()).lexically_normal();
+    return (std::filesystem::path(importPath) / source.lexically_relative(assets)).generic_string() + ".glb";
+}
+
+static std::recursive_mutex& getPooledGLTFMutex(){
+    static std::recursive_mutex mutex;
+    return mutex;
+}
+
+// Name of a converted or baked copy of an accessor's data appended to a (pooled) glTF model:
+// the source data and the bake matrix, so a later load finds the copy instead of adding one
+static const char* const GLTF_SYNTH_PREFIX = "jasperengine_synth|";
+
+static std::string gltfSynthKey(const char* kind, const tinygltf::Accessor& accessor, const Matrix4* matrix = nullptr){
+    std::string key = std::string(GLTF_SYNTH_PREFIX) + kind + "|" + std::to_string(accessor.bufferView) + "," +
+        std::to_string(accessor.byteOffset) + "," + std::to_string(accessor.count) + "," +
+        std::to_string(accessor.componentType) + "," + std::to_string(accessor.type);
+    if (matrix) {
+        char hex[9];
+        for (int c = 0; c < 4; c++) {
+            for (int r = 0; r < 4; r++) {
+                uint32_t bits;
+                std::memcpy(&bits, &(*matrix)[c][r], sizeof(bits));
+                std::snprintf(hex, sizeof(hex), "%08x", bits);
+                key += (c == 0 && r == 0 ? "|" : ",");
+                key += hex;
+            }
+        }
+    }
+    return key;
 }
 
 // Key texture storage by image source and sampler, not glTF texture index: glTF files
@@ -900,6 +946,22 @@ bool MeshSystem::fileExists(const std::string &abs_filename, void *) {
     return df.open(abs_filename.c_str()) == FileErrors::FILEDATA_OK;
 }
 
+bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
+    std::string ext = FileData::getFilePathExtension(filename);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    if (ext == "fbx"){
+        std::vector<unsigned char> data;
+        if (!readWholeFile(&data, err, getImportedModelPath(filename), nullptr) || data.empty()){
+            return false;
+        }
+        return loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
+    }
+    if (ext == "glb"){
+        return loader.LoadBinaryFromFile(model, err, warn, filename);
+    }
+    return loader.LoadASCIIFromFile(model, err, warn, filename);
+}
+
 bool MeshSystem::readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *) {
     Data filedata;
 
@@ -1216,12 +1278,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
             loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
             loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
 
-            std::string ext = FileData::getFilePathExtension(filename);
-            if (ext.compare("glb") == 0) {
-                result->success = loader.LoadBinaryFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
-            }else{
-                result->success = loader.LoadASCIIFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
-            }
+            result->success = loadGLTFFile(loader, result->gltfModel.get(), &result->err, &result->warn, filename);
             if (result->success) {
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
 
@@ -1399,6 +1456,21 @@ bool MeshSystem::preloadModel(const std::string& filename, std::shared_ptr<void>
 
 void MeshSystem::cancelPreloadModel(const std::string& filename){
     cancelAsyncModelLoadByKey(getAsyncModelLoadKey(nullptr, filename));
+}
+
+void MeshSystem::invalidateModelFile(const std::string& filename){
+    const std::string poolKey = getModelFilenameKey(filename);
+    std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey);
+    if (model){
+        for (size_t i = 0; i < model->textures.size(); i++){
+            if (model->textures[i].source >= 0){
+                const std::string id = gltfTextureDedupKey(poolKey, *model, static_cast<int>(i));
+                TextureDataPool::invalidate(id);
+                TexturePool::invalidate(id);
+            }
+        }
+    }
+    ModelPool::invalidate(poolKey);
 }
 
 void MeshSystem::releasePreloadedModel(const std::string& filename){
@@ -1999,6 +2071,38 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+    auto reject = [reason](const char* message) {
+        if (reason) *reason = message;
+        return false;
+    };
+
+    if (!model.gltfModel || !isValidGLTFIndex(meshIndex, model.gltfModel->meshes)) {
+        return reject("The model contains an invalid mesh reference");
+    }
+
+    for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
+        if (!primitive.targets.empty()) {
+            return reject("Models with morph targets cannot be merged as static geometry");
+        }
+        for (const auto& attribute : primitive.attributes) {
+            if (attribute.first != "POSITION" && attribute.first != "NORMAL" && attribute.first != "TANGENT") {
+                continue;
+            }
+            if (!isValidGLTFIndex(attribute.second, model.gltfModel->accessors)) {
+                return reject("The model contains an invalid vertex attribute");
+            }
+            const tinygltf::Accessor& accessor = model.gltfModel->accessors[attribute.second];
+            const int expectedType = attribute.first == "TANGENT" ? TINYGLTF_TYPE_VEC4 : TINYGLTF_TYPE_VEC3;
+            if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != expectedType) {
+                return reject("A position, normal, or tangent attribute cannot be transformed safely");
+            }
+        }
+    }
+
+    return true;
+}
+
 bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh,
                                      std::string* reason) const {
     auto reject = [reason](const char* message) {
@@ -2018,30 +2122,10 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComp
         if (node.skin >= 0) {
             return reject("Skinned models cannot be merged as static geometry");
         }
-        if (!isValidGLTFIndex(node.mesh, model.gltfModel->meshes)) {
-            return reject("The model contains an invalid mesh reference");
+        if (!canBakeGLTFMesh(model, node.mesh, reason)) {
+            return false;
         }
-
-        const tinygltf::Mesh& gltfMesh = model.gltfModel->meshes[node.mesh];
-        primitiveCount += gltfMesh.primitives.size();
-        for (const tinygltf::Primitive& primitive : gltfMesh.primitives) {
-            if (!primitive.targets.empty()) {
-                return reject("Models with morph targets cannot be merged as static geometry");
-            }
-            for (const auto& attribute : primitive.attributes) {
-                if (attribute.first != "POSITION" && attribute.first != "NORMAL" && attribute.first != "TANGENT") {
-                    continue;
-                }
-                if (!isValidGLTFIndex(attribute.second, model.gltfModel->accessors)) {
-                    return reject("The model contains an invalid vertex attribute");
-                }
-                const tinygltf::Accessor& accessor = model.gltfModel->accessors[attribute.second];
-                const int expectedType = attribute.first == "TANGENT" ? TINYGLTF_TYPE_VEC4 : TINYGLTF_TYPE_VEC3;
-                if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != expectedType) {
-                    return reject("A position, normal, or tangent attribute cannot be transformed safely");
-                }
-            }
-        }
+        primitiveCount += model.gltfModel->meshes[node.mesh].primitives.size();
     }
     if (meshNodeCount < 2) {
         return reject("The model does not have multiple mesh nodes to merge");
@@ -2658,6 +2742,50 @@ size_t MeshSystem::getTerrainGridArraySize(int rootGridSize, int levels){
     return size;
 }
 
+float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
+    return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
+}
+
+float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
+    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
+        return 0.0f;
+    }
+
+    // a clamped coordinate blends the edge texel with itself, as the clamp-to-edge sampler does
+    texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
+    texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
+    const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
+    const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
+    const int upperX = std::min(lowerX + 1, width - 1);
+    const int upperY = std::min(lowerY + 1, height - 1);
+    const float blendX = texelX - static_cast<float>(lowerX);
+    const float blendY = texelY - static_cast<float>(lowerY);
+
+    auto texel = [&](int x, int y){
+        const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
+        const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
+        if (bytesPerChannel >= 2){
+            // 16-bit little-endian (native unsigned short) heightmap sample
+            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
+                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
+            return static_cast<float>(value) / 65535.0f;
+        }
+        return pixels[index] / 255.0f;
+    };
+
+    const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
+    const float upper = texel(lowerX, upperY) + (texel(upperX, upperY) - texel(lowerX, upperY)) * blendX;
+    return lower + (upper - lower) * blendY;
+}
+
+float MeshSystem::sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ){
+    if (terrainSize <= std::numeric_limits<float>::epsilon()){
+        return 0.0f;
+    }
+    return sampleTerrainHeightTexels(pixels, width, height, channels, bytesPerChannel,
+                                     terrainTexelCoord(localX, terrainSize, width), terrainTexelCoord(localZ, terrainSize, height));
+}
+
 bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint){
 
     const unsigned char* pixels = nullptr;
@@ -2694,36 +2822,7 @@ bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain
             return true;
         }
 
-        const float normalizedX = std::clamp((localX + halfSize) / terrain.terrainSize, 0.0f, 1.0f);
-        const float normalizedZ = std::clamp((localZ + halfSize) / terrain.terrainSize, 0.0f, 1.0f);
-        const float texelX = normalizedX * static_cast<float>(width - 1);
-        const float texelZ = normalizedZ * static_cast<float>(height - 1);
-        const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-        const int lowerZ = std::clamp(static_cast<int>(std::floor(texelZ)), 0, height - 1);
-        const int upperX = std::min(lowerX + 1, width - 1);
-        const int upperZ = std::min(lowerZ + 1, height - 1);
-        const float blendX = texelX - static_cast<float>(lowerX);
-        const float blendZ = texelZ - static_cast<float>(lowerZ);
-
-        auto samplePixel = [&](int sampleX, int sampleZ){
-            const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
-            const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-            if (bytesPerChannel >= 2){
-                // 16-bit little-endian (native unsigned short) heightmap sample
-                const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                           (static_cast<unsigned int>(pixels[index + 1]) << 8);
-                return static_cast<float>(value) / 65535.0f;
-            }
-            return pixels[index] / 255.0f;
-        };
-
-        const float height00 = samplePixel(lowerX, lowerZ);
-        const float height10 = samplePixel(upperX, lowerZ);
-        const float height01 = samplePixel(lowerX, upperZ);
-        const float height11 = samplePixel(upperX, upperZ);
-        const float lowerBlend = height00 + (height10 - height00) * blendX;
-        const float upperBlend = height01 + (height11 - height01) * blendX;
-        sampledHeight = (lowerBlend + (upperBlend - lowerBlend) * blendZ) * terrain.maxHeight;
+        sampledHeight = sampleTerrainHeight(pixels, width, height, channels, bytesPerChannel, terrain.terrainSize, localX, localZ) * terrain.maxHeight;
         return true;
     };
 
@@ -3199,13 +3298,46 @@ Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
     return NULL_ENTITY;
 }
 
+void MeshSystem::retryFailedModelLoads(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    for (auto it = failedModelLoads.begin(); it != failedModelLoads.end();){
+        it = getModelFilenameKey(*it) == key ? failedModelLoads.erase(it) : std::next(it);
+    }
+
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++){
+        ModelComponent& model = models->getComponentFromIndex(i);
+        const Entity entity = models->getEntity(i);
+        // Foliage chunks load through their terrain layer instead
+        if (model.gltfModel || model.objModel || model.filename.empty() || getModelFilenameKey(model.filename) != key ||
+                getFoliageOwner(entity) != NULL_ENTITY || isAsyncModelLoadPending(entity, model.filename)){
+            continue;
+        }
+        model.loadedFilename.clear();
+        model.needUpdateModel = true;
+    }
+}
+
+void MeshSystem::reloadFoliageMesh(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    for (auto& entry : terrainFoliage){
+        for (TerrainFoliageInstances& instances : entry.second){
+            // A path that no longer matches the layer makes the next update reload every chunk
+            if (!instances.loadedMeshPath.empty() && getModelFilenameKey(instances.loadedMeshPath) == key){
+                instances.loadedMeshPath.clear();
+                instances.needUpdate = true;
+            }
+        }
+    }
+}
+
 bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
     // changeRootTransform is off: the terrain places the field, not the file's root transform.
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root.
-    return loadGLTF(entity, path, false, true, false);
+    // Keep all geometry on the instanced root, with the file's node transforms baked in.
+    return loadGLTF(entity, path, false, true, false, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -3231,31 +3363,8 @@ void MeshSystem::sampleTerrainSurface(TerrainComponent& terrain, float localX, f
         return;
     }
 
-    const float halfSize = terrain.terrainSize * 0.5f;
-
     auto sampleHeight = [&](float x, float z){
-        const float texelX = std::clamp((x + halfSize) / terrain.terrainSize, 0.0f, 1.0f) * (width - 1);
-        const float texelZ = std::clamp((z + halfSize) / terrain.terrainSize, 0.0f, 1.0f) * (mapHeight - 1);
-        const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-        const int lowerZ = std::clamp(static_cast<int>(std::floor(texelZ)), 0, mapHeight - 1);
-        const int upperX = std::min(lowerX + 1, width - 1);
-        const int upperZ = std::min(lowerZ + 1, mapHeight - 1);
-        const float blendX = texelX - lowerX;
-        const float blendZ = texelZ - lowerZ;
-
-        auto texel = [&](int sampleX, int sampleZ){
-            const size_t index = (static_cast<size_t>(sampleZ) * width + sampleX) * channels * bytesPerChannel;
-            if (bytesPerChannel >= 2){
-                const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                           (static_cast<unsigned int>(pixels[index + 1]) << 8);
-                return terrain.maxHeight * value / 65535.0f;
-            }
-            return terrain.maxHeight * pixels[index] / 255.0f;
-        };
-
-        const float lower = texel(lowerX, lowerZ) + (texel(upperX, lowerZ) - texel(lowerX, lowerZ)) * blendX;
-        const float upper = texel(lowerX, upperZ) + (texel(upperX, upperZ) - texel(lowerX, upperZ)) * blendX;
-        return lower + (upper - lower) * blendZ;
+        return terrain.maxHeight * sampleTerrainHeight(pixels, width, mapHeight, channels, bytesPerChannel, terrain.terrainSize, x, z);
     };
 
     const float delta = terrain.terrainSize / static_cast<float>(width);
@@ -3670,6 +3779,60 @@ void MeshSystem::createPlane(MeshComponent& mesh, float width, float depth, unsi
     mesh.indices.setValues(
         0, mesh.indices.getAttribute(AttributeType::INDEX),
         6, (char*)&indices_array[0], sizeof(uint16_t));
+
+    calculateMeshAABB(mesh);
+
+    if (mesh.loaded)
+        mesh.needReload = true;
+}
+
+// createPlane's quad (horizontal, +Y normal, uv along X and Z) as a grid of segments x
+// segments quads with the same winding, uv and bounds
+void MeshSystem::createGrid(MeshComponent& mesh, float width, float depth, unsigned int segments, unsigned int tiles){
+    // 16-bit indices: at most 256 x 256 vertices
+    segments = std::clamp(segments, 1u, 255u);
+
+    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+    mesh.numSubmeshes = 1;
+
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+
+    const unsigned int row = segments + 1;
+    for (unsigned int iz = 0; iz <= segments; iz++){
+        const float tz = (float)iz / segments;
+        for (unsigned int ix = 0; ix <= segments; ix++){
+            const float tx = (float)ix / segments;
+            mesh.buffer.addVector3(attVertex, Vector3((tx - 0.5f) * width, 0.0f, (tz - 0.5f) * depth));
+            mesh.buffer.addVector2(attTexcoord, Vector2(tx * tiles, tz * tiles));
+            mesh.buffer.addVector3(attNormal, Vector3(0.0f, 1.0f, 0.0f));
+        }
+    }
+
+    // each quad as createPlane's: (x0, z0) (x0, z1) (x1, z1), then (x0, z0) (x1, z1) (x1, z0)
+    std::vector<uint16_t> indices;
+    indices.reserve(segments * segments * 6);
+    for (unsigned int iz = 0; iz < segments; iz++){
+        for (unsigned int ix = 0; ix < segments; ix++){
+            const uint16_t a = (uint16_t)(iz * row + ix);
+            const uint16_t b = (uint16_t)((iz + 1) * row + ix);
+            const uint16_t c = (uint16_t)((iz + 1) * row + ix + 1);
+            const uint16_t d = (uint16_t)(iz * row + ix + 1);
+            indices.insert(indices.end(), {a, b, c, a, c, d});
+        }
+    }
+
+    mesh.indices.clear();
+
+    mesh.indices.setValues(
+        0, mesh.indices.getAttribute(AttributeType::INDEX),
+        indices.size(), (char*)&indices[0], sizeof(uint16_t));
 
     calculateMeshAABB(mesh);
 
@@ -4281,7 +4444,7 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
         mesh.needReload = true;
 }
 
-bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform){
+bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -4357,8 +4520,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
         res = true;
     }else{
-        // Try cache before hitting disk.
-        auto cached = ModelPool::getGLTF(poolKey);
+        // Try cache before hitting disk. A preview load (a thumbnail, its images decoded
+        // downscaled) parses its own copy: it neither takes nor publishes the pooled model.
+        const bool sharePool = (g_imageDecodeMaxDimension == 0);
+        auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
             res = true;
@@ -4369,13 +4534,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
             loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
 
-            std::string ext = FileData::getFilePathExtension(filename);
-
-            if (ext.compare("glb") == 0) {
-                res = loader.LoadBinaryFromFile(model.gltfModel.get(), &err, &warn, filename); // for binary glTF(.glb)
-            }else{
-                res = loader.LoadASCIIFromFile(model.gltfModel.get(), &err, &warn, filename);
-            }
+            res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
 
             if (!warn.empty()) {
                 Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
@@ -4396,10 +4555,18 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             // Only cache full-resolution parses. A downscaled preview decode must not be reused
             // as the full-resolution model in the user's scene.
-            if (maxImageDim == 0) {
+            if (maxImageDim == 0 && sharePool) {
                 ModelPool::addGLTF(poolKey, model.gltfModel);
             }
         }
+    }
+
+    // Every entity of the file shares the pooled model, and a load appends synthetic buffers to
+    // it (once per key): loads of a pooled model take turns, a game's loading thread with the
+    // main thread included
+    std::unique_lock<std::recursive_mutex> pooledModelLock;
+    if (ModelPool::getGLTF(poolKey) == model.gltfModel) {
+        pooledModelLock = std::unique_lock<std::recursive_mutex>(getPooledGLTFMutex());
     }
 
     // Build parent map and collect all nodes that own a mesh primitive.
@@ -4485,6 +4652,28 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
+    // The transforms between the scene root and a lone mesh node, which the entity transform
+    // (the scene root's, also when a scene load keeps the saved one) misses: baked into the
+    // vertices like a merged model's nodes. An entity placed by something else (a foliage
+    // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
+    Matrix4 meshOffset;
+    if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+        if (bakeSceneRoot) {
+            meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
+        } else {
+            int node = meshNodes[0];
+            while (node >= 0 && node != transformNode) {
+                meshOffset = getGLTFNodeMatrix(node, model) * meshOffset;
+                node = nodesParent[node];
+            }
+            if (node < 0) {
+                meshOffset = matrix.inverse() * meshOffset; // the mesh is under another scene root
+            }
+        }
+    }
+    const bool bakeMeshOffset = (meshOffset != Matrix4());
+
     // Child hierarchies carry glTF transforms themselves. The legacy multi-node skin path keeps
     // skinned children at identity, so it still needs the scene-root transform on the model.
     if (changeRootTransform && (!useChildEntities || (anyNodeSkinned && !useNodeHierarchy)) &&
@@ -4505,7 +4694,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // cullingMode is the user's (a glTF has none to give): a load keeps it
-    mesh.windingOrder = (matrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+    // from what places the vertices: the scene root (on the entity) and the baked offset; an
+    // entity the root does not place has only the offset (none when the mesh cannot be baked)
+    const Matrix4 placedMatrix = (bakeSceneRoot && !bakingFlatten) ? meshOffset : matrix * meshOffset;
+    mesh.windingOrder = (placedMatrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 0.4f); // Transform processing done
@@ -4547,7 +4739,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // One synthetic view per primitive for byte-index expansion, one for a VEC3 COLOR_0, up to
             // three more (position, normal, tangent) when baking node transforms, and up to eight sparse
             // morph attributes. Reserve so appends never invalidate non-owning external-buffer pointers.
-            const size_t synthPerSubmesh = (bakingFlatten ? 5 : 2) + MAX_MORPHTARGETS;
+            const size_t synthPerSubmesh = ((bakingFlatten || bakeMeshOffset) ? 5 : 2) + MAX_MORPHTARGETS;
             model.gltfModel->buffers.reserve(model.gltfModel->buffers.size() + mesh.numSubmeshes * synthPerSubmesh);
             model.gltfModel->bufferViews.reserve(model.gltfModel->bufferViews.size() + mesh.numSubmeshes * synthPerSubmesh);
         }
@@ -4558,6 +4750,29 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     if (skipEntities && useChildEntities && model.nodesIdMapping.empty()) {
         remapMeshNodesByName(model, meshNodes);
     }
+
+    // Converted and baked copies are appended to the model, which ModelPool shares between every
+    // entity of the file: one made by an earlier load is found by its key and reused, so loads
+    // and instances do not each add their own.
+    std::unordered_map<std::string, int> synthViews;
+    for (size_t v = 0; v < model.gltfModel->bufferViews.size(); v++) {
+        const std::string& name = model.gltfModel->bufferViews[v].name;
+        if (name.rfind(GLTF_SYNTH_PREFIX, 0) == 0) {
+            synthViews.emplace(name, static_cast<int>(v));
+        }
+    }
+    auto synthView = [&](const std::string& key, const std::function<int()>& make) {
+        auto found = synthViews.find(key);
+        if (found != synthViews.end()) {
+            return found->second;
+        }
+        const int view = make();
+        if (isValidGLTFIndex(view, model.gltfModel->bufferViews)) {
+            model.gltfModel->bufferViews[view].name = key;
+            synthViews.emplace(key, view);
+        }
+        return view;
+    };
 
     // Creating node meshes may reallocate the MeshComponent array. Do it only after the root mesh
     // setup above; the child path does not dereference that root reference again.
@@ -4592,6 +4807,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             } else {
                 nodeBakeMatrix = getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent);
             }
+            nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
+        } else if (bakeMeshOffset) {
+            nodeBakeMatrix = meshOffset;
             nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
         }
 
@@ -4750,7 +4968,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 indexType = AttributeDataType::UNSIGNED_INT;
             } else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
                 // No 8-bit index format in the renderer: expand to 16-bit via a synthetic buffer view.
-                indexBufferView = convertGLTFByteIndicesToShort(indexAccessor, model);
+                indexBufferView = synthView(gltfSynthKey("byteindex", indexAccessor), [&]() {
+                    return convertGLTFByteIndicesToShort(indexAccessor, model);
+                });
                 if (!isValidGLTFIndex(indexBufferView, model.gltfModel->bufferViews)) {
                     Log::error("Failed to convert 8-bit indices for primitive %u: %s", i, filename.c_str());
                     continue;
@@ -4847,25 +5067,29 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     continue;
                 }
 
-                // Baked flatten: redirect position, normal, and tangent attributes to synthetic
-                // buffers with the node's world transform baked in, so the flat mesh is laid out.
+                // Baked flatten (or a lone mesh node's offset from the scene root): redirect position,
+                // normal, and tangent attributes to synthetic buffers with the node transform baked in.
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
                 if (bakingFlatten && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
-                if (bakingFlatten && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
-                    int baked = bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix,
-                                                             attrib.first == "NORMAL", model);
+                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                    const bool isNormal = attrib.first == "NORMAL";
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    });
                     if (baked >= 0) {
                         attrBufferView = baked;
                         attrByteOffset = 0;
                         byteStride = static_cast<int>(3 * sizeof(float));
                     }
                 }
-                if (bakingFlatten && attrib.first == "TANGENT") {
-                    int baked = bakeGLTFTransformedTangent(accessor, nodeBakeMatrix.linear(), model);
+                if ((bakingFlatten || bakeMeshOffset) && attrib.first == "TANGENT") {
+                    int baked = synthView(gltfSynthKey("tangent", accessor, &nodeBakeMatrix), [&]() {
+                        return bakeGLTFTransformedTangent(accessor, nodeBakeMatrix.linear(), model);
+                    });
                     if (baked >= 0) {
                         attrBufferView = baked;
                         attrByteOffset = 0;
@@ -4875,7 +5099,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 // glTF also allows VEC3 colors; only the normalized integer ones need a copy
                 bool colorConvertedToVec4 = false;
                 if (attrib.first == "COLOR_0" && accessor.type == TINYGLTF_TYPE_VEC3) {
-                    int converted = convertGLTFColorToVec4(accessor, model);
+                    int converted = synthView(gltfSynthKey("color4", accessor), [&]() {
+                        return convertGLTFColorToVec4(accessor, model);
+                    });
                     if (converted >= 0) {
                         attrBufferView = converted;
                         attrByteOffset = 0;

@@ -465,6 +465,7 @@ namespace {
     static const FastPropertyDescriptor kTweenProperties[] = {
         makeFastProperty<TweenComponent, float, &TweenComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<TweenComponent, bool, &TweenComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TweenComponent, bool, &TweenComponent::pingPong>("pingPong", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<TweenComponent, Ease, &TweenComponent::function>("function", PropertyType::Ease, UpdateFlags_None),
     };
 
@@ -477,6 +478,9 @@ namespace {
         makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::endRotation>("endRotation", PropertyType::Quat, UpdateFlags_None),
         makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::startRotation>("startRotation", PropertyType::Quat, UpdateFlags_None),
         makeFastProperty<RotationTweenComponent, bool, &RotationTweenComponent::shortestPath>("shortestPath", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, bool, &RotationTweenComponent::spin>("spin", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, Vector3, &RotationTweenComponent::axis>("axis", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, float, &RotationTweenComponent::angle>("angle", PropertyType::Float, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kScaleTweenProperties[] = {
@@ -512,6 +516,8 @@ namespace {
     static const FastPropertyDescriptor kKeyframeTracksProperties[] = {
         makeFastPropertyNoDefault<KeyframeTracksComponent, int, &KeyframeTracksComponent::index>("index", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<KeyframeTracksComponent, float, &KeyframeTracksComponent::interpolation>("interpolation", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<KeyframeTracksComponent, bool, &KeyframeTracksComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<KeyframeTracksComponent, bool, &KeyframeTracksComponent::relative>("relative", PropertyType::Bool, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kSpriteAnimationProperties[] = {
@@ -1153,6 +1159,16 @@ namespace {
         }
         if (propertyName == "restitution") {
             return {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.restitution, (void*)&comp->restitution};
+        }
+        // read by each fixed step (Water::applyBuoyancy): the body stays as it is
+        if (propertyName == "buoyancy") {
+            return {PropertyType::Float, UpdateFlags_None, (void*)&defaultRigidbody.buoyancy, (void*)&comp->buoyancy};
+        }
+        if (propertyName == "waterDrag") {
+            return {PropertyType::Float, UpdateFlags_None, (void*)&defaultRigidbody.waterDrag, (void*)&comp->waterDrag};
+        }
+        if (propertyName == "waterAngularDrag") {
+            return {PropertyType::Float, UpdateFlags_None, (void*)&defaultRigidbody.waterAngularDrag, (void*)&comp->waterAngularDrag};
         }
         if (propertyName == "numColliders") {
             return {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&defaultRigidbody.numColliders, (void*)&comp->numColliders};
@@ -2687,6 +2703,9 @@ namespace {
         ps["gravityFactor"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.gravityFactor, compRef ? (void*)&comp->gravityFactor : nullptr};
         ps["friction"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.friction, compRef ? (void*)&comp->friction : nullptr};
         ps["restitution"] = {PropertyType::Float, UpdateFlags_Rigidbody, (void*)&def.restitution, compRef ? (void*)&comp->restitution : nullptr};
+        ps["buoyancy"] = {PropertyType::Float, UpdateFlags_None, (void*)&def.buoyancy, compRef ? (void*)&comp->buoyancy : nullptr};
+        ps["waterDrag"] = {PropertyType::Float, UpdateFlags_None, (void*)&def.waterDrag, compRef ? (void*)&comp->waterDrag : nullptr};
+        ps["waterAngularDrag"] = {PropertyType::Float, UpdateFlags_None, (void*)&def.waterAngularDrag, compRef ? (void*)&comp->waterAngularDrag : nullptr};
         ps["numColliders"] = {PropertyType::UInt, UpdateFlags_Rigidbody, (void*)&def.numColliders, compRef ? (void*)&comp->numColliders : nullptr};
         ps["overrideMassProperties"] = {PropertyType::Bool, UpdateFlags_Rigidbody, (void*)&def.overrideMassProperties, compRef ? (void*)&comp->overrideMassProperties : nullptr};
         ps["solidBoxSize"] = {PropertyType::Vector3, UpdateFlags_Rigidbody, (void*)&def.solidBoxSize, compRef ? (void*)&comp->solidBoxSize : nullptr};

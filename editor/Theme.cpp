@@ -10,6 +10,8 @@ namespace {
 ImGuiStyle g_baseStyle;
 bool g_hasBaseStyle = false;
 float g_appliedDpiScale = 0.0f;
+// Editor Settings > UI Scale, on top of the monitor DPI
+float g_uiScale = 1.0f;
 bool g_playModeTint = false;
 
 // Unity dark skin swatch, 0xRRGGBB.
@@ -281,12 +283,24 @@ void jasperengine::editor::Theme::applyDpiScale(float dpiScale) {
     ImGuiStyle& style = ImGui::GetStyle();
     const float fontScaleDpi = style.FontScaleDpi;
     style = g_baseStyle;
-    style.ScaleAllSizes(dpiScale);
+    style.ScaleAllSizes(dpiScale * g_uiScale);
+    // Fonts are rebuilt at the new size from here (dynamic font atlas)
+    style.FontScaleMain = g_uiScale;
     applyPlayModeTint(style);
     // ConfigDpiScaleFonts overwrites FontScaleDpi per window; keep the current
     // value so this reset does not briefly unscale fonts.
     style.FontScaleDpi = fontScaleDpi;
     g_appliedDpiScale = dpiScale;
+}
+
+void jasperengine::editor::Theme::setUiScale(float uiScale) {
+    g_uiScale = uiScale;
+    // applyDpiScale() rescales the style on its next call
+    g_appliedDpiScale = 0.0f;
+}
+
+float jasperengine::editor::Theme::uiScale() {
+    return g_uiScale;
 }
 
 void jasperengine::editor::Theme::setPlayModeTint(bool active) {
@@ -317,9 +331,9 @@ bool jasperengine::editor::Theme::foldoutHeader(const char* label, int flags) {
 float jasperengine::editor::Theme::dpiScale() {
     ImGuiContext* ctx = ImGui::GetCurrentContext();
     if (ctx && ctx->CurrentWindow && ctx->CurrentWindow->Viewport && ctx->CurrentWindow->Viewport->DpiScale > 0.0f) {
-        return ctx->CurrentWindow->Viewport->DpiScale;
+        return ctx->CurrentWindow->Viewport->DpiScale * g_uiScale;
     }
-    return (g_appliedDpiScale > 0.0f) ? g_appliedDpiScale : 1.0f;
+    return ((g_appliedDpiScale > 0.0f) ? g_appliedDpiScale : 1.0f) * g_uiScale;
 }
 
 float jasperengine::editor::Theme::dpi(float value) {

@@ -2078,6 +2078,10 @@ bool editor::SceneRender::isTerrainEditing() const{
     return false;
 }
 
+bool editor::SceneRender::hasHoverFeedback() const{
+    return gizmoTools().isGizmoVisible() || isTerrainEditing();
+}
+
 float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSnap) const{
     bool snapRotation = displaySettings.snapRotation;
     if (invertRotationSnap){
@@ -2696,18 +2700,36 @@ void editor::SceneRender::clearTrackPointSelection(){
 Matrix4 editor::SceneRender::getTrackPointsWorldMatrix(Entity entity){
     // values[] drive the action target's Transform::position, which is local to
     // the target's parent: that parent's model matrix maps them to world space
-    if (ActionComponent* action = scene->findComponent<ActionComponent>(entity)){
-        if (action->target != NULL_ENTITY && scene->isEntityCreated(action->target)){
-            if (Transform* targetTransform = scene->findComponent<Transform>(action->target)){
-                if (targetTransform->parent != NULL_ENTITY){
-                    if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
-                        return parentTransform->modelMatrix;
-                    }
-                }
-            }
+    ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+    if (!action || action->target == NULL_ENTITY || !scene->isEntityCreated(action->target)){
+        return Matrix4();
+    }
+    Transform* targetTransform = scene->findComponent<Transform>(action->target);
+    if (!targetTransform){
+        return Matrix4();
+    }
+
+    Matrix4 matrix;
+    if (targetTransform->parent != NULL_ENTITY){
+        if (Transform* parentTransform = scene->findComponent<Transform>(targetTransform->parent)){
+            matrix = parentTransform->modelMatrix;
         }
     }
-    return Matrix4();
+
+    // relative values are offsets from where the track started, or from the target before it starts
+    KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
+    if (keyframe && keyframe->relative){
+        ActionSystem* actions = scene->getSystem<ActionSystem>().get();
+        Vector3 base = keyframe->basePosition;
+        if (!keyframe->hasBase){
+            Vector3 scale;
+            Quaternion rotation;
+            actions->getRelativeTrackPose(action->target, base, rotation, scale);
+        }
+        matrix = matrix * actions->getRelativeTrackMatrix(action->target, base);
+    }
+
+    return matrix;
 }
 
 bool editor::SceneRender::getTrackPointWorld(Entity entity, int pointIndex, Vector3& worldPoint){

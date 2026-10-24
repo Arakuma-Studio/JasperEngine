@@ -31,6 +31,16 @@ std::string clockTime(std::chrono::system_clock::time_point time) {
     return buffer;
 }
 
+std::string httpUrl(int port) {
+    return "http://127.0.0.1:" + std::to_string(port) + "/mcp";
+}
+
+// Claude Code's command; other clients take the URL and the same header
+std::string connectCommand(int port, const std::string& token) {
+    return "claude mcp add --transport http jasper " + httpUrl(port) +
+           " --header \"Authorization: Bearer " + token + "\"";
+}
+
 std::string clientLabel(const McpSession& session) {
     std::string label = session.clientName.empty() ? "(not initialized)" : session.clientName;
     if (!session.clientVersion.empty()) label += " " + session.clientVersion;
@@ -89,14 +99,20 @@ void McpActivityWindow::drawStatus() {
     }
 
     // HTTP
+    const std::string token = server.httpToken();
     if (status.httpRunning) {
-        ImGui::Text("HTTP: http://127.0.0.1:%d/mcp", status.httpPort);
+        ImGui::Text("HTTP: %s", httpUrl(status.httpPort).c_str());
         ImGui::SameLine();
         if (ImGui::SmallButton("Copy URL")) {
-            ImGui::SetClipboardText(("http://127.0.0.1:" + std::to_string(status.httpPort) + "/mcp").c_str());
+            ImGui::SetClipboardText(httpUrl(status.httpPort).c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy connect command")) {
+            ImGui::SetClipboardText(connectCommand(status.httpPort, token).c_str());
         }
         if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Claude Code: claude mcp add --transport http jasperengine http://127.0.0.1:%d/mcp", status.httpPort);
+            ImGui::SetTooltip("Claude Code:\n  %s\nOther clients: the URL, with the header \"Authorization: Bearer <token>\".",
+                              connectCommand(status.httpPort, showToken ? token : "<token>").c_str());
         }
     } else {
         ImGui::TextColored(Theme::Colors::SubtleText, "HTTP: stopped");
@@ -120,6 +136,44 @@ void McpActivityWindow::drawStatus() {
         server.setHttpEnabled(httpEnabled, httpPort);
     }
     ImGui::EndDisabled();
+
+    // Every HTTP request needs the token (stdio clients launched the editor and need none)
+    if (token.empty()) {
+        ImGui::TextColored(Theme::Colors::SubtleText, "Token: made when HTTP is first enabled");
+    } else {
+        const std::string shown = showToken ? token : token.substr(0, 4) + std::string(12, '*');
+        ImGui::Text("Token: %s", shown.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton(showToken ? "Hide" : "Show")) showToken = !showToken;
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Copy token")) ImGui::SetClipboardText(token.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("New token")) ImGui::OpenPopup("##McpNewToken");
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Replaces the token: HTTP clients stop working until they get the new one.");
+        if (ImGui::BeginPopup("##McpNewToken")) {
+            ImGui::TextUnformatted("Make a new token? HTTP clients need the new one to keep working.");
+            if (ImGui::Button("New token")) {
+                server.newHttpToken();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+
+    bool allowChanges = status.httpAllowChanges;
+    if (ImGui::Checkbox("Allow changes", &allowChanges)) {
+        server.setHttpAllowChanges(allowChanges);
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Off: HTTP clients only see and run the read-only tools (inspect, screenshots, checks), and\n"
+                          "batch is not available. Clients may need to list the tools again. stdio clients keep every tool.");
+    }
+    if (!status.httpAllowChanges) {
+        ImGui::SameLine();
+        ImGui::TextColored(Theme::Colors::WarningText, "HTTP clients are read-only");
+    }
 
     int httpSessions = 0;
     for (const McpSession& session : status.sessions) {

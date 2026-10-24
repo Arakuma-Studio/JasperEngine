@@ -69,7 +69,50 @@ default arguments): a missing `wake` reads as false.
   (`object.position = ...`, `setPosition`): the body is synced from the transform before the
   step and written back after it, so the write is silently discarded. Teleport through the body.
   GameObjects without a body have no such restriction.
+- A transform moved outside the fixed step (`onUpdate`, an animation, a Tween, the editor)
+  moves its body at the next step by as much as it was moved, position and rotation each on
+  its own: setting only the rotation leaves the body's motion alone. A dynamic or static body
+  jumps; a **kinematic** body is moved with a velocity spread over the fixed steps of the
+  frame, so it pushes and carries the bodies it touches (a platform carries what stands on
+  it), and a part not animated keeps the velocity a script gave it. A kinematic body that a
+  fixed step would move further than its own size, or turn more than a quarter turn, is
+  teleported instead (a respawn, a reset); one without colliders (a joint anchor) is always
+  moved with a velocity. Setting the body's position, rotation, velocity or type from a
+  script takes that part over from the transform.
 - Never describe transform-only movement as physics.
+
+## Interpolation
+
+Bodies are drawn interpolated between their last two fixed steps (scene setting
+`physics_interpolation`, Inspector > Scene > Physics > Interpolate, Lua
+`scene.physicsInterpolation`; on by default), so they move smoothly whatever the frame rate,
+drawn up to one step behind the simulation. A camera or anything else that follows a body
+reads the GameObject's world position (`object:getWorldPosition()`, C++ `getWorldPosition()`), not
+`body.position`, which moves once per step. Teleports through the body (`body.position`,
+`setPosition`) are not interpolated, and a body whose transform a script or animation moved
+keeps that pose until the next step.
+
+## Floating in water
+
+A dynamic Rigidbody floats in a water surface (a mesh drawn with `library:water`; the
+GameObject menu's 3D Object > Water, `create_entity type=water`) when its `buoyancy` is above 0:
+before each fixed step, with its centre of mass over the mesh's world bounds (XZ) and not
+deeper than the water's floating depth, it gets Jolt's buoyancy impulse at the surface over
+the centre of mass, waves included (the same waves the shader draws, on its clock).
+
+| Rigidbody field | Default | |
+|---|---|---|
+| `buoyancy` | 0 | 1 neutral, more floats, less sinks, 0 ignores water; around 1.5 floats with a third out |
+| `waterDrag` | 0.5 | Jolt's linear drag in the water |
+| `waterAngularDrag` | 0.01 | Jolt's angular drag (about 0.01 times the body's size) |
+
+The water material decides per water: `buoyancy` (on by default; off floats nothing) and
+`buoyancyDepth` (world units below the surface a body still floats; 0 = no bottom). Where waters
+overlap the one whose bottom is highest wins (a pool with a depth inside a lake without). The
+submerged volume comes from the colliders (a body with a mesh or heightfield collider does not
+float: Jolt has no volume for them; use convex shapes), the mass from their density. The water itself has no collider: what does not float falls through
+it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNormal` /
+`Water.isUnderwater(scene, point)` (Lua API 2.10.1).
 
 ## Layers, contacts and queries
 

@@ -186,6 +186,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"torus", EntityCreationType::TORUS, "Torus"},
         {"model", EntityCreationType::MODEL, "Model"},
         {"terrain", EntityCreationType::TERRAIN, "Terrain"},
+        {"water", EntityCreationType::WATER, "Water"},
         {"camera", EntityCreationType::CAMERA, "Camera"},
         {"directional_light", EntityCreationType::DIRECTIONAL_LIGHT, "Directional Light"},
         {"point_light", EntityCreationType::POINT_LIGHT, "Point Light"},
@@ -533,7 +534,7 @@ void createEntityTool(const CallPtr& call) {
             return;
         }
         if (!Util::isModelFile(absolute.string())) {
-            call->fail("model must be a .gltf, .glb or .obj file.");
+            call->fail("model must be a .gltf, .glb, .obj or .fbx file.");
             return;
         }
         if (!McpValues::assetPathFromJson(project, model, modelStored, error)) {
@@ -1126,7 +1127,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"position", vec3("")},
             {"rotation", quat()},
             {"scale", vec3("")},
-            {"model", assetPath("type model: .gltf/.glb/.obj.")},
+            {"model", assetPath("type model: .gltf/.glb/.obj/.fbx.")},
             {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},

@@ -52,7 +52,14 @@ namespace jasperengine{
         static std::string getShaderKeyText(ShaderKey key);
         static bool parseShaderKeyText(const std::string& text, ShaderKey& key);
 
+        // A build without the runtime compiler (or with it off) that lacks a variant draws
+        // with the nearest one it ships (a warning names both); none: reported missing
         static std::shared_ptr<ShaderRender> get(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
+        // The variants a missing one falls back to, nearest first: its optional features (SSAO,
+        // fog, 2D shadows, shadows, mirror, IBL, normal map, tangents, UV sets; depth: alpha
+        // mask, texture; G-buffer: metallic-roughness, base colour texture) given up, the
+        // fewest first. Never a bit that changes a uniform block the draw uploads by its key.
+        static std::vector<uint64_t> getFallbackProperties(ShaderType shaderType, uint64_t properties);
         static void remove(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
 
         // True when the last get() attempt failed, either building the source or creating

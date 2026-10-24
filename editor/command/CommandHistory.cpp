@@ -31,6 +31,20 @@ public:
         for (auto it = commands.rbegin(); it != commands.rend(); ++it) (*it)->undo();
     }
 
+    bool canUndo() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            if (!cmd->canUndo()) return false;
+        }
+        return true;
+    }
+
+    bool canRedo() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            if (!cmd->canRedo()) return false;
+        }
+        return true;
+    }
+
     bool affectsStructure() const override {
         for (const jasperengine::editor::Command* cmd : commands) {
             if (cmd->affectsStructure()) return true;
@@ -85,8 +99,29 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
     addCommand(cmd);
 }
 
-void editor::CommandHistory::undo(){
-    if (index > undoFloor()){
+bool editor::CommandHistory::insertCommand(Command* cmd){
+    if (!cmd->execute()){
+        delete cmd;
+        return false;
+    }
+    cmd->setNoMerge();
+
+    // The scene Stop restores was captured with this step applied, so it is an edit-time step
+    const size_t position = inPlaySession ? playFloor : index;
+    list.insert(list.begin() + position, cmd);
+    if (inPlaySession){
+        playFloor++;
+    }
+    index++;
+
+    if (onSceneModified){
+        onSceneModified(sceneId, cmd->affectsStructure());
+    }
+    return true;
+}
+
+bool editor::CommandHistory::undo(){
+    if (index > undoFloor() && list[index-1]->canUndo()){
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
         index--;
@@ -98,11 +133,13 @@ void editor::CommandHistory::undo(){
         #ifdef _DEBUG
         printf("DEBUG: undo (%zu from %zu)\n", index, list.size());
         #endif
+        return true;
     }
+    return false;
 }
 
-void editor::CommandHistory::redo(){
-    if (index < list.size()){
+bool editor::CommandHistory::redo(){
+    if (index < list.size() && list[index]->canRedo()){
         index++;
         list[index-1]->execute();
 
@@ -113,7 +150,9 @@ void editor::CommandHistory::redo(){
         #ifdef _DEBUG
         printf("DEBUG: redo (%zu from %zu)\n", index, list.size());
         #endif
+        return true;
     }
+    return false;
 }
 
 bool editor::CommandHistory::canUndo() const{

@@ -1,7 +1,8 @@
 """W5 build tools: get_build_info, build_project (jobs, cancel), generate_shaders, run_build.
 
 Starts from a brand-new project (`mcp --create`): saves its scene, sets the start scene, exports
-the C++ source project, cancels a Desktop build, generates shaders and checks run_build's process
+the C++ source project (its Xcode workspace compiles the project's generated sources in both app
+targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop build, generates shaders and checks run_build's process
 handling with stand-in "players" (shell scripts).
 
 The full Desktop build (compiles the engine from source with cmake + g++, ~20-60 min at 3 jobs on
@@ -14,6 +15,7 @@ import stat
 import time
 from pathlib import Path
 
+import pbxproj
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Build Test"}
@@ -37,6 +39,48 @@ def make_script(path: Path, body: str) -> Path:
     path.write_text("#!/bin/sh\n" + body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return path
+
+
+async def check_xcode_workspace(ed: Editor, out: Path) -> None:
+    """The exported Xcode workspace compiles the project's own sources, as the CMake build does:
+    each scene's (named by its id, so a scene called "main" leaves main.cpp alone), the prefabs',
+    scene_scripts.cpp and the C++ scripts, in both app targets."""
+    project_dir = out / "project"
+    pbx_file = out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj"
+    ed.check(pbx_file.is_file(), f"no {pbx_file}")
+    try:
+        root = pbxproj.parse(pbx_file.read_text(encoding="utf-8"))
+    except ValueError as e:
+        ed.fail(f"the exported project.pbxproj does not parse: {e}")
+    ed.check_eq(pbxproj.dangling_references(root), [], "references to objects the project.pbxproj lacks")
+
+    info = await ed.call("get_build_info")
+    for scene in info["scenes"]:
+        found = sorted(p.name for p in project_dir.glob(f"scene_*_{scene['id']}.cpp"))
+        ed.check_eq(len(found), 1, f"the generated source of scene {scene['name']!r} ({scene['id']}): {found}")
+    sources = sorted(p.relative_to(project_dir).as_posix() for p in project_dir.rglob("*")
+                     if p.suffix in (".cpp", ".c") and p.is_file()
+                     and not p.relative_to(project_dir).as_posix().startswith(("assets/", "lua/")))
+    ed.check_in("main.cpp", sources)
+    ed.check_in("scene_scripts.cpp", sources)
+    ed.check(any(s.startswith("scene_") and s != "scene_scripts.cpp" for s in sources), f"scene sources: {sources}")
+
+    in_group = pbxproj.group_paths(root, "../../project")
+    for name in ("JasperEngine iOS", "JasperEngine macOS"):
+        compiled = pbxproj.target_sources(root, name)
+        for source in sources:
+            ed.check_eq(compiled.count(Path(source).name), 1, f"{name} compiles {source} once: {compiled}")
+            ed.check_eq(in_group.get(source), "PBXFileReference", f"{source} in the project group: {in_group}")
+        for settings in pbxproj.target_settings(root, name):
+            ed.check_in("$(SRCROOT)/../../project", settings["HEADER_SEARCH_PATHS"], f"{name} include directories")
+            ed.check_in("$(SRCROOT)/../../project/scripts", settings["HEADER_SEARCH_PATHS"], f"{name} include directories")
+    for name in ("jasperengine-ios", "jasperengine-macos", "JasperEngine iOS", "JasperEngine macOS"):
+        for settings in pbxproj.target_settings(root, name):
+            ed.check(settings["CLANG_CXX_LANGUAGE_STANDARD"].startswith("c++"), f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
+    for settings in pbxproj.project_settings(root):
+        definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
+        ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
+        ed.check_eq(len(definitions), len(set(definitions)), f"no definition twice: {definitions}")
 
 
 async def test_build_info(ed: Editor):
@@ -99,6 +143,10 @@ async def test_source_export(ed: Editor):
     ed.check("how_to_build" in result, "how_to_build")
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
+    await check_xcode_workspace(ed, out)
+    # web saves are prefixed per game: the default identifier is shared, so the project name
+    # (bytes other than letters, digits, . and - escaped for the define)
+    ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
@@ -106,12 +154,93 @@ async def test_source_export(ed: Editor):
     r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True,
                       backends=["opengl", "opengles"], timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded")
+    # exporting again patches the workspace the same way
+    await check_xcode_workspace(ed, out)
 
     # the remembered output dir is the default next time
     info = await ed.call("get_build_info")
     ed.check_eq(Path(info["source"]["output_dir"]).resolve(), out.resolve())
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
+
+
+async def test_admob_export(ed: Editor):
+    """AdMob is opt-in: the Android and iOS projects of a source export carry Google Mobile Ads,
+    and the project's App ID (never Google's sample one), only when the project enables it."""
+    out = ed.scratch.root / "export-admob"
+    android_app = out / "workspaces" / "androidstudio" / "app"
+    gradle = android_app / "build.gradle"
+    manifest = android_app / "src" / "main" / "AndroidManifest.xml"
+    plist = out / "workspaces" / "xcode" / "ios" / "Info.plist"
+    pbxproj = out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj"
+    android_id = "ca-app-pub-1234567890123456~1111111111"
+    ios_id = "ca-app-pub-1234567890123456~2222222222"
+
+    async def export() -> dict:
+        r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        return r["result"]
+
+    def check_left_out(what: str):
+        g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
+        ed.check("play-services-ads" not in g, f"{what}: no ads SDK in build.gradle")
+        ed.check("java-admob" not in g, f"{what}: no AdMob wrapper source in build.gradle")
+        ed.check("com.google.android.gms.ads.APPLICATION_ID" not in m, f"{what}: no App ID meta-data in the manifest")
+        ed.check("GADApplicationIdentifier" not in pl, f"{what}: no GADApplicationIdentifier in Info.plist")
+        ed.check("JASPERENGINE_ADMOB" not in px, f"{what}: the iOS target does not define JASPERENGINE_ADMOB")
+        ed.check("AdMobAdapter.m in Sources" not in px, f"{what}: AdMobAdapter.m not compiled")
+        ed.check("GoogleMobileAds.xcframework in Frameworks" not in px, f"{what}: GoogleMobileAds not linked")
+        ed.check("GoogleMobileAds.xcframework" in px, f"{what}: the file reference itself stays")
+        ed.check_in("set(JASPERENGINE_ADMOB OFF)", (out / "CMakeLists.txt").read_text())
+
+    # the default: no AdMob anywhere, and never the sample ids
+    await export()
+    check_left_out("default")
+    for f in (manifest, plist):
+        ed.check("3940256099942544" not in f.read_text(), f"{f.name}: no Google sample App ID")
+    activity = (out / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java").read_text()
+    ed.check("new AdMobWrapper" not in activity, "MainActivity does not reference the AdMob wrapper class")
+
+    # an ad unit ID is not an App ID
+    msg = await ed.call("set_project_settings", values={"android.admob_app_id": "ca-app-pub-1234567890123456/1111111111"},
+                        expect_error=True)
+    ed.check_in("app ID", msg)
+
+    # enabled without an App ID: left out, with a warning
+    await ed.call("set_project_settings", values={"android.admob_enabled": True, "ios.admob_enabled": True})
+    result = await export()
+    check_left_out("no App ID")
+    log = Path(result["log_file"]).read_text()
+    ed.check_in("Android AdMob is enabled but has no App ID", log)
+    ed.check_in("iOS AdMob is enabled but has no App ID", log)
+
+    # enabled with App IDs: the SDKs, the wrapper/adapter and the project's ids
+    await ed.call("set_project_settings", values={"android.admob_app_id": android_id, "ios.admob_app_id": ios_id})
+    back = (await ed.call("get_project_settings", keys=["android.admob_enabled", "android.admob_app_id",
+                                                         "ios.admob_enabled", "ios.admob_app_id"]))["settings"]
+    ed.check_eq(back, {"android.admob_enabled": True, "android.admob_app_id": android_id,
+                       "ios.admob_enabled": True, "ios.admob_app_id": ios_id})
+    await export()
+    g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
+    ed.check_in('"com.google.android.gms:play-services-ads:', g)
+    ed.check_in("/platform/android/java-admob'", g)
+    ed.check_in(f'android:value="{android_id}"', m)
+    ed.check_in(f"<key>GADApplicationIdentifier</key>\n\t<string>{ios_id}</string>", pl)
+    ed.check_eq(px.count("JASPERENGINE_ADMOB,"), 2, "Debug and Release of the iOS target")
+    ed.check_in("AdMobAdapter.m in Sources", px)
+    ed.check_in("GoogleMobileAds.xcframework in Frameworks", px)
+    ed.check_in("set(JASPERENGINE_ADMOB ON)", (out / "CMakeLists.txt").read_text())
+    ed.check((out / "platform" / "android" / "java-admob" / "com" / "jaspergameengine" / "jasperengine" /
+              "AdMobWrapper.java").exists(), "the wrapper source is exported")
+
+    # saved in project.yaml and back off for the tests that follow
+    await ed.call("save_project")
+    yaml = (ed.project / "project.yaml").read_text()
+    ed.check_in(android_id, yaml)
+    ed.check_in(ios_id, yaml)
+    await ed.call("set_project_settings", values={"android.admob_enabled": False, "ios.admob_enabled": False})
+    await export()
+    check_left_out("disabled again")
 
 
 async def test_cancel_desktop_build(ed: Editor):

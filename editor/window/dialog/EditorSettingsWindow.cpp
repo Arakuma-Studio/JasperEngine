@@ -17,6 +17,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <string>
 
 namespace jasperengine::editor {
 
@@ -37,7 +38,7 @@ namespace {
 
     // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
     const settingsui::Category preferencesCategories[] = {
-        {"General", "", "editor vsync default build directory output"},
+        {"General", "", "editor vsync ui scale zoom size default build directory output"},
         {"Code Editor", "", "font size"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
         {"Shader Cache", "", "clear shader cache"},
@@ -183,6 +184,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_uiScalePercent = static_cast<int>(std::lround(AppSettings::getUiScale() * 100.0f));
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
@@ -328,6 +330,24 @@ void EditorSettingsWindow::drawGeneralSettings() {
             m_editorVSyncEnabled = true;
         }
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
+
+        if (beginSettingsRow("UI Scale",
+                             "Size of the editor text and panels, on top of the display scale the system reports.",
+                             m_uiScalePercent != 100)) {
+            m_uiScalePercent = 100;
+        }
+        static constexpr int uiScalePercents[] = { 50, 75, 90, 100, 110, 125, 150, 175, 200, 250, 300 };
+        ImGui::SetNextItemWidth(Theme::dpi(100.0f));
+        if (ImGui::BeginCombo("##EditorUiScale", (std::to_string(m_uiScalePercent) + "%").c_str(), ImGuiComboFlags_HeightLarge)) {
+            for (int percent : uiScalePercents) {
+                const bool selected = percent == m_uiScalePercent;
+                if (ImGui::Selectable((std::to_string(percent) + "%").c_str(), selected)) {
+                    m_uiScalePercent = percent;
+                }
+                if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
 
         sectionRow("HTML UI");
         if (beginSettingsRow("Import Remote Resources",
@@ -548,6 +568,7 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setUiScale(m_uiScalePercent / 100.0f);
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);

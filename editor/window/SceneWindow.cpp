@@ -41,6 +41,14 @@ using namespace jasperengine;
 
 namespace {
 
+// with repeat, linear filtering bleeds the opposite edge into the border
+Texture edgeClampedTexture(const std::string& path) {
+    Texture texture(path);
+    texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    return texture;
+}
+
 constexpr float VIEWPORT_GIZMO_SIZE = 100.0f;
 
 }
@@ -546,7 +554,8 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         }
                                         originalTex = mesh->submeshes[0].material.baseColorTexture;
                                     }
-                                    Texture newTex(droppedAssetPath);
+                                    const bool isSprite = sceneProject->scene->findComponent<SpriteComponent>(selEntity) != nullptr;
+                                    Texture newTex = isSprite ? edgeClampedTexture(droppedAssetPath) : Texture(droppedAssetPath);
                                     if (mesh->submeshes[0].material.baseColorTexture != newTex) {
                                         mesh->submeshes[0].material.baseColorTexture = newTex;
                                         mesh->submeshes[0].needUpdateTexture = true;
@@ -575,7 +584,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         selUI = ui;
                                         originalTex = ui->texture;
                                     }
-                                    Texture newTex(droppedAssetPath);
+                                    Texture newTex = edgeClampedTexture(droppedAssetPath);
                                     if (ui->texture != newTex) {
                                         ui->texture = newTex;
                                         ui->needUpdateTexture = true;
@@ -683,14 +692,14 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Sprite", EntityCreationType::SPRITE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", Texture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::MeshComponent, "submeshes[0].material.baseColorTexture", edgeClampedTexture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::SpriteComponent, "height", tempImage->getHeight());
                                 } else {
                                     cmd = new CreateEntityCmd(project, sceneProject->id, "Image", EntityCreationType::IMAGE);
 
                                     cmd->addProperty<Vector3>(ComponentType::Transform, "position", rreturn.point);
-                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", Texture(droppedAssetPath));
+                                    cmd->addProperty<Texture>(ComponentType::UIComponent, "texture", edgeClampedTexture(droppedAssetPath));
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "width", tempImage->getWidth());
                                     cmd->addProperty<unsigned int>(ComponentType::RectTransformComponent, "height", tempImage->getHeight());
                                 }
@@ -975,19 +984,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool isMouseInWindow = ImGui::IsWindowHovered() && (mousePos.x >= windowPos.x && mousePos.x <= windowPos.x + windowSize.x &&
                             mousePos.y >= windowPos.y && mousePos.y <= windowPos.y + windowSize.y);
 
-    // Keep the viewport redrawing while it is hovered or manipulated (hover highlight,
-    // camera drag/fly, gizmo drag). draggingMouse tracks a drag so it survives the
+    // Keep the viewport redrawing while it is used (hover highlight, camera drag/fly,
+    // gizmo drag, shortcuts). draggingMouse tracks a drag so it survives the
     // cursor leaving the window; edits flag the scene through the command system.
     // A resting pointer changes nothing under it, so hovering alone does not redraw:
     // a headless editor's pointer rests in this view and kept the loop from idling.
+    // Nor does a moving one, unless something under it follows the mouse.
     {
         bool viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
         bool anyMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        bool mouseMoved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
         bool pointerActive = anyMouseDown ||
-                             io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
-                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+                             (mouseMoved && sceneProject->sceneRender->hasHoverFeedback());
         for (int key = ImGuiKey_NamedKey_BEGIN; !pointerActive && key < ImGuiKey_GamepadStart; key++) {
             pointerActive = ImGui::IsKeyDown(static_cast<ImGuiKey>(key)) || ImGui::IsKeyReleased(static_cast<ImGuiKey>(key));
         }
@@ -1016,7 +1027,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool handPanEnabled = sceneProject->sceneRender->getCursorSelected() == CursorSelected::HAND;
     GizmoSelected gizmoSelected = sceneProject->sceneRender->getToolsLayer()->getGizmoSelected();
     Gizmo2DSideSelected gizmo2DSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
-    bool gizmoSideActive = sceneProject->sceneRender->isAnyGizmoSideSelected();
+    // The hand tool only pans: a drag on a gizmo handle moves the view, not the handle
+    bool gizmoSideActive = !handPanEnabled && sceneProject->sceneRender->isAnyGizmoSideSelected();
     // Alt + click on a gizmo handle duplicates the target and drags the copy.
     // For the 2D gizmo, only the center move area duplicates; resize handles
     // keep editing the current selection. Alt + click on empty space keeps its
@@ -1040,7 +1052,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             subSelectionClickConsumesRelease[sceneId] = false;
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
@@ -1320,7 +1332,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             sceneProject->sceneRender->mouseHoverEvent(x, y);
         }
 
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
                 mouseLeftDown = true;

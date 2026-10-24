@@ -9,6 +9,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
@@ -411,18 +412,15 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
     std::filesystem::path absolutePath = project->getProjectPath() / entry.relativePath;
 
     try {
-        std::ofstream out(absolutePath, std::ios::binary | std::ios::trunc);
-        if (out.is_open()) {
-            std::string payload = YAML::Dump(Stream::encodeMaterial(material));
-            out.write(payload.c_str(), payload.size());
-            out.close();
-
+        if (FileUtils::writeFileReplacing(absolutePath, YAML::Dump(Stream::encodeMaterial(material)), FileUtils::LineEndings::KeepExisting)) {
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
             project->refreshLinkedMaterials(true);
 
             if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
                 projectWindow->notifyResourceFileChanged(absolutePath);
             }
+        } else {
+            Out::error("Failed to write linked material file '%s'", absolutePath.string().c_str());
         }
     } catch (const std::exception& e) {
         Out::error("Error saving linked material file '%s': %s", absolutePath.string().c_str(), e.what());
@@ -1356,27 +1354,11 @@ void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentT
 // property. Laid out with the project's standard "<label> | <input>" property table,
 // including the rotate-left reset button when a row differs from the Catalog default. Each
 // change commits a PropertyCmd that copies the current per-entity Texture and mutates only
-// the chosen field, then invalidates the cached GPU texture so the new sampler is rebuilt on
-// the next getRender().
+// the chosen field (the sampler is part of the TexturePool key, so a new one is its own texture).
 void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     ImGui::SetNextWindowSizeConstraints(ImVec2(19 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
     if (!ImGui::BeginPopup(popupId))
         return;
-
-    // Sampler settings (filter/wrap) are baked into the GPU texture at creation and the
-    // TexturePool caches by id, so simply changing the value is not enough: we must drop
-    // the cached render to force a rebuild. Routing this through the command's
-    // onValueChanged makes it fire on both execute and undo, keeping the two directions
-    // consistent (and it also chains any caller-provided callback).
-    auto invalidateAndNotify = [sceneProject, entities, cpType, id, onValueChanged](){
-        for (const Entity& entity : entities){
-            Texture* ref = Catalog::getPropertyRef<Texture>(sceneProject->scene, entity, cpType, id);
-            if (ref)
-                ref->invalidateRender();
-        }
-        if (onValueChanged)
-            onValueChanged();
-    };
 
     // Applies mutator to a copy of each selected entity's texture and commits a PropertyCmd
     // per entity whose texture actually changed. The mutator returns false to skip an entity.
@@ -1390,7 +1372,7 @@ void editor::InspectorWindow::drawTextureSettingsPopup(const char* popupId, Comp
             if (!mutator(modified) || modified == *valueRef)
                 continue;
 
-            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, modified, invalidateAndNotify);
+            cmd = new PropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, modified, onValueChanged);
             CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
         }
         finishProperty = true;
@@ -11710,13 +11692,19 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
     RowSettings settingsBodyValue;
 
-    beginTable(cpType, getLabelSize("Motion Quality"));
+    beginTable(cpType, getLabelSize("Water Angular Drag"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     propertyRow(RowPropertyType::Enum, cpType, "motionQuality", "Motion Quality", sceneProject, entities, settingsMotionQuality);
     propertyRow(RowPropertyType::Bool, cpType, "sensor", "Sensor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "gravityFactor", "Gravity Factor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "friction", "Friction", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "restitution", "Restitution", sceneProject, entities, settingsBodyValue);
+    // floating in a library:water (Water.h): 0 ignores the water
+    propertyRow(RowPropertyType::Float, cpType, "buoyancy", "Buoyancy", sceneProject, entities, settingsBodyValue);
+    if (body.buoyancy > 0.0f) {
+        propertyRow(RowPropertyType::Float, cpType, "waterDrag", "Water Drag", sceneProject, entities, settingsBodyValue);
+        propertyRow(RowPropertyType::Float, cpType, "waterAngularDrag", "Water Angular Drag", sceneProject, entities, settingsBodyValue);
+    }
     propertyRow(RowPropertyType::Bool, cpType, "overrideMassProperties", "Override Mass", sceneProject, entities, settingsBodyValue);
 
     if (body.overrideMassProperties) {
@@ -12628,6 +12616,21 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
             updateParticlePreviewSnapshot(state.components, *comp);
         }
+        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
+            // the keys and their settings (loop, relative) edited during the preview are kept,
+            // the playhead the preview moved (index, interpolation) goes back
+            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
+            YAML::Node encoded = Stream::encodeKeyframeTracksComponent(*comp);
+            const YAML::Node originalNode = state.components[componentName];
+            if (originalNode && !originalNode.IsNull()) {
+                for (const char* key : {"index", "interpolation"}) {
+                    if (originalNode[key]) {
+                        encoded[key] = originalNode[key];
+                    }
+                }
+            }
+            state.components[componentName] = encoded;
+        }
     }
 
     for (const ActionPreviewState& state : actionPreviewStates) {
@@ -12863,9 +12866,13 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
 }
 
 void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Duration"));
+    RowSettings settingsPingPong;
+    settingsPingPong.help = "Plays forward and then back, in twice the duration";
+
+    beginTable(cpType, getLabelSize("Ping-pong"));
     propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "pingPong", "Ping-pong", sceneProject, entities, settingsPingPong);
     propertyRow(RowPropertyType::Ease, cpType, "function", "Ease", sceneProject, entities);
     endTable();
 }
@@ -12941,6 +12948,21 @@ void editor::InspectorWindow::drawPositionTweenComponent(ComponentType cpType, S
 void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
+    // a spin turns by an angle around an axis instead of reaching an end rotation
+    bool spin = true;
+    for (Entity entity : entities){
+        RotationTweenComponent* rotation = scene->findComponent<RotationTweenComponent>(entity);
+        spin = spin && rotation && rotation->spin;
+    }
+
+    RowSettings settingsSpin;
+    settingsSpin.help = "Turns the start rotation by an angle around an axis, past half a turn too (a tween to an end rotation never turns more than 180°)";
+
+    RowSettings settingsAngle;
+    settingsAngle.secondColSize = 6 * ImGui::GetFontSize();
+    settingsAngle.format = "%.1f°";
+    settingsAngle.help = "More than 360° turns more than once";
+
     beginTable(cpType, getLabelSize("Start rotation"));
 
     float buttonSize = ImGui::GetFrameHeight();
@@ -12972,6 +12994,15 @@ void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, S
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("Get current rotation from target");
         }
+    }
+
+    propertyRow(RowPropertyType::Bool, cpType, "spin", "Spin", sceneProject, entities, settingsSpin);
+
+    if (spin) {
+        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities);
+        propertyRow(RowPropertyType::Float, cpType, "angle", "Angle", sceneProject, entities, settingsAngle);
+        endTable();
+        return;
     }
 
     propertyRow(RowPropertyType::Quat, cpType, "endRotation", "End rotation", sceneProject, entities, quatSettings);
@@ -13740,7 +13771,25 @@ void editor::InspectorWindow::drawBoneComponent(ComponentType cpType, SceneProje
 void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     KeyframeTracksComponent& comp = sceneProject->scene->getComponent<KeyframeTracksComponent>(entities[0]);
 
+    // relative only applies to the transform tracks
+    bool transformTracks = true;
+    for (Entity entity : entities){
+        Signature signature = sceneProject->scene->getSignature(entity);
+        transformTracks = transformTracks && (signature.test(sceneProject->scene->getComponentId<TranslateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<RotateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<ScaleTracksComponent>()));
+    }
+
+    RowSettings settingsLoop;
+    settingsLoop.help = "Starts over after the last key";
+    RowSettings settingsRelative;
+    settingsRelative.help = "Keys are offsets from the pose the target has when the track starts";
+
     beginTable(cpType, getLabelSize("Interpolation"));
+    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities, settingsLoop);
+    if (transformTracks){
+        propertyRow(RowPropertyType::Bool, cpType, "relative", "Relative", sceneProject, entities, settingsRelative);
+    }
     propertyRow(RowPropertyType::Int, cpType, "index", "Index", sceneProject, entities);
     propertyRow(RowPropertyType::Float, cpType, "interpolation", "Interpolation", sceneProject, entities);
     endTable();
@@ -14738,7 +14787,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Physics");
 
                 if (ImGui::BeginTable("scene_physics_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Gravity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Interpolate"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     if (sceneProject->sceneType == SceneType::SCENE_3D) {
@@ -14748,6 +14797,8 @@ void editor::InspectorWindow::show(){
                         drawScenePropertyRow<Vector2>(sceneProject, "physics_gravity_2d", "Gravity", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 1.0f,
                             "Gravity applied to 2D physics bodies (meters/s^2).");
                     }
+                    drawScenePropertyRow<bool>(sceneProject, "physics_interpolation", "Interpolate", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Draws bodies between their last two fixed steps, so they move smoothly at any frame rate (a frame behind the simulation by up to one step). Bodies moved by a script or an animation keep the pose they were given.");
 
                     ImGui::EndTable();
                 }

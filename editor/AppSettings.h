@@ -113,6 +113,7 @@ private:
     // Editor viewport settings
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
+    static float uiScale;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
 
@@ -120,6 +121,9 @@ private:
     static bool mcpHttpEnabled;
     static int mcpHttpPort;
     static std::string mcpHttpToken;
+    static bool mcpHttpAllowChanges;
+    static void loadMcpHttpToken();
+    static bool writeMcpHttpTokenFile(const std::string& token);
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -212,6 +216,10 @@ public:
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
 
+    // Editor UI Scale (Preferences): multiplies the display scale the system reports
+    static float getUiScale();
+    static void setUiScale(float scale);
+
     // Panels toggled from the View menu
     static PanelVisibilitySettings getPanelVisibility();
     static void setPanelVisibility(const PanelVisibilitySettings& visibility);
@@ -219,12 +227,19 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
-    // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
-    // clients send "Authorization: Bearer <token>".
+    // MCP server HTTP transport: off by default, port 47615. Clients send
+    // "Authorization: Bearer <token>"; the server makes the token the first time HTTP is
+    // enabled. It is kept in its own file next to settings.yaml, readable by its owner only
+    // (POSIX mode 0600; an mcp.http_token left in settings.yaml by older editors moves there).
+    // With allow changes off, HTTP clients only get the read-only tools.
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
     static void setMcpHttp(bool enabled, int port);
+    static void setMcpHttpToken(const std::string& token);
+    static std::filesystem::path getMcpHttpTokenPath();
+    static bool getMcpHttpAllowChanges();
+    static void setMcpHttpAllowChanges(bool allow);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)

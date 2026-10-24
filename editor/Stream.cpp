@@ -2440,6 +2440,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.hideStatusBar != defaultIOS.hideStatusBar) iosNode["hideStatusBar"] = ios.hideStatusBar;
         if (ios.hideHomeIndicator != defaultIOS.hideHomeIndicator) iosNode["hideHomeIndicator"] = ios.hideHomeIndicator;
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
+        if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
+        if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -2482,6 +2484,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
         if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
+        if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
+        if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -2830,6 +2834,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
         if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
+        if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
+        if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2865,6 +2871,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
+        if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
     }
 
     if (node["startSceneId"]) {
@@ -3078,6 +3086,14 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
         root["prefabs"] = prefabsNode;
     }
 
+    if (!sceneProject->imports.empty()) {
+        YAML::Node importsNode;
+        for (const auto& [path, id] : sceneProject->imports) {
+            importsNode[path] = id;
+        }
+        root["imports"] = importsNode;
+    }
+
     YAML::Node entitiesNode;
     for (Entity entity : sceneProject->entities) {
         // Skip prefab children (they are stored in the prefab file)
@@ -3203,6 +3219,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             }
             info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
+        }
+    }
+
+    sceneProject->imports.clear();
+    if (node["imports"] && node["imports"].IsMap()) {
+        for (const auto& entry : node["imports"]) {
+            sceneProject->imports[entry.first.as<std::string>()] = entry.second.as<std::string>();
         }
     }
 }
@@ -3387,6 +3410,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["ssrBlur"] = scene->getSSRBlur();
     sceneNode["gravity2D"] = encodeVector2(scene->getGravity2D());
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -3580,6 +3605,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
+    scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
 
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
@@ -7196,6 +7222,9 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["gravityFactor"] = body.gravityFactor;
     node["friction"] = body.friction;
     node["restitution"] = body.restitution;
+    node["buoyancy"] = body.buoyancy;
+    node["waterDrag"] = body.waterDrag;
+    node["waterAngularDrag"] = body.waterAngularDrag;
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -7270,6 +7299,9 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
     if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
     if (node["restitution"]) body.restitution = YamlNumbers::as<float>(node["restitution"]);
+    if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
+    if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
+    if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -7576,6 +7608,7 @@ YAML::Node editor::Stream::encodeTweenComponent(const TweenComponent& timed) {
 
     node["duration"] = timed.duration;
     node["loop"] = timed.loop;
+    node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
 
     return node;
@@ -7593,6 +7626,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
 
     if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
     return timed;
@@ -7630,6 +7664,9 @@ YAML::Node editor::Stream::encodeRotationTweenComponent(const RotationTweenCompo
     node["endRotation"] = encodeQuaternion(rotAction.endRotation);
     node["startRotation"] = encodeQuaternion(rotAction.startRotation);
     node["shortestPath"] = rotAction.shortestPath;
+    node["spin"] = rotAction.spin;
+    node["axis"] = encodeVector3(rotAction.axis);
+    node["angle"] = rotAction.angle;
 
     return node;
 }
@@ -7644,6 +7681,9 @@ RotationTweenComponent editor::Stream::decodeRotationTweenComponent(const YAML::
     if (node["endRotation"]) rotAction.endRotation = decodeQuaternion(node["endRotation"]);
     if (node["startRotation"]) rotAction.startRotation = decodeQuaternion(node["startRotation"]);
     if (node["shortestPath"]) rotAction.shortestPath = YamlNumbers::as<bool>(node["shortestPath"]);
+    if (node["spin"]) rotAction.spin = YamlNumbers::as<bool>(node["spin"]);
+    if (node["axis"]) rotAction.axis = decodeVector3(node["axis"]);
+    if (node["angle"]) rotAction.angle = YamlNumbers::as<float>(node["angle"]);
 
     return rotAction;
 }
@@ -7864,6 +7904,8 @@ YAML::Node editor::Stream::encodeKeyframeTracksComponent(const KeyframeTracksCom
 
     node["index"] = tracks.index;
     node["interpolation"] = tracks.interpolation;
+    node["loop"] = tracks.loop;
+    node["relative"] = tracks.relative;
 
     YAML::Node timesNode;
     for (float t : tracks.times) {
@@ -7891,8 +7933,13 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
         tracks = *oldTracks;
     }
 
+    // a decoded track takes its base again when it starts
+    tracks.hasBase = false;
+
     if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
     if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
+    if (node["loop"]) tracks.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["relative"]) tracks.relative = YamlNumbers::as<bool>(node["relative"]);
 
     if (node["times"]) {
         tracks.times.clear();

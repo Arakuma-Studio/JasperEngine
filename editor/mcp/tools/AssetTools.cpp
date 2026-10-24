@@ -42,6 +42,8 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -55,6 +57,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -651,7 +654,7 @@ Json materialUsers(Project* project, const std::string& rel) {
             MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
             for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
-                if (fs::path(mesh->submeshes[i].material.name).lexically_normal().generic_string() == rel) {
+                if (FileUtils::pathToGenericUtf8(fs::path(mesh->submeshes[i].material.name).lexically_normal()) == rel) {
                     users.push_back({{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", i}});
                     if (users.size() >= 50) return users;
                 }
@@ -693,10 +696,10 @@ void listAssetsTool(const CallPtr& call) {
         const std::string rel = projectRelative(project, path);
         const std::string kind = isDir ? "folder" : assetType(path);
         if (!type.empty() && type != "any" && kind != type) return;
-        if (!query.empty() && lowerCase(path.filename().string()).find(query) == std::string::npos) return;
+        if (!query.empty() && lowerCase(FileUtils::pathToUtf8(path.filename())).find(query) == std::string::npos) return;
         if (!pattern.empty()) {
             const bool full = pattern.find('/') != std::string::npos;
-            if (!globMatch(pattern, full ? rel : path.filename().string())) return;
+            if (!globMatch(pattern, full ? rel : FileUtils::pathToUtf8(path.filename()))) return;
         }
         total++;
         if (entries.size() >= limit) return;
@@ -794,7 +797,26 @@ void getAssetInfoTool(const CallPtr& call) {
         }
     } else if (kind == "model") {
         std::string error;
-        Json info = modelInfo(file, error);
+        Json info;
+        if (FbxImporter::isFbxFile(file)) {
+            // An FBX loads as the glTF it is converted into, so that is what is summarized. Read
+            // only: the conversion is not made here (set_model, import_files, Play and export do).
+            if (!project->isInsideAssetsPath(file)) {
+                error = "Outside the assets directory, so never converted.";
+            } else {
+                const fs::path glbPath = project->getImportedModelPath(file);
+                const FbxImporter::State state = FbxImporter::getState(file, glbPath, project->getAssetsPath());
+                data["fbx_import"] = {{"path", projectRelative(project, glbPath)},
+                    {"state", state == FbxImporter::State::UpToDate ? "current" : state == FbxImporter::State::Stale ? "stale" : "missing"}};
+                if (state == FbxImporter::State::Missing) {
+                    error = "Not converted yet: loading it (set_model) or import_files converts it.";
+                } else {
+                    info = modelInfo(glbPath, error);
+                }
+            }
+        } else {
+            info = modelInfo(file, error);
+        }
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
@@ -1339,7 +1361,33 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     for (const Json& rel : imported) changed.push_back(project->getProjectPath() / fs::u8path(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
+    // An FBX loads from the glTF it is converted into, made now so the next tool can use it
+    Json fbxImports = Json::array();
+    Json fbxFailed = Json::array();
+    auto importFbx = [&](const fs::path& fbxPath) {
+        if (!FbxImporter::isFbxFile(fbxPath) || !project->isInsideAssetsPath(fbxPath)) return;
+        (project->importFbxModel(fbxPath) ? fbxImports : fbxFailed).push_back(projectRelative(project, fbxPath));
+    };
+    for (const fs::path& path : changed) {
+        if (fs::is_directory(path, ec)) {
+            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file(ec)) importFbx(it->path());
+            }
+            ec.clear();
+        } else {
+            importFbx(path);
+        }
+    }
+    if (!fbxImports.empty()) data["fbx_imports"] = fbxImports;
+    if (!fbxFailed.empty()) data["fbx_import_failed"] = fbxFailed;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
+    if (!fbxImports.empty()) {
+        text += " Converted " + std::to_string(fbxImports.size()) + " FBX model(s) to glTF.";
+    }
+    if (!fbxFailed.empty()) {
+        text += " " + std::to_string(fbxFailed.size()) + " FBX model(s) could not be converted (fbx_import_failed; the console has details).";
+    }
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
     }
@@ -1917,7 +1965,7 @@ void forkShaderTool(const CallPtr& call) {
         call->ok(text + " Read the files and change only the shading math; your edits are compiled before your next "
                         "call (errors in external_changes), or check them now with check_shader.", data);
     };
-    const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
+    const fs::path directory = FileUtils::pathFromUtf8(args.value("directory", FileUtils::pathToGenericUtf8(ProjectUtils::defaultShaderForkDir()))).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
         call->fail("directory must be project-relative.");
         return;
@@ -2586,14 +2634,11 @@ void setTextureSettingsTool(const CallPtr& call) {
         call->ok("The texture settings already match.", data);
         return;
     }
-    // Sampler settings are baked into the GPU texture: drop the cached render on execute and undo
+    // the sampler is part of the TexturePool key, so the new settings are their own GPU texture
     const Entity entity = where.entity;
     const ComponentType component = where.component;
-    auto onChanged = [scene, entity, component, propertyName]() {
-        if (Texture* ref = Catalog::getPropertyRef<Texture>(scene, entity, component, propertyName)) ref->invalidateRender();
-    };
     if (!addSceneCommand(where.scene->id, new PropertyCmd<Texture>(call->ctx().project(), where.scene->id, entity, component,
-                                                                   propertyName, modified, onChanged))) {
+                                                                   propertyName, modified))) {
         call->fail("Could not change the texture settings.");
         return;
     }
@@ -2618,7 +2663,7 @@ void placeholderArtTool(const CallPtr& call) {
         const std::string assets = projectRelative(project, project->getAssetsPath());
         call->fail("path is project-relative, like the texture paths the other tools take: \"" + rel +
                    "\" is outside the assets directory (\"" + assets + "\"), so no component could use it. Use \"" +
-                   projectRelative(project, project->getAssetsPath() / fs::path(rel)) + "\".");
+                   projectRelative(project, project->getAssetsPath() / FileUtils::pathFromUtf8(rel)) + "\".");
         return;
     }
     std::error_code ec;
@@ -2777,7 +2822,7 @@ void searchFilesTool(const CallPtr& call) {
     fs::path scope = root;
     std::string fileGlob = glob;
     if (!glob.empty()) {
-        const fs::path g(glob);
+        const fs::path g = FileUtils::pathFromUtf8(glob);
         if (g.is_absolute() || g.has_root_name() || g.has_root_directory()) {
             call->fail("glob must be relative to the project (no absolute paths).");
             return;
@@ -2794,7 +2839,7 @@ void searchFilesTool(const CallPtr& call) {
                 scope = target;
                 fileGlob.clear();
             } else {
-                fileGlob = g.lexically_normal().generic_string();
+                fileGlob = FileUtils::pathToGenericUtf8(g.lexically_normal());
             }
         }
     }
@@ -2821,13 +2866,13 @@ void searchFilesTool(const CallPtr& call) {
     auto clip = [&](const std::string& text) { return text.size() > maxText ? text.substr(0, maxText) + "..." : text; };
 
     std::vector<fs::path> files;
-    const fs::path scopeRel = fs::path(projectRelative(project, scope));
+    const fs::path scopeRel = FileUtils::pathFromUtf8(projectRelative(project, scope));
     const bool scopeSkipped = scope != root && (ProjectChecks::isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
     if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
         for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
              it.increment(ec)) {
             const fs::path& path = it->path();
-            const std::string name = path.filename().string();
+            const std::string name = FileUtils::pathToUtf8(path.filename());
             if (it->is_directory(ec)) {
                 if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
@@ -2933,7 +2978,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes; WAV format/duration; .material fields, "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
+            "WAV format/duration; .material fields, "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3052,7 +3098,8 @@ void registerAssetTools(McpRegistry& registry) {
             "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
             "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
             "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
+            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg), "
+            ".fbx is converted to glTF (fbx_imports).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},

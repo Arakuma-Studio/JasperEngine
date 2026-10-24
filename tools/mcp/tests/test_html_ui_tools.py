@@ -53,7 +53,11 @@ INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
           "list_ui_effects": 900, "set_ui_effect_time": 500}
-TOTAL_LIMIT = 99800 + 837
+# raised to what main measured after phase 6 and Texture Synthesis (104736, synthesize_texture and
+# the tools that grew since), plus the upstream catch-up's additions (+731: FBX imports in
+# import_files/get_asset_info, create_entity type water, physics_interpolation, edit_animation
+# loop/relative/ping-pong/spin, screenshot save_path project-relative)
+TOTAL_LIMIT = 105467
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

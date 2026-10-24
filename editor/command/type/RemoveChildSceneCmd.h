@@ -22,6 +22,7 @@ namespace jasperengine::editor {
 
         bool execute() override;
         void undo() override;
+        bool canUndo() const override;
 
     };
 }

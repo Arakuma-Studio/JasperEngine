@@ -477,6 +477,7 @@
 		713D8341259D408300567F9F /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8334259D407A00567F9F /* ViewController.m */; };
 		713D834E259D408800567F9F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8335259D407A00567F9F /* main.m */; };
 		713D835B259D408C00567F9F /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8336259D407A00567F9F /* AppDelegate.m */; };
+		7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = E15B1987F43388FDFC1D3305 /* SceneDelegate.m */; };
 		713E580627BA9CB700376680 /* MeshPolygon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 713E580427BA9CB700376680 /* MeshPolygon.cpp */; };
 		713E580727BA9CB700376680 /* MeshPolygon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 713E580427BA9CB700376680 /* MeshPolygon.cpp */; };
 		713E580827BA9CB700376680 /* MeshPolygon.h in Headers */ = {isa = PBXBuildFile; fileRef = 713E580527BA9CB700376680 /* MeshPolygon.h */; };
@@ -607,9 +608,12 @@
 		7170A3D52818A8A30003E965 /* Bone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3CE2818A8A30003E965 /* Bone.cpp */; };
 		7170A3D62818A8A30003E965 /* Bone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3CE2818A8A30003E965 /* Bone.cpp */; };
 		7170A3D72818A8A30003E965 /* Skybox.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D02818A8A30003E965 /* Skybox.h */; };
+		7AE0A7E00000000000000003 /* Water.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000001 /* Water.h */; };
 		7170A3D82818A8A30003E965 /* Fog.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D12818A8A30003E965 /* Fog.h */; };
 		7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
 		7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
+		7AE0A7E00000000000000004 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
+		7AE0A7E00000000000000005 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
 		7170A3DB2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		7170A3DC2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		717AD876290B5DF3007D7DB5 /* soloud_bus.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD7C0290B5DF2007D7DB5 /* soloud_bus.h */; };
@@ -1091,6 +1095,9 @@
 		71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544F9284D5BB700C68FAB /* MorphTracks.cpp */; };
 		71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544F9284D5BB700C68FAB /* MorphTracks.cpp */; };
 		71E54508284D5BB700C68FAB /* MorphTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E544FA284D5BB700C68FAB /* MorphTracks.h */; };
+		17C4A1C2310A0001008C19EC /* KeyframeTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 17C4A1C0310A0001008C19EC /* KeyframeTracks.h */; };
+		17C4A1C3310A0001008C19EC /* KeyframeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */; };
+		17C4A1C4310A0001008C19EC /* KeyframeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */; };
 		71E54509284D5BB700C68FAB /* RotateTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544FB284D5BB700C68FAB /* RotateTracks.cpp */; };
 		71E5450A284D5BB700C68FAB /* RotateTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544FB284D5BB700C68FAB /* RotateTracks.cpp */; };
 		71E5450B284D5BB700C68FAB /* RotateTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E544FC284D5BB700C68FAB /* RotateTracks.h */; };
@@ -4065,6 +4072,8 @@
 		713D8334259D407A00567F9F /* ViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
 		713D8335259D407A00567F9F /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		713D8336259D407A00567F9F /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		425D2643C998FF7D5BFC56C9 /* SceneDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		E15B1987F43388FDFC1D3305 /* SceneDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
 		713D8337259D407A00567F9F /* ViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
 		713E580427BA9CB700376680 /* MeshPolygon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshPolygon.cpp; sourceTree = "<group>"; };
 		713E580527BA9CB700376680 /* MeshPolygon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshPolygon.h; sourceTree = "<group>"; };
@@ -4251,6 +4260,8 @@
 		7170A3D02818A8A30003E965 /* Skybox.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Skybox.h; sourceTree = "<group>"; };
 		7170A3D12818A8A30003E965 /* Fog.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Fog.h; sourceTree = "<group>"; };
 		7170A3D22818A8A30003E965 /* Skybox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Skybox.cpp; sourceTree = "<group>"; };
+		7AE0A7E00000000000000001 /* Water.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Water.h; sourceTree = "<group>"; };
+		7AE0A7E00000000000000002 /* Water.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Water.cpp; sourceTree = "<group>"; };
 		7170A3D32818A8A30003E965 /* Fog.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Fog.cpp; sourceTree = "<group>"; };
 		717AD7A2290B5DA1007D7DB5 /* libsoloud-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		717AD7B1290B5DCA007D7DB5 /* libsoloud-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -4999,6 +5010,8 @@
 		71E544F8284D5BB700C68FAB /* TranslateTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TranslateTracks.h; sourceTree = "<group>"; };
 		71E544F9284D5BB700C68FAB /* MorphTracks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MorphTracks.cpp; sourceTree = "<group>"; };
 		71E544FA284D5BB700C68FAB /* MorphTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MorphTracks.h; sourceTree = "<group>"; };
+		17C4A1C0310A0001008C19EC /* KeyframeTracks.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyframeTracks.h; sourceTree = "<group>"; };
+		17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = KeyframeTracks.cpp; sourceTree = "<group>"; };
 		71E544FB284D5BB700C68FAB /* RotateTracks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RotateTracks.cpp; sourceTree = "<group>"; };
 		71E544FC284D5BB700C68FAB /* RotateTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RotateTracks.h; sourceTree = "<group>"; };
 		71E544FD284D5BB700C68FAB /* ScaleTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScaleTracks.h; sourceTree = "<group>"; };
@@ -7427,6 +7440,8 @@
 				7128CFAB25BA717500965B51 /* Main.storyboard */,
 				713D8333259D407A00567F9F /* AppDelegate.h */,
 				713D8336259D407A00567F9F /* AppDelegate.m */,
+				425D2643C998FF7D5BFC56C9 /* SceneDelegate.h */,
+				E15B1987F43388FDFC1D3305 /* SceneDelegate.m */,
 				710AD75025B733E100A7B12F /* EngineView.h */,
 				710AD75125B7343400A7B12F /* EngineView.mm */,
 				71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */,
@@ -8033,6 +8048,8 @@
 				175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */,
 				7170A3D02818A8A30003E965 /* Skybox.h */,
 				7170A3D22818A8A30003E965 /* Skybox.cpp */,
+				7AE0A7E00000000000000001 /* Water.h */,
+				7AE0A7E00000000000000002 /* Water.cpp */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -9068,6 +9085,8 @@
 				71E544FB284D5BB700C68FAB /* RotateTracks.cpp */,
 				71E544FC284D5BB700C68FAB /* RotateTracks.h */,
 				71E544FD284D5BB700C68FAB /* ScaleTracks.h */,
+				17C4A1C0310A0001008C19EC /* KeyframeTracks.h */,
+				17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */,
 			);
 			path = keyframe;
 			sourceTree = "<group>";
@@ -11122,12 +11141,14 @@
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
 				7170A3D72818A8A30003E965 /* Skybox.h in Headers */,
+				7AE0A7E00000000000000003 /* Water.h in Headers */,
 				71BE620025B1DB22006D6E02 /* System.h in Headers */,
 				175DCCBB300FA22F008C19EC /* Export.h in Headers */,
 				175DCE6B30255343008C19EC /* CharExtent.h in Headers */,
 				175DCE6C30255343008C19EC /* DefaultFontArabic.h in Headers */,
 				175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */,
 				71E54508284D5BB700C68FAB /* MorphTracks.h in Headers */,
+				17C4A1C2310A0001008C19EC /* KeyframeTracks.h in Headers */,
 				7105CAA82AD61BD5007C91BA /* JoltPhysicsAux.h in Headers */,
 				71ABBD10277A313C001CE3AF /* AlphaTween.h in Headers */,
 				71651FF12AA804B4008D9BF5 /* Contact2D.h in Headers */,
@@ -13156,6 +13177,7 @@
 				7105A56528B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
 				71BE620225B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */,
+				7AE0A7E00000000000000005 /* Water.cpp in Sources */,
 				713D82B0259D307F00567F9F /* Attribute.cpp in Sources */,
 				71E54502284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DAA2AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
@@ -13173,6 +13195,7 @@
 				71ED64C628B45E0B005D2D96 /* Angle.cpp in Sources */,
 				71CC83AC26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
+				17C4A1C4310A0001008C19EC /* KeyframeTracks.cpp in Sources */,
 				1789660E2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
 				7DC000B02E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
 				7DC000B32E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,
@@ -13378,6 +13401,7 @@
 				710AD75225B7343400A7B12F /* EngineView.mm in Sources */,
 				713D8341259D408300567F9F /* ViewController.m in Sources */,
 				713D835B259D408C00567F9F /* AppDelegate.m in Sources */,
+				7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */,
 				713D82E4259D32FE00567F9F /* JasperEngineApple.mm in Sources */,
 				711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */,
 				7158F43F259C2C82006E55D3 /* Renderer.mm in Sources */,
@@ -13524,6 +13548,7 @@
 				7105A56428B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
 				71BE620125B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */,
+				7AE0A7E00000000000000004 /* Water.cpp in Sources */,
 				7162FD4A25963AE00075B97D /* Texture.cpp in Sources */,
 				71E54501284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DA92AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
@@ -13541,6 +13566,7 @@
 				71ED64C528B45E0B005D2D96 /* Angle.cpp in Sources */,
 				71CC83AB26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
+				17C4A1C3310A0001008C19EC /* KeyframeTracks.cpp in Sources */,
 				1789660C2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
 				7DC000B12E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
 				7DC000B42E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,
@@ -15835,7 +15861,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/joltphysics";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -15851,7 +15877,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/joltphysics";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -15864,7 +15890,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/joltphysics";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -15879,7 +15905,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/joltphysics";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -15903,7 +15929,7 @@
 					"JPH_OBJECT_LAYER_BITS=32",
 					LUA_USE_IOS,
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -15923,7 +15949,7 @@
 					"JPH_OBJECT_LAYER_BITS=32",
 					LUA_USE_IOS,
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -15939,7 +15965,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -15955,7 +15981,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -15968,7 +15994,7 @@
 			buildSettings = {
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGN_STYLE = Automatic;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -15982,7 +16008,7 @@
 			buildSettings = {
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CODE_SIGN_STYLE = Automatic;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -16001,7 +16027,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16017,7 +16043,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16066,7 +16092,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -16116,7 +16142,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -16138,7 +16164,7 @@
 					SOKOL_GFX_IMPL,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../core";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -16158,7 +16184,7 @@
 					SOKOL_GFX_IMPL,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../core";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -16291,6 +16317,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -16323,7 +16350,7 @@
 					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -16349,6 +16376,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -16380,7 +16408,7 @@
 					"$(SRCROOT)/../../shaders",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -16449,7 +16477,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = macosx;
@@ -16509,7 +16537,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = macosx;
@@ -16563,7 +16591,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16616,7 +16644,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16636,7 +16664,7 @@
 					SOKOL_GFX_IMPL,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../core";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16656,7 +16684,7 @@
 					SOKOL_GFX_IMPL,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../core";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16677,7 +16705,7 @@
 					WITH_MINIAUDIO,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/stb";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16698,7 +16726,7 @@
 					WITH_MINIAUDIO,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/stb";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16715,7 +16743,7 @@
 					WITH_MINIAUDIO,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/stb";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -16734,7 +16762,7 @@
 					WITH_MINIAUDIO,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/stb";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -16761,7 +16789,7 @@
 					HB_NO_BUFFER_VERIFY,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/harfbuzz";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16792,7 +16820,7 @@
 					HB_NO_BUFFER_VERIFY,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/harfbuzz";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16828,7 +16856,7 @@
 					HB_NO_BUFFER_VERIFY,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/harfbuzz";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16861,7 +16889,7 @@
 					HB_NO_BUFFER_VERIFY,
 				);
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/harfbuzz";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16885,7 +16913,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/sheenbidi/Source",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16910,7 +16938,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/sheenbidi/Source",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16938,7 +16966,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/sheenbidi/Source",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16963,7 +16991,7 @@
 					"$(SRCROOT)/../../libs/sheenbidi/Headers",
 					"$(SRCROOT)/../../libs/sheenbidi/Source",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				OTHER_CFLAGS = (
 					"$(inherited)",
 					"-fvisibility=hidden",
@@ -16980,7 +17008,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -16993,7 +17021,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17009,7 +17037,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17025,7 +17053,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17040,7 +17068,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17055,7 +17083,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17069,7 +17097,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -17084,7 +17112,7 @@
 				EXECUTABLE_PREFIX = lib;
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -17101,7 +17129,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/box2d/src",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17119,7 +17147,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/box2d/src",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17141,7 +17169,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/box2d/src",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17160,7 +17188,7 @@
 					"$(SRCROOT)/../../libs/box2d/include",
 					"$(SRCROOT)/../../libs/box2d/src",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17176,7 +17204,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/json";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17192,7 +17220,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/json";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17207,7 +17235,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/json";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -17223,7 +17251,7 @@
 				GCC_ENABLE_CPP_EXCEPTIONS = YES;
 				GCC_ENABLE_CPP_RTTI = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/json";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -17237,7 +17265,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17252,7 +17280,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++17";
 				CODE_SIGN_STYLE = Automatic;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
-				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17270,7 +17298,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17285,7 +17313,7 @@
 				DEAD_CODE_STRIPPING = YES;
 				EXECUTABLE_PREFIX = lib;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/../../libs/meshoptimizer";
-				MACOSX_DEPLOYMENT_TARGET = 10.14;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17309,7 +17337,7 @@
 					SHADERCOMPILER_MSL,
 				);
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17335,7 +17363,7 @@
 					SHADERCOMPILER_MSL,
 				);
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17364,7 +17392,7 @@
 					SHADERCOMPILER_MSL,
 				);
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17390,7 +17418,7 @@
 					SHADERCOMPILER_MSL,
 				);
 				GCC_WARN_INHIBIT_ALL_WARNINGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17419,7 +17447,7 @@
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17449,7 +17477,7 @@
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17485,7 +17513,7 @@
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17517,7 +17545,7 @@
 					"$(SRCROOT)/../../libs/rmlui/Include",
 					"$(SRCROOT)/../../libs/lunasvg/include",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17549,7 +17577,7 @@
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17583,7 +17611,7 @@
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17622,7 +17650,7 @@
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17658,7 +17686,7 @@
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/include",
 					"$(SRCROOT)/../../libs/lunasvg/plutovg/source",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17689,7 +17717,7 @@
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17722,7 +17750,7 @@
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17760,7 +17788,7 @@
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17795,7 +17823,7 @@
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/jpg",
 					"$(SRCROOT)/../../libs/thorvg/src/loaders/sfnt",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17817,7 +17845,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/lexbor",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17841,7 +17869,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/lexbor",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17868,7 +17896,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/lexbor",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17892,7 +17920,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/lexbor",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -17919,7 +17947,7 @@
 					"$(SRCROOT)/../../libs/dav1d",
 					"$(SRCROOT)/../../libs/dav1d/include",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17948,7 +17976,7 @@
 					"$(SRCROOT)/../../libs/dav1d",
 					"$(SRCROOT)/../../libs/dav1d/include",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -17980,7 +18008,7 @@
 					"$(SRCROOT)/../../libs/dav1d",
 					"$(SRCROOT)/../../libs/dav1d/include",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -18009,7 +18037,7 @@
 					"$(SRCROOT)/../../libs/dav1d",
 					"$(SRCROOT)/../../libs/dav1d/include",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -18038,7 +18066,7 @@
 					"$(SRCROOT)/../../libs/opus/celt",
 					"$(SRCROOT)/../../libs/opus/silk",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -18069,7 +18097,7 @@
 					"$(SRCROOT)/../../libs/opus/celt",
 					"$(SRCROOT)/../../libs/opus/silk",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -18103,7 +18131,7 @@
 					"$(SRCROOT)/../../libs/opus/celt",
 					"$(SRCROOT)/../../libs/opus/silk",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -18134,7 +18162,7 @@
 					"$(SRCROOT)/../../libs/opus/celt",
 					"$(SRCROOT)/../../libs/opus/silk",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -18156,7 +18184,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/libwebm",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -18180,7 +18208,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/libwebm",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -18209,7 +18237,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/libwebm",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;
@@ -18235,7 +18263,7 @@
 				HEADER_SEARCH_PATHS = (
 					"$(SRCROOT)/../../libs/libwebm",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SKIP_INSTALL = YES;

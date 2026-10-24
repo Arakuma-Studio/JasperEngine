@@ -20,14 +20,14 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 
 - Shared ECS runtime for 2D and 3D scenes, with scene layers and serialization
 - Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
-- GLTF and OBJ models with skeletal animation, morph targets, and mesh instancing
+- glTF, OBJ, and FBX models with skeletal animation, morph targets, and mesh instancing (the editor converts FBX to glTF with [ufbx](https://github.com/ufbx/ufbx): meshes, materials and textures, skins, animations, blend shapes, node hierarchy, units and axes; reimported when the file or its textures change)
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
 - Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
-- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints
+- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.

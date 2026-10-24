@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -43,7 +44,8 @@ BUILD_TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = int(os.environ.get("JOBS", "3"))   # the host is shared
 
 UNICODE_DIR = "games/My Game ü"
-SCENES = {"Main Scene.scene": "Main_Scene.cpp", "HUD Scene.scene": "HUD_Scene.cpp"}
+# scene file -> identifier of its name; the generated source is scene_<identifier>_<scene id>.cpp
+SCENES = {"Main Scene.scene": "Main_Scene", "HUD Scene.scene": "HUD_Scene"}
 
 EFFECT_FRAG = """#version 450
 // @effect     path-glow
@@ -164,8 +166,9 @@ def check_export(out: Path, project: Path, what: str) -> None:
     """Every scene (its generated source), every asset and every Lua script of `project` is in `out`."""
     check((out / "CMakeLists.txt").is_file(), f"{what}: no CMakeLists.txt in {out}")
     exported = out / "project"
-    for scene, source in SCENES.items():
+    for scene, identifier in SCENES.items():
         check((project / scene).is_file(), f"the fixture has {scene}")
+        source = scene_source(project / scene, identifier)
         check((exported / source).is_file(),
               f"{what}: scene {scene} not exported (no project/{source}): {sorted(p.name for p in exported.iterdir())}")
     assets = files_under(project / "assets")
@@ -176,6 +179,13 @@ def check_export(out: Path, project: Path, what: str) -> None:
     check(scripts, "the fixture has Lua scripts")
     lua = {Path(p).name for p in files_under(exported / "lua")}
     check(scripts <= lua, f"{what}: Lua scripts missing: {sorted(scripts - lua)}")
+
+
+def scene_source(scene: Path, identifier: str) -> str:
+    """The generated source of a scene file: its name and id keep it apart from main.cpp and other scenes."""
+    found = re.search(r"^id:\s*(\d+)\s*$", scene.read_text(encoding="utf-8"), re.M)
+    check(found, f"{scene} has an id")
+    return f"scene_{identifier}_{found.group(1)}.cpp"
 
 
 def no_doubled_paths() -> None:
