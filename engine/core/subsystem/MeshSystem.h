@@ -112,6 +112,8 @@ namespace jasperengine{
         int materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, ModelComponent& model);
         int bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor, const Matrix4& matrix, const Matrix3& normalMatrix, bool isNormal, ModelComponent& model);
         int bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, const Matrix3& tangentMatrix, ModelComponent& model);
+        // The bake helpers need float positions, normals and tangents, and no morph targets
+        bool canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason = nullptr) const;
         int convertGLTFColorToVec4(const tinygltf::Accessor& accessor, ModelComponent& model);
         bool loadGLTFTexture(int textureIndex, ModelComponent& model, Texture& texture, const std::string& textureName);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
