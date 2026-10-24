@@ -1460,8 +1460,9 @@ void createUiDocumentTool(const CallPtr& call) {
     const size_t projectMark = projectHistory->position();
     auto rollback = [call, sp, history, mark, projectHistory, projectMark](const std::string& why) {
         const bool undone = history->position() > mark || projectHistory->position() > projectMark;
-        while (history->position() > mark && history->canUndo()) history->undo();
-        while (projectHistory->position() > projectMark && projectHistory->canUndo()) projectHistory->undo();
+        // a refused undo leaves the position, so it ends a loop too
+        while (history->position() > mark && history->canUndo() && history->undo()) {}
+        while (projectHistory->position() > projectMark && projectHistory->canUndo() && projectHistory->undo()) {}
         sp->needUpdateRender = true;
         call->fail(undone ? "Nothing was created (the call was rolled back): " + why : why);
     };

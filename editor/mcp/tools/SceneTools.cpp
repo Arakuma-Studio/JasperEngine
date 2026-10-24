@@ -502,6 +502,11 @@ void setChildSceneTool(const CallPtr& call) {
     }
     const bool attachedNow = project->hasChildScene(parentId, childId);
     const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    if (attach && !attachedNow && project->wouldCreateChildSceneCycle(parentId, childId)) {
+        call->fail("\"" + child->name + "\" already contains \"" + parent->name + "\" as a child scene (directly or "
+                   "deeper), so adding it would make a cycle.");
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     bool any = false;
     if (attach && !attachedNow) {

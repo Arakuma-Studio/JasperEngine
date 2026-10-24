@@ -4378,36 +4378,43 @@ void editor::Project::unloadChildSceneInline(uint32_t childSceneId) {
     Out::info("Unloaded child scene '%s' from inline", childScene->name.c_str());
 }
 
-void editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
+bool editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Scene with ID %u not found", sceneId);
-        return;
+        return false;
     }
 
     // Prevent adding self as child
     if (sceneId == childSceneId) {
         Out::error("Cannot add a scene as its own child");
-        return;
+        return false;
     }
 
     // Check if child scene exists
     const SceneProject* childScene = getScene(childSceneId);
     if (!childScene) {
         Out::error("Child scene with ID %u not found", childSceneId);
-        return;
+        return false;
+    }
+
+    // A cycle would have every walk down the child scenes recurse forever
+    if (wouldCreateChildSceneCycle(sceneId, childSceneId)) {
+        Out::error("Cannot add '%s' to '%s': '%s' already contains '%s'", childScene->name.c_str(), sceneProject->name.c_str(), childScene->name.c_str(), sceneProject->name.c_str());
+        return false;
     }
 
     // Check if already added
     auto& childScenes = sceneProject->childScenes;
     if (findChildScene(childScenes, childSceneId) != childScenes.end()) {
         Out::warning("Child scene '%s' already exists in scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
-        return;
+        return false;
     }
 
     childScenes.push_back({childSceneId, startActive});
     sceneProject->isModified = true;
     Out::info("Added child scene '%s' to scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
+    return true;
 }
 
 void editor::Project::removeChildScene(uint32_t sceneId, uint32_t childSceneId) {
@@ -4441,6 +4448,27 @@ bool editor::Project::hasChildScene(uint32_t sceneId, uint32_t childSceneId) con
 
     const auto& childScenes = sceneProject->childScenes;
     return findChildScene(childScenes, childSceneId) != childScenes.end();
+}
+
+bool editor::Project::wouldCreateChildSceneCycle(uint32_t sceneId, uint32_t childSceneId) const {
+    std::unordered_set<uint32_t> visited;
+    std::vector<uint32_t> pending = {childSceneId};
+    while (!pending.empty()) {
+        const uint32_t id = pending.back();
+        pending.pop_back();
+        if (id == sceneId) {
+            return true;
+        }
+        if (!visited.insert(id).second) {
+            continue;
+        }
+        if (const SceneProject* scene = getScene(id)) {
+            for (const ChildSceneRef& childSceneRef : scene->childScenes) {
+                pending.push_back(childSceneRef.id);
+            }
+        }
+    }
+    return false;
 }
 
 bool editor::Project::isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const {
@@ -7301,9 +7329,11 @@ void editor::Project::collectStartActiveScenes(uint32_t sceneId, std::vector<uin
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) return;
 
-    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) == activeSceneIds.end()) {
-        activeSceneIds.push_back(sceneId);
+    // Skip if already visited - also guards against cycles in the child-scene graph
+    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) != activeSceneIds.end()) {
+        return;
     }
+    activeSceneIds.push_back(sceneId);
 
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
         if (childSceneRef.startActive) {

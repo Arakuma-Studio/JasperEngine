@@ -35,8 +35,9 @@ namespace jasperengine::editor{
         bool addCommand(Command* cmd);
         void addCommandNoMerge(Command* cmd);
 
-        void undo();
-        void redo();
+        // False when the history did not move, also when the command refused (Command::canUndo)
+        bool undo();
+        bool redo();
 
         bool canUndo() const;
         bool canRedo() const;
