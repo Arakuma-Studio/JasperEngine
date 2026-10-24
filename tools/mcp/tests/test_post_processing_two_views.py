@@ -21,6 +21,7 @@ from harness import Editor, Scratch
 os.environ["JASPERENGINE_READY_SIGNAL"] = "1"
 os.environ["JASPERENGINE_FRAME_STATS"] = "all"
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Two Views"}
 TIMEOUT = 900
 

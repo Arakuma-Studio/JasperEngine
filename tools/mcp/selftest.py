@@ -1,12 +1,12 @@
 """Self-test of the harness against tools/mcp/fake_server.py (no editor needed).
 
-    uv run --no-project --with mcp --with pyyaml python tools/mcp/selftest.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/selftest.py
 
 Checks: stdio launch in both Xvfb modes (editor-spawned and harness-spawned), scratch layout
 (cwd, HOME, settings.yaml, LIBGL_ALWAYS_SOFTWARE, stderr capture), call/ToolError/expect_error,
 screenshot saving, console cursor, batch, Streamable HTTP attach, the runner (pass, -k, -j,
-failure exit code and kept scratch), the stdout purity check catching a dirty server, and that
-no Xvfb is left behind.
+--suite ci and its exit 2, failure exit code and kept scratch), the stdout purity check catching a
+dirty server, and that no Xvfb is left behind.
 """
 
 import asyncio
@@ -148,6 +148,20 @@ async def test_parallel():
         r = subprocess.run(runner + ["-j", "2", *map(str, files)], capture_output=True, text=True)
         ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout,
            "runner: -j 2 runs two files concurrently")
+        # the CI suite: CI = True files only; one that needs the default fixture stops the run (exit 2)
+        tests = Path(root) / "ci"
+        tests.mkdir()
+        (tests / "test_ci_created.py").write_text('CI = True\nEDITOR = {"create": True}\n\nasync def test_ping(ed):\n    await ed.ping()\n')
+        (tests / "test_ci_editorless.py").write_text("CI = True\n\nasync def test_nothing():\n    pass\n")
+        (tests / "test_not_ci.py").write_text("async def test_ping(ed):\n    await ed.ping()\n")
+        suite = runner + ["--suite", "ci", "--tests-dir", str(tests)]
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout and "test_not_ci" not in r.stdout,
+           "runner: --suite ci runs the CI = True files only")
+        (tests / "test_ci_default_fixture.py").write_text("CI = True\n\nasync def test_ping(ed):\n    await ed.ping()\n")
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 2 and "test_ci_default_fixture.py: CI = True" in r.stderr,
+           "runner: --suite ci exits 2 on a CI = True file that relies on the default fixture")
     r = subprocess.run(run + ["-k", "ping"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")

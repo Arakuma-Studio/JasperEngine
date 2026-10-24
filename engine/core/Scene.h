@@ -272,7 +272,7 @@ namespace jasperengine{
         std::shared_ptr<T> registerSystem(){
             const char* typeName = typeid(T).name();
 
-            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+            [[maybe_unused]] auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
 
             assert(it == systems.end() && "Registering system more than once");
 

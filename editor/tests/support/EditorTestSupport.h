@@ -17,13 +17,17 @@
 
 namespace jasperengine::editor::test {
 
-    // Engine::systemInit with a System that has no window (idempotent)
+    // the engine is running (TestMain started it with the support library's TestSystem)
     void ensureEngine();
 
     // editor/tests/fixtures/<relative>
     std::filesystem::path fixture(const std::string& relative);
 
     std::string readText(const std::filesystem::path& path);
+
+    // Deletes the scene's camera framebuffers: a CameraComponent owns one, and RenderSystem frees
+    // it only when the entity is destroyed, not with the scene (LeakSanitizer reports the rest)
+    void releaseCameraFramebuffers(Scene* scene);
 
     // A scene file decoded the way Project::loadScene decodes it (report installed), into a
     // SceneProject of its own

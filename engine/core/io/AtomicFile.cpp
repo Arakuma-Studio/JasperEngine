@@ -37,7 +37,7 @@ namespace {
     constexpr std::string_view kTempSuffix = ".je-tmp";
 
     // path's UTF-8 conversions changed type in C++20 (std::u8string, u8path deprecated)
-    std::string toUtf8(const fs::path& path){
+    std::string atomicToUtf8(const fs::path& path){
         const auto utf8 = path.u8string();
         return std::string(utf8.begin(), utf8.end());
     }
@@ -95,7 +95,7 @@ namespace {
         WriteResult result;
         result.error = error;
         result.code = code;
-        result.message = std::string(step) + " '" + toUtf8(path) + "': " + code.message();
+        result.message = std::string(step) + " '" + atomicToUtf8(path) + "': " + code.message();
         return result;
     }
 
@@ -527,7 +527,7 @@ bool isTemporarySiblingName(std::string_view filename){
 }
 
 fs::path temporarySiblingTarget(const fs::path& temp){
-    const std::string name = toUtf8(temp.filename());
+    const std::string name = atomicToUtf8(temp.filename());
     if (!isTemporarySiblingName(name))
         return {};
     const std::string stem = name.substr(0, name.size() - kTempSuffix.size());
@@ -604,7 +604,7 @@ OrphanSweep quarantineOrphanedTemporaryFiles(const std::vector<fs::path>& candid
     OrphanSweep sweep;
     const std::string stamp = timestampNow();
     for (const fs::path& candidate : candidates){
-        const int64_t writer = temporarySiblingWriter(toUtf8(candidate.filename()));
+        const int64_t writer = temporarySiblingWriter(atomicToUtf8(candidate.filename()));
         if (writer < 0 || isProcessRunning(writer))
             continue;
         std::error_code ec;

@@ -60,7 +60,7 @@ namespace {
         HotReloadService& service = HotReloadService::get();
 
         void SetUp() override {
-            test::ensureEngine();
+            editor::test::ensureEngine();
             std::string error;
             ASSERT_TRUE(project.createProjectAt(dir.path / "HotReload", "HotReload", &error)) << error;
             // (a project resets the engine's settings: textures load on this thread from here)
@@ -191,7 +191,7 @@ TEST_F(HotReloadServiceTests, EditorWritesFanOutButDoNotTouchScenes) {
 }
 
 TEST(ModelReloadTests, HierarchyMismatchIsReportedNotRebuilt) {
-    test::ensureEngine();
+    editor::test::ensureEngine();
     TempDir dir;
     const fs::path file = dir.path / "model.gltf";
     auto gltf = [](const std::string& nodes, const std::string& roots) {

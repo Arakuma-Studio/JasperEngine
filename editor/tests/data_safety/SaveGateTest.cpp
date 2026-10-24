@@ -42,8 +42,9 @@ TEST(SaveGate, DroppedIssues) {
 
     // the save writes what the editor has: the unknown entity is gone
     const YAML::Node saved = encodeScene(decoded);
-    for (const YAML::Node& entity : saved["entities"])
+    for (const YAML::Node& entity : saved["entities"]){
         EXPECT_EQ(entity["type"].Scalar(), "Entity");
+    }
 }
 
 TEST(SaveGate, ParseErrorNamesThePosition) {

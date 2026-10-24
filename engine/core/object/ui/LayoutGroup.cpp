@@ -109,7 +109,7 @@ void LayoutGroup::setBoxExpand(bool expand){
 }
 
 void LayoutGroup::setBoxExpand(size_t id, bool expand){
-    if (id >= 0 && id < MAX_CONTAINER_BOXES){
+    if (id < MAX_CONTAINER_BOXES){
         LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
         container.boxes[id].expand = expand;
@@ -119,7 +119,7 @@ void LayoutGroup::setBoxExpand(size_t id, bool expand){
 }
 
 bool LayoutGroup::isBoxExpand(size_t id) const{
-    if (id >= 0 && id < MAX_CONTAINER_BOXES){
+    if (id < MAX_CONTAINER_BOXES){
         LayoutGroupComponent& container = getComponent<LayoutGroupComponent>();
 
         return container.boxes[id].expand;

@@ -1034,7 +1034,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
         gizmoSideActive ||
-        sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+        (sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space));
 
     if (isMouseInWindow){
 
