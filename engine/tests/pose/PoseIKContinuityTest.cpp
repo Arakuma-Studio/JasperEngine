@@ -79,7 +79,8 @@ TEST(PoseIKContinuity, StartingBendPlaneSweptThroughTheBlendZone){
                     }
                     previous = joint;
                 }
-                // at most 0.03 humanScale per degree of sweep (measured ~0.013; the jump was 0.25)
+                // at most 0.015 humanScale per 0.5-degree step of the sweep (measured: at most 0.0087,
+                // the minimal-unity right arm at 11 degrees; the old switch jumped 0.25 in one step)
                 EXPECT_LT(worst, 0.015) << t->label << " limb " << static_cast<int>(limb) << " bend " << degrees << " at phi " << worstAt;
             }
         }

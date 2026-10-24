@@ -145,7 +145,8 @@ namespace jasperengine::pose {
     JASPERENGINE_API std::vector<int> clampToLimits(BodyPose& body);
     // the same for one slot's three values; returns a bit mask of the changed DOFs (bit k = dof k)
     JASPERENGINE_API unsigned clampBoneToLimits(HumanBone bone, float angles[DOFS_PER_BONE]);
-    // every value within its limits and the swing at most 180 degrees long
+    // every value within its limits and the swing at most MAX_SWING_DEGREES long: exactly the
+    // values clampBoneToLimits leaves unchanged (and every result of clampBoneToLimits passes)
     JASPERENGINE_API bool boneWithinLimits(HumanBone bone, const float angles[DOFS_PER_BONE]);
 
 }

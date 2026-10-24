@@ -41,6 +41,35 @@ TEST(PoseLimits, SwingIsCappedBelow180){
     EXPECT_TRUE(clampToLimits(body).empty());
 }
 
+TEST(PoseLimits, WithinLimitsMatchesTheSwingCap){
+    // boneWithinLimits accepts exactly what clampBoneToLimits leaves unchanged: a swing between
+    // the cap and 180 (inside every per-DOF hips range) is not within limits, and every clamp
+    // result is (the float rounding of the scaled pair never lands above the cap)
+    for (float length : {179.6f, 179.9f, 180.0f}){
+        float a[3] = {length, 0.0f, 0.0f};
+        EXPECT_FALSE(boneWithinLimits(H::Hips, a)) << length;
+        EXPECT_EQ(clampBoneToLimits(H::Hips, a), 3u) << length;
+        EXPECT_TRUE(boneWithinLimits(H::Hips, a)) << length;
+    }
+    int checked = 0;
+    for (H bone : {H::Hips, H::LeftUpperArm, H::RightUpperLeg}){
+        for (int k = 0; k < 360; k++){
+            const double theta = degToRad(k * 1.0 + 0.37);
+            for (double length : {170.0, 179.4, 179.5, 179.50001, 179.7, 200.0, 400.0}){
+                float a[3] = {static_cast<float>(length * std::cos(theta)), static_cast<float>(length * std::sin(theta)), 10.0f};
+                const bool within = boneWithinLimits(bone, a);
+                float b[3] = {a[0], a[1], a[2]};
+                const unsigned changed = clampBoneToLimits(bone, b);
+                EXPECT_EQ(within, changed == 0u) << humanBoneName(bone) << " " << k << " " << length;
+                EXPECT_TRUE(boneWithinLimits(bone, b)) << humanBoneName(bone) << " " << k << " " << length;
+                EXPECT_EQ(clampBoneToLimits(bone, b), 0u) << humanBoneName(bone) << " " << k << " " << length;
+                checked++;
+            }
+        }
+    }
+    EXPECT_EQ(checked, 3 * 360 * 7);
+}
+
 TEST(PoseLimits, FramesKeepKeysInsideTheLimits){
     // reviewer probe 3: raise = forward = 120 / 130 / 150 (130 and 150 are capped to a 179.5-degree
     // swing by the key clamp); the frames' limit pass must not turn the key into another pose
