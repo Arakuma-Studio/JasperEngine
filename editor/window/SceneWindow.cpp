@@ -1947,6 +1947,7 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
+        drawSettingRow(ICON_FA_CLOUD " Disable clouds", sceneProject.displaySettings.disableClouds);
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }

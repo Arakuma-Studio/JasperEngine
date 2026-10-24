@@ -2945,6 +2945,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
+    // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
+    if (sceneProject.scene)
+        sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -3080,6 +3083,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
 
     std::vector<Engine::ViewLayer> layers;
     layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);

@@ -33,6 +33,8 @@
 #include "component/MeshComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "component/LightComponent.h"
 #include "component/CameraComponent.h"
 #include "component/SpriteComponent.h"
@@ -1034,6 +1036,20 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<FogComponent>(entity, Stream::decodeFogComponent(componentNode));
             }
             break;
+        case ComponentType::LocalVolumetricFogComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<LocalVolumetricFogComponent>(entity, {});
+            }else{
+                registry->addComponent<LocalVolumetricFogComponent>(entity, Stream::decodeLocalVolumetricFogComponent(componentNode));
+            }
+            break;
+        case ComponentType::VolumetricCloudsComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<VolumetricCloudsComponent>(entity, {});
+            }else{
+                registry->addComponent<VolumetricCloudsComponent>(entity, Stream::decodeVolumetricCloudsComponent(componentNode));
+            }
+            break;
         case ComponentType::MirrorComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<MirrorComponent>(entity, {});
@@ -1492,6 +1508,18 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeFogComponent(registry->getComponent<FogComponent>(entity));
             }
             registry->removeComponent<FogComponent>(entity);
+            break;
+        case ComponentType::LocalVolumetricFogComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeLocalVolumetricFogComponent(registry->getComponent<LocalVolumetricFogComponent>(entity));
+            }
+            registry->removeComponent<LocalVolumetricFogComponent>(entity);
+            break;
+        case ComponentType::VolumetricCloudsComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeVolumetricCloudsComponent(registry->getComponent<VolumetricCloudsComponent>(entity));
+            }
+            registry->removeComponent<VolumetricCloudsComponent>(entity);
             break;
         case ComponentType::MirrorComponent:
             if (encodeComponent){
@@ -2169,6 +2197,8 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<MeshComponent>()))        return meshClass("Mesh");
     if (signature.test(scene->getComponentId<SkyboxComponent>()))         return handleClass("Skybox");
     if (signature.test(scene->getComponentId<FogComponent>()))         return handleClass("Fog");
+    if (signature.test(scene->getComponentId<VolumetricCloudsComponent>())) return handleClass("VolumetricClouds");
+    if (signature.test(scene->getComponentId<LocalVolumetricFogComponent>())) return objectClass("LocalVolumetricFog");
     if (signature.test(scene->getComponentId<AudioSourceComponent>()))       return handleClass("AudioSource");
     if (signature.test(scene->getComponentId<ButtonComponent>()))      return objectClass("Button");
     if (signature.test(scene->getComponentId<ScrollbarComponent>()))   return objectClass("Scrollbar");

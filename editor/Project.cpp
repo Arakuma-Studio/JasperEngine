@@ -1907,6 +1907,15 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
+    atmosphereQuality = quality;
+    Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
+}
+
+const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
+    return atmosphereQuality;
+}
+
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -4754,6 +4763,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setThreadingSettings(ThreadingProjectSettings());
@@ -6209,6 +6219,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setAtmosphereQuality(atmosphereQuality);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
 }
 
@@ -7939,6 +7950,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+        generator.setAtmosphereQuality(atmosphereQuality);
         generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);

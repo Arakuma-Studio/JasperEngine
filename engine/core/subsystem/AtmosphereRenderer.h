@@ -16,6 +16,7 @@
 #include "render/ShaderRender.h"
 #include "texture/Framebuffer.h"
 #include "texture/Texture.h"
+#include "texture/IBLEnvironment.h"
 #include "ecs/Entity.h"
 
 #include <array>
@@ -191,12 +192,14 @@ namespace jasperengine{
     public:
         // what one camera pass draws
         struct PassPlan{
+            bool mainCamera = false;      // the view's camera: it refreshes the Sky Map
             bool skyComposite = false;
             bool skyFill = false;
             bool skyMapClouds = false;
             bool volumetricFog = false;
             bool screenClouds = false;
             bool needsDepth() const { return volumetricFog || screenClouds; }
+            bool any() const { return skyComposite || volumetricFog || screenClouds; }
         };
 
         explicit AtmosphereRenderer(RenderSystem* renderSystem);
@@ -223,18 +226,18 @@ namespace jasperengine{
         // what a camera pass draws: the main camera of a view gets the volumetric fog and the
         // Screen clouds; every 3D pass the sky composite
         PassPlan planPass(const CameraComponent& camera, bool mainCamera, bool skyComposite) const;
-        // before its colour pass: the reduced-resolution passes of the plan from the pass's
-        // packed depth (null: a plan without depth is drawn without them); the volumetric
-        // handoff distance its opaque surfaces take
+        // before its colour pass of width x height pixels: the reduced-resolution passes of the
+        // plan from the pass's packed depth (null: a plan without depth is drawn without them);
+        // returns the volumetric handoff distance its opaque surfaces take
         float renderPassTargets(PassPlan& plan, const CameraComponent& camera, const Transform& cameraTransform,
-                                TextureRender* sceneDepth, bool forcedDepth);
+                                TextureRender* sceneDepth, bool forcedDepth, unsigned int width, unsigned int height);
         // inside the colour pass, after the opaque queue: the sky composite, then the
         // volumetric composite, for the pass's pipeline type and its viewport
         void drawComposites(const PassPlan& plan, PipelineType pipelineType, int msaaSamples, const Rect& viewport,
                             unsigned int targetHeight, bool flipped, const CameraComponent& camera, const Transform& cameraTransform);
 
         // the horizon ring of a sky's cube map (computed with its IBL maps, cached by texture)
-        static void storeHorizonRing(const std::string& textureId, const std::array<Vector3, 4>& ring);
+        static void storeHorizonRing(const std::string& textureId, const IBLEnvironment::HorizonRing& ring);
 
         // frees the GPU resources (the scene's renderer is destroyed)
         void destroy();

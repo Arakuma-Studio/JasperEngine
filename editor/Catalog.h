@@ -123,8 +123,13 @@ namespace jasperengine::editor{
         // Keep new component types at the end: their ordinal is used as the bit
         // position in Prefab's in-memory component override mask.
         ReflectionProbeComponent,
-        UIDocumentComponent
+        UIDocumentComponent,
+        LocalVolumetricFogComponent,
+        VolumetricCloudsComponent
     };
+
+    // the last ComponentType (loops over every type)
+    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::VolumetricCloudsComponent;
 
     enum class PropertyType{
         Bool,

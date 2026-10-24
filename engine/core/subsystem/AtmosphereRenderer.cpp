@@ -16,6 +16,7 @@
 #include "component/Transform.h"
 #include "pool/ShaderPool.h"
 #include "render/AtmosphereNoise.h"
+#include "jobs/JobSystem.h"
 #include "render/BlueNoise64.h"
 #include "render/SystemRender.h"
 #include "util/Color.h"
@@ -49,9 +50,26 @@ namespace {
         "Atmosphere/CloudsSkyMap", "Atmosphere/SkyComposite", "Atmosphere/VolumetricComposite"
     };
 
-    std::unordered_map<std::string, std::array<Vector3, 4>>& horizonRings(){
-        static std::unordered_map<std::string, std::array<Vector3, 4>> rings;
+    // the shader of each AtmosphereRenderer::ProgramKind
+    const ShaderType PROGRAM_TYPES[] = {
+        ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
+    };
+
+    std::unordered_map<std::string, IBLEnvironment::HorizonRing>& horizonRings(){
+        static std::unordered_map<std::string, IBLEnvironment::HorizonRing> rings;
         return rings;
+    }
+
+    // the ring's colour at a cube azimuth (radians), between its sectors' centres
+    Vector3 ringAt(const IBLEnvironment::HorizonRing& ring, float azimuth){
+        const float n = (float)IBLEnvironment::HORIZON_AZIMUTHS;
+        float position = azimuth / (2.0f * 3.14159265358979f) * n;
+        position -= std::floor(position / n) * n;
+        const int k0 = (int)std::floor(position) % IBLEnvironment::HORIZON_AZIMUTHS;
+        const int k1 = (k0 + 1) % IBLEnvironment::HORIZON_AZIMUTHS;
+        const float f = position - std::floor(position);
+        return ring[k0] * (1.0f - f) + ring[k1] * f;
     }
 
     // a fullscreen pass of an atmosphere target: no depth, no blending
@@ -172,7 +190,7 @@ bool AtmosphereRenderer::isForceLowPrecisionTargets(){
     return forceLowPrecision;
 }
 
-void AtmosphereRenderer::storeHorizonRing(const std::string& textureId, const std::array<Vector3, 4>& ring){
+void AtmosphereRenderer::storeHorizonRing(const std::string& textureId, const IBLEnvironment::HorizonRing& ring){
     horizonRings()[textureId] = ring;
 }
 
@@ -293,10 +311,20 @@ void AtmosphereRenderer::updateHorizon(){
     if (!sky.texture.empty() && sky.texture.getNumFaces() == 6){
         auto ring = horizonRings().find(sky.texture.getId());
         if (ring != horizonRings().end()){
-            // the Skybox's colour tints the sky (sky.frag)
+            // the Skybox's colour tints the sky and its rotation turns it about +Y (sky.frag,
+            // ibl.glsl rotateEnv: world azimuth a shows the cube's a - rotation); each entry is
+            // the 90 degree sector around its azimuth
             const Vector3 tint = Color::sRGBToLinear(Vector3(sky.color.x, sky.color.y, sky.color.z));
-            for (int i = 0; i < 4; i++)
-                horizon[i] = ring->second[i] * tint;
+            const float rotation = Angle::defaultToRad(sky.rotation);
+            const float quarter = 0.5f * 3.14159265358979f;
+            for (int i = 0; i < 4; i++){
+                const float centre = (float)i * quarter - rotation;
+                Vector3 sum(0.0f, 0.0f, 0.0f);
+                const float weights[5] = {0.5f, 1.0f, 1.0f, 1.0f, 0.5f};
+                for (int s = 0; s < 5; s++)
+                    sum += ringAt(ring->second, centre + ((float)s - 2.0f) * 0.25f * quarter) * weights[s];
+                horizon[i] = sum * 0.25f * tint;
+            }
             horizonSource = "cubemap";
         }
         return;
@@ -360,18 +388,15 @@ void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponen
 
 bool AtmosphereRenderer::cloudsReady(){
     AtmosphereNoise& noise = AtmosphereNoise::get();
-    if (!noise.isStarted()){
-#ifdef NO_THREAD_SUPPORT
-        noise.start(false);
-#else
-        noise.start(true);
-#endif
-    }
+    // on the job system's workers, else (no workers: web without threads) time-sliced in update()
+    if (!noise.isStarted())
+        noise.start(!jobs::system().isSingleThreaded());
     return noiseShape.isCreated();
 }
 
 AtmosphereRenderer::PassPlan AtmosphereRenderer::planPass(const CameraComponent& camera, bool mainCamera, bool skyComposite) const{
     PassPlan plan;
+    plan.mainCamera = mainCamera;
     bool fogShown = heightFogActive;
     bool cloudsShown = clouds != nullptr && !rs->rv().disableClouds;
 #ifdef JASPERENGINE_EDITOR
@@ -396,10 +421,7 @@ AtmosphereRenderer::PassPlan AtmosphereRenderer::planPass(const CameraComponent&
 }
 
 bool AtmosphereRenderer::loadProgram(ProgramKind kind){
-    static const ShaderType types[PROGRAM_COUNT] = {
-        ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
-    };
+    const ShaderType* types = PROGRAM_TYPES;
     Program& program = programs[kind];
     if (program.loaded)
         return true;
@@ -865,7 +887,7 @@ void AtmosphereRenderer::renderSkyMap(const CameraComponent& camera, const Trans
 }
 
 float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponent& camera, const Transform& cameraTransform,
-                                            TextureRender* sceneDepth, bool forcedDepth){
+                                            TextureRender* sceneDepth, bool forcedDepth, unsigned int width, unsigned int height){
     AtmosphereViewTargets& targets = rs->rv().atmosphere;
     // the medium and the sun of the camera for the marches (they make their own rays)
     fillHeightFog(passFog, camera, cameraTransform, Rect(0.0f, 0.0f, 1.0f, 1.0f), 1, false, 0.0f);
@@ -892,8 +914,8 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
         plan.skyMapClouds = false;
     }
 
-    const float resolutionX = std::max(rs->passFrame.resolution.x, 1.0f);
-    const float resolutionY = std::max(rs->passFrame.resolution.y, 1.0f);
+    const float resolutionX = (float)std::max(width, 1u);
+    const float resolutionY = (float)std::max(height, 1u);
     const bool floatFormat = useFloatTargets();
     if (plan.needsDepth()){
         targets.used[0] = true;
@@ -911,10 +933,10 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
     if (plan.volumetricFog){
         const AtmosphereTier tier = AtmosphereTiers::get(AtmosphereTiers::apply(quality, fog->qualityOverride));
         const int level = tier.fogDivisor == 2 ? 0 : 1;
-        const unsigned int width = (unsigned int)std::ceil(resolutionX / (float)tier.fogDivisor);
-        const unsigned int height = (unsigned int)std::ceil(resolutionY / (float)tier.fogDivisor);
-        if (ensureTarget(targets.depth[level], width, height, false, false) && ensureTarget(targets.fog[0], width, height, floatFormat, false)
-                && ensureTarget(targets.fog[1], width, height, floatFormat, false)){
+        const unsigned int fogWidth = (unsigned int)std::ceil(resolutionX / (float)tier.fogDivisor);
+        const unsigned int fogHeight = (unsigned int)std::ceil(resolutionY / (float)tier.fogDivisor);
+        if (ensureTarget(targets.depth[level], fogWidth, fogHeight, false, false) && ensureTarget(targets.fog[0], fogWidth, fogHeight, floatFormat, false)
+                && ensureTarget(targets.fog[1], fogWidth, fogHeight, floatFormat, false)){
             targets.used[1] = true;
             renderDepth(targets.depth[level], sceneDepth, tier.fogDivisor, camera);
             depthReady[level] = true;
@@ -933,10 +955,10 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
         building.cloudsActive = true;
         building.cloudsMode = plan.screenClouds ? CloudsRendering::SCREEN : CloudsRendering::SKY_MAP;
         if (plan.screenClouds){
-            const unsigned int width = (unsigned int)std::ceil(resolutionX / (float)tier.cloudScreenDivisor);
-            const unsigned int height = (unsigned int)std::ceil(resolutionY / (float)tier.cloudScreenDivisor);
-            if (ensureTarget(targets.depth[1], width, height, false, false) && ensureTarget(targets.clouds[0], width, height, floatFormat, false)
-                    && ensureTarget(targets.clouds[1], width, height, floatFormat, false)){
+            const unsigned int cloudsWidth = (unsigned int)std::ceil(resolutionX / (float)tier.cloudScreenDivisor);
+            const unsigned int cloudsHeight = (unsigned int)std::ceil(resolutionY / (float)tier.cloudScreenDivisor);
+            if (ensureTarget(targets.depth[1], cloudsWidth, cloudsHeight, false, false) && ensureTarget(targets.clouds[0], cloudsWidth, cloudsHeight, floatFormat, false)
+                    && ensureTarget(targets.clouds[1], cloudsWidth, cloudsHeight, floatFormat, false)){
                 targets.used[2] = true;
                 if (!depthReady[1])
                     renderDepth(targets.depth[1], sceneDepth, tier.cloudScreenDivisor, camera);
@@ -949,7 +971,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
         // the Sky Map: refreshed by the view's main camera for the cameras that read it (the
         // Sky Map mode's, or the other cameras of a Screen mode scene)
         const bool mapUsers = plan.skyMapClouds || rs->hasMultipleCameras || rs->hasReflectionProbes;
-        if (mapUsers && (plan.skyMapClouds ? true : plan.screenClouds)){
+        if (plan.mainCamera && mapUsers){
             renderSkyMap(camera, cameraTransform, tier);
             building.mapSize = targets.skyMapSize;
             building.sliceFrames = targets.skyMapSlices;
@@ -1079,16 +1101,14 @@ void AtmosphereRenderer::endFrame(){
 }
 
 void AtmosphereRenderer::destroy(){
-    for (Program& program : programs){
+    for (int kind = 0; kind < PROGRAM_COUNT; kind++){
+        Program& program = programs[kind];
         if (program.loaded)
             program.render.destroy();
         program.loaded = false;
-        program.shader.reset();
+        if (program.shader){
+            program.shader.reset();
+            ShaderPool::remove(PROGRAM_TYPES[kind], 0);
+        }
     }
-    static const ShaderType types[PROGRAM_COUNT] = {
-        ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
-    };
-    for (ShaderType type : types)
-        ShaderPool::remove(type, 0);
 }

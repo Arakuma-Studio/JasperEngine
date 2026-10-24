@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "render/Render.h"
 #include "shader/ShaderManifest.h"
+#include "render/AtmospherePresets.h"
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
@@ -492,6 +493,14 @@ namespace jasperengine::editor{
         void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLocalVolumetricFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Presets menu of a Fog or Volumetric Clouds: a pick applies it as one undo step
+        void drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                       const std::vector<AtmospherePreset>& presets, const char* current);
+        // a foldout of a component's rows (an ImGui tree node, open by default)
+        bool beginFoldout(const char* label);
+        void endFoldout();
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

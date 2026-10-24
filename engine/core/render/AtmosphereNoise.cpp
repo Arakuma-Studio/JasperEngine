@@ -9,7 +9,7 @@
 // Ported to the CPU with table-driven feature points and periodic Perlin noise.
 
 #include "AtmosphereNoise.h"
-#include "thread/ThreadPoolManager.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <chrono>
@@ -350,11 +350,9 @@ AtmosphereNoise::AtmosphereNoise(): state(std::make_shared<State>()){
 }
 
 AtmosphereNoise::~AtmosphereNoise(){
-    // the jobs hold the state by shared pointer; waiting keeps the pool's queue short at exit
-    for (std::future<void>& job : jobs){
-        if (job.valid())
-            job.wait();
-    }
+    // the jobs hold the state by shared pointer; waiting keeps them from outliving the bake
+    for (jobs::Task<void>& task : tasks)
+        task.wait();
 }
 
 AtmosphereNoise& AtmosphereNoise::get(){
@@ -395,23 +393,19 @@ void AtmosphereNoise::start(bool threaded){
     nextItem = 0;
     if (threaded){
         std::shared_ptr<State> shared = state;
-        jobs.reserve(ITEMS);
+        tasks.reserve(ITEMS);
         for (int item = 0; item < ITEMS; item++){
-            jobs.push_back(ThreadPoolManager::getInstance().enqueue([shared, item](){ shared->sampleItem(item); }));
+            tasks.push_back(jobs::submit([shared, item](){ shared->sampleItem(item); }, {jobs::Lane::Background, jobs::GateClass::Default, "atmosphere-noise"}));
         }
     }
 }
 
-bool AtmosphereNoise::jobsDone(){
-    for (std::future<void>& job : jobs){
-        if (job.valid() && job.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+bool AtmosphereNoise::tasksDone(){
+    for (const jobs::Task<void>& task : tasks){
+        if (!task.isReady())
             return false;
     }
-    for (std::future<void>& job : jobs){
-        if (job.valid())
-            job.get();
-    }
-    jobs.clear();
+    tasks.clear();
     return true;
 }
 
@@ -421,9 +415,9 @@ void AtmosphereNoise::beginNormalise(){
     nextItem = 0;
     if (threaded){
         std::shared_ptr<State> shared = state;
-        jobs.reserve(ITEMS);
+        tasks.reserve(ITEMS);
         for (int item = 0; item < ITEMS; item++){
-            jobs.push_back(ThreadPoolManager::getInstance().enqueue([shared, item](){ shared->normaliseItem(item); }));
+            tasks.push_back(jobs::submit([shared, item](){ shared->normaliseItem(item); }, {jobs::Lane::Background, jobs::GateClass::Default, "atmosphere-noise"}));
         }
     }
 }
@@ -436,7 +430,7 @@ bool AtmosphereNoise::advance(double budgetMilliseconds){
         return true;
 
     if (threaded){
-        if (!jobsDone())
+        if (!tasksDone())
             return false;
         if (phase == 1){
             beginNormalise();

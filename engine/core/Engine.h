@@ -529,6 +529,10 @@ namespace jasperengine {
             // the scene's post-processing applies to the camera (the Game view; the Scene view
             // has it off unless its display setting turns it on)
             bool postProcessing = true;
+            // draws without the volumetric clouds (the Scene view's Clouds toggle)
+            bool disableClouds = false;
+            // the atmosphere quality the view previews (the Game view's; -1 the project's)
+            int atmosphereQuality = -1;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

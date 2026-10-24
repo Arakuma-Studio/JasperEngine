@@ -331,6 +331,14 @@ void Light::setShading(LightShading shading){
     getComponent<LightComponent>().shading = shading;
 }
 
+void Light::setVolumetricIntensity(float volumetricIntensity){
+    getComponent<LightComponent>().volumetricIntensity = volumetricIntensity;
+}
+
+float Light::getVolumetricIntensity() const{
+    return getComponent<LightComponent>().volumetricIntensity;
+}
+
 LightShading Light::getShading() const{
     return getComponent<LightComponent>().shading;
 }

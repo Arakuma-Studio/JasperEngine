@@ -6,10 +6,10 @@
 
 #include "Export.h"
 #include "math/Vector4.h"
+#include "jobs/Task.h"
 
 #include <atomic>
 #include <cstdint>
-#include <future>
 #include <memory>
 #include <vector>
 
@@ -26,9 +26,9 @@ namespace jasperengine{
     // run of a build. Worley cells and gradients come from an integer hash of the wrapped
     // lattice coordinate (the layering of OpenEngine's volumetric_clouds_worley.glsl, MIT).
     //
-    // The work is split into items (a 3D slice or a band of weather rows) that run on the
-    // thread pool, or, without threads (web builds without pthreads), on the main thread a
-    // time budget at a time. advance() never blocks on the workers.
+    // The work is split into items (a 3D slice or a band of weather rows) that run as
+    // Background jobs (S06), or, without workers (web builds without pthreads), on the main
+    // thread a time budget at a time. advance() never blocks on the workers.
     class JASPERENGINE_API AtmosphereNoise{
     public:
         static constexpr int SHAPE_SIZE = 64;
@@ -44,8 +44,8 @@ namespace jasperengine{
         // the process's bake, shared by every scene's renderer
         static AtmosphereNoise& get();
 
-        // begins the bake (once; later calls do nothing): threaded on the thread pool, else
-        // the items wait for advance()
+        // begins the bake (once; later calls do nothing): threaded as jobs, else the items
+        // wait for advance()
         void start(bool threaded);
         // threaded: checks the jobs and starts the next phase; unthreaded: runs items on this
         // thread until budgetMilliseconds is spent. True once the bytes are ready.
@@ -71,11 +71,11 @@ namespace jasperengine{
         struct State;
         std::shared_ptr<State> state;
         bool threaded = false;
-        std::vector<std::future<void>> jobs;
+        std::vector<jobs::Task<void>> tasks;
         int nextItem = 0;   // unthreaded: the next item to run
 
         void beginNormalise();
-        bool jobsDone();
+        bool tasksDone();
     };
 
 }
