@@ -27,6 +27,7 @@ GENERATORS = [
     ("tools/htmlui/xcode_sync_rmlui.py", []),
     ("tools/htmlui/xcode_add_lexbor.py", []),
     ("tools/htmlui/xcode_add_video_libs.py", []),   # p6-video (p6-accept: the only Xcode sync no test ran)
+    ("tools/xcode_sync_engine.py", []),             # every engine/CMakeLists.txt core source in the Xcode targets
 ]
 
 
