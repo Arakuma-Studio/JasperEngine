@@ -128,6 +128,32 @@ TEST(PoseMetrics, LimitHitsBeforeClamping){
     EXPECT_TRUE(hits(minimal, "head.twist"));
 }
 
+TEST(PoseMetrics, LimitHitsTolerateReadBackNoise){
+    // a frame clamped to a limit reads back a hair outside it (a straight knee at -0.003): only
+    // more than LIMIT_HIT_TOLERANCE (0.05 degrees) outside is a hit, per DOF and for the swing cap
+    const PoseRig& rig = *tposeRig().rig;
+    EXPECT_FALSE(hits(metricsOf(rig, with({{"left_lower_leg.bend", -0.003f}})), "left_lower_leg.bend"));
+    EXPECT_FALSE(hits(metricsOf(rig, with({{"left_lower_leg.bend", -0.04f}})), "left_lower_leg.bend"));
+    EXPECT_TRUE(hits(metricsOf(rig, with({{"left_lower_leg.bend", -0.06f}})), "left_lower_leg.bend"));
+    EXPECT_FALSE(hits(metricsOf(rig, with({{"left_lower_leg.bend", 155.04f}})), "left_lower_leg.bend"));
+    EXPECT_TRUE(hits(metricsOf(rig, with({{"left_lower_leg.bend", 155.06f}})), "left_lower_leg.bend"));
+    // the swing cap (179.5): a hips lean of 179.54 is noise, 179.6 a hit on both swing DOFs
+    BodyPose lean = with({{"hips.lean", 179.54f}});
+    EXPECT_TRUE(metricsOf(rig, lean).limitHits.empty());
+    lean = with({{"hips.lean", 179.6f}});
+    EXPECT_TRUE(hits(metricsOf(rig, lean), "hips.lean"));
+    EXPECT_TRUE(hits(metricsOf(rig, lean), "hips.side"));
+    EXPECT_FALSE(hits(metricsOf(rig, lean), "hips.turn"));
+    // a knee clamped to 0, realised and read back as the frames metrics do (toBodyPose)
+    for (const TestRig* t : allRigs()){
+        BodyPose bent = with({{"left_lower_leg.bend", -15.0f}, {"right_lower_leg.bend", -15.0f}, {"left_lower_arm.bend", -15.0f}});
+        clampToLimits(bent);
+        const HumanPose pose = t->rig->fromBodyPose(bent, nullptr, true, 0.0f);
+        const PoseMetrics m = computeMetrics(*t->rig, pose, t->rig->toBodyPose(pose));
+        EXPECT_TRUE(m.limitHits.empty()) << t->label << " " << m.limitHits.size();
+    }
+}
+
 TEST(PoseMetrics, MirroredPoseMirrorsTheMetrics){
     const PoseRig& rig = *tposeRig().skinned;
     const BodyPose body = with({{"left_upper_leg.forward", 40}, {"left_lower_leg.bend", 30}, {"spine.side", 10},

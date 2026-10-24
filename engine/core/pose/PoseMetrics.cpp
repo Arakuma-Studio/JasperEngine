@@ -224,10 +224,26 @@ namespace jasperengine::pose {
             metrics.balanceMargin = static_cast<float>(margin);
         }
 
-        // ---- joint limits
-        BodyPose clamped = body;
-        for (int dof : clampToLimits(clamped)){
-            if (rig.has(dofBone(dof))) metrics.limitHits.push_back(dof);
+        // ---- joint limits: the limits clampToLimits applies, with LIMIT_HIT_TOLERANCE (a frame
+        // clamped to a limit reads back a hair outside it; key poses are clamped exactly anyway)
+        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+            const HumanBone bone = boneAt(b);
+            if (!rig.has(bone)){
+                continue;
+            }
+            const float* angles = &body.angles[b * DOFS_PER_BONE];
+            bool hit[DOFS_PER_BONE] = {};
+            for (int k = 0; k < DOFS_PER_BONE; k++){
+                const DofInfo& info = dofInfo(dofIndex(bone, k));
+                hit[k] = !(angles[k] >= info.minDegrees - LIMIT_HIT_TOLERANCE && angles[k] <= info.maxDegrees + LIMIT_HIT_TOLERANCE);
+            }
+            const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+            if (swing > static_cast<double>(MAX_SWING_DEGREES) + LIMIT_HIT_TOLERANCE){
+                hit[0] = hit[1] = true;
+            }
+            for (int k = 0; k < DOFS_PER_BONE; k++){
+                if (hit[k]) metrics.limitHits.push_back(b * DOFS_PER_BONE + k);
+            }
         }
         return metrics;
     }
