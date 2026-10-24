@@ -1999,6 +1999,38 @@ bool MeshSystem::hasCustomMeshParenting(Entity modelEntity, const ModelComponent
     return false;
 }
 
+bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std::string* reason) const {
+    auto reject = [reason](const char* message) {
+        if (reason) *reason = message;
+        return false;
+    };
+
+    if (!model.gltfModel || !isValidGLTFIndex(meshIndex, model.gltfModel->meshes)) {
+        return reject("The model contains an invalid mesh reference");
+    }
+
+    for (const tinygltf::Primitive& primitive : model.gltfModel->meshes[meshIndex].primitives) {
+        if (!primitive.targets.empty()) {
+            return reject("Models with morph targets cannot be merged as static geometry");
+        }
+        for (const auto& attribute : primitive.attributes) {
+            if (attribute.first != "POSITION" && attribute.first != "NORMAL" && attribute.first != "TANGENT") {
+                continue;
+            }
+            if (!isValidGLTFIndex(attribute.second, model.gltfModel->accessors)) {
+                return reject("The model contains an invalid vertex attribute");
+            }
+            const tinygltf::Accessor& accessor = model.gltfModel->accessors[attribute.second];
+            const int expectedType = attribute.first == "TANGENT" ? TINYGLTF_TYPE_VEC4 : TINYGLTF_TYPE_VEC3;
+            if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != expectedType) {
+                return reject("A position, normal, or tangent attribute cannot be transformed safely");
+            }
+        }
+    }
+
+    return true;
+}
+
 bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComponent& mesh,
                                      std::string* reason) const {
     auto reject = [reason](const char* message) {
@@ -2018,30 +2050,10 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComp
         if (node.skin >= 0) {
             return reject("Skinned models cannot be merged as static geometry");
         }
-        if (!isValidGLTFIndex(node.mesh, model.gltfModel->meshes)) {
-            return reject("The model contains an invalid mesh reference");
+        if (!canBakeGLTFMesh(model, node.mesh, reason)) {
+            return false;
         }
-
-        const tinygltf::Mesh& gltfMesh = model.gltfModel->meshes[node.mesh];
-        primitiveCount += gltfMesh.primitives.size();
-        for (const tinygltf::Primitive& primitive : gltfMesh.primitives) {
-            if (!primitive.targets.empty()) {
-                return reject("Models with morph targets cannot be merged as static geometry");
-            }
-            for (const auto& attribute : primitive.attributes) {
-                if (attribute.first != "POSITION" && attribute.first != "NORMAL" && attribute.first != "TANGENT") {
-                    continue;
-                }
-                if (!isValidGLTFIndex(attribute.second, model.gltfModel->accessors)) {
-                    return reject("The model contains an invalid vertex attribute");
-                }
-                const tinygltf::Accessor& accessor = model.gltfModel->accessors[attribute.second];
-                const int expectedType = attribute.first == "TANGENT" ? TINYGLTF_TYPE_VEC4 : TINYGLTF_TYPE_VEC3;
-                if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != expectedType) {
-                    return reject("A position, normal, or tangent attribute cannot be transformed safely");
-                }
-            }
-        }
+        primitiveCount += model.gltfModel->meshes[node.mesh].primitives.size();
     }
     if (meshNodeCount < 2) {
         return reject("The model does not have multiple mesh nodes to merge");
@@ -4477,6 +4489,22 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
+    // The transforms between the scene root and a lone mesh node, which the entity transform
+    // (the scene root's) misses: baked into the vertices like a merged model's nodes
+    Matrix4 meshOffset;
+    if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
+            canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
+        int node = meshNodes[0];
+        while (node >= 0 && node != transformNode) {
+            meshOffset = getGLTFNodeMatrix(node, model) * meshOffset;
+            node = nodesParent[node];
+        }
+        if (node < 0) {
+            meshOffset = matrix.inverse() * meshOffset; // the mesh is under another scene root
+        }
+    }
+    const bool bakeMeshOffset = (meshOffset != Matrix4());
+
     // Child hierarchies carry glTF transforms themselves. The legacy multi-node skin path keeps
     // skinned children at identity, so it still needs the scene-root transform on the model.
     if (changeRootTransform && (!useChildEntities || (anyNodeSkinned && !useNodeHierarchy)) &&
@@ -4497,7 +4525,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // cullingMode is the user's (a glTF has none to give): a load keeps it
-    mesh.windingOrder = (matrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+    mesh.windingOrder = ((matrix * meshOffset).determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 0.4f); // Transform processing done
@@ -4539,7 +4567,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             // One synthetic view per primitive for byte-index expansion, one for a VEC3 COLOR_0, up to
             // three more (position, normal, tangent) when baking node transforms, and up to eight sparse
             // morph attributes. Reserve so appends never invalidate non-owning external-buffer pointers.
-            const size_t synthPerSubmesh = (bakingFlatten ? 5 : 2) + MAX_MORPHTARGETS;
+            const size_t synthPerSubmesh = ((bakingFlatten || bakeMeshOffset) ? 5 : 2) + MAX_MORPHTARGETS;
             model.gltfModel->buffers.reserve(model.gltfModel->buffers.size() + mesh.numSubmeshes * synthPerSubmesh);
             model.gltfModel->bufferViews.reserve(model.gltfModel->bufferViews.size() + mesh.numSubmeshes * synthPerSubmesh);
         }
@@ -4584,6 +4612,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             } else {
                 nodeBakeMatrix = getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent);
             }
+            nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
+        } else if (bakeMeshOffset) {
+            nodeBakeMatrix = meshOffset;
             nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
         }
 
@@ -4839,15 +4870,15 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     continue;
                 }
 
-                // Baked flatten: redirect position, normal, and tangent attributes to synthetic
-                // buffers with the node's world transform baked in, so the flat mesh is laid out.
+                // Baked flatten (or a lone mesh node's offset from the scene root): redirect position,
+                // normal, and tangent attributes to synthetic buffers with the node transform baked in.
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
                 if (bakingFlatten && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
-                if (bakingFlatten && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
+                if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     int baked = bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix,
                                                              attrib.first == "NORMAL", model);
                     if (baked >= 0) {
@@ -4856,7 +4887,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                         byteStride = static_cast<int>(3 * sizeof(float));
                     }
                 }
-                if (bakingFlatten && attrib.first == "TANGENT") {
+                if ((bakingFlatten || bakeMeshOffset) && attrib.first == "TANGENT") {
                     int baked = bakeGLTFTransformedTangent(accessor, nodeBakeMatrix.linear(), model);
                     if (baked >= 0) {
                         attrBufferView = baked;

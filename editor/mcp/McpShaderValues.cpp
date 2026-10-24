@@ -467,7 +467,7 @@ bool McpValues::shaderTexturesFromJson(Project* project, SceneProject* scene, co
         }
         if (texture.empty()) continue; // null: the manifest default
         if (declared && declared->cube != texture.isCubeMap()) {
-            error = uniform + (declared->cube ? " is a cube map: {\"cube\": \"image\" | [6 face paths]}."
+            error = uniform + (declared->cube ? " is a cube map: {\"cube\": \"image\" | [front, back, left, right, up, down]}."
                                               : " is a 2D texture: an image path, not a cube map.");
             return false;
         }

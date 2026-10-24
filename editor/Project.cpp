@@ -25,6 +25,8 @@
 #include <limits>
 #include <random>
 #include <thread>
+#include <mutex>
+#include <set>
 
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -49,6 +51,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
+#include "json.hpp"
 
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
@@ -473,7 +476,7 @@ static bool visitTexturePaths(Texture& texture, const std::function<bool(std::st
 
     // Renders keep drawing the old GPU texture until the new one exists, so the new path loads
     // before the old texture is released. Kept in the pool, it would show for a reused name.
-    if (TexturePool::get(texture.getId())) {
+    if (TexturePool::get(texture.getRenderId())) {
         const bool asyncLoading = Engine::isAsyncLoading();
         Engine::setAsyncLoading(false);
         updated.getRender();
@@ -670,8 +673,8 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             file.setAlphaBorderAuto(true);
         }
 
-        auto sameId = [&file](const Texture& other) { return other.getId() == file.getId(); };
-        if (std::none_of(resources.textures.begin(), resources.textures.end(), sameId)) {
+        auto sameRender = [&file](const Texture& other) { return other.getRenderId() == file.getRenderId(); };
+        if (std::none_of(resources.textures.begin(), resources.textures.end(), sameRender)) {
             resources.textures.push_back(file);
         }
     };
@@ -2968,6 +2971,140 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
     }
 }
 
+// The JSON of a .gltf, or the JSON chunk of a .glb
+static nlohmann::json readGltfJson(const fs::path& path, uintmax_t size) {
+    std::ifstream file(path, std::ios::binary);
+    // magic, version, length, then the first chunk's length and type
+    uint32_t header[5];
+    if (!file.read(reinterpret_cast<char*>(header), sizeof(header)) || header[0] != 0x46546C67u) {
+        file.clear();
+        file.seekg(0);
+        return nlohmann::json::parse(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>(), nullptr, false);
+    }
+    if (header[4] != 0x4E4F534Au || sizeof(header) + header[3] > size) {
+        return {};
+    }
+    std::string text(header[3], '\0');
+    file.read(text.data(), static_cast<std::streamsize>(text.size()));
+    return nlohmann::json::parse(text, nullptr, false);
+}
+
+// Each distinct buffer view a mesh component reads, plus a synthetic view per primitive for byte
+// indices, integer VEC3 colors, sparse morphs and baked transforms
+unsigned int editor::Project::countGltfExternalBuffers(const fs::path& path, bool merged) {
+    // glTF componentType values
+    constexpr int UNSIGNED_BYTE = 5121;
+    constexpr int UNSIGNED_SHORT = 5123;
+    constexpr int FLOAT = 5126;
+
+    struct Count {
+        uintmax_t size = 0;
+        fs::file_time_type time;
+        unsigned int separate = 0;
+        unsigned int merged = 0;
+    };
+    static std::mutex mutex;
+    static std::unordered_map<std::string, Count> cache;
+
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(path, ec);
+    if (ec) {
+        return 0;
+    }
+    const fs::file_time_type time = fs::last_write_time(path, ec);
+    if (ec) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex);
+    Count& count = cache[editor::FileUtils::pathToUtf8(path.lexically_normal())];
+    if (count.size == size && count.time == time) {
+        return merged ? count.merged : count.separate;
+    }
+    count = {size, time};
+
+    const nlohmann::json gltf = readGltfJson(path, size);
+    try {
+        const nlohmann::json& nodes = gltf.at("nodes");
+        const nlohmann::json& meshes = gltf.at("meshes");
+        const nlohmann::json& accessors = gltf.at("accessors");
+
+        // buffers of the given mesh nodes put on one MeshComponent
+        auto countBuffers = [&](const std::vector<size_t>& meshNodes, bool baked) {
+            std::set<size_t> views;
+            unsigned int generated = 0;
+            auto add = [&](const nlohmann::json& accessor, bool copied) {
+                if (copied) {
+                    generated++;
+                } else if (accessor.contains("bufferView")) {
+                    views.insert(accessor["bufferView"].get<size_t>());
+                }
+            };
+            for (size_t node : meshNodes) {
+                for (const nlohmann::json& primitive : meshes.at(nodes.at(node).at("mesh").get<size_t>()).at("primitives")) {
+                    // skipped by the loader
+                    if (!primitive.contains("indices")) {
+                        continue;
+                    }
+                    const nlohmann::json& indices = accessors.at(primitive["indices"].get<size_t>());
+                    add(indices, indices.value("componentType", 0) == UNSIGNED_BYTE);
+
+                    for (const auto& attribute : primitive.at("attributes").items()) {
+                        const nlohmann::json& accessor = accessors.at(attribute.value().get<size_t>());
+                        const std::string& name = attribute.key();
+                        const int component = accessor.value("componentType", 0);
+                        const std::string type = accessor.value("type", "");
+                        const bool color = name == "COLOR_0" && type == "VEC3" &&
+                            (component == UNSIGNED_BYTE || component == UNSIGNED_SHORT);
+                        const bool bake = baked && component == FLOAT &&
+                            (((name == "POSITION" || name == "NORMAL") && type == "VEC3") || (name == "TANGENT" && type == "VEC4"));
+                        add(accessor, color || bake);
+                    }
+
+                    for (const nlohmann::json& target : primitive.value("targets", nlohmann::json::array())) {
+                        for (const nlohmann::json& index : target) {
+                            const nlohmann::json& accessor = accessors.at(index.get<size_t>());
+                            add(accessor, accessor.contains("sparse"));
+                        }
+                    }
+                }
+            }
+            return static_cast<unsigned int>(views.size()) + generated;
+        };
+
+        std::vector<size_t> meshNodes;
+        for (size_t i = 0; i < nodes.size(); i++) {
+            if (nodes[i].contains("mesh") && nodes[i]["mesh"].get<size_t>() < meshes.size()) {
+                meshNodes.push_back(i);
+            }
+        }
+
+        if (meshNodes.size() == 1) {
+            // the transform from the scene root down to a lone mesh node is baked
+            size_t root = meshNodes[0];
+            const size_t scene = gltf.value("scene", size_t(0));
+            if (gltf.contains("scenes") && scene < gltf["scenes"].size()) {
+                const nlohmann::json roots = gltf["scenes"][scene].value("nodes", nlohmann::json::array());
+                if (!roots.empty()) {
+                    root = roots[0].get<size_t>();
+                }
+            }
+            count.separate = countBuffers(meshNodes, meshNodes[0] != root);
+            count.merged = count.separate;
+        } else {
+            // a child mesh per node, or all of them baked onto the root when merged
+            for (size_t node : meshNodes) {
+                count.separate = std::max(count.separate, countBuffers({node}, false));
+            }
+            count.merged = countBuffers(meshNodes, true);
+        }
+    } catch (const nlohmann::json::exception&) {
+        count.separate = 0;
+        count.merged = 0;
+    }
+    return merged ? count.merged : count.separate;
+}
+
 void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, SceneMaxValues& maxValues) const {
     if (!sceneProject || !sceneProject->scene) {
         return;
@@ -2980,6 +3117,33 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
         maxValues.maxBones = std::max(maxValues.maxBones,
             static_cast<unsigned int>(mesh.bonesMatrix.size()));
+    }
+
+    // numExternalBuffers is filled by a load, and a command line export loads no model
+    auto addModelFile = [&](const std::string& filename, bool merged) {
+        if (filename.empty()) {
+            return;
+        }
+        const fs::path path = resolveAssetPath(FileUtils::pathFromUtf8(filename));
+        std::string extension = path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (extension == ".glb" || extension == ".gltf") {
+            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(path, merged));
+        }
+    };
+
+    auto models = sceneProject->scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); ++i) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        addModelFile(model.filename, model.mergeStaticMeshes);
+    }
+
+    // foliage chunks are merged models
+    auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+    for (size_t i = 0; i < terrains->size(); ++i) {
+        for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
+            addModelFile(layer.meshPath, true);
+        }
     }
 
     auto sprites = sceneProject->scene->getComponentArray<SpriteComponent>();

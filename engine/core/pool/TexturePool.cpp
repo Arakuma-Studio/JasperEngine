@@ -24,6 +24,15 @@ std::set<std::string>& TexturePool::getInvalidated(){
     return *invalidated;
 };
 
+std::string TexturePool::getRenderId(const std::string& id, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
+	if (id.empty() || (minFilter == TextureFilter::LINEAR && magFilter == TextureFilter::LINEAR &&
+	                   wrapU == TextureWrap::REPEAT && wrapV == TextureWrap::REPEAT)){
+		return id;
+	}
+	return id + "|sampler=" + std::to_string((int)minFilter) + "," + std::to_string((int)magFilter) + "," +
+	       std::to_string((int)wrapU) + "," + std::to_string((int)wrapV);
+}
+
 std::shared_ptr<TextureRender> TexturePool::get(const std::string& id){
 	auto& map = getMap();
 	auto it = map.find(id);
@@ -128,21 +137,31 @@ void TexturePool::remove(const std::string& id){
 // meanwhile, so it must stay alive. The id is only marked stale — get() then reports a miss
 // so callers reload, and get() with data destroys and recreates the texture in-place inside
 // the same shared object, letting every holder pick up the rebuilt texture. Unreferenced
-// entries are destroyed and erased immediately, like remove().
+// entries are destroyed and erased immediately, like remove(). The id's sampler variants
+// (getRenderId) hold the same image, so they are invalidated with it.
 void TexturePool::invalidate(const std::string& id){
 	auto& map = getMap();
-	auto it = map.find(id);
-	if (it == map.end()){
-		return;
+
+	std::vector<std::string> keys = {id};
+	const std::string prefix = id + "|sampler=";
+	for (auto it = map.lower_bound(prefix); it != map.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
+		keys.push_back(it->first);
 	}
 
-	if (!it->second || it->second.use_count() <= 1){
-		if (it->second){
-			it->second->destroyTexture();
+	for (const std::string& key : keys){
+		auto it = map.find(key);
+		if (it == map.end()){
+			continue;
 		}
-		map.erase(it);
-	}else{
-		getInvalidated().insert(id);
+
+		if (!it->second || it->second.use_count() <= 1){
+			if (it->second){
+				it->second->destroyTexture();
+			}
+			map.erase(it);
+		}else{
+			getInvalidated().insert(key);
+		}
 	}
 }
 

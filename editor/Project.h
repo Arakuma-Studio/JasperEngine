@@ -962,6 +962,11 @@ namespace jasperengine::editor{
         // Main thread, not while playing (MCP compile_scripts).
         std::vector<SceneScriptSource> prepareScriptBuild();
 
+        // The external buffers MeshSystem::loadGLTF gives the model in a .gltf/.glb (merged: with
+        // mergeStaticMeshes), read from the file: a command line export loads no model, so the
+        // meshes' numExternalBuffers alone would undersize MAX_EXTERNAL_BUFFERS. 0 when unreadable.
+        static unsigned int countGltfExternalBuffers(const std::filesystem::path& path, bool merged);
+
         // Factory defaults, also used by the settings dialog to restore a value
         static constexpr unsigned int defaultCanvasWidth = 1280;
         static constexpr unsigned int defaultCanvasHeight = 720;

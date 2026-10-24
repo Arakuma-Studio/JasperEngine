@@ -1304,8 +1304,9 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
         if (!anyOtherFace && !texture.getPath(0).empty()) {
             out["cube"] = assetPathToJson(project, texture.getPath(0));
         } else {
+            // front, back, left, right, up, down: the order a write takes (setCubePaths)
             Json faces = Json::array();
-            for (size_t face = 0; face < 6; face++) faces.push_back(assetPathToJson(project, texture.getPath(face)));
+            for (size_t face : {4, 5, 1, 0, 2, 3}) faces.push_back(assetPathToJson(project, texture.getPath(face)));
             out["cube"] = faces;
         }
     }
@@ -1348,7 +1349,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [6 paths] or \"path\"} or {\"camera\": <entity>}.";
+                "{\"cube\": [front, back, left, right, up, down] or \"path\"} or {\"camera\": <entity>}.";
         return false;
     }
     static const std::set<std::string> keys = {"path", "cube", "camera", "id", "min_filter", "mag_filter", "wrap_u",
