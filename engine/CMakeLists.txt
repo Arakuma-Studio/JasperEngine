@@ -1317,6 +1317,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
+    endif()
+
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
