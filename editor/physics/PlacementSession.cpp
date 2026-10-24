@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <map>
 #include <set>
@@ -279,6 +280,55 @@ namespace {
         return bounds;
     }
 
+    // Where the segment origin..origin+d enters box, as a fraction of it
+    bool segmentEnters(const AABB& box, const Vector3& origin, const Vector3& d, float& t) {
+        if (box.isNull() || box.isInfinite()) return false;
+        float lo = 0.0f;
+        float hi = 1.0f;
+        for (int i = 0; i < 3; i++) {
+            const float mn = box.getMinimum()[i];
+            const float mx = box.getMaximum()[i];
+            if (std::fabs(d[i]) < 1e-12f) {
+                if (origin[i] < mn || origin[i] > mx) return false;
+                continue;
+            }
+            float t1 = (mn - origin[i]) / d[i];
+            float t2 = (mx - origin[i]) / d[i];
+            if (t1 > t2) std::swap(t1, t2);
+            lo = std::max(lo, t1);
+            hi = std::min(hi, t2);
+            if (lo > hi) return false;
+        }
+        t = lo;
+        return true;
+    }
+
+    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                       const std::unordered_set<Entity>& ignore, size_t maxCount) {
+        std::vector<std::pair<float, Vector3>> entries;
+        auto transforms = scene->getComponentArray<Transform>();
+        for (size_t i = 0; i < transforms->size(); i++) {
+            const Entity e = transforms->getEntity(i);
+            if (ignore.count(e) || !scene->isEntityActiveInHierarchy(e)) continue;
+            AABB local;
+            if (TerrainComponent* terrain = scene->findComponent<TerrainComponent>(e)) {
+                const float half = terrain->terrainSize * 0.5f;
+                local = AABB(-half, std::min(0.0f, terrain->maxHeight), -half, half, std::max(0.0f, terrain->maxHeight), half);
+            } else if (MeshComponent* mesh = scene->findComponent<MeshComponent>(e)) {
+                if (!mesh->enabled || mesh->numSubmeshes == 0 || mesh->aabb.isNull() || mesh->aabb.isInfinite()) continue;
+                local = mesh->aabb;
+            } else {
+                continue;
+            }
+            float t = 0.0f;
+            if (segmentEnters(worldFrameOf(scene, e).matrix * local, origin, d, t)) entries.push_back({t, origin + d * t});
+        }
+        std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+        std::vector<Vector3> points;
+        for (size_t i = 0; i < entries.size() && i < maxCount; i++) points.push_back(entries[i].second);
+        return points;
+    }
+
     float longestAxis(const AABB& box) {
         if (box.isNull() || box.isInfinite()) return 0.0f;
         const Vector3 size = box.getSize();
@@ -391,10 +441,39 @@ namespace {
     struct CacheSlot {
         std::filesystem::path projectPath;
         std::unique_ptr<ConvexDecompositionCache> cache;
+        uint64_t generation = 0;   // grows each time a cache is dropped
     };
     CacheSlot& cacheSlot() {
         static CacheSlot slot;
         return slot;
+    }
+
+    // What a world built with `cache` may still use: the cache, unless it was dropped since
+    // (placementProjectSwitching, another project)
+    struct CacheUse {
+        ConvexDecompositionCache* cache = nullptr;
+        uint64_t generation = 0;
+        bool valid() const { return !cache || generation == cacheSlot().generation; }
+    };
+
+    // The points where a segment enters the bounds of the scene's meshes and terrains, nearest
+    // first, from the local transforms (Ray's BOUNDS query reads MeshComponent::worldAABB, which
+    // only the render pass refreshes)
+    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                       const std::unordered_set<Entity>& ignore, size_t maxCount);
+
+    // A world raycast that first loads what the ray reaches: when nothing loaded is hit, the
+    // context around each bounds the ray enters (nearest first) is loaded and the ray cast again
+    bool raycastLoading(PlacementWorld& world, Scene* scene, const Ray& ray, const std::vector<Entity>& ignoreBodies,
+                        const std::unordered_set<Entity>& ignoreBounds, const std::function<void(const AABB&)>& load,
+                        PlacementRayHit& hit) {
+        if (world.raycast(ray, hit, ignoreBodies)) return true;
+        if (!load || !scene) return false;
+        for (const Vector3& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
+            load(AABB(entry, entry));
+            if (world.raycast(ray, hit, ignoreBodies)) return true;
+        }
+        return false;
     }
 
     // assess()-style: what happened, then what to do next
@@ -483,7 +562,10 @@ ConvexDecompositionCache* editor::placementDecompositionCache(Project* project) 
     if (projectPath.empty()) return nullptr;
     CacheSlot& slot = cacheSlot();
     if (!slot.cache || slot.projectPath != projectPath) {
-        if (slot.cache) slot.cache->cancelAll();
+        if (slot.cache) {
+            slot.cache->cancelAll();
+            slot.generation++;
+        }
         slot.cache.reset(new ConvexDecompositionCache((project->getProjectInternalPath() / "cache" / "colliders").string()));
         slot.projectPath = projectPath;
     }
@@ -492,7 +574,10 @@ ConvexDecompositionCache* editor::placementDecompositionCache(Project* project) 
 
 void editor::placementProjectSwitching() {
     CacheSlot& slot = cacheSlot();
-    if (slot.cache) slot.cache->cancelAll();
+    if (slot.cache) {
+        slot.cache->cancelAll();
+        slot.generation++;
+    }
     slot.cache.reset();
     slot.projectPath.clear();
 }
@@ -691,14 +776,22 @@ struct PlacementSession::Impl {
     // the private world, built lazily, and what it was built from
     std::unique_ptr<PlacementWorld> world;
     Scene* worldScene = nullptr;
+    CacheUse worldCache;
     uint64_t worldFingerprint = 0;
     bool worldDirty = true;
+    // the gesture's kill plane, from where the movers are and are sent (not from where they
+    // fall: the context region follows a falling body down)
     float killY = -std::numeric_limits<float>::infinity();
+    bool killYSet = false;
     uint64_t completionVersion = 0;
 
     // a world without context for "can this move?" (refusals of the idle selection)
     std::unique_ptr<PlacementWorld> probe;
-    std::map<Entity, std::string> refusalCache;   // "" = can move
+    struct Probed {
+        bool movable = false;
+        std::string why;     // refusal, or the caveat of a movable one
+    };
+    std::map<Entity, Probed> refusalCache;
 
     PlacementPhase phase = PlacementPhase::Idle;
     PlacementGesture gesture = PlacementGesture::None;
@@ -750,6 +843,7 @@ struct PlacementSession::Impl {
     // the idle selection
     std::vector<Entity> selection;
     std::vector<PlacementRefusal> refused;
+    std::vector<PlacementRefusal> caveats;
     std::vector<PlacementOverlay::Distance> distances;
 
     SceneProject* sceneProject() const { return project ? project->getScene(sceneId) : nullptr; }
@@ -770,28 +864,54 @@ struct PlacementSession::Impl {
         return sp && sp->scene && sp->sceneType == SceneType::SCENE_3D && sp->playState == ScenePlayState::STOPPED;
     }
 
+    // The scene and the decomposition cache the world was built with are still there
+    bool worldValid() const {
+        SceneProject* sp = sceneProject();
+        return world && sp && sp->scene && sp->scene == worldScene && worldCache.valid();
+    }
+
+    // The worlds go without being driven (their scene or cache is gone)
+    void dropWorld() {
+        world.reset();
+        probe.reset();
+        worldScene = nullptr;
+        worldCache = CacheUse();
+        refusalCache.clear();
+    }
+
     // The world matches the scene (rebuilt when the scene changed since it was built)
     bool ensureWorld() {
         SceneProject* sp = sceneProject();
         if (!sp || !sp->scene) {
-            world.reset();
-            probe.reset();
-            worldScene = nullptr;
+            dropWorld();
             return false;
         }
         const uint64_t fingerprint = sceneFingerprint(sp);
-        if (!world || worldDirty || worldScene != sp->scene || worldFingerprint != fingerprint) {
+        if (!world || worldDirty || !worldValid() || worldFingerprint != fingerprint) {
+            dropWorld();
             killY = -std::numeric_limits<float>::infinity();
-            world.reset(new PlacementWorld(sp->scene, worldSettings()));
-            probe.reset(new PlacementWorld(sp->scene, worldSettings()));
-            refusalCache.clear();
+            killYSet = false;
+            const PlacementWorldSettings ws = worldSettings();
+            world.reset(new PlacementWorld(sp->scene, ws));
+            probe.reset(new PlacementWorld(sp->scene, ws));
             worldScene = sp->scene;
+            worldCache.cache = ws.decompositionCache;
+            worldCache.generation = cacheSlot().generation;
             worldFingerprint = fingerprint;
             worldDirty = false;
-            ConvexDecompositionCache* cache = placementDecompositionCache(project);
-            completionVersion = cache ? cache->completionVersion() : 0;
+            completionVersion = ws.decompositionCache ? ws.decompositionCache->completionVersion() : 0;
         }
         return true;
+    }
+
+    void lowerKillY(const AABB& region) {
+        if (!world || region.isNull() || region.isInfinite()) return;
+        const float candidate = expanded(region, regionMargin()).getMinimum().y - settings.killYDepth;
+        if (!killYSet || candidate < killY) {
+            killY = candidate;
+            killYSet = true;
+            world->setSettings(worldSettings());
+        }
     }
 
     float regionMargin() const { return std::max(settings.regionMargin, std::min(moverSize, settings.maxMoverSize)); }
@@ -799,14 +919,6 @@ struct PlacementSession::Impl {
     void growContext(const AABB& region) {
         if (!world || region.isNull() || region.isInfinite()) return;
         world->ensureContext(expanded(region, regionMargin()));
-        const AABB context = world->getContextRegion();
-        if (!context.isNull() && !context.isInfinite()) {
-            const float newKillY = context.getMinimum().y - settings.killYDepth;
-            if (newKillY != killY) {
-                killY = newKillY;
-                world->setSettings(worldSettings());
-            }
-        }
         // neighbours that just joined: their pose before they are pushed
         for (Entity neighbour : world->getNeighbours()) {
             if (bodyIndex.count(neighbour)) continue;
@@ -890,17 +1002,11 @@ struct PlacementSession::Impl {
     // Where the ray meets something behind the movers; the context there is loaded first
     bool raycastBehindMovers(const Ray& input, PlacementRayHit& hit) {
         Vector3 direction = input.getDirection();
-        if (direction.squaredLength() < 1e-12f) return false;
+        if (direction.squaredLength() < 1e-12f || !finite(direction) || !finite(input.getOrigin())) return false;
         direction.normalize();
         const Ray ray(input.getOrigin(), direction * kPointerRayLength);
-        if (world->raycast(ray, hit, movers)) return true;
-        // nothing loaded there yet: find the surface by its mesh bounds, load the context around
-        // it, and cast again
-        const RayReturn coarse = ray.intersects(scene(), RayFilter::BOUNDS, moverSubtrees);
-        if (!coarse) return false;
-        const Vector3 point = coarse.point;
-        growContext(AABB(point, point));
-        return world->raycast(ray, hit, movers);
+        const std::unordered_set<Entity> ignore(moverSubtrees.begin(), moverSubtrees.end());
+        return raycastLoading(*world, scene(), ray, movers, ignore, [this](const AABB& region) { growContext(region); }, hit);
     }
 
     void computeSnapTargets() {
@@ -1009,6 +1115,9 @@ struct PlacementSession::Impl {
     void writePreview() {
         Scene* sc = scene();
         if (!sc || !world) return;
+        // the world's dynamic bodies (getState of anything else is a default pose)
+        std::unordered_set<Entity> live(world->getMovers().begin(), world->getMovers().end());
+        live.insert(world->getNeighbours().begin(), world->getNeighbours().end());
         // parents first: a neighbour may hold a mover
         PoseOverrides written;
         std::vector<std::pair<size_t, Entity>> ordered;
@@ -1018,8 +1127,8 @@ struct PlacementSession::Impl {
             const Entity entity = item.second;
             Transform* transform = sc->findComponent<Transform>(entity);
             if (!transform) continue;
+            if (!live.count(entity)) continue;   // not a body (any more)
             const PlacementBodyState state = world->getState(entity);
-            if (state.entity != entity) continue;   // not a body (any more)
             Vector3 position;
             Quaternion rotation;
             worldToLocal(sc, entity, state.pose, &written, position, rotation);
@@ -1099,25 +1208,22 @@ struct PlacementSession::Impl {
         // moves everything (undo returns there, redo here)
         restoreSnapshot();
         if (sp) applyCommit(project, sceneId, entries);
+        if (!worldValid()) dropWorld();
         resetGesture();
         // the world's context and neighbours are where the scene now is
         if (sp && world) worldFingerprint = sceneFingerprint(sp);
         refreshSelection();
     }
 
+    // restore: put the pre-gesture poses back (false: the scene is not the gesture's any more)
     void cancelGesture(bool restore) {
         const bool hadNeighbours = std::any_of(bodies.begin(), bodies.end(), [](const Body& b) { return !b.mover; });
-        if (restore) {
-            restoreSnapshot();
-        } else {
-            // the world was built on a scene that is gone: drop it without driving it
-            world.reset();
-            probe.reset();
-            worldScene = nullptr;
-        }
+        if (restore) restoreSnapshot();
+        // a world whose scene or decomposition cache is gone is dropped, never driven
+        if (!restore || !worldValid()) dropWorld();
         resetGesture();
         // pushed neighbours are displaced in the world: build it again
-        if (hadNeighbours || !restore) worldDirty = true;
+        if (hadNeighbours) worldDirty = true;
         if (restore) refreshSelection();
     }
 
@@ -1127,6 +1233,11 @@ struct PlacementSession::Impl {
         if (!sp || !sp->scene || sp->scene != worldScene) {
             // another scene (closed, reloaded, switched): its entities are not ours to restore
             cancelGesture(false);
+            return false;
+        }
+        if (!worldCache.valid()) {
+            // the decomposition cache went (project switch): the world can't be driven any more
+            cancelGesture(true);
             return false;
         }
         if (sp->playState != ScenePlayState::STOPPED) {
@@ -1145,7 +1256,7 @@ struct PlacementSession::Impl {
     }
 
     void pollDecompositions() {
-        ConvexDecompositionCache* cache = placementDecompositionCache(project);
+        ConvexDecompositionCache* cache = worldCache.cache;
         if (!cache || !world) return;
         const uint64_t version = cache->completionVersion();
         if (version != completionVersion) {
@@ -1178,7 +1289,9 @@ struct PlacementSession::Impl {
     }
 
     void enterSettle() {
+        // released where it is: no momentum from the drive carries it off
         world->clearTargets();
+        world->stopAll();
         world->setGravity(settings.gravity);
         world->wakeAll();
         settleSeconds = 0.0;
@@ -1195,8 +1308,11 @@ struct PlacementSession::Impl {
         const AABB bounds = world->getMoversBounds();
         if (!bounds.isNull()) swept.merge(bounds);
         AABB region = swept;
-        if (gesture == PlacementGesture::Move && hasMoveTarget) region.merge(translated(startBounds, moveTarget - startCenter));
-        if (gesture == PlacementGesture::Snap && hasSnapHit) region.merge(translated(startBounds, snapAnchor - startCenter));
+        AABB sentTo;
+        if (gesture == PlacementGesture::Move && hasMoveTarget) sentTo = translated(startBounds, moveTarget - startCenter);
+        if (gesture == PlacementGesture::Snap && hasSnapHit) sentTo = translated(startBounds, snapAnchor - startCenter);
+        region.merge(sentTo);
+        lowerKillY(sentTo);
         growContext(region);
 
         const bool waitForColliders = settings.decomposition == PlacementDecomposition::ALWAYS && world->hasPendingDecompositions();
@@ -1242,31 +1358,33 @@ struct PlacementSession::Impl {
 
     // ---- the idle selection
 
-    std::string refusalOf(Entity root) {
+    Probed probeMover(Entity root) {
         auto cached = refusalCache.find(root);
         if (cached != refusalCache.end()) return cached->second;
-        std::string why;
-        if (probe->addMover(root, &why)) {
-            probe->removeMover(root);
-            why.clear();
-        } else if (why.empty()) {
-            why = "cannot be moved";
-        }
-        refusalCache[root] = why;
-        return why;
+        Probed probed;
+        probed.movable = probe->addMover(root, &probed.why);
+        if (probed.movable) probe->removeMover(root);
+        else if (probed.why.empty()) probed.why = "cannot be moved";
+        refusalCache[root] = probed;
+        return probed;
     }
 
     void refreshSelection() {
         refused.clear();
+        caveats.clear();
         distances.clear();
         if (phase != PlacementPhase::Idle || !sceneUsable() || !ensureWorld()) return;
         Scene* sc = scene();
         const std::vector<Entity> roots = placementRoots(project, sceneId, selection);
         std::vector<Entity> movable;
         for (Entity root : roots) {
-            const std::string why = refusalOf(root);
-            if (why.empty()) movable.push_back(root);
-            else refused.push_back({root, why});
+            const Probed probed = probeMover(root);
+            if (probed.movable) {
+                movable.push_back(root);
+                if (!probed.why.empty()) caveats.push_back({root, probed.why});
+            } else {
+                refused.push_back({root, probed.why});
+            }
         }
         if (!settings.showDistanceIndicators) return;
         for (Entity root : movable) {
@@ -1294,12 +1412,13 @@ struct PlacementSession::Impl {
     }
 
     bool begin(PlacementGesture newGesture, const std::vector<Entity>& newSelection) {
-        if (phase != PlacementPhase::Idle) {
+        if (phase != PlacementPhase::Idle && validate()) {
             // the running gesture ends first, as it is (committed)
             commit();
         }
         selection = newSelection;
         refused.clear();
+        caveats.clear();
         distances.clear();
         if (newGesture == PlacementGesture::None || !sceneUsable() || !ensureWorld()) return false;
         Scene* sc = scene();
@@ -1309,6 +1428,7 @@ struct PlacementSession::Impl {
             std::string why;
             if (world->addMover(root, &why)) {
                 movers.push_back(root);
+                if (!why.empty()) caveats.push_back({root, why});
             } else {
                 refused.push_back({root, why.empty() ? std::string("cannot be moved") : why});
             }
@@ -1336,6 +1456,8 @@ struct PlacementSession::Impl {
         startBounds = world->getMoversBounds();
         swept = startBounds;
         moverSize = longestAxis(startBounds);
+        killYSet = false;
+        lowerKillY(startBounds);
         moveTarget = lastMoveTarget = startCenter;
         hasMoveTarget = false;
         world->clearFlags();
@@ -1348,7 +1470,7 @@ struct PlacementSession::Impl {
     }
 
     void end() {
-        if (phase != PlacementPhase::Active) return;
+        if (phase != PlacementPhase::Active || !validate()) return;
         if (gesture == PlacementGesture::Drop) {
             commit();
             return;
@@ -1485,9 +1607,11 @@ PlacementHud PlacementSession::getHud() const {
     hud.phase = impl->phase;
     hud.gesture = impl->gesture;
     hud.movers = impl->movers.size();
-    hud.contextBodies = impl->world ? impl->world->getContextBodyCount() : 0;
+    const bool live = impl->worldValid();
+    hud.contextBodies = live ? impl->world->getContextBodyCount() : 0;
     hud.refused = impl->refused;
-    if (impl->phase == PlacementPhase::Idle || !impl->world) {
+    hud.caveats = impl->caveats;
+    if (impl->phase == PlacementPhase::Idle || !live) {
         hud.status = "Ready";
         return hud;
     }
@@ -1510,7 +1634,7 @@ PlacementHud PlacementSession::getHud() const {
 void PlacementSession::collectOverlay(PlacementOverlay& out) const {
     out = PlacementOverlay();
     out.refused = impl->refused;
-    PlacementWorld* world = impl->world.get();
+    PlacementWorld* world = impl->worldValid() ? impl->world.get() : nullptr;
     if (world && impl->settings.showProxies) world->collectShapeLines(out.proxySegments, false, kMaxProxySegments);
     if (impl->phase == PlacementPhase::Idle || !world) {
         if (impl->settings.showDistanceIndicators) out.distances = impl->distances;
@@ -1560,7 +1684,7 @@ void PlacementSession::collectOverlay(PlacementOverlay& out) const {
 }
 
 Vector3 PlacementSession::getMoversCenter() const {
-    if (impl->phase != PlacementPhase::Idle && impl->world) return impl->currentCenter();
+    if (impl->phase != PlacementPhase::Idle && impl->worldValid()) return impl->currentCenter();
     Scene* scene = impl->scene();
     const std::vector<Entity> roots = placementRoots(impl->project, impl->sceneId, impl->selection);
     if (!scene || roots.empty()) return Vector3();
@@ -1588,7 +1712,12 @@ struct PlacementRun::Impl {
     Vector3 startCenter;
     AABB startBounds;
     float margin = 2.0f;
+    // the kill plane, from where the movers start and are sent (never from where they fall:
+    // the context region follows a falling body down)
     float killY = -std::numeric_limits<float>::infinity();
+    bool killYSet = false;
+    CacheUse cacheUse;                          // the decomposition cache the world was built with
+    std::map<Entity, std::string> caveats;      // movers accepted with a caveat
 
     enum class Stage { WaitColliders, Approach, Settle, Separate, Finished } stage = Stage::Settle;
     uint32_t maxSteps = 0;
@@ -1602,9 +1731,19 @@ struct PlacementRun::Impl {
     size_t bodyCount = 0;
 
     PlacementWorldSettings worldSettings() const {
-        PlacementWorldSettings ws = makePlacementWorldSettings(spec.settings, placementDecompositionCache(project));
+        PlacementWorldSettings ws = makePlacementWorldSettings(spec.settings, cacheUse.cache);
         ws.killY = killY;
+        // an agent moving something toward a target wants the path, stopping at walls, never a
+        // jump through them
+        if (spec.mode == PlacementMode::Move) ws.tuning.teleportDistance = std::numeric_limits<float>::infinity();
         return ws;
+    }
+
+    // The scene and the decomposition cache the world was built with are still there
+    bool usable() const {
+        if (!world || !project) return false;
+        const SceneProject* sp = project->getScene(static_cast<uint32_t>(spec.sceneId));
+        return sp && sp->scene == scene && cacheUse.valid();
     }
 
     std::string pathOf(Entity entity) {
@@ -1625,20 +1764,29 @@ struct PlacementRun::Impl {
     void growContext(const AABB& region) {
         if (spec.context != PlacementSpec::Context::Auto || region.isNull() || region.isInfinite()) return;
         world->ensureContext(expanded(region, margin));
-        updateKillY();
         noteNeighbours();
     }
 
-    void updateKillY() {
-        AABB all = startBounds;
-        const AABB context = world->getContextRegion();
-        if (!context.isNull() && !context.isInfinite()) all.merge(context);
-        if (all.isNull() || all.isInfinite()) return;
-        const float newKillY = all.getMinimum().y - spec.settings.killYDepth;
-        if (newKillY != killY) {
-            killY = newKillY;
+    // region: where the movers are or are sent (with its margin), or a context entity
+    void lowerKillY(const AABB& region) {
+        if (region.isNull() || region.isInfinite()) return;
+        const float candidate = region.getMinimum().y - spec.settings.killYDepth;
+        if (!killYSet || candidate < killY) {
+            killY = candidate;
+            killYSet = true;
             world->setSettings(worldSettings());
         }
+    }
+
+    // The world raycast, the context it reaches loaded first (context auto)
+    bool raycastLoading(const Ray& ray, PlacementRayHit& hit) {
+        std::unordered_set<Entity> ignore;
+        for (Entity m : movers) {
+            for (Entity e : subtreeOf(scene, m)) ignore.insert(e);
+        }
+        std::function<void(const AABB&)> load;
+        if (spec.context == PlacementSpec::Context::Auto) load = [this](const AABB& region) { growContext(region); };
+        return ::raycastLoading(*world, scene, ray, movers, ignore, load, hit);
     }
 
     void noteNeighbours() {
@@ -1701,19 +1849,7 @@ struct PlacementRun::Impl {
                 direction.normalize();
                 const Ray ray(spec.snapRay.getOrigin(), direction * kPointerRayLength);
                 PlacementRayHit hit;
-                bool found = world->raycast(ray, hit, movers);
-                if (!found && spec.context == PlacementSpec::Context::Auto) {
-                    std::vector<Entity> ignore;
-                    for (Entity m : movers) {
-                        for (Entity e : subtreeOf(scene, m)) ignore.push_back(e);
-                    }
-                    const RayReturn coarse = ray.intersects(scene, RayFilter::BOUNDS, ignore);
-                    if (coarse) {
-                        growContext(AABB(coarse.point, coarse.point));
-                        found = world->raycast(ray, hit, movers);
-                    }
-                }
-                if (!found) {
+                if (!raycastLoading(ray, hit)) {
                     error = "the snap ray hits nothing within " + meters(kPointerRayLength) +
                             ": aim ray {origin, direction} at a surface (context: auto loads what it hits)";
                     return false;
@@ -1738,7 +1874,6 @@ struct PlacementRun::Impl {
                     target.rotation = (r * poses[i].rotation).normalized();
                     targets.push_back(target);
                 }
-                growContext(translated(startBounds, anchor - startCenter));
                 break;
             }
             case PlacementMode::Gather: {
@@ -1773,12 +1908,14 @@ struct PlacementRun::Impl {
             case PlacementMode::Separate:
                 break;
         }
-        if (spec.mode == PlacementMode::Move) {
-            AABB targetBounds = startBounds;
+        if (!targets.empty()) {
+            // where the group is sent: its context, and the kill plane under it
             Vector3 targetCenter;
             for (const PlacementPose& target : targets) targetCenter += target.position;
             targetCenter = targetCenter / static_cast<float>(targets.size());
-            growContext(translated(targetBounds, targetCenter - startCenter));
+            const AABB sent = translated(startBounds, targetCenter - startCenter);
+            growContext(sent);
+            lowerKillY(expanded(sent, margin));
         }
         return true;
     }
@@ -1866,8 +2003,16 @@ struct PlacementRun::Impl {
                 stalledSeconds = allStill ? stalledSeconds + fixedStep : 0.0;
                 if (reached() || stalledSeconds >= kStalledSeconds) {
                     reachedOrStalled = true;
-                    if (!spec.settle) return true;
+                    // there: the drive's last velocity must not carry them on
                     world->clearTargets();
+                    world->stopAll();
+                    if (!spec.settle) {
+                        for (const PlacementBodyState& state : states) {
+                            uint32_t& at = settleStep[state.entity];
+                            if (!state.fellOut && at == 0) at = step;
+                        }
+                        return true;
+                    }
                     world->setGravity(spec.gravity);
                     world->wakeAll();
                     settleStep.clear();
@@ -1884,6 +2029,16 @@ struct PlacementRun::Impl {
         return true;
     }
 
+    // The scene or the decomposition cache went away mid-run: done, without touching either
+    void abandon() {
+        stage = Stage::Finished;
+        done = true;
+        result.ok = false;
+        result.cancelled = true;
+        result.error = "the scene or the project went away during the run";
+        world.reset();
+    }
+
     void finish(bool cancelled) {
         stage = Stage::Finished;
         done = true;
@@ -1898,7 +2053,7 @@ struct PlacementRun::Impl {
         result.contextRegion = world->getContextRegion();
 
         const float maxSecondsShown = spec.maxSeconds;
-        std::vector<std::string> fellOut, neverSlept, unreached, teleported, refining;
+        std::vector<std::string> fellOut, neverSlept, unreached, teleported, refining, caveated;
 
         std::vector<Entity> reported = movers;
         for (Entity neighbour : neighbourOrder) reported.push_back(neighbour);
@@ -1959,6 +2114,11 @@ struct PlacementRun::Impl {
                 e.warnings.push_back("its collider was still being refined (convex hull used)");
                 refining.push_back(e.name);
             }
+            const auto caveat = caveats.find(entity);
+            if (caveat != caveats.end()) {
+                e.warnings.push_back(caveat->second);
+                caveated.push_back(e.name + ": " + caveat->second);
+            }
             if (!e.settled) allSettled = false;
         }
         for (size_t i = 0; i < reported.size(); i++) {
@@ -1990,6 +2150,7 @@ struct PlacementRun::Impl {
             result.warnings.push_back(nameList(teleported) + " teleported (target farther than " +
                                       meters(world->getSettings().tuning.teleportDistance) + "): move in smaller steps, or raise the teleport distance");
         }
+        for (const std::string& line : caveated) result.warnings.push_back(line);
         if (!refining.empty() || pendingAtStart) {
             result.warnings.push_back("colliders were still being refined" + (refining.empty() ? std::string() : " for " + nameList(refining)) +
                                       ", so convex hulls were used and a re-run may differ: use decompose:\"always\" for a reproducible result");
@@ -2032,6 +2193,8 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
         return pa != pb ? pa < pb : a < b;
     });
 
+    r.cacheUse.cache = placementDecompositionCache(project);
+    r.cacheUse.generation = cacheSlot().generation;
     r.world.reset(new PlacementWorld(r.scene, r.worldSettings()));
     std::vector<std::string> loading;
     for (Entity root : roots) {
@@ -2039,6 +2202,7 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
         if (r.world->addMover(root, &why)) {
             r.movers.push_back(root);
             r.before[root] = r.world->getState(root).pose;
+            if (!why.empty()) r.caveats[root] = why;   // accepted with a caveat: a warning, not a refusal
         } else {
             if (why.empty()) why = "cannot be moved";
             r.result.refused.push_back({root, why});
@@ -2058,16 +2222,16 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
     r.startBounds = r.world->getMoversBounds();
     r.margin = std::max(spec.contextMargin, std::min(longestAxis(r.startBounds), spec.settings.maxMoverSize));
 
-    // context
+    // context, and the kill plane under it and the movers
+    r.lowerKillY(expanded(r.startBounds, r.margin));
     if (spec.context == PlacementSpec::Context::Entities) {
         for (Entity entity : spec.contextEntities) {
-            if (!r.world->isMover(entity)) r.world->addContextEntity(entity);
+            if (r.world->isMover(entity)) continue;
+            r.world->addContextEntity(entity);
+            r.lowerKillY(subtreeBounds(r.scene, entity));
         }
-        r.updateKillY();
     } else if (spec.context == PlacementSpec::Context::Auto) {
         r.growContext(r.startBounds);
-    } else {
-        r.updateKillY();
     }
 
     // seeded jitter, before the first step
@@ -2085,24 +2249,32 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
             r.world->teleport(m, pose);
         }
         r.growContext(r.world->getMoversBounds());
+        r.lowerKillY(expanded(r.world->getMoversBounds(), r.margin));
     }
 
     std::string error;
     if (!r.setUpTargets(error)) return r.fail(error);
 
-    // nothing to land on: a ray along gravity from each mover finds no context
+    // nothing to land on: a ray along gravity from each mover, down to the kill plane, finds no
+    // context (context auto loads what the ray reaches, as the fall would)
     if (r.usesGravityAtEnd() && spec.gravity.squaredLength() > 1e-12f) {
         const Vector3 down = spec.gravity.normalized();
         std::vector<std::string> nothingBelow;
         for (size_t i = 0; i < r.movers.size(); i++) {
             const Vector3 from = r.targets.empty() ? r.world->getState(r.movers[i]).pose.position : r.targets[i].position;
-            const float reach = r.margin + longestAxis(r.startBounds);
+            float reach = longestAxis(r.startBounds) + spec.settings.killYDepth + r.margin;
+            if (r.killYSet && down.y < -0.1f) reach = std::max(reach, (from.y - r.killY) / -down.y);
             PlacementRayHit hit;
-            if (!r.world->raycast(Ray(from, down * reach), hit, r.movers)) nothingBelow.push_back(displayName(r.scene, r.movers[i]));
+            if (!r.raycastLoading(Ray(from, down * std::min(reach, kPointerRayLength)), hit)) {
+                nothingBelow.push_back(displayName(r.scene, r.movers[i]));
+            }
         }
         if (!nothingBelow.empty()) {
-            r.result.warnings.push_back("nothing to land on within " + meters(r.margin) + " under " + nameList(nothingBelow) +
-                                        ": raise context_margin" + (spec.context == PlacementSpec::Context::Auto ? "" : " or give other context"));
+            r.result.warnings.push_back(
+                "nothing to land on under " + nameList(nothingBelow) + ": " + (nothingBelow.size() == 1 ? "it falls" : "they fall") +
+                " out of the world; " +
+                (spec.context == PlacementSpec::Context::Auto ? std::string(nothingBelow.size() == 1 ? "move it" : "move them") + " over a surface, or add one below"
+                                                               : std::string("add the surface below to context, or use context:\"auto\"")));
         }
     }
 
@@ -2122,6 +2294,10 @@ bool PlacementRun::advance(double budgetMs) {
     if (r.done) return true;
     if (!r.started || !r.world) {
         r.done = true;
+        return true;
+    }
+    if (!r.usable()) {
+        r.abandon();
         return true;
     }
     const auto begin = std::chrono::steady_clock::now();
@@ -2147,6 +2323,10 @@ void PlacementRun::cancel() {
         r.done = true;
         r.result.cancelled = true;
         r.result.error = "cancelled";
+        return;
+    }
+    if (!r.usable()) {
+        r.abandon();
         return;
     }
     r.finish(true);

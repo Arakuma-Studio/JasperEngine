@@ -17,6 +17,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ObjectTransformCmd.h"
+#include "component/Joint3DComponent.h"
 #include "physics/PlacementSession.h"
 #include "physics/PlacementSettings.h"
 #include "pool/ShaderPool.h"
@@ -987,14 +988,25 @@ TEST(PhysicsPlacementSim, DistributeAndGatherAlongTheirAxes) {
     EXPECT_NEAR(entityResult(spaced, b)->after.position.x, 3.0f, 0.02f);
     EXPECT_NEAR(entityResult(spaced, c)->after.position.x, 6.0f, 0.02f);
 
-    PlacementSpec gather = specFor(sceneId, {a, c}, PlacementMode::Gather);
+    // a free row behind them: half way to the centre
+    const Entity d = create(sceneId, "D", EntityCreationType::BOX, Vector3(0.0f, 0.5f, 4.0f));
+    const Entity f = create(sceneId, "F", EntityCreationType::BOX, Vector3(6.0f, 0.5f, 4.0f));
+    PlacementSpec gather = specFor(sceneId, {d, f}, PlacementMode::Gather);
     gather.amount = 0.5f;
     gather.settle = false;
     const PlacementResult gathered = runToEnd(gather);
     ASSERT_TRUE(gathered.ok) << gathered.error;
-    EXPECT_NEAR(entityResult(gathered, a)->after.position.x, 1.5f, 0.02f);
-    EXPECT_NEAR(entityResult(gathered, c)->after.position.x, 4.5f, 0.02f);
-    EXPECT_NEAR(entityResult(gathered, a)->after.position.y, 0.5f, 0.01f);   // across gravity only
+    EXPECT_NEAR(entityResult(gathered, d)->after.position.x, 1.5f, 0.02f);
+    EXPECT_NEAR(entityResult(gathered, f)->after.position.x, 4.5f, 0.02f);
+    EXPECT_NEAR(entityResult(gathered, d)->after.position.y, 0.5f, 0.01f);   // across gravity only
+    EXPECT_TRUE(gathered.allSettled);
+
+    // B stands between A and C: gathered all the way, A stops against it
+    PlacementSpec blocked = specFor(sceneId, {a, c}, PlacementMode::Gather);
+    blocked.settle = false;
+    const PlacementResult stopped = runToEnd(blocked);
+    ASSERT_TRUE(stopped.ok) << stopped.error;
+    EXPECT_NEAR(entityResult(stopped, a)->after.position.x, 0.2f, 0.01f);
 }
 
 TEST(PhysicsPlacementSim, SnapRestsOnTheSurfaceTheRayHits) {
@@ -1026,7 +1038,7 @@ TEST(PhysicsPlacementSim, WarningsSayWhatToDo) {
     PlacementSpec nothingBelow = specFor(sceneId, {crate});
     const PlacementResult fell = runToEnd(nothingBelow);
     ASSERT_TRUE(fell.ok) << fell.error;
-    EXPECT_TRUE(contains(fell.warnings, "nothing to land on within"));
+    EXPECT_TRUE(contains(fell.warnings, "nothing to land on under Crate: it falls out of the world"));
     EXPECT_TRUE(contains(fell.warnings, "fell out of the world"));
     EXPECT_TRUE(entityResult(fell, crate)->fellOut);
     EXPECT_FALSE(fell.allSettled);
@@ -1241,16 +1253,26 @@ TEST(PhysicsPlacementSim, OverlayShowsTheTeleportRingAndDistances) {
     EXPECT_EQ(overlay.proxySegments.size() % 2, 0u);
 
     ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
-    session.setMoveTarget(session.getMoversCenter() + Vector3(8.0f, 0.0f, 0.0f));
-    session.tick(1.0 / 60.0);
+    const Vector3 start = session.getMoversCenter();
+    session.setMoveTarget(start + Vector3(3.0f, 0.0f, 0.0f));
     session.collectOverlay(overlay);
     EXPECT_TRUE(overlay.active);
     EXPECT_TRUE(overlay.showTeleportRing);
-    EXPECT_TRUE(overlay.teleportExceeded);
+    EXPECT_FALSE(overlay.teleportExceeded);
     EXPECT_FLOAT_EQ(overlay.teleportRadius, 5.0f);
+    expectNear(overlay.teleportCenter, start, 1e-5f);
     EXPECT_FALSE(overlay.region.isNull());
     EXPECT_TRUE(overlay.distances.empty());   // idle selection only
+    // the handle past the ring: the ring says so, and the next step teleports the crate there
+    session.setMoveTarget(start + Vector3(8.0f, 0.0f, 0.0f));
+    session.collectOverlay(overlay);
+    EXPECT_TRUE(overlay.teleportExceeded);
+    session.tick(1.0 / 60.0);
+    EXPECT_NEAR(session.getMoversCenter().x, start.x + 8.0f, 1e-3f);
+    session.collectOverlay(overlay);
+    EXPECT_FALSE(overlay.teleportExceeded);
     session.cancel();
+    expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 2.0f, 0.0f), 0.0f);
 }
 
 TEST(PhysicsPlacementSim, ASecondGestureLandsOnTheFirstOnesResult) {
@@ -1325,4 +1347,181 @@ TEST(PhysicsPlacementSim, PushedNeighboursAreReportedAndCommitted) {
     CommandHandle::get(sceneId)->undo();
     expectNear(transformOf(sceneId, pebble).position, Vector3(1.5f, 0.25f, 0.0f), 0.0f);
     expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 0.5f, 0.0f), 0.0f);
+}
+
+TEST(PhysicsPlacementSim, InteractiveSnapRestsOnABoxTop) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    create(sceneId, "Table", EntityCreationType::BOX, Vector3(4.0f, 0.5f, 0.0f), NULL_ENTITY, Vector3(2.0f, 1.0f, 2.0f));
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f), NULL_ENTITY,
+                                Vector3(0.5f, 0.5f, 0.5f));
+    const size_t position = CommandHandle::get(sceneId)->position();
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Snap, {crate}));
+    // the cursor ray, from a camera up and to the side, onto the table's top
+    const Vector3 eye(4.0f, 6.0f, 4.0f);
+    session.setSnapRay(Ray(eye, (Vector3(4.2f, 1.0f, 0.1f) - eye).normalized()));
+    ticks(session, 180);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.x, 4.2f, 0.02f);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 1.25f, 0.01f);   // on the top, not in it
+    session.end();
+    ASSERT_TRUE(tickUntilIdle(session));
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 1);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 1.25f, 0.003f);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.z, 0.1f, 0.02f);
+    CommandHandle::get(sceneId)->undo();
+    expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
+}
+
+TEST(PhysicsPlacementSim, InteractiveStructureChangeMidGesture) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    const size_t position = CommandHandle::get(sceneId)->position();
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {crate}));
+    ticks(session, 10);
+    // a GameObject added while the gesture runs: the gesture goes on (the world is rebuilt for
+    // the next one)
+    const Entity step = create(sceneId, "Step", EntityCreationType::BOX, Vector3(5.0f, 0.5f, 0.0f));
+    project()->getScene(sceneId)->structureVersion++;
+    session.notifySceneChanged();
+    EXPECT_TRUE(session.isGestureActive());
+    ticks(session, 240);
+    session.end();
+    EXPECT_FALSE(session.isBusy());
+    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 0.5f, 0.002f);
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 2);   // the create, then the drop
+
+    // the next gesture sees the new box
+    const Entity other = create(sceneId, "Other", EntityCreationType::BOX, Vector3(5.0f, 4.0f, 0.0f));
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {other}));
+    ticks(session, 300);
+    session.end();
+    EXPECT_NEAR(transformOf(sceneId, other).position.y, 1.5f, 0.004f);
+    (void)step;
+}
+
+TEST(PhysicsPlacementSim, BatchMoveNeverTeleportsThroughAWall) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 0.5f, 0.0f));
+    create(sceneId, "Wall", EntityCreationType::BOX, Vector3(3.0f, 2.5f, 0.0f), NULL_ENTITY, Vector3(1.0f, 5.0f, 5.0f));
+    PlacementSpec far = specFor(sceneId, {crate}, PlacementMode::Move);
+    far.hasTargetDelta = true;
+    far.targetDelta = Vector3(9.0f, 0.0f, 0.0f);   // past the 5 m teleport distance, behind the wall
+    const PlacementResult result = runToEnd(far);
+    ASSERT_TRUE(result.ok) << result.error;
+    const PlacementEntityResult* e = entityResult(result, crate);
+    EXPECT_FALSE(e->teleported);
+    EXPECT_LE(e->after.position.x, 2.0f + 0.01f);
+    EXPECT_GE(e->after.position.x, 1.5f);
+    EXPECT_FALSE(contains(result.warnings, "teleported"));
+}
+
+TEST(PhysicsPlacementSim, CaveatsAreWarningsNotRefusals) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 2.0f, 0.0f));
+    const Entity anchor = create(sceneId, "Anchor", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 5.0f, 0.0f));
+    Joint3DComponent joint;
+    joint.bodyA = crate;
+    joint.bodyB = anchor;
+    sceneOf(sceneId)->addComponent<Joint3DComponent>(anchor, joint);
+
+    const PlacementResult result = runToEnd(specFor(sceneId, {crate}));
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_TRUE(result.refused.empty());
+    EXPECT_TRUE(contains(entityResult(result, crate)->warnings, "simulated free"));
+    EXPECT_TRUE(contains(result.warnings, "Crate: has joints: simulated free"));
+
+    PlacementSession session(project(), sceneId);
+    session.setSelection({crate});
+    EXPECT_TRUE(session.getHud().refused.empty());
+    ASSERT_EQ(session.getHud().caveats.size(), 1u);
+    EXPECT_NE(session.getHud().caveats[0].reason.find("simulated free"), std::string::npos);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {crate}));
+    EXPECT_EQ(session.getHud().caveats.size(), 1u);
+    session.cancel();
+}
+
+TEST(PhysicsPlacementSim, RunsAndSessionsOutliveTheirSceneAndCache) {
+    REQUIRE_PHYSICS();
+    // the scene closed under a run: advancing abandons it, destroying it touches nothing
+    {
+        const uint32_t sceneId = newScene();
+        makeFloor(sceneId);
+        const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+        std::unique_ptr<PlacementRun> run(new PlacementRun());
+        ASSERT_TRUE(run->start(project(), specFor(sceneId, {crate})));
+        EXPECT_FALSE(run->advance(0.01));
+        project()->getScene(sceneId)->isModified = false;
+        project()->closeScene(sceneId, true);
+        ASSERT_EQ(project()->getScene(sceneId), nullptr);
+        EXPECT_TRUE(run->advance(0.0));
+        EXPECT_TRUE(run->result().cancelled);
+        EXPECT_FALSE(run->result().ok);
+        EXPECT_NE(run->result().error.find("went away"), std::string::npos);
+        run.reset();
+    }
+    {
+        const uint32_t sceneId = newScene();
+        makeFloor(sceneId);
+        const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+        std::unique_ptr<PlacementRun> run(new PlacementRun());
+        ASSERT_TRUE(run->start(project(), specFor(sceneId, {crate})));
+        project()->getScene(sceneId)->isModified = false;
+        project()->closeScene(sceneId, true);
+        run.reset();   // never advanced again: destroyed with its scene gone
+    }
+    // the decomposition cache dropped under a run (a project switch): the same
+    {
+        const uint32_t sceneId = newScene();
+        makeFloor(sceneId);
+        const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+        std::unique_ptr<PlacementRun> run(new PlacementRun());
+        ASSERT_TRUE(run->start(project(), specFor(sceneId, {crate})));
+        placementProjectSwitching();
+        run->cancel();
+        EXPECT_TRUE(run->result().cancelled);
+        EXPECT_NE(run->result().error.find("went away"), std::string::npos);
+        run.reset();
+
+        std::unique_ptr<PlacementRun> unstarted(new PlacementRun());
+        ASSERT_TRUE(unstarted->start(project(), specFor(sceneId, {crate})));
+        placementProjectSwitching();
+        unstarted.reset();
+    }
+    // a session: the cache dropped mid-gesture puts the poses back; the scene closed under it
+    // leaves nothing to restore; destroying it then touches neither
+    {
+        const uint32_t sceneId = newScene();
+        makeFloor(sceneId);
+        const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+        std::unique_ptr<PlacementSession> session(new PlacementSession(project(), sceneId));
+        ASSERT_TRUE(session->begin(PlacementGesture::Drop, {crate}));
+        ticks(*session, 20);
+        placementProjectSwitching();
+        session->tick(1.0 / 60.0);
+        EXPECT_FALSE(session->isBusy());
+        expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
+        EXPECT_EQ(session->getHud().status, "Ready");
+
+        ASSERT_TRUE(session->begin(PlacementGesture::Drop, {crate}));   // a new world, a new cache
+        ticks(*session, 20);
+        placementProjectSwitching();
+        session.reset();   // the destructor cancels without driving the stale world
+        expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
+
+        session.reset(new PlacementSession(project(), sceneId));
+        ASSERT_TRUE(session->begin(PlacementGesture::Drop, {crate}));
+        ticks(*session, 20);
+        project()->getScene(sceneId)->isModified = false;
+        project()->closeScene(sceneId, true);
+        session.reset();
+    }
 }
