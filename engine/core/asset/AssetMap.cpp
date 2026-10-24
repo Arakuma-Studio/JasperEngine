@@ -211,7 +211,8 @@ std::vector<uint8_t> AssetMap::encode(std::vector<Entry> entries) {
 
     std::vector<uint8_t> out;
     out.reserve(headerSize + entries.size() * entrySize + blob.size());
-    out.insert(out.end(), {'J', 'E', 'A', 'M'});
+    // byte by byte: GCC 11's -Wstringop-overflow misreads an initializer-list insert after reserve()
+    for (const char c : {'J', 'E', 'A', 'M'}) out.push_back(static_cast<uint8_t>(c));
     putU32(out, mapVersion);
     putU32(out, static_cast<uint32_t>(entries.size()));
     putU32(out, static_cast<uint32_t>(blob.size()));
