@@ -602,3 +602,19 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **Delete hold under polling** is the poll interval + 100 ms (R4's 200 ms with native events):
   a scan between a save's delete and its rewrite would otherwise report a removal and an
   addition (`FileWatcherTests.DeleteRecreate/Polling` under TSan's slowdown).
+- **S09 and S24 landed during the stream** (merged at the end). The `[Hot Reload]` Console
+  lines are in S09's `asset` log category and the watcher's own warnings (a fallback to polling,
+  an overflow) in `io`, so the Console's Category filter separates them. `FileWatchSubscription`
+  stays its own RAII type rather than S09's `Subscription`: R8 needs a destroyed subscription to
+  wait for a callback in flight on a worker (S09's does not wait), plus the filter, priority and
+  the main thread's time budget; the main-thread wake-up already goes through S09's
+  `Scheduler::post` (`App::enqueueMainThreadTask`). With S24, Reload of an open scene frees that
+  scene's undo history (the steps were made on the copy the file replaces, as R23 does on close);
+  the status bar opens the Asset Pipeline page through S09's `EditorSettingsWindow::showPage`.
+- **S04 had not landed** at the final merge (it is on `feat/s04-asset-identity`). The 2 s
+  `refreshAssetDatabase` timer it builds on is already gone here: the watcher's batches reach
+  `Project::applyFileChanges` (`editor/project/ProjectPrefabPaths.cpp`), which moves, removes or
+  imports the changed paths, with `refreshAssetDatabase` only for a Rescan. When S04 merges, its
+  all-types `refresh()` and redirect records go behind that same entry point (no poll), and its
+  `.meta` and cache writes go through `io::writeFileAtomic` (or `ScopedExpectedWrite`) so the
+  ledger drops their echoes.
