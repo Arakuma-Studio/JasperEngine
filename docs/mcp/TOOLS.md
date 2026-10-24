@@ -2254,12 +2254,12 @@ Assign or generate terrain maps in one undo step. heightmap: an image path, or {
 
 Hints: read-only, idempotent
 
-Assert the layout of a live HTML/CSS UI document: passed + each failure (element ref, numbers, rects), and on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height). viewports: other sizes too. Zero matches fail.
+Assert a live HTML/CSS UI document's layout: passed + each failure (element ref, numbers, rects), on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent (container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size (width, height). viewports: other sizes too. Zero matches fail.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `checks` | array of object {allow_scroll, background, container, count, height, max, min, min_ratio, selector, single_line, tolerance, type, unobstructed, width, with} | yes |  |
-| `entity` | integer or string |  | With the UI Document (default: the only one). |
+| `entity` | integer or string |  | UI Document (default: the only one). |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
 | `scene` | integer or string |  |  |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
@@ -2270,11 +2270,11 @@ Assert the layout of a live HTML/CSS UI document: passed + each failure (element
 
 *Create UI Document*
 
-Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made from template (blank or an example: main_menu, pause_menu, hud, inventory, settings, dialogue, shop, toasts, loading) with its .css, assets and Lua (script: attached); existing files are kept unless overwrite. The html must be in the assets dir (e.g. assets/ui/menu.html). Returns the files and the first load's diagnostics.
+Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo step). A missing html is made from template (blank or an example) with its .css, assets and Lua (script: attached); existing files are kept unless overwrite. Returns the files and the first load's diagnostics.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `html` | string | yes | .html in the assets dir. |
+| `html` | string | yes | .html in the assets dir, e.g. assets/ui/menu.html. |
 | `name` | string |  | Default: from the file name. |
 | `overwrite` | boolean |  | Replace existing files. |
 | `parent` | integer or string |  | Default: scene root. |
@@ -2291,14 +2291,14 @@ Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo 
 
 Hints: read-only, idempotent
 
-Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] in canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model + computed styles with the file:line of each rule. at: hit test. file: a .html/.css's diagnostics without a document (as `jasperengine-editor check --ui`). Content Lua makes appears in play only.
+Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= `jasperengine-editor check --ui`). Lua-made content: play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `at` | array[2] of number |  | Hit test (canvas px): the element stack. |
 | `depth` | integer (0..16) |  | Descendant levels (default tree 3, full 0). |
 | `detail` | `"tree"` \| `"full"` |  | full: box model, attributes, computed styles + sources (max 20 elements). Default: `"tree"`. |
-| `entity` | integer or string |  | With the UI Document (default: the only one). |
+| `entity` | integer or string |  | UI Document (default: the only one). |
 | `file` | string |  | .html/.css: its diagnostics only, no live document. |
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
@@ -2316,13 +2316,13 @@ Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box 
 
 Hints: read-only, idempotent
 
-The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: background-image, mask-image; filter: filter, backdrop-filter), category, cost, summary, example; parameters (name, type, default, range) when one is named or few match. Project .frag effects included.
+HTML/CSS UI GPU effects for CSS effect(<name>, ...): name, kind (paint: background-image/mask-image; filter: filter/backdrop-filter), category, cost, summary, example; params (type, default, range) when named or few match. Project .frag effects too.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `category` | string |  | e.g. gradient, glass, blur, light, distort. |
+| `category` | string |  | e.g. glass, blur, light. |
 | `kind` | `"paint"` \| `"filter"` |  |  |
-| `name` | string |  | One effect: all its parameters. |
+| `name` | string |  | All its parameters. |
 
 
 ### `set_ui_effect_time`
@@ -2331,8 +2331,12 @@ The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: backgr
 
 Hints: idempotent
 
-Pin the clock of the HTML/CSS UI effects (edit and play views) so screenshots are identical, or make it live again with null.
+Pin the HTML/CSS UI effect clock (edit/play) for identical screenshots; null: live. pointer_path (a drag), splats: exact input for selector's stateful effects (s, element px).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `time` | number or null | yes | Seconds, or null: live. |
+| `entity` | integer or string |  |  |
+| `pointer_path` | array |  | [[x,y,t]] element px, s; [] clears |
+| `selector` | string |  |  |
+| `splats` | array |  | [{x,y,dx,dy,radius,color,strength,t}] area px; replaces |
+| `time` | number or null | yes |  |
