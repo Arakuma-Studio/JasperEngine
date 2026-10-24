@@ -6,6 +6,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "physics/PlacementWorld.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/Angle.h"
 #include "util/UIUtils.h"
@@ -17,9 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <map>
 #include <string>
-#include <tuple>
 
 using namespace jasperengine;
 
@@ -71,92 +70,6 @@ namespace {
             std::snprintf(text, sizeof(text), "%zu B", bytes);
         }
         return text;
-    }
-
-    // Mesh-local positions and triangle indices of every submesh: the geometry a decomposition
-    // is requested and cached for. Submeshes sharing one POSITION buffer add its vertices once;
-    // a submesh without indices is a plain triangle list.
-    void meshGeometry(MeshComponent& mesh, std::vector<Vector3>& positions, std::vector<uint32_t>& indices){
-        positions.clear();
-        indices.clear();
-
-        std::map<std::string, Buffer*> buffers;
-        if (mesh.buffer.getSize() > 0) buffers["vertices"] = &mesh.buffer;
-        if (mesh.indices.getSize() > 0) buffers["indices"] = &mesh.indices;
-        for (int i = 0; i < mesh.numExternalBuffers; i++) buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
-
-        Buffer* vertexBuffer = nullptr;
-        Attribute vertexAttr;
-        Buffer* indexBuffer = nullptr;
-        Attribute indexAttr;
-        for (auto const& buf : buffers){
-            if (buf.second->getAttribute(AttributeType::POSITION)){
-                vertexBuffer = buf.second;
-                vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-            }
-            if (buf.second->getAttribute(AttributeType::INDEX)){
-                indexBuffer = buf.second;
-                indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-            }
-        }
-        // an empty name keeps the buffer in use; an unknown one drops the attribute
-        auto resolve = [&buffers](const std::string& name, Buffer* current) -> Buffer* {
-            if (name.empty()) return current;
-            auto named = buffers.find(name);
-            return named != buffers.end() ? named->second : nullptr;
-        };
-
-        std::map<std::tuple<const void*, size_t, size_t>, uint32_t> vertexBases;
-        for (size_t s = 0; s < mesh.numSubmeshes; s++){
-            for (auto const& attr : mesh.submeshes[s].attributes){
-                if (attr.first == AttributeType::POSITION){
-                    if (Buffer* resolved = resolve(attr.second.getBufferName(), vertexBuffer)){
-                        vertexBuffer = resolved;
-                        vertexAttr = attr.second;
-                    }
-                }
-                if (attr.first == AttributeType::INDEX){
-                    if (Buffer* resolved = resolve(attr.second.getBufferName(), indexBuffer)){
-                        indexBuffer = resolved;
-                        indexAttr = attr.second;
-                    }
-                }
-            }
-            if (!vertexBuffer || !vertexBuffer->getData()){
-                continue;
-            }
-
-            const auto range = std::make_tuple((const void*)vertexBuffer->getData(), (size_t)vertexAttr.getOffset(), (size_t)vertexAttr.getCount());
-            const uint32_t vertexCount = (uint32_t)vertexAttr.getCount();
-            auto base = vertexBases.find(range);
-            if (base == vertexBases.end()){
-                base = vertexBases.emplace(range, (uint32_t)positions.size()).first;
-                for (uint32_t i = 0; i < vertexCount; i++){
-                    positions.push_back(vertexBuffer->getVector3(&vertexAttr, i));
-                }
-            }
-            // indices are local to their submesh, rebased onto its vertices
-            const uint32_t vertexBase = base->second;
-
-            if (!indexBuffer || !indexBuffer->getData()){
-                for (uint32_t i = 0; i + 2 < vertexCount; i += 3){
-                    indices.push_back(vertexBase + i);
-                    indices.push_back(vertexBase + i + 1);
-                    indices.push_back(vertexBase + i + 2);
-                }
-                continue;
-            }
-            const size_t indexCount = indexAttr.getCount() / 3 * 3;
-            for (size_t i = 0; i < indexCount; i++){
-                uint32_t index = 0;
-                if (indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
-                    index = indexBuffer->getUInt32(&indexAttr, i);
-                }else if (indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
-                    index = indexBuffer->getUInt16(&indexAttr, i);
-                }
-                indices.push_back(vertexBase + index);
-            }
-        }
     }
 
     bool beginProperties(const char* id){
@@ -634,25 +547,49 @@ void editor::PhysicsPlacementWindow::drawSceneHud(uint32_t sceneId, ImDrawList* 
             status = "Paused while the terrain brush is on";
         }
     }
-    char counts[96];
-    std::snprintf(counts, sizeof(counts), "%zu %s \xC2\xB7 %zu context", hud.movers, hud.movers == 1 ? "mover" : "movers", hud.contextBodies);
+    // idle, the session holds no movers: the selection's movable roots are what a gesture moves
+    if (hud.phase == PlacementPhase::Idle){
+        const size_t roots = placementRoots(project, sceneId, project->getSelectedEntities(sceneId)).size();
+        hud.movers = roots > hud.refused.size() ? roots - hud.refused.size() : 0;
+    }
+    std::string counts = std::to_string(hud.movers) + (hud.movers == 1 ? " mover" : " movers") + " \xC2\xB7 " +
+                         std::to_string(hud.contextBodies) + " context";
+    if (!hud.refused.empty()){
+        counts += " \xC2\xB7 " + std::to_string(hud.refused.size()) + " refused";
+    }
+    // caveats: moved all the same, with a note (bind pose, joints not recreated)
+    std::string caveat;
+    if (!hud.caveats.empty()){
+        caveat = hud.caveats.size() == 1 ? "Note: " + hud.caveats[0].reason
+                                         : std::to_string(hud.caveats.size()) + " objects with notes (see their labels)";
+    }
     const char* hint = "Space drop \xC2\xB7 Shift-drag snap \xC2\xB7 Esc cancel";
 
-    const char* lines[4] = {title.c_str(), status.c_str(), counts, hint};
-    const ImU32 colors[4] = {ImGui::ColorConvertFloat4ToU32(ImLerp(Theme::Colors::PhysicsAccent, ImVec4(1, 1, 1, 1), 0.25f)),
-                             HUD_TEXT, HUD_DIM_TEXT, ImGui::ColorConvertFloat4ToU32(Theme::Colors::SubtleText)};
+    const ImU32 warning = ImGui::ColorConvertFloat4ToU32(Theme::Colors::WarningText);
+    // a caveat reads apart from a refusal: the same yellow, muted
+    const ImU32 caveatColor = ImGui::ColorConvertFloat4ToU32(ImLerp(Theme::Colors::WarningText, Theme::Colors::SubtleText, 0.55f));
+    std::vector<std::pair<std::string, ImU32>> lines = {
+        {title, ImGui::ColorConvertFloat4ToU32(ImLerp(Theme::Colors::PhysicsAccent, ImVec4(1, 1, 1, 1), 0.25f))},
+        {status, HUD_TEXT},
+        {counts, HUD_DIM_TEXT},
+    };
+    if (!caveat.empty()){
+        lines.push_back({caveat, caveatColor});
+    }
+    lines.push_back({hint, ImGui::ColorConvertFloat4ToU32(Theme::Colors::SubtleText)});
+
     float boxWidth = 0.0f;
-    for (const char* line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line).x);
+    for (const auto& line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line.first.c_str()).x);
     const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
     const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * 4.0f + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
+    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * (float)lines.size() + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
     const float margin = Theme::dpi(8.0f);
     const ImVec2 boxMin(canvasMin.x + margin, canvasMin.y + margin);
 
     drawList->PushClipRect(canvasMin, canvasMax, true);
     drawList->AddRectFilled(boxMin, ImVec2(boxMin.x + boxSize.x, boxMin.y + boxSize.y), HUD_BACKGROUND, Theme::dpi(3.0f));
-    for (int i = 0; i < 4; i++){
-        drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * (float)i), colors[i], lines[i]);
+    for (size_t i = 0; i < lines.size(); i++){
+        drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * (float)i), lines[i].second, lines[i].first.c_str());
     }
 
     // labels at their world points: why an object can't move, how far the surroundings are
@@ -671,20 +608,44 @@ void editor::PhysicsPlacementWindow::drawSceneHud(uint32_t sceneId, ImDrawList* 
         drawList->AddRectFilled(min, ImVec2(min.x + size.x + labelPad.x * 2.0f, min.y + size.y + labelPad.y * 2.0f), HUD_BACKGROUND, Theme::dpi(2.0f));
         drawList->AddText(ImVec2(min.x + labelPad.x, min.y + labelPad.y), color, text.c_str());
     };
-    const ImU32 warning = ImGui::ColorConvertFloat4ToU32(Theme::Colors::WarningText);
-    for (const PlacementRefusal& refusal : overlay.refused){
-        const Transform* transform = sceneProject->scene->findComponent<Transform>(refusal.entity);
+    // above the object: its bounds' top, or its origin
+    auto labelAnchor = [&](Entity entity, Vector3& anchor){
+        const Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
         if (!transform){
-            continue;
+            return false;
         }
-        Vector3 anchor = transform->worldPosition;
-        if (const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(refusal.entity)){
-            if (!mesh->worldAABB.isNull() && !mesh->worldAABB.isInfinite()){
-                const AABB& box = mesh->worldAABB;
-                anchor = Vector3(box.getCenter().x, box.getMaximum().y, box.getCenter().z);
+        anchor = transform->worldPosition;
+        // the bounds of its meshes, its children's included (a group root has none of its own)
+        AABB bounds;
+        for (Entity candidate : sceneProject->entities){
+            const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(candidate);
+            if (!mesh || mesh->worldAABB.isNull() || mesh->worldAABB.isInfinite()){
+                continue;
+            }
+            for (Entity current = candidate; current != NULL_ENTITY; ){
+                if (current == entity){
+                    bounds.merge(mesh->worldAABB);
+                    break;
+                }
+                const Transform* currentTransform = sceneProject->scene->findComponent<Transform>(current);
+                current = currentTransform ? currentTransform->parent : NULL_ENTITY;
             }
         }
-        label(anchor, "Physics: " + refusal.reason, warning);
+        if (!bounds.isNull() && !bounds.isInfinite()){
+            anchor = Vector3(bounds.getCenter().x, bounds.getMaximum().y, bounds.getCenter().z);
+        }
+        return true;
+    };
+    Vector3 anchor;
+    for (const PlacementRefusal& refusal : overlay.refused){
+        if (labelAnchor(refusal.entity, anchor)){
+            label(anchor, "Physics: " + refusal.reason, warning);
+        }
+    }
+    for (const PlacementRefusal& note : hud.caveats){
+        if (labelAnchor(note.entity, anchor)){
+            label(anchor, "Physics note: " + note.reason, caveatColor);
+        }
     }
     for (const PlacementOverlay::Distance& distance : overlay.distances){
         char text[32];
@@ -719,43 +680,22 @@ void editor::PhysicsPlacementWindow::show(){
     ImGui::End();
 }
 
-bool editor::PhysicsPlacementWindow::bakeMeshes(SceneProject* sceneProject, const std::vector<Entity>& roots, size_t& requested){
-    requested = 0;
+void editor::PhysicsPlacementWindow::bake(SceneProject* sceneProject, const std::vector<Entity>& roots){
+    bakeNotes.clear();
+    bakeParts = 0;
+    bakeRan = true;
     ConvexDecompositionCache* cache = placementDecompositionCache(project);
     if (!cache || !sceneProject || !sceneProject->scene){
-        return false;
+        return;
     }
-    Scene* scene = sceneProject->scene;
-    auto underRoots = [&](Entity entity){
-        if (roots.empty()){
-            return true;
-        }
-        for (Entity current = entity; current != NULL_ENTITY; ){
-            if (std::find(roots.begin(), roots.end(), current) != roots.end()){
-                return true;
-            }
-            const Transform* transform = scene->findComponent<Transform>(current);
-            current = transform ? transform->parent : NULL_ENTITY;
-        }
-        return false;
-    };
-
-    const DecompositionParams params = DecompositionParams::fromQuality(settings().quality);
-    std::vector<Vector3> positions;
-    std::vector<uint32_t> indices;
-    for (Entity entity : sceneProject->entities){
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || !underRoots(entity)){
-            continue;
-        }
-        meshGeometry(*mesh, positions, indices);
-        if (positions.size() < 4 || indices.size() < 3){
-            continue;
-        }
-        cache->request(positions, indices, params);
-        requested++;
+    // the shapes and cache keys a mover would get with these settings (PlacementWorld's own walk)
+    const PlacementWorldSettings worldSettings = makePlacementWorldSettings(settings(), cache);
+    for (Entity root : roots){
+        std::vector<std::string> notes;
+        bakeParts += PlacementWorld::requestDecompositions(sceneProject->scene, root, worldSettings, &notes);
+        // each note names its object already
+        bakeNotes.insert(bakeNotes.end(), notes.begin(), notes.end());
     }
-    return true;
 }
 
 void editor::PhysicsPlacementWindow::drawCacheRow(){
@@ -776,9 +716,13 @@ void editor::PhysicsPlacementWindow::drawCacheRow(){
     }
     const char* clearLabel = "Clear##physics_cache_clear";
     const float clearWidth = ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    // Clear at the cell's right edge, after the text
+    const float cellStart = ImGui::GetCursorPosX();
+    const float cellWidth = ImGui::GetContentRegionAvail().x;
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(text.c_str());
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - clearWidth));
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), cellStart + cellWidth - clearWidth));
     ImGui::BeginDisabled(entries == 0 && pending == 0);
     if (ImGui::Button(clearLabel)){
         Project* owner = project;
@@ -921,21 +865,49 @@ void editor::PhysicsPlacementWindow::drawPanel(){
             const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
             const float width = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing) * 0.5f);
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, ImGui::GetStyle().ItemSpacing.y));
-            size_t requested = 0;
             ImGui::BeginDisabled(!cache || !sceneProject || selection.empty());
             if (ImGui::Button("Bake selection##bake_selection", ImVec2(width, 0.0f))){
-                bakeMeshes(sceneProject, placementRoots(project, sceneId, selection), requested);
+                bake(sceneProject, placementRoots(project, sceneId, selection));
             }
             ImGui::EndDisabled();
-            ImGui::SetItemTooltip(cache ? "Every mesh under the selected objects" : "Needs an open project");
+            ImGui::SetItemTooltip(cache ? "The meshes of the selected objects, as they would move" : "Needs an open project");
             ImGui::SameLine();
             ImGui::BeginDisabled(!cache || !sceneProject);
             if (ImGui::Button("Bake scene##bake_scene", ImVec2(width, 0.0f))){
-                bakeMeshes(sceneProject, {}, requested);
+                // every mesh, each as its own object: a group too large to move still has
+                // parts that can
+                std::vector<Entity> meshes;
+                for (Entity entity : sceneProject->entities){
+                    if (sceneProject->scene->findComponent<MeshComponent>(entity)){
+                        meshes.push_back(entity);
+                    }
+                }
+                bake(sceneProject, meshes);
             }
             ImGui::EndDisabled();
             ImGui::SetItemTooltip(cache ? "Every mesh of the scene" : "Needs an open project");
             ImGui::PopStyleVar();
+
+            // what the last bake asked for, and what it left out and why
+            if (bakeRan){
+                const size_t pending = cache ? cache->pendingCount() : 0;
+                std::string summary = std::to_string(bakeParts) + (bakeParts == 1 ? " part" : " parts") + " requested or cached";
+                if (pending > 0){
+                    summary += " \xC2\xB7 baking " + std::to_string(pending);
+                }
+                ImGui::TextColored(Theme::Colors::SubtleText, "%s", summary.c_str());
+                if (!bakeNotes.empty()){
+                    const std::string header = std::to_string(bakeNotes.size()) + (bakeNotes.size() == 1 ? " note" : " notes") + "##bake_notes";
+                    if (ImGui::TreeNodeEx(header.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth)){
+                        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
+                        for (const std::string& note : bakeNotes){
+                            ImGui::TextWrapped("%s", note.c_str());
+                        }
+                        ImGui::PopStyleColor();
+                        ImGui::TreePop();
+                    }
+                }
+            }
         }
 
         // Snap (Shift-drag)
