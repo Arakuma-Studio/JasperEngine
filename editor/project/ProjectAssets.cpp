@@ -119,6 +119,22 @@ bool editor::Project::resolveRegistryAssetRefs(EntityRegistry* registry, bool lo
     return hintChanged;
 }
 
+void editor::Project::bindLoadedAssetRefs() {
+    if (!assetDatabase.isOpen()) {
+        return;
+    }
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            resolveSceneAssetRefs(*sceneProject, false);
+        }
+    }
+    for (auto& [path, prefab] : prefabAssets) {
+        if (prefab.registry) {
+            resolveRegistryAssetRefs(prefab.registry.get(), false);
+        }
+    }
+}
+
 bool editor::Project::resolveSceneAssetRefs(SceneProject& sceneProject, bool loading) {
     if (!sceneProject.scene || !assetDatabase.isOpen()) {
         return false;

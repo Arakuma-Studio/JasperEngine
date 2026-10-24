@@ -133,6 +133,8 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
         result.error = to.string() + " already exists";
         return result;
     }
+    // a path assigned in an open document since its last save follows the file too
+    project.bindLoadedAssetRefs();
     result.textReferencesBroken = textReferencesInto(project, from);
     const bool shaders = isShaderOrDirectory(from) || isShaderOrDirectory(to);
 
@@ -217,6 +219,8 @@ Result AssetOps::remove(Project& project, const fs::path& path, fs::path& trashP
         result.error = path.string() + " does not exist";
         return result;
     }
+    // a path assigned in an open document since its last save is listed by the GUID it named
+    project.bindLoadedAssetRefs();
     result.textReferencesBroken = textReferencesInto(project, path);
     const bool shaders = isShaderOrDirectory(path);
     const fs::path trashDir = project.getProjectPath() / ".trash";

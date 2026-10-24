@@ -295,3 +295,22 @@ async def test_asset_script_property_survives_rename(ed: Editor):
     finally:
         await ed.call("undo", scope="project")
     ed.check((ed.project / "assets/textures/rock.png.meta").exists(), "the rename was not undone")
+
+
+async def test_unsaved_path_follows_the_file(ed: Editor):
+    """A path assigned in the open scene and not saved yet (no GUID in memory) follows a rename,
+    and a delete lists it under the file's GUID (AC18)"""
+    rock = meta_guid(ed, "assets/textures/rock.png")
+    await ed.call("add_component", scene="Main.scene", entity="Ship", component="light")
+    await ed.call("set_properties", scene="Main.scene", entity="Ship", values={"light": {"spotMask": "assets/textures/rock.png"}})
+    await ed.call("move_asset", path="assets/textures/rock.png", to="assets/rock-moved.png")
+    ship = await ed.call("get_entity", scene="Main.scene", entity="Ship", components=["light"], properties=["spotMask"])
+    ed.check("rock-moved.png" in json.dumps(ship), f"{ship}")
+    await ed.call("delete_asset", paths=["assets/rock-moved.png"])
+    group = missing_group(await ed.call("list_missing_assets"), guid=rock)
+    ed.check(group is not None and any(r["entity"]["path"] == "Ship" for r in group["referrers"]), f"{group}")
+    for _ in range(4):
+        await ed.call("undo", scope="project")   # the delete, the move
+        if (ed.project / "assets/textures/rock.png").exists():
+            break
+    ed.check((ed.project / "assets/textures/rock.png").exists(), "the move was not undone")

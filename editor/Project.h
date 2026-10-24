@@ -1555,6 +1555,9 @@ namespace jasperengine::editor{
         // path, a path-fallback binding takes the file's GUID, as it is about to be saved).
         // True when a path hint changed (the owner is then modified).
         bool resolveSceneAssetRefs(SceneProject& sceneProject, bool loading);
+        // Before a file moves or goes: the references of the loaded documents that name an
+        // asset only by path (assigned since the last save) get its GUID, so they follow it
+        void bindLoadedAssetRefs();
         bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
