@@ -1992,3 +1992,136 @@ TEST(PhysicsPlacementSim, SnapHitsTheNearestSurfaceNotTheNearestLoadedOne) {
     ASSERT_TRUE(tickUntilIdle(session));
     expectNear(transformOf(sceneId, cube).position, Vector3(-10.0f, 1.5f, -10.0f), 0.005f);
 }
+
+TEST(PhysicsPlacementSim, OverflowingContactsAreReported) {
+    REQUIRE_PHYSICS();
+    // 300 small boxes in one spot: more touching pairs than Jolt's contact buffers hold
+    const uint32_t sceneId = newScene();
+    std::vector<Entity> pile;
+    for (int i = 0; i < 300; i++) {
+        pile.push_back(create(sceneId, "Box", EntityCreationType::BOX, Vector3(0.0001f * i, 3.0f, 0.0f), NULL_ENTITY, Vector3(0.2f, 0.2f, 0.2f)));
+    }
+    PlacementSpec spec = specFor(sceneId, pile, PlacementMode::Separate);
+    spec.maxSeconds = 1.0f / 120.0f;
+    spec.context = PlacementSpec::Context::None;
+    const PlacementResult result = runToEnd(spec);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_TRUE(contains(result.warnings, "too many contacts in the placement world: results may be wrong; place fewer objects at once"));
+
+    PlacementSession session(project(), sceneId);
+    session.setSettings(noSettle());
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, pile));
+    EXPECT_EQ(session.getHud().status.find("too many contacts"), std::string::npos);
+    session.setMoveTarget(session.getMoversCenter());
+    session.tick(1.0 / 60.0);
+    EXPECT_NE(session.getHud().status.find("\xC2\xB7 too many contacts: place fewer objects at once"), std::string::npos)
+        << session.getHud().status;
+    session.cancel();
+    // a new gesture starts clean
+    const std::vector<Entity> one = {pile[0]};
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, one));
+    EXPECT_EQ(session.getHud().status.find("too many contacts"), std::string::npos);
+    session.cancel();
+
+    // a run that never overflows says nothing
+    PlacementSpec few = specFor(sceneId, one, PlacementMode::Separate);
+    few.maxSeconds = 1.0f / 120.0f;
+    EXPECT_FALSE(contains(runToEnd(few).warnings, "too many contacts"));
+}
+
+// The tool's finalise path (save, Play, a command hitting a busy scene: CommandHistory::
+// beforeChange): the settle finishes and commits now, then the change runs
+TEST(PhysicsPlacementSim, FinishNowCommitsTheSettleBeforeTheChangeThatAskedForIt) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 0.5f, 0.0f));
+    const Entity marker = create(sceneId, "Marker", EntityCreationType::BOX, Vector3(6.0f, 0.5f, 0.0f));
+    CommandHistory* history = CommandHandle::get(sceneId);
+    const size_t position = history->position();
+    PlacementSession session(project(), sceneId);
+    EXPECT_FALSE(session.finishNow(1.0));   // idle: nothing to finish
+
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(2.0f, 1.0f, 0.0f));
+    ticks(session, 60);
+    session.end();
+    ASSERT_EQ(session.getPhase(), PlacementPhase::Settling);
+    // a Delete pressed during the settle: the finalise first...
+    EXPECT_TRUE(session.finishNow(2.0));
+    EXPECT_FALSE(session.isBusy());
+    EXPECT_EQ(history->position(), position + 1);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 0.5f, 0.003f);   // it came to rest first
+    EXPECT_NEAR(transformOf(sceneId, crate).position.x, 2.0f, 0.05f);
+    // ...then the delete, a structure change: nothing of the committed gesture is cancelled
+    history->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, marker));
+    project()->getScene(sceneId)->structureVersion++;
+    ticks(session, 10);
+    EXPECT_EQ(history->position(), position + 2);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.x, 2.0f, 0.05f);
+    history->undo();   // the delete
+    history->undo();   // the placement
+    expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 0.5f, 0.0f), 0.0f);
+    history->redo();
+
+    // the mover itself deleted during a settle: committed, then deleted, and undo brings both back
+    const Vector3 rested = transformOf(sceneId, crate).position;
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(-1.0f, 1.0f, 0.0f));
+    ticks(session, 60);
+    session.end();
+    EXPECT_TRUE(session.finishNow(2.0));
+    const Vector3 committedPose = transformOf(sceneId, crate).position;
+    EXPECT_NEAR(committedPose.x, rested.x - 1.0f, 0.05f);
+    history->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, crate));
+    project()->getScene(sceneId)->structureVersion++;
+    ticks(session, 5);
+    EXPECT_FALSE(session.isBusy());
+    history->undo();
+    expectNear(transformOf(sceneId, crate).position, committedPose, 1e-5f);
+    history->undo();
+    expectNear(transformOf(sceneId, crate).position, rested, 1e-5f);
+
+    // a gesture still held when finishNow comes is released first; a Drop commits at once
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(0.0f, 1.0f, 0.0f));
+    ticks(session, 30);
+    const size_t before = history->position();
+    EXPECT_TRUE(session.finishNow(2.0));
+    EXPECT_EQ(history->position(), before + 1);
+    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 0.5f, 0.003f);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {crate}));
+    EXPECT_TRUE(session.finishNow(0.0));
+    EXPECT_FALSE(session.isBusy());
+
+    // out of wall time mid-settle: what it has is committed
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(0.0f, 2.0f, 0.0f));
+    ticks(session, 60);
+    session.end();
+    const size_t mid = history->position();
+    EXPECT_TRUE(session.finishNow(0.0));
+    EXPECT_EQ(history->position(), mid + 1);
+    EXPECT_GT(transformOf(sceneId, crate).position.y, 2.0f);   // still up where it was released
+}
+
+TEST(PhysicsPlacementSim, FinishNowCancelsWhenNoStepCouldRun) {
+    REQUIRE_PHYSICS();
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity ring = create(sceneId, "Ring", EntityCreationType::TORUS, Vector3(0.0f, 2.0f, 0.0f));
+    const size_t position = CommandHandle::get(sceneId)->position();
+    PlacementSession session(project(), sceneId);
+    PhysicsPlacementSettings settings;
+    settings.decomposition = PlacementDecomposition::ALWAYS;
+    settings.quality = DecompositionQuality::HIGH;
+    session.setSettings(settings);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {ring}));
+    if (session.getHud().pendingDecompositions == 0) GTEST_SKIP() << "the torus' decomposition was already there";
+    session.tick(1.0 / 60.0);   // waits for its colliders: no step
+    EXPECT_FALSE(session.finishNow(0.0));
+    EXPECT_FALSE(session.isBusy());
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position);
+    expectNear(transformOf(sceneId, ring).position, Vector3(0.0f, 2.0f, 0.0f), 0.0f);
+}

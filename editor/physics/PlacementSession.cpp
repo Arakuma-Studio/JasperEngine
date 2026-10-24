@@ -458,7 +458,7 @@ namespace {
     }
 
     // Every dynamic body at rest (or fallen out); *hovering: one is asleep in mid-air under
-    // gravity (the solver's own sleep caught it at the top of a tiny bounce)
+    // gravity (PlacementWorld no longer lets that happen; kept as a guard)
     bool allResting(const PlacementWorld& world, bool* hovering = nullptr) {
         const Vector3 gravity = world.getGravity();
         bool resting = true;
@@ -477,6 +477,9 @@ namespace {
         if (hovering) world.wakeAll();
         return resting;
     }
+
+    constexpr const char* kContactsOverflowed =
+        "too many contacts in the placement world: results may be wrong; place fewer objects at once";
 
     std::string colliderName(const PlacementBodyState& state) {
         if (state.shape == PlacementShapeKind::DECOMPOSED) return "decomposed(" + std::to_string(state.hullCount) + ")";
@@ -915,6 +918,8 @@ struct PlacementSession::Impl {
     std::vector<PlacementPose> fixedTargets;
 
     uint64_t beginStructureVersion = 0;   // the scene's structure when the gesture began
+    bool committed = false;               // the last gesture ended in a commit (finishNow)
+    uint64_t gestureSteps = 0;            // fixed steps the gesture has run
     double accumulator = 0.0;
     double snapClock = 0.0;        // simulated seconds of the Snap gesture
     double settleSeconds = 0.0;
@@ -1313,6 +1318,7 @@ struct PlacementSession::Impl {
     }
 
     void commit() {
+        committed = true;
         SceneProject* sp = sceneProject();
         Scene* sc = scene();
         std::vector<CommitEntry> entries;
@@ -1460,6 +1466,7 @@ struct PlacementSession::Impl {
                 world->step();
                 accumulator -= fixedStep;
                 steps++;
+                gestureSteps++;
             }
         }
 
@@ -1571,6 +1578,7 @@ struct PlacementSession::Impl {
         gesture = newGesture;
         phase = PlacementPhase::Active;
         beginStructureVersion = sceneProject()->structureVersion;
+        gestureSteps = 0;
         Vector3 sum;
         for (Entity m : movers) {
             Body body;
@@ -1602,6 +1610,45 @@ struct PlacementSession::Impl {
         if (gesture == PlacementGesture::Distribute || gesture == PlacementGesture::Gather) computeFixedTargets();
         growContext(startBounds);
         return true;
+    }
+
+    bool waitingForColliders() const {
+        return world && settings.decomposition == PlacementDecomposition::ALWAYS && world->hasPendingDecompositions();
+    }
+
+    bool finishNow(double wallBudgetSeconds) {
+        if (phase == PlacementPhase::Idle || !validate()) return false;
+        committed = false;
+        const auto begin = std::chrono::steady_clock::now();
+        auto budgetLeft = [&]() {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count() < wallBudgetSeconds;
+        };
+        // the background decomposition may still land within the budget
+        auto waitForColliders = [&]() {
+            while (waitingForColliders() && budgetLeft()) {
+                pollDecompositions();
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        };
+        if (gestureSteps == 0) {
+            // nothing simulated yet: with no colliders to simulate with, nothing to commit
+            waitForColliders();
+            if (waitingForColliders()) {
+                cancelGesture(true);
+                return false;
+            }
+        }
+        if (phase == PlacementPhase::Active) end();   // released: Drop commits, the others settle
+        while (phase != PlacementPhase::Idle && budgetLeft()) {
+            if (waitingForColliders()) {
+                waitForColliders();
+                continue;
+            }
+            // one fixed step a call: the settle's own ends (at rest, maxSettleSeconds) commit
+            step(world->getSettings().fixedStep);
+        }
+        if (phase != PlacementPhase::Idle) commit();
+        return committed;
     }
 
     void end() {
@@ -1704,6 +1751,8 @@ void PlacementSession::setPointerRay(const Ray& ray) {
 
 void PlacementSession::end() { impl->end(); }
 
+bool PlacementSession::finishNow(double wallBudgetSeconds) { return impl->finishNow(wallBudgetSeconds); }
+
 void PlacementSession::cancel() {
     if (impl->phase == PlacementPhase::Idle) return;
     SceneProject* sp = impl->sceneProject();
@@ -1767,6 +1816,8 @@ PlacementHud PlacementSession::getHud() const {
     } else {
         hud.status = "Simulating";
     }
+    // Jolt dropped contacts this gesture (cleared when the next begins)
+    if (impl->world->contactsOverflowed()) hud.status += " \xC2\xB7 too many contacts: place fewer objects at once";
     return hud;
 }
 
@@ -1871,6 +1922,7 @@ struct PlacementRun::Impl {
     bool pendingAtStart = false;
     bool separated = false;
     bool reachedOrStalled = false;
+    bool contactsOverflowed = false;            // a step ran out of Jolt's contact buffers
     std::map<Entity, uint32_t> settleStep;      // 0: not settled now
     size_t asleepCount = 0;
     size_t bodyCount = 0;
@@ -2139,6 +2191,7 @@ struct PlacementRun::Impl {
         }
         const double fixedStep = world->getSettings().fixedStep;
         world->step();
+        contactsOverflowed = contactsOverflowed || world->contactsOverflowed();
         const uint32_t step = world->getStepCount();
         if (step % kContextEverySteps == 0) growContext(world->getDynamicBounds());
 
@@ -2331,6 +2384,7 @@ struct PlacementRun::Impl {
                                       meters(world->getSettings().tuning.teleportDistance) + "): move in smaller steps, or raise the teleport distance");
         }
         for (const std::string& line : caveated) result.warnings.push_back(line);
+        if (contactsOverflowed) result.warnings.push_back(kContactsOverflowed);
         if (!refining.empty() || pendingAtStart) {
             result.warnings.push_back("colliders were still being refined" + (refining.empty() ? std::string() : " for " + nameList(refining)) +
                                       ", so convex hulls were used and a re-run may differ: use decompose:\"always\" for a reproducible result");
