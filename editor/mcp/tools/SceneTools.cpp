@@ -1573,7 +1573,8 @@ Json postDebugJson(const RenderSystem& render) {
 
 void getPostProcessingStatusTool(const CallPtr& call) {
     Project* project = call->ctx().project();
-    SceneProject* scene = sceneArg(call);
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
     if (!scene) return;
     if (!scene->scene) {
         call->fail(McpRefs::notOpenError(project, *scene));
@@ -1618,7 +1619,8 @@ void getPostProcessingStatusTool(const CallPtr& call) {
 
 void setPostProcessingDebugTool(const CallPtr& call) {
     Project* project = call->ctx().project();
-    SceneProject* scene = sceneArg(call);
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
     if (!scene) return;
     if (!scene->scene) {
         call->fail(McpRefs::notOpenError(project, *scene));
