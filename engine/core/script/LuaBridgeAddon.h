@@ -11,6 +11,9 @@
 #include "jobs/JobTypes.h"
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FogComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 
 using namespace jasperengine;
 
@@ -69,6 +72,13 @@ namespace luabridge
     template<> struct Stack<RotationOrder> : EnumWrapper<RotationOrder>{};
 
     template<> struct Stack<FogType> : EnumWrapper<FogType>{};
+    template<> struct Stack<FogColorMode> : EnumWrapper<FogColorMode>{};
+    template<> struct Stack<FogVolumeShape> : EnumWrapper<FogVolumeShape>{};
+    template<> struct Stack<FogVolumeFalloff> : EnumWrapper<FogVolumeFalloff>{};
+    template<> struct Stack<CloudsPreset> : EnumWrapper<CloudsPreset>{};
+    template<> struct Stack<CloudsRendering> : EnumWrapper<CloudsRendering>{};
+    template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};
+    template<> struct Stack<AtmosphereQualityOverride> : EnumWrapper<AtmosphereQualityOverride>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};

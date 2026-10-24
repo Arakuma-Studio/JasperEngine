@@ -3159,8 +3159,15 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();
+    // the Game view's atmosphere: the scene's fog and clouds whatever the Scene view's toggles
+    // show, at its Preview Atmosphere Quality
+    RenderSystem* renderSystem = sceneProject.scene->getSystem<RenderSystem>().get();
+    renderSystem->setDisableFog(false);
+    renderSystem->setDisableClouds(false);
+    renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);

@@ -151,6 +151,8 @@ namespace jasperengine{
         std::string horizonSource = "fog_color";
         std::vector<std::string> passes;
         size_t vramBytes = 0;
+        // the RenderSystem draw it was recorded in (which of two records is newer)
+        uint64_t frame = 0;
     };
 
     // The atmosphere's targets of one view (RenderSystem's RenderView): reduced-resolution

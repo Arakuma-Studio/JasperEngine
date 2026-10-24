@@ -163,7 +163,7 @@ async def main() -> int:
         project = Path(tmp) / "atmosphere"
         shutil.copytree(FIXTURE, project)
         async with Editor(project=project) as ed:
-            await ed.call("set_project_settings", settings={"quality.vsync": False, "graphics.canvas_width": width,
+            await ed.call("set_project_settings", values={"quality.vsync": False, "graphics.canvas_width": width,
                                                             "graphics.canvas_height": height})
             await ed.call("configure_game_view", aspect="project", maximize_on_play=False)
             results = await measure(ed, args.frames)

@@ -530,9 +530,6 @@ namespace jasperengine{
 		// are unaffected.
 		bool disableFaceCulling = false;
 
-		// editor-only, draws as if the scene had no fog
-		bool disableFog = false;
-
 		// Editor-only override that suppresses the scene's fixed game resolution
 		// (edit-mode viewports render native; play mode re-enables it). Defaults
 		// to false and is never set at runtime, so exported games are unaffected.
@@ -1158,6 +1155,9 @@ namespace jasperengine{
 		// volumetric fog, clouds and their composites (AtmosphereRenderer)
 		height_fog_t passHeightFog;
 		AtmosphereRenderer atmosphere;
+#ifdef JASPERENGINE_EDITOR
+		std::unordered_map<uint32_t, AtmosphereInfo> keptAtmosphereInfo;
+#endif
 		// the variant state the meshes loaded with (needReloadMeshVariants on a change)
 		bool heightFogVariants = false;
 		bool atmosphereDepthPrograms = false;
@@ -1859,6 +1859,9 @@ namespace jasperengine{
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
 
+		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
+		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
+		// ViewDesc::disableFog
 		void setDisableFog(bool disableFog);
 		// editor-only: the frame's own view draws without the volumetric clouds (the Scene
 		// view's Clouds toggle), and at this atmosphere quality (the Game view's preview while
@@ -1867,6 +1870,11 @@ namespace jasperengine{
 		void setPreviewAtmosphereQuality(int quality);
 		// what the atmosphere ran in the last frame of a view (0: the frame's own)
 		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
+#ifdef JASPERENGINE_EDITOR
+		// the frame's own view drew for an editor view (the Game view drawn as the frame):
+		// what its atmosphere ran counts for that view too (getAtmosphereInfo(viewId))
+		void keepAtmosphereInfo(uint32_t viewId);
+#endif
 
 		// Editor-only override (see member declaration). No reload needed: the
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is

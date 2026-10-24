@@ -110,7 +110,7 @@ async def test_presets(ed: Editor):
     after = await values(ed, s["fog"], "fog")
     ed.check_eq(after["type"], "height", "a fog preset makes a height fog")
     ed.check(after["attenuationDistance"] != before["attenuationDistance"], "the look's fields")
-    top = (await ed.call("get_undo_history", scene=s["scene"]))["steps"][0]
+    top = (await ed.call("get_undo_history", scene=s["scene"], limit=5))["entries"][0]
     ed.check("Apply Atmosphere Preset" in top["name"], f"one named step: {top['name']}")
     await ed.call("undo", scope="timeline", scene=s["scene"])
     ed.check_eq(await values(ed, s["fog"], "fog"), before, "one undo restores every field")
@@ -179,8 +179,8 @@ async def test_project_atmosphere_quality(ed: Editor):
     ed.check_eq(settings["quality.atmosphere_quality_desktop"], "high", "desktop default")
     ed.check_eq(settings["quality.atmosphere_quality_mobile"], "low", "mobile default")
     ed.check_eq(settings["quality.atmosphere_quality_web"], "low", "web default")
-    await ed.call("set_project_settings", settings={"quality.atmosphere_quality_mobile": "off"})
+    await ed.call("set_project_settings", values={"quality.atmosphere_quality_mobile": "off"})
     got = await ed.call("get_project_settings", keys=["quality.atmosphere_quality_mobile"])
     ed.check_eq(got.get("settings", got)["quality.atmosphere_quality_mobile"], "off")
-    await ed.check_error("set_project_settings", settings={"quality.atmosphere_quality_web": "ultra"})
-    await ed.call("set_project_settings", settings={"quality.atmosphere_quality_mobile": "low"})
+    await ed.check_error("set_project_settings", values={"quality.atmosphere_quality_web": "ultra"})
+    await ed.call("set_project_settings", values={"quality.atmosphere_quality_mobile": "low"})

@@ -243,7 +243,7 @@ void AtmosphereRenderer::update(double dt){
     Scene* scene = rs->scene;
     time += dt;
 
-    FogComponent* sceneFog = rs->disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* sceneFog = scene->findComponentFromIndex<FogComponent>(0);
     fog = sceneFog;
     fogPresent = sceneFog != nullptr;
     heightFogActive = sceneFog && sceneFog->type == FogType::HEIGHT;
@@ -385,7 +385,7 @@ void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponen
         return;
 #ifdef JASPERENGINE_EDITOR
     // the editor view's Fog toggle: no fog, the sun kept for the clouds
-    if (rs->rv().secondary && rs->rv().disableFog)
+    if (rs->rv().disableFog)
         return;
 #endif
     const HeightFogMedium medium = AtmosphereMath::makeMedium(*fog);
@@ -419,8 +419,8 @@ AtmosphereRenderer::PassPlan AtmosphereRenderer::planPass(const CameraComponent&
     bool fogShown = heightFogActive;
     bool cloudsShown = clouds != nullptr && !rs->rv().disableClouds;
 #ifdef JASPERENGINE_EDITOR
-    if (rs->rv().secondary)
-        fogShown = fogShown && !rs->rv().disableFog;
+    // the editor view's Fog toggle
+    fogShown = fogShown && !rs->rv().disableFog;
 #endif
     const AtmosphereQuality quality = viewQuality();
     const bool skyPass = skyComposite && camera.depthTest;
@@ -1118,6 +1118,7 @@ void AtmosphereRenderer::endFrame(){
     building.noiseReady = noiseShape.isCreated();
     building.floatTargets = useFloatTargets();
     building.horizonSource = horizonSource;
+    building.frame = rs->drawCount;
     if (!building.clouds)
         building.cloudsActive = false;
     AtmosphereViewTargets& targets = rs->rv().atmosphere;

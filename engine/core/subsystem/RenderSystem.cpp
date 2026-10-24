@@ -1275,7 +1275,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     Vector4 fogColorType = fs_fog.color_type;
     Vector4 fogDensityStartEnd = fs_fog.density_start_end;
 #ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().disableFog){
+    if (rv().disableFog){
         // exponential fog of density 0: a factor of 1 everywhere, no fog
         fogColorType = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         fogDensityStartEnd = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -2002,7 +2002,7 @@ void RenderSystem::processLights2D(){
 
 bool RenderSystem::loadAndProcessFog(){
 
-    FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
     const bool hadFog = hasFog;
     hasFog = false;
     if (fog){
@@ -5082,13 +5082,7 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
-    if (this->disableFog == disableFog){
-        return;
-    }
-    this->disableFog = disableFog;
-
-    // fog is a shader variant
-    needReloadMeshVariants();
+    primaryView.disableFog = disableFog;
 }
 
 void RenderSystem::setDisableClouds(bool disableClouds){
@@ -5102,13 +5096,26 @@ void RenderSystem::setPreviewAtmosphereQuality(int quality){
 const AtmosphereInfo& RenderSystem::getAtmosphereInfo(uint32_t viewId){
 #ifdef JASPERENGINE_EDITOR
     if (viewId != 0){
+        // the newer of the view's own frames and the frames the view was drawn as the frame's
+        const AtmosphereInfo* newest = nullptr;
         auto view = secondaryViews.find(viewId);
         if (view != secondaryViews.end())
-            return view->second->atmosphere.info;
+            newest = &view->second->atmosphere.info;
+        auto kept = keptAtmosphereInfo.find(viewId);
+        if (kept != keptAtmosphereInfo.end() && (!newest || kept->second.frame > newest->frame))
+            newest = &kept->second;
+        if (newest)
+            return *newest;
     }
 #endif
     return primaryView.atmosphere.info;
 }
+
+#ifdef JASPERENGINE_EDITOR
+void RenderSystem::keepAtmosphereInfo(uint32_t viewId){
+    keptAtmosphereInfo[viewId] = primaryView.atmosphere.info;
+}
+#endif
 
 void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
     primaryView.postProcessing = !disablePostProcessing;
@@ -6784,7 +6791,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
         static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
         render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -7448,7 +7455,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 #ifdef JASPERENGINE_EDITOR
                 // exponential fog of density 0: a factor of 1 everywhere, no fog
                 static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
                 render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
