@@ -12,6 +12,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
+#include "command/type/EntityNameCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
@@ -26,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include <filesystem>
 #include <map>
 #include <set>
 
@@ -143,14 +145,27 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
         if (dot != std::string::npos && dot > 0) name = name.substr(0, dot);
     }
 
-    // the Animation of that name among the model's
+    // The Animation of that name among THIS model's (names only need to be unique per model for
+    // Model:playAnimation): the exact name first, then the scene-unique form the editor may have
+    // given it ("walk 2")
     ModelComponent& modelComponent = scene->getComponent<ModelComponent>(model);
     Entity animation = NULL_ENTITY;
+    auto isAnimation = [&](Entity entity){
+        return entity != NULL_ENTITY && scene->isEntityCreated(entity) && scene->findComponent<AnimationComponent>(entity);
+    };
     for (Entity entity : modelComponent.animations){
-        if (entity != NULL_ENTITY && scene->isEntityCreated(entity) && scene->findComponent<AnimationComponent>(entity) &&
-            scene->getEntityName(entity) == name){
+        if (isAnimation(entity) && scene->getEntityName(entity) == name){
             animation = entity;
             break;
+        }
+    }
+    for (size_t i = 0; animation == NULL_ENTITY && i < modelComponent.animations.size(); i++){
+        const Entity entity = modelComponent.animations[i];
+        if (!isAnimation(entity)) continue;
+        const std::string other = scene->getEntityName(entity);
+        if (other.size() > name.size() + 1 && other.compare(0, name.size() + 1, name + " ") == 0 &&
+            other.find_first_not_of("0123456789", name.size() + 1) == std::string::npos){
+            animation = entity;
         }
     }
 
@@ -162,6 +177,7 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
     };
     auto rollback = [&](const std::string& message){
         while (history->position() > start && history->canUndo()) history->undo();
+        history->dropRedo();   // the rolled-back commands are not a redo step
         error = message;
         return false;
     };
@@ -175,6 +191,11 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
         }
         animation = create->getEntity();
         result.created = true;
+    }
+    // the exact name (CreateEntityCmd makes names unique in the whole scene: another model's
+    // Animation may already be called so)
+    if (scene->getEntityName(animation) != name && !add(new EntityNameCmd(project, sceneId, animation, name))){
+        return rollback("could not name the Animation \"" + name + "\"");
     }
 
     // the tracks it has, by target and channel
@@ -264,6 +285,32 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
     return true;
 }
 
+bool editor::PoseBaker::bakeAnimatorAsset(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
+                                          PoseBakeResult& result, std::string& error){
+    if (animation.empty()){
+        error = "the Pose Animator has no animation";
+        return false;
+    }
+    // the component stores the path as the runtime loads it: relative to the assets folder
+    const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(animation)).lexically_normal();
+#if defined(__cpp_lib_char8_t)
+    const std::u8string utf8 = file.u8string();
+    const std::string path(utf8.begin(), utf8.end());
+#else
+    const std::string path = file.u8string();
+#endif
+    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, path, &error);
+    if (!document){
+        return false;
+    }
+    return bake(project, sceneId, model, *document, "", result, error);
+}
+
+std::string editor::PoseBaker::bakeStatusLine(const std::string& animation, const PoseBakeResult& result){
+    return "Baked '" + animation + "' to the Animation '" + result.name + "' (" + std::to_string(result.tracks) + " tracks, " +
+           std::to_string(result.frames) + " keys each): Model:playAnimation(\"" + result.name + "\")";
+}
+
 #ifdef POSE_BAKER_HAS_INSPECTOR_HOOKS
 namespace {
 
@@ -272,14 +319,12 @@ namespace {
         InstallBakeHook(){
             editor::poseInspectorHooks().bake = [](editor::Project* project, uint32_t sceneId, Entity model, const std::string& animation){
                 std::string error;
-                std::shared_ptr<editor::PoseAnimationDocument> document = editor::PoseAnimationDocument::open(project, animation, &error);
                 editor::PoseBakeResult result;
-                if (!document || !editor::PoseBaker::bake(project, sceneId, model, *document, "", result, error)){
+                if (!editor::PoseBaker::bakeAnimatorAsset(project, sceneId, model, animation, result, error)){
                     editor::Out::error("Bake of '%s' failed: %s", animation.c_str(), error.c_str());
                     return;
                 }
-                editor::Out::info("Baked '%s' to the Animation '%s' (%d tracks, %d keys each)", animation.c_str(),
-                                  result.name.c_str(), result.tracks, result.frames);
+                editor::Out::info("%s", editor::PoseBaker::bakeStatusLine(animation, result).c_str());
             };
         }
     } installBakeHook;

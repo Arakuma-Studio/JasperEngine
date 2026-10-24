@@ -18,6 +18,7 @@
 #include "pose/PoseAnimationIO.h"
 #include "pose/PoseMetrics.h"
 #include "pose/PoseRanges.h"
+#include "pose/PoseRealisation.h"
 #include "pose/PoseRig.h"
 #include "pose/PoseSampler.h"
 #include "pose/PoseTypes.h"
@@ -35,14 +36,7 @@ namespace jasperengine::editor{
     class Project;
 
     // A pose animation realised on one rig: what previews, metrics, baking and auto timing use
-    struct PoseRealisation{
-        std::shared_ptr<pose::PoseRig> rig;
-        uint64_t revision = 0;                  // the document revision it was made from
-        std::vector<pose::HumanPose> keys;      // per key pose (joint limits first when humanize.joint_limits)
-        std::vector<pose::PoseMetrics> metrics; // per key pose; limit hits from the key's own angles
-        std::vector<pose::HumanPose> frames;    // pose::frames at frame_rate (f = 0..count)
-        pose::PoseTimeline timeline;
-    };
+    using PoseRealisation = pose::PoseRealisation;
 
     class PoseAnimationDocument{
     public:
@@ -70,6 +64,8 @@ namespace jasperengine::editor{
         static void filesChanged(const std::vector<std::filesystem::path>& paths);
         // Stats every open document's file and reloads the changed ones (the editor's poll)
         static void checkDiskChanges();
+        // Forgets every open document (the project closed)
+        static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
         // sets it to its file sync: asset database, Project window, McpAutoSync stamps)
         static void setFilesWrittenHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);

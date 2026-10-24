@@ -20,6 +20,9 @@ namespace jasperengine::editor{
     // A non-empty merge key (setMergeKey) merges the command into the previous one when that
     // one has the same key and writes the same files: the merged step undoes to the contents
     // before the first of them (drags, slider edits).
+    //
+    // All or nothing: when one file cannot be written, the files the command already wrote get
+    // their previous contents back and execute() fails.
     class WriteFilesCmd: public Command{
     public:
         struct Item {
@@ -50,6 +53,8 @@ namespace jasperengine::editor{
         std::function<void(const std::vector<std::filesystem::path>&)> afterChange;
 
         std::vector<std::filesystem::path> paths() const;
+        // puts back the first `count` files and removes the directories this command created
+        void restore(size_t count);
     };
 
 }

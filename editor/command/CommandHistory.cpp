@@ -138,6 +138,13 @@ void editor::CommandHistory::clear(){
     inPlaySession = false;
 }
 
+void editor::CommandHistory::dropRedo(){
+    for (auto it = list.begin() + index; it != list.end(); ++it){
+        delete *it;
+    }
+    list.erase(list.begin() + index, list.end());
+}
+
 size_t editor::CommandHistory::mark(){
     if (index > undoFloor()){
         list[index-1]->setNoMerge();

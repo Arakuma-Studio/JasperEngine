@@ -24,11 +24,13 @@ set(POSE_TEST_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(POSE_TEST_EDITOR_SOURCES
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseImage.cpp
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseUiLogic.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/command/CommandHistory.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/command/type/WriteFilesCmd.cpp
 )
 
 add_executable(jasperengine-pose-tests ${POSE_TEST_SOURCES} ${POSE_TEST_EDITOR_SOURCES})
 
-target_include_directories(jasperengine-pose-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${POSE_TEST_REPO_ROOT})
+target_include_directories(jasperengine-pose-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${POSE_TEST_REPO_ROOT} ${POSE_TEST_REPO_ROOT}/editor)
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine-pose-tests PRIVATE jasperengine stb gtest_main gtest Threads::Threads)
