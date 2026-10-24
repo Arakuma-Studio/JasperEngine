@@ -488,7 +488,9 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
 
     const std::string metaRelative = AssetTypes::metaPathFor(relative).generic_string();
     std::error_code ec;
-    if (!fs::is_regular_file(projectPath / metaRelative, ec)) {
+    // (a case-insensitive file system may hold the meta under another case: asked then)
+    const bool walked = walkMetas && (walkMetas->count(metaRelative) > 0 || !caseInsensitive);
+    if (walked ? walkMetas->count(metaRelative) == 0 : !fs::is_regular_file(projectPath / metaRelative, ec)) {
         entry.hasMeta = false;
         return false;
     }
@@ -1028,6 +1030,12 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
     std::vector<std::string> assets, metas;
     temporaryFiles.clear();
     collect(projectPath, assets, metas, &temporaryFiles);
+    const std::unordered_set<std::string> metaSet(metas.begin(), metas.end());
+    walkMetas = &metaSet;
+    struct ResetWalkMetas {
+        const std::unordered_set<std::string>*& pointer;
+        ~ResetWalkMetas() { pointer = nullptr; }
+    } resetWalkMetas{walkMetas};
 
     struct Found {
         Entry entry;

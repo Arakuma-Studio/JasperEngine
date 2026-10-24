@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <unordered_set>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -234,6 +235,8 @@ namespace jasperengine::editor {
         std::filesystem::path assetsDir;
         bool caseInsensitive = false;
         std::atomic<uint64_t> version{0};
+        // the metas open()'s walk found, while it reads identities (no existence check each)
+        const std::unordered_set<std::string>* walkMetas = nullptr;
         // the atomic-write temporaries the last open() walked past (takeTemporaryFiles)
         std::vector<std::filesystem::path> temporaryFiles;
 

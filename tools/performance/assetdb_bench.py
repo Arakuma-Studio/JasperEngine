@@ -11,7 +11,10 @@ database and the dependency index alone:
     cold_identity_ms        open() with no cache (the identity pass)          budget  1000
     cold_index_ms           the full dependency index after it                budget  3000 (with the identity pass)
     warm_open_ms            open() with an intact cache (stat-only)           budget   250
-    single_update_ms        one referrer edited: refresh() + index update     budget     5 + its YAML parse
+    single_update_ms        one referrer saved: its entry and edges updated   budget     5 + its YAML parse
+    refresh_update_ms       the same found by a full refresh() (informational)
+    poll_walk_ms            the poll's disk walk, a background thread         (informational)
+    poll_apply_ms           the main thread's part of a poll, every >= 2 s    budget     2 per frame amortized (/120)
     find_references_worst_ms  transitive Find References, worst of 200        budget    50
     resolve_ns              one GUID resolution                               budget   200
 
@@ -141,6 +144,9 @@ def main() -> int:
         # the update budget is 5 ms plus the referrer's YAML parse: the parse of one 10-entity file
         if result.get("single_update_ms", 0) > 5.0 + 10.0:
             failures.append(f"single_update_ms {result['single_update_ms']:.2f} > 5 + parse")
+        # a poll every 2 s at 60 fps: its main-thread part spread over 120 frames
+        if result.get("poll_apply_ms", 0) / 120.0 > 2.0:
+            failures.append(f"poll_apply_ms {result['poll_apply_ms']:.1f} > 2 ms per frame over 120 frames")
         for failure in failures:
             print("over budget: " + failure, file=sys.stderr)
         return 1 if failures and args.check else 0

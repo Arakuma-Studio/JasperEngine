@@ -1746,10 +1746,24 @@ static int runAssetsBench(const fs::path& projectArg) {
     index.waitUntilReady();
     result["warm_index_ms"] = ms(start);
 
-    // one referrer edited: the refresh finds it, the index re-reads it
+    // the poll with nothing changed: the walk (a background thread in the editor) and what the
+    // main thread does with it (R23)
+    start = Clock::now();
+    const AssetDatabase::DiskScan scan = database.scanDisk();
+    result["poll_walk_ms"] = ms(start);
+    start = Clock::now();
+    database.refresh(scan);
+    result["poll_apply_ms"] = ms(start);
+
+    // one referrer edited and saved: its entry and its edges are updated (the save's path, and
+    // what an S05 watcher event does); the YAML parse is part of it
     std::string referrer;
+    Guid referrerGuid;
     database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
-        if (referrer.empty() && info.type == AssetType::Scene) referrer = info.path;
+        if (referrer.empty() && info.type == AssetType::Scene) {
+            referrer = info.path;
+            referrerGuid = info.guid;
+        }
     });
     if (!referrer.empty()) {
         std::string text;
@@ -1757,9 +1771,15 @@ static int runAssetsBench(const fs::path& projectArg) {
         assetio::writeFile(project / referrer, text + "\n", assetio::Durability::Cache);
         fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(2));
         start = Clock::now();
-        const std::vector<AssetDatabase::Change> changes = database.refresh();
-        index.update(changes);
+        database.registerAsset(project / referrer, referrerGuid.str());
+        index.updateReferrer(referrer);
         result["single_update_ms"] = ms(start);
+        // the same through a full refresh (the poll finding it)
+        assetio::writeFile(project / referrer, text, assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(4));
+        start = Clock::now();
+        index.update(database.refresh());
+        result["refresh_update_ms"] = ms(start);
     }
 
     // Find References of the most referenced asset
