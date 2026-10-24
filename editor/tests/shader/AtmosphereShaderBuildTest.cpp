@@ -4,7 +4,8 @@
 // AC11 (docs/specs/S12-atmosphere.md): every atmosphere program and the height fog's mesh
 // variants compile for every backend (GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS and iOS,
 // SPIR-V) with the engine's own shader compiler, and the HLSL build of the marches stays
-// within the 10 s budget.
+// within the 10 s budget. An editor test: the editor's build has every back end (a standalone
+// engine build only its own API's).
 
 #include "pool/ShaderPool.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -55,8 +56,9 @@ TEST(AtmosphereShaderBuild, EveryProgramEveryBackend){
             EXPECT_TRUE(ok) << name << " (" << ShaderPool::getShaderLangStr(backend) << "): " << error << "\n" << log;
             // the marches' HLSL build (R18: <= 10 s)
             const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-            if (backend == ShaderBackend::D3D11 && (type == ShaderType::VOLUMETRIC_FOG || type == ShaderType::VOLUMETRIC_CLOUDS))
+            if (backend == ShaderBackend::D3D11 && (type == ShaderType::VOLUMETRIC_FOG || type == ShaderType::VOLUMETRIC_CLOUDS)){
                 EXPECT_LE(seconds, 10.0) << name << " HLSL build took " << seconds << " s";
+            }
         }
     }
 }
