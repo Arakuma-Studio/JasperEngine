@@ -333,7 +333,9 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `graphicBackend` | ro | `GraphicBackend.*` |
 | `openGL` | ro | bool |
 | `asyncLoading` | rw | |
-| `isViewLoaded()`, `getQueuedResourceCount()`, `setMaxResourceLoadingThreads(n)`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | |
+| `isViewLoaded()`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | |
+| `getQueuedResourceCount()` | static fn | asset jobs queued or running (reads included): 0 only once loading is idle |
+| `setMaxResourceLoadingThreads(n)` | static fn | the most workers asset (Background) jobs take at once, applied live; 0 = derived from the reserved frame workers |
 | `framebuffer` | rw | |
 | `clearAllSubscriptions()`, `clearComponentSubscriptions()` | static fn | do not call from gameplay scripts |
 | event objects (`onUpdate`, `onFixedUpdate`, ... see 1.3) | static props | use via `RegisterEngineEvent` |
@@ -380,6 +382,21 @@ Constants (static properties, integers, no parentheses):
   `_TRIANGLE` (full names `Input.GAMEPAD_BUTTON_<X>`).
 - Gamepad axes: `Input.GAMEPAD_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`,
   `_LEFT_TRIGGER`, `_RIGHT_TRIGGER`, `_LAST`.
+
+### 2.2.1 Jobs (static, read-only)
+
+The engine's job system runs asset loading and engine work on worker threads. Lua states are
+single-threaded, so scripts never submit jobs; these only report.
+
+| Function | Returns |
+|---|---|
+| `Jobs.getWorkerCount()` | worker threads (0 in single-thread mode: web without threads) |
+| `Jobs.isSingleThreaded()` | bool |
+| `Jobs.getQueuedCount(lane)` | jobs queued in `JobLane.High`, `JobLane.Normal` or `JobLane.Background` |
+| `Jobs.getRunningCount(lane)` | jobs running in that lane |
+
+`ThreadPoolManager` is deprecated (one release): `ThreadPoolManager.getInstance():getQueueSize()`
+returns the Background lane's queue; `initialize` and `shutdown` warn once and do nothing.
 
 ### 2.3 Log (static, one string argument each)
 
@@ -1035,6 +1052,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
+| `JobLane` | `High`, `Normal`, `Background` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |

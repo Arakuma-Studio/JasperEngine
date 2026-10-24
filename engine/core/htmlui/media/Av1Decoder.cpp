@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoDecoder.h"
+#include "thread/ThreadUtil.h"
 
 #include "Log.h"
 
@@ -210,9 +211,20 @@ bool Av1Decoder::open(const VideoTrackInfo& track, std::string& error){
     threads = pixels <= 640LL * 360LL ? 1 : (pixels <= 1280LL * 720LL ? 2 : 4);
     if (forcedThreads > 0)
         threads = forcedThreads;
-#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
-    threads = 1;
-#endif
+    // dav1d's threads are outside the job system: capped where cores are few (mobile: 2) or
+    // the pthread pool is fixed (every web build: 1, the decoder's own thread)
+    switch (thread::currentPlatform()){
+        case thread::PlatformClass::Android:
+        case thread::PlatformClass::IOS:
+            threads = std::min(threads, 2);
+            break;
+        case thread::PlatformClass::WebThreads:
+        case thread::PlatformClass::WebSingle:
+            threads = 1;
+            break;
+        case thread::PlatformClass::Desktop:
+            break;
+    }
 
     Dav1dSettings settings;
     dav1d_default_settings(&settings);

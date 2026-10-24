@@ -4,6 +4,7 @@
 #pragma once
 
 #include "io/watch/FileWatchService.h"
+#include "jobs/JobSystem.h"
 
 #include "mcp/McpJson.h"
 
@@ -12,7 +13,6 @@
 #include <deque>
 #include <filesystem>
 #include <functional>
-#include <future>
 #include <map>
 #include <memory>
 #include <set>
@@ -198,7 +198,7 @@ namespace jasperengine::editor {
             std::string kind;
             std::filesystem::path path;
             WorkFn work;
-            std::future<AdoptFn> future;
+            jobs::Task<AdoptFn> task;
             std::chrono::steady_clock::time_point started{};
             std::chrono::steady_clock::time_point retryAt{};
             bool retried = false;
@@ -220,7 +220,7 @@ namespace jasperengine::editor {
         uint64_t journalCursor = 1;            // the next journal sequence apply() has not seen
 
         std::vector<std::shared_ptr<Job>> jobs;
-        std::vector<std::future<AdoptFn>> superseded;   // replaced by a newer reload of their file
+        std::vector<jobs::Task<AdoptFn>> superseded;   // replaced by a newer reload of their file
         std::map<uint64_t, Batch> batches;
         uint64_t currentBatch = 0;
         uint64_t nextBatch = 1;
@@ -262,7 +262,7 @@ namespace jasperengine::editor {
         std::deque<LateUi> lateUi;
 
         void onWatcherBatch(std::span<const FileChange> batch);
-        static std::future<AdoptFn> launch(WorkFn work);
+        static jobs::Task<AdoptFn> launch(WorkFn work);
         // Reloaded already: the same journal change (the watcher's delivery, then a call's
         // pick-up of it), or a file whose stat is the one reloaded from, unless that stamp was
         // racy and another program made the change

@@ -7,13 +7,13 @@
 #include "Engine.h"
 #include "render/TextureRender.h"
 #include "texture/TextureData.h"
+#include "jobs/JobSystem.h"
 
 #include <map>
 #include <memory>
 #include <array>
 
 #include <mutex>
-#include <future>
 #include <unordered_map>
 #include <atomic>
 #include <string>
@@ -51,7 +51,12 @@ namespace jasperengine{
         static std::unordered_map<std::string, TextureSource>& getSources();
         static std::atomic<uint32_t> replaceEpoch;
 
-        static std::unordered_map<std::string, std::future<std::array<TextureData,6>>> pendingBuilds;
+        // an async load: the combined result, and the token its reads and decodes share
+        struct PendingTexture {
+            jobs::Task<std::array<TextureData,6>> task;
+            jobs::CancelToken cancel;
+        };
+        static std::unordered_map<std::string, PendingTexture> pendingBuilds;
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
 
@@ -60,6 +65,13 @@ namespace jasperengine{
 
         static std::array<TextureData,6> loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder, bool trackProgress);
         static std::string validateTextureFaces(std::array<TextureData,6>& data, size_t numFaces);
+        // fixes the alpha border, applies the texture strategy and squares a cube face
+        static void prepareFace(TextureData& face, size_t numFaces, bool fixAlphaBorder);
+        // the async load: one asset read per file, decoded as Heavy Background jobs
+        static PendingTexture startAsyncLoad(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder);
+        // waits for every pending load (cancelling those not started first when `cancel`)
+        // and drops them; cacheMutex held
+        static void quiescePending(bool cancel);
 
     public:
         static std::shared_ptr<std::array<TextureData,6>> get(const std::string& id);

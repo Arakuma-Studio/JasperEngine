@@ -12,7 +12,7 @@
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
+#include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
 #include "util/Angle.h"
 
@@ -989,7 +989,7 @@ bool MeshSystem::hasPendingAsyncModelLoads() const{
     const std::string scenePrefix = getAsyncModelLoadScenePrefix(scene);
     std::lock_guard<std::mutex> lock(getAsyncModelMutex());
     auto& pendingModelLoads = getPendingModelLoads();
-    for (const auto& [key, future] : pendingModelLoads) {
+    for (const auto& [key, task] : pendingModelLoads) {
         if (key.rfind(scenePrefix, 0) == 0) {
             return true;
         }
@@ -1006,9 +1006,8 @@ void MeshSystem::cancelAsyncModelLoads(){
         for (auto it = pendingModelLoads.begin(); it != pendingModelLoads.end();) {
             if (it->first.rfind(scenePrefix, 0) == 0) {
                 buildIds.push_back(std::hash<std::string>{}(it->first));
-                if (it->second.valid()) {
-                    it->second.wait();
-                }
+                it->second.cancel();
+                it->second.wait();
                 it = pendingModelLoads.erase(it);
             } else {
                 ++it;
@@ -1026,11 +1025,10 @@ void MeshSystem::cancelAllAsyncModelLoads(){
         std::lock_guard<std::mutex> lock(getAsyncModelMutex());
         auto& pendingModelLoads = getPendingModelLoads();
         buildIds.reserve(pendingModelLoads.size());
-        for (auto& [key, future] : pendingModelLoads) {
+        for (auto& [key, task] : pendingModelLoads) {
             buildIds.push_back(std::hash<std::string>{}(key));
-            if (future.valid()) {
-                future.wait();
-            }
+            task.cancel();
+            task.wait();
         }
         pendingModelLoads.clear();
     }
@@ -1057,9 +1055,8 @@ void MeshSystem::cancelAsyncModelLoadByKey(const std::string& key){
         auto& pendingModelLoads = getPendingModelLoads();
         auto it = pendingModelLoads.find(key);
         if (it != pendingModelLoads.end()) {
-            if (it->second.valid()) {
-                it->second.wait();
-            }
+            it->second.cancel();
+            it->second.wait();
             pendingModelLoads.erase(it);
             erased = true;
         }
@@ -1106,48 +1103,12 @@ void MeshSystem::decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDi
     }
 }
 
-// Runs fn(0..count-1) across a few threads, pulling indices off a shared counter so heavy items
-// spread across workers instead of landing in one fixed range.
-//
-// NOTE: this deliberately uses std::async, not ThreadPoolManager. Background model parsing already
-// runs on a ThreadPoolManager worker, so enqueuing onto that bounded pool and blocking could
-// deadlock when several models load at once.
-template<typename Fn>
-void MeshSystem::parallelForIndexed(size_t count, Fn&& fn) {
-    if (count == 0) {
-        return;
-    }
-
-    const unsigned int hw = std::thread::hardware_concurrency();
-    const size_t workers = std::max<size_t>(1, std::min<size_t>(count, hw ? hw : 4));
-
-    std::atomic<size_t> next{0};
-    auto worker = [&]() {
-        for (size_t i = next.fetch_add(1); i < count; i = next.fetch_add(1)) {
-            fn(i);
-        }
-    };
-
-    if (workers == 1) {
-        worker();
-        return;
-    }
-
-    std::vector<std::future<void>> futures;
-    for (size_t w = 1; w < workers; w++) {
-        futures.push_back(std::async(std::launch::async, worker));
-    }
-    worker(); // the calling thread participates too
-    for (auto& future : futures) {
-        future.get();
-    }
-}
-
 // glTF embedded images are decoded serially inside LoadBinaryFromFile, which dominates load time
 // for texture-heavy models. Instead the loader is put in "as is" mode (it stores the still-encoded
 // bytes), and this decodes them across a few threads afterwards.
 void MeshSystem::decodeGLTFImagesParallel(tinygltf::Model& model, int maxDimension) {
-    parallelForIndexed(model.images.size(), [&model, maxDimension](size_t i) {
+    // legal inside the Background job parsing the model: the forks stay Background
+    jobs::parallelFor(model.images.size(), [&model, maxDimension](size_t i) {
         decodeGLTFImage(model.images[i], i, maxDimension);
     });
 }
@@ -1192,7 +1153,7 @@ std::shared_ptr<std::array<TextureData,6>> MeshSystem::buildGLTFTextureFaces(tin
     return faces;
 }
 
-std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId){
+std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId, std::vector<uint8_t>& bytes){
     auto result = std::make_shared<AsyncModelLoadResult>();
 
     try {
@@ -1202,7 +1163,10 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
             tinyobj::FileReader::externalFunc = readFileToString;
             std::string baseDir = FileData::getBaseDir(filename);
             result->objModel = std::make_shared<ObjModelData>();
-            result->success = tinyobj::LoadObj(&result->objModel->attrib, &result->objModel->shapes, &result->objModel->materials, &result->warn, &result->err, filename.c_str(), baseDir.c_str());
+            // the .obj from the bytes read; its .mtl through the same file callbacks as a sync load
+            std::istringstream objStream(std::string(bytes.begin(), bytes.end()));
+            tinyobj::MaterialFileReader materialReader(baseDir);
+            result->success = tinyobj::LoadObj(&result->objModel->attrib, &result->objModel->shapes, &result->objModel->materials, &result->warn, &result->err, &objStream, &materialReader);
         }else{
             result->gltfModel = std::make_shared<tinygltf::Model>();
 
@@ -1210,11 +1174,14 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
             loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
             loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
 
+            // the main file from the bytes read; buffers and images it names through the
+            // file callbacks, relative to its directory (as LoadBinaryFromFile does)
             std::string ext = FileData::getFilePathExtension(filename);
+            const std::string baseDir = FileData::getBaseDir(filename);
             if (ext.compare("glb") == 0) {
-                result->success = loader.LoadBinaryFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
+                result->success = loader.LoadBinaryFromMemory(result->gltfModel.get(), &result->err, &result->warn, bytes.data(), (unsigned int)bytes.size(), baseDir);
             }else{
-                result->success = loader.LoadASCIIFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
+                result->success = loader.LoadASCIIFromString(result->gltfModel.get(), &result->err, &result->warn, reinterpret_cast<const char*>(bytes.data()), (unsigned int)bytes.size(), baseDir);
             }
             if (result->success) {
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
@@ -1239,7 +1206,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
 
                 // Build into a plain vector: workers touch only their own slot, never the map.
                 std::vector<std::shared_ptr<std::array<TextureData,6>>> builtFaces(keyReps.size());
-                parallelForIndexed(keyReps.size(), [&](size_t j) {
+                jobs::parallelFor(keyReps.size(), [&](size_t j) {
                     builtFaces[j] = buildGLTFTextureFaces(*result->gltfModel, keyReps[j]);
                 });
                 for (size_t j = 0; j < keyReps.size(); j++) {
@@ -1276,7 +1243,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
     const std::string key = getAsyncModelLoadKey(scene, filename);
     const uint64_t buildId = std::hash<std::string>{}(key);
 
-    std::shared_future<std::shared_ptr<AsyncModelLoadResult>> future;
+    jobs::Task<std::shared_ptr<AsyncModelLoadResult>> task;
     {
         std::lock_guard<std::mutex> lock(getAsyncModelMutex());
         auto& pendingModelLoads = getPendingModelLoads();
@@ -1285,31 +1252,38 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
             std::filesystem::path filePath(filename);
             ResourceProgress::startBuild(buildId, ResourceType::Model, filePath.filename().string());
 
-            pendingModelLoads[key] = ThreadPoolManager::getInstance().enqueue(
-                [filename, obj, buildId]() {
-                    return MeshSystem::loadModelFileOnWorker(filename, obj, buildId);
+            // the file on an asset reader thread, the parse as a Background job
+            AssetIOService::ReadRequest request;
+            request.path = filename;
+            request.priority = IOPriority::Normal;
+            request.name = obj ? "obj-parse" : "gltf-parse";
+            request.onFailure = [buildId](const std::string&) {
+                ResourceProgress::failBuild(buildId);
+            };
+            pendingModelLoads[key] = AssetIOService::instance().submitRead(request,
+                [filename, obj, buildId](std::vector<uint8_t>&& bytes) {
+                    return MeshSystem::loadModelFileOnWorker(filename, obj, buildId, bytes);
                 }
-            ).share();
+            );
 
             return nullptr;
         }
 
-        future = it->second;
+        task = it->second;
     }
 
-    if (!future.valid()){
-        std::lock_guard<std::mutex> lock(getAsyncModelMutex());
-        auto& pendingModelLoads = getPendingModelLoads();
-        pendingModelLoads.erase(key);
-        ResourceProgress::failBuild(buildId);
+    if (!task.isReady()){
         return nullptr;
     }
 
-    if (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready){
-        return nullptr;
+    std::shared_ptr<AsyncModelLoadResult> result;
+    try {
+        result = task.get();
+    } catch (const std::exception& e) {
+        result = std::make_shared<AsyncModelLoadResult>();
+        result->success = false;
+        result->err = e.what();
     }
-
-    std::shared_ptr<AsyncModelLoadResult> result = future.get();
     {
         std::lock_guard<std::mutex> lock(getAsyncModelMutex());
         auto& pendingModelLoads = getPendingModelLoads();

@@ -7,24 +7,24 @@
 
 #include "shader/ShaderBuildTypes.h"
 #include "ShaderData.h"
+#include "jobs/JobSystem.h"
 #include <atomic>
 #include <vector>
 #include <functional>
 #include <set>
 #include <unordered_map>
 #include <mutex>
-#include <future>
 #include <filesystem>
 
 namespace jasperengine::editor {
 
     // The editor's shader builds: the engine's ShaderVariantCompiler (the same compiler
     // a game uses at runtime) driven for the open project, with forked shaders read
-    // from the project, a disk cache, and builds on the thread pool.
+    // from the project, a disk cache, and builds as Background Heavy jobs.
     class ShaderBuilder {
     private:
         static std::unordered_map<ShaderKey, ShaderData> shaderDataCache;
-        static std::unordered_map<ShaderKey, std::future<ShaderData>> pendingBuilds;
+        static std::unordered_map<ShaderKey, jobs::Task<ShaderData>> pendingBuilds;
         static std::mutex cacheMutex;
 
         static std::atomic<bool> shutdownRequested;

@@ -9,7 +9,6 @@
 #include "EditorHost.h"
 #include "Out.h"
 #include "Project.h"
-#include "thread/ThreadPoolManager.h"
 
 #include <algorithm>
 #include <cmath>
@@ -148,11 +147,9 @@ void HotReloadService::detach() {
     subscription.reset();
     // a worker may still read what a job captured: let it finish before the project goes
     for (const std::shared_ptr<Job>& job : jobs) {
-        if (job->future.valid()) job->future.wait();
+        job->task.wait();
     }
-    for (std::future<AdoptFn>& future : superseded) {
-        if (future.valid()) future.wait();
-    }
+    for (const jobs::Task<AdoptFn>& task : superseded) task.wait();
     superseded.clear();
     jobs.clear();
     batches.clear();
@@ -426,14 +423,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
 
 // ------------------------------------------------------------------ jobs
 
-std::future<HotReloadService::AdoptFn> HotReloadService::launch(WorkFn work) {
-    return ThreadPoolManager::getInstance().enqueue([work]() {
+jobs::Task<HotReloadService::AdoptFn> HotReloadService::launch(WorkFn work) {
+    // Background: the decodes give way to the frame's own jobs (S06 frame protection)
+    return jobs::submit([work]() {
         // the idle editor loop wakes to adopt it
         struct Wake {
             ~Wake() { getEditorHost().enqueueMainThreadTask([]() {}); }
         } wake;
         return work();
-    });
+    }, {jobs::Lane::Background, jobs::GateClass::Default, "hot-reload"});
 }
 
 void HotReloadService::startJob(const std::string& kind, const fs::path& path, WorkFn work, uint64_t texelBytes) {
@@ -446,7 +444,7 @@ void HotReloadService::startJob(const std::string& kind, const fs::path& path, W
     for (auto it = jobs.begin(); it != jobs.end(); ++it) {
         if ((*it)->kind == kind && (*it)->path == path) {
             const uint64_t old = (*it)->batch;
-            if ((*it)->future.valid()) superseded.push_back(std::move((*it)->future));
+            if ((*it)->task.isValid()) superseded.push_back((*it)->task);
             jobs.erase(it);
             auto batch = batches.find(old);
             if (batch != batches.end() && batch->second.outstanding > 0) batch->second.outstanding--;
@@ -461,7 +459,7 @@ void HotReloadService::startJob(const std::string& kind, const fs::path& path, W
     job->work = std::move(work);
     job->started = Clock::now();
     job->texelBytes = texelBytes;
-    job->future = launch(job->work);
+    job->task = launch(job->work);
     batches[currentBatch].outstanding++;
     jobs.push_back(job);
 }
@@ -470,8 +468,8 @@ bool HotReloadService::update() {
     if (!project) return false;
     const auto start = Clock::now();
     bool adopted = false;
-    superseded.erase(std::remove_if(superseded.begin(), superseded.end(), [](std::future<AdoptFn>& future) {
-        return future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    superseded.erase(std::remove_if(superseded.begin(), superseded.end(), [](const jobs::Task<AdoptFn>& task) {
+        return task.isReady();
     }), superseded.end());
     uint64_t texels = 0;
     for (auto it = jobs.begin(); it != jobs.end();) {
@@ -479,12 +477,12 @@ bool HotReloadService::update() {
         if (job.waitingRetry) {
             if (Clock::now() >= job.retryAt) {
                 job.waitingRetry = false;
-                job.future = launch(job.work);
+                job.task = launch(job.work);
             }
             ++it;
             continue;
         }
-        if (!job.future.valid() || job.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (!job.task.isReady()) {
             ++it;
             continue;
         }
@@ -494,7 +492,7 @@ bool HotReloadService::update() {
         std::string error;
         bool ok = false;
         try {
-            AdoptFn adopt = job.future.get();
+            AdoptFn adopt = job.task.get();
             ok = adopt && adopt(error);
             if (!adopt && error.empty()) error = "nothing was decoded";
         } catch (const std::exception& e) {

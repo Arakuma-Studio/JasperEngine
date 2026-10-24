@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #pragma once
+#include "jobs/JobSystem.h"
 #include "imgui.h"
 #include "widget/CustomTextEditor.h"
 #include "Project.h"
@@ -49,7 +50,8 @@ namespace jasperengine::editor {
         bool windowFocused;
         EditorInstance* lastFocused;
 
-        std::thread symbolParseThread;
+        // the project symbol parse, a Background job (it captures this editor)
+        jobs::Task<void> symbolParseTask;
         std::atomic<bool> isParsingSymbols{false};
         std::mutex parsedSymbolsMutex;
         std::vector<CustomTextEditor::ProjectSymbol> newLuaSymbols;

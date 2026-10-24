@@ -18,7 +18,8 @@
 #include "component/Transform.h"
 #include "math/Ray.h"
 
-#include <future>
+#include "jobs/JobSystem.h"
+
 #include <memory>
 #include <mutex>
 #include <set>
@@ -37,7 +38,7 @@ namespace jasperengine{
 
     private:
         struct AsyncModelLoadResult;
-        typedef std::unordered_map<std::string, std::shared_future<std::shared_ptr<AsyncModelLoadResult>>> async_model_loads_t;
+        typedef std::unordered_map<std::string, jobs::Task<std::shared_ptr<AsyncModelLoadResult>>> async_model_loads_t;
 
         static std::mutex& getAsyncModelMutex();
         static async_model_loads_t& getPendingModelLoads();
@@ -70,8 +71,6 @@ namespace jasperengine{
         std::unordered_map<Entity, std::vector<TerrainFoliageInstances>> terrainFoliage;
 
         static void decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDimension);
-        template<typename Fn>
-        static void parallelForIndexed(size_t count, Fn&& fn);
         static void decodeGLTFImagesParallel(tinygltf::Model& model, int maxDimension);
         static std::shared_ptr<std::array<TextureData,6>> buildGLTFTextureFaces(tinygltf::Model& model, int textureIndex);
 
@@ -99,7 +98,8 @@ namespace jasperengine{
         bool isAsyncModelLoadPending(const std::string& filename) const;
         static bool isAsyncModelLoadPending(const Scene* scene, const std::string& filename);
         static bool isModelPreloading(const std::string& filename);
-        static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId);
+        // parses the model file from `bytes`, its main file as the asset reader read it
+        static std::shared_ptr<AsyncModelLoadResult> loadModelFileOnWorker(const std::string& filename, bool obj, uint64_t buildId, std::vector<uint8_t>& bytes);
         template<typename T>
         static bool isValidGLTFIndex(int index, const std::vector<T>& values) {
             return index >= 0 && static_cast<size_t>(index) < values.size();

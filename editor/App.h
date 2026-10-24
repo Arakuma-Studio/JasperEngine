@@ -56,6 +56,8 @@ namespace jasperengine::editor::mcp {
 
 namespace jasperengine::editor{
 
+    class JobsMemoryWindow;
+
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
         std::string kind;                  // "alert", "save_dialog" or "modal"
@@ -175,6 +177,7 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        JobsMemoryWindow* jobsMemoryWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -405,6 +408,7 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        JobsMemoryWindow* getJobsMemoryWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
