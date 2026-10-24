@@ -556,8 +556,14 @@ bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
         subAssets.push_back({sub.key, sub.guid, sub.name});
     }
     meta.setSubAssets(std::move(subAssets));
+    // A new meta holding only what its path derives (the legacy GUID, sub-asset GUIDs derived
+    // from it) is written again identically if a crash loses it: no sync for it, which keeps the
+    // first open of a large project written before GUIDs fast (thousands of metas)
+    const bool reproducible = text.empty() && entry.formerGuids.empty() &&
+                              entry.guid == Guid::parse(legacyGuid(entry.path));
     std::string error;
-    if (!assetio::writeFile(metaPath, meta.serialize(), assetio::Durability::Document, &error)) {
+    if (!assetio::writeFile(metaPath, meta.serialize(),
+                            reproducible ? assetio::Durability::Cache : assetio::Durability::Document, &error)) {
         Out::warning("Could not write %s: %s", metaPath.string().c_str(), error.c_str());
         return false;
     }
