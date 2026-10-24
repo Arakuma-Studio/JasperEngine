@@ -858,7 +858,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     // its deferred continuations run, folded into one step per history when it replies, and
     // named in the result (structured.undo). Read-only and control tools (batch) are not.
     const ToolActivity activity = effectiveActivity(def);
-    if (activity != ToolActivity::Read && activity != ToolActivity::Control) {
+    if ((activity != ToolActivity::Read && activity != ToolActivity::Control) || def.attributesUndo) {
         UndoOrigin origin;
         origin.kind = UndoOriginKind::Agent;
         origin.client = call->client().empty() ? std::string("Agent") : call->client();

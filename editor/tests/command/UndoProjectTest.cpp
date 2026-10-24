@@ -23,7 +23,7 @@
 #include "command/type/SetAssetMetaCmd.h"
 #include "Stream.h"
 
-#include "TempDir.h"
+#include "support/TestTempDir.h"
 
 #include <gtest/gtest.h>
 
@@ -47,7 +47,7 @@ namespace {
     class UndoProjectTest : public ::testing::Test {
     protected:
         UndoStatics statics;
-        jasperengine::test::TempDir dir;
+        jasperengine::test::TestTempDir dir{"undo"};
         std::unique_ptr<Project> project;
         SceneProject* scene = nullptr;
         uint32_t sceneId = 0;

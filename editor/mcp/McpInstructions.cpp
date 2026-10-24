@@ -72,10 +72,9 @@ named by undo_name). undo/redo with scope "timeline" are exactly the human's Ctr
 scene's steps and the asset steps in one order; the default scope "scene" will switch to it).
 To undo only your own last call, pass expect_top_id = that undo.id: it refuses, changing
 nothing, when someone edited since. get_undo_history lists the steps (to_id jumps). An edit
-that changes nothing makes no step. While playing, set_properties / set_transform /
-create_entity / delete_entities edits are offered after play stop: get_play_changes, then
-apply_play_changes (one step) or discard_play_changes; play stop with keep_changes all|none
-decides at once.
+that changes nothing makes no step. Edits made while playing are rolled back by play stop
+and then offered: get_play_changes, then apply_play_changes (one step) or discard_play_changes;
+play stop with keep_changes all|none decides at once.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work

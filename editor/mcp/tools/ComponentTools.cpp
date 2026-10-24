@@ -873,8 +873,6 @@ void registerComponentTools(McpRegistry& registry) {
             {"values", anyObject("{component: {property: value}}")}
         });
         tool.handler = setPropertiesTool;
-        // Play-time edits: Stop offers them (get_play_changes, S24 R39)
-        tool.allowedWhilePlaying = true;
         registry.addTool(std::move(tool));
     }
     {
@@ -895,8 +893,6 @@ void registerComponentTools(McpRegistry& registry) {
             {"relative", withDefault(boolean(""), false)}
         });
         tool.handler = setTransformTool;
-        // Play-time edits: Stop offers them (get_play_changes, S24 R39)
-        tool.allowedWhilePlaying = true;
         registry.addTool(std::move(tool));
     }
     {

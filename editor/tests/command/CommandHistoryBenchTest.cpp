@@ -6,7 +6,7 @@
 
 #include "UndoFakeCommand.h"
 
-#include "EditorTestSupport.h"
+#include "support/EditorTestSupport.h"
 #include "Stream.h"
 #include "util/YamlFootprint.h"
 

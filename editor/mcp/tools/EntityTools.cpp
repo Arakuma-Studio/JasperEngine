@@ -1138,8 +1138,6 @@ void registerEntityTools(McpRegistry& registry) {
             {"select", withDefault(boolean(""), true)}
         });
         tool.handler = createEntityTool;
-        // Play-time edits: Stop offers them (get_play_changes, S24 R39)
-        tool.allowedWhilePlaying = true;
         registry.addTool(std::move(tool));
     }
     {
@@ -1151,8 +1149,6 @@ void registerEntityTools(McpRegistry& registry) {
         tool.inputSchema = object({{"scene", sceneRef()}, {"entity", entityRef()}, {"entities", entities()}});
         tool.annotations.destructive = true;
         tool.handler = deleteEntitiesTool;
-        // Play-time edits: Stop offers them (get_play_changes, S24 R39)
-        tool.allowedWhilePlaying = true;
         registry.addTool(std::move(tool));
     }
     {
@@ -1241,6 +1237,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"add", withDefault(boolean(""), false)}
         });
         tool.annotations.idempotent = true;
+        tool.attributesUndo = true;  // a selection step of the agent (S24 R40)
         tool.handler = selectEntitiesTool;
         registry.addTool(std::move(tool));
     }

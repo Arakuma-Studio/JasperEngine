@@ -725,9 +725,9 @@ with the code base:
    already restores its overrides. `ComponentToPrefabSharedCmd` got `PrefabEditUndo`.
 6. **Closing a scene frees its history (R23).** A closed (not removed) scene kept its history before;
    `closeScene` now calls `CommandHandle::remove`, which also drops a pending Play Mode Changes review.
-7. **Play-time MCP edits (R39, AC13).** `set_properties`, `set_transform`, `create_entity` and
-   `delete_entities` are allowed while playing (they were refused): their steps are what the review
-   offers after Stop.
+7. **`select_entities` is a control tool** (the busy policy lets it run beside a build), and R24
+   leaves control tools unattributed; a `ToolDef::attributesUndo` flag attributes its selection
+   steps to the agent anyway (R40).
 8. **Attribution of continuations (R24).** The origin scope is set around the handler and around the
    call's `waitUntil` / `afterFrames` continuations (`McpServer::tick`). A detached call completing
    from another main-thread task is not attributed; no edit tool does that today.
