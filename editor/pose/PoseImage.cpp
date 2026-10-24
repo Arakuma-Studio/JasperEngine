@@ -17,6 +17,14 @@ using namespace jasperengine;
 
 namespace {
 
+    // A bounding-box edge as a pixel index, clamped as a float into [-1, size] before the int
+    // cast: a huge coordinate on either side of the image (finite, e.g. 1e30) is out of int
+    // range and the cast would be undefined. -1 and size are both off-image, so a box entirely
+    // outside the image comes out empty after the caller's clamp to [0, size - 1].
+    int boxIndex(float edge, int size){
+        return (int)std::clamp(edge, -1.0f, (float)size);
+    }
+
     // Printable ASCII 32..126, 10 rows each, bit (0x20 >> column) per pixel (column 5 is the gap)
     const uint8_t FONT_6X10[95][10] = {
         {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // space
@@ -307,11 +315,10 @@ void editor::PoseImage::drawLine(float x0, float y0, float x1, float y1, float l
     }
     const float half = lineWidth * 0.5f;
     // coverage falls off over one pixel across the edge, so the box grows by one more
-    // clamped as floats: a huge coordinate never reaches the int cast
-    const int minX = (int)std::max(0.0f, std::floor(std::min(x0, x1) - half - 1.0f));
-    const int minY = (int)std::max(0.0f, std::floor(std::min(y0, y1) - half - 1.0f));
-    const int maxX = (int)std::min((float)(width - 1), std::ceil(std::max(x0, x1) + half + 1.0f));
-    const int maxY = (int)std::min((float)(height - 1), std::ceil(std::max(y0, y1) + half + 1.0f));
+    const int minX = std::max(0, boxIndex(std::floor(std::min(x0, x1) - half - 1.0f), width));
+    const int minY = std::max(0, boxIndex(std::floor(std::min(y0, y1) - half - 1.0f), height));
+    const int maxX = std::min(width - 1, boxIndex(std::ceil(std::max(x0, x1) + half + 1.0f), width));
+    const int maxY = std::min(height - 1, boxIndex(std::ceil(std::max(y0, y1) + half + 1.0f), height));
     for (int py = minY; py <= maxY; py++){
         for (int px = minX; px <= maxX; px++){
             const float d = segmentDistance(px + 0.5f, py + 0.5f, x0, y0, x1, y1);
@@ -328,10 +335,10 @@ void editor::PoseImage::fillCircle(float cx, float cy, float diameter, PoseColor
         return;
     }
     const float radius = diameter * 0.5f;
-    const int minX = (int)std::max(0.0f, std::floor(cx - radius - 1.0f));
-    const int minY = (int)std::max(0.0f, std::floor(cy - radius - 1.0f));
-    const int maxX = (int)std::min((float)(width - 1), std::ceil(cx + radius + 1.0f));
-    const int maxY = (int)std::min((float)(height - 1), std::ceil(cy + radius + 1.0f));
+    const int minX = std::max(0, boxIndex(std::floor(cx - radius - 1.0f), width));
+    const int minY = std::max(0, boxIndex(std::floor(cy - radius - 1.0f), height));
+    const int maxX = std::min(width - 1, boxIndex(std::ceil(cx + radius + 1.0f), width));
+    const int maxY = std::min(height - 1, boxIndex(std::ceil(cy + radius + 1.0f), height));
     for (int py = minY; py <= maxY; py++){
         for (int px = minX; px <= maxX; px++){
             const float dx = px + 0.5f - cx;

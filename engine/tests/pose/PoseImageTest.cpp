@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <limits>
@@ -118,6 +119,29 @@ TEST(PoseImage, NonFiniteInputsDrawNothing){
     image.fillCircle(1e30f, -1e30f, 1e30f, WHITE);
     image.drawLine(-1e4f, 8.0f, 1e4f, 8.0f, 2.0f, WHITE);
     EXPECT_EQ(image.getPixel(8, 8), WHITE);
+}
+
+TEST(PoseImage, HugeOffImageShapesDrawNothingAndReturnQuickly){
+    // a shape entirely off-image at a huge finite coordinate: both bounding-box edges are out of
+    // int range, so both are clamped before the cast (one-sided, the far edge became INT_MIN on
+    // x86 and the loop ran ~2^31 iterations)
+    PoseImage image(16, 16, BLACK);
+    const std::vector<uint8_t> before = image.getPixels();
+    const auto start = std::chrono::steady_clock::now();
+    image.drawLine(1e30f, 8.0f, 2e30f, 8.0f, 2.0f, WHITE);
+    image.drawLine(-2e30f, 8.0f, -1e30f, 8.0f, 2.0f, WHITE);
+    image.drawLine(8.0f, 1e30f, 8.0f, 2e30f, 2.0f, WHITE);
+    image.drawLine(8.0f, -2e30f, 8.0f, -1e30f, 2.0f, WHITE);
+    image.fillCircle(1e30f, 8.0f, 4.0f, WHITE);
+    image.fillCircle(-1e30f, 8.0f, 4.0f, WHITE);
+    image.fillCircle(8.0f, 1e30f, 4.0f, WHITE);
+    image.fillCircle(8.0f, -1e30f, 4.0f, WHITE);
+    // just off each side (small coordinates): the empty box path without huge values
+    image.drawLine(40.0f, 8.0f, 50.0f, 8.0f, 2.0f, WHITE);
+    image.fillCircle(-20.0f, 8.0f, 4.0f, WHITE);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    EXPECT_EQ(image.getPixels(), before);
+    EXPECT_LT(seconds, 0.5);
 }
 
 TEST(PoseImage, FilledCircle){
