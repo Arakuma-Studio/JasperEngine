@@ -1999,8 +1999,8 @@ bool editor::Exporter::copyLua() {
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) { it.disable_recursion_pending(); continue; }
 
-        // Skip project support files that should not ship in the Lua directory
-        if (shouldSkipExportSupportFile(relPath)) continue;
+        // Skip project support files that should not ship in the Lua directory, and metas (S04)
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
