@@ -2586,14 +2586,11 @@ void setTextureSettingsTool(const CallPtr& call) {
         call->ok("The texture settings already match.", data);
         return;
     }
-    // Sampler settings are baked into the GPU texture: drop the cached render on execute and undo
+    // the sampler is part of the TexturePool key, so the new settings are their own GPU texture
     const Entity entity = where.entity;
     const ComponentType component = where.component;
-    auto onChanged = [scene, entity, component, propertyName]() {
-        if (Texture* ref = Catalog::getPropertyRef<Texture>(scene, entity, component, propertyName)) ref->invalidateRender();
-    };
     if (!addSceneCommand(where.scene->id, new PropertyCmd<Texture>(call->ctx().project(), where.scene->id, entity, component,
-                                                                   propertyName, modified, onChanged))) {
+                                                                   propertyName, modified))) {
         call->fail("Could not change the texture settings.");
         return;
     }
