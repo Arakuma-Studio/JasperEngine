@@ -631,6 +631,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -661,6 +662,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
+    ${EDITOR_DIR}/physics/PlacementSettings.cpp
+    ${EDITOR_DIR}/physics/PlacementSession.cpp
+    ${EDITOR_DIR}/physics/PlacementCli.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
@@ -728,6 +732,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+    ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp

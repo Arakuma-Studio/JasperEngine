@@ -34,6 +34,17 @@ namespace jasperengine::editor{
         static std::function<void(size_t)> beforeStep;
         static std::function<void(size_t)> afterStep;
 
+        // Asked before the scene's history changes, so a tool previewing edits live (the
+        // Physics Placement tool's running gesture) can settle them first: the command then
+        // records the true values. Returning false drops an undo or a redo; a command is always
+        // added. Re-entrant: the tool's own commit comes through here too.
+        enum class Change{
+            Add,
+            Undo,
+            Redo
+        };
+        static std::function<bool(size_t, Change)> beforeChange;
+
         explicit CommandHistory(size_t sceneId = 0);
         ~CommandHistory();
 

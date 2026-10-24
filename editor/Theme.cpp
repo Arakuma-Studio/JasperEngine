@@ -100,6 +100,8 @@ ImVec4 jasperengine::editor::Theme::Colors::ErrorText;
 ImVec4 jasperengine::editor::Theme::Colors::LogIcon;
 ImVec4 jasperengine::editor::Theme::Colors::RowBackgroundAlt;
 ImVec4 jasperengine::editor::Theme::Colors::PlayModeTint;
+ImVec4 jasperengine::editor::Theme::Colors::PhysicsAccent;
+ImVec4 jasperengine::editor::Theme::Colors::PhysicsAccentHovered;
 
 void jasperengine::editor::Theme::apply() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -189,6 +191,8 @@ void jasperengine::editor::Theme::apply() {
     Colors::LogIcon = hex(0xC8C8C8);
     Colors::RowBackgroundAlt = hex(0x3E3E3E);
     Colors::PlayModeTint = ImVec4(0.78f, 0.80f, 0.87f, 1.00f);
+    Colors::PhysicsAccent = hex(0xC8701E);
+    Colors::PhysicsAccentHovered = hex(0xD98232);
 
     Colors::ButtonActivated = hex(0x46607C);
     Colors::IconButtonHovered = ImVec4(1.0f, 1.0f, 1.0f, 0.08f);

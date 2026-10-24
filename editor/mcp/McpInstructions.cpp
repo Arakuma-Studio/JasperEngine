@@ -182,13 +182,12 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
-  body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
-  actors, static for floors and level geometry, kinematic for scripted movers.
-- Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-scale
-  them. Omit sizes to fit the mesh bounds (never guess).
-- Mass comes from collider volume/area x density (default 1000 in 3D, 1 in 2D), never set
-  directly. Size forces as mass x acceleration; if movement needs huge
-  forces, lower the density instead.
+  body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
+  static: floors, level geometry; kinematic: scripted movers.
+- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
+  Omit sizes to fit the mesh bounds (never guess).
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D), never set directly.
+  Size forces as mass x acceleration; if they get huge, lower the density.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
@@ -198,6 +197,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
   optional layer mask.
+- Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset

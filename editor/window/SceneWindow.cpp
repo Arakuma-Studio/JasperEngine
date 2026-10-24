@@ -119,6 +119,8 @@ void editor::SceneWindow::resetProjectState() {
     draggingMouse.clear();
     suppressLeftMouseUntilRelease.clear();
     subSelectionClickConsumesRelease.clear();
+    physicsSnapArmed.clear();
+    physicsSnapBegun.clear();
     resyncLookDelta.clear();
     lookActive.clear();
     lookReturnPos.clear();
@@ -149,6 +151,8 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     draggingMouse.erase(sceneId);
     suppressLeftMouseUntilRelease.erase(sceneId);
     subSelectionClickConsumesRelease.erase(sceneId);
+    physicsSnapArmed.erase(sceneId);
+    physicsSnapBegun.erase(sceneId);
     resyncLookDelta.erase(sceneId);
     lookActive.erase(sceneId);
     lookReturnPos.erase(sceneId);
@@ -1087,6 +1091,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool altGizmoDuplicate = altGizmoDrag &&
         (gizmoSelected != GizmoSelected::OBJECT2D || gizmo2DSide == Gizmo2DSideSelected::CENTER);
 
+    // Physics (G): Space drops, Shift-drag on a selected object snaps, Esc cancels
+    using PhysicsInput = PhysicsPlacementWindow::GestureInput;
+    PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
+    const bool physicsActive = physics && physics->isActiveInScene((uint32_t)sceneId);
+    if (!physicsActive){
+        physicsSnapArmed[sceneId] = false;
+    }
+
     bool disableSelection = 
         altHeld ||
         handPanEnabled || 
@@ -1094,6 +1106,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         sceneProject->sceneRender->isPoseDragging() ||
         fluidPainting ||
         gizmoSideActive ||
+        (physicsSnapArmed[sceneId] && mouseLeftDraggedInside) ||
         sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
 
     if (isMouseInWindow){
@@ -1174,6 +1187,20 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                         sceneProject->sceneRender->mouseHoverEvent(x, y);
                     }
                 }
+            }
+
+            // Shift + press on a selected object may become a Snap drag. A handle keeps its drag,
+            // except the Move tool's free-move centre, whose catch area covers small objects.
+            // A Shift+click on a lattice point stays the lattice's.
+            physicsSnapArmed[sceneId] = false;
+            physicsSnapBegun[sceneId] = false;
+            const GizmoSideSelected pressedSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmoSideSelected();
+            const bool onFreeMoveCentre = gizmoSelected == GizmoSelected::TRANSLATE && pressedSide == GizmoSideSelected::XYZ;
+            const bool onHandle = gizmoSideActive && !onFreeMoveCentre;
+            if (physicsActive && io.KeyShift && !altHeld && !onHandle && !latticePointHit) {
+                uint32_t hitSceneId = sceneId;
+                const Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
+                physicsSnapArmed[sceneId] = hitEntity != NULL_ENTITY && hitSceneId == sceneId && project->isSelectedEntity(sceneId, hitEntity);
             }
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
@@ -1453,6 +1480,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             sceneProject->sceneRender->mouseHoverEvent(x, y);
         }
 
+        // Drop (hold Space): the mouse ray, for gravity toward the surface under the cursor
+        if (physicsActive) {
+            if (PlacementSession* session = physics->heldGesture((uint32_t)sceneId, PhysicsInput::Space)) {
+                session->setPointerRay(sceneProject->sceneRender->screenToRay(x, y));
+            }
+        }
+
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled){
             if (!mouseLeftDown){
                 mouseLeftStartPos = Vector2(logicalX, logicalY);
@@ -1466,7 +1500,17 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
-            if (mouseLeftDraggedInside){
+            if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
+                // Snap: the selection rides the surface under the cursor, every frame it is held
+                // refused (the HUD says why) or cancelled later: the rest of the drag does nothing
+                if (!physicsSnapBegun[sceneId]){
+                    physicsSnapBegun[sceneId] = true;
+                    physics->beginGesture((uint32_t)sceneId, PlacementGesture::Snap, PhysicsInput::Snap);
+                }
+                if (PlacementSession* session = physics->heldGesture((uint32_t)sceneId, PhysicsInput::Snap)){
+                    session->setSnapRay(sceneProject->sceneRender->screenToRay(x, y));
+                }
+            }else if (mouseLeftDraggedInside){
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
@@ -1550,6 +1594,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = mousePos.y - windowPos.y;
         toEngineCanvas(sceneId, x, y);
 
+        // a Snap drag ends wherever the button goes up (the drag was the Snap's: disableSelection
+        // kept it from box selecting)
+        if (physicsSnapArmed[sceneId] && physics){
+            physics->endGesture((uint32_t)sceneId, PhysicsInput::Snap);
+        }
+
         if (suppressLeftMouse){
             suppressLeftMouseUntilRelease[sceneId] = false;
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1587,6 +1637,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             mouseLeftDraggedInside = false;
         }
+        physicsSnapArmed[sceneId] = false;
+        physicsSnapBegun[sceneId] = false;
     }
 
     if (!isMouseInWindow){
@@ -1828,6 +1880,19 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
+    // The Scene view has the keyboard: hovered, or focused (it or its canvas)
+    const bool sceneViewInput = isMouseInWindow || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    // Esc cancels a physics gesture or its settle, also in the middle of a drag (the press on
+    // the canvas keeps an item active, which the shortcuts below wait out). Not an Esc that
+    // closes a menu or a popup: one open now or when the last frame ended took it.
+    const bool popupOpen = popupOpenLastFrame || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    bool escapeTaken = false;
+    if (physics && sceneViewInput && !popupOpen && project->getSelectedSceneId() == sceneId && !io.WantTextInput &&
+            ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        escapeTaken = physics->cancelGesture((uint32_t)sceneId);
+    }
+
     // Paint Dye: [ / ] scale the fluid's splatRadius (one undo step a run of presses), Esc puts
     // the brush down, while the view is focused or under the pointer and nothing is being typed
     // (a keyboard key shows ImGui's nav cursor, which IsAnyItemFocused below would count)
@@ -1839,7 +1904,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsKeyPressed(ImGuiKey_RightBracket)){
             FluidEditorTools::adjustRadius(1.15f);
         }
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+        if (!escapeTaken && ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
             FluidEditorTools::disarm();
         }
     }
@@ -1870,7 +1935,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                 }
 
-                // Tool shortcuts (Q/W/E/R/T, X) live in the main toolbar.
+                // Tool shortcuts (Q/W/E/R/T, X, G) live in the main toolbar.
+
+                // Physics: hold Space to drop (its release is seen anywhere, see
+                // PhysicsPlacementWindow)
+                if (physicsActive && sceneViewInput) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
+                        physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
+                    }
+                }
 
                 // Lattice point shortcuts (Esc, O, Alt+A, Ctrl+I, Ctrl+=/-) while this view has the keyboard
                 if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
@@ -2173,6 +2246,27 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // Physics Placement's own gizmos: per user, like its panel (every 3D Scene view)
+    if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Physics Placement")) {
+        PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();
+        PhysicsPlacementSettings settings = physics->getSettings();
+        auto drawPhysicsRow = [&](const char* name, bool& value, const char* tooltip) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", name);
+            ImGui::SetItemTooltip("%s", tooltip);
+            ImGui::TableSetColumnIndex(1);
+            if (ImGui::Checkbox((std::string("##") + name).c_str(), &value)) {
+                physics->setSettings(settings);
+            }
+        };
+        drawPhysicsRow(ICON_FA_RULER " Physics distance indicators", settings.showDistanceIndicators,
+                       "With Physics (G) on: rays from the selection to its surroundings along each axis, with their lengths");
+        drawPhysicsRow(ICON_FA_DRAW_POLYGON " Physics proxies", settings.showProxies,
+                       "With Physics (G) on: wireframes of the colliders the simulation builds");
+        ImGui::EndTable();
+    }
+
     if (beginSection("Rendering")) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
@@ -2433,6 +2527,11 @@ void editor::SceneWindow::show() {
             ImGui::TextDisabled("%s", sceneKindLabel);
             ImGui::SetItemTooltip("%s scene", sceneKindLabel);
 
+            // Physics (G) on: the orange badge
+            if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
+                physics->drawSceneBadge(sceneProject.id);
+            }
+
             if (isCameraPreview) {
                 ImGui::SameLine(0, Theme::dpi(10.0f));
 
@@ -2593,7 +2692,22 @@ void editor::SceneWindow::show() {
                     drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {
                     // Black until the first render creates the framebuffer.
+                    const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+
+                    // Physics: the HUD, and the labels at their objects
+                    if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
+                        const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+                        SceneRender* sceneRender = sceneProject.sceneRender;
+                        physics->drawSceneHud(sceneProject.id, ImGui::GetWindowDrawList(), canvasMin,
+                            ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y),
+                            [&](const Vector3& world, ImVec2& screen) {
+                                Vector2 engine;
+                                if (!sceneRender->worldToScreen(world, engine)) return false;
+                                screen = ImVec2(canvasMin.x + engine.x / engineScale.x, canvasMin.y + engine.y / engineScale.y);
+                                return true;
+                            });
+                    }
                 }
 
                 const bool transitioning = sceneProject.playState == ScenePlayState::SAVING
@@ -2668,6 +2782,9 @@ void editor::SceneWindow::show() {
         }
     }
 
+
+    // an Esc next frame may be closing a menu or popup that is open now
+    popupOpenLastFrame = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 }
 
 ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {

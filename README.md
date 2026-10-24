@@ -13,6 +13,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Edit components, assets, animations, bones, and terrain without leaving the editor
 - Synthesize textures from an example: extend, make tileable, inpaint, or guide them, with matching normal/roughness/height maps (Window > Texture Synthesis, the `synthesize-texture` CLI, or the `synthesize_texture` MCP tool)
 - Tune a fluid simulation from presets in the Inspector, preview it in edit mode and paint dye into it with a Scene view brush
+- Place objects with edit-time physics: press G to turn Physics on and the Move, Rotate and Scale tools slide the selection along the scene and stop it against what it touches, hold Space to drop it until it rests, Shift-drag to snap it across surfaces; each gesture is one undo step (Window > Physics Placement, the `place-physics` CLI, or the `place_with_physics` MCP tool)
 - Animate humanoid characters pose to pose: drag hands and feet in the Scene view (IK, automatic grounding, onion skin), pick a feel (snappy, cartoon, rubbery, heavy, stop-motion), humanize it, or start from 10 built-in templates (walk, run, jump, wave...): see [docs/pose-animation.md](docs/pose-animation.md)
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
@@ -110,6 +111,8 @@ build\Release\jasperengine-editor.exe
 jasperengine-editor export --help     # export a project to a standalone CMake project
 jasperengine-editor shaders --help    # generate shaders
 jasperengine-editor benchmark --help  # measure scene FPS
+jasperengine-editor place-physics --help  # drop, separate or move GameObjects with physics, no window
+                                          # (--decompose never or always: the same result every run)
 ```
 
 ## Continuous integration

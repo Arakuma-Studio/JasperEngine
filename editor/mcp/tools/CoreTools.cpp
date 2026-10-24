@@ -18,6 +18,7 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "physics/PlacementSession.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
@@ -237,6 +238,25 @@ void undoRedo(const CallPtr& call, bool undo) {
         }
         history = CommandHandle::get(scene->id);
         data["scene"] = McpRefs::sceneJson(project, *scene);
+        // a Scene view Physics Placement gesture or settle holds preview poses in the scene: an
+        // undo cancels it instead (CommandHistory::beforeChange), a redo is refused
+        if (placementSceneBusy(project, scene->id)) {
+            if (!undo) {
+                data["steps"] = 0;
+                call->fail("Redo refused: a Physics Placement gesture is running in the Scene view of \"" + scene->name +
+                           "\" (its preview poses are in the scene). Let it finish, or undo to cancel it, then redo.", data);
+                return;
+            }
+            const size_t before = history->position();
+            history->undo();
+            data["steps"] = static_cast<int>(before - history->position());
+            data["cancelled_gesture"] = true;
+            data["can_undo"] = history->canUndo();
+            data["can_redo"] = history->canRedo();
+            call->ok("Cancelled the running Physics Placement gesture instead of undoing (nothing was undone): its objects "
+                     "are back where they were before it.", data);
+            return;
+        }
     } else {
         call->fail("scope must be \"scene\" (GameObject and component edits) or \"project\" (asset file operations).");
         return;

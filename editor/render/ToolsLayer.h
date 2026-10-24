@@ -61,6 +61,8 @@ namespace jasperengine::editor{
 
         void setGizmoVisible(bool visible);
         bool isGizmoVisible() const;
+        // Move/Rotate/Scale in the Physics orange while Physics (G) is on
+        void setPhysicsTint(bool tint);
 
         Scene* getScene();
 

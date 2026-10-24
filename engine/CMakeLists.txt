@@ -740,6 +740,17 @@ if(JASPERENGINE_PHYSICS_3D)
     set(CPP_EXCEPTIONS_ENABLED ON)
 endif()
 
+# Convex decomposition of Physics Placement (V-HACD, engine/libs/vhacd): the editor's, on desktop.
+# Exported games (this file as the top-level build) and Web, Android and iOS builds keep the hull
+# cache (ConvexDecompositionCache) but cannot decompose. After the standalone block: the platform
+# is only known once project() has read the toolchain.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR OR EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(JASPERENGINE_CONVEX_DECOMPOSITION_DEFAULT OFF)
+else()
+    set(JASPERENGINE_CONVEX_DECOMPOSITION_DEFAULT ON)
+endif()
+option(JASPERENGINE_CONVEX_DECOMPOSITION "Compile V-HACD convex decomposition (Physics Placement)" ${JASPERENGINE_CONVEX_DECOMPOSITION_DEFAULT})
+
 include_directories(SYSTEM libs/harfbuzz)
 include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)
@@ -1008,6 +1019,9 @@ set(JASPERENGINE_SRCS
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
+    core/physics/ConvexDecomposition.cpp
+    core/physics/JoltShapeBuilder.cpp
+    core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
     core/render/FramebufferRender.cpp
@@ -1125,6 +1139,15 @@ add_library(
     ${RENDER_SOKOL_SRC}
     ${JASPERENGINE_SRCS}
 )
+
+# V-HACD is compiled in this one file (ENABLE_VHACD_IMPLEMENTATION): the define and the include
+# path stay on it, so no other object's command line changes with the switch
+if(JASPERENGINE_CONVEX_DECOMPOSITION)
+    set_source_files_properties(core/physics/ConvexDecomposition.cpp PROPERTIES
+        COMPILE_DEFINITIONS JASPERENGINE_CONVEX_DECOMPOSITION
+        INCLUDE_DIRECTORIES ${CMAKE_CURRENT_SOURCE_DIR}/libs/vhacd
+    )
+endif()
 
 jasperengine_htmlui_compat_embed(jasperengine)
 jasperengine_htmlui_lucide_embed(jasperengine)

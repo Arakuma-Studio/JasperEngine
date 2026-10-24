@@ -41,6 +41,7 @@
 #include "util/ProjectChecks.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "texsynth/SynthesisCli.h"
+#include "physics/PlacementCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -252,6 +253,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
+        << "  " << commandName << " place-physics [options]  Drop, separate or move GameObjects with edit-time physics.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -2548,6 +2550,11 @@ int CommandLine::runImportUiCommand(int argc, char** argv, const char* executabl
 int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* executableName) {
     attachHostConsoleIfNeeded();
     return texsynth::runSynthesizeTexture(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runPlacePhysicsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runPlacePhysics(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {

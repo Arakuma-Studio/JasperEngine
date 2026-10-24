@@ -15149,6 +15149,10 @@ void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
 void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 #ifdef JASPERENGINE_EDITOR
     forgetEntityInViews(entity, componentId);
+    // the entity goes (every one has a Transform): its id may come back as something else
+    if (componentId == scene->getComponentId<Transform>()) {
+        setEditorOverlay(entity, false);
+    }
 #endif
 
     if (componentId == scene->getComponentId<LightComponent>()) {

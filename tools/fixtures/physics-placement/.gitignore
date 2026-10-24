@@ -1,0 +1,2 @@
+# the editor's per-project state and caches (asset database, convex decomposition cache)
+.jasperengine/

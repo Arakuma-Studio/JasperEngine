@@ -20,6 +20,7 @@ struct PanelVisibilitySettings {
     bool poseAnimation = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool physicsPlacement = false;
     bool mcp = false;
     bool game = true;
 
@@ -32,6 +33,7 @@ struct PanelVisibilitySettings {
             && poseAnimation == other.poseAnimation
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && physicsPlacement == other.physicsPlacement
             && mcp == other.mcp
             && game == other.game;
     }

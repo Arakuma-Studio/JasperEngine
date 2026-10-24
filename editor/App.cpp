@@ -21,6 +21,7 @@
 #include "pose/PoseEditSession.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "mcp/tools/McpTools.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -130,6 +131,7 @@ editor::App::App(){
     poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
+    physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
     // window see the files (MCP writes templates through the pose document, which syncs itself)
@@ -267,6 +269,7 @@ enum class AppMenuCommand : uint32_t {
     TogglePoseAnimation,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    TogglePhysicsPlacement,
     ToggleMcpActivity,
     FocusScene,
     FocusGame,
@@ -595,6 +598,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::TogglePhysicsPlacement, windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -767,6 +771,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::TogglePhysicsPlacement:
+            showEditorWindow(physicsPlacementWindow);
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
             break;
@@ -808,6 +815,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            physicsPlacementWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
@@ -964,9 +972,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
                 "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
                 "SCENE VIEW\n"
-                "W / E / R    Move / Rotate / Scale\n"
-                "T    Toggle local / global transforms\n"
+                "Q / W / E / R / T    Hand / Move / Rotate / Scale / Rect\n"
+                "X    Toggle local / global transforms\n"
                 "F / Home    Frame selected / all (3D)\n\n"
+                "PHYSICS PLACEMENT (3D)\n"
+                "G    Physics on / off for Move, Rotate and Scale\n"
+                "Hold Space    Drop the selection under gravity\n"
+                "Shift + drag    Snap a selected object onto surfaces\n"
+                "Esc    Cancel the running gesture (Ctrl+Z too)\n\n"
                 "F1    Documentation",
                 "On macOS, menu shortcuts use Command instead of Ctrl.");
             break;
@@ -1434,13 +1447,14 @@ void editor::App::buildDefaultLayout(){
     const float leftWidth = share(0.18f, viewport.x, 12);
     const float bottomHeight = share(0.30f, viewport.y, 10);
 
-    // Inspector on the right, full height; MCP and Terrain behind it.
+    // Inspector on the right, full height; MCP, Terrain and Physics Placement behind it.
     ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Right, 0.0f, &dock_id_right, &dock_id_middle);
     ImGui::DockBuilderSetNodeSize(dock_id_right, ImVec2(rightWidth, viewport.y));
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
+    ImGui::DockBuilderDockWindow(PhysicsPlacementWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
     ImGui::DockBuilderSplitNode(dock_id_middle, ImGuiDir_Down, 0.0f, &dock_id_middle_bottom, &dock_id_left);
@@ -1473,6 +1487,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(InspectorWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(mcp::McpActivityWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(TerrainEditWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(PhysicsPlacementWindow::WINDOW_NAME, 3);
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
@@ -2130,7 +2145,8 @@ void editor::App::show(){
     if (!popupOpen && !poseKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
-        // Update the Undo and Redo button logic:
+        // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
+        // cancels it and redo waits: CommandHistory::beforeChange)
         if (isUndo) {
             CommandHandle::get(sceneId)->undo();
         }
@@ -2222,6 +2238,8 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    // also the tick of the Scene view's physics sessions, with the panel closed too
+    physicsPlacementWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
     codeEditor->show();
@@ -2418,6 +2436,11 @@ void editor::App::engineInit(int argc, char** argv) {
         }
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
+    };
+    // A physics gesture previews poses in the scene: before any other edit, undo or redo of that
+    // scene it settles and commits (or, still held, is cancelled), so nothing records its preview
+    CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
+        return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
@@ -2705,7 +2728,7 @@ void editor::App::engineRender(){
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
-        || ImGui::GetIO().WantTextInput);
+        || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -3445,6 +3468,12 @@ void editor::App::addNewSceneToDock(uint32_t sceneId){
     }
 }
 
+void editor::App::sceneDeleting(uint32_t sceneId) {
+    if (physicsPlacementWindow) {
+        physicsPlacementWindow->sceneDeleting(sceneId);
+    }
+}
+
 void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (sceneWindow) {
         sceneWindow->clearSceneState(sceneId);
@@ -3474,6 +3503,8 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
+    // physics gestures are cancelled, the sessions and the decomposition cache dropped
+    physicsPlacementWindow->resetForProjectSwitch();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
@@ -3587,6 +3618,13 @@ void editor::App::stopTransientPreviews() {
     if (inspectorWindow) {
         inspectorWindow->stopTransientPreviews();
     }
+    // a scene is never saved or played with physics preview poses in it: a released gesture
+    // settles and commits first, a held one is cancelled (and place_with_physics screenshots
+    // put their poses back)
+    if (physicsPlacementWindow) {
+        physicsPlacementWindow->finaliseGestures();
+    }
+    mcp::stopPlacementPreviews(&project);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
@@ -3891,6 +3929,14 @@ editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
     return textureSynthesisWindow;
 }
 
+editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
+    return physicsPlacementWindow;
+}
+
+editor::MainToolbar* editor::App::getMainToolbar() const{
+    return mainToolbar;
+}
+
 void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
     if (!editRecipe) {
         textureSynthesisWindow->openWithExample(image);
@@ -4113,6 +4159,7 @@ void editor::App::applyPanelVisibilitySettings() {
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
 }
@@ -4127,6 +4174,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
 
