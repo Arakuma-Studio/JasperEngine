@@ -559,6 +559,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
         args.vert_file = "htmlui_post.vert";
         args.frag_file = "htmlui_post.frag";
         addHtmlUIPostPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::SHADOW_CACHE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = (properties & (1 << 0)) ? "shadow_atlas_view.frag" : "shadow_restore.frag";  // 'Vis'
     }else if (shaderType == ShaderType::UI_EFFECT){
         // the fragment is the effect's (compile: effects/<name>.frag, or a project's .frag)
         const bool filterForm = (properties & (1 << 0)) != 0;                   // 'Flt'

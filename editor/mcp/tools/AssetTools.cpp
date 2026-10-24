@@ -2530,6 +2530,10 @@ void checkShaderTool(const CallPtr& call) {
             }
         }
         for (const ProjectChecks::Finding& finding : stateFindings) text += "\nerror: " + finding.message;
+        for (const Json& finding : findings) {
+            if (finding.value("severity", std::string()) == "warning")
+                text += "\nwarning: " + finding.value("path", std::string()) + ": " + finding.value("message", std::string());
+        }
         call->ok((failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text,
                  Json{{"results", results}, {"failed", failed}, {"findings", findings}});
     });

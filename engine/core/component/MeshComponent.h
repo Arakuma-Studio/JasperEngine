@@ -203,6 +203,8 @@ namespace jasperengine{
         int slotVSShadows = -1;
         int slotFSShadows = -1;
         int slotFSPointShadows = -1;
+        int slotFSShadowData = -1;        // u_fs_shadow_data (includes/shadow_data.glsl)
+        int slotFSPointShadowData = -1;   // u_fs_point_shadow_data
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
         int slotVSTerrain = -1;
@@ -357,6 +359,12 @@ namespace jasperengine{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        // its shadows are cached in the static layer: redrawn only when it (or another static
+        // caster of the slot) changes, while dynamic casters move over it (docs/rendering/shadows.md)
+        bool staticShadowCaster = false;
+        // runtime: bumped on every change of what it casts that its bounds alone may miss (a
+        // transform, a mesh reload, a buffer or depth texture update): the shadow cache's input
+        uint32_t shadowCasterRevision = 0;
         bool renderInReflectionProbes = true; // when false the mesh is skipped by probe captures
 
         bool transparent = false;

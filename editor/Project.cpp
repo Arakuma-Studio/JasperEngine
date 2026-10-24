@@ -1933,6 +1933,34 @@ int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
 }
 
+void editor::Project::setShadowTier(int platform, ShadowTier tier){
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return;
+    shadowTiers[platform] = tier;
+    // the editor renders with the tiers at once (RenderSystem resolves them every update)
+    ShadowTiers::setPlatformTier(platform, tier);
+}
+
+ShadowTier editor::Project::getShadowTier(int platform) const{
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return ShadowTier::HIGH;
+    return shadowTiers[platform];
+}
+
+const char* editor::Project::getShadowTierPlatformName(int platform){
+    // Engine::Platform order
+    static const char* const names[ShadowTiers::PLATFORM_COUNT] = {"macos", "ios", "web", "android", "linux", "windows"};
+    return (platform >= 0 && platform < ShadowTiers::PLATFORM_COUNT) ? names[platform] : "";
+}
+
+int editor::Project::findShadowTierPlatform(const std::string& name){
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        if (name == getShadowTierPlatformName(platform))
+            return platform;
+    }
+    return -1;
+}
+
 void editor::Project::setWindowMode(WindowMode windowMode){
     this->windowMode = windowMode;
 }
@@ -3277,6 +3305,18 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             insertKeys(variant.first, variant.second, 0);
+    }
+
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    {
+        auto lights = scene->getComponentArray<LightComponent>();
+        for (int i = 0; i < (int)lights->size(); i++) {
+            if (lights->getComponentFromIndex(i).shadows) {
+                keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+                break;
+            }
+        }
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -4756,6 +4796,9 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        setShadowTier(platform, ShadowTiers::defaultTier(platform));
+    }
     setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;

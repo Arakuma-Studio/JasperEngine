@@ -48,9 +48,11 @@ namespace jasperengine {
         ColorFormat color = ColorFormat::RGBA;
         DepthStencilFormat depth = DepthStencilFormat::DEPTH_STENCIL;
         int sampleCount = 1;
+        bool colorless = false;          // no colour attachment at all (the depth-only shadow atlases)
 
         bool operator==(const RenderTargetFormat& o) const{
-            return swapchain == o.swapchain && color == o.color && depth == o.depth && sampleCount == o.sampleCount;
+            return swapchain == o.swapchain && color == o.color && depth == o.depth && sampleCount == o.sampleCount &&
+                   colorless == o.colorless;
         }
         bool operator!=(const RenderTargetFormat& o) const{ return !(*this == o); }
     };
@@ -77,6 +79,7 @@ namespace jasperengine {
             add((uint64_t)target.color, 1);
             add((uint64_t)target.depth, 1);
             add((uint64_t)(uint32_t)target.sampleCount, 4);
+            add(target.colorless ? 1 : 0, 1);
             add((uint64_t)blend, 1);
             add((uint64_t)writeMask, 1);
             add(stencil.enabled ? 1 : 0, 1);

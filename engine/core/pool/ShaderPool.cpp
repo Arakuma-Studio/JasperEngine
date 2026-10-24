@@ -134,6 +134,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "shadowcache") {
+        shaderType = ShaderType::SHADOW_CACHE;
+        return true;
+    }
 
     return false;
 }
@@ -489,6 +493,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -525,6 +530,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::SHADOW_CACHE: return 1;
         default:                 return 0;
     }
 }
@@ -620,6 +626,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
+        }
+    } else if (shaderType == ShaderType::SHADOW_CACHE) {
+        switch (bit) {
+            case 0: return shortName ? "Vis" : "Atlas View";
         }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {

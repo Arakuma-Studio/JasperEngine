@@ -106,7 +106,7 @@ public:
     // Prefab file format, see editor/project/PREFABS.md:
     // {type: Prefab, version: 3, guid, nextEntity, root, members: [...]}
     // 2: header, wrapper-root model; 3: the prefab's root GameObject is `root`
-    static constexpr int FILE_VERSION = 3;
+    static constexpr int FILE_VERSION = 4;
 
     struct FileHeader {
         int version = 1;                  // 1: a file written before the header

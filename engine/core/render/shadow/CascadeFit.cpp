@@ -223,6 +223,9 @@ CascadeFitResult CascadeFit::fit(const CascadeFitInput& input, const CascadeFitR
 
     const unsigned int cascades = input.orthographic ? 1u : std::clamp(input.cascades, 1u, CASCADE_FIT_MAX);
     result.cascades = cascades;
+    for (unsigned int c = 0; c < CASCADE_FIT_MAX; c++){
+        result.cascadeResolution[c] = (input.cascadeResolution[c] > 0) ? input.cascadeResolution[c] : result.resolution;
+    }
 
     float splitFar[CASCADE_FIT_MAX];
     computeSplits(input, splitFar);
@@ -278,7 +281,7 @@ CascadeFitResult CascadeFit::fit(const CascadeFitInput& input, const CascadeFitR
         float requestedUse = 0.0f;
         for (unsigned int c = 0; c < cascades; c++){
             if (previous->sphereRadius[c] != sphereR[c] || previous->splitFar[c] != result.splitFar[c] ||
-                    previous->splitNear[c] != result.splitNear[c]){
+                    previous->splitNear[c] != result.splitNear[c] || previous->cascadeResolution[c] != result.cascadeResolution[c]){
                 continue; // the slice changed (field of view, aspect, splits): refit
             }
             const double guard = (double)previous->radius[c] - (double)sphereR[c];
@@ -332,7 +335,7 @@ CascadeFitResult CascadeFit::fit(const CascadeFitInput& input, const CascadeFitR
 
         const float guardFraction = input.freeze ? freezeGuardFraction(c) : 0.0f;
         const float radius = input.freeze ? quantizeRadius(sphereR[c] * (1.0f + guardFraction)) : sphereR[c];
-        const double texel = 2.0 * (double)radius / (double)result.resolution;
+        const double texel = 2.0 * (double)radius / (double)result.cascadeResolution[c];
         const double centerX = std::round(sphereX[c] / texel) * texel;
         const double centerY = std::round(sphereY[c] / texel) * texel;
 

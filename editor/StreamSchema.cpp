@@ -62,9 +62,9 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "times"}},
         {ComponentType::LayoutGroupComponent, {"fillAvailableSpace", "type", "useAllWrapSpace", "wrapCellHeight", "wrapCellWidth"}},
         {ComponentType::Light2DComponent, {"color", "enabled", "falloff", "height", "intensity", "mapResolution", "range", "shadowBias", "shadowSoftness", "shadows"}},
-        {ComponentType::LightComponent, {"automaticShadowCamera", "color", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowBias", "shadowCameraNearFar", "shadows", "spotMask", "type", "worldDirection"}},
+        {ComponentType::LightComponent, {"automaticShadowCamera", "cascadeSplitMode", "cascadeSplits", "color", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowAngularDiameter", "shadowBias", "shadowCameraNearFar", "shadowDistance", "shadowNormalBias", "shadowSourceRadius", "shadowStrength", "shadowUpdateMode", "shadows", "softShadows", "spotMask", "type", "worldDirection"}},
         {ComponentType::LineRendererComponent, {"blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "maxLines", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil"}},
-        {ComponentType::MeshComponent, {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"}},
+        {ComponentType::MeshComponent, {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"}},
         {ComponentType::MeshPolygonComponent, {"automaticFlipY", "flipY", "height", "points", "width"}},
         {ComponentType::MirrorComponent, {"normal"}},
         {ComponentType::ModelComponent, {"animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"}},
@@ -117,7 +117,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
     static const std::map<RootKind, std::vector<std::string>> tables = {
         {RootKind::Scene, {"formatVersion", "id", "name", "scene", "sceneType", "mainCamera", "maxValues", "shaderKeys",
             "childScenes", "cppScripts", "cppScriptPaths", "prefabs", "entities"}},
-        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
+        {RootKind::SceneSettings, {"ambientLight2DColor", "ambientLight2DIntensity", "backgroundColor", "defaultLinesShader", "defaultMeshShader", "defaultPointsShader", "defaultSkyShader", "defaultUIShader", "depthPrepassEnabled", "enableUIEvents", "fixedResolutionEnabled", "fixedResolutionFilter", "fixedResolutionHeight", "fixedResolutionWidth", "globalIlluminationColor", "globalIlluminationIntensity", "gravity2D", "gravity3D", "lightState", "maxLightsPerObject", "meshLodEnabled", "meshLodThreshold", "postProcess", "postProcessing", "sceneColorScale", "shadow2DQuality", "shadowCascadeBlend", "shadowDistance", "shadowFadeFraction", "shadowQuality", "ssaoBias", "ssaoEnabled", "ssaoIntensity", "ssaoRadius", "ssrBlur", "ssrEnabled", "ssrIntensity", "ssrMaxDistance", "ssrMaxSteps", "ssrThickness"}},
         // prefabInstance and the keys written before it (prefabOverrides...), and the keys of
         // the GameObjects a prefab adds to an instance (addedTo, childIndex...)
         {RootKind::Entity, {"type", "entity", "name", "active", "tag", "layer", "components", "children",
@@ -125,7 +125,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetsDir", "canvasHeight", "canvasWidth", "cxxStandard", "export", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetsDir", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "nextEntity", "root", "members", "stripped"}},
@@ -748,7 +748,36 @@ const EnumTable<ShadowQuality>& StreamSchema::shadowQuality() {
         {ShadowQuality::LOW, "low"},
         {ShadowQuality::MEDIUM, "medium"},
         {ShadowQuality::HIGH, "high"},
-    }, ShadowQuality::LOW);
+        {ShadowQuality::AUTO, "auto"},
+        {ShadowQuality::ULTRA, "ultra"},
+    }, ShadowQuality::AUTO);
+    return table;
+}
+
+const EnumTable<ShadowUpdateMode>& StreamSchema::shadowUpdateMode() {
+    static const EnumTable<ShadowUpdateMode> table("ShadowUpdateMode", {
+        {ShadowUpdateMode::AUTO, "auto"},
+        {ShadowUpdateMode::EVERY_FRAME, "everyFrame"},
+        {ShadowUpdateMode::ON_DEMAND, "onDemand"},
+    }, ShadowUpdateMode::AUTO);
+    return table;
+}
+
+const EnumTable<CascadeSplitMode>& StreamSchema::cascadeSplitMode() {
+    static const EnumTable<CascadeSplitMode> table("CascadeSplitMode", {
+        {CascadeSplitMode::AUTO, "auto"},
+        {CascadeSplitMode::MANUAL, "manual"},
+    }, CascadeSplitMode::AUTO);
+    return table;
+}
+
+const EnumTable<ShadowTier>& StreamSchema::shadowTier() {
+    static const EnumTable<ShadowTier> table("ShadowTier", {
+        {ShadowTier::LOW, "low"},
+        {ShadowTier::MEDIUM, "medium"},
+        {ShadowTier::HIGH, "high"},
+        {ShadowTier::ULTRA, "ultra"},
+    }, ShadowTier::HIGH);
     return table;
 }
 

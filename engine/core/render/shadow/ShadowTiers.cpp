@@ -3,6 +3,7 @@
 
 #include "ShadowTiers.h"
 
+#include <algorithm>
 #include <cstring>
 
 using namespace jasperengine;
@@ -20,6 +21,9 @@ namespace {
     };
 
     const char* const tierNames[] = {"low", "medium", "high", "ultra"};
+
+    // the project's tiers by Engine::Platform, -1 for the default
+    int platformTiers[ShadowTiers::PLATFORM_COUNT] = {-1, -1, -1, -1, -1, -1};
 }
 
 const ShadowTierSettings& ShadowTiers::getSettings(ShadowTier tier){
@@ -52,6 +56,17 @@ ShadowTier ShadowTiers::defaultTier(int platform){
         default:
             return ShadowTier::HIGH;
     }
+}
+
+void ShadowTiers::setPlatformTier(int platform, ShadowTier tier){
+    if (platform >= 0 && platform < PLATFORM_COUNT)
+        platformTiers[platform] = std::clamp(static_cast<int>(tier), 0, 3);
+}
+
+ShadowTier ShadowTiers::getPlatformTier(int platform){
+    if (platform >= 0 && platform < PLATFORM_COUNT && platformTiers[platform] >= 0)
+        return static_cast<ShadowTier>(platformTiers[platform]);
+    return defaultTier(platform);
 }
 
 const char* ShadowTiers::getName(ShadowTier tier){

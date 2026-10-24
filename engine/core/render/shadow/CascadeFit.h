@@ -36,6 +36,7 @@ namespace jasperengine {
         Vector3 lightDir = Vector3(0.0f, -1.0f, 0.0f);   // world direction the light points
         unsigned int cascades = 1;          // 1..CASCADE_FIT_MAX (orthographic cameras: 1)
         unsigned int resolution = 1024;     // texels per side of each cascade's map
+        unsigned int cascadeResolution[CASCADE_FIT_MAX] = {};   // per cascade, where not 0 (the farthest may be smaller)
         float splits[CASCADE_FIT_MAX - 1] = {0.067f, 0.2f, 0.467f};   // MANUAL: fractions of shadowDistance
         CascadeSplitMode mode = CascadeSplitMode::AUTO;
         float blendFraction = CASCADE_BLEND_FRACTION;    // 0: slices only touch (no blend band)
@@ -63,6 +64,7 @@ namespace jasperengine {
         bool refit[CASCADE_FIT_MAX] = {};               // fitted this call (false: the previous fit kept, frozen)
         Vector3 lightDir;                               // the light direction fitted to
         unsigned int resolution = 0;
+        unsigned int cascadeResolution[CASCADE_FIT_MAX] = {};   // texels per side of each cascade's map
     };
 
     class JASPERENGINE_API CascadeFit {

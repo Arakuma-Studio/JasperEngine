@@ -970,6 +970,11 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u));
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u));
     }
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    if (allFacts & FACT_SHADOW_LIGHTS){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+    }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)
     if (allFacts & FACT_SHADOW_LIGHTS_2D){

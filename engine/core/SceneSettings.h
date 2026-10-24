@@ -21,15 +21,30 @@ namespace jasperengine{
         AUTO
     };
 
-    // PCF filter quality of shadow edges, uniform-driven (no shader rebuild).
-    // 3D shadows (shadowQuality): NONE = 1 tap, LOW = 3x3, MEDIUM = 5x5, HIGH = 7x7.
-    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH = 13 taps
-    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness.
+    // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
+    // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
+    // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
+    // Only") the platform's tier with every light's shadows hard.
+    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH (and ULTRA) = 13 taps
+    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness (AUTO = LOW).
     enum class ShadowQuality {
-        NONE,   // 1 tap, no filtering (hard edges)
+        NONE,   // 3D: Hard Only; 2D: 1 tap, no filtering (hard edges)
         LOW,
         MEDIUM,
-        HIGH
+        HIGH,
+        AUTO,
+        ULTRA
+    };
+
+    // The Scene view's shadow debug views (editor only, never saved): what the shading of lit
+    // surfaces is replaced with
+    enum class ShadowDebugView {
+        NONE,
+        CASCADES,       // the cascade of each pixel tinted, the blend band hatched
+        SHADOW_FACTOR,  // the main light's lit fraction, grey
+        TEXEL_DENSITY,  // a checker of its shadow texels
+        CACHE,          // green skipped, yellow restored, red redrawn this frame
+        ATLAS           // the shadow atlases and static caches drawn over the view
     };
 
     // Resolution of the scene-colour copy sampled by shaders requiring scenecolor.
@@ -226,7 +241,13 @@ namespace jasperengine{
     // and reset "default" values without building a full Scene (which owns a physics runtime).
     struct SceneSettings {
         Vector4 backgroundColor = Vector4(0.0, 0.0, 0.0, 1.0); // sRGB
-        ShadowQuality shadowQuality = ShadowQuality::LOW;
+        ShadowQuality shadowQuality = ShadowQuality::AUTO;
+        // directional shadows end this far from the camera (metres; 0: the quality tier's), fading
+        // to lit over its last shadowFadeFraction; cascades blend into each other over a band
+        // before each split (dithered on the Low tier) unless shadowCascadeBlend is off
+        float shadowDistance = 0.0f;
+        float shadowFadeFraction = 0.1f;
+        bool shadowCascadeBlend = true;
 
         // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
         bool meshLodEnabled = false;

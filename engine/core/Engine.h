@@ -420,6 +420,8 @@ namespace jasperengine {
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);
         static const FrameStats& getFrameStats();
+        // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
+        static uint32_t getPendingDrawCalls();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();

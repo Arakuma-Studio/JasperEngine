@@ -41,8 +41,9 @@ namespace {
             EXPECT_LE(a.x + a.width, (int)layout.width);
             EXPECT_LE(a.y + a.height, (int)layout.height);
             for (size_t j = i + 1; j < layout.rects.size(); j++){
-                if (!layout.rects[j].empty())
+                if (!layout.rects[j].empty()){
                     EXPECT_FALSE(overlap(a, layout.rects[j])) << i << " and " << j;
+                }
             }
         }
     }

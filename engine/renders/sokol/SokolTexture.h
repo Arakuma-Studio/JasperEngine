@@ -15,7 +15,8 @@ namespace jasperengine{
         sg_image image;
         sg_sampler sampler;
         sg_view view;
-        size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
+        size_t streamBytes;
+        bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);
@@ -57,6 +58,10 @@ namespace jasperengine{
         bool createDynamicTexture(const std::string& label, int width, int height);
         bool createDynamicTexture(const std::string& label, int width, int height,
                     ColorFormat colorFormat, TextureFilter filter);
+        // a second view of source's image with a nearest, non-comparison sampler: the raw
+        // depths of a shadow atlas (sampled as unfilterable_float). It does not own the image,
+        // which must outlive it.
+        bool createAliasView(const SokolTexture& source, const char* label);
         // RGBA8, linear filtering, clamped, rewritten whole by updateTexture at most once a frame
         // (the post-processing colour LUTs)
         bool createDynamicColorTexture(const std::string& label, int width, int height);

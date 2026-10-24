@@ -1089,6 +1089,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystem.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
+    core/subsystem/RenderSystemShadows.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp

@@ -59,6 +59,11 @@ namespace jasperengine {
         // the default tier of a platform (Engine::Platform as an int: MacOS, iOS, Web, Android,
         // Linux, Windows)
         static ShadowTier defaultTier(int platform);
+        // the project's tier of a platform (graphics.shadowTier.<platform>): set by the editor and
+        // by an exported game's startup code, the default until then
+        static void setPlatformTier(int platform, ShadowTier tier);
+        static ShadowTier getPlatformTier(int platform);
+        static constexpr int PLATFORM_COUNT = 6;
 
         // lower-case names, as saved and as MCP and Lua take them: low, medium, high, ultra
         static const char* getName(ShadowTier tier);
