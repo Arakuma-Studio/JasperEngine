@@ -947,9 +947,14 @@ TEST(ConvexDecomposition, ClearRemovesEverything) {
     EXPECT_TRUE(fs::is_empty(dir.path));
 }
 
+// the build option and what the cache reports agree (the test below is in one build or the other)
+TEST(ConvexDecomposition, AvailabilityMatchesTheBuildOption) {
+    EXPECT_EQ(ConvexDecompositionCache::available(), JASPER_TEST_CONVEX_DECOMPOSITION != 0);
+}
+
+// only in a build without V-HACD (S02 R11: registered there, never a skipped test here)
+#if !JASPER_TEST_CONVEX_DECOMPOSITION
 TEST(ConvexDecomposition, BuildsWithoutDecompositionStillCache) {
-    if (ConvexDecompositionCache::available())
-        GTEST_SKIP() << "built with JASPERENGINE_CONVEX_DECOMPOSITION";
     const char* const expected = "convex decomposition is not available in this build";
     const Mesh mesh = cube();
     std::vector<ConvexHullPoints> hulls(1);
@@ -979,3 +984,4 @@ TEST(ConvexDecomposition, BuildsWithoutDecompositionStillCache) {
     other.cancel(key);
     other.cancelAll();
 }
+#endif
