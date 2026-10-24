@@ -537,6 +537,15 @@ bool editor::CreateEntityCmd::execute(){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
 
+    }else if (type == EntityCreationType::LATTICE_TRACKS){
+
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<KeyframeTracksComponent>(entity, {});
+        scene->addComponent<LatticeTracksComponent>(entity, {});
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
     }else if (type == EntityCreationType::CAMERA){
 
         scene->addComponent<Transform>(entity, {});

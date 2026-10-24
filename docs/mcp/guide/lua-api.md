@@ -117,7 +117,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
-`MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
+`MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
 
 The wrapper only wraps the entity; it does not check the entity really has that component.
@@ -602,8 +602,8 @@ EntityHandle
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
  |- AudioSource, Rigidbody2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
-             ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
-             ScaleTracks, TranslateTracks
+             ParticleSystem, SpriteAnimation, Animation, MorphTracks, LatticeTracks,
+             RotateTracks, ScaleTracks, TranslateTracks
 Joint2D, Joint3D (standalone classes)
 ```
 
@@ -919,6 +919,9 @@ Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
 `getActionFrame(i)` (partial). Keyframe tracks: `TranslateTracks`, `RotateTracks`,
 `ScaleTracks`, `MorphTracks` with `setTimes`, `setValues`, `setEasings`, `setEasing`.
+`LatticeTracks(scene, times, points, values)` keys lattice offsets: `points` are flat indices
+(`i + rx*(j + ry*k)`), `values[key][n]` the offset of `points[n]`; also `setPoints`. Its target
+needs a LatticeComponent; points it does not animate keep their offsets.
 
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).

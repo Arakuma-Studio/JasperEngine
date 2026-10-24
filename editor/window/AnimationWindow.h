@@ -97,12 +97,14 @@ namespace jasperengine::editor{
         std::string keyNotice;
         double keyNoticeAt;
 
-        // channel: 0 = position, 1 = rotation, 2 = scale
+        // channel: 0 = position, 1 = rotation, 2 = scale, 3 = lattice offsets (lattice targets)
         void keyTargetChannels(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim, Entity target,
                                float time, const std::vector<int>& channels);
         void keyTrackChannel(Scene* scene, SceneProject* sceneProject, Entity trackEntity,
                              float localTime, float explicitDuration, int channel);
         bool hasSnapshotTracks(Scene* scene, const AnimationComponent& anim) const;
+        // a lattice track's block was selected: select its lattice and points in the Scene view
+        void selectLatticeTrackPoints(SceneProject* sceneProject, Entity trackEntity);
         void snapshotTracks(Scene* scene, SceneProject* sceneProject, AnimationComponent& anim);
         // Commit any active key/frame drag and clear its transient state. Playback
         // and preview transitions call this before changing authoring permissions.
