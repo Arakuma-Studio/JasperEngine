@@ -2208,6 +2208,9 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.gravityFactor = " << formatFloat(body.gravityFactor) << ";\n";
     code << ind << "rigidbody.friction = " << formatFloat(body.friction) << ";\n";
     code << ind << "rigidbody.restitution = " << formatFloat(body.restitution) << ";\n";
+    code << ind << "rigidbody.buoyancy = " << formatFloat(body.buoyancy) << ";\n";
+    code << ind << "rigidbody.waterDrag = " << formatFloat(body.waterDrag) << ";\n";
+    code << ind << "rigidbody.waterAngularDrag = " << formatFloat(body.waterAngularDrag) << ";\n";
     // The bit mask, rather than six OR'd enumerators in the generated source.
     code << ind << "rigidbody.allowedDOFs = " << static_cast<unsigned int>(body.allowedDOFs) << ";\n";
     code << ind << "rigidbody.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";

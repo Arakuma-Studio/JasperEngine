@@ -186,6 +186,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"torus", EntityCreationType::TORUS, "Torus"},
         {"model", EntityCreationType::MODEL, "Model"},
         {"terrain", EntityCreationType::TERRAIN, "Terrain"},
+        {"water", EntityCreationType::WATER, "Water"},
         {"camera", EntityCreationType::CAMERA, "Camera"},
         {"directional_light", EntityCreationType::DIRECTIONAL_LIGHT, "Directional Light"},
         {"point_light", EntityCreationType::POINT_LIGHT, "Point Light"},

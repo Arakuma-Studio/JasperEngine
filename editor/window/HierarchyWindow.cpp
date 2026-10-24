@@ -474,6 +474,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+        {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
         {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
