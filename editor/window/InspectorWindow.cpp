@@ -9,6 +9,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
@@ -411,18 +412,15 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
     std::filesystem::path absolutePath = project->getProjectPath() / entry.relativePath;
 
     try {
-        std::ofstream out(absolutePath, std::ios::binary | std::ios::trunc);
-        if (out.is_open()) {
-            std::string payload = YAML::Dump(Stream::encodeMaterial(material));
-            out.write(payload.c_str(), payload.size());
-            out.close();
-
+        if (FileUtils::writeFileReplacing(absolutePath, YAML::Dump(Stream::encodeMaterial(material)))) {
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
             project->refreshLinkedMaterials(true);
 
             if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
                 projectWindow->notifyResourceFileChanged(absolutePath);
             }
+        } else {
+            Out::error("Failed to write linked material file '%s'", absolutePath.string().c_str());
         }
     } catch (const std::exception& e) {
         Out::error("Error saving linked material file '%s': %s", absolutePath.string().c_str(), e.what());

@@ -2231,12 +2231,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
             continue;
         }
 
-        std::ofstream file(entry.path());
-        if (!file){
+        if (!FileUtils::writeFileReplacing(entry.path(), YAML::Dump(Stream::encodeMaterial(material)))){
             Out::error("Failed to write material: %s", entry.path().string().c_str());
             continue;
         }
-        file << YAML::Dump(Stream::encodeMaterial(material));
         changed = true;
     }
 
@@ -5210,18 +5208,10 @@ bool editor::Project::saveProjectFile() {
 
     try {
         std::filesystem::path projectFile = projectPath / "project.yaml";
-        std::ofstream fout(projectFile.string());
-        if (!fout) {
-            Out::error("Failed to open project file for writing: %s", projectFile.string().c_str());
-            return false;
-        }
 
         // Trailing newline: git reports a file without one as changed as soon as
         // anything is appended to it
-        fout << YAML::Dump(Stream::encodeProject(this)) << "\n";
-        fout.close();
-
-        if (!fout) {
+        if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n")) {
             Out::error("Failed to write project file: %s", projectFile.string().c_str());
             return false;
         }
@@ -5714,14 +5704,10 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
-        std::ofstream fout(fullPath.string());
-        if (!fout) {
-            Out::error("Failed to open scene file for writing: %s", fullPath.string().c_str());
+        if (!FileUtils::writeFileReplacing(fullPath, YAML::Dump(root) + "\n")) {
+            Out::error("Failed to write scene file: %s", fullPath.string().c_str());
             return false;
         }
-
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
 
         // Every id this file carries has reached disk and can no longer be reclaimed
         sceneProject->transientId = false;
