@@ -5554,24 +5554,72 @@ bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, Sc
     bool success = false;
     if (loadedSceneProject == editorScene) {
         success = saveSceneFile(editorScene, editorScene->filepath, false);
-        if (success) {
-            editorScene->isModified = keepModified;
-        }
     } else {
-        loadedSceneProject->shaderKeys = editorScene->shaderKeys;
-        success = saveSceneFile(loadedSceneProject, editorScene->filepath, false);
-        if (success) {
-            editorScene->filepath = loadedSceneProject->filepath;
-            editorScene->shaderKeys = loadedSceneProject->shaderKeys;
-            editorScene->isModified = keepModified;
-        }
+        // A Play copy has no snapshot to go back to and holds the played state, so only the
+        // shader keys it found reach the file
+        success = saveSceneShaderKeys(editorScene);
     }
 
     if (success) {
+        editorScene->isModified = keepModified;
         Out::info("Auto-saved scene '%s' on stop", editorScene->name.c_str());
     }
 
     return success;
+}
+
+// The scene's shaderKeys written into its file as it is on disk, the rest of the file untouched
+bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) {
+        fullPath = getProjectPath() / fullPath;
+    }
+
+    try {
+        YAML::Node root = YAML::LoadFile(fullPath.string());
+        if (!root.IsMap()) {
+            Out::error("Failed to save shader keys of scene '%s': %s is not a scene file", sceneProject->name.c_str(), fullPath.string().c_str());
+            return false;
+        }
+
+        const YAML::Node& onDisk = root;
+
+        // The file's keys stay, as a full save keeps the ones saved before
+        for (ShaderKey key : Stream::decodeShaderKeys(onDisk["shaderKeys"])) {
+            sceneProject->shaderKeys.insert(key);
+        }
+        const YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
+
+        std::string content;
+        if (!shaderKeysNode.size()) {
+            root.remove("shaderKeys");
+            content = YAML::Dump(root);
+        } else if (onDisk["shaderKeys"] || !onDisk["maxValues"]) {
+            root["shaderKeys"] = shaderKeysNode;
+            content = YAML::Dump(root);
+        } else {
+            // After maxValues, where encodeSceneProject() puts them, so the next full save moves nothing
+            YAML::Node ordered(YAML::NodeType::Map);
+            for (const auto& item : onDisk) {
+                const std::string key = item.first.as<std::string>();
+                ordered[key] = item.second;
+                if (key == "maxValues") {
+                    ordered["shaderKeys"] = shaderKeysNode;
+                }
+            }
+            content = YAML::Dump(ordered);
+        }
+
+        if (!FileUtils::writeFileReplacing(fullPath, content + "\n")) {
+            Out::error("Failed to write scene file: %s", fullPath.string().c_str());
+            return false;
+        }
+    } catch (const std::exception& e) {
+        Out::error("Failed to save shader keys of scene '%s': %s", sceneProject->name.c_str(), e.what());
+        return false;
+    }
+
+    return true;
 }
 
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
