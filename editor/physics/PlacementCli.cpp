@@ -544,14 +544,14 @@ namespace jasperengine::editor {
                     err << prefix << "the result could not be applied: " << error << "\n";
                     return 1;
                 }
-                if (!project.saveSceneToPath(sceneId, sp->filepath, false)) {
-                    err << prefix << "the scene could not be saved: " << sp->filepath.generic_u8string() << "\n";
+                const fs::path file = sp->filepath;
+                if (!project.saveSceneToPath(sceneId, file, false)) {
+                    err << prefix << "the scene could not be saved: " << file.generic_u8string() << "\n";
                     return 1;
                 }
                 saved = true;
             }
 
-            sp = project.getScene(sceneId);
             if (o.format == "json") {
                 report = placementResultJson(&project, result, saved).dump(1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
             } else {
