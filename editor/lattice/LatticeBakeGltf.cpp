@@ -563,8 +563,17 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
             }
             static const std::map<Slot, Data> unchanged;
             for (const auto& [mesh, nodeList] : nodesOfMesh){
-                std::vector<std::pair<const std::map<Slot, Data>*, size_t>> groups;
+                // the nodes keeping their data come first, so they keep the mesh and the copies
+                // go to the nodes with new data
+                std::vector<size_t> ordered;
                 for (size_t node : nodeList){
+                    if (!outputs.count((int)node)) ordered.push_back(node);
+                }
+                for (size_t node : nodeList){
+                    if (outputs.count((int)node)) ordered.push_back(node);
+                }
+                std::vector<std::pair<const std::map<Slot, Data>*, size_t>> groups;
+                for (size_t node : ordered){
                     auto found = outputs.find((int)node);
                     const std::map<Slot, Data>* data = (found != outputs.end()) ? &found->second : &unchanged;
                     size_t meshIndex = mesh;

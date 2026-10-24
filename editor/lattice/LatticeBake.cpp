@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -275,6 +276,7 @@ namespace{
         if (const ModelComponent* model = scene->findComponent<ModelComponent>(entity)){
             if (FileData::getFilePathExtension(model->filename) == "obj") return "an OBJ model";
             if (model->filename.empty()) return "a Model without a file";
+            return "a model that cannot be baked now";
         }
         return "a generated mesh";
     }
@@ -512,7 +514,7 @@ namespace{
             }
             if (!added){
                 auto why = modelReasons.find(modelEntity);
-                unbakeable[candidate] = (why != modelReasons.end()) ? why->second : meshKind(scene, candidate);
+                unbakeable[candidate] = meshKind(scene, (why != modelReasons.end()) ? modelEntity : candidate);
             }
         }
         if (plan.meshes.empty()){
@@ -662,7 +664,7 @@ namespace{
                 }else if (!entry.moving){
                     why = "its lattice is at rest (or its weight is 0): there is nothing to bake";
                 }else{
-                    why = "it is past the " + std::to_string(LATTICE_MAX_PER_MESH) + " lattices a mesh takes, so it deforms nothing now";
+                    why = "it is past the " + std::to_string(LATTICE_MAX_PER_MESH) + " lattices a mesh takes (or its mesh is scaled to zero), so it deforms nothing now";
                 }
                 plan.kept[binding] = why;
             }
