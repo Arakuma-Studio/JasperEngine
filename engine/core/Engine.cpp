@@ -24,6 +24,7 @@
 #include "component/InputFieldComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -975,6 +976,11 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         action.onPause.clear();
         action.onStop.clear();
         action.onStep.clear();
+    }
+
+    auto animators = scene->getComponentArray<PoseAnimatorComponent>();
+    for (size_t i = 0; i < animators->size(); i++) {
+        animators->getComponentFromIndex(i).onFinish.clear();
     }
 }
 

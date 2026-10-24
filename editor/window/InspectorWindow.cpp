@@ -9418,7 +9418,7 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
         if (runtime && runtime->failed) {
             ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", runtime->error.c_str());
         }else if (runtime && runtime->isLoaded()) {
-            ImGui::TextDisabled("%s  %.2f / %.2f s", animator.playing ? "Playing" : (runtime->transitionActive ? "Go to pose" : "Stopped"),
+            ImGui::TextDisabled("%s  %.2f / %.2f s", animator.playing ? "Playing" : (runtime->transitionActive && !runtime->transitionArrived ? "Go to pose" : "Paused"),
                                 animator.time, runtime->length);
         }else if (!animator.animation.empty()) {
             ImGui::TextDisabled("Loading...");

@@ -3120,6 +3120,67 @@
 		564944455DB009B63B74F936 /* loopfilter16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */; };
 		56494445772C1363CE27A8BD /* looprestoration16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */; };
 		56494445FFA36BAE684D5CC3 /* mc16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944451D86439B773050CE /* mc16_sse.asm */; };
+		4A534E47B39A585CBB285DE1 /* SceneSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */; };
+		4A534E47E2A16F51F26DF95A /* SceneSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */; };
+		4A534E47BA13AD69F3AA0DE3 /* HumanBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4780B7D719CD53EC07 /* HumanBones.cpp */; };
+		4A534E47A7AA220839F23231 /* HumanBones.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4780B7D719CD53EC07 /* HumanBones.cpp */; };
+		4A534E479C62CB23D85BECED /* HumanoidMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D68B7A69DBDF9421 /* HumanoidMap.cpp */; };
+		4A534E47F7C278ED96103591 /* HumanoidMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D68B7A69DBDF9421 /* HumanoidMap.cpp */; };
+		4A534E477A96331465C6CF40 /* HumanoidMapIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47517581FE91DCF595 /* HumanoidMapIO.cpp */; };
+		4A534E473C56BBD5EBD66099 /* HumanoidMapIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47517581FE91DCF595 /* HumanoidMapIO.cpp */; };
+		4A534E47EC2AEC8CCFEA60DA /* ModelRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476880017CC6503955 /* ModelRig.cpp */; };
+		4A534E471BAD78929A29121E /* ModelRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476880017CC6503955 /* ModelRig.cpp */; };
+		4A534E47668F72B10B6BF07F /* PoseAnimationIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474B9804E887873B1A /* PoseAnimationIO.cpp */; };
+		4A534E4747BFD8D401141095 /* PoseAnimationIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474B9804E887873B1A /* PoseAnimationIO.cpp */; };
+		4A534E476BCBC9CBA6BDF559 /* PoseAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474A3CC5DFC388AE04 /* PoseAnimatorRuntime.cpp */; };
+		4A534E4716EE7E44FABA0343 /* PoseAnimatorRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474A3CC5DFC388AE04 /* PoseAnimatorRuntime.cpp */; };
+		4A534E473E8CF2057458283B /* PoseDofs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476F38DBE7291B7E0E /* PoseDofs.cpp */; };
+		4A534E47FA5AD6FF55430B96 /* PoseDofs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476F38DBE7291B7E0E /* PoseDofs.cpp */; };
+		4A534E47DC235C6CCDB8E7A3 /* PoseFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4762BB736A6AF480C6 /* PoseFile.cpp */; };
+		4A534E476C3A02D2FFC6AA17 /* PoseFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4762BB736A6AF480C6 /* PoseFile.cpp */; };
+		4A534E47A90C1697B7A990B6 /* PoseIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC911AA4C1121EAA /* PoseIK.cpp */; };
+		4A534E4795D06809196ECD50 /* PoseIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC911AA4C1121EAA /* PoseIK.cpp */; };
+		4A534E47F31C79130118A5B6 /* PoseRanges.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CECB5E20E6FB4F95 /* PoseRanges.cpp */; };
+		4A534E478CDC5D238BED2DC6 /* PoseRanges.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CECB5E20E6FB4F95 /* PoseRanges.cpp */; };
+		4A534E47191DDB168AAEDA0A /* PoseRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A4A706AB9519D91E /* PoseRig.cpp */; };
+		4A534E47B6CDE8F1ED8E827A /* PoseRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A4A706AB9519D91E /* PoseRig.cpp */; };
+		4A534E47028B6A21ECCE177E /* PoseSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B6C22F2BBBF52F96 /* PoseSampler.cpp */; };
+		4A534E47C5D8D038BC0A0E93 /* PoseSampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B6C22F2BBBF52F96 /* PoseSampler.cpp */; };
+		4A534E4754B4ED9091383ED0 /* PoseSecondary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B11F22757596AAB /* PoseSecondary.cpp */; };
+		4A534E47C8049F2DB2C469CD /* PoseSecondary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472B11F22757596AAB /* PoseSecondary.cpp */; };
+		4A534E4736FC5991D082B4D7 /* PoseSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47086E51F5355DBAC0 /* PoseSkin.cpp */; };
+		4A534E479CEEF838ECA675B1 /* PoseSkin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47086E51F5355DBAC0 /* PoseSkin.cpp */; };
+		4A534E47C2765BA06775BE07 /* PoseTween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47603D3553FFD06C58 /* PoseTween.cpp */; };
+		4A534E47AD3AC20663674BD0 /* PoseTween.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47603D3553FFD06C58 /* PoseTween.cpp */; };
+		4A534E47449BF2EABF8EFD49 /* PoseAnimator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4727CA5891CD7459B0 /* PoseAnimator.cpp */; };
+		4A534E4738BEE50A166D3A1F /* PoseAnimator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4727CA5891CD7459B0 /* PoseAnimator.cpp */; };
+		4A534E47BBADE1B907D4BE8A /* PoseAnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477CC0B9DD3FD92F03 /* PoseAnimatorSystem.cpp */; };
+		4A534E476C1029713165D592 /* PoseAnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477CC0B9DD3FD92F03 /* PoseAnimatorSystem.cpp */; };
+		4A534E47CD3DFF17685DA2AF /* PostColorLut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */; };
+		4A534E471A9458876F7C30C2 /* PostColorLut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */; };
+		4A534E4779F6167F8B761131 /* PoseAnimatorComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */; };
+		4A534E4778C989A75EFFD658 /* PoseAnimator.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4730B30EBAC88D841B /* PoseAnimator.h */; };
+		4A534E477D193E2FA9DE3AAB /* HumanBones.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F72F19079D22A844 /* HumanBones.h */; };
+		4A534E4751DEBA0803DAB44E /* HumanoidMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473A9CD229806DAEED /* HumanoidMap.h */; };
+		4A534E47D924DECE71A5EA77 /* HumanoidMapIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472590F8AFB793D09C /* HumanoidMapIO.h */; };
+		4A534E47679AB366F01EBFBF /* ModelRig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4782EE3B39657E8C91 /* ModelRig.h */; };
+		4A534E4790D8CA17F162E830 /* PoseAnimationIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47578A6DECCF29F3AA /* PoseAnimationIO.h */; };
+		4A534E47A98F887AB972728B /* PoseAnimatorRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CD5A9C55C4090D5D /* PoseAnimatorRuntime.h */; };
+		4A534E47E7E989C1EE8E4762 /* PoseDofs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CBA66D99A8D10172 /* PoseDofs.h */; };
+		4A534E471650671540FAD6BB /* PoseFile.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478060EF00BE9D1636 /* PoseFile.h */; };
+		4A534E47215BF59D1A22F9D0 /* PoseIK.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4708CF3E5C7C130B1E /* PoseIK.h */; };
+		4A534E4780D6B49DD8D0F27E /* PoseMath.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476E443E663F8932C0 /* PoseMath.h */; };
+		4A534E47DC317417748FCE20 /* PoseRanges.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475E17CF13CFAE2694 /* PoseRanges.h */; };
+		4A534E47BFB91083AAA43E69 /* PoseRig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F60CC52AB3411987 /* PoseRig.h */; };
+		4A534E47ABF4BF063A8D3C72 /* PoseSampler.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473FF8900770D13084 /* PoseSampler.h */; };
+		4A534E47440EEB559AD99BE5 /* PoseSecondary.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470BCC9023A1AF150D /* PoseSecondary.h */; };
+		4A534E471361FAE1930FBBB0 /* PoseSkin.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470E63C0E030A02E8A /* PoseSkin.h */; };
+		4A534E479E34A8FFDB546ED8 /* PoseTween.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471D8143BAD7A54477 /* PoseTween.h */; };
+		4A534E47614CF60033AF1379 /* PoseTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D897442EA212A78A /* PoseTypes.h */; };
+		4A534E4705D2C9495A991155 /* RenderBackendTime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4749FAA44055DBA213 /* RenderBackendTime.h */; };
+		4A534E47DB2DDA933E060B23 /* InstanceSort.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47463DE0CF0861026A /* InstanceSort.h */; };
+		4A534E479BCA38372BACC108 /* PoseAnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470DA1EC3E5E63F3DD /* PoseAnimatorSystem.h */; };
+		4A534E4771B456FDED53E3A8 /* PostColorLut.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE2CA7B811737252 /* PostColorLut.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6362,6 +6423,48 @@
 		56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_sse.asm; sourceTree = "<group>"; };
 		5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_sse.asm; sourceTree = "<group>"; };
 		564944451D86439B773050CE /* mc16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_sse.asm; sourceTree = "<group>"; };
+		4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SceneSettings.cpp; sourceTree = "<group>"; };
+		4A534E4780B7D719CD53EC07 /* HumanBones.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanBones.cpp; sourceTree = "<group>"; };
+		4A534E47D68B7A69DBDF9421 /* HumanoidMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanoidMap.cpp; sourceTree = "<group>"; };
+		4A534E47517581FE91DCF595 /* HumanoidMapIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HumanoidMapIO.cpp; sourceTree = "<group>"; };
+		4A534E476880017CC6503955 /* ModelRig.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelRig.cpp; sourceTree = "<group>"; };
+		4A534E474B9804E887873B1A /* PoseAnimationIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseAnimationIO.cpp; sourceTree = "<group>"; };
+		4A534E474A3CC5DFC388AE04 /* PoseAnimatorRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseAnimatorRuntime.cpp; sourceTree = "<group>"; };
+		4A534E476F38DBE7291B7E0E /* PoseDofs.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseDofs.cpp; sourceTree = "<group>"; };
+		4A534E4762BB736A6AF480C6 /* PoseFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseFile.cpp; sourceTree = "<group>"; };
+		4A534E47CC911AA4C1121EAA /* PoseIK.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseIK.cpp; sourceTree = "<group>"; };
+		4A534E47CECB5E20E6FB4F95 /* PoseRanges.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseRanges.cpp; sourceTree = "<group>"; };
+		4A534E47A4A706AB9519D91E /* PoseRig.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseRig.cpp; sourceTree = "<group>"; };
+		4A534E47B6C22F2BBBF52F96 /* PoseSampler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseSampler.cpp; sourceTree = "<group>"; };
+		4A534E472B11F22757596AAB /* PoseSecondary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseSecondary.cpp; sourceTree = "<group>"; };
+		4A534E47086E51F5355DBAC0 /* PoseSkin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseSkin.cpp; sourceTree = "<group>"; };
+		4A534E47603D3553FFD06C58 /* PoseTween.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseTween.cpp; sourceTree = "<group>"; };
+		4A534E4727CA5891CD7459B0 /* PoseAnimator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseAnimator.cpp; sourceTree = "<group>"; };
+		4A534E477CC0B9DD3FD92F03 /* PoseAnimatorSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseAnimatorSystem.cpp; sourceTree = "<group>"; };
+		4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PostColorLut.cpp; sourceTree = "<group>"; };
+		4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAnimatorComponent.h; sourceTree = "<group>"; };
+		4A534E4730B30EBAC88D841B /* PoseAnimator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAnimator.h; sourceTree = "<group>"; };
+		4A534E47F72F19079D22A844 /* HumanBones.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanBones.h; sourceTree = "<group>"; };
+		4A534E473A9CD229806DAEED /* HumanoidMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanoidMap.h; sourceTree = "<group>"; };
+		4A534E472590F8AFB793D09C /* HumanoidMapIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HumanoidMapIO.h; sourceTree = "<group>"; };
+		4A534E4782EE3B39657E8C91 /* ModelRig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelRig.h; sourceTree = "<group>"; };
+		4A534E47578A6DECCF29F3AA /* PoseAnimationIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAnimationIO.h; sourceTree = "<group>"; };
+		4A534E47CD5A9C55C4090D5D /* PoseAnimatorRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAnimatorRuntime.h; sourceTree = "<group>"; };
+		4A534E47CBA66D99A8D10172 /* PoseDofs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseDofs.h; sourceTree = "<group>"; };
+		4A534E478060EF00BE9D1636 /* PoseFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseFile.h; sourceTree = "<group>"; };
+		4A534E4708CF3E5C7C130B1E /* PoseIK.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseIK.h; sourceTree = "<group>"; };
+		4A534E476E443E663F8932C0 /* PoseMath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseMath.h; sourceTree = "<group>"; };
+		4A534E475E17CF13CFAE2694 /* PoseRanges.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseRanges.h; sourceTree = "<group>"; };
+		4A534E47F60CC52AB3411987 /* PoseRig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseRig.h; sourceTree = "<group>"; };
+		4A534E473FF8900770D13084 /* PoseSampler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseSampler.h; sourceTree = "<group>"; };
+		4A534E470BCC9023A1AF150D /* PoseSecondary.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseSecondary.h; sourceTree = "<group>"; };
+		4A534E470E63C0E030A02E8A /* PoseSkin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseSkin.h; sourceTree = "<group>"; };
+		4A534E471D8143BAD7A54477 /* PoseTween.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseTween.h; sourceTree = "<group>"; };
+		4A534E47D897442EA212A78A /* PoseTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseTypes.h; sourceTree = "<group>"; };
+		4A534E4749FAA44055DBA213 /* RenderBackendTime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RenderBackendTime.h; sourceTree = "<group>"; };
+		4A534E47463DE0CF0861026A /* InstanceSort.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstanceSort.h; sourceTree = "<group>"; };
+		4A534E470DA1EC3E5E63F3DD /* PoseAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseAnimatorSystem.h; sourceTree = "<group>"; };
+		4A534E47BE2CA7B811737252 /* PostColorLut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PostColorLut.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7545,6 +7648,45 @@
 			path = ../..;
 			sourceTree = "<group>";
 		};
+		4A534E476D14045E1B1B86B5 /* pose */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4780B7D719CD53EC07 /* HumanBones.cpp */,
+				4A534E47D68B7A69DBDF9421 /* HumanoidMap.cpp */,
+				4A534E47517581FE91DCF595 /* HumanoidMapIO.cpp */,
+				4A534E476880017CC6503955 /* ModelRig.cpp */,
+				4A534E474B9804E887873B1A /* PoseAnimationIO.cpp */,
+				4A534E474A3CC5DFC388AE04 /* PoseAnimatorRuntime.cpp */,
+				4A534E476F38DBE7291B7E0E /* PoseDofs.cpp */,
+				4A534E4762BB736A6AF480C6 /* PoseFile.cpp */,
+				4A534E47CC911AA4C1121EAA /* PoseIK.cpp */,
+				4A534E47CECB5E20E6FB4F95 /* PoseRanges.cpp */,
+				4A534E47A4A706AB9519D91E /* PoseRig.cpp */,
+				4A534E47B6C22F2BBBF52F96 /* PoseSampler.cpp */,
+				4A534E472B11F22757596AAB /* PoseSecondary.cpp */,
+				4A534E47086E51F5355DBAC0 /* PoseSkin.cpp */,
+				4A534E47603D3553FFD06C58 /* PoseTween.cpp */,
+				4A534E47F72F19079D22A844 /* HumanBones.h */,
+				4A534E473A9CD229806DAEED /* HumanoidMap.h */,
+				4A534E472590F8AFB793D09C /* HumanoidMapIO.h */,
+				4A534E4782EE3B39657E8C91 /* ModelRig.h */,
+				4A534E47578A6DECCF29F3AA /* PoseAnimationIO.h */,
+				4A534E47CD5A9C55C4090D5D /* PoseAnimatorRuntime.h */,
+				4A534E47CBA66D99A8D10172 /* PoseDofs.h */,
+				4A534E478060EF00BE9D1636 /* PoseFile.h */,
+				4A534E4708CF3E5C7C130B1E /* PoseIK.h */,
+				4A534E476E443E663F8932C0 /* PoseMath.h */,
+				4A534E475E17CF13CFAE2694 /* PoseRanges.h */,
+				4A534E47F60CC52AB3411987 /* PoseRig.h */,
+				4A534E473FF8900770D13084 /* PoseSampler.h */,
+				4A534E470BCC9023A1AF150D /* PoseSecondary.h */,
+				4A534E470E63C0E030A02E8A /* PoseSkin.h */,
+				4A534E471D8143BAD7A54477 /* PoseTween.h */,
+				4A534E47D897442EA212A78A /* PoseTypes.h */,
+			);
+			path = pose;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7579,6 +7721,8 @@
 				7162FC6A25962A0E0075B97D /* texture */,
 				716803CE2DF75EA200ED71BE /* thread */,
 				7162FC2E25962A0E0075B97D /* util */,
+				4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */,
+				4A534E476D14045E1B1B86B5 /* pose */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -7623,6 +7767,8 @@
 				505645430000000000000175 /* LunaSVGRuntime.cpp */,
 				505645430000000000000176 /* ThorVGRuntime.h */,
 				505645430000000000000177 /* ThorVGRuntime.cpp */,
+				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
+				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -7663,6 +7809,7 @@
 				7162FC4025962A0E0075B97D /* TextureRender.cpp */,
 				7162FC3B25962A0E0075B97D /* TextureRender.h */,
 				503152450000000000000010 /* PipelineState.h */,
+				4A534E4749FAA44055DBA213 /* RenderBackendTime.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -7723,6 +7870,7 @@
 				717AD989292118EF007D7DB5 /* LayoutGroupComponent.h */,
 				71451BB6270C9D0F00712643 /* RectTransformComponent.h */,
 				48544D4C0000000000000045 /* UIDocumentComponent.h */,
+				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -7800,6 +7948,8 @@
 				71D74952296731F200348AB8 /* Tilemap.h */,
 				71D7494F296731F100348AB8 /* Tilemap.cpp */,
 				71ABBD16277A31BA001CE3AF /* ui */,
+				4A534E4727CA5891CD7459B0 /* PoseAnimator.cpp */,
+				4A534E4730B30EBAC88D841B /* PoseAnimator.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -7843,6 +7993,9 @@
 				48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */,
 				48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */,
 				48544D4C00000000000002C6 /* UIDocumentSystemTexture.cpp */,
+				4A534E477CC0B9DD3FD92F03 /* PoseAnimatorSystem.cpp */,
+				4A534E47463DE0CF0861026A /* InstanceSort.h */,
+				4A534E470DA1EC3E5E63F3DD /* PoseAnimatorSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11369,6 +11522,29 @@
 				564944455D10255E59C45D25 /* VideoPlayback.h in Headers */,
 				56494445C0C405DCBFD9E630 /* VideoStream.h in Headers */,
 				5649444544F646ADD0512F52 /* VideoTypes.h in Headers */,
+				4A534E4779F6167F8B761131 /* PoseAnimatorComponent.h in Headers */,
+				4A534E4778C989A75EFFD658 /* PoseAnimator.h in Headers */,
+				4A534E477D193E2FA9DE3AAB /* HumanBones.h in Headers */,
+				4A534E4751DEBA0803DAB44E /* HumanoidMap.h in Headers */,
+				4A534E47D924DECE71A5EA77 /* HumanoidMapIO.h in Headers */,
+				4A534E47679AB366F01EBFBF /* ModelRig.h in Headers */,
+				4A534E4790D8CA17F162E830 /* PoseAnimationIO.h in Headers */,
+				4A534E47A98F887AB972728B /* PoseAnimatorRuntime.h in Headers */,
+				4A534E47E7E989C1EE8E4762 /* PoseDofs.h in Headers */,
+				4A534E471650671540FAD6BB /* PoseFile.h in Headers */,
+				4A534E47215BF59D1A22F9D0 /* PoseIK.h in Headers */,
+				4A534E4780D6B49DD8D0F27E /* PoseMath.h in Headers */,
+				4A534E47DC317417748FCE20 /* PoseRanges.h in Headers */,
+				4A534E47BFB91083AAA43E69 /* PoseRig.h in Headers */,
+				4A534E47ABF4BF063A8D3C72 /* PoseSampler.h in Headers */,
+				4A534E47440EEB559AD99BE5 /* PoseSecondary.h in Headers */,
+				4A534E471361FAE1930FBBB0 /* PoseSkin.h in Headers */,
+				4A534E479E34A8FFDB546ED8 /* PoseTween.h in Headers */,
+				4A534E47614CF60033AF1379 /* PoseTypes.h in Headers */,
+				4A534E4705D2C9495A991155 /* RenderBackendTime.h in Headers */,
+				4A534E47DB2DDA933E060B23 /* InstanceSort.h in Headers */,
+				4A534E479BCA38372BACC108 /* PoseAnimatorSystem.h in Headers */,
+				4A534E4771B456FDED53E3A8 /* PostColorLut.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13359,6 +13535,25 @@
 				56494445010828FE767A6051 /* VideoFormats.cpp in Sources */,
 				564944451E15A8BB364EF43E /* VideoPlayback.cpp in Sources */,
 				56494445A6C768330B168201 /* VideoStream.cpp in Sources */,
+				4A534E47B39A585CBB285DE1 /* SceneSettings.cpp in Sources */,
+				4A534E47BA13AD69F3AA0DE3 /* HumanBones.cpp in Sources */,
+				4A534E479C62CB23D85BECED /* HumanoidMap.cpp in Sources */,
+				4A534E477A96331465C6CF40 /* HumanoidMapIO.cpp in Sources */,
+				4A534E47EC2AEC8CCFEA60DA /* ModelRig.cpp in Sources */,
+				4A534E47668F72B10B6BF07F /* PoseAnimationIO.cpp in Sources */,
+				4A534E476BCBC9CBA6BDF559 /* PoseAnimatorRuntime.cpp in Sources */,
+				4A534E473E8CF2057458283B /* PoseDofs.cpp in Sources */,
+				4A534E47DC235C6CCDB8E7A3 /* PoseFile.cpp in Sources */,
+				4A534E47A90C1697B7A990B6 /* PoseIK.cpp in Sources */,
+				4A534E47F31C79130118A5B6 /* PoseRanges.cpp in Sources */,
+				4A534E47191DDB168AAEDA0A /* PoseRig.cpp in Sources */,
+				4A534E47028B6A21ECCE177E /* PoseSampler.cpp in Sources */,
+				4A534E4754B4ED9091383ED0 /* PoseSecondary.cpp in Sources */,
+				4A534E4736FC5991D082B4D7 /* PoseSkin.cpp in Sources */,
+				4A534E47C2765BA06775BE07 /* PoseTween.cpp in Sources */,
+				4A534E47449BF2EABF8EFD49 /* PoseAnimator.cpp in Sources */,
+				4A534E47BBADE1B907D4BE8A /* PoseAnimatorSystem.cpp in Sources */,
+				4A534E47CD3DFF17685DA2AF /* PostColorLut.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13727,6 +13922,25 @@
 				56494445307B0E2BE136273B /* VideoFormats.cpp in Sources */,
 				56494445B6AF5FF1E863762C /* VideoPlayback.cpp in Sources */,
 				56494445B1CF41CD80843037 /* VideoStream.cpp in Sources */,
+				4A534E47E2A16F51F26DF95A /* SceneSettings.cpp in Sources */,
+				4A534E47A7AA220839F23231 /* HumanBones.cpp in Sources */,
+				4A534E47F7C278ED96103591 /* HumanoidMap.cpp in Sources */,
+				4A534E473C56BBD5EBD66099 /* HumanoidMapIO.cpp in Sources */,
+				4A534E471BAD78929A29121E /* ModelRig.cpp in Sources */,
+				4A534E4747BFD8D401141095 /* PoseAnimationIO.cpp in Sources */,
+				4A534E4716EE7E44FABA0343 /* PoseAnimatorRuntime.cpp in Sources */,
+				4A534E47FA5AD6FF55430B96 /* PoseDofs.cpp in Sources */,
+				4A534E476C3A02D2FFC6AA17 /* PoseFile.cpp in Sources */,
+				4A534E4795D06809196ECD50 /* PoseIK.cpp in Sources */,
+				4A534E478CDC5D238BED2DC6 /* PoseRanges.cpp in Sources */,
+				4A534E47B6CDE8F1ED8E827A /* PoseRig.cpp in Sources */,
+				4A534E47C5D8D038BC0A0E93 /* PoseSampler.cpp in Sources */,
+				4A534E47C8049F2DB2C469CD /* PoseSecondary.cpp in Sources */,
+				4A534E479CEEF838ECA675B1 /* PoseSkin.cpp in Sources */,
+				4A534E47AD3AC20663674BD0 /* PoseTween.cpp in Sources */,
+				4A534E4738BEE50A166D3A1F /* PoseAnimator.cpp in Sources */,
+				4A534E476C1029713165D592 /* PoseAnimatorSystem.cpp in Sources */,
+				4A534E471A9458876F7C30C2 /* PostColorLut.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

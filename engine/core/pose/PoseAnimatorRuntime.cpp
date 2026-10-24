@@ -3,6 +3,11 @@
 
 #include "pose/PoseAnimatorRuntime.h"
 
+#include "pose/PoseMath.h"
+#include "pose/PoseRig.h"
+#include "pose/PoseSampler.h"
+#include "pose/PoseTween.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -19,9 +24,24 @@ namespace {
         return r;
     }
 
-    float smootherstep01(float x){
-        x = std::clamp(x, 0.0f, 1.0f);
-        return x * x * x * (x * (x * 6.0f - 15.0f) + 10.0f);
+    // the x (in durations) after which the ease stays within 1e-4 of 1
+    float settleX(const Transition& transition){
+        if (transition.curve != TransitionCurve::Spring) return 1.0f;
+        const float step = 0.02f;
+        float last = 1.0f;
+        for (float x = 1.0f; x <= 60.0f; x += step){
+            if (std::abs(ease(x, transition) - 1.0f) >= 1e-4f) last = x;
+        }
+        return last + step;
+    }
+
+    // the transition of bone `b` (overlap delay, looseness)
+    void boneTransition(const PoseAnimationSettings& settings, const Transition& base, int b, float& delay, Transition& out){
+        const HumanBoneInfo& info = humanBoneInfo(boneAt(b));
+        const float w = settings.weights[static_cast<int>(info.group)];
+        delay = settings.overlap * w * info.depth;
+        const float l = std::clamp(settings.looseness * w * info.depth, 0.0f, 1.0f);
+        out = l > 0.0f ? loosen(base, l) : base;
     }
 
 }
@@ -139,6 +159,29 @@ Vector3 PoseBlendBone::blendPosition(const Vector3& current, const Vector3& pose
     return writtenPosition;
 }
 
+bool PoseAnimatorRuntime::build(std::shared_ptr<const PoseRig> rigToUse, std::string* error){
+    if (!rigToUse || !rigToUse->valid()){
+        if (error) *error = "the rig is not valid";
+        return false;
+    }
+    if (data.poses.empty()){
+        if (error) *error = "the animation has no poses";
+        return false;
+    }
+    rig = rigToUse;
+    keys = realiseKeys(data, *rig, nullptr);
+    SamplerInput input = makeSamplerInput(data, keys, rig.get());
+    length = (float)input.timeline.length;
+    frames = pose::frames(input, data.settings.frameRate);
+    if (frames.empty()){
+        if (error) *error = "the animation has no frames";
+        return false;
+    }
+    hasDisplayed = false;
+    transitionActive = false;
+    return true;
+}
+
 int PoseAnimatorRuntime::findPose(const std::string& name) const{
     if (!dataLoaded) return -1;
     for (size_t i = 0; i < data.poses.size(); i++){
@@ -162,22 +205,58 @@ bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
     tr.overshoot = std::clamp(tr.overshoot, 0.0f, 0.9f);
     tr.anticipation = std::clamp(tr.anticipation, 0.0f, 0.5f);
 
-    transitionFrom = hasDisplayed ? displayed : keys[0];
+    transitionFrom = hasDisplayed ? displayed : frames[0];
     transition = tr;
     transitionKey = request.key;
     transitionTime = 0.0f;
     transitionActive = true;
+    transitionArrived = false;
+    transitionPaused = false;
+    transitionSettle = transitionSettleTime();
     return true;
+}
+
+float PoseAnimatorRuntime::transitionSettleTime() const{
+    float settle = 0.0f;
+    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+        float delay = 0.0f;
+        Transition tr;
+        boneTransition(data.settings, transition, b, delay, tr);
+        settle = std::max(settle, delay + settleX(tr) * std::max(tr.duration, 1e-4f));
+    }
+    return settle;
+}
+
+void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
+    if (transitionKey < 0 || transitionKey >= (int)keys.size()) return;
+    const HumanPose& to = keys[transitionKey];
+    float t = std::max(time, 0.0f);
+    if (data.settings.stepRate > 0.0f){
+        t = std::floor(t * data.settings.stepRate + 1e-4f) / data.settings.stepRate;
+    }
+    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+        float delay = 0.0f;
+        Transition tr;
+        boneTransition(data.settings, transition, b, delay, tr);
+        const float e = ease((t - delay) / std::max(tr.duration, 1e-4f), tr);
+        out.rotations[b] = slerpUnclamped(transitionFrom.rotations[b], to.rotations[b], e);
+        if (b == boneIndex(HumanBone::Hips)){
+            out.hipsPosition = transitionFrom.hipsPosition + (to.hipsPosition - transitionFrom.hipsPosition) * e;
+        }
+    }
 }
 
 void PoseAnimatorRuntime::sampleTransition(float dt, HumanPose& out){
     if (!transitionActive || transitionKey < 0 || transitionKey >= (int)keys.size()) return;
-    transitionTime += std::max(dt, 0.0f);
-
-    const HumanPose& to = keys[transitionKey];
-    const float e = smootherstep01(transitionTime / std::max(transition.duration, 1e-4f));
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
-        out.rotations[b] = slerpShortest(transitionFrom.rotations[b], to.rotations[b], e);
+    if (transitionArrived){
+        out = keys[transitionKey];
+        return;
     }
-    out.hipsPosition = transitionFrom.hipsPosition + (to.hipsPosition - transitionFrom.hipsPosition) * e;
+    transitionTime += std::max(dt, 0.0f);
+    if (transitionTime >= transitionSettle){
+        transitionArrived = true;
+        out = keys[transitionKey];
+        return;
+    }
+    transitionPose(transitionTime, out);
 }
