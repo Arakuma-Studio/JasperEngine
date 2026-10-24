@@ -3499,6 +3499,9 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (extension == ".glb" || extension == ".gltf") {
             maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(path, merged));
+        } else if (FbxImporter::isFbxFile(path)) {
+            // an FBX loads from its imported .glb
+            maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, countGltfExternalBuffers(getImportedModelPath(path), merged));
         }
     };
 
