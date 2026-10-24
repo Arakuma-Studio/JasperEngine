@@ -47,7 +47,7 @@
                 "chest.twist": 12, "neck.twist": -6, "head.bend": 8, "head.twist": -8,
                 "left_shoulder.raise": 6, "left_upper_arm.raise": 24, "left_upper_arm.forward": 34,
                 "left_upper_arm.twist": -10, "left_lower_arm.bend": 132, "right_shoulder.raise": 4,
-                "right_shoulder.forward": 22, "right_upper_arm.raise": 8,
+                "right_shoulder.forward": 16, "right_upper_arm.raise": 8,
                 "right_upper_arm.forward": 86, "right_upper_arm.twist": -40,
                 "right_lower_arm.bend": 4, "right_hand.bend": -8, "left_upper_leg.forward": 18,
                 "left_upper_leg.out": 9, "left_upper_leg.twist": 8, "left_lower_leg.bend": 18,

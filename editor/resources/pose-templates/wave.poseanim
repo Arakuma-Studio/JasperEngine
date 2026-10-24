@@ -21,8 +21,8 @@
                 "left_lower_arm.bend": 16, "right_shoulder.raise": 14, "right_upper_arm.raise": 105,
                 "right_upper_arm.forward": 12, "right_upper_arm.twist": 38,
                 "right_lower_arm.bend": 85, "right_hand.bend": -10, "right_hand.side": 14,
-                "left_upper_leg.out": 3, "left_foot.side": 6, "right_upper_leg.out": 3,
-                "right_foot.side": 6}},
+                "left_upper_leg.out": 3, "left_lower_leg.bend": 2, "left_foot.side": 6,
+                "right_upper_leg.out": 3, "right_lower_leg.bend": 2, "right_foot.side": 6}},
     {"name": "Hand Right", "hold": 0.08, "grounded": true, "lift": 0,
      "transition": null,
      "offset": {"left": 0, "forward": 0},
@@ -31,7 +31,7 @@
                 "left_lower_arm.bend": 16, "right_shoulder.raise": 14, "right_upper_arm.raise": 100,
                 "right_upper_arm.forward": 12, "right_upper_arm.twist": 84,
                 "right_lower_arm.bend": 85, "right_hand.bend": 15, "right_hand.side": -6,
-                "left_upper_leg.out": 3, "left_foot.side": 6, "right_upper_leg.out": 3,
-                "right_foot.side": 6}}
+                "left_upper_leg.out": 3, "left_lower_leg.bend": 2, "left_foot.side": 6,
+                "right_upper_leg.out": 3, "right_lower_leg.bend": 2, "right_foot.side": 6}}
   ]
 }
