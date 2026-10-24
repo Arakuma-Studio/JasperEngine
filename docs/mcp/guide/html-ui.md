@@ -1843,9 +1843,10 @@ effect:
   seeded burst (`splats-on-start`, `splat-count`, `seed`), paints while the pointer drags over it
   (`hover on`: on any movement), and is transparent where there is no dye (alpha = brightness):
   the element's `background` is Pavel's background colour. `preset` (`mobile`, `smoke`, `ink`,
-  `calm-water`, `psychedelic`: the native presets) gives every parameter you leave at its default
-  the preset's value; a parameter you write keeps yours (one written at its default value counts as
-  left). Its grids keep Pavel's sizes whatever the element's: 128 cells on the short side for the
+  `calm-water`, `psychedelic`: the native presets) gives every parameter you do not write the
+  preset's value; a parameter you write keeps yours, even at its default (`preset ink, bloom on`
+  has bloom), as on the native component. Write `preset` literally (a `var()` preset is not
+  expanded). Its grids keep Pavel's sizes whatever the element's: 128 cells on the short side for the
   velocity, the element's px for the dye (at most 1024), 256 for the bloom; `bloom off` and
   `sunrays off` skip their passes (`preset mobile` turns both off with the shading).
 
@@ -1998,11 +1999,14 @@ vec4 jfx_paint(JfxContext c){
   [200, 140, 0.5], [360, 90, 0.8]]}` drags the pointer along the path (x, y in the element's CSS
   px, t in effect seconds: down from the first point's time to the last's) in every replay of the
   element's simulations, and `splats: [{x, y, dx, dy, radius, color, strength, t}]` (the area's
-  px, px/s; `t` defaults to the pinned time) are applied at the step their time falls in. Both
-  stay until replaced (`[]` clears them; new splats replace the earlier ones), so the same call
-  twice gives the same screenshot, and other times show the same input's evolution (`entity`
-  names the document). A simulation starts at its element's first draw:
-  take a screenshot first if the call says there is none.
+  px, px/s; `t` defaults to the pinned time) are applied at the step their time falls in (at most
+  8 in one step: more are refused; a splat later than the pinned time waits until the time
+  reaches it). Both stay until replaced (`[]` clears them; new splats replace the earlier ones),
+  so the same call twice gives the same screenshot, and other times show the same input's
+  evolution (`entity` names the document). The replay reaches back to the earliest scripted input
+  (at most 30 s before the pinned time; older input is reported and ignored). Velocities are
+  clamped to 100000 px/s, strengths to 100. A simulation starts at its element's first draw: take
+  a screenshot first if the call says there is none.
 - **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
   returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is
   `HTMLUI-FX-0014` at its line). An edit on disk comes back the same way in `external_changes`,

@@ -17,6 +17,7 @@
 #include "Project.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
+#include "htmlui/effects/EffectRuntime.h"
 #include "object/ui/UIDocument.h"
 #include "object/ui/UIElement.h"
 #include "util/ProjectChecks.h"
@@ -24,6 +25,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -171,12 +173,13 @@ void setUiEffectTimeTool(const CallPtr& call) {
         }
         time = value.get<double>();
     }
-    // stateful effects' scripted input: a pointer path and splats on one element (pinned clock only)
+    // stateful effects' scripted input: a pointer path and splats on one element (pinned clock only).
+    // Everything is checked before anything changes: a refused call leaves the clock as it was
     const bool scripted = args.contains("pointer_path") || args.contains("splats");
     const std::string selector = args.value("selector", std::string());
-    const std::string effect;   // every stateful effect of the element
     std::vector<Vector3> path;
     std::vector<UIEffectSplat> splats;
+    auto finite = [](const Json& v) { return v.is_number() && std::isfinite(v.get<double>()) && std::fabs(v.get<double>()) < 1.0e30; };
     if (scripted) {
         if (!time) {
             call->fail("pointer_path and splats replay at a pinned clock: give time in seconds.");
@@ -186,7 +189,6 @@ void setUiEffectTimeTool(const CallPtr& call) {
             call->fail("selector is required with pointer_path or splats: the element whose effect takes them.");
             return;
         }
-        auto finite = [](const Json& v) { return v.is_number() && std::isfinite(v.get<double>()); };
         if (args.contains("pointer_path")) {
             const Json& points = args["pointer_path"];
             if (!points.is_array() || points.size() > 512) {
@@ -212,29 +214,35 @@ void setUiEffectTimeTool(const CallPtr& call) {
                     call->fail("each splat needs x and y (the effect area's CSS px); dx, dy px/s, radius px, color CSS, strength, t s optional.");
                     return;
                 }
+                for (const char* key : {"dx", "dy", "radius", "strength", "t"}) {
+                    if (item.contains(key) && !finite(item[key])) {
+                        call->fail(std::string("splat ") + key + " must be a finite number.");
+                        return;
+                    }
+                }
+                if (item.contains("color") && !item["color"].is_string()) {
+                    call->fail("splat color must be a CSS colour string.");
+                    return;
+                }
                 UIEffectSplat splat;
                 splat.x = item["x"].get<float>();
                 splat.y = item["y"].get<float>();
-                splat.dx = item.value("dx", 0.0f);
-                splat.dy = item.value("dy", 0.0f);
-                splat.radius = item.value("radius", 24.0f);
-                splat.strength = item.value("strength", 1.0f);
+                // the engine clamps these too (half-float state images must stay finite)
+                splat.dx = std::clamp(item.value("dx", 0.0f), -100000.0f, 100000.0f);
+                splat.dy = std::clamp(item.value("dy", 0.0f), -100000.0f, 100000.0f);
+                splat.radius = std::clamp(item.value("radius", 24.0f), 0.0f, 4096.0f);
+                splat.strength = std::clamp(item.value("strength", 1.0f), -100.0f, 100.0f);
                 splat.color = item.value("color", std::string("#ffffff"));
-                splat.time = item.contains("t") && finite(item["t"]) ? std::max(0.0, item["t"].get<double>()) : *time;
-                splat.effect = effect;
+                splat.time = item.contains("t") ? std::max(0.0, item["t"].get<double>()) : *time;
                 splats.push_back(splat);
             }
         }
     }
-    UIDocument::setEffectTime(time);
-    // the edit and play views draw again with it (an idle view draws only when flagged)
     Project* project = call->ctx().project();
-    if (project) {
-        for (SceneProject* sceneProject : project->getHtmlUIScenes()) sceneProject->needUpdateRender = true;
-    }
-    const double clock = UIDocument::getEffectTime();
-    Json data{{"time", time ? Json(*time) : Json(nullptr)}, {"clock", clock}};
-    std::ostringstream text;
+    Json data;
+    std::string scriptText;
+    std::optional<UIElement> element;
+    SceneProject* elementScene = nullptr;
     if (scripted) {
         double x = 0, y = 0;
         std::string error;
@@ -243,40 +251,96 @@ void setUiEffectTimeTool(const CallPtr& call) {
             call->fail(error + ".");
             return;
         }
-        SceneProject* sp = project ? project->getScene(found["scene"].get<uint32_t>()) : nullptr;
-        if (!sp || !sp->scene) {
+        elementScene = project ? project->getScene(found["scene"].get<uint32_t>()) : nullptr;
+        if (!elementScene || !elementScene->scene) {
             call->fail("the document's scene is not loaded.");
             return;
         }
-        UIDocument document(sp->scene, found["entity"]["id"].get<Entity>());
-        UIElement element = document.querySelector(found.value("ref", selector));
+        UIDocument document(elementScene->scene, found["entity"]["id"].get<Entity>());
+        element = document.querySelector(found.value("ref", selector));
+        // a step takes at most 8 splats (the step block): splats in one step interval of an effect's
+        // clock, (T - (n + 1) h, T - n h], beyond that are refused, not dropped
+        bool stateful = false;
+        for (const UIEffectInfo& effect : element->getEffects()) {
+            if (!effect.stateful) continue;
+            stateful = true;
+            const fx::EffectManifest* manifest = fx::EffectRegistry::get().find(effect.name);
+            const double h = 1.0 / std::max(1.0, manifest ? (double)manifest->rateHz : 60.0);
+            std::map<long long, int> perStep;
+            for (const UIEffectSplat& splat : splats) {
+                if (splat.time > *time + 1e-9) continue;   // future input: not replayed yet
+                const long long step = static_cast<long long>(std::floor((*time - splat.time) / h + 1e-9));
+                if (++perStep[step] > static_cast<int>(fx::EffectRuntime::kMaxSplatsPerStep)) {
+                    std::ostringstream message;
+                    message << "more than " << fx::EffectRuntime::kMaxSplatsPerStep << " splats fall in one step of '" << effect.name
+                            << "' (" << h << " s ending at " << (*time - static_cast<double>(step) * h)
+                            << " s): a step takes 8; spread their t over several steps.";
+                    call->fail(message.str());
+                    return;
+                }
+            }
+        }
+        if (!stateful) {
+            call->fail("\"" + selector + "\" uses no stateful effect (pointer_path and splats drive simulations, e.g. effect(fluid)).");
+            return;
+        }
         int simulations = 0;
-        if (args.contains("pointer_path")) simulations = std::max(simulations, element.effectPointerPath(path, effect));
+        if (args.contains("pointer_path")) simulations = std::max(simulations, element->effectPointerPath(path));
         if (args.contains("splats")) {
-            int cleared = element.effectClearSplats(effect);
-            for (const UIEffectSplat& splat : splats) cleared = std::max(cleared, element.effectSplat(splat));
+            int cleared = element->effectClearSplats();
+            for (const UIEffectSplat& splat : splats) cleared = std::max(cleared, element->effectSplat(splat));
             simulations = std::max(simulations, cleared);
         }
         if (simulations == 0) {
-            call->fail("\"" + selector + "\" has no " + (effect.empty() ? std::string("stateful effect") : "'" + effect + "'") +
-                       " simulation yet: a stateful effect starts at its first draw (show the element, take a screenshot), then call again.");
+            call->fail("\"" + selector + "\" has no stateful effect simulation yet: a stateful effect starts at its first draw (show "
+                       "the element, take a screenshot), then call again.");
             return;
         }
-        sp->needUpdateRender = true;
+        // what the replay at the pinned time takes: input before T - 30 s is outside any replay
+        // (the window reaches back to the earliest input, at most 30 s), input after T waits
+        double earliest = *time;
+        size_t future = 0, tooOld = 0;
+        for (const UIEffectSplat& splat : splats) {
+            if (splat.time > *time + 1e-9) future++;
+            else if (splat.time < *time - fx::EffectRuntime::kMaxScriptedReplay) tooOld++;
+            earliest = std::min(earliest, splat.time);
+        }
+        if (!path.empty()) earliest = std::min(earliest, static_cast<double>(path.front().z));
         data["element"] = found.value("ref", selector);
         data["simulations"] = simulations;
         data["path"] = path.size();
         data["splats"] = splats.size();
+        data["splats_applied"] = splats.size() - future - tooOld;
+        data["splats_future"] = future;
+        data["replay_from"] = std::max(earliest, *time - fx::EffectRuntime::kMaxScriptedReplay);
+        std::ostringstream text;
+        text << " " << data["element"].get<std::string>() << ": ";
+        if (args.contains("pointer_path")) text << path.size() << "-point pointer path";
+        if (args.contains("pointer_path") && args.contains("splats")) text << ", ";
+        if (args.contains("splats")) {
+            text << splats.size() << " splat(s)";
+            if (future) text << " (" << future << " after the pinned time: drawn once the time reaches them)";
+        }
+        text << " on " << simulations << " simulation(s), replayed from the effect's reset at every pinned time (kept until "
+             << "replaced; [] clears).";
+        if (tooOld || (!path.empty() && path.front().z < *time - fx::EffectRuntime::kMaxScriptedReplay))
+            text << " Warning: input more than " << fx::EffectRuntime::kMaxScriptedReplay
+                 << " s before the pinned time is outside the replay and has no effect.";
+        scriptText = text.str();
     }
+    UIDocument::setEffectTime(time);
+    // the edit and play views draw again with it (an idle view draws only when flagged)
+    if (project) {
+        for (SceneProject* sceneProject : project->getHtmlUIScenes()) sceneProject->needUpdateRender = true;
+    }
+    if (elementScene) elementScene->needUpdateRender = true;
+    const double clock = UIDocument::getEffectTime();
+    data["time"] = time ? Json(*time) : Json(nullptr);
+    data["clock"] = clock;
+    std::ostringstream text;
     if (time) {
         text << "UI effect clock pinned at " << *time << " s in every view: renders are deterministic (pointer state aside). "
-             << "set_ui_effect_time {time: null} makes it live again.";
-        if (scripted) {
-            text << " " << data["element"].get<std::string>() << ": " << (args.contains("pointer_path") ? std::to_string(path.size()) + "-point pointer path" : std::string(""))
-                 << (args.contains("pointer_path") && args.contains("splats") ? ", " : "")
-                 << (args.contains("splats") ? std::to_string(splats.size()) + " splat(s)" : std::string(""))
-                 << " on " << data["simulations"].get<int>() << " simulation(s), replayed from the effect's reset at every pinned time (kept until replaced; [] clears).";
-        }
+             << "set_ui_effect_time {time: null} makes it live again." << scriptText;
     } else {
         text << "UI effect clock live again (now " << clock << " s).";
     }
@@ -313,15 +377,14 @@ void registerUiEffectTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "set_ui_effect_time";
         tool.title = "Set UI Effect Time";
-        tool.description =
-            "Pin the HTML/CSS UI effect clock (edit/play) for identical screenshots; null: live. pointer_path (a drag), "
-            "splats: exact input for selector's stateful effects (s, element px).";
+        tool.description = "Pin the HTML/CSS UI effect clock (edit/play views) for identical screenshots.";
         tool.inputSchema = object({
-            {"time", Json{{"type", Json::array({"number", "null"})}}},
-            {"entity", entityRef("")},
-            {"selector", string("")},
-            {"pointer_path", Json{{"type", "array"}, {"description", "[[x,y,t]] element px, s; [] clears"}}},
-            {"splats", Json{{"type", "array"}, {"description", "[{x,y,dx,dy,radius,color,strength,t}] area px; replaces"}}}
+            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds; null: live."}}},
+            {"entity", entityRef("UI Document.")},
+            {"selector", string("Element whose stateful effects replay:")},
+            {"pointer_path", array(Json{{"type", "array"}, {"items", {{"type", "number"}}}}, "a drag [[x,y,t]] (element px, s; [] clears),")},
+            {"splats", array(Json{{"type", "object"}, {"required", {"x", "y"}}},
+                             "[{x,y,dx,dy,radius,color,strength,t}] (area px, px/s; 8 a step) exactly.")}
         }, {"time"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = true;

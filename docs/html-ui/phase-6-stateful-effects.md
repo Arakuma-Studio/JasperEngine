@@ -672,21 +672,30 @@ unchanged):
   they would run per simulation step (up to 4 a frame, 120 per 2 s replay). An `@frame` pass runs
   once a drawn frame, after that frame's steps, when the state changed since the last run (a step,
   a reset, an allocation; a finished pinned replay): two draws at one pinned time run none, so they
-  stay byte-identical. It takes `@step`'s options; the pass index numbering includes it.
+  stay byte-identical, and when the parameters change (a frozen simulation, bloom switched on); a
+  failed pass leaves them due for the next frame. They see the pointer the last step saw (a
+  pinned replay's, not the live one). It takes `@step`'s options; the pass index numbering
+  includes it. A state an `@frame` pass writes is written by no `@step`/`@init` pass
+  (`HTMLUI-FX-0014`), and the steps must not read it (it holds the last drawn frame's look: they
+  would depend on the frame rate; not checkable from the manifest, the step variant reading every
+  state).
 - **`if <param>`** on `@step`/`@frame`: the pass runs only while that boolean or number parameter
   is not 0 (`bloom off`, `sunrays off`: their 21 passes cost nothing; `@init` passes always run).
 - **`@preset`**: the options of an enum parameter named `preset` each list parameter values; a
-  parameter whose value is its manifest default (canonical text) takes the chosen preset's value,
-  one written with another value keeps it (`applyEffectPreset`, in `finishSnapshot`: every
-  consumer, repeats and `if` included, reads the effective values; `getEffects`/`inspect_ui` show
-  them). `fluid`'s five presets are the native `FluidPresets` ids with their solver and look values
+  parameter the author does not write takes the chosen (literally written) preset's value, a
+  written one keeps its value, its default included, as the native component's explicit values
+  win. `EffectSyntax::toRcss` writes the preset's values into the slots of the parameters the
+  call leaves out (the RCSS path), `snapshotFromCall` applies them with the arguments it was
+  given (`applyEffectPreset`); every consumer, repeats and `if` included, reads the effective
+  values, and `getEffects`/`inspect_ui` show them. `fluid`'s five presets are the native `FluidPresets` ids with their solver and look values
   (not their resolutions).
 - **`@source port <project> (<author>, <licence>)`**: a third source form, for ports of projects
   other than shaders.com.
 
 Eight states (the limit): `vel` rg16f, `pressure` r16f, `aux` r16f (curl, then divergence: curl
 is read only by vorticity, before divergence overwrites it) on `aspect 128 max 512`; `dye` rgba16f
-`box max 1024`; `ptr` rgba32f 1x1 (the pointer colour's timer, hue and draw counter); `bloom` and
+`box max 1024`; `ptr` rgba16f 1x1 (the pointer colour's timer, hue and draw counter mod 2048: no
+32-bit float target, so half-float-only GLES3/WebGL2 devices run it); `bloom` and
 `glow` (the bloom levels as one atlas: level 1 at the origin, the deeper ones stacked to its right;
 reads clamped to their level as his separate textures clamp) rgba16f `aspect 256`; `sunrays` r16f
 `aspect 196`. A step is 10 + `pressure-iterations` passes (pointer colour, velocity splats, curl,
@@ -702,7 +711,14 @@ on the element's simulations (`EffectRuntime::setPointerPath`, `UIElement::effec
 pinned replay drags the pointer along it (known and down from its first sample's time to its
 last's, a press on its first step) instead of the recorded pointer, and it is part of the replay key;
 `splats` replace the element's logged splats (`clearSplats`) with ones logged at their `t` (default
-the pinned time; `EffectRuntime::splat(..., time)`, `UIEffectSplat::time`). `inspect_ui`'s `state`
+the pinned time; `EffectRuntime::splat(..., time)`, `UIEffectSplat::time`): a step takes at most 8
+(`kMaxSplatsPerStep`; the tool refuses more in one step interval), a splat later than the pinned
+time is not applied until the time reaches it, and non-finite values are refused, extreme ones
+clamped (`kMaxSplatVelocity` 100000 px/s, radius 4096 px, strength 100; the shader also keeps
+the velocity within half-float range). A pinned replay starts at the earliest scripted input when
+that is older than `@replay` (at most `kMaxScriptedReplay`, 30 s); a scripted path replaces the
+recorded and live pointer, which then are not part of the replay key. The tool checks everything
+(the element, its simulations, the per-step limit) before it pins the clock. `inspect_ui`'s `state`
 adds `images`, `replays`, `replaying`, `splats` and `path`.
 
 **Measured** (glcore, llvmpipe, the remote host): `CostTable` x3.85 against the fill (budget 5.8),

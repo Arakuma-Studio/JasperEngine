@@ -1772,7 +1772,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "inspect_ui";
         tool.title = "Inspect UI Document";
         tool.description =
-            "Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
+            "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
             "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
             "computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= "
             "`jasperengine-editor check --ui`). Lua-made content: play only.";
@@ -1780,12 +1780,12 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
             {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
-            {"selector", string("CSS selector (default: whole document).")},
+            {"selector", string("Default: whole document.")},
             {"at", vec2("Hit test (canvas px): the element stack.")},
             {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
-            {"styles", array(Json{{"type", "string"}}, "Computed CSS properties per element.")},
+            {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
@@ -1818,19 +1818,19 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"selector", string("")},
                 {"with", string("")},
                 {"container", string("")},
-                {"count", integer("", 0, 100000)},
-                {"min", integer("", 0, 100000)},
-                {"max", integer("", 0, 100000)},
-                {"tolerance", number("px, default 0.5.", 0, 1000)},
+                {"count", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"min", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"max", Json{{"type", "integer"}, {"minimum", 0}}},
+                {"tolerance", Json{{"type", "number"}, {"minimum", 0}, {"description", "px, default 0.5."}}},
                 {"min_ratio", number("Default WCAG AA.", 1, 21)},
                 {"background", color("")},
                 {"unobstructed", boolean("")},
                 {"allow_scroll", boolean("")},
                 {"single_line", boolean("")},
-                {"width", number("", 0, 10000)},
-                {"height", number("", 0, 10000)}
+                {"width", Json{{"type", "number"}, {"minimum", 0}}},
+                {"height", Json{{"type", "number"}, {"minimum", 0}}}
             }, {"type", "selector"})}}},
-            {"viewports", array(vec2(""), "[[w,h], ...] (max 6); default the current.")},
+            {"viewports", array(vec2(""), "Up to 6 [w,h]; default: current.")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});
@@ -1853,7 +1853,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"parent", entityRef("Default: scene root.")},
-            {"name", string("Default: from the file name.")},
+            {"name", string("Default: the file name.")},
             {"html", assetPath(".html in the assets dir, e.g. assets/ui/menu.html.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},

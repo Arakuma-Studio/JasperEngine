@@ -1180,6 +1180,21 @@ bool EffectManifestParser::validate(const EffectManifest& m, const std::string& 
         }
     }
 
+    // @frame passes write what only the draw reads (3, section 7): a state they write is not one a
+    // @step or @init pass writes (it would change with the frame rate, not the clock), and they do
+    // not scatter a state the steps write
+    for (const EffectPassDef& pass : m.passes){
+        if (!pass.frame)
+            continue;
+        for (const EffectPassDef& other : m.passes){
+            if (other.frame || other.state != pass.state)
+                continue;
+            error(pass.line, "@frame pass '" + pass.name + "' writes '" + m.states[(size_t)pass.state].name + "', which " +
+                  (other.init ? "@init" : "@step") + " pass '" + other.name + "' writes too: @frame passes write images only the draw reads",
+                  "give the @frame pass a state of its own");
+            break;
+        }
+    }
     // the main include matches the kind, exactly once
     const std::string paintMain = "#include \"effects/lib/main_paint.glsl\"";
     const std::string filterMain = "#include \"effects/lib/main_filter.glsl\"";

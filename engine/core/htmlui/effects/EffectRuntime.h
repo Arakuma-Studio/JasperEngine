@@ -114,8 +114,13 @@ namespace jasperengine::htmlui {
         std::vector<std::pair<double, EffectSplatData>> log;
         uint64_t inputGeneration = 0;
         std::string reseedKey;                  // the @reseed parameters' values when it started
-        // the state changed since the @frame passes last ran (a step, a reset, an allocation)
+        // the state changed since the @frame passes last ran (a step, a reset, an allocation, a
+        // parameter change); cleared only when they all ran
         bool frameDirty = true;
+        uint64_t paramsKey = 0;                 // a hash of the parameters' canonical texts
+        // the pointer the last step saw (the @frame passes see it)
+        Rml::Vector2f stepPointer{0.f, 0.f};
+        bool stepPointerKnown = false, stepPointerDown = false, stepPointerInside = false;
         // statistics
         uint64_t stepsRun = 0;
         uint64_t replays = 0;
@@ -367,6 +372,16 @@ namespace jasperengine::htmlui {
         void addSimulationUniformBytes(size_t bytes) { frameUniformBytes += bytes; }
         size_t simulationUniformBytes() const { return frameUniformBytes; }
         static constexpr size_t kSimulationUniformBudget = 1536u * 1024u;
+        // a pinned replay starts at the earliest scripted input (pointer path, logged splat), at
+        // most this long before the pinned time (s; @replay's own maximum)
+        static constexpr double kMaxScriptedReplay = 30.0;
+        // a splat's velocity (px/s), radius (px) and strength are clamped to these; a non-finite
+        // value refuses it (half-float state images would hold inf/NaN for good)
+        static constexpr float kMaxSplatVelocity = 100000.f;
+        static constexpr float kMaxSplatRadius = 4096.f;
+        static constexpr float kMaxSplatStrength = 100.f;
+        // the splats a step takes (the step block's array): more in one step interval are dropped
+        static constexpr size_t kMaxSplatsPerStep = 8;
         // pinned replays still running (a capture renders until none is)
         size_t pendingReplays() const { return replaysInProgress; }
         void replayStarted() { replaysInProgress++; }

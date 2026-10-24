@@ -546,7 +546,7 @@ namespace {
          "// @state      pressure r16f aspect 128 max 512 nearest\n"
          "// @state      aux r16f aspect 128 max 512 nearest\n"
          "// @state      dye rgba16f box max 1024 linear\n"
-         "// @state      ptr rgba32f 1x1 nearest\n"
+         "// @state      ptr rgba16f 1x1 nearest\n"
          "// @state      bloom rgba16f aspect 256 max 1024 linear\n"
          "// @state      glow rgba16f aspect 256 max 1024 linear\n"
          "// @state      sunrays r16f aspect 196 max 1024 linear\n"

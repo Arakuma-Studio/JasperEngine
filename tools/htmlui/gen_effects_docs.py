@@ -116,7 +116,10 @@ def parse_manifest(path):
             size = words[2] if len(words) > 2 else ""
             if size == "aspect" and len(words) > 3:
                 size += " " + words[3]
-            m["states"].append({"name": words[0], "format": words[1], "size": size})
+            longest = 0
+            if "max" in words[3:] and words.index("max", 3) + 1 < len(words):
+                longest = int(words[words.index("max", 3) + 1])
+            m["states"].append({"name": words[0], "format": words[1], "size": size, "max": longest})
         elif directive in ("init", "step", "frame"):
             words = rest.split()
             m["passes"].append({"name": words[0], "init": directive == "init", "frame": directive == "frame",
@@ -195,18 +198,28 @@ def stateful_text(m):
             single.add(st["name"])
     images = []
     fixed_bytes = 0
+    aspect_bytes = 0
     box = False
     for st in m["states"]:
         count = 1 if st["name"] in single else 2
         images.append("`%s` %s %s%s" % (st["name"], st["format"], st["size"], "" if count == 1 else " x2"))
-        if "x" in st["size"] and not st["size"].startswith("box"):
+        if st["size"].startswith("aspect"):
+            # aspect <short> [max <px>]: at most short x max texels (the long side capped at max)
+            short = int(st["size"].split()[1])
+            longest = st["max"] if st["max"] else 1024
+            aspect_bytes += short * max(short, longest) * FORMAT_BYTES.get(st["format"], 8) * count
+        elif "x" in st["size"] and not st["size"].startswith("box"):
             w, h = st["size"].split("x")
             fixed_bytes += int(w) * int(h) * FORMAT_BYTES.get(st["format"], 8) * count
         else:
             box = True
     steps = [p for p in m["passes"] if not p["init"] and not p["frame"]]
     frames = [p for p in m["passes"] if p["frame"]]
-    memory = "%.1f MB" % (fixed_bytes / (1024.0 * 1024.0)) + (" plus the area-sized images" if box else "")
+    if aspect_bytes:
+        memory = "at most %.1f MB" % ((fixed_bytes + aspect_bytes) / (1024.0 * 1024.0)) + (
+            " plus the area-sized images" if box else "")
+    else:
+        memory = "%.1f MB" % (fixed_bytes / (1024.0 * 1024.0)) + (" plus the area-sized images" if box else "")
     text = "Stateful (a simulation per element, phase 6): state %s (%s); %d pass%s a step" % (
         ", ".join(images), memory, len(steps), "" if len(steps) == 1 else "es")
     if frames:
