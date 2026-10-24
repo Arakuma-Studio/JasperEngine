@@ -27,6 +27,9 @@
 #include "component/UIDocumentComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
@@ -46,6 +49,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <memory>
 #include <set>
@@ -113,15 +118,28 @@ bool parseHexColor(const Json& value, float* out, int& count) {
     return true;
 }
 
-// String properties holding an asset reference instead of plain text: stored relative to the
-// assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
-// animation)
-bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
-    return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation");
-}
-
 bool endsWith(const std::string& text, const std::string& suffix) {
     return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+// An Animation Player's clips[N].clip: a .anim path or "<model>#<clip>"
+bool isPlayerClipProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 6, "clips[") == 0 &&
+           endsWith(propertyName, "].clip");
+}
+
+// clips[N].wrap: a ClipWrapMode (Catalog: Custom, one byte), set and read by its file name
+bool isPlayerWrapProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 6, "clips[") == 0 &&
+           endsWith(propertyName, "].wrap");
+}
+
+// String properties holding an asset reference instead of plain text: stored relative to the
+// assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
+// animation, an Animation Player's clip)
+bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
+    return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
+           isPlayerClipProperty(component, propertyName);
 }
 
 // Stochastic Tiling's values of a material, in the Inspector's ranges: false (and error) out of
@@ -1309,6 +1327,212 @@ bool McpValues::assetPathFromJson(Project* project, const std::string& projectRe
     return true;
 }
 
+namespace {
+
+// ---- Animation Player clip references (spec 5, 9.R41): stored relative to the assets folder
+// (".anim", or "<model>#<clip>" whose model part is), project-relative over MCP; the stored
+// form of an existing file is taken as well
+
+const char* const CLIP_PATH_EXAMPLE = " (e.g. assets/anim/walk.anim, or assets/models/hero.gltf#Walk for a model's animation)";
+
+std::string clipPathToJson(Project* project, const std::string& stored) {
+    anim::SubClipReference reference;
+    if (anim::parseSubClipReference(stored, reference)) {
+        return anim::formatSubClipReference(McpValues::assetPathToJson(project, reference.model), reference.clip);
+    }
+    return McpValues::assetPathToJson(project, stored);
+}
+
+// A path as MCP passes it (project-relative), or the stored form of an existing file, to the
+// stored form
+bool storedAssetPathFromJson(Project* project, const std::string& text, std::string& stored, std::string& error) {
+    const fs::path given = FileUtils::pathFromUtf8(text);
+    std::error_code ec;
+    if (!text.empty() && isSafeRelative(given) && !project->isInsideAssetsPath(project->getProjectPath() / given) &&
+            fs::is_regular_file(project->resolveAssetPath(given), ec)) {
+        stored = project->normalizeToAssetsRelative(project->resolveAssetPath(given)).generic_string();
+        return true;
+    }
+    return McpValues::assetPathFromJson(project, text, stored, error);
+}
+
+bool isClipFilePath(const std::string& path) {
+    std::string lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return endsWith(lower, ".anim");
+}
+
+// The .anim's GUID: the database's, else the file's own "guid" key
+std::string clipFileGuid(Project* project, const fs::path& full) {
+    std::string guid = project->getAssetDatabase().getGuid(full);
+    if (guid.empty()) {
+        std::ifstream file(full, std::ios::binary);
+        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        guid = anim::readClipGuid(text);
+    }
+    return guid;
+}
+
+// clips[N].clip as MCP sets it: an existing .anim, or a model file and one of its animations
+// (by name, or by index when the model can be read: stored by name, the canonical form).
+// Empty clears the entry's clip. `guid` is the .anim's GUID (empty for sub-clips).
+bool clipPathFromJson(Project* project, const std::string& text, std::string& stored, std::string& guid, std::string& error) {
+    stored.clear();
+    guid.clear();
+    if (text.empty()) {
+        return true;
+    }
+    std::string why;
+    anim::SubClipReference reference;
+    if (anim::parseSubClipReference(text, reference)) {
+        std::string model;
+        std::error_code ec;
+        if (!storedAssetPathFromJson(project, reference.model, model, why)) {
+            error = "clip: " + why + CLIP_PATH_EXAMPLE;
+            return false;
+        }
+        if (!fs::is_regular_file(project->resolveAssetPath(model), ec)) {
+            error = "clip: the model " + reference.model + " does not exist" + CLIP_PATH_EXAMPLE + ".";
+            return false;
+        }
+        std::string clip = reference.clip;
+        // checked against the model's animations when it can be read
+        std::vector<anim::ModelClipInfo> clips;
+        if (anim::listModelFileClips(model, clips, nullptr)) {
+            auto named = std::find_if(clips.begin(), clips.end(), [&clip](const anim::ModelClipInfo& info) { return info.name == clip; });
+            if (named == clips.end()) {
+                const bool digits = !clip.empty() && std::all_of(clip.begin(), clip.end(), [](unsigned char c) { return std::isdigit(c) != 0; });
+                const size_t index = digits && clip.size() < 9 ? static_cast<size_t>(std::stoul(clip)) : clips.size();
+                if (index >= clips.size()) {
+                    std::string names;
+                    for (const anim::ModelClipInfo& info : clips) names += (names.empty() ? "" : ", ") + info.name;
+                    error = "clip: " + reference.model + " has no animation \"" + clip + "\" (" +
+                            (names.empty() ? std::string("it has none") : "it has: " + names) + ").";
+                    return false;
+                }
+                clip = clips[index].name;
+            }
+        }
+        stored = anim::formatSubClipReference(model, clip);
+        return true;
+    }
+    if (!isClipFilePath(text)) {
+        error = "clip must be a .anim file or <model>#<animation>" + std::string(CLIP_PATH_EXAMPLE) + ".";
+        return false;
+    }
+    if (!storedAssetPathFromJson(project, text, stored, why)) {
+        error = "clip: " + why + CLIP_PATH_EXAMPLE;
+        return false;
+    }
+    const fs::path full = project->resolveAssetPath(stored);
+    std::error_code ec;
+    if (!fs::is_regular_file(full, ec)) {
+        error = "clip: " + text + " does not exist: create the clip first (Assets > Create > Animation Clip)" +
+                CLIP_PATH_EXAMPLE + ".";
+        stored.clear();
+        return false;
+    }
+    guid = clipFileGuid(project, full);
+    return true;
+}
+
+// "default", "once", "loop", "ping_pong", "clamp_forever"
+std::string clipWrapNames() {
+    std::string names;
+    for (ClipWrapMode wrap : {ClipWrapMode::Default, ClipWrapMode::Once, ClipWrapMode::Loop, ClipWrapMode::PingPong, ClipWrapMode::ClampForever}) {
+        names += (names.empty() ? "" : ", ") + std::string(anim::wrapName(wrap));
+    }
+    return names;
+}
+
+Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>& clips) {
+    Json list = Json::array();
+    for (const AnimationPlayerClip& entry : clips) {
+        Json item{{"clip", clipPathToJson(project, entry.clip)}, {"name", entry.name}, {"wrap", anim::wrapName(entry.wrap)}};
+        if (!entry.guid.empty()) item["guid"] = entry.guid;
+        list.push_back(item);
+    }
+    return list;
+}
+
+// The clip list an edit through the component's encoding left (clips set, an entry inserted,
+// removed or set, a field of one): every entry whose clip is not one the player holds now is
+// checked and stored as clips[N].clip is (its GUID from the file), the wraps checked; the
+// entries as they were stay untouched (a missing clip stays missing)
+bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
+    const YAML::Node& constValue = value;
+    const YAML::Node clips = constValue["clips"];
+    if (!clips || clips.IsNull()) {
+        value["clips"] = YAML::Node(YAML::NodeType::Sequence);
+        return true;
+    }
+    if (!clips.IsSequence()) {
+        error = "clips must be a list of {clip, name, wrap}, e.g. [{\"clip\": \"assets/anim/walk.anim\", \"wrap\": \"loop\"}].";
+        return false;
+    }
+    YAML::Node rebuilt(YAML::NodeType::Sequence);
+    for (size_t i = 0; i < clips.size(); i++) {
+        const YAML::Node item = clips[i];
+        const std::string at = "clips[" + std::to_string(i) + "]";
+        YAML::Node entry(YAML::NodeType::Map);
+        if (item.IsScalar()) {
+            entry["clip"] = item.Scalar();
+        } else if (item.IsMap()) {
+            for (auto it = item.begin(); it != item.end(); ++it) {
+                const std::string key = it->first.as<std::string>();
+                if (key != "clip" && key != "guid" && key != "name" && key != "wrap") {
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap}).";
+                    return false;
+                }
+                if (!it->second.IsScalar() && !it->second.IsNull()) {
+                    error = at + "." + key + " must be a string.";
+                    return false;
+                }
+                entry[key] = it->second.IsScalar() ? it->second.Scalar() : std::string();
+            }
+        } else {
+            error = at + " must be {clip, name, wrap} or a clip path" + std::string(CLIP_PATH_EXAMPLE) + ".";
+            return false;
+        }
+        const YAML::Node& constEntry = entry;
+        const std::string clip = constEntry["clip"] ? constEntry["clip"].Scalar() : std::string();
+        const AnimationPlayerClip* same = nullptr;
+        if (current) {
+            for (const AnimationPlayerClip& held : current->clips) {
+                if (held.clip == clip) {
+                    same = &held;
+                    break;
+                }
+            }
+        }
+        if (same) {
+            if (!same->guid.empty()) entry["guid"] = same->guid;
+        } else {
+            std::string stored, guid, why;
+            if (!clipPathFromJson(project, clip, stored, guid, why)) {
+                error = at + "." + why;
+                return false;
+            }
+            entry["clip"] = stored;
+            if (guid.empty()) entry.remove("guid");
+            else entry["guid"] = guid;
+        }
+        if (constEntry["wrap"]) {
+            ClipWrapMode wrap = ClipWrapMode::Default;
+            const std::string name = constEntry["wrap"].Scalar();
+            if (!name.empty() && !anim::wrapFromName(name, wrap)) {
+                error = at + ".wrap \"" + name + "\" is not a wrap mode (" + clipWrapNames() + ").";
+                return false;
+            }
+        }
+        rebuilt.push_back(entry);
+    }
+    value["clips"] = rebuilt;
+    return true;
+}
+
+} // namespace
+
 Json McpValues::entityToJson(SceneProject* scene, Entity entity) {
     if (entity == NULL_ENTITY) return nullptr;
     if (!scene || !scene->scene || !scene->scene->isEntityCreated(entity)) return Json{{"id", entity}, {"missing", true}};
@@ -1960,6 +2184,13 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             const MaterialPass& pass = *static_cast<MaterialPass*>(ref);
             return pass == MaterialPass() ? Json(nullptr) : materialPassToJson(ctx.project, ctx.scene, pass, true);
         }
+        // an Animation Player's clip list, its paths project-relative, and an entry's wrap
+        if (ref && ctx.component == ComponentType::AnimationPlayerComponent && name == "clips") {
+            return playerClipsToJson(ctx.project, *static_cast<std::vector<AnimationPlayerClip>*>(ref));
+        }
+        if (ref && isPlayerWrapProperty(ctx.component, name)) {
+            return anim::wrapName(*static_cast<ClipWrapMode*>(ref));
+        }
         bool found = false;
         return readYamlProperty(ctx, name, found);
     }
@@ -1969,6 +2200,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return *static_cast<bool*>(ref);
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
+            if (isPlayerClipProperty(ctx.component, name)) return clipPathToJson(ctx.project, value);
             return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
@@ -2167,6 +2399,16 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return nullptr;
                 }
                 return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+            }
+            if (isPlayerClipProperty(component, propertyName)) {
+                // the path and the GUID it names change together: the GUID wins when the scene loads
+                std::string stored, guid;
+                if (!clipPathFromJson(project, text, stored, guid, error)) return nullptr;
+                auto* multi = new MultiPropertyCmd();
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+                multi->addPropertyCmd<std::string>(project, sceneId, entity, component,
+                                                   propertyName.substr(0, propertyName.size() - 5) + ".guid", guid, onChanged);
+                return multi;
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // a foliage layer's FBX mesh loads from its import, created here the first time
@@ -2449,6 +2691,15 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             return multi;
         }
         case PropertyType::Custom:
+            if (isPlayerWrapProperty(component, propertyName)) {
+                // a one-byte enum by its file name
+                ClipWrapMode wrap = ClipWrapMode::Default;
+                if (!value.is_string() || !anim::wrapFromName(value.get<std::string>(), wrap)) {
+                    error = "Property " + propertyName + " is a wrap mode: " + clipWrapNames() + ".";
+                    return nullptr;
+                }
+                return new PropertyCmd<ClipWrapMode>(project, sceneId, entity, component, propertyName, wrap, onChanged);
+            }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
                 std::string why;
@@ -2852,6 +3103,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
                      endsWith(change.property, "shaderFeatures") || change.property == "stencil" ||
                      endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
+                     isPlayerWrapProperty(component, change.property) ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
@@ -2893,6 +3145,13 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                         return false;
                     }
                     syncListCount(value, edit.property);
+                }
+                if (component == ComponentType::AnimationPlayerComponent) {
+                    std::string why;
+                    if (!normalizePlayerClips(project, scene->scene->findComponent<AnimationPlayerComponent>(entity), value, why)) {
+                        error = componentLabel + " on " + label + ": " + why;
+                        return false;
+                    }
                 }
                 auto clip = std::make_shared<ComponentClip>();
                 clip->project = EntityClipboard::projectKey(project);
