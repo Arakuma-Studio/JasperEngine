@@ -4,7 +4,8 @@
 // The MCP server's protocol layer without an editor: MCP 2026-07-28 next to the
 // initialize-era versions (server/discover, per-request _meta, resultType and cache hints,
 // HTTP statuses of its errors), the HTTP transport's header checks (MCP-Protocol-Version /
-// Mcp-Method / Mcp-Name, base64 header values) and its bearer token.
+// Mcp-Method / Mcp-Name, base64 header values), its bearer token, and the read-only mode's
+// rule for read-only tools whose arguments write files.
 
 #include <gtest/gtest.h>
 
@@ -256,4 +257,26 @@ TEST(McpHttp, BearerToken) {
     EXPECT_FALSE(McpTransportHttp::constantTimeEquals("abc", "abd"));
     EXPECT_FALSE(McpTransportHttp::constantTimeEquals("abc", "ab"));
     EXPECT_TRUE(McpTransportHttp::constantTimeEquals("", ""));
+}
+
+// -- read-only mode ------------------------------------------------------------------------
+
+TEST(McpReadOnly, ArgumentsThatWriteMakeACallAChange) {
+    ToolDef edit;
+    edit.name = "create_entity";
+    EXPECT_TRUE(McpServer::mayChange(edit, Json::object()));
+
+    ToolDef read;
+    read.name = "find_entities";
+    read.annotations.readOnly = true;
+    EXPECT_FALSE(McpServer::mayChange(read, Json::object()));
+
+    // screenshot: a read, unless it saves the PNG
+    ToolDef shot;
+    shot.name = "screenshot";
+    shot.annotations.readOnly = true;
+    shot.writesFiles = [](const Json& args) { return args.contains("save_path"); };
+    EXPECT_FALSE(McpServer::mayChange(shot, Json{{"view", "game"}}));
+    EXPECT_TRUE(McpServer::mayChange(shot, Json{{"save_path", "project.yaml"}}));
+    EXPECT_FALSE(McpServer::mayChange(shot, Json()));
 }

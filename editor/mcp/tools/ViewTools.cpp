@@ -271,10 +271,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        const fs::path requested(job->req.savePath);
-        if (requested.is_absolute()) {
-            target = requested;
-        } else if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes
+        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
@@ -1125,11 +1123,14 @@ void registerViewTools(McpRegistry& registry) {
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
-            {"save_path", string("Also write the PNG (project-relative or absolute).")},
+            {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
             {"timeout_seconds", withDefault(number("", 1, 600), 30)}
         });
         tool.annotations.readOnly = true;
+        tool.writesFiles = [](const Json& args) {
+            return args.contains("save_path") && !(args["save_path"].is_string() && args["save_path"].get<std::string>().empty());
+        };
         tool.handler = screenshotTool;
         registry.addTool(std::move(tool));
     }

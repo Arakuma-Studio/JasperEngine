@@ -231,15 +231,15 @@ no effect there.
 - **HTTP** listens on `127.0.0.1` only. It rejects requests whose `Origin` header is not
   localhost, which blocks DNS-rebinding attacks from web pages you visit, and every request
   must send `Authorization: Bearer <token>`, so other programs and users on the machine can't
-  drive the editor. The editor makes the token (settings.yaml `mcp.http_token`) the first
-  time HTTP is enabled; the MCP Server window shows it, copies it and the connect command,
+  drive the editor. The editor makes the token the first time HTTP is enabled and keeps it in
+  `mcp_http_token` next to `settings.yaml`, a file only your user can read (mode 0600); the MCP Server window shows it, copies it and the connect command,
   and "New token" replaces it (clients then need the new one). To reach an editor on another
   machine, use an SSH tunnel (`ssh -L 47615:127.0.0.1:47615 host`). Never expose the port
   directly.
 - **Read-only mode**: turn off "Allow changes" in the MCP Server window and HTTP clients
   only get the tools that change nothing (inspecting, screenshots, reading files and the
-  Console, checks): `tools/list` leaves the others out, calling one fails, and `batch` is
-  not available. Clients that cached the tool list may need to list it again (reconnect).
+  Console, checks): `tools/list` leaves the others out, calling one fails, `batch` is
+  not available, and arguments that write files (`screenshot`'s `save_path`) are refused. Clients that cached the tool list may need to list it again (reconnect).
   stdio clients keep every tool: they started the editor themselves.
 - Give the agent the same trust you would give a developer on the project. It can write any
   file in the project (with its own tools, or through `write_file`), and C++ scripts it writes are compiled and run inside the editor

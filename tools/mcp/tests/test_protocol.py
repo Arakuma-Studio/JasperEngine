@@ -10,6 +10,7 @@ import json
 import os
 import re
 import socket
+import stat
 import sys
 import time
 import uuid
@@ -385,6 +386,15 @@ async def test_http_token_and_protocol_eras():
         await wait_for_port(raw, port)
         ping = {"jsonrpc": "2.0", "id": 1, "method": "ping"}
 
+        # the harness put the token in settings.yaml: it moved to mcp_http_token, owner-only
+        token_file = raw.scratch.root / "mcp_http_token"
+        if not token_file.is_file() or token_file.read_text().strip() != HTTP_TOKEN:
+            raw.fail(f"the token should be in {token_file}")
+        if stat.S_IMODE(token_file.stat().st_mode) != 0o600:
+            raw.fail(f"mcp_http_token should be mode 0600, is {oct(stat.S_IMODE(token_file.stat().st_mode))}")
+        if HTTP_TOKEN in (raw.scratch.root / "settings.yaml").read_text():
+            raw.fail("settings.yaml should no longer hold the token")
+
         # the token
         for token, what in ((None, "no token"), ("wrong-" + HTTP_TOKEN, "a wrong token")):
             status, headers, _ = await http_post(port, ping, token=token)
@@ -496,7 +506,8 @@ async def test_http_token_and_protocol_eras():
 
 async def test_http_read_only_mode():
     """With "Allow changes" off (settings.yaml mcp.allow_changes: false) HTTP clients of both eras
-    only see and run read-only tools, batch included; the stdio client keeps every tool."""
+    only see and run read-only tools, batch included, and not with arguments that write files
+    (screenshot save_path); the stdio client keeps every tool."""
     if _env_flag("JASPER_FAKE"):
         skip("the fake server has no read-only mode")
     import harness
@@ -507,7 +518,11 @@ async def test_http_read_only_mode():
         path = scratch.root / "settings.yaml"
         settings = yaml.safe_load(path.read_text())
         settings.setdefault("mcp", {})["allow_changes"] = False
+        settings["mcp"].pop("http_token", None)
         path.write_text(yaml.safe_dump(settings, sort_keys=False))
+        token_file = scratch.root / "mcp_http_token"
+        token_file.write_text(HTTP_TOKEN + "\n")
+        token_file.chmod(0o644)
         return scratch
 
     port = free_port()
@@ -563,6 +578,34 @@ async def test_http_read_only_mode():
         found = json.dumps((await raw.response(6))["result"])
         if '"Nope"' in found or '"Smuggled"' in found:
             raw.fail(f"a write slipped through: {found[:300]}")
+        # an existing token file others could read is owner-only now (and its token is used)
+        mode = stat.S_IMODE((raw.scratch.root / "mcp_http_token").stat().st_mode)
+        if mode != 0o600:
+            raw.fail(f"a 0644 mcp_http_token should become 0600, is {oct(mode)}")
+
+        # a read-only tool whose arguments write a file is refused too, and writes nothing
+        project = raw.scratch.project
+        before = (project / "project.yaml").read_bytes()
+        for save_path in ("assets/read_only_shot.png", "project.yaml"):
+            _, _, shot = await http_post(port, call(8, "screenshot", {"view": "game", "save_path": save_path}),
+                                         headers=session, timeout=300)
+            result = shot.get("result", {})
+            if not result.get("isError") or "Allow changes" not in json.dumps(result):
+                raw.fail(f"screenshot save_path={save_path!r} over HTTP in read-only mode should be refused: {str(shot)[:300]}")
+        if (project / "assets/read_only_shot.png").exists() or (project / "project.yaml").read_bytes() != before:
+            raw.fail("a refused screenshot save_path wrote its file")
+        # without save_path it is a read and runs
+        _, _, shot = await http_post(port, call(9, "screenshot", {"view": "game", "max_width": 64}), headers=session, timeout=300)
+        if shot.get("result", {}).get("isError"):
+            raw.fail(f"screenshot without save_path in read-only mode: {str(shot)[:300]}")
+        # save_path stays inside the project, also for clients that may change things
+        outside = raw.scratch.root / "outside_shot.png"
+        raw.send({"jsonrpc": "2.0", "id": 10, "method": "tools/call", "params": {"name": "screenshot", "arguments": {
+            "view": "game", "max_width": 64, "save_path": str(outside)}}})
+        r = (await raw.response(10, 300))["result"]
+        if not r.get("isError") or outside.exists():
+            raw.fail(f"screenshot save_path outside the project should be refused: {str(r)[:300]}")
+
         # the stdio client may still change things
         raw.send({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
                   "params": {"name": "create_entity", "arguments": {"name": "ViaStdio", "type": "box"}}})

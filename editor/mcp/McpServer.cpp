@@ -837,7 +837,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         bool settle = true;
     };
     auto autoSync = std::make_shared<AutoSyncState>();
-    autoSync->settle = McpAutoSync::mayWriteFiles(def->annotations.readOnly, args);
+    autoSync->settle = mayChange(*def, args);
 
     auto call = std::make_shared<McpCall>(*this, name, args,
         [this, id, reply, seq, key, autoSync](McpCall& done, const ToolResult& result) {
@@ -930,6 +930,10 @@ std::string McpServer::blockingDialogMessage() const {
     return text + ".";
 }
 
+bool McpServer::mayChange(const ToolDef& def, const Json& args) {
+    return !def.annotations.readOnly || (def.writesFiles && args.is_object() && def.writesFiles(args));
+}
+
 ToolActivity McpServer::effectiveActivity(const ToolDef& def) {
     if (def.activity != ToolActivity::Auto) return def.activity;
     return def.annotations.readOnly ? ToolActivity::Read : ToolActivity::Edit;
@@ -1016,11 +1020,13 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         call->fail("Cancelled.");
         return;
     }
-    // Checked when the call runs: changes may have been turned off while it waited
-    if (call->changesGated() && !httpChangesAllowed.load() && !def.annotations.readOnly) {
+    // Checked when the call runs (changes may have been turned off while it waited), with its
+    // arguments: a read-only tool may still write a file on request (screenshot save_path)
+    if (call->changesGated() && !httpChangesAllowed.load() && mayChange(def, call->args())) {
         call->fail("Changes are turned off for MCP clients over HTTP in the JasperEngine editor (MCP window: "
-                   "\"Allow changes\" is off), so only the read-only tools run and " + def.name +
-                   " changes the project. Ask the user to allow changes, then list the tools again.");
+                   "\"Allow changes\" is off), so only the read-only tools run, without arguments that write "
+                   "files, and this " + def.name + " call changes the project. Ask the user to allow changes, "
+                   "then list the tools again.");
         return;
     }
     if (!def.allowedWhilePlaying && app.getProject()->isAnyScenePlaying()) {

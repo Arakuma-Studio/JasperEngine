@@ -57,6 +57,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <atomic>
 #include <chrono>
