@@ -342,6 +342,16 @@ TEST(PoseImage, LabelTexts){
     EXPECT_EQ(PoseContactSheet::timeLabel(1.234f, true, false), "t=1.23 [L]");
     EXPECT_EQ(PoseContactSheet::timeLabel(2.0f, false, true), "t=2.00 [R]");
     EXPECT_EQ(PoseContactSheet::timeLabel(0.25f, true, true), "t=0.25 [LR]");
+    // a 64 px cell (58 px of text): the contact marker stays, the time gives way
+    EXPECT_EQ(PoseContactSheet::fitLabel("t=0.25 [LR]", 58), "0.25[LR]");
+    EXPECT_EQ(PoseContactSheet::fitLabel("t=0.25 [L]", 58), "t=0.25[L]");
+    EXPECT_EQ(PoseContactSheet::fitLabel("t=12.25 [LR]", 48), "12..[LR]");
+    EXPECT_EQ(PoseContactSheet::fitLabel("t=0.25 [LR]", 66), "t=0.25 [LR]");
+    EXPECT_EQ(PoseContactSheet::fitLabel("t=0.25", 30), "t=0..");
+    EXPECT_EQ(PoseContactSheet::fitLabel("3 a long pose name [L]x", 30), PoseImage::fitText("3 a long pose name [L]x", 30));
+    for (int width = 6; width <= 80; width++){
+        EXPECT_LE(PoseImage::textWidth(PoseContactSheet::fitLabel("t=10.50 [LR]", width)), width) << width;
+    }
 }
 
 TEST(PoseImage, PngRoundTrip){

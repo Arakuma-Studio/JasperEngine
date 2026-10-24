@@ -6,6 +6,7 @@
 namespace jasperengine::editor::mcp {
 
     class McpRegistry;
+    class McpContext;
 
     // Tool registrations grouped by editor feature.
     void registerCoreTools(McpRegistry& registry);
@@ -25,5 +26,9 @@ namespace jasperengine::editor::mcp {
     void registerHtmlUiTools(McpRegistry& registry);
     void registerUiEffectTools(McpRegistry& registry);
     void registerPoseTools(McpRegistry& registry);
+
+    // the pose documents' files-written hook (their writes reach the asset database and the
+    // Project window like any MCP file change): installed once, when the MCP context exists
+    void installPoseSyncHook(McpContext& context);
 
 }

@@ -4,10 +4,11 @@
 #include "PoseSheetRenderer.h"
 
 #include "pose/ModelRig.h"
-#include "pose/PoseRigProvider.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <system_error>
 
 using namespace jasperengine;
 
@@ -25,7 +26,32 @@ namespace {
     constexpr float HAND_TIP = 0.08f;
 
     bool sameView(const editor::PoseView& a, const editor::PoseView& b){
-        return a.kind == b.kind && (a.kind != editor::PoseView::Custom || (a.yaw == b.yaw && a.pitch == b.pitch));
+        return a.kind == b.kind;
+    }
+
+    // a model file as it is on disk: a changed file is a new stamp
+    std::string fileStamp(const std::string& file){
+        namespace fs = std::filesystem;
+        std::error_code ec;
+        const fs::path path = fs::u8path(file);
+        const auto size = fs::file_size(path, ec);
+        if (ec) return "";
+        const auto time = fs::last_write_time(path, ec);
+        if (ec) return "";
+        return std::to_string(static_cast<unsigned long long>(size)) + ":" +
+               std::to_string(static_cast<long long>(time.time_since_epoch().count()));
+    }
+
+    struct SharedRenderer{
+        std::string modelFile;
+        std::string stamp;
+        std::shared_ptr<editor::PoseSheetRenderer> renderer;
+    };
+
+    // never destroyed: renderers own GPU objects the editor frees itself at shutdown
+    std::vector<SharedRenderer>& sharedRenderers(){
+        static auto* renderers = new std::vector<SharedRenderer>();
+        return *renderers;
     }
 
     // the direction from bone `from` to bone `to` in the rest pose, in `to`'s own frame
@@ -55,13 +81,12 @@ const char* editor::PoseView::name(Kind kind){
         case ThreeQuarter: return "three_quarter";
         case Back: return "back";
         case Top: return "top";
-        case Custom: return "custom";
     }
     return "side";
 }
 
 bool editor::PoseView::fromName(const std::string& text, PoseView& out){
-    for (Kind kind : {Front, Side, ThreeQuarter, Back, Top, Custom}){
+    for (Kind kind : {Front, Side, ThreeQuarter, Back, Top}){
         if (text == name(kind)){
             out = PoseView();
             out.kind = kind;
@@ -73,13 +98,28 @@ bool editor::PoseView::fromName(const std::string& text, PoseView& out){
 
 // ---- model ----
 
-bool editor::PoseSheetRenderer::setModel(Project* project, const std::filesystem::path& modelFile, std::string* error){
-    const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forModelFile(project, modelFile);
-    if (!info->rig){
-        if (error) *error = info->error;
-        return false;
+std::shared_ptr<editor::PoseSheetRenderer> editor::PoseSheetRenderer::shared(const std::string& modelFile,
+                                                                         const std::shared_ptr<pose::PoseRig>& rig,
+                                                                         size_t kept, std::string* error){
+    std::vector<SharedRenderer>& renderers = sharedRenderers();
+    const std::string stamp = fileStamp(modelFile);
+    auto it = std::find_if(renderers.begin(), renderers.end(), [&](const SharedRenderer& entry){ return entry.modelFile == modelFile; });
+    std::shared_ptr<PoseSheetRenderer> renderer;
+    // the same file as loaded, and the same rig or a scene model's rig of its skeleton and map
+    if (it != renderers.end() && it->stamp == stamp && it->renderer->sameRig(rig) && it->renderer->setModel(modelFile, rig, error)){
+        renderer = it->renderer;
+    }else{
+        renderer = std::make_shared<PoseSheetRenderer>();
+        if (!renderer->setModel(modelFile, rig, error)) return nullptr;
     }
-    return setModel(modelFile.string(), info->rig, error);
+    if (it != renderers.end()) renderers.erase(it);
+    while (!renderers.empty() && renderers.size() >= std::max<size_t>(kept, 1)) renderers.erase(renderers.begin());
+    renderers.push_back({modelFile, stamp, renderer});
+    return renderer;
+}
+
+void editor::PoseSheetRenderer::clearShared(){
+    sharedRenderers().clear();
 }
 
 bool editor::PoseSheetRenderer::setModel(const std::string& modelFile, const std::shared_ptr<pose::PoseRig>& rig, std::string* error){
@@ -287,12 +327,6 @@ bool editor::PoseSheetRenderer::viewAxes(const PoseView& view, Vector3& directio
             dir = Vector3(0.0f, -1.0f, 0.0f);
             screenUp = Vector3(0.0f, 0.0f, 1.0f);
             break;
-        case PoseView::Custom:{
-            const float yaw = view.yaw * PI_F / 180.0f;
-            const float pitch = std::clamp(view.pitch, -89.0f, 89.0f) * PI_F / 180.0f;
-            dir = Vector3(-std::sin(yaw) * std::cos(pitch), -std::sin(pitch), -std::cos(yaw) * std::cos(pitch));
-            break;
-        }
     }
     direction = canonicalToModel(dir);
     up = canonicalToModel(screenUp);
@@ -466,24 +500,6 @@ void editor::PoseSheetRenderer::projectJoints(const pose::HumanPose& pose, PoseJ
 }
 
 // ---- rendering ----
-
-bool editor::PoseSheetRenderer::renderCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                                           const PoseRenderStyle& style, PoseImage& out, PoseJoints* joints){
-    out.clear();
-    if (!poseRig){
-        return false;
-    }
-    prepare(pose, view, width, height, style);
-    const Overlay overlay = makeOverlay(pose, style);
-    if (joints){
-        projectJoints(pose, *joints);
-    }
-    if (!render.renderNow(width, height, out)){
-        return false;
-    }
-    drawOverlay(overlay, out);
-    return true;
-}
 
 void editor::PoseSheetRenderer::requestCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
                                             const PoseRenderStyle& style, CellCallback done, PoseJoints* joints){

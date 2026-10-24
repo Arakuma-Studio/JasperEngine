@@ -41,6 +41,12 @@ public:
   (camera on the character's right side; the character faces image-right), ThreeQuarter = Front
   rotated -40 degrees about U (camera toward the character's front-right), Back `+F`, Top `-U`
   with screen-up = `+F`. Screen-up is `+U` for every other view.
+- As built (final review): the class is `PoseSheetRenderer` over `PoseRender`; it renders through
+  `requestCell` only (no synchronous `renderCell`), takes the rig with the model file
+  (`setModel(modelFile, rig)`), and has no `Custom` view (nothing used it; the MCP views are the
+  five above). `PoseSheetRenderer::shared` keeps the renderers of `render_pose_animation` per model
+  file and the file's stamp (modification time and size: an edited model loads again);
+  `clearShared` drops them when the project closes, next to `PoseRigProvider::clear`.
 - The model is drawn with its own materials when `shaded`, under a fixed key light (from
   front-left-above) and fill light; the floor is a dark grid quad at the rig's floor height.
 - The skeleton overlay is drawn on the CPU after readback by projecting joint positions with the
@@ -61,6 +67,8 @@ public:
   with 2 decimals, plus a contact marker for the feet in contact, appended as `" [L]"`, `" [R]"`
   or `" [LR]"` (e.g. `"t=0.25 [LR]"`); no marker when neither foot is in contact.
 - Ruling (implementation): the contact marker is appended as `" [L]"`, `" [R]"` or `" [LR]"` (e.g. `"t=0.25 [LR]"`).
+  A label too wide for its cell keeps the marker whole: the time gives way, first the space, then
+  `t=`, then digits (`"t=0.25 [LR]"` in a 64 px cell: `"0.25[LR]"`; `PoseContactSheet::fitLabel`).
 - PNG encoding through the engine's stb_image_write.
 
 ## 4. `render_pose_animation` (MCP, read-only)

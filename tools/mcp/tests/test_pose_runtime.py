@@ -25,7 +25,10 @@ TIMEOUT = 900
 
 S: dict = {}
 
-ANIM = "anims/raise.poseanim"
+# the Pose Animator's animation as MCP takes and shows it (project-relative, as the pose tools name
+# it) and as the component stores it (relative to the assets folder: scene file, Lua, generated code)
+ANIM = "assets/anims/raise.poseanim"
+ANIM_STORED = "anims/raise.poseanim"
 ONE_SHOT = "anims/oneshot.poseanim"
 # long enough (2.12 s) to be seen half way through between two tool calls on a loaded machine
 LONG_SHOT = "anims/longshot.poseanim"
@@ -98,7 +101,7 @@ async def frames(ed: Editor, seconds: float):
 
 
 async def test_add_component(ed: Editor):
-    write_asset(ed, ANIM, animation([pose("Down", 0, hold=0.3), pose("T", 90, hold=0.3), pose("Up", 150, hold=0.3)]))
+    write_asset(ed, ANIM_STORED, animation([pose("Down", 0, hold=0.3), pose("T", 90, hold=0.3), pose("Up", 150, hold=0.3)]))
     write_asset(ed, ONE_SHOT, animation([pose("Down", 0, hold=0.05), pose("T", 90, hold=0.05)], loop=False))
     write_asset(ed, LONG_SHOT, animation([pose("Down", 0, hold=1.0), pose("T", 90, hold=1.0)], loop=False))
 
@@ -112,6 +115,34 @@ async def test_add_component(ed: Editor):
     values = json.dumps(got)
     ed.check(ANIM in values, f"animation not set: {values[:600]}")
 
+    # the path convention: project-relative in and out (as the pose tools), stored relative to the
+    # assets folder; the stored form of an existing file is taken too; anything else is refused
+    async def animation_value():
+        got = await ed.call("get_entity", entity="Hero", components=["poseanimator"])
+        found = []
+
+        def walk(value):
+            if isinstance(value, dict):
+                for k, v in value.items():
+                    if k == "animation" and isinstance(v, str):
+                        found.append(v)
+                    walk(v)
+            elif isinstance(value, list):
+                for v in value:
+                    walk(v)
+        walk(got)
+        return found[0] if found else None
+    ed.check_eq(await animation_value(), ANIM, "shown project-relative")
+    await ed.call("set_properties", entity="Hero", values={"poseanimator": {"animation": ONE_SHOT}})
+    ed.check_eq(await animation_value(), "assets/" + ONE_SHOT, "the assets-relative form of an existing file")
+    await ed.call("set_properties", entity="Hero", values={"poseanimator": {"animation": ANIM}})
+    ed.check_eq(await animation_value(), ANIM, "the project-relative form")
+    for bad, why in (("anims/none.poseanim", "inside the assets"), ("assets/models/hero_tpose.gltf", ".poseanim"),
+                     ("../outside.poseanim", "project-relative")):
+        r = await ed.call_raw("set_properties", {"entity": "Hero", "values": {"poseanimator": {"animation": bad}}})
+        ed.check(r.is_error and why in r.text, f"{bad}: {r.text[:300]}")
+    ed.check_eq(await animation_value(), ANIM, "a refused path changes nothing")
+
     # the animator does not run in edit mode
     ed.check(close(await hand_y(ed, allow_edit_mode=True), S["edit_hand_y"], 1e-4), "edit mode moved the bones")
 
@@ -120,7 +151,7 @@ async def test_scene_round_trip(ed: Editor):
     await ed.call("set_properties", entity="Hero", values={"poseanimator": {"autoplay": True, "speed": 1.5, "weight": 0.75}})
     await ed.call("save_scene", scene="Main Scene")
     text = (ed.project / "Main Scene.scene").read_text()
-    ed.check("poseanimator:" in text and ANIM in text, "no poseanimator key in the saved scene")
+    ed.check("poseanimator:" in text and ANIM_STORED in text, "no poseanimator key in the saved scene")
 
     # closed and opened again: decoded from the file
     await ed.call("create_scene", name="Other", type="3D")
@@ -128,7 +159,7 @@ async def test_scene_round_trip(ed: Editor):
     await ed.call("open_scene", scene="Main Scene.scene")
     y = await ed.call("get_entity", entity="Hero", detail="yaml", components=["poseanimator"])
     blob = json.dumps(y)
-    ed.check("poseanimator" in blob and ANIM in blob, f"yaml after reload: {blob[:800]}")
+    ed.check("poseanimator" in blob and ANIM_STORED in blob, f"yaml after reload: {blob[:800]}")
     ed.check("1.5" in blob and "0.75" in blob, f"speed/weight after reload: {blob[:800]}")
     await ed.call("set_properties", entity="Hero", values={"poseanimator": {"speed": 1, "weight": 1}})
 
@@ -157,7 +188,7 @@ async def test_lua_api(ed: Editor):
         return a:getPoseCount(), a:findPose('T'), a:findPose('nope'), a:getPoseName(2), a:getAnimation(),
                a:isPlaying(), a:getLength() > 0.5
     """)
-    ed.check_eq(v, [3, 1, -1, "Up", ANIM, True, True], "PoseAnimator API")
+    ed.check_eq(v, [3, 1, -1, "Up", ANIM_STORED, True, True], "PoseAnimator API")
 
 
 async def test_go_to_pose(ed: Editor):
@@ -224,7 +255,7 @@ async def test_empty_path_restores_the_bones(ed: Editor):
     await lua(ed, "object('Hero', 'Model'):getPoseAnimator():setAnimation('')")
     await frames(ed, 0.3)
     ed.check(close(await hand_y(ed), S["edit_hand_y"], 1e-3), "no animation: the bones are back in the rest pose")
-    await lua(ed, f"object('Hero', 'Model'):getPoseAnimator():setAnimation('{ANIM}')")
+    await lua(ed, f"object('Hero', 'Model'):getPoseAnimator():setAnimation('{ANIM_STORED}')")
     deadline = time.monotonic() + 30
     while not (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()"))[0]:
         ed.check(time.monotonic() < deadline, "the animator never loaded again")
@@ -256,7 +287,7 @@ async def test_negative_speed_one_shot_starts_at_the_end(ed: Editor):
         ed.check_eq(v, [0], "the backwards one-shot ends at time 0")
     finally:
         # the next tests play forwards whatever happened here
-        await lua(ed, f"local a = object('Hero', 'Model'):getPoseAnimator(); a:setSpeed(1); a:setAnimation('{ANIM}'); a:play()")
+        await lua(ed, f"local a = object('Hero', 'Model'):getPoseAnimator(); a:setSpeed(1); a:setAnimation('{ANIM_STORED}'); a:play()")
     deadline = time.monotonic() + 30
     while not (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()"))[0]:
         ed.check(time.monotonic() < deadline, "the animator never loaded again")
@@ -360,8 +391,9 @@ async def test_clip_under_the_animator(ed: Editor):
 
 
 async def test_missing_file_logs_one_error(ed: Editor):
+    # a file that does not exist (yet): only the project-relative form names it
     await ed.call("add_component", entity="Robot", component="poseanimator",
-                  values={"poseanimator": {"animation": "anims/missing.poseanim"}})
+                  values={"poseanimator": {"animation": "assets/anims/missing.poseanim"}})
     await ed.call("play", action="start")
     await frames(ed, 1.0)
     entries = await ed.console_since(None, types=["error"], limit=1000)
@@ -371,7 +403,7 @@ async def test_missing_file_logs_one_error(ed: Editor):
     ed.check_eq(v, [False, True], "the broken animator is disabled, the other plays")
 
     # a good path loads it again: the A-pose robot (Blender rest rotations, twist bones) in a T-pose
-    await lua(ed, f"object('Robot', 'Model'):getPoseAnimator():setAnimation('{ANIM}')")
+    await lua(ed, f"object('Robot', 'Model'):getPoseAnimator():setAnimation('{ANIM_STORED}')")
     deadline = time.monotonic() + 30
     while not (await lua(ed, "return object('Robot', 'Model'):getPoseAnimator():isLoaded()"))[0]:
         ed.check(time.monotonic() < deadline, "the robot's animator never loaded")
@@ -388,7 +420,7 @@ async def test_missing_file_logs_one_error(ed: Editor):
     await lua(ed, "object('Robot', 'Model'):getPoseAnimator():setAnimation('anims/missing.poseanim')")
     await frames(ed, 0.5)
     write_asset(ed, "anims/missing.poseanim", animation([pose("Down", 0), pose("T", 90)]))
-    await ed.call("set_properties", entity="Robot", values={"poseanimator": {"animation": "anims/missing.poseanim"}})
+    await ed.call("set_properties", entity="Robot", values={"poseanimator": {"animation": "assets/anims/missing.poseanim"}})
     deadline = time.monotonic() + 30
     while not (await lua(ed, "return object('Robot', 'Model'):getPoseAnimator():isLoaded()"))[0]:
         ed.check(time.monotonic() < deadline, "the fixed file never loaded through set_properties")
@@ -423,9 +455,9 @@ async def test_export_generates_the_component(ed: Editor):
     sources = [p for p in out.rglob("*.cpp") if "PoseAnimatorComponent poseanimator;" in p.read_text(errors="ignore")]
     ed.check(sources, "no PoseAnimatorComponent in the generated scene code")
     code = sources[0].read_text(errors="ignore")
-    ed.check(f'poseanimator.animation = "{ANIM}";' in code, "the generated code sets the animation")
+    ed.check(f'poseanimator.animation = "{ANIM_STORED}";' in code, "the generated code sets the animation")
     ed.check("poseanimator.autoplay = true;" in code, "the generated code sets autoplay")
     assets = out / "project" / "assets"
-    ed.check((assets / ANIM).is_file(), f"{ANIM} exported to {assets}")
+    ed.check((assets / ANIM_STORED).is_file(), f"{ANIM_STORED} exported to {assets}")
     ed.check((assets / ONE_SHOT).is_file(), f"{ONE_SHOT} exported to {assets}")
     ed.check((assets / "models/hero_tpose.gltf.humanoid").is_file(), f"the .humanoid sidecar exported to {assets}")

@@ -8,12 +8,9 @@
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanoidMapIO.h"
-#include "util/ProjectChecks.h"
-
-#if __has_include("pose/ModelRig.h")
 #include "pose/ModelRig.h"
-#define POSE_RIG_PROVIDER_HAS_MODEL_RIG 1
-#endif
+#include "util/FileUtils.h"
+#include "util/ProjectChecks.h"
 
 using namespace jasperengine;
 
@@ -51,9 +48,7 @@ namespace {
     }
 
     fs::path sidecarOf(const fs::path& model){
-        fs::path sidecar = model;   // pose::humanoidSidecarPath: "<model file>.humanoid"
-        sidecar += ".humanoid";
-        return sidecar;
+        return editor::FileUtils::pathFromUtf8(pose::humanoidSidecarPath(editor::FileUtils::pathToUtf8(model)));
     }
 
     // The sidecar's overrides (a missing sidecar is all auto); false + error when it is unreadable
@@ -79,7 +74,6 @@ namespace {
         if (!readOverrides(project, sidecarOf(modelFile), overrides, info.notes, info.error)){
             return;
         }
-#ifdef POSE_RIG_PROVIDER_HAS_MODEL_RIG
         pose::Skeleton skeleton;
         if (!pose::buildSkeleton(scene, model, skeleton, info.boneEntities, &info.bridges) || skeleton.bones.empty()){
             info.error = info.model + " has no skeleton (bones): pose animations need a skinned humanoid model";
@@ -105,11 +99,6 @@ namespace {
             return;
         }
         info.rig = rig;
-#else
-        (void)scene;
-        (void)model;
-        info.error = "rigs need pose/ModelRig, which this editor build does not have yet";
-#endif
     }
 
 }

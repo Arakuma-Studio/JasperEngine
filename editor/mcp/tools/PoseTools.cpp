@@ -38,6 +38,7 @@
 #include "pose/PoseRanges.h"
 #include "pose/PoseTypes.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -465,9 +466,10 @@ bool readAngles(const Json& value, const std::string& path, std::vector<std::pai
     return true;
 }
 
-// Shortest-way angle lerp (degrees)
-float lerpAngle(float a, float b, float t) {
-    return a + wrapAngle(b - a) * t;
+// A DOF value lerp (degrees): DOFs are joint angles inside their ranges, not headings, so the
+// plain lerp (170 -> -60 at 0.5 is 55, not the wrapped 235)
+float lerpDof(float a, float b, float t) {
+    return a + (b - a) * t;
 }
 
 // ------------------------------------------------------------------ ops
@@ -482,10 +484,20 @@ constexpr uint8_t TOUCHED = 1;      // returned in the result
 constexpr uint8_t ANGLES_SET = 2;   // this call set its angles: joint limits apply to it
 constexpr uint8_t FROM_TEMPLATE = 4;   // came from a template (phase 6): its own transition is the template's
 
+// Per pose of the call: the marks above and the joint limit clamps made on it (by DOF: the value
+// asked for and the one stored), moved with the pose by inserts, deletes and moves
+struct PoseMark {
+    uint8_t flags = 0;
+    std::map<int, std::pair<float, float>> clamps;
+    PoseMark(uint8_t value = 0) : flags(value) {}
+    PoseMark& operator|=(uint8_t value) { flags |= value; return *this; }
+    uint8_t operator&(uint8_t value) const { return flags & value; }
+};
+
 struct EditState {
     Project* project = nullptr;
     PoseAnimationData data;
-    std::vector<uint8_t> touched;   // per pose: TOUCHED (added, updated, moved, mirrored, retimed), ANGLES_SET
+    std::vector<PoseMark> touched;  // per pose: TOUCHED (added, updated, moved, mirrored, retimed), ANGLES_SET
     std::vector<std::string> changes;
     std::vector<std::string> warnings;
     std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
@@ -605,7 +617,7 @@ bool addPose(EditState& state, const Json& op, const std::string& path, std::str
             return false;
         }
         const PoseKey& target = poses[to];
-        for (int dof = 0; dof < DOF_COUNT; dof++) key.body.angles[dof] = lerpAngle(key.body.angles[dof], target.body.angles[dof], blend);
+        for (int dof = 0; dof < DOF_COUNT; dof++) key.body.angles[dof] = lerpDof(key.body.angles[dof], target.body.angles[dof], blend);
         key.body.offset.x += (target.body.offset.x - key.body.offset.x) * blend;
         key.body.offset.z += (target.body.offset.z - key.body.offset.z) * blend;
         key.lift += (target.lift - key.lift) * blend;
@@ -617,7 +629,8 @@ bool addPose(EditState& state, const Json& op, const std::string& path, std::str
     const size_t at = static_cast<size_t>(after + 1);
     key.name = "Pose " + std::to_string(count + 1);
     poses.insert(poses.begin() + at, key);
-    state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
+    // the copy's clamps are its source's (what it was made from), not requests of this pose
+    state.touched.insert(state.touched.begin() + at, PoseMark(TOUCHED | ANGLES_SET));
     std::vector<std::string> fields;
     if (!applyKeyFields(state, at, op, path, fields, error)) return false;
     state.changes.push_back("add_pose: \"" + poses[at].name + "\" at " + std::to_string(at) + " (" + how + ")");
@@ -671,11 +684,12 @@ bool movePose(EditState& state, const Json& op, const std::string& path, std::st
     if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
     if (!readIndex(op["to"], path + ".to", poses.size(), to, error)) return false;
     PoseKey key = poses[index];
-    const uint8_t mark = state.touched[index];
+    PoseMark mark = state.touched[index];
+    mark |= TOUCHED;
     poses.erase(poses.begin() + index);
     state.touched.erase(state.touched.begin() + index);
     poses.insert(poses.begin() + to, key);
-    state.touched.insert(state.touched.begin() + to, static_cast<uint8_t>(mark | TOUCHED));
+    state.touched.insert(state.touched.begin() + to, mark);
     state.changes.push_back("move_pose \"" + key.name + "\": " + std::to_string(index) + " -> " + std::to_string(to));
     return true;
 }
@@ -811,8 +825,7 @@ bool setPreviewModel(EditState& state, const Json& op, const std::string& path, 
 
 // The sidecar of a model as this call sees it: the edited copy, else the file (missing = all auto)
 bool sidecarFor(EditState& state, const fs::path& model, SidecarEdit*& out, const std::string& path, std::string& error) {
-    fs::path sidecar = model;   // humanoidSidecarPath: "<model file>.humanoid"
-    sidecar += ".humanoid";
+    const fs::path sidecar = FileUtils::pathFromUtf8(humanoidSidecarPath(FileUtils::pathToUtf8(model)));
     const std::string key = sidecar.generic_string();
     auto it = state.sidecars.find(key);
     if (it == state.sidecars.end()) {
@@ -923,7 +936,7 @@ bool mirrorPose(EditState& state, const Json& op, const std::string& path, std::
         key.name = op.contains("name") ? op["name"].get<std::string>() : key.name + " (mirrored)";
         at = static_cast<size_t>(index + 1);
         poses.insert(poses.begin() + at, key);
-        state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
+        state.touched.insert(state.touched.begin() + at, PoseMark(TOUCHED | ANGLES_SET));
         state.changes.push_back("mirror_pose " + std::to_string(index) + ": mirrored copy \"" + key.name + "\" at " + std::to_string(at));
     } else {
         if (op.contains("name")) key.name = op["name"].get<std::string>();
@@ -965,7 +978,7 @@ bool autoTimingOp(EditState& state, const std::string& path, std::string& error)
     const std::shared_ptr<PoseRealisation> realised = PoseAnimationDocument::realiseData(state.data, rig.info->rig);
     const double before = buildTimeline(state.data).length;
     autoTiming(state.data, realised->keys, *rig.info->rig);
-    for (uint8_t& mark : state.touched) mark |= TOUCHED;
+    for (PoseMark& mark : state.touched) mark |= TOUCHED;
     state.changes.push_back("auto_timing: holds and transitions from the motion (length " + fmt(before) + " -> " +
                             fmt(buildTimeline(state.data).length) + " s)");
     return true;
@@ -1009,7 +1022,7 @@ bool applyTemplateOp(EditState& state, const Json& op, const std::string& path, 
     }
     PoseTemplates::apply(found.data, state.data, append ? PoseTemplateApply::Append : PoseTemplateApply::Replace);
     state.touched.resize(first);
-    state.touched.resize(state.data.poses.size(), static_cast<uint8_t>(TOUCHED | ANGLES_SET | FROM_TEMPLATE));
+    state.touched.resize(state.data.poses.size(), PoseMark(TOUCHED | ANGLES_SET | FROM_TEMPLATE));
     if (!append) {
         // the animation's transition is now the template's: not a feel change of this call
         state.transitionFromTemplate = true;
@@ -1148,15 +1161,29 @@ std::string outsideAssetsWarning(Project* project, const std::string& relative) 
 }
 
 // humanize.joint_limits: the poses whose angles this call set (add_pose, mirror_pose, angles,
-// add_angles) are clamped to the joint limits (reported); metadata-only edits are left alone
-void clampTouchedToLimits(EditState& state, std::vector<ClampReport>& reports) {
+// add_angles) are clamped to the joint limits; metadata-only edits are left alone. Run after
+// every op, so a later op that copies, mirrors or blends a pose (from, blend_to, mirror_pose)
+// reads its stored (clamped) values, and once more at the end (limits turned on by a later op).
+void clampTouchedPoses(EditState& state) {
     if (!state.data.settings.humanize.jointLimits) return;
     for (size_t i = 0; i < state.data.poses.size() && i < state.touched.size(); i++) {
         if (!(state.touched[i] & ANGLES_SET)) continue;
         BodyPose& body = state.data.poses[i].body;
         const BodyPose before = body;
         for (int dof : clampToLimits(body)) {
-            reports.push_back({"poses[" + std::to_string(i) + "].angles." + dofName(dof), before.angles[dof], body.angles[dof]});
+            state.touched[i].clamps[dof] = {before.angles[dof], body.angles[dof]};
+        }
+    }
+}
+
+// The clamps reported: per pose (final index) and DOF the last request clamped, when the pose
+// still holds the clamped value (a later op may have set it again within the limits)
+void clampTouchedToLimits(EditState& state, std::vector<ClampReport>& reports) {
+    clampTouchedPoses(state);
+    for (size_t i = 0; i < state.data.poses.size() && i < state.touched.size(); i++) {
+        for (const auto& [dof, values] : state.touched[i].clamps) {
+            if (state.data.poses[i].body.angles[dof] != values.second) continue;
+            reports.push_back({"poses[" + std::to_string(i) + "].angles." + dofName(dof), values.first, values.second});
         }
     }
 }
@@ -1183,13 +1210,6 @@ bool resolveAnimationPath(Project* project, const Json& args, std::string& relat
     absolute = absolute.lexically_normal();
     relative = projectRel(project, absolute);
     return true;
-}
-
-void installSyncHook(McpContext& ctx) {
-    McpContext* context = &ctx;
-    PoseAnimationDocument::setFilesWrittenHook([context](const std::vector<fs::path>& changed) {
-        w4::syncFiles(*context, changed, false);
-    });
 }
 
 // A model GameObject of `scene` (the selected scene when omitted)
@@ -1221,7 +1241,6 @@ bool resolveModelEntity(Project* project, const Json& args, const Json& ref, con
 void getPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    installSyncHook(call->ctx());
     if (args.contains("templates")) {
         // the template list (phase 6)
         if (!args["templates"].is_boolean() || (args["templates"].get<bool>() && args.contains("path"))) {
@@ -1341,16 +1360,17 @@ void bakeAnimatorTool(const CallPtr& call) {
         call->fail("bake: " + error);
         return;
     }
+    // the component stores it relative to the assets folder: shown project-relative, as the tools take it
+    const std::string source = projectRel(project, project->resolveAssetPath(fs::u8path(animator->animation)).lexically_normal());
     Json out = {{"bake", {{"animation", McpRefs::entityJson(scene, result.animation)}, {"name", result.name},
                           {"created", result.created}, {"frames", result.frames}, {"tracks", result.tracks},
-                          {"length", r4(result.length)}, {"source", animator->animation}}}};
-    call->ok(PoseBaker::bakeStatusLine(animator->animation, result) + " (scene undo step)", out);
+                          {"length", r4(result.length)}, {"source", source}}}};
+    call->ok(PoseBaker::bakeStatusLine(source, result) + " (scene undo step)", out);
 }
 
 void editPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    installSyncHook(call->ctx());
     if (!args.contains("path") && args.contains("bake")) {
         bakeAnimatorTool(call);
         return;
@@ -1466,7 +1486,8 @@ void editPoseAnimationTool(const CallPtr& call) {
     }
     state.touched.assign(state.data.poses.size(), 0);
     if (creating && args["create"].contains("template")) {
-        for (uint8_t& mark : state.touched) mark = FROM_TEMPLATE;
+        // the result shows the template's poses with their metrics (the call made them all)
+        for (PoseMark& mark : state.touched) mark = PoseMark(TOUCHED | FROM_TEMPLATE);
     }
     const Transition initialTransition = state.data.settings.transition;
 
@@ -1476,6 +1497,7 @@ void editPoseAnimationTool(const CallPtr& call) {
             call->fail(error + (ops.size() > 1 ? " (nothing was changed: ops are all or nothing)" : ""));
             return;
         }
+        clampTouchedPoses(state);
     }
     if (bakeModel != NULL_ENTITY && state.data.poses.empty()) {
         call->fail("bake: the animation has no poses (nothing was changed).");
@@ -1525,13 +1547,18 @@ void editPoseAnimationTool(const CallPtr& call) {
     for (size_t i = 0; i < state.touched.size() && i < document->data().poses.size(); i++) {
         if (state.touched[i] & TOUCHED) touched.push_back(i);
     }
-    const Json full = animationJson(project, *document, previewRig(project, document->data()), touched, true);
+    const RigUse rigUse = previewRig(project, document->data());
+    const Json full = animationJson(project, *document, rigUse, touched, true);
     Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
                 {"changes", state.changes}, {"clamped", clampJson(clamped)}, {"warnings", state.warnings},
-                {"poses", full["poses"]}};
-    if (!full["preset"].is_null()) out["preset"] = full["preset"];
+                {"preset", full["preset"]}, {"poses", full["poses"]}};
     std::string text = document->path() + ": " + std::to_string(document->data().poses.size()) + " pose(s), " +
                        fmt(full["length"].get<double>()) + " s" + (changed ? "" : " (no change: nothing written)");
+    // as get: why the poses have no metrics (the preview model is not a usable humanoid)
+    if (rigUse.info && !rigUse.info->rig) {
+        out["rig_error"] = rigUse.info->error;
+        text += "\nno metrics: " + rigUse.info->error;
+    }
     for (const std::string& line : state.changes) text += "\n" + line;
     for (const ClampReport& report : clamped) text += "\nclamped " + describeClamp(report);
     for (const std::string& warning : state.warnings) text += "\nwarning: " + warning;
@@ -1598,29 +1625,6 @@ struct RenderJob {
 // Sheet renderers kept warm between calls, per model file, least recently used first.
 // Deliberately never destroyed (the editor frees their GPU objects when the view goes away): a
 // PoseRender owns a scene that must not outlive the engine.
-std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>& sheetRenderers() {
-    static auto* renderers = new std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>();
-    return *renderers;
-}
-
-std::shared_ptr<PoseSheetRenderer> sheetRendererFor(const std::string& modelFile, const std::shared_ptr<PoseRig>& rig,
-                                                    std::string& error) {
-    auto& renderers = sheetRenderers();
-    auto it = std::find_if(renderers.begin(), renderers.end(), [&](const auto& entry) { return entry.first == modelFile; });
-    std::shared_ptr<PoseSheetRenderer> renderer;
-    // the same rig, or a scene model's rig of the same skeleton and map: the loaded model serves
-    if (it != renderers.end() && it->second->sameRig(rig) && it->second->setModel(modelFile, rig, &error)) {
-        renderer = it->second;
-    } else {
-        // a new one (a call still drawing with the old rig keeps the old renderer alive)
-        renderer = std::make_shared<PoseSheetRenderer>();
-        if (!renderer->setModel(modelFile, rig, &error)) return nullptr;
-    }
-    if (it != renderers.end()) renderers.erase(it);
-    while (renderers.size() >= RENDER_KEPT_RENDERERS) renderers.erase(renderers.begin());
-    renderers.emplace_back(modelFile, renderer);
-    return renderer;
-}
 
 // One caption hint per view: where the character's sides are
 std::string viewHint(const std::string& view) {
@@ -1659,7 +1663,7 @@ bool readViews(const Json& args, const std::string& mode, std::vector<PoseView>&
     for (size_t i = 0; i < list.size(); i++) {
         PoseView view;
         const std::string name = list[i].is_string() ? list[i].get<std::string>() : std::string();
-        if (!PoseView::fromName(name, view) || view.kind == PoseView::Custom) {
+        if (!PoseView::fromName(name, view)) {
             error = "views[" + std::to_string(i) + "]: '" + (list[i].is_string() ? name : list[i].dump()) +
                     "' is not a view (front, side, three_quarter, back, top)";
             return false;
@@ -1769,7 +1773,6 @@ bool readColumns(const Json& args, const std::string& mode, const PoseAnimationD
 void renderPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
-    installSyncHook(call->ctx());
     std::string relative, error;
     fs::path absolute;
     if (!resolveAnimationPath(project, args, relative, absolute, error)) {
@@ -1899,7 +1902,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
     layout.cellWidth = cellWidth;
     layout.cellHeight = cellHeight;
 
-    std::shared_ptr<PoseSheetRenderer> renderer = sheetRendererFor(modelFile.string(), info->rig, error);
+    std::shared_ptr<PoseSheetRenderer> renderer = PoseSheetRenderer::shared(modelFile.string(), info->rig, RENDER_KEPT_RENDERERS, &error);
     if (!renderer) {
         call->fail("model: " + error);
         return;
@@ -2061,6 +2064,13 @@ void registerRenderPoseAnimation(McpRegistry& registry) {
 }
 
 } // namespace
+
+void installPoseSyncHook(McpContext& context) {
+    McpContext* target = &context;
+    PoseAnimationDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+        w4::syncFiles(*target, changed, false);
+    });
+}
 
 void registerPoseTools(McpRegistry& registry) {
     using namespace schema;

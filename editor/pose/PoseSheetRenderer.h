@@ -16,8 +16,6 @@
 //   direction, so the head and the wrists show their turn. Segments are drawn far to near
 //   (painter's order along the view direction), joints after them; a segment takes the colour
 //   of its child slot's side.
-// - Custom view: yaw turns the Front direction about up (positive: toward the character's
-//   left), pitch then tilts it (positive: the camera above, looking down).
 // - Lights: the key light shines from the character's front-left-above, the fill from its
 //   front-right (PoseRender's defaults, expressed in canonical axes).
 //
@@ -42,15 +40,11 @@
 
 namespace jasperengine::editor{
 
-    class Project;
-
     struct PoseView{
-        enum Kind { Front, Side, ThreeQuarter, Back, Top, Custom };
+        enum Kind { Front, Side, ThreeQuarter, Back, Top };
         Kind kind = Side;
-        float yaw = 0.0f;       // degrees, Custom only; yaw 0 = looking at the character's front
-        float pitch = 0.0f;
 
-        // "front", "side", "three_quarter", "back", "top", "custom"
+        // "front", "side", "three_quarter", "back", "top"
         static const char* name(Kind kind);
         static bool fromName(const std::string& name, PoseView& out);
     };
@@ -82,13 +76,18 @@ namespace jasperengine::editor{
         PoseSheetRenderer(const PoseSheetRenderer&) = delete;
         PoseSheetRenderer& operator=(const PoseSheetRenderer&) = delete;
 
-        // Loads a model file (absolute) with the rig of the phase 2 rig provider (cached per
-        // model file and .humanoid sidecar). False + error when the model does not load or is
-        // not a usable humanoid (the error names the missing slots).
-        bool setModel(Project* project, const std::filesystem::path& modelFile, std::string* error);
-        // The same with a given rig (a scene model's): its skeleton must be the model file's. With
-        // the model already loaded and a rig of the same skeleton and humanoid map (sameRig), the
-        // rig is swapped in without reloading the model.
+        // The renderers render_pose_animation keeps (the last `kept` model files): the one of
+        // `modelFile` (absolute) set to `rig` (setModel), a new one when the file changed on disk
+        // (its modification time and size) or the rig is not the loaded one's skeleton and map.
+        // A call still drawing keeps the renderer it got alive. clearShared: the project closes.
+        static std::shared_ptr<PoseSheetRenderer> shared(const std::string& modelFile, const std::shared_ptr<pose::PoseRig>& rig,
+                                                         size_t kept, std::string* error);
+        static void clearShared();
+
+        // Loads a model file (absolute) with a rig whose skeleton is the model file's (the rig
+        // provider's, or a scene model's). With the model already loaded and a rig of the same
+        // skeleton and humanoid map (sameRig), the rig is swapped in without reloading the model.
+        // False + error when the model does not load or the rig does not fit it.
         bool setModel(const std::string& modelFile, const std::shared_ptr<pose::PoseRig>& rig, std::string* error);
         // true when `rig` has the loaded rig's skeleton (names, parents, rest TRS) and humanoid map
         bool sameRig(const std::shared_ptr<pose::PoseRig>& rig) const;
@@ -101,19 +100,12 @@ namespace jasperengine::editor{
         void beginBatch(const std::vector<pose::HumanPose>& posesForFraming, const PoseView& view);
         void endBatches();
 
-        // Renders now (false, `out` empty, when the renderer is not ready yet: requestCell waits)
-        bool renderCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                        const PoseRenderStyle& style, PoseImage& out, PoseJoints* joints = nullptr);
         // Queues a cell (pose, view and style captured now); done runs on the main thread from a
         // later editor frame, the overlay already drawn (without a model: at once, ok false).
         // `joints`, when given, gets the projected slot joints now.
         void requestCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
                          const PoseRenderStyle& style, CellCallback done, PoseJoints* joints = nullptr);
         size_t getPendingCount() const { return render.getPendingRenderCount(); }
-        void cancel() { render.cancelRenders(); }
-
-        // The view's look direction and screen up in model space (canonical axes through the rig)
-        bool viewAxes(const PoseView& view, Vector3& direction, Vector3& up) const;
 
     private:
         struct Batch{
@@ -151,6 +143,8 @@ namespace jasperengine::editor{
         std::vector<Batch> batches;
 
         bool bindSkeleton(std::string* error);
+        // The view's look direction and screen up in model space (canonical axes through the rig)
+        bool viewAxes(const PoseView& view, Vector3& direction, Vector3& up) const;
         void applyPose(const pose::HumanPose& pose);
         // model-space points bounding a pose: skin samples (else joints) and the slot joints
         void posePoints(const pose::HumanPose& pose, std::vector<Vector3>& out) const;

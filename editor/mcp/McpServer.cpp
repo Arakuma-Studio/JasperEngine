@@ -65,6 +65,7 @@ void McpServer::start(App& app) {
     appPtr = &app;
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
+    installPoseSyncHook(*ctx);
 
     registerAllTools();
 

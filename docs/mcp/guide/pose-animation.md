@@ -123,7 +123,11 @@ hips, one key per frame at the frame times, step keys when `step_rate` > 0; its 
 `undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
 `Model:playAnimation(name)`; names are per model (the Hero and the Robot can both have "walk"). `bake`
 alone (no ops) re-bakes after edits; `bake` without `path` bakes what the model's Pose Animator plays
-(the Inspector's Bake button).
+(the Inspector's Bake button). To play it live instead, attach a Pose Animator:
+`add_component {entity: "Hero", component: "poseanimator", values: {poseanimator: {animation:
+"assets/anim/walk.poseanim", autoplay: true}}}` (the same project-relative path the pose tools take).
+`model` is a model file (project-relative path) inside ops (`set_preview_model`, `set_humanoid`) and
+a model GameObject of the scene in `get` / `render` / `bake`; `rig.model` is that file or `{id, name, path}`.
 
 ## Feel (`feel`) and humanize (`humanize`)
 

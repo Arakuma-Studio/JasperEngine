@@ -29,6 +29,7 @@
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -105,9 +106,11 @@ bool parseHexColor(const Json& value, float* out, int& count) {
     return true;
 }
 
-// String properties holding an asset reference instead of plain text
-bool isAssetPathProperty(const std::string& propertyName) {
-    return propertyName == "filename";
+// String properties holding an asset reference instead of plain text: stored relative to the
+// assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
+// animation)
+bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
+    return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation");
 }
 
 bool endsWith(const std::string& text, const std::string& suffix) {
@@ -1782,7 +1785,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             return *static_cast<bool*>(ref);
         case PropertyType::String: {
             const std::string& value = *static_cast<std::string*>(ref);
-            return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
+            return isAssetPathProperty(ctx.component, name) ? assetPathToJson(ctx.project, value) : value;
         }
         case PropertyType::Float:
             return number(*static_cast<float*>(ref));
@@ -1955,7 +1958,26 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
-            if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            if (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") {
+                // the project-relative path the pose tools use ("assets/anim/walk.poseanim"); the
+                // stored form (relative to the assets folder) of an existing file is taken as well
+                std::string stored;
+                const fs::path given = FileUtils::pathFromUtf8(text);
+                std::error_code ec;
+                if (!text.empty() && isSafeRelative(given) && !project->isInsideAssetsPath(project->getProjectPath() / given) &&
+                        fs::is_regular_file(project->resolveAssetPath(given), ec)) {
+                    stored = project->normalizeToAssetsRelative(project->resolveAssetPath(given)).generic_string();
+                } else if (!assetPathFromJson(project, text, stored, error)) {
+                    error = "animation: " + error + " Pass the .poseanim as the pose tools name it (e.g. assets/anim/walk.poseanim).";
+                    return nullptr;
+                }
+                if (!stored.empty() && !Util::isPoseAnimationFile(stored)) {
+                    error = "animation must be a .poseanim file (e.g. assets/anim/walk.poseanim).";
+                    return nullptr;
+                }
+                return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
+            }
+            if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             if (isShaderPathProperty(propertyName)) {
                 // an engine library shader of the component's type, or a fork whose files exist
                 std::string why;

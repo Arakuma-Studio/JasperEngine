@@ -523,9 +523,33 @@ void editor::PoseContactSheet::drawStrip(int x, int y, int w, int h, const std::
     if (text.empty()){
         return;
     }
-    const std::string fitted = PoseImage::fitText(text, w - 2 * LABEL_PADDING);
+    const std::string fitted = fitLabel(text, w - 2 * LABEL_PADDING);
     const int textY = y + std::max((h - PoseImage::GLYPH_HEIGHT) / 2, 0);
     image.drawText(x + LABEL_PADDING, textY, fitted, LABEL_TEXT);
+}
+
+std::string editor::PoseContactSheet::fitLabel(const std::string& text, int maxWidth){
+    if (PoseImage::textWidth(text) <= maxWidth){
+        return text;
+    }
+    // a time label keeps its contact marker: the time gives way (the space, then "t=", then digits)
+    for (const char* marker : {" [LR]", " [L]", " [R]"}){
+        const std::string suffix = marker;
+        if (text.size() <= suffix.size() || text.compare(text.size() - suffix.size(), suffix.size(), suffix) != 0){
+            continue;
+        }
+        std::string time = text.substr(0, text.size() - suffix.size());
+        const std::string tag = suffix.substr(1);
+        if (time.rfind("t=", 0) == 0 && PoseImage::textWidth(time + tag) > maxWidth){
+            time = time.substr(2);
+        }
+        const int room = maxWidth - PoseImage::textWidth(tag);
+        if (room < PoseImage::GLYPH_WIDTH){
+            return PoseImage::fitText(tag, maxWidth);
+        }
+        return PoseImage::fitText(time, room) + tag;
+    }
+    return PoseImage::fitText(text, maxWidth);
 }
 
 std::string editor::PoseContactSheet::poseLabel(int index, const std::string& name){

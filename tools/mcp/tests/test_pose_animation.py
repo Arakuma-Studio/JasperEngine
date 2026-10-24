@@ -72,6 +72,9 @@ async def test_create_and_add_poses(ed: Editor):
     ed.check_eq(len(r["changes"]), 3, f"one change line per op plus the creation: {r['changes']}")
     ed.check_eq([p["index"] for p in r["poses"]], [0, 1], "both poses are touched")
     ed.check_eq(r["clamped"], [], "nothing clamped")
+    # as get: `preset` always there (null when the feel matches none), no rig error on a good model
+    ed.check("preset" in r, f"preset always present: {sorted(r)}")
+    ed.check("rig_error" not in r, f"a usable rig: {r.get('rig_error')}")
     data = file_json(ed, WALK)
     ed.check_eq(data["format"], "jasperengine.poseanim", "format")
     # stored relative to the assets folder, as model files are; tools show project-relative paths
@@ -588,14 +591,15 @@ async def test_default_named_bakes_on_two_models(ed: Editor):
 
 
 async def test_bake_the_pose_animator_asset(ed: Editor):
-    """bake without path does what the Inspector's Bake button does: the Pose Animator's animation,
-    stored relative to the assets folder (anim/walk.poseanim, not assets/anim/...)."""
-    await ed.call("add_component", entity="Hero", component="poseanimator", values={"poseanimator": {"animation": "anim/walk.poseanim"}})
+    """bake without path does what the Inspector's Bake button does: the Pose Animator's animation
+    (given over MCP as the pose tools name it, assets/anim/walk.poseanim; stored relative to the
+    assets folder), echoed project-relative."""
+    await ed.call("add_component", entity="Hero", component="poseanimator", values={"poseanimator": {"animation": WALK}})
     r = await ed.call_raw("edit_pose_animation", {"bake": {"model": "Hero"}})
     ed.check(not r.is_error, r.text)
     bake = r.structured["bake"]
-    ed.check(bake["created"] and bake["name"] == "walk" and bake["source"] == "anim/walk.poseanim", f"bake: {bake}")
-    ed.check("Baked 'anim/walk.poseanim' to the Animation 'walk'" in r.text and 'playAnimation("walk")' in r.text, r.text)
+    ed.check(bake["created"] and bake["name"] == "walk" and bake["source"] == WALK, f"bake: {bake}")
+    ed.check(f"Baked '{WALK}' to the Animation 'walk'" in r.text and 'playAnimation("walk")' in r.text, r.text)
     await ed.check_error("edit_pose_animation", {"bake": {"model": "Robot"}}, contains="no Pose Animator")
     await ed.check_error("edit_pose_animation", {"bake": {"model": "Hero", "name": "x"}}, contains="pass path")
     await ed.call("undo", scope="scene", steps=2)
@@ -636,6 +640,75 @@ async def test_metadata_updates_are_not_limit_clamped(ed: Editor):
     ed.check_eq(r["poses"][0]["metrics"]["limit_hits"], ["left_lower_arm.bend"], "and reported as a limit hit")
     r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "update_pose", "index": 0, "add_angles": {"head.bend": 1}}])
     ed.check(any(c["field"] == "poses[0].angles.left_lower_arm.bend" for c in r["clamped"]), f"an angle edit clamps: {r['clamped']}")
+
+
+async def test_edit_reports_the_rig_error_like_get(ed: Editor):
+    # a required slot unmapped: no metrics, and the edit result says why (as get does)
+    path = "assets/anim/broken_rig.poseanim"
+    r = await ed.call("edit_pose_animation", path=path, create={"preview_model": ROBOT}, ops=[
+        {"op": "set_humanoid", "model": ROBOT, "bones": {"left_upper_leg": ""}},
+        {"op": "add_pose", "name": "a"},
+    ])
+    try:
+        ed.check(r.get("rig_error"), f"rig_error in the edit result: {sorted(r)}")
+        ed.check(all("metrics" not in p for p in r["poses"]), "no metrics")
+        ed.check(r["preset"] is None or isinstance(r["preset"], str), f"preset: {r.get('preset')}")
+        raw = await ed.call_raw("edit_pose_animation", {"path": path, "ops": [{"op": "update_pose", "index": 0, "hold": 0.3}]})
+        ed.check("no metrics: " in raw.text, raw.text[:500])
+        got = await ed.call("get_pose_animation", path=path, detail="summary")
+        ed.check_eq(got["rig"]["error"], r["rig_error"], "the same error as get")
+    finally:
+        await ed.call("edit_pose_animation", path=path, ops=[{"op": "set_humanoid", "model": ROBOT, "bones": {"left_upper_leg": None}}])
+
+
+async def test_blend_to_is_a_plain_lerp_across_the_seam(ed: Editor):
+    # DOF values are joint angles, not headings: 170 -> -60 at 0.5 is 55 (the wrapped lerp gave 235)
+    path = "assets/anim/seam.poseanim"
+    r = await ed.call("edit_pose_animation", path=path, create={"preview_model": HERO}, ops=[
+        {"op": "add_pose", "name": "up", "angles": {"left_upper_arm.forward": 170}},
+        {"op": "add_pose", "name": "back", "angles": {"left_upper_arm.forward": -60}},
+        {"op": "add_pose", "after": 0, "blend_to": 1, "blend": 0.5, "name": "mid"},
+    ])
+    ed.check_eq(r["clamped"], [], "nothing clamped")
+    poses = file_json(ed, path)["poses"]
+    ed.check_eq([p["name"] for p in poses], ["up", "mid", "back"], "order")
+    ed.check(approx(poses[1]["angles"]["left_upper_arm.forward"], 55), f"plain lerp: {poses[1]['angles']}")
+
+
+async def test_derived_poses_read_the_clamped_values(ed: Editor):
+    # joint limits on: a pose clamped by one op is what later ops of the same call copy, mirror
+    # and blend (not the unclamped value it was asked for)
+    path = "assets/anim/derived.poseanim"
+    r = await ed.call("edit_pose_animation", path=path, create={"preview_model": HERO}, ops=[
+        {"op": "add_pose", "name": "a"},
+        {"op": "update_pose", "index": 0, "angles": {"left_upper_arm.raise": 200}},
+        {"op": "mirror_pose", "index": 0, "as_new": True, "name": "mirrored"},
+        {"op": "add_pose", "name": "rest", "angles": {"left_upper_arm.raise": 0}},
+        {"op": "add_pose", "from": 0, "blend_to": 2, "blend": 0.5, "name": "half"},
+        {"op": "add_pose", "from": 0, "name": "copy"},
+    ])
+    poses = file_json(ed, path)["poses"]
+    ed.check_eq([p["name"] for p in poses], ["a", "mirrored", "rest", "half", "copy"], "order")
+    clamped = {c["field"]: (c["requested"], c["applied"]) for c in r["clamped"]}
+    ed.check_eq(clamped.get("poses[0].angles.left_upper_arm.raise"), (200, 175), f"clamped once: {r['clamped']}")
+    ed.check_eq(len(r["clamped"]), 1, f"derived poses report no clamps of their own: {r['clamped']}")
+    ed.check(approx(poses[0]["angles"]["left_upper_arm.raise"], 175), f"stored clamped: {poses[0]['angles']}")
+    ed.check(approx(poses[1]["angles"]["right_upper_arm.raise"], 175), f"mirror of the stored pose: {poses[1]['angles']}")
+    ed.check(approx(poses[3]["angles"]["left_upper_arm.raise"], 87.5), f"blend from the stored pose: {poses[3]['angles']}")
+    ed.check(approx(poses[4]["angles"]["left_upper_arm.raise"], 175), f"copy of the stored pose: {poses[4]['angles']}")
+    # a later op setting the clamped DOF again within the limits: no stale clamp report
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "update_pose", "index": 0, "angles": {"left_upper_arm.raise": 190}},
+        {"op": "update_pose", "index": 0, "angles": {"left_upper_arm.raise": 30}},
+        {"op": "move_pose", "index": 0, "to": 4},
+    ])
+    ed.check_eq(r["clamped"], [], f"the last request was within the limits: {r['clamped']}")
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "update_pose", "index": 4, "angles": {"left_upper_arm.raise": 190}},
+        {"op": "move_pose", "index": 4, "to": 0},
+    ])
+    clamped = {c["field"]: (c["requested"], c["applied"]) for c in r["clamped"]}
+    ed.check_eq(clamped, {"poses[0].angles.left_upper_arm.raise": (190, 175)}, f"the clamp moves with its pose: {r['clamped']}")
 
 
 async def test_humanoid_and_ops_are_one_undo_step(ed: Editor):

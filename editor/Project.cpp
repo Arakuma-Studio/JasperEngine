@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
+#include "pose/PoseSheetRenderer.h"
 #include "Factory.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -42,6 +43,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "pose/ModelRig.h"
+#include "pose/PoseAnimatorRuntime.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -4509,6 +4511,9 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
     sceneProject->sceneRender = nullptr;
     sceneProject->scene = nullptr;
+    // the pose rigs and animation builds of its models, now that their model data is freed
+    pose::PoseRigCache::shared().prune();
+    pose::PoseBuildCache::shared().prune();
 
     sceneProject->mainCamera = NULL_ENTITY;
     sceneProject->defaultCamera = NULL_ENTITY;
@@ -4539,6 +4544,8 @@ void editor::Project::resetConfigs() {
     // pose animation documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     PoseRigProvider::clear();
+    // and the offscreen renderers render_pose_animation keeps of its models
+    PoseSheetRenderer::clearShared();
 
     // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
     while (!prefabStages.empty()) {
@@ -4562,6 +4569,8 @@ void editor::Project::resetConfigs() {
     editor::ShaderBuilder::invalidateCustomShaders();
     // the pose rigs of its models (the next project may have files of the same names)
     pose::PoseRigCache::shared().clear();
+    // and the animation builds shared on them
+    pose::PoseBuildCache::shared().clear();
 
     // Scenes are gone: drop unreferenced pool assets from the previous project.
     // Keep entries still held by the editor/engine (fonts, active shaders, etc.).

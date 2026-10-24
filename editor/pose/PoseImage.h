@@ -160,6 +160,9 @@ namespace jasperengine::editor{
         // the feet in contact when any is: " [L]", " [R]" or " [LR]" (e.g. "t=0.25 [LR]")
         static std::string poseLabel(int index, const std::string& name);
         static std::string timeLabel(float seconds, bool leftContact = false, bool rightContact = false);
+        // a label cut to `maxWidth` pixels (PoseImage::fitText); a time label's contact marker
+        // stays whole ("t=0.25 [LR]" in 58 px: "0.25[LR]"), the time text is what is cut
+        static std::string fitLabel(const std::string& text, int maxWidth);
 
     private:
         void drawStrip(int x, int y, int w, int h, const std::string& text);
