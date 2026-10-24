@@ -25,6 +25,8 @@
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
@@ -339,6 +341,60 @@ const EnumOptions& fluidOutputOptions() {
         {(int)FluidOutput::SCREEN, "screen", "Screen"},
         {(int)FluidOutput::MATERIAL, "material", "Material"},
         {(int)FluidOutput::TEXTURE, "texture", "Texture"}
+    };
+    return options;
+}
+
+// the names are the scene-file ones (Stream, spec §2.0)
+const EnumOptions& latticeInterpolationOptions() {
+    static const EnumOptions options = {
+        {(int)LatticeInterpolation::SHARP, "sharp", "Sharp"},
+        {(int)LatticeInterpolation::SMOOTH, "smooth", "Smooth"},
+        {(int)LatticeInterpolation::CUBIC, "cubic", "Cubic"}
+    };
+    return options;
+}
+
+const EnumOptions& latticeOutsideOptions() {
+    static const EnumOptions options = {
+        {(int)LatticeOutside::EXTEND, "extend", "Extend"},
+        {(int)LatticeOutside::FADE, "fade", "Fade"}
+    };
+    return options;
+}
+
+const EnumOptions& latticeJiggleAnchorOptions() {
+    static const EnumOptions options = {
+        {(int)LatticeJiggleAnchor::NONE, "none", "None"},
+        {(int)LatticeJiggleAnchor::NEGATIVE_X, "negative_x", "-X"},
+        {(int)LatticeJiggleAnchor::POSITIVE_X, "positive_x", "+X"},
+        {(int)LatticeJiggleAnchor::NEGATIVE_Y, "negative_y", "-Y"},
+        {(int)LatticeJiggleAnchor::POSITIVE_Y, "positive_y", "+Y"},
+        {(int)LatticeJiggleAnchor::NEGATIVE_Z, "negative_z", "-Z"},
+        {(int)LatticeJiggleAnchor::POSITIVE_Z, "positive_z", "+Z"}
+    };
+    return options;
+}
+
+const EnumOptions& latticeStageOptions() {
+    static const EnumOptions options = {
+        {(int)LatticeStage::BEFORE_SKINNING, "before_skinning", "Before Skinning"},
+        {(int)LatticeStage::AFTER_SKINNING, "after_skinning", "After Skinning"}
+    };
+    return options;
+}
+
+const EnumOptions& latticeMaskOptions() {
+    static const EnumOptions options = {
+        {(int)LatticeMaskChannel::NONE, "none", "None"},
+        {(int)LatticeMaskChannel::RED, "red", "Red"},
+        {(int)LatticeMaskChannel::GREEN, "green", "Green"},
+        {(int)LatticeMaskChannel::BLUE, "blue", "Blue"},
+        {(int)LatticeMaskChannel::ALPHA, "alpha", "Alpha"},
+        {(int)LatticeMaskChannel::INVERTED_RED, "inverted_red", "Inverted Red"},
+        {(int)LatticeMaskChannel::INVERTED_GREEN, "inverted_green", "Inverted Green"},
+        {(int)LatticeMaskChannel::INVERTED_BLUE, "inverted_blue", "Inverted Blue"},
+        {(int)LatticeMaskChannel::INVERTED_ALPHA, "inverted_alpha", "Inverted Alpha"}
     };
     return options;
 }
@@ -898,6 +954,11 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"collider3d_type", &collider3DTypeOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
+        {"lattice_interpolation", &latticeInterpolationOptions()},
+        {"lattice_outside", &latticeOutsideOptions()},
+        {"lattice_jiggle_anchor", &latticeJiggleAnchorOptions()},
+        {"lattice_stage", &latticeStageOptions()},
+        {"lattice_mask", &latticeMaskOptions()},
         {"ease", &easeOptions()}
     };
     auto it = tables.find(name);
@@ -951,6 +1012,15 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::FluidSimulationComponent:
             if (name == "output") return &fluidOutputOptions();
+            break;
+        case ComponentType::LatticeComponent:
+            if (name == "interpolation") return &latticeInterpolationOptions();
+            if (name == "outside") return &latticeOutsideOptions();
+            if (name == "jiggleAnchor") return &latticeJiggleAnchorOptions();
+            break;
+        case ComponentType::LatticeModifierComponent:
+            if (name == "bindings[].stage") return &latticeStageOptions();
+            if (name == "bindings[].mask") return &latticeMaskOptions();
             break;
         case ComponentType::CameraComponent:
             if (name == "type") return &cameraTypeOptions();
@@ -2035,6 +2105,13 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         error = "The scene is not loaded.";
         return nullptr;
     }
+    if (component == ComponentType::LatticeComponent &&
+        (propertyName == "resolutionX" || propertyName == "resolutionY" || propertyName == "resolutionZ")) {
+        // alone it would leave the offsets laid out for the old grid
+        error = "the resolution changes with edit_lattice resolution: [x, y, z] (or the Inspector's Resolution), "
+                "which resamples the offsets so the shape stays.";
+        return nullptr;
+    }
     const std::string typeName = propertyTypeName(property.type);
     auto expect = [&](const std::string& what) -> Command* {
         error = "Property " + propertyName + " is " + typeName + ": value must be " + what + ".";
@@ -2269,6 +2346,13 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             std::string why;
             if (!entityFromJson(scene, value, target, why)) {
                 error = "Property " + propertyName + " is a GameObject reference: " + why;
+                return nullptr;
+            }
+            // a follower moves its own subtree, which would move its rest or lattice with it (spec §6.3)
+            if (component == ComponentType::LatticeFollowerComponent && target != NULL_ENTITY &&
+                (target == entity || scene->scene->isParentOf(entity, target))) {
+                error = "a Lattice Follower's " + propertyName + " can't be the follower itself or a GameObject below it "
+                        "(the follower would move it): pick one outside its hierarchy, e.g. an empty sibling.";
                 return nullptr;
             }
             return new PropertyCmd<Entity>(project, sceneId, entity, component, propertyName, target, onChanged);

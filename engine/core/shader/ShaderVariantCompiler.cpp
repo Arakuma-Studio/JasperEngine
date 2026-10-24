@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
+#include "lattice/LatticeTypes.h"
 #include "shader/ShaderManifest.h"
 
 #include <algorithm>
@@ -392,6 +393,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
     defs.push_back({"LIGHT_CAPACITY", (prop & shaderPropertyBit(29)) ? "4" : ((prop & shaderPropertyBit(30)) ? "16" : "8")});
     if (prop & shaderPropertyBit(31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
+    // a terrain is never deformed (its variant keeps the bit inert)
+    if ((prop & shaderPropertyBit(32)) && !(prop & shaderPropertyBit(17))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -410,6 +413,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
     if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
+    if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -424,6 +428,9 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
     if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
     if (prop & shaderPropertyBit(10)) defs.push_back({"USE_STOCHASTIC_TILING", "1"});         // 'Sto'
+    if ((prop & shaderPropertyBit(11)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
+    if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});         // 'Vc3' (a lattice mask's)
+    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -600,6 +607,12 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
         args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
     }
+    if (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER){
+        // the record layout of includes/lattice.glsl (lattice/LatticeTypes.h)
+        args.defines.push_back({"LATTICE_MAX_PER_MESH", std::to_string(LATTICE_MAX_PER_MESH)});
+        args.defines.push_back({"LATTICE_TEXTURE_WIDTH", std::to_string(LATTICE_TEXTURE_WIDTH)});
+        args.defines.push_back({"LATTICE_RECORD_HEADER", std::to_string(LATTICE_RECORD_HEADER)});
+    }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting
         args.defines.push_back({"SPOT_MASK_TILES", std::to_string(SPOT_MASK_ATLAS_TILES)});
@@ -687,7 +700,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
-            std::to_string(SPOT_MASK_ATLAS_TILES));
+            std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +
+            std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;

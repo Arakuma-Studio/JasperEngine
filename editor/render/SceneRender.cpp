@@ -17,6 +17,7 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "lattice/LatticeEditorOps.h"
 #include "util/GraphicUtils.h"
 #include "window/TerrainEditWindow.h"
 #include "util/FluidEditorTools.h"
@@ -79,6 +80,7 @@ editor::SceneRender::~SceneRender(){
         layerSelLines[i] = nullptr;
     }
 
+    destroyLatticeCages();
     delete terrainBrushLines;
     delete camera;
 }
@@ -506,6 +508,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setViewGizmoImageVisible(false);
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
+    hideLatticeCages();
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){
@@ -808,6 +811,12 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     multipleEntitiesSelected = toolEntities.size() > 1;
 
+    // the selected points of the lattice the tools edit, which the gizmo then acts on
+    const Entity editedLattice = getPointEditLattice(toolEntities);
+    const uint32_t latticeScene = getLatticeSceneId();
+    const bool latticePointsSelected = editedLattice != NULL_ENTITY && latticeScene != NULL_PROJECT_SCENE &&
+        !LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice).empty();
+
     bool showAnchorGizmo = false;
     Vector4 anchorData = Vector4::ZERO; // x: left, y: top, z: right, w: bottom
     Rect anchorArea = Rect(0.0f, 0.0f, 0.0f, 0.0f);
@@ -879,6 +888,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
                 showCross = true;
             }
             if (selectedTrackPointIndex >= 0 && toolEntities[0] == selectedTrackPointEntity){
+                showCross = true;
+            }
+            if (latticePointsSelected){
                 showCross = true;
             }
 
@@ -983,6 +995,16 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
+        if (latticePointsSelected){
+            Vector3 pivot;
+            Quaternion pivotRotation;
+            OBB pointsOBB;
+            if (getLatticePointsPivot(editedLattice, LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice), pivot, pivotRotation, pointsOBB)){
+                tools.updateGizmo(camera, pivot, pivotRotation, computeGizmoScale(pivot), pointsOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }
+        }
+
         if (selBB.size() > 0) {
             if (editLayer.active){
                 fillSelectionLines(layerSelLines[layerToolsIndex()], selBB, !editLayer.view.isOrthographic());
@@ -1048,6 +1070,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     syncObject2DGizmoMode();
 
+    updateLatticeCages(selEntities, entities, editedLattice);
+
     uilayer.setViewGizmoImageVisible(true);
 }
 
@@ -1081,6 +1105,8 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    // a driven Lattice Follower: the gizmo moves its rest (LatticeSceneRender.cpp)
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 viewDir = gizmoViewDirection();
 
@@ -1243,6 +1269,17 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 }
             }
         }
+
+        // a gizmo handle grabbed on selected lattice points: their drag begins
+        latticeDrag = LatticeDrag();
+        Entity latticeEntity = getPointEditLattice(selEntities);
+        const bool handleGrabbed = tools.getGizmoSelected() == GizmoSelected::OBJECT2D
+            ? tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER
+            : tools.getGizmoSideSelected() != GizmoSideSelected::NONE;
+        if (latticeEntity != NULL_ENTITY && handleGrabbed && getLatticeSceneId() != NULL_PROJECT_SCENE &&
+            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), latticeEntity).empty()){
+            beginLatticeDrag(latticeEntity, gizmoPosition, gizmoRotation);
+        }
     }
 
 }
@@ -1268,6 +1305,9 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         lastCommand->setNoMerge();
         lastCommand = nullptr;
     }
+
+    // one drag of lattice points, one undo step
+    endLatticeDrag();
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1341,9 +1381,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 gizmoPosition = tools.getGizmoPosition();
     Matrix4 gizmoRMatrix = tools.getGizmoRotation().getRotationMatrix();
+
+    // Lattice point drag: the gizmo's change goes to the points, not to the lattice entity
+    if (latticeDrag.active){
+        dragLatticeGizmo(project, commandSceneId, invertRotationSnap);
+        return;
+    }
 
     // TranslateTracks keyframe point drag: the tracks entity has no Transform,
     // so it is handled outside the per-entity transform loop below.

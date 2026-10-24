@@ -30,6 +30,7 @@
 #include "shader/ShaderBuildTypes.h"
 #include "shader/ShaderManifest.h"
 #include "util/PostColorLut.h"
+#include "lattice/LatticeRender.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -409,6 +410,9 @@ namespace jasperengine{
 		bool instanced = false;
 		bool instanceFade = false;
 		bool mirror = false;
+		// bound to lattices (LatticeMeshState::count > 0, never a terrain): the 'Ltc' variants,
+		// with the vertex colour a mask channel reads
+		bool lattice = false;
 		// shader library: the manifest of the shader the submesh draws with (null for the
 		// built-in shader and forks without one) and whether its depth pass draws with the
 		// library shader's own depth program (@depth)
@@ -584,6 +588,9 @@ namespace jasperengine{
 		static int emptyTextureUsers;
 		bool usesEmptyTextures = false;
 		
+		// what LatticeRender::prepare keeps between frames
+		LatticeRenderState latticeState;
+
 		bool hasLights;
 		bool hasShadows;
 		bool hasFog;
@@ -1913,6 +1920,9 @@ namespace jasperengine{
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
 		static bool usesAlphaMask(const Material& material, bool textureShadow);
+
+		// the lattice bindings packed into the meshes (LatticeRender::prepare, once a frame)
+		LatticeRenderState& getLatticeState();
 
 		// Planes around the casters that can shadow the surfaces reading a directional cascade:
 		// its receiver slice (LightCamera::receiverViewProjection) extruded toward the light

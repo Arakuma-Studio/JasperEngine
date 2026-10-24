@@ -21,10 +21,12 @@
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
 #include "math/Rect.h"
+#include "lattice/LatticeTypes.h"
 #include <deque>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -144,6 +146,8 @@ namespace jasperengine{
         int slotVSSprite = -1;
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
 
         bool loaded = false;
         // its shader failed to build: the submesh draws without it
@@ -212,6 +216,9 @@ namespace jasperengine{
         int slotFSPointShadows = -1;
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
 
@@ -222,6 +229,8 @@ namespace jasperengine{
         int slotVSDepthFade = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
+        int slotVSDepthLattice = -1;
+        std::pair<int, int> slotVSDepthLatticeTexture = {-1, -1};
         int slotVSDepthTerrain = -1;
         int slotVSDepthSprite = -1;
 
@@ -230,6 +239,8 @@ namespace jasperengine{
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
         int slotVSGBufferSkinning = -1;
         int slotVSGBufferMorphTarget = -1;
+        int slotVSGBufferLattice = -1;
+        std::pair<int, int> slotVSGBufferLatticeTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
 
@@ -347,6 +358,10 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+
+        // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
+        // LatticeRender::prepare, uploaded and bound by RenderSystem
+        LatticeMeshState lattice;
 
         AABB aabb = AABB::ZERO;
         AABB verticesAABB = AABB::ZERO; // is not influenced by instances

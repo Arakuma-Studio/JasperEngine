@@ -63,6 +63,7 @@
 #include "action/SpriteAnimation.h"
 #include "action/Tween.h"
 #include "action/keyframe/MorphTracks.h"
+#include "action/keyframe/LatticeTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
@@ -140,7 +141,7 @@ namespace {
         Rigidbody, Joint3D,
 #endif
         Action, Tween, AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween, Animation, ParticleSystem,
-        SpriteAnimation, KeyframeTracks, MorphTracks, RotateTracks, ScaleTracks, TranslateTracks>;
+        SpriteAnimation, KeyframeTracks, MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks>;
 
     class WrapperNames {
     public:
@@ -158,7 +159,7 @@ namespace {
                 "Rigidbody", "Joint3D",
 #endif
                 "Action", "Tween", "AlphaTween", "ColorTween", "PositionTween", "RotationTween", "ScaleTween", "Animation", "ParticleSystem",
-                "SpriteAnimation", "KeyframeTracks", "MorphTracks", "RotateTracks", "ScaleTracks", "TranslateTracks"};
+                "SpriteAnimation", "KeyframeTracks", "MorphTracks", "LatticeTracks", "RotateTracks", "ScaleTracks", "TranslateTracks"};
             return names[index];
         }
     };

@@ -39,6 +39,7 @@
 #include "AppSettings.h"
 #include "Out.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -3679,13 +3680,16 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     bool depthAlphaMask = RenderSystem::usesAlphaMask(material, mesh.submeshes[s].textureShadow);
                     bool depthTexture = depthAlphaMask && mesh.submeshes[s].hasTexCoord1 && !material.baseColorTexture.empty();
                     // its alpha clip samples as the colour pass's Stochastic Tiling ('Sto', which
-                    // the colour variant has when the material's maps take it)
+                    // the colour variant has when the material's maps take it); a mesh loaded with
+                    // its lattice variant: its depth one too, with the vertex colour a lattice mask reads
                     bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
+                    bool lattice = mesh.lattice.variantActive && !isTerrain;
                     uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
-                        instancedFade, false, false, false, false, false, depthStochastic);
+                        instancedFade, false, lattice && mesh.submeshes[s].hasVertexColor3,
+                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {
@@ -5289,6 +5293,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<AudioSystem>()->setPaused(pause);
     // the fluids hold still in edit mode (the Inspector's preview steps one: FluidSystem::setPreview)
     if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
+    // lattice tweens and jiggle (followers and offsets still show in edit mode)
+    scene->getSystem<LatticeSystem>()->setPaused(pause);
 }
 
 void editor::Project::copyEngineApiToProject() {

@@ -66,6 +66,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<ReflectionProbeComponent>();
     registerComponent<UIDocumentComponent>();
     registerComponent<FluidSimulationComponent>();
+    registerComponent<LatticeComponent>();
+    registerComponent<LatticeModifierComponent>();
+    registerComponent<LatticeFollowerComponent>();
+    registerComponent<LatticeTracksComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

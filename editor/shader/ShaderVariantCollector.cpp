@@ -34,6 +34,7 @@
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/effects/EffectRegistry.h"
+#include "lattice/LatticeRender.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -458,8 +459,11 @@ namespace {
             }
         }
 
+        // lattice: the mesh is bound to a lattice (LatticeRender::isLatticeTarget), so it also
+        // draws with the lattice variants (the bindings can be switched off at runtime: both)
         void collectSubmesh(const MeshComponent& mesh, Submesh submesh, const std::vector<const Buffer*>* buffers,
-                            const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror){
+                            const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
+                            bool lattice = false){
             // MeshSystem::update turns the texture rect path on before the mesh loads
             if (MeshSystem::usesTextureRect(submesh)){
                 submesh.hasTextureRect = true;
@@ -470,28 +474,34 @@ namespace {
             // the submesh's shader as RenderSystem::loadMesh picks it: its material's, the
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
-            const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
             const uint16_t meshShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader));
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
-            for (const MeshShaderEnvironment& environment : environments){
-                const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
-                insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
-                if (variant.depth){
-                    insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
-                }
-                if (variant.gbuffer){
-                    keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
-                }
-            }
-
-            // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
-            // that fails is not drawn: no built-in fallback)
-            if (RenderSystem::hasExtraPass(submesh, terrain != nullptr)){
-                const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
-                const uint16_t passShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh));
+            const bool hasPass = RenderSystem::hasExtraPass(submesh, terrain != nullptr);
+            const uint16_t passShaderId = hasPass ? ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh)) : 0;
+            // (a terrain is never deformed)
+            const bool latticeVariants = lattice && !terrain;
+            for (int latticeVariant = 0; latticeVariant <= (latticeVariants ? 1 : 0); latticeVariant++){
+                inputs.lattice = latticeVariant != 0;
                 for (const MeshShaderEnvironment& environment : environments){
-                    keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
+                    const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+                    insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
+                    if (variant.depth){
+                        insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
+                    }
+                    if (variant.gbuffer){
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));
+                    }
+                }
+
+                // its material's extra pass, as RenderSystem::loadSubmeshExtraPass picks it (a pass
+                // that fails is not drawn: no built-in fallback)
+                if (hasPass){
+                    const SubmeshShaderInputs passInputs = RenderSystem::getExtraPassShaderInputs(inputs, submesh.material.extraPass);
+                    for (const MeshShaderEnvironment& environment : environments){
+                        keys.insert(ShaderPool::getShaderKey(ShaderType::MESH, RenderSystem::getSubmeshShaderVariant(environment, passInputs).properties, passShaderId));
+                    }
                 }
             }
         }
@@ -499,6 +509,7 @@ namespace {
         void collectMesh(EntityRegistry* registry, Entity entity, const MeshComponent& mesh){
             const InstancedMeshComponent* instmesh = registry->findComponent<InstancedMeshComponent>(entity);
             const bool mirror = registry->findComponent<MirrorComponent>(entity) != nullptr;
+            const bool lattice = LatticeRender::isLatticeTarget(registry, entity);
 
             // Generated meshes: the layout their generator gives them, whatever is saved
             const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity);
@@ -526,9 +537,9 @@ namespace {
                 // material (RenderSystem::loadMesh), so they draw with the same variant
                 const unsigned int submeshes = terrain ? 1 : generated->numSubmeshes;
                 for (unsigned int s = 0; s < submeshes; s++){
-                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror);
+                    collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice);
                     if (s == 0 && lentBaseColor)
-                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror);
+                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice);
                 }
                 return;
             }
@@ -539,9 +550,9 @@ namespace {
                 return;
             }
             for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror);
+                collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror, lattice);
                 if (s == 0 && lentBaseColor)
-                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror);
+                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror, lattice);
             }
         }
 
@@ -558,12 +569,13 @@ namespace {
         void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed){
             const InstancedMeshComponent* instmesh = registry ? registry->findComponent<InstancedMeshComponent>(entity) : nullptr;
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
+            const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);
             for (size_t s = 0; s < probed.size(); s++){
                 Submesh submesh = probed[s];
                 if (s < mesh.numSubmeshes && mesh.submeshes[s].overrideFields != 0){
                     MeshSystem::applySubmeshOverride(mesh.submeshes[s], submesh);
                 }
-                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror);
+                collectSubmesh(mesh, submesh, nullptr, nullptr, instmesh, mirror, lattice);
             }
         }
 

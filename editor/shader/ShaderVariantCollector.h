@@ -32,6 +32,10 @@ namespace jasperengine::editor {
     // their vertex attributes and materials. Generated meshes (sprites, tilemaps, polygons,
     // terrains) take the vertex layout their generator gives them.
     //
+    // A mesh bound to a lattice (its own Lattice Modifier or an ancestor's with
+    // includeChildren, LatticeRender::isLatticeTarget) adds its lattice variants ('Ltc') to
+    // the ones it draws with unbound.
+    //
     // A scene's lighting decides the variants (lights, shadows, 2D lights, fog, IBL), and a
     // prefab a script spawns can bring its own: every combination the scene's content and the
     // build's prefabs can reach is collected, for the scene's own GameObjects and for every

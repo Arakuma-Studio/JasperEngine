@@ -405,6 +405,8 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        // Preferences on one of its pages ("Lattice" from the Scene view's lattice menu)
+        void openPreferences(const std::string& category);
         PlayInput* getPlayInput() const;
         void resetLayout();
 

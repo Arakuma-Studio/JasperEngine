@@ -232,6 +232,10 @@ namespace jasperengine::editor{
         // [E] Prefab Variants: whether the asset is a variant (its rows get the variant icon)
         bool isPrefabVariantAsset(const std::filesystem::path& path) const;
 
+        // A lattice fitted around targets and bound to them (LatticeEditorOps::createLattice),
+        // or a unit lattice at the Scene view's focus point without targets; one undo step
+        void createLatticeAround(const std::vector<Entity>& targets);
+
         // Search-related methods
         bool nodeMatchesSearch(const TreeNode& node, const std::string& searchLower);
         void markMatchingNodes(TreeNode& node, const std::string& searchLower);

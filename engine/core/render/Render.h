@@ -249,6 +249,10 @@ namespace jasperengine{
         DEPTH_VS_SKINNING,
         VS_MORPHTARGET,
         DEPTH_VS_MORPHTARGET,
+        // u_vs_lattice (includes/lattice.glsl) of the colour, depth and G-buffer vertex stages
+        VS_LATTICE,
+        DEPTH_VS_LATTICE,
+        GBUFFER_VS_LATTICE,
         TERRAIN_VS_PARAMS,
         DEPTH_TERRAIN_VS_PARAMS,
         FS_TERRAIN_LAYERS,
@@ -297,6 +301,7 @@ namespace jasperengine{
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
         BONES,
+        LATTICE,             // the lattice records of a mesh (RGBA32F, includes/lattice.glsl)
         PROBESOURCE          // reflection probe capture (or its box mip chain) read by the prefilter
     };
 

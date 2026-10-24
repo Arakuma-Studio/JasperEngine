@@ -44,6 +44,29 @@ using namespace jasperengine;
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
 
+    // the largest sprite grid a lattice can ask for (LatticeModifierComponent::subdivisions)
+    constexpr int SPRITE_MAX_GRID = 64;
+
+    // cells per side the sprite mesh should have: n x n while a lattice deforms it (spec
+    // lattice §6.4, LatticeRender::prepare asks for it), else the quad (1)
+    int requestedSpriteGrid(const MeshComponent& mesh){
+        if (!mesh.lattice.wantsTessellation){
+            return 1;
+        }
+        return std::clamp(mesh.lattice.tessellation, 1, SPRITE_MAX_GRID);
+    }
+
+    // cells per side of the sprite mesh as built: (n + 1)^2 vertices, the quad has 4; 0 when
+    // it has not been built
+    int builtSpriteGrid(const MeshComponent& mesh){
+        const unsigned int vertices = mesh.buffer.getCount();
+        if (vertices == 0){
+            return 0;
+        }
+        const int side = (int)std::lround(std::sqrt((double)vertices));
+        return (side >= 2 && (unsigned int)(side * side) == vertices) ? side - 1 : 0;
+    }
+
     // One tile that made it into a tilemap vertex buffer, in vertex-buffer order.
     struct TilemapAcceptedTile{
         unsigned int vertexBase; // first vertex of the tile quad
@@ -431,6 +454,10 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
         }
     }
 
+    // a lattice deforming the sprite asks for a grid: a quad can only bend bilinearly
+    const int grid = requestedSpriteGrid(mesh);
+    const int previousGrid = builtSpriteGrid(mesh);
+
     prepareSpriteMesh(mesh);
 
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
@@ -471,6 +498,20 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 
     if (camera.type == CameraType::CAMERA_UI){
         pivotPos.y = sprite.height - pivotPos.y;
+    }
+
+    if (grid > 1){
+        createSpriteGrid(sprite, mesh, texWidth, texHeight, pivotPos, grid);
+
+        // a GPU buffer keeps the size it was created with: another grid reloads the mesh
+        if (mesh.loaded){
+            if (previousGrid != 0 && previousGrid != grid){
+                mesh.needReload = true;
+            }else{
+                mesh.needUpdateBuffer = true; // buffer is not immutable
+            }
+        }
+        return true;
     }
 
     mesh.buffer.addVector3(attVertex, Vector3(-pivotPos.x, -pivotPos.y, 0));
@@ -542,10 +583,92 @@ bool MeshSystem::createSprite(SpriteComponent& sprite, MeshComponent& mesh, Came
 
     calculateMeshAABB(mesh);
 
-    if (mesh.loaded)
-        mesh.needUpdateBuffer = true; // buffer is not immutable
+    if (mesh.loaded){
+        // back from a lattice grid: the GPU buffer has the grid's size
+        if (previousGrid > 1){
+            mesh.needReload = true;
+        }else{
+            mesh.needUpdateBuffer = true; // buffer is not immutable
+        }
+    }
 
     return true;
+}
+
+// The quad of createSprite as grid x grid cells: the same corners, UVs, texture rect, pivot,
+// flip, normals, tangents and colour, interpolated across; corners land on the quad's values
+// exactly, so the AABB is the quad's
+void MeshSystem::createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                                  Vector2 pivotPos, int grid){
+    const float x0 = -pivotPos.x;
+    const float x1 = sprite.width - pivotPos.x;
+    const float y0 = -pivotPos.y;
+    const float y1 = sprite.height - pivotPos.y;
+
+    float texCutRatioW = 0;
+    float texCutRatioH = 0;
+    if (texWidth != 0 && texHeight != 0){
+        // in texels of the frame, as the shader scales these UVs by the texture rect
+        // (mirrored frames have a negative width)
+        const Rect& rect = mesh.submeshes[0].textureRect;
+        float rectWidth = std::fabs(rect.getWidth()) > 0.0f ? std::fabs(rect.getWidth()) : 1.0f;
+        float rectHeight = std::fabs(rect.getHeight()) > 0.0f ? std::fabs(rect.getHeight()) : 1.0f;
+        texCutRatioW = sprite.textureScaleFactor / (texWidth * rectWidth);
+        texCutRatioH = sprite.textureScaleFactor / (texHeight * rectHeight);
+    }
+    const float u0 = texCutRatioW;
+    const float u1 = (float)(1.0 - texCutRatioW);
+    // flipY swaps the V of the bottom and top rows
+    const float vBottom = sprite.flipY ? (float)(1.0 - texCutRatioH) : texCutRatioH;
+    const float vTop = sprite.flipY ? texCutRatioH : (float)(1.0 - texCutRatioH);
+
+    // exact at both ends: (1 - t) * a + t * b
+    auto lerp = [](float a, float b, float t){
+        return (1.0f - t) * a + t * b;
+    };
+
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+    Attribute* attTangent = mesh.buffer.getAttribute(AttributeType::TANGENT);
+    Attribute* attColor = mesh.buffer.getAttribute(AttributeType::COLOR);
+
+    const Vector4 tangent = Vector4(1.0f, 0.0f, 0.0f, sprite.flipY ? -1.0f : 1.0f);
+
+    // rows from the bottom (y0) up, x fastest
+    for (int row = 0; row <= grid; row++){
+        const float ty = (float)row / (float)grid;
+        for (int column = 0; column <= grid; column++){
+            const float tx = (float)column / (float)grid;
+            mesh.buffer.addVector3(attVertex, Vector3(lerp(x0, x1, tx), lerp(y0, y1, ty), 0));
+            mesh.buffer.addVector2(attTexcoord, Vector2(lerp(u0, u1, tx), lerp(vBottom, vTop, ty)));
+            mesh.buffer.addVector3(attNormal, Vector3(0.0f, 0.0f, 1.0f));
+            mesh.buffer.addVector4(attTangent, tangent);
+            mesh.buffer.addVector4(attColor, Vector4(1.0f, 1.0f, 1.0f, 1.0f));
+        }
+    }
+
+    // two triangles per cell, wound as the quad's (0, 1, 2) (0, 2, 3)
+    std::vector<uint16_t> indices;
+    indices.reserve((size_t)grid * grid * 6);
+    const int stride = grid + 1;
+    for (int row = 0; row < grid; row++){
+        for (int column = 0; column < grid; column++){
+            const uint16_t v00 = (uint16_t)(row * stride + column);
+            const uint16_t v10 = (uint16_t)(v00 + 1);
+            const uint16_t v11 = (uint16_t)(v00 + stride + 1);
+            const uint16_t v01 = (uint16_t)(v00 + stride);
+            indices.insert(indices.end(), {v00, v10, v11, v00, v11, v01});
+        }
+    }
+
+    mesh.indices.clear();
+
+    mesh.indices.setValues(
+        0, mesh.indices.getAttribute(AttributeType::INDEX),
+        indices.size(), (char*)&indices[0], sizeof(uint16_t));
+
+    calculateMeshAABB(mesh);
 }
 
 bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh){
@@ -6175,6 +6298,14 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
 }
 
 bool MeshSystem::createOrUpdateSprite(SpriteComponent& sprite, MeshComponent& mesh){
+    // a lattice started or stopped deforming it, or asks for another grid
+    if (!sprite.needUpdateSprite){
+        const int built = builtSpriteGrid(mesh);
+        if (built != 0 && built != requestedSpriteGrid(mesh)){
+            sprite.needUpdateSprite = true;
+        }
+    }
+
     if (sprite.needUpdateSprite){
         CameraComponent& camera =  scene->getComponent<CameraComponent>(scene->getCamera());
         if (sprite.automaticFlipY){

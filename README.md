@@ -25,6 +25,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
+- Lattice deformers (free-form deformation cages) that bend, squash, twist, or wobble meshes, skinned models, and sprites on the GPU, with Scene-view point editing, presets, poses, keyframes, jiggle physics, and baking to a mesh; agents drive them through the `edit_lattice` MCP tool (see [docs/mcp/guide/lattice.md](docs/mcp/guide/lattice.md))
 - Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)

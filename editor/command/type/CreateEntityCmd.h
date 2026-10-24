@@ -60,6 +60,7 @@ namespace jasperengine::editor{
         ROTATE_TRACKS,
         SCALE_TRACKS,
         MORPH_TRACKS,
+        LATTICE_TRACKS,
         MODEL,
         PARTICLE_SYSTEM,
         POINTS,
@@ -69,7 +70,10 @@ namespace jasperengine::editor{
         REFLECTION_PROBE,
         UI_DOCUMENT,
         WATER,
-        FLUID_SIMULATION
+        FLUID_SIMULATION,
+        // a unit lattice (Transform + LatticeComponent); the menus create one through
+        // LatticeEditorOps::createLattice, which fits and binds it around the selection
+        LATTICE
     };
 
     class CreateEntityCmd: public Command{

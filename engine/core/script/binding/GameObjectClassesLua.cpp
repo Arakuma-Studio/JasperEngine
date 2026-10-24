@@ -26,6 +26,7 @@
 #include "Mesh.h"
 #include "Primitive.h"
 #include "Mirror.h"
+#include "Lattice.h"
 #include "Tilemap.h"
 #include "Bone.h"
 #include "Model.h"
@@ -926,6 +927,126 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("normal", &Mirror::getNormal, (void(Mirror::*)(Vector3))&Mirror::setNormal)
         .addFunction("setNormal", (void(Mirror::*)(const float, const float, const float))&Mirror::setNormal)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Lattice, GameObject>("Lattice")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Lattice::isEnabled, &Lattice::setEnabled)
+        .addFunction("getLatticeComponent", &Lattice::getLatticeComponent)
+        .addFunction("setResolution", &Lattice::setResolution)
+        .addFunction("getResolution", &Lattice::getResolution)
+        .addFunction("getResolutionX", &Lattice::getResolutionX)
+        .addFunction("getResolutionY", &Lattice::getResolutionY)
+        .addFunction("getResolutionZ", &Lattice::getResolutionZ)
+        .addFunction("getPointCount", &Lattice::getPointCount)
+        .addFunction("getPointIndex", &Lattice::getPointIndex)
+        .addFunction("getOffset", &Lattice::getOffset)
+        .addFunction("setOffset", &Lattice::setOffset)
+        .addFunction("getOffsetAt", &Lattice::getOffsetAt)
+        .addFunction("setOffsetAt", &Lattice::setOffsetAt)
+        .addFunction("getRestPosition", &Lattice::getRestPosition)
+        .addFunction("getPointPosition", &Lattice::getPointPosition)
+        .addFunction("setPointPosition", &Lattice::setPointPosition)
+        .addFunction("getPointWorldPosition", &Lattice::getPointWorldPosition)
+        .addFunction("setPointWorldPosition", &Lattice::setPointWorldPosition)
+        .addFunction("resetOffsets", &Lattice::resetOffsets)
+        .addProperty("interpolation", &Lattice::getInterpolation, &Lattice::setInterpolation)
+        .addFunction("setInterpolation", &Lattice::setInterpolation)
+        .addProperty("outside", &Lattice::getOutside, &Lattice::setOutside)
+        .addFunction("setOutside", &Lattice::setOutside)
+        .addProperty("fadeDistance", &Lattice::getFadeDistance, &Lattice::setFadeDistance)
+        .addFunction("setFadeDistance", &Lattice::setFadeDistance)
+        .addFunction("applyPreset",
+            luabridge::overload<Lattice*, const std::string&, const std::string&, float>(+[](Lattice* self, const std::string& name, const std::string& axis, float amount) -> bool {
+                return self->applyPreset(name, axis, amount);
+            }),
+            luabridge::overload<const std::string&, const std::string&, float, const std::string&>(&Lattice::applyPreset))
+        .addFunction("savePose", &Lattice::savePose)
+        .addFunction("hasPose", &Lattice::hasPose)
+        .addFunction("removePose", &Lattice::removePose)
+        .addFunction("applyPose",
+            luabridge::overload<Lattice*, const std::string&>(+[](Lattice* self, const std::string& name) -> bool {
+                return self->applyPose(name);
+            }),
+            luabridge::overload<const std::string&, float>(&Lattice::applyPose))
+        .addFunction("tweenToPose",
+            luabridge::overload<Lattice*, const std::string&, float>(+[](Lattice* self, const std::string& name, float duration) -> bool {
+                return self->tweenToPose(name, duration);
+            }),
+            luabridge::overload<const std::string&, float, EaseType>(&Lattice::tweenToPose))
+        .addFunction("tweenToRest",
+            luabridge::overload<Lattice*, float>(+[](Lattice* self, float duration) {
+                self->tweenToRest(duration);
+            }),
+            luabridge::overload<float, EaseType>(&Lattice::tweenToRest))
+        .addFunction("isTweening", &Lattice::isTweening)
+        .addFunction("stopTween", &Lattice::stopTween)
+        .addProperty("jiggle", &Lattice::isJiggle, &Lattice::setJiggle)
+        .addFunction("setJiggle", &Lattice::setJiggle)
+        .addProperty("jiggleStiffness", &Lattice::getJiggleStiffness, &Lattice::setJiggleStiffness)
+        .addFunction("setJiggleStiffness", &Lattice::setJiggleStiffness)
+        .addProperty("jiggleDamping", &Lattice::getJiggleDamping, &Lattice::setJiggleDamping)
+        .addFunction("setJiggleDamping", &Lattice::setJiggleDamping)
+        .addProperty("jiggleInertia", &Lattice::getJiggleInertia, &Lattice::setJiggleInertia)
+        .addFunction("setJiggleInertia", &Lattice::setJiggleInertia)
+        .addProperty("jiggleAnchor", &Lattice::getJiggleAnchor, &Lattice::setJiggleAnchor)
+        .addFunction("setJiggleAnchor", &Lattice::setJiggleAnchor)
+        .addProperty("jiggleMaxOffset", &Lattice::getJiggleMaxOffset, &Lattice::setJiggleMaxOffset)
+        .addFunction("setJiggleMaxOffset", &Lattice::setJiggleMaxOffset)
+        .addFunction("isJiggleSleeping", &Lattice::isJiggleSleeping)
+        .addFunction("getJiggleOffset", &Lattice::getJiggleOffset)
+        .addFunction("resetJiggle", &Lattice::resetJiggle)
+        .addFunction("poke", &Lattice::poke)
+        .addFunction("pokeAt", &Lattice::pokeAt)
+        .addFunction("deformPoint", &Lattice::deformPoint)
+        // a GameObject (any wrapper) or an entity
+        .addFunction("bind",
+            luabridge::overload<Lattice*, Entity>(+[](Lattice* self, Entity target) -> bool {
+                return self->bind(target);
+            }),
+            luabridge::overload<Entity, float>(&Lattice::bind),
+            luabridge::overload<Lattice*, EntityHandle*>(+[](Lattice* self, EntityHandle* target) -> bool {
+                return self->bind(target);
+            }),
+            luabridge::overload<EntityHandle*, float>(&Lattice::bind))
+        .addFunction("unbind",
+            luabridge::overload<Entity>(&Lattice::unbind),
+            luabridge::overload<EntityHandle*>(&Lattice::unbind))
+        // every arity of addFollower(follower, rest [, applyPosition, applyRotation, applyScale,
+        // weight]): LuaBridge picks an overload by its exact argument count
+        .addFunction("addFollower",
+            luabridge::overload<Lattice*, Entity, Entity>(+[](Lattice* self, Entity follower, Entity rest) -> bool {
+                return self->addFollower(follower, rest);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
+            }),
+            luabridge::overload<Entity, Entity, bool, bool, bool, float>(&Lattice::addFollower),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest) -> bool {
+                return self->addFollower(follower, rest);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
+            }),
+            luabridge::overload<EntityHandle*, EntityHandle*, bool, bool, bool, float>(&Lattice::addFollower))
+        .addFunction("removeFollower",
+            luabridge::overload<Entity>(&Lattice::removeFollower),
+            luabridge::overload<EntityHandle*>(&Lattice::removeFollower))
+        .addFunction("getModifierComponent", &Lattice::getModifierComponent)
+        .addFunction("getFollowerComponent", &Lattice::getFollowerComponent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

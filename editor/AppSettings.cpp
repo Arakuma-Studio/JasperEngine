@@ -21,6 +21,23 @@ namespace jasperengine::editor {
 
 namespace {
 
+// a colour as [r, g, b, a] (0..1)
+void readColor(const YAML::Node& node, std::array<float, 4>& color) {
+    if (!node || !node.IsSequence() || node.size() != 4) return;
+    for (size_t i = 0; i < 4; i++) {
+        color[i] = node[i].as<float>();
+    }
+}
+
+YAML::Node colorNode(const std::array<float, 4>& color) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (float channel : color) {
+        node.push_back(channel);
+    }
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
 std::filesystem::path userConfigDirectory() {
 #if defined(_WIN32)
     if (const char* appData = std::getenv("APPDATA"); appData && *appData) {
@@ -81,6 +98,7 @@ bool AppSettings::editorVSyncEnabled = true;
 float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
+LatticeViewSettings AppSettings::latticeViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
@@ -334,6 +352,23 @@ bool AppSettings::loadSettings() {
             if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
         }
 
+        if (settingsData["lattice"]) {
+            auto latticeNode = settingsData["lattice"];
+            LatticeViewSettings lattice = latticeViewSettings;
+            readColor(latticeNode["line_color"], lattice.lineColor);
+            if (latticeNode["line_thickness"]) lattice.lineThickness = latticeNode["line_thickness"].as<float>();
+            if (latticeNode["behind_opacity"]) lattice.behindOpacity = latticeNode["behind_opacity"].as<float>();
+            if (latticeNode["point_size"]) lattice.pointSize = latticeNode["point_size"].as<float>();
+            readColor(latticeNode["point_color"], lattice.pointColor);
+            readColor(latticeNode["selected_point_color"], lattice.selectedPointColor);
+            if (latticeNode["stretch_coloring"]) lattice.stretchColoring = latticeNode["stretch_coloring"].as<bool>();
+            readColor(latticeNode["squash_color"], lattice.squashColor);
+            readColor(latticeNode["stretch_color"], lattice.stretchColor);
+            if (latticeNode["falloff_curve"]) lattice.falloffCurve = latticeNode["falloff_curve"].as<int>();
+            if (latticeNode["falloff_radius"]) lattice.falloffRadius = latticeNode["falloff_radius"].as<float>();
+            setLatticeViewSettings(lattice);
+        }
+
         if (settingsData["html_ui"]) {
             auto htmlUiNode = settingsData["html_ui"];
             if (htmlUiNode["auto_import"]) htmlUiAutoImport = htmlUiNode["auto_import"].as<bool>();
@@ -469,6 +504,20 @@ bool AppSettings::saveSettings() {
         // The token lives in its own owner-only file (getMcpHttpTokenPath), not here
         mcpNode["allow_changes"] = mcpHttpAllowChanges;
         settingsData["mcp"] = mcpNode;
+
+        YAML::Node latticeNode;
+        latticeNode["line_color"] = colorNode(latticeViewSettings.lineColor);
+        latticeNode["line_thickness"] = latticeViewSettings.lineThickness;
+        latticeNode["behind_opacity"] = latticeViewSettings.behindOpacity;
+        latticeNode["point_size"] = latticeViewSettings.pointSize;
+        latticeNode["point_color"] = colorNode(latticeViewSettings.pointColor);
+        latticeNode["selected_point_color"] = colorNode(latticeViewSettings.selectedPointColor);
+        latticeNode["stretch_coloring"] = latticeViewSettings.stretchColoring;
+        latticeNode["squash_color"] = colorNode(latticeViewSettings.squashColor);
+        latticeNode["stretch_color"] = colorNode(latticeViewSettings.stretchColor);
+        latticeNode["falloff_curve"] = latticeViewSettings.falloffCurve;
+        latticeNode["falloff_radius"] = latticeViewSettings.falloffRadius;
+        settingsData["lattice"] = latticeNode;
 
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
@@ -740,6 +789,34 @@ GameViewSettings AppSettings::getGameViewSettings() {
 void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
     gameViewSettings = settings;
     saveSettings();
+}
+
+LatticeViewSettings AppSettings::getLatticeViewSettings() {
+    return latticeViewSettings;
+}
+
+// Not saved here: Preferences saves once it applies all its pages
+void AppSettings::setLatticeViewSettings(const LatticeViewSettings& settings) {
+    auto finiteOr = [](float value, float fallback) { return std::isfinite(value) ? value : fallback; };
+    auto clampColor = [](std::array<float, 4> color, const std::array<float, 4>& fallback) {
+        for (size_t i = 0; i < 4; i++) {
+            color[i] = std::isfinite(color[i]) ? std::clamp(color[i], 0.0f, 1.0f) : fallback[i];
+        }
+        return color;
+    };
+    const LatticeViewSettings defaults;
+    LatticeViewSettings value = settings;
+    value.lineColor = clampColor(value.lineColor, defaults.lineColor);
+    value.lineThickness = std::clamp(finiteOr(value.lineThickness, defaults.lineThickness), 1.0f, 4.0f);
+    value.behindOpacity = std::clamp(finiteOr(value.behindOpacity, defaults.behindOpacity), 0.0f, 1.0f);
+    value.pointSize = std::clamp(finiteOr(value.pointSize, defaults.pointSize), 3.0f, 20.0f);
+    value.pointColor = clampColor(value.pointColor, defaults.pointColor);
+    value.selectedPointColor = clampColor(value.selectedPointColor, defaults.selectedPointColor);
+    value.squashColor = clampColor(value.squashColor, defaults.squashColor);
+    value.stretchColor = clampColor(value.stretchColor, defaults.stretchColor);
+    value.falloffCurve = std::clamp(value.falloffCurve, 0, 3);
+    value.falloffRadius = std::clamp(finiteOr(value.falloffRadius, defaults.falloffRadius), 0.01f, 10.0f);
+    latticeViewSettings = value;
 }
 
 bool AppSettings::getMcpHttpEnabled() {

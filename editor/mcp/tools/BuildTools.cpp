@@ -1851,10 +1851,11 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles "
-            "the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
-            "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
-            "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
+            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build "
+            "compiles the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake "
+            "project. Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, "
+            "artifacts, executable, errors [{file, line, message}], warnings, log_file. Don't edit or play "
+            "meanwhile.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
@@ -1905,10 +1906,10 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log tail "
-            "(full: log_file), errors (Lua ones too), exit code/signal, crashed, fatal_lines. input (Linux): "
-            "send_input events into its window: key, text, mouse (window px or space normalized), wait "
-            "{ms|frames|seconds}, release_all, screenshot (an image then). screenshots_at: seconds since launch.";
+            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log "
+            "tail (full: log_file), errors (Lua too), exit code/signal, crashed, fatal_lines. input (Linux): "
+            "send_input events into its window: key, text, mouse (window px, or space normalized), wait "
+            "{ms|frames|seconds}, release_all, screenshot. screenshots_at: seconds since launch.";
         tool.inputSchema = object({
             {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
             {"seconds", number("Default: 5, or past the input.", 0.5, 300)},

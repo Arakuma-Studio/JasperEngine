@@ -9,9 +9,11 @@
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
+#include "lattice/LatticeTypes.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -661,6 +663,51 @@ namespace {
         makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::sunrays>("sunrays", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::sunraysResolution>("sunraysResolution", PropertyType::UInt, UpdateFlags_None),
         makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::sunraysWeight>("sunraysWeight", PropertyType::Float, UpdateFlags_None),
+    };
+
+    // enabled is the shared component checkbox (findEnabledGetter). Resolution is written by
+    // LatticeEditorOps::setResolution together with the resampled offsets; updateEntity clamps it.
+    static const FastPropertyDescriptor kLatticeProperties[] = {
+        makeFastProperty<LatticeComponent, int, &LatticeComponent::resolutionX>("resolutionX", PropertyType::Int, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, int, &LatticeComponent::resolutionY>("resolutionY", PropertyType::Int, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, int, &LatticeComponent::resolutionZ>("resolutionZ", PropertyType::Int, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, LatticeInterpolation, &LatticeComponent::interpolation>("interpolation", PropertyType::Enum, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, LatticeOutside, &LatticeComponent::outside>("outside", PropertyType::Enum, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, float, &LatticeComponent::fadeDistance>("fadeDistance", PropertyType::Float, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, bool, &LatticeComponent::jiggle>("jiggle", PropertyType::Bool, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, float, &LatticeComponent::jiggleStiffness>("jiggleStiffness", PropertyType::Float, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, float, &LatticeComponent::jiggleDamping>("jiggleDamping", PropertyType::Float, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, float, &LatticeComponent::jiggleInertia>("jiggleInertia", PropertyType::Float, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, LatticeJiggleAnchor, &LatticeComponent::jiggleAnchor>("jiggleAnchor", PropertyType::Enum, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, float, &LatticeComponent::jiggleMaxOffset>("jiggleMaxOffset", PropertyType::Float, UpdateFlags_Lattice),
+        makeFastProperty<LatticeComponent, std::vector<Vector3>, &LatticeComponent::offsets>("offsets", PropertyType::Custom, UpdateFlags_Lattice),
+        // poses only matter when applied, which writes offsets
+        makeFastProperty<LatticeComponent, std::vector<LatticePose>, &LatticeComponent::poses>("poses", PropertyType::Custom, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kLatticeModifierProperties[] = {
+        makeFastProperty<LatticeModifierComponent, std::vector<LatticeBinding>, &LatticeModifierComponent::bindings>("bindings", PropertyType::Custom, UpdateFlags_Lattice),
+        makeFastProperty<LatticeModifierComponent, bool, &LatticeModifierComponent::includeChildren>("includeChildren", PropertyType::Bool, UpdateFlags_Lattice),
+        // clamped to 1..64 by updateEntity
+        makeFastProperty<LatticeModifierComponent, int, &LatticeModifierComponent::subdivisions>("subdivisions", PropertyType::Int, UpdateFlags_Lattice),
+    };
+
+    // read by LatticeSystem::lateUpdate every frame (no update flag needed)
+    static const FastPropertyDescriptor kLatticeFollowerProperties[] = {
+        makeFastProperty<LatticeFollowerComponent, Entity, &LatticeFollowerComponent::lattice>("lattice", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<LatticeFollowerComponent, Entity, &LatticeFollowerComponent::rest>("rest", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<LatticeFollowerComponent, bool, &LatticeFollowerComponent::applyPosition>("applyPosition", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LatticeFollowerComponent, bool, &LatticeFollowerComponent::applyRotation>("applyRotation", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LatticeFollowerComponent, bool, &LatticeFollowerComponent::applyScale>("applyScale", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LatticeFollowerComponent, float, &LatticeFollowerComponent::weight>("weight", PropertyType::Float, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kLatticeTracksProperties[] = {
+        makeFastProperty<LatticeTracksComponent, std::vector<int>, &LatticeTracksComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<LatticeTracksComponent, std::vector<std::vector<Vector3>>, &LatticeTracksComponent::values>("values", PropertyType::Custom, UpdateFlags_None),
+        // Hermite tangents, kept mirrored with values by key-edit commands
+        makeFastProperty<LatticeTracksComponent, std::vector<std::vector<Vector3>>, &LatticeTracksComponent::inTangents>("inTangents", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<LatticeTracksComponent, std::vector<std::vector<Vector3>>, &LatticeTracksComponent::outTangents>("outTangents", PropertyType::Custom, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
@@ -1673,6 +1720,101 @@ namespace {
         return resolveDirectProperties(static_cast<FluidSimulationComponent*>(comp), propertyName, kFluidSimulationProperties);
     }
 
+    // "<prefix>[N]" followed by nothing (fieldPos = npos) or by ".<field>" (fieldPos at the field);
+    // false for any other text or an index out of [0, size)
+    bool parseIndexedProperty(const std::string& propertyName, const char* prefix, size_t size, size_t& index, size_t& fieldPos) {
+        const size_t length = std::strlen(prefix);
+        if (propertyName.compare(0, length, prefix) != 0) {
+            return false;
+        }
+        size_t pos = length;
+        if (!parseIndex(propertyName, pos, index) || pos >= propertyName.size() || propertyName[pos] != ']' || index >= size) {
+            return false;
+        }
+        pos++;
+        if (pos == propertyName.size()) {
+            fieldPos = std::string::npos;
+            return true;
+        }
+        if (propertyName[pos] != '.' || pos + 1 == propertyName.size()) {
+            return false;
+        }
+        fieldPos = pos + 1;
+        return true;
+    }
+
+    PropertyData resolveLatticePropertyFast(void* compRef, const std::string& propertyName) {
+        LatticeComponent* comp = static_cast<LatticeComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kLatticeProperties);
+        if (result.ref) return result;
+
+        // offsets[N]: one point, so a prefab instance overrides points one by one
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "offsets[", comp->offsets.size(), index, fieldPos) && fieldPos == std::string::npos) {
+            static Vector3 defOffset = Vector3::ZERO;
+            return {PropertyType::Vector3, UpdateFlags_Lattice, (void*)&defOffset, (void*)&comp->offsets[index]};
+        }
+
+        return PropertyData();
+    }
+
+    PropertyData getLatticeBindingPropertyFast(LatticeBinding& binding, const std::string& field) {
+        static LatticeBinding def;
+        if (field == "lattice") return {PropertyType::Entity, UpdateFlags_Lattice, (void*)&def.lattice, (void*)&binding.lattice};
+        if (field == "weight") return {PropertyType::Float, UpdateFlags_Lattice, (void*)&def.weight, (void*)&binding.weight};
+        if (field == "stage") return {PropertyType::Enum, UpdateFlags_Lattice, (void*)&def.stage, (void*)&binding.stage};
+        if (field == "submesh") return {PropertyType::Int, UpdateFlags_Lattice, (void*)&def.submesh, (void*)&binding.submesh};
+        if (field == "mask") return {PropertyType::Enum, UpdateFlags_Lattice, (void*)&def.mask, (void*)&binding.mask};
+        return PropertyData();
+    }
+
+    PropertyData resolveLatticeModifierPropertyFast(void* compRef, const std::string& propertyName) {
+        LatticeModifierComponent* comp = static_cast<LatticeModifierComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kLatticeModifierProperties);
+        if (result.ref) return result;
+
+        // bindings[N].<field>
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "bindings[", comp->bindings.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getLatticeBindingPropertyFast(comp->bindings[index], propertyName.substr(fieldPos));
+        }
+
+        return PropertyData();
+    }
+
+    PropertyData resolveLatticeFollowerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<LatticeFollowerComponent*>(comp), propertyName, kLatticeFollowerProperties);
+    }
+
+    PropertyData resolveLatticeTracksPropertyFast(void* compRef, const std::string& propertyName) {
+        LatticeTracksComponent* comp = static_cast<LatticeTracksComponent*>(compRef);
+        if (!comp) return PropertyData();
+
+        PropertyData result = resolveDirectProperties(comp, propertyName, kLatticeTracksProperties);
+        if (result.ref) return result;
+
+        size_t index = 0;
+        size_t fieldPos = 0;
+        // points[N]: the flat point index of column N of every key
+        if (parseIndexedProperty(propertyName, "points[", comp->points.size(), index, fieldPos) && fieldPos == std::string::npos) {
+            static int defPoint = 0;
+            return {PropertyType::Int, UpdateFlags_None, (void*)&defPoint, (void*)&comp->points[index]};
+        }
+        // values[N]: the offsets of key N, one per entry of points
+        if (parseIndexedProperty(propertyName, "values[", comp->values.size(), index, fieldPos) && fieldPos == std::string::npos) {
+            static std::vector<Vector3> defValue;
+            return {PropertyType::Custom, UpdateFlags_None, (void*)&defValue, (void*)&comp->values[index]};
+        }
+
+        return PropertyData();
+    }
+
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<Light2DComponent*>(comp), propertyName, kLight2DProperties);
     }
@@ -2668,6 +2810,56 @@ namespace {
         enumerateFromDescriptors(comp, ps, kFluidSimulationProperties);
     }
 
+    void enumerateLatticeProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        LatticeComponent* comp = static_cast<LatticeComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kLatticeProperties);
+
+        static Vector3 defOffset = Vector3::ZERO;
+        for (size_t i = 0; i < (compRef ? comp->offsets.size() : 1); i++) {
+            std::string idx = compRef ? std::to_string(i) : "";
+            ps["offsets[" + idx + "]"] = {PropertyType::Vector3, UpdateFlags_Lattice, (void*)&defOffset, compRef ? (void*)&comp->offsets[i] : nullptr};
+        }
+    }
+
+    void enumerateLatticeModifierProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        LatticeModifierComponent* comp = static_cast<LatticeModifierComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kLatticeModifierProperties);
+
+        static LatticeBinding defBinding;
+        for (size_t i = 0; i < (compRef ? comp->bindings.size() : 1); i++) {
+            std::string prefix = "bindings[" + (compRef ? std::to_string(i) : "") + "].";
+            LatticeBinding& binding = compRef ? comp->bindings[i] : defBinding;
+            for (const char* field : {"lattice", "weight", "stage", "submesh", "mask"}) {
+                PropertyData property = getLatticeBindingPropertyFast(binding, field);
+                if (!compRef) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
+    }
+
+    void enumerateLatticeFollowerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kLatticeFollowerProperties);
+    }
+
+    void enumerateLatticeTracksProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        LatticeTracksComponent* comp = static_cast<LatticeTracksComponent*>(compRef);
+
+        enumerateFromDescriptors(compRef, ps, kLatticeTracksProperties);
+
+        static int defPoint = 0;
+        for (size_t i = 0; i < (compRef ? comp->points.size() : 1); i++) {
+            std::string idx = compRef ? std::to_string(i) : "";
+            ps["points[" + idx + "]"] = {PropertyType::Int, UpdateFlags_None, (void*)&defPoint, compRef ? (void*)&comp->points[i] : nullptr};
+        }
+        static std::vector<Vector3> defValue;
+        for (size_t i = 0; i < (compRef ? comp->values.size() : 1); i++) {
+            std::string idx = compRef ? std::to_string(i) : "";
+            ps["values[" + idx + "]"] = {PropertyType::Custom, UpdateFlags_None, (void*)&defValue, compRef ? (void*)&comp->values[i] : nullptr};
+        }
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3423,6 +3615,10 @@ namespace {
         {ComponentType::RotateTracksComponent, &findComponentPtr<RotateTracksComponent>, &resolveRotateTracksPropertyFast, &enumerateRotateTracksProperties},
         {ComponentType::ScaleTracksComponent, &findComponentPtr<ScaleTracksComponent>, &resolveScaleTracksPropertyFast, &enumerateScaleTracksProperties},
         {ComponentType::MorphTracksComponent, &findComponentPtr<MorphTracksComponent>, &resolveMorphTracksPropertyFast, &enumerateMorphTracksProperties},
+        {ComponentType::LatticeComponent, &findComponentPtr<LatticeComponent>, &resolveLatticePropertyFast, &enumerateLatticeProperties},
+        {ComponentType::LatticeModifierComponent, &findComponentPtr<LatticeModifierComponent>, &resolveLatticeModifierPropertyFast, &enumerateLatticeModifierProperties},
+        {ComponentType::LatticeFollowerComponent, &findComponentPtr<LatticeFollowerComponent>, &resolveLatticeFollowerPropertyFast, &enumerateLatticeFollowerProperties},
+        {ComponentType::LatticeTracksComponent, &findComponentPtr<LatticeTracksComponent>, &resolveLatticeTracksPropertyFast, &enumerateLatticeTracksProperties},
     };
 
     // The Unity component checkbox: "enabled" of every component that has one, shared
@@ -3456,6 +3652,9 @@ namespace {
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
             case ComponentType::FluidSimulationComponent: return &getEnabledRef<FluidSimulationComponent>;
+            case ComponentType::LatticeComponent: return &getEnabledRef<LatticeComponent>;
+            case ComponentType::LatticeModifierComponent: return &getEnabledRef<LatticeModifierComponent>;
+            case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
             default: return nullptr;
         }
     }
@@ -3593,6 +3792,14 @@ std::string computeComponentName(editor::ComponentType component){
         name = "UIDocumentComponent";
     }else if(component == ComponentType::FluidSimulationComponent){
         name = "FluidSimulationComponent";
+    }else if(component == ComponentType::LatticeComponent){
+        name = "LatticeComponent";
+    }else if(component == ComponentType::LatticeModifierComponent){
+        name = "LatticeModifierComponent";
+    }else if(component == ComponentType::LatticeFollowerComponent){
+        name = "LatticeFollowerComponent";
+    }else if(component == ComponentType::LatticeTracksComponent){
+        name = "LatticeTracksComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3734,6 +3941,10 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
         case ComponentType::UIDocumentComponent: return "UI Document";
         case ComponentType::FluidSimulationComponent: return "Fluid Simulation";
+        case ComponentType::LatticeComponent: return "Lattice";
+        case ComponentType::LatticeModifierComponent: return "Lattice Modifier";
+        case ComponentType::LatticeFollowerComponent: return "Lattice Follower";
+        case ComponentType::LatticeTracksComponent: return "Lattice Tracks";
     }
     return getComponentName(component);
 }
@@ -3794,6 +4005,10 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
         case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
         case ComponentType::FluidSimulationComponent: return ICON_FA_DROPLET;
+        case ComponentType::LatticeComponent: return ICON_FA_BORDER_NONE;
+        case ComponentType::LatticeModifierComponent: return ICON_FA_WAND_MAGIC_SPARKLES;
+        case ComponentType::LatticeFollowerComponent: return ICON_FA_LOCATION_ARROW;
+        case ComponentType::LatticeTracksComponent: return ICON_FA_CUBES_STACKED;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3845,6 +4060,14 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<UIDocumentComponent>();
         case ComponentType::FluidSimulationComponent:
             return registry->getComponentId<FluidSimulationComponent>();
+        case ComponentType::LatticeComponent:
+            return registry->getComponentId<LatticeComponent>();
+        case ComponentType::LatticeModifierComponent:
+            return registry->getComponentId<LatticeModifierComponent>();
+        case ComponentType::LatticeFollowerComponent:
+            return registry->getComponentId<LatticeFollowerComponent>();
+        case ComponentType::LatticeTracksComponent:
+            return registry->getComponentId<LatticeTracksComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -3953,6 +4176,14 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::UIDocumentComponent;
     }else if(normalizedName == "fluidsimulation"){
         return ComponentType::FluidSimulationComponent;
+    }else if(normalizedName == "lattice"){
+        return ComponentType::LatticeComponent;
+    }else if(normalizedName == "latticemodifier"){
+        return ComponentType::LatticeModifierComponent;
+    }else if(normalizedName == "latticefollower"){
+        return ComponentType::LatticeFollowerComponent;
+    }else if(normalizedName == "latticetracks"){
+        return ComponentType::LatticeTracksComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4113,6 +4344,18 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<FluidSimulationComponent>(entity)){
         ret.push_back(ComponentType::FluidSimulationComponent);
+    }
+    if (registry->findComponent<LatticeComponent>(entity)){
+        ret.push_back(ComponentType::LatticeComponent);
+    }
+    if (registry->findComponent<LatticeModifierComponent>(entity)){
+        ret.push_back(ComponentType::LatticeModifierComponent);
+    }
+    if (registry->findComponent<LatticeFollowerComponent>(entity)){
+        ret.push_back(ComponentType::LatticeFollowerComponent);
+    }
+    if (registry->findComponent<LatticeTracksComponent>(entity)){
+        ret.push_back(ComponentType::LatticeTracksComponent);
     }
     if (registry->findComponent<Light2DComponent>(entity)){
         ret.push_back(ComponentType::Light2DComponent);
@@ -5016,6 +5259,23 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             document->needReload = true;
         }
     }
+    if (updateFlags & UpdateFlags_Lattice){
+        // offsets are left as they are: LatticeEditorOps::setResolution writes them resampled
+        // with the resolution, and a prefab override applies them before it
+        if (LatticeComponent* lattice = registry->findComponent<LatticeComponent>(entity)){
+            lattice->resolutionX = std::clamp(lattice->resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->resolutionY = std::clamp(lattice->resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->resolutionZ = std::clamp(lattice->resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+            lattice->revision++;
+        }
+        if (LatticeModifierComponent* modifier = registry->findComponent<LatticeModifierComponent>(entity)){
+            modifier->subdivisions = std::clamp(modifier->subdivisions, 1, 64);
+            for (LatticeBinding& binding : modifier->bindings){
+                binding.weight = std::isfinite(binding.weight) ? std::clamp(binding.weight, 0.0f, 2.0f) : 1.0f;
+            }
+            modifier->warnedOverflow = false;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,
@@ -5306,6 +5566,33 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             break;
         }
 
+        // decoded over the target's own: a live lattice keeps its jiggle and tween state
+        case ComponentType::LatticeComponent: {
+            YAML::Node encoded = Stream::encodeLatticeComponent(sourceRegistry->getComponent<LatticeComponent>(sourceEntity));
+            LatticeComponent& target = targetRegistry->getComponent<LatticeComponent>(targetEntity);
+            target = Stream::decodeLatticeComponent(encoded, &target);
+            target.revision++;
+            break;
+        }
+
+        case ComponentType::LatticeModifierComponent: {
+            YAML::Node encoded = Stream::encodeLatticeModifierComponent(sourceRegistry->getComponent<LatticeModifierComponent>(sourceEntity));
+            targetRegistry->getComponent<LatticeModifierComponent>(targetEntity) = Stream::decodeLatticeModifierComponent(encoded);
+            break;
+        }
+
+        case ComponentType::LatticeFollowerComponent: {
+            YAML::Node encoded = Stream::encodeLatticeFollowerComponent(sourceRegistry->getComponent<LatticeFollowerComponent>(sourceEntity));
+            targetRegistry->getComponent<LatticeFollowerComponent>(targetEntity) = Stream::decodeLatticeFollowerComponent(encoded);
+            break;
+        }
+
+        case ComponentType::LatticeTracksComponent: {
+            YAML::Node encoded = Stream::encodeLatticeTracksComponent(sourceRegistry->getComponent<LatticeTracksComponent>(sourceEntity));
+            targetRegistry->getComponent<LatticeTracksComponent>(targetEntity) = Stream::decodeLatticeTracksComponent(encoded);
+            break;
+        }
+
         // Written over the live component, so a live instance keeps its runtime state (an
         // instanced mesh keeps its vertex layout, a body its physics handle)
         case ComponentType::PointsComponent:
@@ -5456,6 +5743,31 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::TerrainComponent && property == "blendMaps") {
                 auto* source = Catalog::getPropertyRef<std::vector<Texture>>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<std::vector<Texture>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeComponent && property == "offsets") {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeComponent && property == "poses") {
+                auto* source = Catalog::getPropertyRef<std::vector<LatticePose>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LatticePose>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeModifierComponent && property == "bindings") {
+                auto* source = Catalog::getPropertyRef<std::vector<LatticeBinding>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<LatticeBinding>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent && property == "points") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent &&
+                       (property == "values" || property == "inTangents" || property == "outTangents")) {
+                auto* source = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<std::vector<Vector3>>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::LatticeTracksComponent && property.compare(0, 7, "values[") == 0) {
+                auto* source = Catalog::getPropertyRef<std::vector<Vector3>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<Vector3>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             } else if (endsWith(property, "material.extraPass")) {
                 auto* source = Catalog::getPropertyRef<MaterialPass>(sourceRegistry, sourceEntity, compType, property);

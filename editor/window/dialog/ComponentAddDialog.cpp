@@ -58,6 +58,9 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::InstancedMeshComponent, "Draws many copies of the mesh in one call"},
             {ComponentType::MeshPolygonComponent, "Builds a flat mesh from polygon points"},
             {ComponentType::TerrainComponent, "Heightmap terrain with texture layers"},
+            {ComponentType::LatticeComponent, "Cage of control points that bends the meshes bound to it"},
+            {ComponentType::LatticeModifierComponent, "Deforms this mesh (and children) with lattices"},
+            {ComponentType::LatticeFollowerComponent, "Moves with a point of a lattice's deformation"},
         }},
         {"Rendering", ICON_FA_CAMERA, {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
@@ -117,6 +120,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::RotateTracksComponent, "Rotation keyframes"},
             {ComponentType::ScaleTracksComponent, "Scale keyframes"},
             {ComponentType::MorphTracksComponent, "Blend shape keyframes"},
+            {ComponentType::LatticeTracksComponent, "Lattice point keyframes"},
             {ComponentType::BoneComponent, "Skeleton bone of a model"},
         }},
         {"Scripts", ICON_FA_CODE, {

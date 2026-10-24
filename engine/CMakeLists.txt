@@ -18,6 +18,10 @@ option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# googletest suite of the lattice math (engine/tests/lattice): math and lattice sources only, no
+# GPU or display; works from the editor build, the standalone engine build or on its own
+# (cmake -S engine/tests/lattice)
+option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -845,6 +849,7 @@ set(JASPERENGINE_SRCS
     core/action/Tween.cpp
     core/action/keyframe/KeyframeTracks.cpp
     core/action/keyframe/MorphTracks.cpp
+    core/action/keyframe/LatticeTracks.cpp
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
@@ -940,6 +945,7 @@ set(JASPERENGINE_SRCS
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
     core/object/FluidSimulation.cpp
+    core/object/Lattice.cpp
     core/object/Model.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
@@ -1018,6 +1024,10 @@ set(JASPERENGINE_SRCS
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/LatticeSystem.cpp
+    core/lattice/LatticeSolver.cpp
+    core/lattice/LatticePresets.cpp
+    core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
@@ -1349,4 +1359,8 @@ endif() # End standalone executable build
 
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+
+if(JASPERENGINE_LATTICE_TESTS)
+    add_subdirectory(tests/lattice)
 endif()

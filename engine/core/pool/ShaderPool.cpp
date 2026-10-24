@@ -518,9 +518,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 32;
-        case ShaderType::DEPTH:  return 15;
-        case ShaderType::GBUFFER: return 11;
+        case ShaderType::MESH:   return 33;
+        case ShaderType::DEPTH:  return 16;
+        case ShaderType::GBUFFER: return 14;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -585,6 +585,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 30: return shortName ? "L16" : "Light Capacity 16";
             // the post-processing colour (phase 4, USE_POST_COLOR): one global bit
             case 31: return shortName ? "Pcl" : "Post Color";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl): the first property past
+            // the 32 of older keys, so keys without a lattice read as they always did
+            case 32: return shortName ? "Ltc" : "Lattice";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -606,6 +609,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 13: return shortName ? "Txr" : "Texture Rect";
             // the alpha clip reads the base colour as the colour pass's Stochastic Tiling does
             case 14: return shortName ? "Sto" : "Stochastic Tiling";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
+            case 15: return shortName ? "Ltc" : "Lattice";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -621,6 +626,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 9: return shortName ? "Tpb" : "Terrain PBR";
             // base colour and metallic-roughness read as the colour pass's Stochastic Tiling does
             case 10: return shortName ? "Sto" : "Stochastic Tiling";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
+            case 11: return shortName ? "Ltc" : "Lattice";
+            // the vertex colour a lattice's mask reads, never set without 'Ltc'
+            case 12: return shortName ? "Vc3" : "Vertex Color 3";
+            case 13: return shortName ? "Vc4" : "Vertex Color 4";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1430,7 +1440,7 @@ uint64_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity, bool stochasticTiling){
+    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice){
     uint64_t prop = 0;
 
     prop |= unlit            ? shaderPropertyBit(0) : 0;
@@ -1467,13 +1477,14 @@ uint64_t ShaderPool::getMeshProperties(
     // the default capacity (8) sets neither bit, so it keeps the keys it had before tiers
     prop |= (lightCapacity == 4)  ? shaderPropertyBit(29) : 0;
     prop |= (lightCapacity == 16) ? shaderPropertyBit(30) : 0;
+    prop |= lattice          ? shaderPropertyBit(32) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
                                             bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
-                                            bool stochasticTiling){
+                                            bool stochasticTiling, bool lattice){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
@@ -1491,12 +1502,13 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= uv1              ? shaderPropertyBit(12) : 0;
     prop |= textureRect      ? shaderPropertyBit(13) : 0;
     prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
+    prop |= lattice          ? shaderPropertyBit(15) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
-                                              bool stochasticTiling){
+                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1510,6 +1522,9 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= metallicRoughnessTexture ? shaderPropertyBit(8) : 0;
     prop |= terrainPBR              ? shaderPropertyBit(9) : 0;
     prop |= stochasticTiling        ? shaderPropertyBit(10) : 0;
+    prop |= lattice                 ? shaderPropertyBit(11) : 0;
+    prop |= (lattice && vertexColorVec3) ? shaderPropertyBit(12) : 0;
+    prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
 
     return prop;
 }

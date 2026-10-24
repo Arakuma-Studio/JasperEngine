@@ -80,8 +80,9 @@ TEST(StochasticTilingKey, BitsAreNamedSto) {
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 14, false), "Stochastic Tiling");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 10, true), "Sto");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 10, false), "Stochastic Tiling");
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::DEPTH), 15);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::GBUFFER), 11);
+    // the lattice deformer's bits follow (DEPTH 15, GBUFFER 11-13)
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::DEPTH), 16);
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::GBUFFER), 14);
     EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::MESH) & meshSto, 0u);
     EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::DEPTH) & depthSto, 0u);
     EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER) & gbufferSto, 0u);

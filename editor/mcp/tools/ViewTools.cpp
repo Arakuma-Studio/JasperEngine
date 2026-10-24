@@ -759,6 +759,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_all_bodies", &SceneDisplaySettings::showAllBodies},
         {"show_all_joints", &SceneDisplaySettings::showAllJoints},
         {"show_all_bones", &SceneDisplaySettings::showAllBones},
+        {"show_all_lattices", &SceneDisplaySettings::showAllLattices},
         {"hide_camera_view", &SceneDisplaySettings::hideCameraView},
         {"hide_light_icons", &SceneDisplaySettings::hideLightIcons},
         {"hide_sound_icons", &SceneDisplaySettings::hideSoundIcons},

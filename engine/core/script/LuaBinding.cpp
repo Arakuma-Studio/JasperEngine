@@ -19,6 +19,7 @@
 #include "object/GameObject.h"
 #include "object/Mesh.h"
 #include "object/Primitive.h"
+#include "object/Lattice.h"
 #include "object/Mirror.h"
 #include "object/Model.h"
 #include "object/MeshPolygon.h"
@@ -69,6 +70,7 @@
 #include "action/SpriteAnimation.h"
 #include "action/keyframe/KeyframeTracks.h"
 #include "action/keyframe/MorphTracks.h"
+#include "action/keyframe/LatticeTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
@@ -773,6 +775,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(ShadowCaster2D, "shadowcaster2d");
     DISPATCH_TYPE(Mesh, "mesh");
     DISPATCH_TYPE(Primitive, "primitive");
+    DISPATCH_TYPE(Lattice, "lattice");
     DISPATCH_TYPE(Mirror, "mirror");
     DISPATCH_TYPE(Terrain, "terrain");
     DISPATCH_TYPE(Tilemap, "tilemap");
@@ -814,6 +817,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(SpriteAnimation, "spriteanimation");
     DISPATCH_TYPE(KeyframeTracks, "keyframetracks");
     DISPATCH_TYPE(MorphTracks, "morphtracks");
+    DISPATCH_TYPE(LatticeTracks, "latticetracks");
     DISPATCH_TYPE(RotateTracks, "rotatetracks");
     DISPATCH_TYPE(ScaleTracks, "scaletracks");
     DISPATCH_TYPE(TranslateTracks, "translatetracks");

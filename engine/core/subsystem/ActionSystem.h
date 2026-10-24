@@ -31,6 +31,8 @@
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/MorphTracksComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/LatticeComponent.h"
 
 namespace jasperengine{
 
@@ -39,7 +41,7 @@ namespace jasperengine{
     private:
 
 		// Per-target weighted pose accumulator used to blend keyframe-track
-		// animations (translate/rotate/scale/morph) that target the same bone.
+		// animations (translate/rotate/scale/morph/lattice) that target the same bone.
 		// Each contributing animation adds its sampled value scaled by its blend
 		// weight; flushPoseBlend() then writes the normalized (weighted-average)
 		// result once per target. This makes blending order-independent and lets
@@ -58,8 +60,17 @@ namespace jasperengine{
 			float sums[MAX_MORPHTARGETS] = {0};
 			float weights[MAX_MORPHTARGETS] = {0};
 		};
+		// Per lattice point of the target (sized to its point count when first touched in a
+		// frame). Entries survive clearPoseBlend() with active = false so the vectors keep
+		// their capacity; entries of destroyed entities are dropped there.
+		struct LatticeBlendAccum {
+			std::vector<Vector3> sums;
+			std::vector<float> weights;
+			bool active = false;
+		};
 		std::unordered_map<Entity, TransformBlendAccum> transformBlend;
 		std::unordered_map<Entity, MorphBlendAccum> morphBlend;
+		std::unordered_map<Entity, LatticeBlendAccum> latticeBlend;
 
 		void clearPoseBlend();
 		void flushPoseBlend();
@@ -77,6 +88,7 @@ namespace jasperengine{
 		std::vector<Entity> animationChildEntities(const AnimationComponent& animcomp);
 		void animationStopChildren(const std::vector<Entity>& children);
 		void animationPauseChildren(const std::vector<Entity>& children);
+		void animationApplyEnd(ActionComponent& action, AnimationComponent& animcomp, bool durationPassed);
 
 		// Sprite action functions
 		void setSpriteTextureRect(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
@@ -149,6 +161,7 @@ namespace jasperengine{
 		void scaleTracksUpdate(KeyframeTracksComponent& keyframe, ScaleTracksComponent& scaletracks, Entity target, float weight);
 		void rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateTracksComponent& rotatetracks, Entity target, float weight);
 		void morphTracksUpdate(KeyframeTracksComponent& keyframe, MorphTracksComponent& morpthtracks, Entity target, float weight);
+		void latticeTracksUpdate(KeyframeTracksComponent& keyframe, LatticeTracksComponent& latticetracks, Entity target, LatticeComponent& latticecomp, float weight);
 
 		void processRunningAction(double dt, Entity entity, ActionComponent& action);
 

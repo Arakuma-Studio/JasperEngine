@@ -77,6 +77,9 @@ namespace jasperengine{
         static std::shared_ptr<std::array<TextureData,6>> buildGLTFTextureFaces(tinygltf::Model& model, int textureIndex);
 
         bool createSprite(SpriteComponent& sprite, MeshComponent& mesh, CameraComponent& camera);
+        // the sprite as grid x grid cells while a lattice deforms it (spec lattice §6.4)
+        void createSpriteGrid(SpriteComponent& sprite, MeshComponent& mesh, unsigned int texWidth, unsigned int texHeight,
+                              Vector2 pivotPos, int grid);
         bool createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent& mesh);
         bool createTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
 

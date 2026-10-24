@@ -105,6 +105,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
+| [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
 | [Outline](#libraryoutline) `library:outline` | mesh | Outline and stencil | none | opaque |
 | [Outline (stencil)](#libraryoutline_stencil) `library:outline_stencil` | mesh | Outline and stencil | none | opaque |
@@ -702,6 +703,28 @@ Sci-fi hologram: scanlines scrolling along world Y (procedural or from a texture
 | Keyword group | Values (first is the default) | Description |
 |---|---|---|
 | `BLEND_MODE` | `BLEND_MODE_ADDITIVE`, `BLEND_MODE_ALPHA` | Default blend |
+
+<a id="librarylattice_stretch"></a>
+### Lattice Stretch (`library:lattice_stretch`)
+
+Heat map of how much the lattices bound to the mesh squash or stretch it: white at rest, the squash colour where the volume shrinks, the stretch colour where it grows, full at range times (or 1 / range) the rest volume; folded (inside-out) cells show the squash colour. Tinted by the base map; unlit. A mesh without a lattice draws white.
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend opaque.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `squashColor` | colour | (0.1, 0.35, 1, 1) | Squashed colour |
+| `stretchColor` | colour | (1, 0.15, 0.1, 1) | Stretched colour |
+| `range` | range 1.05 to 16 | 2 | Volume ratio of the full colour |
+| `baseColor` | colour | (1, 1, 1, 1) | Tint |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map |
 
 <a id="librarypanner"></a>
 ### Panner (`library:panner`)
