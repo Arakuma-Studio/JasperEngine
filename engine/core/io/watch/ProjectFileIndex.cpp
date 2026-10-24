@@ -18,11 +18,6 @@ namespace {
         return dir.empty() ? name : dir + "/" + name;
     }
 
-    bool keyWithin(const std::string& key, const std::string& dir) {
-        if (dir.empty()) return !key.empty();
-        return key.size() > dir.size() && key.compare(0, dir.size(), dir) == 0 && key[dir.size()] == '/';
-    }
-
     // [first, last) of the keys strictly under `dir` in an ordered map
     template <typename Map>
     std::pair<typename Map::const_iterator, typename Map::const_iterator> subtree(const Map& map, const std::string& dir) {
