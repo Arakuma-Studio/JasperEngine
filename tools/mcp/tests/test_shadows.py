@@ -87,8 +87,9 @@ async def stats(ed: Editor, scene: int) -> dict:
 
 
 def keep_shot(name: str, img) -> None:
-    SHOT_DIR.mkdir(parents=True, exist_ok=True)
-    (SHOT_DIR / f"{name}.png").write_bytes(pngdiff.encode(img))
+    path = SHOT_DIR / f"{name}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(pngdiff.encode(img))
 
 
 def check(condition, message: str) -> None:
@@ -640,6 +641,7 @@ async def golden(ed: Editor, name: str, img):
     if UPDATE_GOLDEN:
         GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
         path.write_bytes(pngdiff.encode(img))
+        keep_shot(f"golden/{name}", img)
         print(f"     [golden] wrote {path.relative_to(harness.REPO)}: look at it")
         return
     ed.check(path.is_file(), f"no golden {path} (JASPER_SHADOW_UPDATE_GOLDEN=1 writes it)")
@@ -743,6 +745,41 @@ async def test_shadow_migration(ed: Editor):
     await aim(ed, scene, [0, 6, 9], [0, 0, 0])
     img = await shot(ed, scene, frames=8)
     ed.check(not pngdiff.flat(img), "the migrated scene renders")
+
+
+async def test_legacy_fork(ed: Editor):
+    """AC18, R34: a fork of mesh.vert/frag written before these shadows (the runtime-shaders
+    fixture's tinted.*: u_vs_shadows, u_fs_shadows, v_lightProjPos) compiles, check_shader names
+    the legacy interface, and its directional shadows still show."""
+    shaders = ed.project / "shaders"
+    shaders.mkdir(exist_ok=True)
+    source = harness.REPO / "tools" / "fixtures" / "runtime-shaders" / "assets" / "shaders"
+    for name in ("tinted.vert", "tinted.frag"):
+        shutil.copy(source / name, shaders / name)
+    scene = await make_scene(ed, "LegacyFork")
+    sun = await sun_of(ed, scene)
+    await light_set(ed, scene, sun, shadows=True, direction=[-0.3, -0.85, -0.4])
+    ground = await entity(ed, scene, "plane", "Ground", [0, 0, 0])
+    box = await entity(ed, scene, "cube", "Box", [0, 1.5, 0], scale=[2, 0.3, 2])
+    await ed.call("set_properties", scene=scene, entity=ground, values={"mesh": {"submeshes[0].material.shader": "shaders/tinted"}})
+    checked = await ed.call("check_shader", shader="shaders/tinted", timeout=300)
+    ed.check_eq(checked["failed"], 0, f"the legacy fork compiles: {checked}")
+    ed.check("legacy shadow interface" in str(checked), f"check_shader names the legacy interface: {str(checked)[:600]}")
+    await aim(ed, scene, [0, 9, 0.01], [0, 0, 0])
+    with_box = await shot(ed, scene, frames=10)
+    await ed.call("set_entity_state", scene=scene, entity=box, active=False)
+    without = await shot(ed, scene, frames=6)
+    keep_shot("legacy_with_box", with_box)
+    keep_shot("legacy_without_box", without)
+    # the ground beside the box (it hides the ground under itself, seen from above): darker
+    # where its shadow falls, off its -x and -z sides, the way this sun points
+    w, h, _ = with_box
+    def luma(img, x, y):
+        _, _, rgba = img
+        i = (y * w + x) * 4
+        return (rgba[i] * 30 + rgba[i + 1] * 59 + rgba[i + 2] * 11) // 100
+    darker = sum(1 for y in range(0, h, 2) for x in range(0, w, 2) if luma(without, x, y) - luma(with_box, x, y) > 24)
+    ed.check(darker > 200, f"the fork shows the box's directional shadow ({darker} darker pixels)")
 
 
 # ------------------------------------------------------------------ cross-compile (AC7)

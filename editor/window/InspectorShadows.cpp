@@ -237,7 +237,9 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
 
     if (light.softShadows && (hardOnly || (!pcssTier && light.type != LightType::POINT))){
         propertyHeader("");
-        ImGui::TextDisabled("%s", pcssNote.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", pcssNote.c_str());
+        ImGui::PopStyleColor();
     }
 
     endTable();

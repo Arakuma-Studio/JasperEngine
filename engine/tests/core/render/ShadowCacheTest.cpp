@@ -174,6 +174,19 @@ TEST(ShadowCache, SetupChangesGiveTheirCause){
     }
 }
 
+TEST(ShadowCache, CasterLayerChangesAreTheCastersCause){
+    // a caster moving to a layer no other caster is on changes the slot's caster mask with the
+    // light unchanged: the redraw is the caster's (static here), not the light's
+    const ShadowSlotInput base = slotInput();
+    ShadowSlotState state = warm(base);
+    ShadowSlotInput input = base;
+    input.key.casterMask = 1u | 8u;
+    const std::vector<ShadowCasterChange> changes = {moved(box(0, 0, 0), box(0, 0, 0), true, 1u | 8u)};
+    const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, changes, 2);
+    EXPECT_EQ(decision.cause, ShadowDirtyCause::STATIC_CASTER);
+    EXPECT_EQ(decision.path, ShadowSlotPath::RENDER_STATIC);
+}
+
 TEST(ShadowCache, ReceiverOnlyEditsSkip){
     // biases, strength, filter, fade and the tier's filter are no part of the key: the same
     // key, whatever they are, skips

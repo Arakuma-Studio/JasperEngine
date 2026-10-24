@@ -100,7 +100,11 @@ ShadowSlotDecision ShadowCache::evaluate(ShadowSlotState& state, const ShadowSlo
         setupCause = ShadowDirtyCause::FIRST;
     }else if (key.atlasGeneration != state.key.atlasGeneration || key.rect != state.key.rect){
         setupCause = ShadowDirtyCause::ATLAS;
-    }else if (key.lightRevision != state.key.lightRevision || key.casterMask != state.key.casterMask){
+    }else if (key.lightRevision != state.key.lightRevision){
+        setupCause = ShadowDirtyCause::LIGHT;
+    }else if (key.casterMask != state.key.casterMask){
+        // the layers drawn into it: the light's culling mask (a light change, above) or the
+        // layers casters are on (a caster changed layer: its cause, below)
         setupCause = ShadowDirtyCause::LIGHT;
     }else if (key.viewProjection != state.key.viewProjection){
         setupCause = ShadowDirtyCause::FIT;
@@ -129,6 +133,10 @@ ShadowSlotDecision ShadowCache::evaluate(ShadowSlotState& state, const ShadowSlo
                 dynamicRect = dynamicRect.united(projectedRect(key.viewProjection, key.rect, change.newBounds));
         }
     }
+
+    // a caster mask that changed with the casters, the light the same: the casters' doing
+    if (setupCause == ShadowDirtyCause::LIGHT && key.lightRevision == state.key.lightRevision && (staticChanged || dynamicChanged))
+        setupCause = staticChanged ? ShadowDirtyCause::STATIC_CASTER : ShadowDirtyCause::DYNAMIC_CASTER;
 
     auto redraw = [&](ShadowDirtyCause cause){
         decision.cause = cause;

@@ -5,8 +5,10 @@
 --
 -- SHADOWS_WALK=1 walks the camera at 5 m/s (the "walking camera" budget row); without it the
 -- camera holds still (the "static scene and camera" row). SHADOWS_QUALITY=low|medium|high|ultra
--- forces a tier; SHADOWS_STATIC=<n> sets the static caster count (default 2000).
--- Every 120 frames the game logs its frame rate and what the shadow maps cost.
+-- forces a tier; SHADOWS_STATIC=<n> and SHADOWS_DYNAMIC=<n> set the static and dynamic caster
+-- counts (default 2000 and 20: with 0 dynamic casters and a still camera every shadow slot is
+-- cached, and the frame has no shadow pass at all; JASPERENGINE_FRAME_STATS=1 lists its passes).
+-- Every 120 frames the game logs its frame rate and the shadow tier it renders.
 local Shadows = { properties = {} }
 
 local function log(fmt, ...)
@@ -100,7 +102,8 @@ function Shadows:init()
 
     -- dynamic casters: skinned and morphing, moving every frame
     self.dynamic = {}
-    for i = 0, 19 do
+    local dynamicCount = tonumber(os.getenv("SHADOWS_DYNAMIC") or "") or 20
+    for i = 0, dynamicCount - 1 do
         local model = keep(Model(scene))
         if not model:loadModel("skinned_morph.gltf") then
             fail("skinned_morph.gltf did not load")

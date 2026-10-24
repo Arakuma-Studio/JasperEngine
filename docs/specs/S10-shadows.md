@@ -640,3 +640,54 @@ llvmpipe and Vulkan on lavapipe.
   without knowing each cascade's range.
 - **Shadow distance becoming finite** changes far shadows in old scenes. Default: the tier
   default (Unity behaviour). Users can set `shadowDistance` per light or per scene.
+
+## Deviations (implementation record)
+
+- **Bias as a world offset.** `shadowBias` moves the receiver `shadowBias × texelWorld` towards
+  the light before projecting (spot and point: the texel at the receiver's distance) instead of
+  subtracting `shadowBias × texelWorld / depthRangeWorld` from its NDC depth. For a directional
+  cascade the two are the same; for a perspective slot the world offset is exact where an NDC
+  offset is not linear in distance.
+- **PCSS kernel floor.** The PCF kernel radius is clamped to [0.5, 24] texels (R13 says
+  [1, 24]): at 1 texel the comparison's own bilinear texel makes a contact penumbra at least
+  2 texels wide, which AC8 (< 2 texels at the pole's base) excludes. 0.5 is a penumbra one texel
+  wide; the cap is unchanged.
+- **PCSS on GLES3/WebGL2 and painted terrains** uses the High tier's Vogel disk: the raw-depth
+  view is a 17th fragment texture unit there (GLES3 has 16; the painted terrain variant is at 16
+  already). R24 asks the view only in variants that need it; these cannot have it.
+- **Point-light Low filter** is the Low tier's 3×3 grid (R12 says a 5-tap kernel); Medium uses
+  the 5×5 grid, High and Ultra the Vogel disk, as for spot lights. One filter family on every
+  light kind keeps point and spot penumbras equal (AC9).
+- **High filters per shader backend (R25).** Exports are per shader backend, not per platform:
+  an export cooks the `Shq` variants for a backend when a platform it ships to (GLES3: Android,
+  web; Vulkan: Android, Linux, Windows; OpenGL: the desktops; Metal and Direct3D: theirs) has a
+  tier of High or above (`ShadowTiers::cooksHighFilters`). A game without the runtime shader
+  compiler asked for a higher tier renders Medium and warns once; with the compiler (the
+  default) it compiles the variants it lacks. Scenes of Quality Auto, and scenes whose scripts
+  set `shadowQuality`, collect both states. The old `Pcf` bit (bit 5) is cleared from scenes'
+  cached variant keys by the scene 1 → 2 migration.
+- **Caster changes are a log.** `RenderSystem::update` can run more than once per draw (the
+  editor updates the scene before its frame does), so the shadow cache reads the caster changes
+  of every update since an atlas last evaluated its slots (`casterChangeLog`), not only the last
+  update's. An atlas that falls behind the log's bound (16,384 changes) redraws its slots.
+- **Static layers are kept** for `STATIC_CACHE_KEEP_UPDATES` (300) updates after the last
+  dynamic caster disappears (R21's lifetime), so a dynamic caster toggled off and on does not
+  rebuild every static layer.
+- **Fixture scenes.** The stability, filter, cache, bias and penumbra scenes are built by
+  `tools/mcp/tests/test_shadows.py` with the MCP tools (explicit light directions, primitives)
+  rather than stored as `.scene` files; `tools/fixtures/shadows` holds the bench scene (built at
+  runtime by `scripts/Shadows.lua`, as the smoke test runs it) and `Legacy.scene` (AC18). The
+  goldens are `tools/fixtures/shadows/golden/*.png`.
+- **AC3 metric margin.** `set_shadow_debug fit_camera_euler` turns only the camera the cascades
+  are fitted to; the view stays. The screen's sides it turns away from leave that frustum and
+  with it the cascades (a camera that really turns takes its view along), so the rotation metric
+  leaves out 10 % of the width on each side; the yaw sweeps −4° to +4° in 0.25° steps.
+- **AC2/AC3 baseline on `main`.** `set_shadow_debug` does not exist before this stream, so the
+  baseline is not measured with the same harness; the shimmer of the old fit follows from §3
+  (an unsnapped, rotation-dependent AABB per frame).
+- **AC16** is checked by the planner unit test on the bench scene's lights at every tier
+  (`ShadowSlotPlanner.MemoryBudgetDropsStaticLayersThenHalves`) and by `get_shadow_stats` in the
+  MCP golden test's scene; the runtime-built bench scene logs its memory in the smoke test.
+- **S15 is not on `oe-port`:** `get_shadow_stats` reports CPU-side counts, passes and draws;
+  `gpu_ms` is null until the GPU pass timers land.
+- **R14** (the min/max pyramid) is not implemented: it is optional and only for an AC14 miss.
