@@ -29,6 +29,8 @@ namespace {
     // a failure is tried once more after this (a file still being written, R11)
     constexpr std::chrono::milliseconds RETRY_DELAY{500};
     constexpr size_t RECORDS_MAX = 1000;
+    // problems and UI reloads the watcher found that no MCP call took yet
+    constexpr size_t LATE_MAX = 200;
 
     double msSince(Clock::time_point start) {
         return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
@@ -144,6 +146,7 @@ void HotReloadService::detach() {
     deferredScripts.clear();
     assetRefreshAfterPlay = false;
     lateProblems = Json::array();
+    lateUi.clear();
     project = nullptr;
 }
 
@@ -350,6 +353,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         const std::string pendingPath = relative(job->path);
         if (job->batch == batchId && std::find(result.pending.begin(), result.pending.end(), pendingPath) == result.pending.end()) {
             result.pending.push_back(pendingPath);
+        }
+    }
+    // the watcher's reload of another program's edit: the next MCP call reports what it found
+    const bool external = std::any_of(changes.begin(), changes.end(), [](const FileChange& c) { return c.origin == ChangeOrigin::External; });
+    if (options.fromWatcher && external) {
+        for (const Json& problem : result.problems) addLateProblem(problem);
+        if (!result.uiReloaded.empty()) {
+            lateUi.push_back({std::chrono::steady_clock::now(), result.uiReloaded});
+            while (lateUi.size() > LATE_MAX) lateUi.pop_front();
         }
     }
     currentBatch = 0;
@@ -576,6 +588,25 @@ void HotReloadService::deferScripts(const std::vector<fs::path>& paths) {
 Json HotReloadService::takeLateProblems() {
     Json out = lateProblems;
     lateProblems = Json::array();
+    return out;
+}
+
+void HotReloadService::addLateProblem(const Json& problem) {
+    // no MCP client takes them: the oldest go
+    if (lateProblems.size() >= LATE_MAX) lateProblems.erase(lateProblems.begin());
+    lateProblems.push_back(problem);
+}
+
+HotReloadService::WatcherUi HotReloadService::takeWatcherUi(std::chrono::steady_clock::time_point since) {
+    WatcherUi out;
+    for (const LateUi& late : lateUi) {
+        if (late.at >= since) {
+            for (const Json& item : late.reloaded) out.reloaded.push_back(item);
+        } else {
+            out.current += static_cast<int>(late.reloaded.size());
+        }
+    }
+    lateUi.clear();
     return out;
 }
 

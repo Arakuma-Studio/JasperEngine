@@ -69,13 +69,10 @@ A tool error says what was wrong and lists valid choices: fix the arguments, don
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
 in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). The editor watches the folder: edits from your own file tools are
-reloaded before your next call (script properties, open buffers, shader forks, textures,
-models, audio, fonts, HTML UI), often already as you save. That call's result carries
-`external_changes` {changed, reloaded, pending, problems: [{path, line, message}]}: fix those
-problems first (a reload that failed keeps the previous version). During play scripts wait
-until play stops; the other files reload at once. Open .scene/.prefab files are never reloaded
-from disk: edit them with the tools.
+folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
+carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
+problems first. During play scripts wait until play stops. Open scenes and prefabs are not
+reloaded from disk: edit them with the tools.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /

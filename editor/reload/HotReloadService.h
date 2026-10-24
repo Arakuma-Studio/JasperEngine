@@ -180,7 +180,15 @@ namespace jasperengine::editor {
         // Problems reported after apply() returned (failed reloads): McpAutoSync collects them.
         // A kind that reports its own (shaders: {path, line, message}) adds them here.
         Json takeLateProblems();
-        void addLateProblem(const Json& problem) { lateProblems.push_back(problem); }
+        void addLateProblem(const Json& problem);
+        // What the watcher's own reloads of external changes reported (R29): the next MCP
+        // call's pick-up carries it. Documents reloaded at or after `since` (the call's flush)
+        // are the call's ui_reloaded, earlier ones its ui_current.
+        struct WatcherUi {
+            Json reloaded = Json::array();
+            int current = 0;
+        };
+        WatcherUi takeWatcherUi(std::chrono::steady_clock::time_point since);
 
     private:
         HotReloadService() = default;
@@ -233,6 +241,11 @@ namespace jasperengine::editor {
         std::map<uint64_t, std::pair<uint8_t, EventFn>> invalidators;
         uint64_t nextInvalidator = 1;
         Json lateProblems = Json::array();
+        struct LateUi {
+            std::chrono::steady_clock::time_point at;
+            Json reloaded;
+        };
+        std::deque<LateUi> lateUi;
 
         void onWatcherBatch(std::span<const FileChange> batch);
         static std::future<AdoptFn> launch(WorkFn work);

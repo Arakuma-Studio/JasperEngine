@@ -55,7 +55,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
           "list_ui_effects": 900, "set_ui_effect_time": 500}
 # S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
-TOTAL_LIMIT = 99800 + 837 + 1479
+# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
+# and editor_status' file_watcher and frame_ms
+TOTAL_LIMIT = 99800 + 837 + 1479 + 395
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

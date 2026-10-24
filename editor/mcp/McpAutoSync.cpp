@@ -11,7 +11,6 @@
 #include "util/Util.h"
 #include "reload/HotReloadService.h"
 #include "util/FileUtils.h"
-#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -537,6 +536,21 @@ Json McpAutoSync::compactProblems(const Json& problems) {
     return out;
 }
 
+namespace {
+// one per path, line and message (the watcher and the call may both have checked a file)
+Json uniqueProblems(const Json& problems) {
+    Json out = Json::array();
+    std::set<std::string> seen;
+    for (const Json& problem : problems) {
+        if (seen.insert(problem.value("path", std::string()) + ":" + std::to_string(problem.value("line", 0)) + ":" +
+                        problem.value("message", std::string())).second) {
+            out.push_back(problem);
+        }
+    }
+    return out;
+}
+} // namespace
+
 void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
     if (!reloaded.empty()) report["ui_reloaded"] = reloaded;
     if (current > 0) report["ui_current"] = current;
@@ -675,10 +689,15 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             run(nullptr);
             return;
         }
+        // what the watcher's reloads found (before this call, or in its flush)
+        const HotReloadService::WatcherUi watcherUi = HotReloadService::get().takeWatcherUi(started);
+        for (const Json& item : watcherUi.reloaded) uiReloaded.push_back(item);
+        uiCurrent += watcherUi.current;
+        for (const Json& problem : HotReloadService::get().takeLateProblems()) problems.push_back(compactProblems(Json::array({problem}))[0]);
         Json report = {{"changed", changed}};
         if (!added.empty()) report["added"] = added;
         if (!removed.empty()) report["removed"] = removed;
-        report["problems"] = problems;
+        report["problems"] = uniqueProblems(problems);
         addUiReport(report, uiReloaded, uiCurrent);
         report["source"] = source;
         if (otherDeferred) {
@@ -709,6 +728,14 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         return;
     }
     report["source"] = source;
+    // the HTML UI documents the watcher reloaded: in this call's flush (reloaded for it), or
+    // before (already current)
+    const HotReloadService::WatcherUi watcherUi = reloads.takeWatcherUi(started);
+    if (!watcherUi.reloaded.empty() || watcherUi.current > 0) {
+        Json uiReloaded = report.value("ui_reloaded", Json::array());
+        for (const Json& item : watcherUi.reloaded) uiReloaded.push_back(item);
+        addUiReport(report, uiReloaded, report.value("ui_current", 0) + watcherUi.current);
+    }
 
     // the reloads it started run on workers: the call waits for them (at most 10 s), as it
     // waits for the shader forks they compile
@@ -724,6 +751,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         report["pending"] = stillPending;
         // the failures (the old version kept) and the shader forks' compile errors
         for (const Json& problem : reloads.takeLateProblems()) report["problems"].push_back(compactProblems(Json::array({problem}))[0]);
+        report["problems"] = uniqueProblems(report["problems"]);
         run(report);
     };
     std::vector<fs::path> pending;
@@ -743,6 +771,21 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
     if (!watcher.flush(std::chrono::milliseconds(250))) return false;
     const std::vector<FileChange> journal = watcher.journalSince(journalCursor);
     std::vector<Change> taken;
+    // Handled already: the baseline holds what the disk holds (sync_files picked it up before
+    // the watcher delivered it, a writing call's settle stamped it, or it came and went)
+    std::map<std::string, bool> handled;
+    auto isHandled = [&](const std::string& key) {
+        auto known = handled.find(key);
+        if (known != handled.end()) return known->second;
+        const FileMap& map = mapFor(key);
+        auto it = map.find(key);
+        FileStat st;
+        bool same = false;
+        if (!statPath(absolute(key), st) || st.isDir) same = it == map.end();
+        else same = it != map.end() && it->second.mtime == st.mtime && it->second.size == st.size;
+        handled[key] = same;
+        return same;
+    };
     for (const FileChange& change : journal) {
         // fell behind the ring: everything may have changed, the scan looks
         if (change.kind == FileChangeKind::Rescan && change.path == watcher.getRoot()) return false;
@@ -758,7 +801,7 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
             const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
             if (rel.empty() || rel.is_absolute()) return;
             const std::string key = FileUtils::genericPathToUtf8(rel);
-            if (key == "." || key.rfind("..", 0) == 0 || insideSkippedDir(key) || !tracks(key)) return;
+            if (key == "." || key.rfind("..", 0) == 0 || insideSkippedDir(key) || !tracks(key) || isHandled(key)) return;
             taken.push_back({key, kind, change.mtimeNs});
         };
         switch (change.kind) {
