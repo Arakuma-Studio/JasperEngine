@@ -5543,11 +5543,33 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // a Lattice Follower's driven channels: LatticeSystem puts them back every frame, so they
+    // are shown read-only (Unity's driven properties); the Scene view's tools move the rest
+    bool drivenChannel[3] = {false, false, false};
+    Entity drivingRest = NULL_ENTITY;
+    if (sceneProject && sceneProject->scene) {
+        for (Entity entity : entities) {
+            for (int channel = 0; channel < 3; channel++) {
+                Entity rest = LatticeEditorOps::getFollowerDrivingRest(sceneProject->scene, entity, channel == 0, channel == 1, channel == 2);
+                if (rest != NULL_ENTITY) {
+                    drivenChannel[channel] = true;
+                    drivingRest = rest;
+                }
+            }
+        }
+    }
+
     beginTable(cpType, getLabelSize("billboard"));
 
+    ImGui::BeginDisabled(drivenChannel[0]);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(drivenChannel[1]);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(drivenChannel[2]);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::Bool, cpType, "visible", "Visible", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities);
 
@@ -5573,6 +5595,23 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
     }
 
     endTable();
+
+    if (drivenChannel[0] || drivenChannel[1] || drivenChannel[2]) {
+        std::string channels;
+        const char* const names[3] = {"Position", "Rotation", "Scale"};
+        for (int channel = 0; channel < 3; channel++) {
+            if (drivenChannel[channel]) {
+                channels += std::string(channels.empty() ? "" : ", ") + names[channel];
+            }
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " %s driven by the Lattice Follower: move its Rest (the Scene view's tools do).", channels.c_str());
+        ImGui::PopStyleColor();
+        if (entities.size() == 1 && drivingRest != NULL_ENTITY && ImGui::Button(ICON_FA_LOCATION_CROSSHAIRS " Select Rest")) {
+            project->clearSelectedEntities(sceneProject->id);
+            project->addSelectedEntity(sceneProject->id, drivingRest);
+        }
+    }
 }
 
 void editor::InspectorWindow::commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd){
@@ -14367,14 +14406,44 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
         }
         if (ImGui::Button(ICON_FA_OBJECT_GROUP " Select All", ImVec2(buttonWidth, 0))){
             LatticeEditorOps::setSelectedPoints(sceneId, entity, lattice::selectAll(lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ));
+            // the Scene view draws only when asked: show the selected points now
+            sceneProject->needUpdateRender = true;
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(selected.empty());
         if (ImGui::Button(ICON_FA_XMARK " Select None", ImVec2(buttonWidth, 0))){
             LatticeEditorOps::setSelectedPoints(sceneId, entity, {});
+            sceneProject->needUpdateRender = true;
         }
         ImGui::EndDisabled();
     }
+    // proportional falloff of the Scene-view point drags (spec §9.2: context menu, inspector, O)
+    {
+        LatticeFalloff& falloff = LatticeEditorOps::falloff();
+        beginTable(cpType, getLabelSize("Falloff Radius"), "lattice_falloff");
+        propertyHeader("Falloff", -1, false, false);
+        if (ImGui::Checkbox("##lattice_falloff_enabled", &falloff.enabled)){
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SetItemTooltip("Proportional falloff (O in the Scene view): dragging points also moves the points around them, less with distance");
+        if (falloff.enabled){
+            static const char* const curves[] = {"Smooth", "Linear", "Sharp", "Constant"};
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-1);
+            int curve = (int)falloff.curve;
+            if (ImGui::Combo("##lattice_falloff_curve", &curve, curves, IM_ARRAYSIZE(curves))){
+                falloff.curve = (LatticeFalloffCurve)curve;
+            }
+            propertyHeader("Falloff Radius", -1, false, false);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::DragFloat("##lattice_falloff_radius", &falloff.radius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+                sceneProject->needUpdateRender = true;
+            }
+            ImGui::SetItemTooltip("In lattice local units (the cage is 1 across); the mouse wheel changes it during a drag");
+        }
+        endTable();
+    }
+
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
     ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " Edit Points: drag the cage's points in the Scene view with the Move, Rotate and Scale tools; right-click there for more.");
     ImGui::PopStyleColor();
@@ -14784,6 +14853,31 @@ void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType,
             warnings.push_back(label + ": its lattice was deleted.");
         }else if (!scene->findComponent<LatticeComponent>(latticeEntity)){
             warnings.push_back(label + ": \"" + scene->getEntityName(latticeEntity) + "\" has no Lattice component.");
+        }
+    }
+    // the same lattice reaching a mesh twice (its own binding and an inherited one) deforms it twice
+    {
+        auto bindsLattice = [](const LatticeModifierComponent& other, Entity latticeEntity){
+            if (!other.enabled) return false;
+            for (const LatticeBinding& binding : other.bindings){
+                if (binding.lattice == latticeEntity) return true;
+            }
+            return false;
+        };
+        for (const LatticeBinding& binding : modifier.bindings){
+            if (binding.lattice == NULL_ENTITY) continue;
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            Entity ancestor = transform ? transform->parent : NULL_ENTITY;
+            for (int hops = 0; ancestor != NULL_ENTITY && hops < 4096; hops++){
+                const LatticeModifierComponent* inherited = scene->findComponent<LatticeModifierComponent>(ancestor);
+                if (inherited && inherited->includeChildren && bindsLattice(*inherited, binding.lattice)){
+                    warnings.push_back("\"" + scene->getEntityName(binding.lattice) + "\" also reaches this GameObject through \"" +
+                                       scene->getEntityName(ancestor) + "\" (Include Children): it deforms it twice. Remove one binding.");
+                    break;
+                }
+                const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);
+                ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+            }
         }
     }
     for (Entity mesh : meshes){

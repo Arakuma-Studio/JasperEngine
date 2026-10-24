@@ -1072,7 +1072,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                         blockPointHit = gizmoSideActive;
                     }
                 }
-                if (latticeEntity != NULL_ENTITY && !blockPointHit && !altHeld && !handPanEnabled &&
+                // Space + drag pans a 2D view (disableSelection's rule)
+                const bool spacePan = sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+                if (latticeEntity != NULL_ENTITY && !blockPointHit && !altHeld && !handPanEnabled && !spacePan &&
                         !sceneProject->sceneRender->hasEditLayer() && !sceneProject->sceneRender->isTerrainEditing()) {
                     int pointHit = sceneProject->sceneRender->hitTestLatticePoint(latticeEntity, x, y);
                     if (pointHit >= 0) {

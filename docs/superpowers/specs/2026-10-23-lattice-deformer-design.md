@@ -1678,3 +1678,62 @@ Integrator notes: `docs/mcp/TOOLS.md` must be regenerated again if another packa
 after this merge; the Xcode project needs `editor/mcp/tools/LatticeTools.cpp` and
 `LatticeShared.h`. The golden image is Mesa/llvmpipe on Xvfb (tolerance as the other pngdiff tests);
 other renderers may need `JASPER_UPDATE_GOLDEN=1` once, after looking at the image.
+
+### 12.x Editor review
+
+Adversarial review of the merged editor side (Catalog/Stream/Factory, inspectors, creation,
+`LatticeEditorOps`, the commands, Scene-view editing, preferences, keying). Fixed:
+
+- **Creation around a group and its child** (`createLattice`): with a mesh-less group and its
+  child both selected (a Shift-click range in the Hierarchy), both got a binding; the child then
+  had the lattice twice (own + inherited through the group's Include Children) and was deformed
+  twice. A target below another target that includes its children is not bound again. The Lattice
+  Modifier inspector also warns when one of its lattices reaches the GameObject through an
+  ancestor's Include Children (an explicit Add Binding can still do it; `edit_lattice bind` should
+  warn the same way).
+- **Prefab instance resolution**: `LatticePointsCmd` recorded only the changed resolution axis as
+  an override; the prefab changing another axis later reached the instance with offsets laid out
+  for its old grid (2x4x3 with 18 offsets), which hides the cage and makes every edit fail as a
+  broken layout. A layout change on an instance now overrides `offsets` and all three axes (the
+  grid is the instance's own as a whole). `setResolution` also accepts a broken layout (missing
+  points at rest, extra ones dropped) so "set its resolution again" repairs it, as the other ops'
+  error says.
+- The Inspector's Select All / Select None and the Animation window's lattice block selection did
+  not redraw the Scene view (it draws only when asked): the new point selection showed once the
+  mouse went over the view. They set `needUpdateRender`.
+- 2D views: Space + click (the pan) picked a lattice point.
+- The Lattice inspector had no proportional falloff toggle (§9.2 lists the inspector): a Falloff row
+  (toggle, curve, radius; O and the context menu change the same setting).
+- Show all lattices rebuilt every cage's lines on every Scene-view update (camera moves included):
+  an unselected 1-px cage does not depend on the camera, so it is kept until its offsets, transform
+  or drawing settings change; the per-cage scratch buffers are kept between frames.
+
+**Lattice Followers in the editor.** `LatticeSystem` writes a follower's Transform directly, every
+frame, edit mode included. Checked: the write is not a command and does not mark the scene
+modified; a prefab instance's follower gets no Transform override from it (also after a save);
+undo/redo of a cage edit moves the follower back and forth. What was wrong: a hand edit of a driven
+channel did nothing (put back next frame) but still made an undo step and, on an instance, a
+useless override. The editor now follows Unity's driven-properties idiom:
+- Inspector: the driven Transform rows (Position / Rotation / Scale per the follower's Apply flags,
+  only while the follower is actually driven: enabled, active, lattice and valid rest) are shown
+  read-only with "... driven by the Lattice Follower: move its Rest" and a Select Rest button.
+- Scene view: the W/E/R gizmo (and the 2D move) on a driven follower edits its **rest** on the
+  driven channel (`SceneRender::redirectDrivenFollowers`, `LatticeEditorOps::getFollowerDrivingRest`);
+  the follower follows it through the lattice. Channels that are not driven edit the follower as
+  before. One drag is one undo step on the rest (and its override on an instance).
+
+Not changed (debatable, recorded): Alt + drag on the points' gizmo duplicates the lattice entity
+(the editor's Alt-duplicate idiom for whatever the gizmo moves); point picking ignores geometry in
+front (the cage is drawn through it, faded); dropping a non-lattice GameObject on a binding's Lattice
+field is accepted (the generic entity field ignores its picker filter on drop) and warned about;
+the falloff weights cost points x moved points per drag frame (16^3 with half the points selected is
+about 4M distances a frame).
+
+Tests: `tools/mcp/tests/test_lattice_review_editor.py` (8 tests, `xvfb="harness"`, xdotool; the
+default layout's menu and inspector positions): creation around a group and its child, Inspector
+Select All/None in the Scene view, 2D Space-click, Inspector resolution change undo/redo (offsets
+and poses exact), prefab instance resolution vs a prefab change, follower overrides / modified flag /
+undo, follower gizmo moving the rest. Five fail on the unreviewed build.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_review_editor.py

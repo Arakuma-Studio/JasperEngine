@@ -148,6 +148,12 @@ namespace jasperengine::editor{
         static bool getPointLocalPosition(const LatticeComponent& lattice, int index, Vector3& position);
         // the stored selection, or every point when none is selected (presets, Copy as Lua)
         static std::vector<int> getSelectedOrAllPoints(uint32_t sceneId, Entity lattice, const LatticeComponent& component);
+
+        // the rest of a Lattice Follower that LatticeSystem drives (enabled, active, a lattice and
+        // a valid rest, spec §6.3) on one of the asked channels (position, rotation, scale);
+        // NULL_ENTITY when the follower's Transform is its own there. The editor's tools edit
+        // the rest instead of a driven follower, which the next frame would put back.
+        static Entity getFollowerDrivingRest(Scene* scene, Entity follower, bool position, bool rotation, bool scale);
     };
 
 }

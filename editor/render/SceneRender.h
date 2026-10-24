@@ -203,7 +203,17 @@ namespace jasperengine::editor{
         struct LatticeCageLines{
             LineRenderer* overlay = nullptr; // tools scene: over the geometry (faded where hidden in 3D)
             LineRenderer* depth = nullptr;   // this scene: depth tested, at full colour (3D views)
+            // what an unselected cage was last built from: its lines do not depend on the camera,
+            // so they are rebuilt only when one of these changes (many cages, Show all lattices)
+            bool cached = false;
+            Matrix4 cachedModel;
+            std::vector<Vector3> cachedOffsets;
+            int cachedResolution[3] = {0, 0, 0};
+            std::vector<float> cachedSettings;
         };
+        // scratch of drawLatticeCage, kept between frames (no allocation per cage and frame)
+        std::vector<Vector3> latticeRestScratch;
+        std::vector<Vector3> latticeWorldScratch;
         std::map<Entity, LatticeCageLines> latticeCages;
         LineRenderer* latticeFalloffLines = nullptr;
         // the project scene this view shows, found on first use (selections are per scene)
@@ -241,6 +251,10 @@ namespace jasperengine::editor{
         // a world-space change applied to the dragged points (and the falloff's)
         void dragLatticePoints(Project* project, uint32_t sceneId, const Matrix4& worldDelta);
         void endLatticeDrag();
+        // a Lattice Follower driven on the channel the grabbed gizmo edits (W position, E
+        // rotation, R scale, the 2D gizmo's move) is replaced by its rest: the follower is put
+        // back every frame, so the tools move the spot it follows instead
+        void redirectDrivenFollowers(Scene* target, std::vector<Entity>& entities);
 
     protected:
         // selection outline of boxes: their near face (2D views), or all twelve edges
