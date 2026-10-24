@@ -3820,6 +3820,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "LatticeTracksComponent";
     }else if(component == ComponentType::PoseAnimatorComponent){
         name = "PoseAnimatorComponent";
+    }else if(component == ComponentType::AnimationPlayerComponent){
+        name = "AnimationPlayerComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3966,6 +3968,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::LatticeFollowerComponent: return "Lattice Follower";
         case ComponentType::LatticeTracksComponent: return "Lattice Tracks";
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
+        case ComponentType::AnimationPlayerComponent: return "Animation Player";
     }
     return getComponentName(component);
 }
@@ -4031,6 +4034,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::LatticeFollowerComponent: return ICON_FA_LOCATION_ARROW;
         case ComponentType::LatticeTracksComponent: return ICON_FA_CUBES_STACKED;
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
+        case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4092,6 +4096,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<LatticeTracksComponent>();
         case ComponentType::PoseAnimatorComponent:
             return registry->getComponentId<PoseAnimatorComponent>();
+        case ComponentType::AnimationPlayerComponent:
+            return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4210,6 +4216,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::LatticeTracksComponent;
     }else if(normalizedName == "poseanimator"){
         return ComponentType::PoseAnimatorComponent;
+    }else if(normalizedName == "animationplayer"){
+        return ComponentType::AnimationPlayerComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){

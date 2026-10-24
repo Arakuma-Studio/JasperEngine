@@ -137,12 +137,14 @@ namespace jasperengine::editor{
         LatticeModifierComponent,
         LatticeFollowerComponent,
         LatticeTracksComponent,
-        PoseAnimatorComponent
+        PoseAnimatorComponent,
+        // Unity's legacy Animation component (animation clips spec 3.2)
+        AnimationPlayerComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::PoseAnimatorComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AnimationPlayerComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{

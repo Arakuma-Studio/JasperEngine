@@ -241,8 +241,15 @@ namespace jasperengine::editor{
             Code,
             // the Pose Animation window, or a Scene view posing its character: its keys and
             // Ctrl/Cmd+Z/Y (the project history) are the window's
-            PoseAnimation
+            PoseAnimation,
+            // the Animation window's clip mode after a clip edit, or Record with the Scene view
+            // focused (animation clips spec 9.R4/R5): Ctrl/Cmd+Z/Y go to the project history
+            // (AnimationClipAppHooks::ownsUndo)
+            AnimationClip
         } lastFocusedWindow;
+
+        // the Undo/Redo target is the project history (Project window, Pose window, clip edits)
+        bool undoGoesToProjectHistory() const;
 
         void saveFunc();
         void saveAllFunc(std::function<void(bool)> callback = nullptr);
@@ -347,6 +354,10 @@ namespace jasperengine::editor{
         void updateResourcesPath() override;
         void updateWindowTitle(const std::string& projectName) override;
         void stopTransientPreviews() override;
+        // Clip files dropped onto a scene object (Scene view, Hierarchy): adds or reuses its
+        // Animation Player with the clips, one scene step (AnimationClipAppHooks::dropClips).
+        // False when not handled (no hook yet, or nothing to add).
+        bool dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths);
         void flushSceneMaterialWrites(uint32_t sceneId) override;
         void saveAllCodeEditors() override;
         void requestScenePlayFocus(uint32_t sceneId) override;

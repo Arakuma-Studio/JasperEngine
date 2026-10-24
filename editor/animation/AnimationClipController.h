@@ -1,0 +1,153 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Contract (animation clips spec 4.4, 5 preview_animation, 9.R2/R4-R7/R21/R31)
+// - Purpose: the clip mode of the Animation window without its UI: which clip is edited and on
+//   which root, the edit-mode preview (snapshot of bound channels, PreviewOwner, rest updates
+//   through ClipRecordHooks' channel write listeners), transport, keying and Record. The window
+//   (T3b/T3c) draws it; MCP preview_animation drives it and reads sampledBoundTransforms().
+// - Owner: T0 (API); T3a implements it (gtested); T3b/T3c/T4 use it.
+// - Thread-safety: main thread.
+// - Invariants:
+//   * preview never changes saved scene state: bound channels are snapshotted on their first
+//     write and restored by stopPreview (also on save, play, scene switch/close, window close:
+//     stopTransientPreviews); the scene's modified flag is never written by the preview;
+//   * scene commands / undo / redo that write a previewed channel update its snapshot (R6);
+//   * every key edit is one AnimationClipDocument::commit (project history), drags merge with a
+//     merge key; edits of a read-only (sub-clip) document fail with an "Extract to .anim" error;
+//   * one controller per window; shared() is the editor's (the window's and MCP's).
+
+#pragma once
+
+#include "animation/AnimationClip.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ClipValidation.h"
+#include "ecs/Entity.h"
+#include "math/Quaternion.h"
+#include "math/Vector3.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace jasperengine::editor{
+
+    class Project;
+
+    class AnimationClipController{
+    public:
+        // a key of the open clip
+        struct KeyRef{
+            size_t track = 0;
+            size_t key = 0;
+        };
+
+        struct BoundTransform{
+            std::string path;
+            Entity entity = NULL_ENTITY;
+            Vector3 position = Vector3(0, 0, 0);
+            Quaternion rotation;
+            Vector3 scale = Vector3(1, 1, 1);
+        };
+
+        explicit AnimationClipController(Project* project);
+        ~AnimationClipController();
+        AnimationClipController(const AnimationClipController&) = delete;
+        AnimationClipController& operator=(const AnimationClipController&) = delete;
+
+        // the editor's controller (the Animation window's and MCP's), created on first use
+        static AnimationClipController& shared(Project* project);
+
+        // ---- binding and clip ----
+
+        // `root`: a GameObject (with or without an Animation Player); NULL_ENTITY unbinds
+        bool bindRoot(uint32_t sceneId, Entity root, std::string* error);
+        uint32_t getSceneId() const;
+        Entity getRoot() const;
+        bool hasPlayer() const;
+        // the bound player's state names, in clip list order
+        std::vector<std::string> getStateNames() const;
+
+        // a .anim path or "<model>#<clip>" (read-only document)
+        bool openClip(const std::string& path, std::string* error);
+        // the bound player's state `name`
+        bool openState(const std::string& name, std::string* error);
+        void closeClip();
+        std::shared_ptr<AnimationClipDocument> getDocument() const;
+        const std::string& getClipPath() const;
+        const std::string& getStateName() const;
+        bool isReadOnly() const;
+        // the model or prefab a target-less clip previews on (preview.model), empty when none
+        std::string getPreviewModel() const;
+        // the binding report of the open clip on the root (empty report without one)
+        ClipValidationReport getBindings() const;
+
+        // ---- preview and transport ----
+
+        bool startPreview(std::string* error);
+        void stopPreview();
+        bool isPreviewing() const;
+        void play();
+        void pause();
+        bool isPlaying() const;
+        void setPlaybackSpeed(float speed);
+        float getPlaybackSpeed() const;
+        // seconds; starts the preview when needed
+        void seek(float time);
+        float getTime() const;
+        float getLength() const;
+        // per frame while the window shows (advances a playing preview, re-applies after edits)
+        void update(double dt);
+        // the bound entities' local transforms as the preview shows them (up to `max`)
+        std::vector<BoundTransform> sampledBoundTransforms(size_t max = 8) const;
+
+        // ---- keying (each one commit; `mergeKey` "" = its own undo step) ----
+
+        // a track for `path` : `channel` with a key at the playhead holding the current value
+        bool addProperty(const std::string& path, ClipChannel channel, std::string* error);
+        // keys `tracks` (all tracks when empty) at `time` with the bound entities' current values
+        bool keyTracks(const std::vector<size_t>& tracks, float time, const std::string& mergeKey, std::string* error);
+        // K: every bound channel; Shift+K: the channels whose value differs from the clip
+        bool keyAll(float time, std::string* error);
+        bool keyModified(float time, std::string* error);
+        bool setKeyValue(const KeyRef& key, const std::vector<float>& value, const std::string& mergeKey, std::string* error);
+        bool moveKeys(const std::vector<KeyRef>& keys, float deltaTime, const std::string& mergeKey, std::string* error);
+        bool deleteKeys(const std::vector<KeyRef>& keys, std::string* error);
+        bool setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error);
+        bool removeTrack(size_t track, std::string* error);
+        // rewrites a track's path (the row's Rebind / Retarget): changes the clip for every user
+        bool retargetTrack(size_t track, const std::string& newPath, std::string* error);
+        // any other edit of the clip data (events lane, settings): one commit
+        bool commit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
+
+        // ---- record ----
+
+        void setRecording(bool recording);
+        bool isRecording() const;
+
+        // ---- App integration (AnimationClipAppHooks) ----
+
+        void stopTransientPreviews();
+        bool ownsUndo(bool sceneViewFocused) const;
+        // the last action in the window was a pure clip edit (project history) or a scene step
+        void setLastActionWasClipEdit(bool clipEdit);
+        void sceneClosed(uint32_t sceneId);
+
+    private:
+        Project* project = nullptr;
+        uint32_t sceneId = 0;
+        Entity root = NULL_ENTITY;
+        std::shared_ptr<AnimationClipDocument> document;
+        std::string clipPath;
+        std::string stateName;
+        float time = 0.0f;
+        float playbackSpeed = 1.0f;
+        bool previewing = false;
+        bool playing = false;
+        bool recording = false;
+        bool lastActionWasClipEdit = false;
+    };
+
+}

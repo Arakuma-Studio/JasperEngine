@@ -48,6 +48,7 @@
 #include "render/preview/PoseRender.h"
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
+#include "animation/AnimationClipAppHooks.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -452,7 +453,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     bool canUndo = false;
     bool canRedo = false;
     if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+        if (undoGoesToProjectHistory()) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -705,7 +706,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+            if (undoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -715,7 +716,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
+            if (undoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->redo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -2053,6 +2054,8 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
+        } else if (animationClipAppHooks().ownsUndo && animationClipAppHooks().ownsUndo(sceneWindow->isFocused())) {
+            lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
@@ -2081,7 +2084,8 @@ void editor::App::show(){
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
         // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
         const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
-        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing);
+        const bool clipWindowKeys = animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing && !clipWindowKeys);
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -2142,7 +2146,14 @@ void editor::App::show(){
         }
     }
 
-    if (!popupOpen && !poseKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    // clip edits of the Animation window are project files too (the window runs its own keys)
+    const bool clipKeys = lastFocusedWindow == LastFocusedWindow::AnimationClip;
+    if (!popupOpen && clipKeys) {
+        if (isUndo) project.getProjectCommandHistory()->undo();
+        if (isRedo) project.getProjectCommandHistory()->redo();
+    }
+
+    if (!popupOpen && !poseKeys && !clipKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
@@ -3486,6 +3497,9 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (animationWindow) {
         animationWindow->clearSceneState(sceneId);
     }
+    if (animationClipAppHooks().sceneClosed) {
+        animationClipAppHooks().sceneClosed(sceneId);
+    }
 
     if (poseAnimationWindow) {
         poseAnimationWindow->clearSceneState(sceneId);
@@ -3611,6 +3625,10 @@ void editor::App::stopTransientPreviews() {
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
     }
+    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6)
+    if (animationClipAppHooks().stopTransientPreviews) {
+        animationClipAppHooks().stopTransientPreviews();
+    }
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -3625,6 +3643,16 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+}
+
+bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
+    if (!animationClipAppHooks().dropClips) return false;
+    return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
+}
+
+bool editor::App::undoGoesToProjectHistory() const {
+    return lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation ||
+           lastFocusedWindow == LastFocusedWindow::AnimationClip;
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
