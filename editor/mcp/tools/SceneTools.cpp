@@ -1563,6 +1563,14 @@ Json dynamicResolutionToJson(const DynamicResolutionStatus& status) {
                 {"accepted_changes", status.acceptedChanges}, {"probe_seconds", McpValues::number(status.probeSeconds)}};
 }
 
+// set_post_processing_debug's pins (null: released)
+Json postDebugJson(const RenderSystem& render) {
+    auto pin = [](bool set, double value) { return set ? Json(value) : Json(nullptr); };
+    return Json{{"time_seconds", pin(render.getPostProcessingDebugTime() >= 0.0, render.getPostProcessingDebugTime())},
+                {"force_render_scale", pin(render.getDynamicResolutionOverride() > 0.0f, McpValues::number(render.getDynamicResolutionOverride()))},
+                {"fake_gpu_ms", pin(render.getDynamicResolutionFakeGpuMs() > 0.0f, McpValues::number(render.getDynamicResolutionFakeGpuMs()))}};
+}
+
 void getPostProcessingStatusTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     SceneProject* scene = sceneArg(call);
@@ -1593,11 +1601,7 @@ void getPostProcessingStatusTool(const CallPtr& call) {
                 {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
                 {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},
                 {"dynamic_resolution", dynamicResolutionToJson(status)}};
-    if (render) {
-        out["debug"] = {{"time_seconds", render->getPostProcessingDebugTime() >= 0.0 ? McpValues::number(render->getPostProcessingDebugTime()) : Json(nullptr)},
-                        {"force_render_scale", status.overridden ? McpValues::number(render->getDynamicResolutionOverride()) : Json(nullptr)},
-                        {"fake_gpu_ms", render->getDynamicResolutionFakeGpuMs() > 0.0f ? McpValues::number(render->getDynamicResolutionFakeGpuMs()) : Json(nullptr)}};
-    }
+    if (render) out["debug"] = postDebugJson(*render);
     char text[256];
     std::snprintf(text, sizeof(text), "\"%s\": %s, uber pass %s, render scale %.2f applied", scene->name.c_str(),
                   tiers.tailColor ? "in-shader colour" : "no in-shader colour", tiers.uber ? "on" : "off", applied);
@@ -1658,9 +1662,7 @@ void setPostProcessingDebugTool(const CallPtr& call) {
     if (hasScale) render->setDynamicResolutionOverride(releaseScale ? 0.0f : (float)scale);
     if (hasGpu) render->setDynamicResolutionFakeGpuMs(releaseGpu ? 0.0f : (float)gpuMs);
     scene->needUpdateRender = true;
-    const Json debug = {{"time_seconds", render->getPostProcessingDebugTime() >= 0.0 ? McpValues::number(render->getPostProcessingDebugTime()) : Json(nullptr)},
-                        {"force_render_scale", render->getDynamicResolutionOverride() > 0.0f ? McpValues::number(render->getDynamicResolutionOverride()) : Json(nullptr)},
-                        {"fake_gpu_ms", render->getDynamicResolutionFakeGpuMs() > 0.0f ? McpValues::number(render->getDynamicResolutionFakeGpuMs()) : Json(nullptr)}};
+    const Json debug = postDebugJson(*render);
     call->ok("Post-processing debug of \"" + scene->name + "\" (editor only, not saved): " + debug.dump() + ".",
              Json{{"scene_id", scene->id}, {"debug", debug}});
 }

@@ -113,15 +113,16 @@ def compare_golden(ed: Editor, name: str, image, tolerance: int = CHANNEL_TOLERA
 
 
 async def start(ed: Editor) -> int:
-    ed.require_tools("play", "wait", "screenshot", "configure_game_view", "set_scene_settings", "set_post_processing_debug",
-                     "apply_post_processing_preset", "get_post_processing_status")
+    ed.require_tools("play", "wait", "screenshot", "configure_game_view", "set_scene_settings")
     await ed.call("configure_game_view", aspect="project", scale=1, maximize_on_play=True)
     played = await ed.call("play", action="start", fixed_fps=60)
     sid = played.get("scene", {}).get("id") if isinstance(played.get("scene"), dict) else None
     if sid is None:
         sid = (await ed.call("list_scenes"))["selected_scene_id"]
     await ed.call("wait", frames=60)
-    await ed.call("set_post_processing_debug", scene=sid, time_seconds=TIME)
+    # (a pre-S13 editor, which made the defaults reference, has no debug pins: nothing animates there)
+    if ed.has_tool("set_post_processing_debug"):
+        await ed.call("set_post_processing_debug", scene=sid, time_seconds=TIME)
     return sid
 
 
@@ -135,13 +136,15 @@ async def show(ed: Editor, sid: int, settings: dict | None = None, preset: str |
     deadline = time.time() + 120
     while True:
         await ed.call("wait", frames=10)
+        if not (settings or preset) or not ed.has_tool("get_post_processing_status"):
+            break
         status = await ed.call("get_post_processing_status", scene=sid)
-        wanted = settings or {}
-        if status["uber"] or not wanted or time.time() > deadline:
+        if status["uber"] or status["tail_color"] or time.time() > deadline:
             break
 
 
 async def test_goldens(ed: Editor):
+    ed.require_tools("set_post_processing_debug", "apply_post_processing_preset", "get_post_processing_status")
     sid = await start(ed)
     try:
         for name, settings in CASES.items():

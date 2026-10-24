@@ -428,3 +428,38 @@ per-file header, so we add the OE copyright line to each copied file.
    piecewise sRGB / Rec.709. Default: convert at the lookup (R6). A per-asset override is not offered.
 8. **8-bit bake precision.** A 65³ LUT is reduced to our 32³ RGBA8 bake. Accepted, because the uber
    dither removes visible banding. `lutSize` 32 is recommended when a `.cube` is set (inspector hint).
+
+## Deviations (implementation)
+
+1. **No asset inspector for project files exists** in the editor (the Inspector shows GameObjects
+   and scene settings only), so R18's ".cube inspector" is the Project window's tooltip of a
+   `.cube` (title, table sizes, input ranges, the proposed encoding and its stage, or the parse
+   error), plus `inspect_color_lut` for agents. The Project window lists `.cube` files with a
+   Color LUT icon; a double-click assigns the file to the selected scene's Color Grading (and turns
+   Color Grading on) as one undo step named "Assign Color LUT <file> (<scene>)".
+2. **`.cube` is an S04 asset type of its own** (`AssetType::ColorLut` = 14, "color_lut", appended;
+   sidecar meta, assets-relative). `postProcessing.lutTexture` expects a texture or, for a `.cube`
+   path, a colour LUT.
+3. **Export cooks every `.cube` of the assets tree**, not only the referenced ones: the exporter
+   ships every asset anyway (scripts and C++ may name a LUT by a computed path), so the referenced
+   set adds nothing but risk. A cooked `.cube` ships as `<name>.jlut` only; one that does not parse
+   ships as it is (the game logs the same error the editor does). Written with `io::writeFileAtomic`.
+4. **Target FPS 0 is 60 everywhere**: sokol_app reports no display refresh rate on any platform.
+5. **GPU law input**: S15 has not landed, so no backend reports GPU time yet; the controller takes
+   `DynamicResolutionSample::gpuMs` when given (today only `set_post_processing_debug.fake_gpu_ms`)
+   and the frame law otherwise. Wiring S15's timer queries is filling that one field.
+6. **`force_render_scale` / `setDynamicResolutionOverride` apply only where dynamic resolution may
+   run** (Play, exported games), never in edit mode, and Play's end releases the pinned scale and
+   the fake GPU time (a script's pin must not leak into the editor or the next Play).
+7. **Named undo steps (S24)**: presets, group toggles and the LUT assignment are one
+   `CommandGroup` labelled "Apply Film Preset (Main)", "Turn On Stylised (Main)", "Assign Color LUT
+   ..."; single fields keep `ScenePropertyCmd`'s "Set Vhs Enabled (Main)".
+8. **AC11** is covered by the gtest `UberBudget.CompilesForEveryBackend` (every new bit alone and
+   all bits on, for the six backend targets, with the resource budget check), which S02's CI runs.
+9. **AC23 (device budget)** was not measured: no Mali-G57 / Adreno 610 class phone is available to
+   this stream and the emulator's GPU is the host's. The shader costs are bounded statically
+   (AC12) instead; the measurement remains for a device run with S15 timings.
+10. **Exports ship `licenses/post-fx-LICENSE.txt`** (from `engine/shaderlib/includes/LICENSE.post-fx.txt`:
+    punikonta's, the film-simulation package's with AMD's, and OpenEngine's notices) when a shipped
+    uber variant has VHS, film damage or the Lens / Filmic grain, as the shaders.com notice ships with
+    UI effects.

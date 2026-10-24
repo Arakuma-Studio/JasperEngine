@@ -233,7 +233,7 @@
             return 1.0;
         highp vec2 p = pixel - 0.5 * uber.outputTexel.zw;
         highp vec2 q = abs(p) - uber.gateMask.xy + uber.gateMask.z;
-        highp float distance = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - uber.gateMask.z;
-        return 1.0 - smoothstep(-uber.gateMask.w, uber.gateMask.w, distance);
+        highp float edge = min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - uber.gateMask.z;
+        return 1.0 - smoothstep(-uber.gateMask.w, uber.gateMask.w, edge);
     }
 #endif
