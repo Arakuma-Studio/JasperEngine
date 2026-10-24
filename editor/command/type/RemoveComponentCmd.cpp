@@ -8,6 +8,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlFootprint.h"
+#include "command/PlayChangeReview.h"
 
 #include <algorithm>
 #include <map>
@@ -198,4 +199,12 @@ std::vector<Entity> editor::RemoveComponentCmd::getEntities() const{
         result.push_back(entityData.entity);
     }
     return result;
+}
+
+void editor::RemoveComponentCmd::collectKeepCommands(KeepContext& context) const{
+    for (const RemoveComponentData& entityData : entities){
+        if (entityData.removed){
+            context.addRemovedComponent(entityData.entity, componentType);
+        }
+    }
 }

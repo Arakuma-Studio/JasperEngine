@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "util/YamlFootprint.h"
 #include "Project.h"
 #include "util/EntityClipboard.h"
@@ -54,6 +55,11 @@ namespace jasperengine::editor{
         // "Paste Player", "Paste 3 Objects"
         std::string describe() const override { return "Paste " + CommandNames::entities(project, sceneId, createdRoots); }
         const char* typeName() const override { return "PasteEntitiesCmd"; }
+        void collectKeepCommands(KeepContext& context) const override {
+            for (Entity root : createdRoots) {
+                context.addCreated(root);
+            }
+        }
         size_t memoryBytes() const override {
             return sizeof(*this) + (clip ? yamlFootprint(clip->roots) : 0) +
                 (createdEntities.capacity() + createdRoots.capacity() + lastSelected.capacity()) * sizeof(Entity) +

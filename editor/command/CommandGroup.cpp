@@ -3,6 +3,8 @@
 
 #include "CommandGroup.h"
 
+#include "PlayChangeReview.h"
+
 using namespace jasperengine;
 
 editor::CommandGroup::CommandGroup(std::vector<std::unique_ptr<Command>> commands, std::string label, bool applied):
@@ -25,14 +27,20 @@ bool editor::CommandGroup::execute(){
 
     applied = true;
     std::vector<std::unique_ptr<Command>> ran;
-    for (std::unique_ptr<Command>& cmd : commands){
-        if (cmd->execute()){
-            ran.push_back(std::move(cmd));
+    std::vector<size_t> failed;
+    for (size_t i = 0; i < commands.size(); i++){
+        if (commands[i]->execute()){
+            ran.push_back(std::move(commands[i]));
         }else{
-            failures.push_back(commandName(cmd.get()));
+            failures.push_back(commands[i]->typeName());
+            failed.push_back(i);
         }
     }
     commands = std::move(ran);
+    if (onFailures){
+        onFailures(failed);
+        onFailures = nullptr;
+    }
     return !commands.empty();
 }
 
@@ -87,6 +95,6 @@ bool editor::CommandGroup::releaseOffThread() const{
 
 void editor::CommandGroup::collectKeepCommands(KeepContext& context) const{
     for (const std::unique_ptr<Command>& cmd : commands){
-        cmd->collectKeepCommands(context);
+        context.collect(*cmd, commandName(cmd.get()));
     }
 }

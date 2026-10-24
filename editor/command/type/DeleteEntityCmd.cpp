@@ -536,10 +536,9 @@ bool editor::DeleteEntityCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
 
     if (deletedNames.empty() && sceneProject && sceneProject->scene) {
+        // one per requested GameObject, in that order
         for (Entity requested : requestedEntities) {
-            if (sceneProject->scene->isEntityCreated(requested)) {
-                deletedNames.push_back(CommandNames::entity(project, sceneId, requested));
-            }
+            deletedNames.push_back(CommandNames::entity(project, sceneId, requested));
         }
     }
 
@@ -910,7 +909,12 @@ bool editor::DeleteEntityCmd::mergeWith(editor::Command* otherCommand){
                     requestedEntities.push_back(entity);
                 }
             }
-            deletedNames.insert(deletedNames.begin(), otherCmd->deletedNames.begin(), otherCmd->deletedNames.end());
+            // in the order requestedEntities got them
+            for (size_t i = 0; i < otherCmd->requestedEntities.size() && i < otherCmd->deletedNames.size(); i++) {
+                if (deletedNames.size() < requestedEntities.size()) {
+                    deletedNames.push_back(otherCmd->deletedNames[i]);
+                }
+            }
             for (const PrefabInstanceSnapshot& instance : otherCmd->prefabInstanceSnapshots) {
                 if (std::find_if(prefabInstanceSnapshots.begin(), prefabInstanceSnapshots.end(), [&](const PrefabInstanceSnapshot& saved) {
                         return saved.path == instance.path && saved.rootEntity == instance.rootEntity;

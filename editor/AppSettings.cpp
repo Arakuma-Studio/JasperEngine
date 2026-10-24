@@ -5,6 +5,7 @@
 #include "DocumentFile.h"
 #include "Project.h"
 #include "command/CommandHistory.h"
+#include "command/PlayChangeReview.h"
 #include "Out.h"
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
@@ -335,6 +336,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
+                if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
             }
             if (editorNode["game_view"]) {
                 auto gameNode = editorNode["game_view"];
@@ -483,6 +485,7 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
+        panelsNode["undo_history"] = panelVisibility.undoHistory;
         editorNode["panels"] = panelsNode;
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
@@ -807,6 +810,7 @@ void AppSettings::applyUndoSettings() {
     CommandHistory::maxEntries = static_cast<size_t>(undoMaxSteps);
     CommandHistory::memoryLimit = static_cast<size_t>(undoMemoryLimitMB) * 1024 * 1024;
     Project::recordSelectionInUndo = undoRecordSelection;
+    PlayChangeReview::enabled = undoReviewPlayChanges;
 }
 
 bool AppSettings::getHtmlUiAutoImport() {

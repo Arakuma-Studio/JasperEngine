@@ -17,7 +17,8 @@ namespace jasperengine::editor {
         void show();
         void setOpen(bool open);
         bool isOpen() const { return windowOpen; }
-        // Ctrl+Z / Ctrl+Y here go to the project history, where the threading settings are
+        // Focus here keeps Delete, Ctrl+D and the clipboard keys from the scene (Ctrl+Z goes to the
+        // one undo timeline, where the threading settings are project steps)
         bool isFocused() const { return windowFocused; }
 
     private:

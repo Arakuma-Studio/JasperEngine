@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "command/EntityEdit.h"
+#include "command/PlayChangeReview.h"
 #include "command/PrefabEditUndo.h"
 #include "Scene.h"
 #include "math/Vector3.h"
@@ -249,6 +250,45 @@ namespace jasperengine::editor{
 
         Project* editedProject() const override{ return project; }
         uint32_t editedSceneId() const override{ return sceneId; }
+
+        // A fresh PropertyCmd per GameObject, with the value it has now
+        void collectKeepCommands(KeepContext& context) const override{
+            SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject){
+                return;
+            }
+            for (auto const& [entity, value] : values){
+                if (!value.applied){
+                    continue;
+                }
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
+                if (!prop.ref){
+                    continue;
+                }
+                const T current = *static_cast<T*>(prop.ref);
+                KeepRow row;
+                row.kind = KeepRow::Kind::Property;
+                row.entity = entity;
+                row.hasComponent = true;
+                row.component = type;
+                row.property = propertyName;
+                row.playValue = KeepContext::text(current);
+                Project* target = project;
+                const uint32_t id = sceneId;
+                const ComponentType component = type;
+                const std::string name = propertyName;
+                const Entity edited = entity;
+                row.factory = [target, id, edited, component, name, current]() -> std::unique_ptr<Command> {
+                    return std::make_unique<PropertyCmd<T>>(target, id, edited, component, name, current);
+                };
+                row.readEditValue = [target, id, edited, component, name]() -> std::string {
+                    SceneProject* restored = target->getScene(id);
+                    PropertyData now = restored ? Catalog::findProperty(restored->scene, edited, component, name) : PropertyData{};
+                    return now.ref ? KeepContext::text(*static_cast<T*>(now.ref)) : std::string("(none)");
+                };
+                context.add(std::move(row));
+            }
+        }
 
         uint32_t getSceneId() const{ return sceneId; }
         ComponentType getComponentType() const{ return type; }

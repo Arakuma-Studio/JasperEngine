@@ -37,6 +37,7 @@ namespace jasperengine::editor{
         std::string describe() const override { return "Rename " + oldName + CommandNames::ARROW + newName; }
         const char* typeName() const override { return "EntityNameCmd"; }
         bool isNoOp() const override { return oldName == newName; }
+        void collectKeepCommands(KeepContext& context) const override;
 
         uint32_t getSceneId() const { return sceneId; }
         Entity getEntity() const { return entity; }

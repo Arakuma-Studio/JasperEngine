@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 
 #include <cstddef>
@@ -123,6 +124,12 @@ namespace jasperengine::editor{
         // "Delete Player", "Delete 3 Objects"
         std::string describe() const override { return "Delete " + CommandNames::objects(deletedNames); }
         const char* typeName() const override { return "DeleteEntityCmd"; }
+        // A fresh DeleteEntityCmd of the restored GameObjects
+        void collectKeepCommands(KeepContext& context) const override {
+            for (size_t i = 0; i < requestedEntities.size(); i++) {
+                context.addDeleted(requestedEntities[i], i < deletedNames.size() ? deletedNames[i] : std::string("GameObject"));
+            }
+        }
         size_t memoryBytes() const override;
         // Off-thread release: the destructor only frees YAML snapshots and prefab records (the
         // snapshots through BackgroundRelease); no editor/engine/GPU state (S24 R8).

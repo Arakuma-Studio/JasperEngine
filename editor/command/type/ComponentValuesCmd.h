@@ -54,6 +54,8 @@ namespace jasperengine::editor {
         const char* typeName() const override { return "ComponentValuesCmd"; }
         bool isNoOp() const override { return !differs; }
         size_t memoryBytes() const override;
+        // The component's values now, per GameObject
+        void collectKeepCommands(KeepContext& context) const override;
 
         Project* editedProject() const override { return project; }
         uint32_t editedSceneId() const override { return sceneId; }

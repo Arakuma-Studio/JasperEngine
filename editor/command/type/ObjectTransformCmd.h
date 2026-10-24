@@ -51,6 +51,8 @@ namespace jasperengine::editor{
         std::string describe() const override;
         const char* typeName() const override { return "ObjectTransformCmd"; }
         bool isNoOp() const override;
+        // A fresh ObjectTransformCmd per GameObject, with its position, rotation and scale now
+        void collectKeepCommands(KeepContext& context) const override;
 
         Project* editedProject() const override { return project; }
         uint32_t editedSceneId() const override { return (uint32_t)sceneId; }

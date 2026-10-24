@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 
 using namespace jasperengine;
 
@@ -40,4 +41,8 @@ std::string editor::SelectionCmd::describe() const{
         return "Deselect All";
     }
     return "Select " + CommandNames::entities(project, sceneId, after.entities);
+}
+
+void editor::SelectionCmd::collectKeepCommands(KeepContext& context) const{
+    context.nothingToKeep();
 }

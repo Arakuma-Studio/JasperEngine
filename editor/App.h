@@ -56,6 +56,8 @@ namespace jasperengine::editor::mcp {
 namespace jasperengine::editor{
 
     class JobsMemoryWindow;
+    class UndoHistoryWindow;
+    class PlayModeChangesWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
@@ -176,6 +178,8 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        UndoHistoryWindow* undoHistoryWindow;
+        PlayModeChangesWindow* playModeChangesWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;

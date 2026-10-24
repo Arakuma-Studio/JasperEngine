@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
@@ -65,6 +66,7 @@ namespace jasperengine::editor{
         // "Instantiate Prefab Door.prefab"
         std::string describe() const override { return "Instantiate Prefab " + CommandNames::file(filepath); }
         const char* typeName() const override { return "ImportPrefabCmd"; }
+        void collectKeepCommands(KeepContext& context) const override { context.addCreated(rootEntity); }
         size_t memoryBytes() const override {
             return sizeof(*this) + (importedEntities.capacity() + lastSelected.capacity()) * sizeof(Entity);
         }

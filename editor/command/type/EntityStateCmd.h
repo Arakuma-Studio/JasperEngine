@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "command/EntityEdit.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include <cstdint>
@@ -179,6 +180,47 @@ namespace jasperengine::editor{
         }
 
         EntityStateField getField() const{ return field; }
+
+        // A fresh EntityStateCmd per GameObject, with the state it has now
+        void collectKeepCommands(KeepContext& context) const override{
+            SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject){
+                return;
+            }
+            for (auto const& [entity, oldValue] : oldValues){
+                if (!sceneProject->scene->isEntityCreated(entity)){
+                    continue;
+                }
+                const EntityStateValue current = read(sceneProject->scene, entity);
+                KeepRow row;
+                row.kind = KeepRow::Kind::State;
+                row.entity = entity;
+                row.property = editedLabel();
+                row.playValue = textOf(field, current);
+                Project* target = project;
+                const uint32_t id = sceneId;
+                const Entity edited = entity;
+                const EntityStateField stateField = field;
+                row.factory = [target, id, edited, stateField, current]() -> std::unique_ptr<Command> {
+                    return std::make_unique<EntityStateCmd>(target, id, std::vector<Entity>{edited}, stateField, current);
+                };
+                // runs after Stop, when this play-time command is gone
+                row.readEditValue = [target, id, edited, stateField]() -> std::string {
+                    SceneProject* restored = target->getScene(id);
+                    return restored && restored->scene->isEntityCreated(edited) ? textOf(stateField, read(restored->scene, edited)) : std::string("(none)");
+                };
+                context.add(std::move(row));
+            }
+        }
+
+        static std::string textOf(EntityStateField field, const EntityStateValue& value){
+            switch (field){
+                case EntityStateField::Active: return KeepContext::text(value.active);
+                case EntityStateField::Tag: return KeepContext::text(value.tag);
+                case EntityStateField::Layer: return KeepContext::text(value.layer);
+            }
+            return std::string();
+        }
     };
 
 }

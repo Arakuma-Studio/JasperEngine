@@ -5,6 +5,7 @@
 
 #include "Stream.h"
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "util/YamlFootprint.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
@@ -499,4 +500,10 @@ editor::Command* editor::ComponentValuesCmd::buildReset(Project* project, uint32
         addModelCommands(multi, project, sceneId, scene, entity, ModelValue(), &scene->getComponent<ModelComponent>(entity), true);
     }
     return multi;
+}
+
+void editor::ComponentValuesCmd::collectKeepCommands(KeepContext& context) const{
+    for (const Target& target : targets){
+        context.addComponentValues(target.entity, type);
+    }
 }

@@ -19,6 +19,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool mcp = false;
     bool game = true;
+    bool undoHistory = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
         return hierarchy == other.hierarchy
@@ -28,7 +29,8 @@ struct PanelVisibilitySettings {
             && animation == other.animation
             && terrain == other.terrain
             && mcp == other.mcp
-            && game == other.game;
+            && game == other.game
+            && undoHistory == other.undoHistory;
     }
 
     bool operator!=(const PanelVisibilitySettings& other) const {

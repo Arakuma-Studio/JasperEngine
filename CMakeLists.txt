@@ -609,6 +609,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpUndo.cpp
     ${EDITOR_DIR}/mcp/McpShaderValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
@@ -689,6 +690,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
+    ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
+    ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
@@ -744,6 +747,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/CommandNames.cpp
     ${EDITOR_DIR}/command/UndoOrigin.cpp
     ${EDITOR_DIR}/command/UndoTimeline.cpp
+    ${EDITOR_DIR}/command/PlayChangeReview.cpp
     ${EDITOR_DIR}/command/type/AddChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/AddComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp

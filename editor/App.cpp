@@ -19,6 +19,9 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/PlayModeChangesWindow.h"
+#include "window/UndoHistoryWindow.h"
+#include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 
@@ -121,6 +124,17 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     jobsMemoryWindow = new JobsMemoryWindow();
+    undoHistoryWindow = new UndoHistoryWindow(&project);
+    playModeChangesWindow = new PlayModeChangesWindow(&project);
+    // Stop found edits that can be kept: the window opens, or after an agent's Stop the
+    // Console says where they are (S24 R30)
+    PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
+        if (PlayChangeReview::get().isQuietStop()) {
+            Out::info("%zu play-mode change%s can be kept: Window > General > Play Mode Changes", rows, rows == 1 ? "" : "s");
+            return;
+        }
+        playModeChangesWindow->openFor(sceneId);
+    };
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -251,6 +265,8 @@ enum class AppMenuCommand : uint32_t {
     ToggleTerrain,
     ToggleMcpActivity,
     ToggleJobsMemory,
+    ToggleUndoHistory,
+    TogglePlayModeChanges,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -580,7 +596,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
             menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
             menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
+            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C"),
+            menuCommand(AppMenuCommand::ToggleUndoHistory, windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::TogglePlayModeChanges, windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
@@ -743,6 +761,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleUndoHistory:
+            showEditorWindow(undoHistoryWindow);
+            break;
+        case AppMenuCommand::TogglePlayModeChanges:
+            showEditorWindow(playModeChangesWindow);
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
@@ -1399,6 +1423,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -1424,6 +1450,8 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
+    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2127,6 +2155,8 @@ void editor::App::show(){
     inspectorWindow->show();
     mcpActivityWindow->show();
     jobsMemoryWindow->show();
+    undoHistoryWindow->show();
+    playModeChangesWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -4009,6 +4039,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
+    undoHistoryWindow->setOpen(visibility.undoHistory);
 }
 
 void editor::App::persistPanelVisibilitySettings() {
@@ -4021,6 +4052,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
+    visibility.undoHistory = undoHistoryWindow->isOpen();
 
     if (visibility != AppSettings::getPanelVisibility()) {
         AppSettings::setPanelVisibility(visibility);

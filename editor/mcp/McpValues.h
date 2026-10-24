@@ -302,6 +302,7 @@ namespace jasperengine::editor::mcp {
         // Its first step's name, "(+N more)" for the others
         std::string describe() const override;
         const char* typeName() const override { return "McpStepsCmd"; }
+        void collectKeepCommands(KeepContext& context) const override;
         bool isNoOp() const override;
         size_t memoryBytes() const override;
         // The commands it ran

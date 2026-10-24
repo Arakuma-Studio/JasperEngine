@@ -3,6 +3,8 @@
 
 #include "CommandHandle.h"
 
+#include "PlayChangeReview.h"
+
 using namespace jasperengine;
 
 std::map<size_t, editor::CommandHistory*>  editor::CommandHandle::historys;
@@ -21,6 +23,8 @@ editor::CommandHistory* editor::CommandHandle::find(size_t sceneId){
 }
 
 void editor::CommandHandle::remove(size_t sceneId){
+    // a pending Play Mode Changes review goes with its scene (S24 R30)
+    PlayChangeReview::get().discard((uint32_t)sceneId);
     auto it = historys.find(sceneId);
     if (it != historys.end()){
         CommandHistory* history = it->second;

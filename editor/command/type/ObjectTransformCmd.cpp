@@ -4,6 +4,7 @@
 #include "ObjectTransformCmd.h"
 
 #include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 
 using namespace jasperengine;
 
@@ -156,4 +157,39 @@ std::vector<Entity> editor::ObjectTransformCmd::editedEntities() const{
         entities.push_back(entity);
     }
     return entities;
+}
+
+void editor::ObjectTransformCmd::collectKeepCommands(KeepContext& context) const{
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    for (auto const& [entity, property] : props){
+        Transform* transform = property.applied ? sceneProject->scene->findComponent<Transform>(entity) : nullptr;
+        if (!transform){
+            continue;
+        }
+        const Vector3 position = transform->position;
+        const Quaternion rotation = transform->rotation;
+        const Vector3 scale = transform->scale;
+        KeepRow row;
+        row.kind = KeepRow::Kind::Transform;
+        row.entity = entity;
+        row.hasComponent = true;
+        row.component = ComponentType::Transform;
+        row.property = "Transform";
+        row.playValue = "Position " + KeepContext::text(position);
+        Project* target = project;
+        const size_t id = sceneId;
+        const Entity edited = entity;
+        row.factory = [target, id, edited, position, rotation, scale]() -> std::unique_ptr<Command> {
+            return std::make_unique<ObjectTransformCmd>(target, id, edited, position, rotation, scale);
+        };
+        row.readEditValue = [target, id, edited]() -> std::string {
+            SceneProject* restored = target->getScene((uint32_t)id);
+            Transform* now = restored ? restored->scene->findComponent<Transform>(edited) : nullptr;
+            return now ? "Position " + KeepContext::text(now->position) : std::string("(none)");
+        };
+        context.add(std::move(row));
+    }
 }

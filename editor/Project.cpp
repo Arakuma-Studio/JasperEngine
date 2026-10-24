@@ -41,6 +41,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
+#include "command/PlayChangeReview.h"
 #include "command/UndoTimeline.h"
 #include "command/type/SelectionCmd.h"
 #include "command/type/CreateEntityCmd.h"
@@ -3949,6 +3950,8 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
+        // a closed scene keeps no history (S24 R23)
+        CommandHandle::remove(sceneId);
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -4786,6 +4789,7 @@ void editor::Project::resetConfigs() {
     tabs.clear();
     lastMaterialRefreshTime = std::chrono::steady_clock::time_point{};
     projectHistory.clear();
+    PlayChangeReview::get().discardAll();
 
     editor::getEditorHost().updateWindowTitle(name);
 
@@ -5194,6 +5198,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
         }
 
+        // Play Mode Changes: what was edited while playing, read before the snapshot puts the
+        // edit-time scene back (runtime copies have no history)
+        if (!entry.ownedRuntime) {
+            PlayChangeReview::get().capture(this, sceneProject);
+        }
+
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
@@ -5201,6 +5211,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (!entry.ownedRuntime) {
             // the edit-time scene itself played (runtime copies have no history)
             CommandHandle::get(sceneProject->id)->endPlaySession(restoredFromSnapshot);
+            if (restoredFromSnapshot) {
+                PlayChangeReview::get().afterRestore(this, sceneProject);
+            } else {
+                // nothing was rolled back: the play edits stayed
+                PlayChangeReview::get().discard(sceneProject->id);
+            }
         }
 
         Entity cameraEntity = sceneProject->scene->getCamera();
@@ -8342,6 +8358,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // a review left from the last Play of this scene goes with the new one
+    PlayChangeReview::get().discard(sceneId);
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);

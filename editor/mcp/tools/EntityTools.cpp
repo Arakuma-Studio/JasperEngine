@@ -14,6 +14,7 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -598,6 +599,7 @@ void createEntityTool(const CallPtr& call) {
             std::string describe() const override { return inner->describe(); }
             const char* typeName() const override { return inner->typeName(); }
             size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
+            void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
         };
         why = "The GameObject could not be created.";
         return new Capture(cmd, created);

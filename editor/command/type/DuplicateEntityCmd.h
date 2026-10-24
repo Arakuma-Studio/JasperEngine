@@ -37,6 +37,7 @@ namespace jasperengine::editor{
         // "Duplicate Player", "Duplicate 3 Objects"
         std::string describe() const override { return "Duplicate " + CommandNames::entities(project, sceneId, sourceEntities); }
         const char* typeName() const override { return "DuplicateEntityCmd"; }
+        void collectKeepCommands(KeepContext& context) const override;
         size_t memoryBytes() const override {
             return sizeof(*this) + (sourceEntities.capacity() + createdEntities.capacity() + lastSelected.capacity()) * sizeof(Entity);
         }

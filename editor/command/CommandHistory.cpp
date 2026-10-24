@@ -45,7 +45,10 @@ namespace {
         ~Applying(){ applyingDepth--; }
     };
 
+    uint64_t changes = 0;
+
     void notifyChanged(){
+        changes++;
         if (editor::UndoTimeline::onChanged){
             editor::UndoTimeline::onChanged();
         }
@@ -185,6 +188,10 @@ bool editor::CommandHistory::isApplying(){
 
 uint64_t editor::CommandHistory::peekNextId(){
     return nextEntryId.load();
+}
+
+uint64_t editor::CommandHistory::changeCount(){
+    return changes;
 }
 
 uint64_t editor::CommandHistory::newLinkId(){
@@ -425,9 +432,9 @@ void editor::CommandHistory::recordEntry(std::unique_ptr<Command> cmd, const Sel
     notifyChanged();
 }
 
-void editor::CommandHistory::addCommandNoMerge(Command* cmd){
+bool editor::CommandHistory::addCommandNoMerge(Command* cmd){
     cmd->setNoMerge();
-    addCommand(cmd);
+    return addCommand(cmd);
 }
 
 bool editor::CommandHistory::undo(){

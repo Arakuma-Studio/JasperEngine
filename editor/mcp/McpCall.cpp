@@ -49,6 +49,8 @@ McpCall::McpCall(McpServer& server, std::string tool, Json args, Completion comp
     , arguments(args.is_object() ? std::move(args) : Json::object())
     , completion(std::move(completion))
     , startTime(std::chrono::steady_clock::now()) {
+    static std::atomic<uint64_t> nextSerial{1};
+    callSerial = nextSerial++;
 }
 
 bool McpCall::cancelled() const {

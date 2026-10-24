@@ -208,7 +208,7 @@ namespace jasperengine::editor{
         // Takes ownership. False when it did not run (refused or failed; the command is freed).
         // A command that changed nothing (isNoOp) is undone and freed: true, but no step.
         bool addCommand(Command* cmd);
-        void addCommandNoMerge(Command* cmd);
+        bool addCommandNoMerge(Command* cmd);
 
         // Undo/redo one step. Undo with an interactive edit open cancels it instead.
         bool undo();
@@ -289,6 +289,8 @@ namespace jasperengine::editor{
         static bool isApplying();
         // The id the next new step will get
         static uint64_t peekNextId();
+        // Grows with every change of any history (a view caches what it read until it moves)
+        static uint64_t changeCount();
     };
 
 }

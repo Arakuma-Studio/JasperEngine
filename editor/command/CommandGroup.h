@@ -5,6 +5,7 @@
 
 #include "Command.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,6 +21,7 @@ namespace jasperengine::editor{
         std::string label;
         bool applied;
         std::vector<std::string> failures;
+        std::function<void(const std::vector<size_t>&)> onFailures;
 
         static std::string commandName(const Command* cmd);
 
@@ -46,6 +48,8 @@ namespace jasperengine::editor{
         const std::vector<std::unique_ptr<Command>>& getCommands() const { return commands; }
         // The names of the commands the first execute dropped because they failed
         const std::vector<std::string>& getFailures() const { return failures; }
+        // Called by the first execute with the indices of the commands that failed
+        void setOnFailures(std::function<void(const std::vector<size_t>&)> callback) { onFailures = std::move(callback); }
     };
 
 }

@@ -40,6 +40,8 @@ namespace jasperengine::editor{
         size_t memoryBytes() const override {
             return sizeof(*this) + (before.entities.capacity() + after.entities.capacity()) * sizeof(Entity);
         }
+        // Play Mode Changes skip selection steps
+        void collectKeepCommands(KeepContext& context) const override;
         // Off-thread release: the destructor only frees two entity vectors; no editor/engine/GPU state (S24 R8).
         bool releaseOffThread() const override { return true; }
     };

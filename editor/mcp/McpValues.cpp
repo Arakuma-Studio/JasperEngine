@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpValues.h"
+
+#include "command/PlayChangeReview.h"
 #include "DocumentFile.h"
 
 #include "McpRefs.h"
@@ -2656,6 +2658,10 @@ bool McpStepsCmd::isNoOp() const {
         if (!cmd->isNoOp()) return false;
     }
     return true;
+}
+
+void McpStepsCmd::collectKeepCommands(KeepContext& context) const {
+    for (const std::unique_ptr<Command>& cmd : done) context.collect(*cmd, context.source);
 }
 
 size_t McpStepsCmd::memoryBytes() const {
