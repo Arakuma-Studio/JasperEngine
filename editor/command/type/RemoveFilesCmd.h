@@ -21,7 +21,8 @@ namespace jasperengine::editor{
     public:
         RemoveFilesCmd(std::vector<std::filesystem::path> files, std::function<void(const std::vector<std::filesystem::path>&)> afterChange);
 
-        // false (nothing removed) when a file is missing or cannot be read
+        // false (nothing removed) when a file is missing or cannot be read, or one cannot be
+        // removed (the files removed before it are written back)
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }

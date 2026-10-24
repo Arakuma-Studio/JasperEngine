@@ -197,6 +197,21 @@ async def test_apply_template_replace_append_and_undo(ed: Editor):
     await undo_project(ed)
     ed.check_eq(file_json(ed, path), before, "undo the append")
 
+    # a template's own transitions (Jump's moves into floor contacts) are not reported as stale
+    # leftovers when the template changes the animation's feel
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "apply_template", "name": "Jump"}])
+    ed.check(not any("own transition" in w for w in r["warnings"]), f"no own-transition warning: {r['warnings']}")
+    ed.check_eq(r.get("preset"), "Rubbery", "Jump's feel")
+    r = await ed.call("edit_pose_animation", path="assets/anim/jump_snappy.poseanim",
+                      create={"template": "Jump", "preview_model": HERO}, ops=[{"op": "apply_preset", "name": "Snappy"}])
+    ed.check(not any("own transition" in w for w in r["warnings"]), f"created from the template: {r['warnings']}")
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "update_pose", "index": 2, "transition": {"duration": 0.3}},
+        {"op": "apply_preset", "name": "Heavy"}])
+    ed.check(any("own transition" in w for w in r["warnings"]), f"transitions of an animation edited later are: {r['warnings']}")
+    await undo_project(ed, 3)   # the preset edit, the jump_snappy creation, the Jump replace
+    ed.check_eq(file_json(ed, path), before, "undone")
+
 
 async def test_template_errors(ed: Editor):
     path = anim_path("Bow", "hero")
@@ -204,8 +219,15 @@ async def test_template_errors(ed: Editor):
     ed.check("no pose template named 'Moonwalk'" in msg and "Cartoon Walk" in msg, msg)
     msg = await ed.check_error("edit_pose_animation", path=path, ops=[{"op": "apply_template", "name": "Walk", "mode": "mix"}])
     ed.check("mode" in msg, msg)
+    msg = await ed.check_error("edit_pose_animation", path=path, ops=[{"op": "apply_template", "name": "Walk", "mode": 1}])
+    ed.check("mode" in msg, msg)
     msg = await ed.check_error("edit_pose_animation", path=path, ops=[{"op": "save_template", "name": "  "}])
     ed.check("empty" in msg, msg)
+    msg = await ed.check_error("edit_pose_animation", path=path, ops=[
+        {"op": "save_template", "name": "Twice"}, {"op": "update_pose", "index": 0, "hold": 0.3},
+        {"op": "save_template", "name": "twice"}])
+    ed.check("ops[2].name" in msg and "already saves" in msg, msg)
+    ed.check(not (ed.project / "pose-templates" / "Twice.poseanim").exists(), "nothing written")
     msg = await ed.check_error("edit_pose_animation", path="assets/anim/x.poseanim", create={"template": "Nope"})
     ed.check("create.template" in msg, msg)
     ed.check(not (ed.project / "assets/anim/x.poseanim").exists(), "nothing created")

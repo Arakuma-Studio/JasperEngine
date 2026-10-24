@@ -11,6 +11,7 @@
 #include "TestUtil.h"
 
 #include "command/CommandHistory.h"
+#include "command/type/RemoveFilesCmd.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRealisation.h"
 #include "pose/PoseSampler.h"
@@ -174,6 +175,11 @@ namespace {
         }
     };
 
+    void write(const fs::path& path, const std::string& text){
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out << text;
+    }
+
     const PoseTemplate& builtin(const std::string& name){
         for (const PoseTemplate& t : PoseTemplates::builtins()){
             if (t.info.name == name){
@@ -228,6 +234,27 @@ TEST(PoseTemplates, BuiltinsLoadWithoutWarnings){
     EXPECT_NEAR(builtin("Wave").data.settings.looseness, 0.6f, 1e-4);
     EXPECT_NEAR(builtin("Punch").data.settings.transition.anticipation, 0.2f, 1e-4);
     EXPECT_NEAR(builtin("Walk").data.settings.weights[static_cast<int>(BodyGroup::Legs)], 0.0f, 1e-6);
+    // the feel is the animation's: per-pose transitions only where a template needs them (Jump's
+    // moves into floor contacts, Punch's slower pull back after the extension); Jump's way up uses
+    // the file's Rubbery feel
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        for (size_t i = 0; i < t.data.poses.size(); i++){
+            const PoseKey& key = t.data.poses[i];
+            if (t.info.name != "Jump" && !(t.info.name == "Punch" && key.name == "Extend")){
+                EXPECT_FALSE(key.customTransition) << t.info.name << " pose " << i << " has its own transition";
+            }
+            if (key.grounded){
+                EXPECT_EQ(key.lift, 0.0f) << t.info.name << " pose " << i << ": a leftover lift on a grounded pose";
+            }
+        }
+    }
+    const PoseAnimationData& jump = builtin("Jump").data;
+    ASSERT_EQ(jump.poses.size(), 6u);
+    EXPECT_FALSE(jump.poses[2].customTransition) << "Launch -> Apex uses the Rubbery feel";
+    for (size_t i : {0u, 1u, 3u, 4u}){
+        ASSERT_TRUE(jump.poses[i].customTransition) << "into a floor contact: pose " << i;
+        EXPECT_LE(jump.poses[i].transition.overshoot, 0.15f) << "pose " << i;
+    }
 }
 
 TEST(PoseTemplates, FixtureRigsReadFromTheGltfFiles){
@@ -406,6 +433,13 @@ TEST(PoseTemplates, StoreListsLoadsShadowsSavesAndDeletes){
     history.undo();
     EXPECT_FALSE(fs::exists(file)) << "undoing the first save removes the file";
     EXPECT_FALSE(fs::exists(PoseTemplates::userDirectory(project.path))) << "and the folder it created";
+
+    // a removal that cannot complete removes nothing
+    TempProject other;
+    write(other.path / "a.poseanim", "a");
+    RemoveFilesCmd* failing = new RemoveFilesCmd({other.path / "a.poseanim", other.path / "missing.poseanim"}, nullptr);
+    EXPECT_FALSE(history.addCommand(failing));   // deleted by the history
+    EXPECT_TRUE(fs::exists(other.path / "a.poseanim"));
 
     // names
     EXPECT_FALSE(PoseTemplates::validName("   ", &error));

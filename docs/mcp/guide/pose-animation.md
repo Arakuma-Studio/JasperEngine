@@ -22,9 +22,9 @@ clamps, echoes what it clamped and keeps the undo history.
 3. Check the metrics of the touched poses the result returns: standing poses balanced with a foot in
    contact, airborne poses lifted, no `limit_hits`. Fix, repeat.
 4. Look: `render_pose_animation {path}` draws the key poses (front and side rows: render them after
-   every batch of pose changes), then `mode: "motion"` for the timing and feel; `mode: "motion"` (evenly spaced `frames`, side row) or `mode: "times"`
-   (`times` in seconds) draws the frames the bake and the runtime play, with feet in contact marked `[L]`, `[R]`,
-   `[LR]` in the labels. The skeleton overlay is coral for the character's left limbs and cyan for the
+   every batch of pose changes), then `mode: "motion"` (evenly spaced `frames`, side row) for the timing
+   and feel, or `mode: "times"` (`times` in seconds): the frames the bake and the runtime play, with feet
+   in contact marked `[L]`, `[R]`, `[LR]` in the labels. The skeleton overlay is coral for the character's left limbs and cyan for the
    right (the front view faces you: its left is on image right); the orange line is the floor; every
    view row has one scale, so a jump shows its height. The result also has per-column `metrics`. Each
    image costs tokens: render the poses you changed (`poses`), few `frames`, one or two `views`.
@@ -156,7 +156,8 @@ Starter animations for any humanoid. `get_pose_animation {templates: true}` (no 
 `[{name, category, description, poses, loop, user}]`. Built-in: Idle (Basics); Walk, Run, Sneak,
 Cartoon Walk (Locomotion, in place); Jump, Sit Down, Punch (Actions, once); Wave, Bow (Gestures).
 Project templates (`user: true`) are files in `<project>/pose-templates/` written by
-`save_template`; one named like a built-in replaces it. Names are case-insensitive. Start from the
+`save_template`; one named like a built-in replaces it. Names are case-insensitive. A template's own
+pose transitions (Jump's moves into floor contacts) are part of its feel and are not warned about. Start from the
 closest template and adapt it rather than posing from zero.
 
 ## Metrics
@@ -165,7 +166,8 @@ Per pose, on the rig: `feet.left` / `feet.right` `{height, contact}` (the sole's
 floor in body units; contact at 0.02 or less), `balanced` (the centre of mass is above the support
 area of the feet in contact), `balance_margin` (body units, negative = outside, falling), and
 `limit_hits` (DOFs outside the joint limits). A grounded pose always has its lowest point on the
-floor: an unbalanced standing pose needs the hips (`offset`) over the supporting foot, not a lift.
+floor: an unbalanced standing pose needs its centre of mass over the supporting foot (bring that
+foot under the body or lean the torso over it; `offset` moves the feet too), not a lift.
 
 ## Humanoid mapping
 

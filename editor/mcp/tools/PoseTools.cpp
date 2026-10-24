@@ -480,6 +480,7 @@ struct SidecarEdit {
 
 constexpr uint8_t TOUCHED = 1;      // returned in the result
 constexpr uint8_t ANGLES_SET = 2;   // this call set its angles: joint limits apply to it
+constexpr uint8_t FROM_TEMPLATE = 4;   // came from a template (phase 6): its own transition is the template's
 
 struct EditState {
     Project* project = nullptr;
@@ -489,6 +490,9 @@ struct EditState {
     std::vector<std::string> warnings;
     std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
     std::map<std::string, std::string> templateFiles;   // save_template (phase 6): absolute path -> text
+    std::set<std::string> templateNames;                // ... and their names (lower case, trimmed)
+    bool transitionFromTemplate = false;   // apply_template replace set the animation's transition
+    Transition templateTransition;
 };
 
 const std::map<std::string, std::vector<std::string>>& opArguments() {
@@ -992,7 +996,7 @@ bool applyTemplateOp(EditState& state, const Json& op, const std::string& path, 
     }
     PoseTemplate found;
     if (!loadTemplateArg(state, op["name"], path + ".name", found, error)) return false;
-    const std::string mode = op.contains("mode") && op["mode"].is_string() ? op["mode"].get<std::string>() : "replace";
+    const std::string mode = !op.contains("mode") ? "replace" : op["mode"].is_string() ? op["mode"].get<std::string>() : "";
     if (mode != "replace" && mode != "append") {
         error = path + ".mode must be \"replace\" (settings and poses) or \"append\" (poses after the existing ones)";
         return false;
@@ -1005,7 +1009,12 @@ bool applyTemplateOp(EditState& state, const Json& op, const std::string& path, 
     }
     PoseTemplates::apply(found.data, state.data, append ? PoseTemplateApply::Append : PoseTemplateApply::Replace);
     state.touched.resize(first);
-    state.touched.resize(state.data.poses.size(), static_cast<uint8_t>(TOUCHED | ANGLES_SET));
+    state.touched.resize(state.data.poses.size(), static_cast<uint8_t>(TOUCHED | ANGLES_SET | FROM_TEMPLATE));
+    if (!append) {
+        // the animation's transition is now the template's: not a feel change of this call
+        state.transitionFromTemplate = true;
+        state.templateTransition = state.data.settings.transition;
+    }
     state.changes.push_back("apply_template \"" + found.info.name + "\" (" + mode + "): " +
                             std::to_string(found.data.poses.size()) + " pose(s)" +
                             (append ? " added at " + std::to_string(first) : std::string(", settings and poses replaced")));
@@ -1040,6 +1049,14 @@ bool saveTemplateOp(EditState& state, const Json& op, const std::string& path, s
         }
     }
     const fs::path file = PoseTemplates::userFile(state.project->getProjectPath(), name);
+    std::string key = lower(name);
+    key.erase(0, key.find_first_not_of(" \t"));
+    key.erase(key.find_last_not_of(" \t") + 1);
+    if (!state.templateNames.insert(key).second || state.templateFiles.count(file.lexically_normal().u8string())) {
+        error = path + ".name: this call already saves a template named '" + name + "' (" + projectRel(state.project, file) +
+                "); save it once, after the ops that change it";
+        return false;
+    }
     const PoseAnimationTemplateInfo info{name, op.value("description", std::string()), op.value("category", std::string("User"))};
     state.templateFiles[file.lexically_normal().u8string()] = PoseTemplates::fileText(data, info);
     state.changes.push_back("save_template \"" + name + "\": " + std::to_string(data.poses.size()) + " pose(s) -> " +
@@ -1112,7 +1129,9 @@ void warnOwnTransitions(EditState& state, const Transition& before) {
         now.anticipation == before.anticipation) return;
     std::vector<size_t> own;
     for (size_t i = 0; i < state.data.poses.size(); i++) {
-        if (state.data.poses[i].customTransition) own.push_back(i);
+        // a template's own transitions are part of its feel, not a stale leftover
+        const bool fromTemplate = i < state.touched.size() && (state.touched[i] & FROM_TEMPLATE);
+        if (state.data.poses[i].customTransition && !fromTemplate) own.push_back(i);
     }
     if (own.empty()) return;
     state.warnings.push_back("poses " + indexRanges(own) + " have their own transition (auto_timing or a pose transition) and "
@@ -1446,6 +1465,9 @@ void editPoseAnimationTool(const CallPtr& call) {
         state.data = document->data();
     }
     state.touched.assign(state.data.poses.size(), 0);
+    if (creating && args["create"].contains("template")) {
+        for (uint8_t& mark : state.touched) mark = FROM_TEMPLATE;
+    }
     const Transition initialTransition = state.data.settings.transition;
 
     // all ops on the copy; the first failing one fails the call with nothing written
@@ -1461,7 +1483,7 @@ void editPoseAnimationTool(const CallPtr& call) {
     }
     std::vector<ClampReport> clamped;
     clampTouchedToLimits(state, clamped);
-    warnOwnTransitions(state, initialTransition);
+    warnOwnTransitions(state, state.transitionFromTemplate ? state.templateTransition : initialTransition);
     if (document) {
         for (const std::string& warning : document->loadWarnings()) state.warnings.push_back(relative + ": " + warning);
     }

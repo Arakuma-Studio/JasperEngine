@@ -67,9 +67,9 @@ and `render_pose_animation` (see [docs/mcp/guide/pose-animation.md](mcp/guide/po
 
 - The Pose tab can show the **previous** pose as a blue ghost and the **next** one as a green ghost
   (onion skin, with an opacity), and keep a ghost while previewing ("Ghost during preview").
-- **Show balance** draws a disc on the floor under the character, a ring under each foot that
-  touches the floor, and a centre-of-mass diamond: green when the pose is balanced, orange when the
-  character would fall.
+- While posing, the Scene view draws a floor disc under the character and a ring under each foot
+  that touches the floor. **Show balance** (Pose tab) adds a centre-of-mass diamond on the floor:
+  green when the pose is balanced, orange when the character would fall.
 - **Global Edit** (`E`, or the button on the pose strip header) spreads one change to many poses:
   change the selected pose (lean the torso forward, raise the arms...), then **Apply to All** or
   **Apply to Selected**. The pose before the edit shows as an orange ghost. **Cancel** or `Escape`
@@ -113,16 +113,16 @@ The built-in templates:
 
 | name | category | poses | plays | feel |
 |---|---|---|---|---|
-| Idle | Basics | inhale, exhale | loop | Soft, humanized (sway, moving holds) |
+| Idle | Basics | inhale, exhale | loop | Soft with slow 1 s breaths, humanized (sway, moving holds) |
 | Walk | Locomotion | contact, passing, mirrored (4), in place | loop | Snappy with a small overshoot |
 | Run | Locomotion | contact, flight, mirrored (4); the flight poses leave the floor | loop | Snappy, short snaps |
 | Sneak | Locomotion | crouched reach and step, mirrored (4) | loop | Soft, choppy (8 steps a second) |
 | Cartoon Walk | Locomotion | contact, down, passing, up, mirrored (8) | loop | Cartoon |
-| Jump | Actions | stand, crouch, launch, apex, land, recover | once | Rubbery |
+| Jump | Actions | stand, crouch, launch, apex, land, recover | once | Rubbery on the way up; the moves into floor contacts have their own low-overshoot transitions |
 | Wave | Gestures | hand left, hand right | loop | Cartoon, loose |
 | Sit Down | Actions | stand, lower, sit, settle (sits on a seat behind the character) | once | Heavy |
 | Punch | Actions | guard, wind-up, extend, recover | once | Snappy with a wind-up |
-| Bow | Gestures | stand, bow, return | once | Soft |
+| Bow | Gestures | stand, bow, return | once | Soft, slower (0.65 s) |
 
 The locomotion templates walk and run in place: move the GameObject in your script (or bake and
 use root motion of your own) to travel.
@@ -208,7 +208,7 @@ The complete reference is in [docs/mcp/guide/lua-api.md](mcp/guide/lua-api.md) (
   and toes are optional.
 - **The character floats or sinks.** A grounded pose always puts its lowest point on the floor; do
   not raise the hips to lift a pose, turn **Grounded** off and set **Lift**. A pose that leans so
-  far that it would fall shows an orange balance marker: move the hips over the supporting foot
+  far that it would fall shows an orange balance marker (with Show balance on): move the hips over the supporting foot
   (drag the hips handle, or bring the standing leg under the body). Between two very different
   poses (a deep crouch and standing) the in-between frames are interpolated, so the feet can dip
   slightly into the floor during a fast, springy transition; a softer feel or a longer transition
