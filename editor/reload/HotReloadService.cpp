@@ -356,8 +356,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
     }
     // the watcher's reload of another program's edit: the next MCP call reports what it found
-    const bool external = std::any_of(changes.begin(), changes.end(), [](const FileChange& c) { return c.origin == ChangeOrigin::External; });
-    if (options.fromWatcher && external) {
+    const bool anyExternal = std::any_of(changes.begin(), changes.end(), [](const FileChange& c) { return c.origin == ChangeOrigin::External; });
+    if (options.fromWatcher && anyExternal) {
         for (const Json& problem : result.problems) addLateProblem(problem);
         if (!result.uiReloaded.empty()) {
             lateUi.push_back({std::chrono::steady_clock::now(), result.uiReloaded});
