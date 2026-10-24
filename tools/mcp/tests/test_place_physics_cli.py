@@ -371,6 +371,10 @@ async def test_every_mode_runs():
     snapped = place(proj, "Room", ["Furniture/Ball"], "--mode", "snap", "--ray", "-1,5,-1,0,-1,0", "--colliders", "generated")
     ball = by_path(snapped)["Furniture/Ball"]
     check(snapped["mode"] == "snap" and math.dist(after(ball), [-1.0, 0.5, -1.0]) < 0.05, f"snap: at {after(ball)}")
+    # a far hit (11 m away, past the 5 m teleport distance): placed there directly
+    far = by_path(place(proj, "Room", ["Furniture/Ball"], "--mode", "snap", "--ray", "8,5,-8,0,-1,0"))["Furniture/Ball"]
+    check(math.dist(after(far), [8.0, 0.5, -8.0]) < 0.05, f"a far snap: at {after(far)}")
+    check([r["path"] for r in far["resting_on"]] == ["Room/Floor"], f"a far snap rests on {far['resting_on']}")
     r = run("--project", str(proj), "--scene", "Room", "--entity", "Furniture/Ball", "--mode", "snap", "--ray", "0,5,0,0,1,0", "-q")
     check(r.returncode == 2 and r.stderr, f"a snap ray that hits nothing: exit {r.returncode}: {r.stderr}")
     # gather halfway: each halfway to their centre (-0.5, 0.5)
