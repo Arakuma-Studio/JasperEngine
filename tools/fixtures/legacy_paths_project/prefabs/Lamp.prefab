@@ -1,0 +1,16 @@
+type: Prefab
+version: 3
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Lamp
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      light:
+        type: spot
+        spotMask: {textureType: 2D, source: path, path: textures/mask.png, minFilter: linear, magFilter: linear, wrapU: repeat, wrapV: repeat, releaseDataAfterLoad: true}

@@ -10,6 +10,7 @@
 #include "TempDir.h"
 
 #include "Project.h"
+#include "io/watch/FileWatchService.h"
 #include "pool/TextureDataPool.h"
 #include "reload/HotReloadService.h"
 #include "reload/handlers/ReloadHandlers.h"
@@ -21,6 +22,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <thread>
 
 using namespace jasperengine;
@@ -59,6 +61,19 @@ namespace {
         }
         void TearDown() override {
             service.detach();
+        }
+        // what the editor's loop does with the watcher running (App::pollExternalChanges),
+        // until `done` or `limit`
+        bool pumpUntil(const std::function<bool()>& done, std::chrono::milliseconds limit) {
+            const auto end = std::chrono::steady_clock::now() + limit;
+            while (std::chrono::steady_clock::now() < end) {
+                FileWatchService::get().pump(50.0);
+                service.update();
+                project.refreshAssetDatabase();
+                if (done()) return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+            return done();
         }
         // what the editor's frames do: adopt finished reloads, until none is left
         void settle(std::chrono::milliseconds limit = std::chrono::milliseconds(5000)) {
@@ -327,3 +342,64 @@ TEST(HotReloadKinds, ChangeSetFromPathsAsksTheDisk) {
     EXPECT_EQ(set.changes[1].kind, FileChangeKind::Removed);
     EXPECT_EQ(set.changes[0].origin, ChangeOrigin::External);
 }
+
+// S04's identity follows a rename made by another program through the watcher alone: the
+// database looks at the disk when a batch arrives (no poll), the GUID stays with the file and
+// the old path no longer resolves. With the meta carried along (git mv), and without it (a file
+// manager renaming the image only: the orphan meta is adopted, S04 R5).
+TEST_F(HotReloadServiceTests, ExternalRenameKeepsTheGuidThroughTheWatcher) {
+    AssetDatabase& database = project.getAssetDatabase();
+    const fs::path folder = project.getProjectPath() / "assets" / "hr";
+    writeSolidPng(folder / "hero.png", 10, 20, 30);
+    writeSolidPng(folder / "villain.png", 40, 50, 60);
+    project.refreshAssetDatabase(true);
+    const std::string hero = database.getGuid("assets/hr/hero.png");
+    const std::string villain = database.getGuid("assets/hr/villain.png");
+    ASSERT_FALSE(hero.empty());
+    ASSERT_FALSE(villain.empty());
+    ASSERT_TRUE(fs::exists(folder / "hero.png.meta"));
+
+    service.startWatching(project);
+    ASSERT_TRUE(FileWatchService::get().isAttached());
+    ASSERT_TRUE(FileWatchService::get().flush(std::chrono::milliseconds(5000)));
+
+    fs::rename(folder / "hero.png", folder / "hero_moved.png");
+    fs::rename(folder / "hero.png.meta", folder / "hero_moved.png.meta");
+    fs::rename(folder / "villain.png", folder / "villain_moved.png");
+    const bool followed = pumpUntil([&]() {
+        return database.getPath(hero).generic_string() == "assets/hr/hero_moved.png" &&
+               database.getPath(villain).generic_string() == "assets/hr/villain_moved.png";
+    }, std::chrono::milliseconds(10000));
+    service.stopWatching();
+    ASSERT_TRUE(followed) << "hero at " << database.getPath(hero) << ", villain at " << database.getPath(villain);
+    EXPECT_EQ(database.getGuid("assets/hr/hero_moved.png"), hero);
+    EXPECT_EQ(database.getGuid("assets/hr/villain_moved.png"), villain);
+    EXPECT_TRUE(database.getGuid("assets/hr/hero.png").empty());
+    EXPECT_TRUE(database.getGuid("assets/hr/villain.png").empty());
+    // the orphan meta went with its file
+    EXPECT_TRUE(fs::exists(folder / "villain_moved.png.meta"));
+    EXPECT_FALSE(fs::exists(folder / "villain.png.meta"));
+}
+
+// Without the watcher nothing looks at the disk on its own any more (S04's 2 s poll is gone):
+// only a forced refresh (Assets > Refresh, a tool answering from the database) sees a rename
+TEST_F(HotReloadServiceTests, NoAssetPollWithoutTheWatcher) {
+    AssetDatabase& database = project.getAssetDatabase();
+    const fs::path folder = project.getProjectPath() / "assets" / "hr";
+    writeSolidPng(folder / "still.png", 1, 2, 3);
+    project.refreshAssetDatabase(true);
+    const std::string guid = database.getGuid("assets/hr/still.png");
+    ASSERT_FALSE(guid.empty());
+
+    fs::rename(folder / "still.png", folder / "still_moved.png");
+    fs::rename(folder / "still.png.meta", folder / "still_moved.png.meta");
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+    while (std::chrono::steady_clock::now() < end) {
+        project.refreshAssetDatabase();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still.png") << "something polled";
+    project.refreshAssetDatabase(true);
+    EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still_moved.png");
+}
+

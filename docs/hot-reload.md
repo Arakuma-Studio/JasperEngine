@@ -25,8 +25,10 @@ reload. (Specification: [specs/S05-file-watcher-hot-reload.md](specs/S05-file-wa
 
 Files added, deleted or renamed outside the editor update the Project window (only the folder
 that changed is listed again, keeping the selection, the scroll and a rename in progress) and
-the asset database: a prefab renamed by git or the file manager keeps its GUID, so the scenes
-using it keep their instances.
+the asset database: an asset renamed or moved by git or the file manager keeps its GUID (with
+its `.meta`, or without it when the file is the only candidate for the meta left behind), so
+every reference to it, closed scenes included, still finds it. The database looks at the disk
+only when the watcher reports a change, or on **Assets > Refresh**.
 
 The editor's own saves are not reported back as changes: saving a scene does not reload it,
 saving a material does not reload the submesh it came from (other submeshes linked to the same

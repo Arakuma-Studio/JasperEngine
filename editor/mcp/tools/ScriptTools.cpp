@@ -483,6 +483,7 @@ std::string scriptPropertyTypeName(const ScriptProperty& prop) {
         case ScriptPropertyType::EntityReference:
             return prop.ptrTypeName.empty() ? "entity" : "entity:" + prop.ptrTypeName;
         case ScriptPropertyType::Prefab: return "prefab";
+        case ScriptPropertyType::Asset: return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
     }
     return "unknown";
 }

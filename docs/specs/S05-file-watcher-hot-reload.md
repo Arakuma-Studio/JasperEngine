@@ -615,10 +615,15 @@ Each backend test is parameterised over `{Native, Polling}`.
   `Scheduler::post` (`App::enqueueMainThreadTask`). With S24, Reload of an open scene frees that
   scene's undo history (the steps were made on the copy the file replaces, as R23 does on close);
   the status bar opens the Asset Pipeline page through S09's `EditorSettingsWindow::showPage`.
-- **S04 had not landed** at the final merge (it is on `feat/s04-asset-identity`). The 2 s
-  `refreshAssetDatabase` timer it builds on is already gone here: the watcher's batches reach
-  `Project::applyFileChanges` (`editor/project/ProjectPrefabPaths.cpp`), which moves, removes or
-  imports the changed paths, with `refreshAssetDatabase` only for a Rescan. When S04 merges, its
-  all-types `refresh()` and redirect records go behind that same entry point (no poll), and its
-  `.meta` and cache writes go through `io::writeFileAtomic` (or `ScopedExpectedWrite`) so the
-  ledger drops their echoes.
+- **S04 landed at the end** (merged last). R12/R14 go through S04's database: a watcher batch
+  sets `Project::assetScanRequested`, and the editor loop's `refreshAssetDatabase()` runs
+  `AssetDatabase::scanDisk` on a Background job and applies it with `refresh(scan)`, so S04's own
+  rules tell a move with its meta, a rename without it (orphan adoption), a copy and an edit
+  apart. A scan older than the database's last change is walked again. S04's 2 s poll is
+  removed: nothing walks the disk without a watcher batch, Assets > Refresh or a tool answering
+  from the database (`refreshAssetDatabase(true)`); an MCP call's pick-up refreshes at once.
+  S05's per-path `AssetDatabase::refreshFile` and the prefab-only rename path are gone. S04's
+  file operations report to the ledger (`assetio::renameFile`, `AssetOps::copy` and
+  `removeCopy`; metas through `io::writeFileAtomic`'s publish listener), so they are not echoed.
+  Tests: `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` (with and without
+  the meta) and `HotReloadServiceTests.NoAssetPollWithoutTheWatcher`.

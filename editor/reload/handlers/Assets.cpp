@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 //
 // Additions, removals and renames (S05 R14): the asset database follows them (a renamed
-// prefab keeps its GUID), the loaded prefabs re-read edited files, and the Project window
-// lists the touched folder again. While a scene plays the database waits for Play to stop,
-// as its 2 s poll did. Open scenes, prefab stages and project.yaml changed by another program
-// are never reloaded on their own: the Scene view shows a bar (Reload / Keep Mine, D5).
+// asset keeps its GUID and records a redirect, S04's refresh), the loaded prefabs re-read
+// edited files, and the Project window lists the touched folder again. While a scene plays
+// the database waits for Play to stop. Open scenes, prefab stages and project.yaml changed
+// by another program are never reloaded on their own: the Scene view shows a bar (Reload /
+// Keep Mine, D5).
 
 #include "ReloadHandlers.h"
 
@@ -27,9 +28,10 @@ void reload::applyAssetChanges(Context& ctx, const std::vector<FileChange>& chan
     }
     if (ctx.options.full) {
         if (ctx.playing) ctx.service.refreshAssetsAfterPlay();
-        else ctx.project.refreshAssetDatabase();
+        else ctx.project.refreshAssetDatabase(true);
     } else if (!external.empty()) {
-        if (!ctx.project.applyFileChanges(external)) ctx.service.refreshAssetsAfterPlay();
+        // an MCP call's pick-up answers from the database next: it looks at the disk now
+        if (!ctx.project.applyFileChanges(external, ctx.options.fromMcp)) ctx.service.refreshAssetsAfterPlay();
         for (const FileChange& change : external) {
             if (change.kind == FileChangeKind::Modified && !change.directory && Util::isPrefabFile(watch::pathToUtf8(change.path))) {
                 ctx.service.recordDone("prefab", change.path, 0.0);

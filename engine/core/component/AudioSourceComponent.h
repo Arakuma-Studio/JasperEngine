@@ -4,6 +4,7 @@
 #ifndef AUDIO_SOURCE_COMPONENT_H
 #define AUDIO_SOURCE_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "Engine.h"
 
 #include <memory>
@@ -38,7 +39,7 @@ namespace jasperengine{
 
         AudioSourceState state = AudioSourceState::Stopped;
 
-        std::string filename;
+        AssetRef filename;
         bool loaded = false;
         bool loadFailed = false;
 

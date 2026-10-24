@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "asset/AssetTypes.h"
+#include "window/AssetPanels.h"
 #include "util/PngWriter.h"
 #include "DocumentFile.h"
 #include "util/BidiText.h"
@@ -843,7 +845,9 @@ void editor::ProjectWindow::renderHeader() {
     const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
     ImGui::SameLine();
     ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
-    if (UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW)) {
+    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
+    uiBuilding.searchBox = lastItemRect();
+    if (searchEdited) {
         std::string trimmed = searchBuffer;
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
@@ -1298,6 +1302,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
+            if (uiBuilding.entries.size() < 200) {
+                uiBuilding.entries.push_back({file.name, lastItemRect()});
+            }
 
             if (hovered) hoveredFile = file.name;
 
@@ -1713,6 +1720,23 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                if (!file.isDirectory) {
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(currentPath / file.name);
+                    const bool copyGuid = ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Copy GUID", lastItemRect()});
+                    if (copyGuid) {
+                        ImGui::SetClipboardText(guid.str().c_str());
+                    }
+                    const bool findReferences = ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Find References", lastItemRect()});
+                    if (findReferences) {
+                        if (AssetReferencesWindow* references = Backend::getApp().getAssetReferencesWindow()) {
+                            references->findReferences((currentPath / file.name).string());
+                        }
+                    }
+                    ImGui::Separator();
+                }
+
                 if (ImGui::MenuItem(ICON_FA_COPY " Copy")) copySelectedFiles(false);
                 if (ImGui::MenuItem(ICON_FA_SCISSORS " Cut")) copySelectedFiles(true);
                 if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
@@ -1722,7 +1746,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 ImGui::Separator();
 
                 if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
-                if (ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2")){
+                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2");
+                uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
+                if (rename){
                     startRename(file.name);
                     ImGui::CloseCurrentPopup();
                 }
@@ -1967,6 +1993,15 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
     const ImVec2 nodePos = ImGui::GetCursorScreenPos();
     bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s%s", iconGap.c_str(), rootDisplayName.c_str());
     const bool toggledOpen = ImGui::IsItemToggledOpen();
+    if (uiBuilding.tree.size() < 200) {
+        UiTreeNode node;
+        node.path = project->normalizeToProjectRelative(rootPath).generic_string();
+        node.rect = lastItemRect();
+        node.arrowX = nodePos.x + ImGui::GetStyle().FramePadding.x + ImGui::GetFontSize() * 0.5f;
+        node.arrowY = node.rect.y + node.rect.h * 0.5f;
+        node.open = nodeOpen;
+        uiBuilding.tree.push_back(node);
+    }
 
     ImTextureID folderTex = Backend::getImGuiTexture(folderIcon.getRender());
     if (folderTex != ImTextureID{}) {
@@ -2046,8 +2081,8 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
             continue;
         }
 
-        // Skip project.yaml file
-        if (entry.path().filename() == "project.yaml") {
+        // Skip project.yaml file, and the assets' .meta sidecars (S04: they move with their assets)
+        if (entry.path().filename() == "project.yaml" || AssetTypes::isMetaFile(entry.path())) {
             continue;
         }
 
@@ -2154,7 +2189,7 @@ void editor::ProjectWindow::collectSearchResults() {
             it.increment(ec);
             continue;
         }
-        if (fileName != "project.yaml" && lower(fileName).find(needle) != std::string::npos) {
+        if (fileName != "project.yaml" && !AssetTypes::isMetaFile(entry.path()) && lower(fileName).find(needle) != std::string::npos) {
             files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
         }
         it.increment(ec);
@@ -3144,9 +3179,11 @@ void editor::ProjectWindow::cleanupThumbnails() {
             continue;
 
         std::string ext = p.path().extension().string();
-        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext)) {
+        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext) || Util::isPrefabFile(ext)) {
             fs::path thumbnailPath = project->getThumbnailPath(p.path());
             validThumbPaths.insert(thumbnailPath.string());
+            // a prefab's thumbnail keeps its dependency stamp beside it
+            validThumbPaths.insert(prefabStampPath(thumbnailPath).string());
         }
     }
 
@@ -3224,7 +3261,14 @@ void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) 
     if (prefabs || !modified.empty()) checkPrefabThumbnailStamps();
 }
 
+editor::ProjectWindow::UiRect editor::ProjectWindow::lastItemRect() {
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x - min.x, max.y - min.y};
+}
+
 void editor::ProjectWindow::show() {
+    uiBuilding = UiState();
     if (firstOpen) {
         // Load saved settings (AppSettings is initialized by now)
         iconSize = AppSettings::getResourcesIconSize();
@@ -3509,6 +3553,12 @@ void editor::ProjectWindow::show() {
             }
         }
     }
+
+    uiBuilding.drawn = true;
+    uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
+    uiBuilding.search = searchText;
+    uiBuilding.selected = lastSelectedFile;
+    uiState = std::move(uiBuilding);
 
     ImGui::End();
 

@@ -531,7 +531,7 @@ bool HotReloadService::update() {
         }
         if (assetRefreshAfterPlay) {
             assetRefreshAfterPlay = false;
-            project->refreshAssetDatabase();
+            project->refreshAssetDatabase(true);
         }
     }
     return adopted;

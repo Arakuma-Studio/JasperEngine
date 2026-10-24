@@ -173,6 +173,10 @@ ScriptPropertyType editor::ScriptParser::inferTypeFromCppType(const std::string&
         return ScriptPropertyType::Prefab;
     }
 
+    if (bareType == "AssetRef" || bareType == "jasperengine::AssetRef") {
+        return ScriptPropertyType::Asset;
+    }
+
     // Default to int if unknown
     Out::warning("Unknown C++ type '%s', defaulting to Int", cppType.c_str());
     return ScriptPropertyType::Int;
@@ -192,6 +196,7 @@ std::optional<ScriptPropertyType> editor::ScriptParser::parseExplicitType(const 
     if (cleanType == "Color3") return ScriptPropertyType::Color3;
     if (cleanType == "Color4") return ScriptPropertyType::Color4;
     if (cleanType == "Prefab") return ScriptPropertyType::Prefab;
+    if (cleanType == "Asset") return ScriptPropertyType::Asset;
 
     // Handle "Color" - infer based on C++ type
     if (cleanType == "Color") {
@@ -558,6 +563,17 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                     break;
                 }
 
+                case ScriptPropertyType::Asset: {
+                    // a default path ("textures/hero.png"); the editor gives it its GUID
+                    std::string path = defaultValueStr;
+                    if (path.size() >= 2 && path.front() == '"' && path.back() == '"') {
+                        path = path.substr(1, path.size() - 2);
+                    }
+                    prop.value = AssetRef(path);
+                    prop.defaultValue = AssetRef(path);
+                    break;
+                }
+
                 case ScriptPropertyType::EntityReference: {
                     // Pointers default to null entity
                     EntityReference val{NULL_ENTITY, 0};
@@ -611,6 +627,10 @@ std::vector<ScriptProperty> editor::ScriptParser::parseScriptPropertiesFromStrin
                 case ScriptPropertyType::Prefab:
                     prop.value = PrefabAsset();
                     prop.defaultValue = PrefabAsset();
+                    break;
+                case ScriptPropertyType::Asset:
+                    prop.value = AssetRef();
+                    prop.defaultValue = AssetRef();
                     break;
             }
         }
