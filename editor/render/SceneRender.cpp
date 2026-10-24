@@ -19,6 +19,7 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/MultiPropertyCmd.h"
 #include "util/GraphicUtils.h"
 #include "window/TerrainEditWindow.h"
+#include "pose/PoseViewport.h"
 
 #include <algorithm>
 #include <cmath>
@@ -551,6 +552,10 @@ void editor::SceneRender::activate(){
         Engine::addSceneLayer(childScene);
     }
 
+    if (poseViewport){
+        // pose animation ghosts: over the scene, under the handles
+        Engine::addSceneLayer(poseViewport->getGhostScene());
+    }
     Engine::addSceneLayer(toolslayer.getScene());
     engineLayerTools = editLayer.active ? layerToolsIndex() : -1;
     if (engineLayerTools >= 0){
@@ -756,6 +761,11 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     if (editLayer.active){
         // the toolbar sets the tool on this scene's tools layer
         tools.setGizmoSelected(toolslayer.getGizmoSelected());
+    }
+
+    // a posed model (pose animation) and its bones take no transform gizmo: the pose handles move them
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(toolEntities);
     }
 
     // while playing, what the running scene created is read-only: no gizmo moves it
@@ -1052,10 +1062,33 @@ void editor::SceneRender::mouseHoverEvent(float x, float y){
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
     updateTerrainBrushCursor();
+    if (poseViewport){
+        poseViewport->hover(ownerMouseRay);
+    }
+}
+
+bool editor::SceneRender::isPoseEditing() const{
+    return poseViewport && !isPlaying && poseViewport->isPosing();
+}
+
+bool editor::SceneRender::poseMouseDown(float x, float y, bool shift, bool ctrl){
+    if (!isPoseEditing()){
+        return false;
+    }
+    ownerMouseRay = screenToRay(x, y);
+    return poseViewport->mouseDown(ownerMouseRay, shift, ctrl);
+}
+
+bool editor::SceneRender::isPoseDragging() const{
+    return poseViewport && poseViewport->isDragging();
 }
 
 void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> selEntities){
     mouseClicked = true;
+
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(selEntities);
+    }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
@@ -1240,6 +1273,11 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
 void editor::SceneRender::mouseReleaseEvent(float x, float y){
     uilayer.setSelectionBoxVisible(false);
 
+    if (poseViewport){
+        // a pose handle drag ends: one undo step
+        poseViewport->mouseUp();
+    }
+
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
@@ -1302,6 +1340,15 @@ Vector2 editor::SceneRender::lockObject2DAspectRatio(const Vector2& startSize, c
 void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
+
+    if (poseViewport && poseViewport->isDragging()){
+        // a pose handle: Shift keeps it on the horizontal plane, Ctrl/Cmd snaps ring turns
+        poseViewport->mouseDrag(ownerMouseRay, preserveAspectRatio, invertRotationSnap);
+        return;
+    }
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(selEntities);
+    }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){

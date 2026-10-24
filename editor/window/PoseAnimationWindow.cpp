@@ -720,8 +720,8 @@ void editor::PoseAnimationWindow::handleShortcuts(bool fromSceneView){
     if (keyChord(true, false, ImGuiKey_C)) actionCopy();
     if (keyChord(true, false, ImGuiKey_V)) actionPaste();
     if (keyChord(false, false, ImGuiKey_N)) actionAdd();
-    // E is the Scene view's rotate tool: Global Edit from there is phase 5's
-    if (!fromSceneView && keyChord(false, false, ImGuiKey_E)) actionGlobalEdit();
+    // E: from a posing Scene view too (the App keeps the rotate tool's E from it then)
+    if (keyChord(false, false, ImGuiKey_E)) actionGlobalEdit();
 }
 
 // ---- frame ----
@@ -1792,6 +1792,15 @@ void editor::PoseAnimationWindow::drawPoseTab(){
     PoseEditSession::OnionSettings& onion = session.onion();
     PoseEditSession::ViewSettings& view = session.view();
     ImGui::TextColored(Theme::Colors::SubtleText, "Viewport");
+    // the Scene view's posing (phase 5) and its keys
+    ImGui::SetItemTooltip("Scene view while posing:\n"
+                          "- drag a hand or foot sphere: the limb bends (IK); feet snap to the floor\n"
+                          "- drag the hips cube: grounded poses keep their feet planted\n"
+                          "- click a joint dot: rings to rotate it (red L, green U, blue F, white: about the view)\n"
+                          "- Shift: hands and feet stay on the horizontal plane\n"
+                          "- Ctrl/Cmd: rings turn in 5 degree steps\n"
+                          "- E: Global Edit, Escape: cancel it\n"
+                          "- click empty space or another object: stop posing");
     ImGui::Checkbox("Previous pose", &onion.previous);
     ImGui::SetItemTooltip("Onion skin: the previous pose as a blue ghost");
     ImGui::SameLine();

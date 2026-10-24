@@ -1029,6 +1029,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         altHeld ||
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
+        sceneProject->sceneRender->isPoseDragging() ||
         gizmoSideActive ||
         sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
 
@@ -1040,7 +1041,23 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        // Posing a humanoid (pose animation): a click on a pose handle is the handle's, not
+        // a selection or a tool's
+        bool poseHandleClick = false;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled &&
+                sceneProject->sceneRender->isPoseEditing()){
+            poseHandleClick = sceneProject->sceneRender->poseMouseDown(x, y, io.KeyShift, io.KeyCtrl || io.KeySuper);
+            if (poseHandleClick){
+                subSelectionClickConsumesRelease[sceneId] = true;
+                mouseLeftStartPos = Vector2(logicalX, logicalY);
+                // a joint dot only picks the joint: the rest of the press is nobody's
+                if (!sceneProject->sceneRender->isPoseDragging()){
+                    suppressLeftMouseUntilRelease[sceneId] = true;
+                }
+            }
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !poseHandleClick){
             subSelectionClickConsumesRelease[sceneId] = false;
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
@@ -1328,14 +1345,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             mouseLeftDragPos = Vector2(logicalX, logicalY);
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing()){
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() ||
+                    sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
             if (mouseLeftDraggedInside){
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
-                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl, io.KeyShift);
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl || io.KeySuper, io.KeyShift);
             }
         }
 

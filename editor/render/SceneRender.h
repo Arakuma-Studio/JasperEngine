@@ -72,6 +72,7 @@ namespace jasperengine::editor{
     };
 
     class Project;
+    class PoseViewport;
 
     class SceneRender{
     private:
@@ -236,6 +237,9 @@ namespace jasperengine::editor{
         ToolsLayer toolslayer;
         UILayer uilayer;
 
+        // posing a humanoid in the view (pose animation phase 5; 3D views only, null otherwise)
+        std::unique_ptr<PoseViewport> poseViewport;
+
         std::vector<Scene*> childSceneLayers;
 
         // Prefab Mode In Context: the scene drawn under this one through underlayCamera,
@@ -312,6 +316,14 @@ namespace jasperengine::editor{
         // fitted and centered in a view of width x height
         Rect getGameLayerRect(int width, int height) const;
         bool isTerrainEditing() const;
+
+        // Pose animation (phase 5): the Pose Animation window's session poses a model of this
+        // scene. Its handles take a click first (poseMouseDown, x/y as screenToRay); a drag they
+        // took goes through mouseDragEvent / mouseReleaseEvent like a gizmo's.
+        bool isPoseEditing() const;
+        bool poseMouseDown(float x, float y, bool shift, bool ctrl);
+        bool isPoseDragging() const;
+        PoseViewport* getPoseViewport() const { return poseViewport.get(); }
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen

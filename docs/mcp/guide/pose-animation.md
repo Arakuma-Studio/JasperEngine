@@ -138,6 +138,14 @@ area of the feet in contact), `balance_margin` (body units, negative = outside, 
 `limit_hits` (DOFs outside the joint limits). A grounded pose always has its lowest point on the
 floor: an unbalanced standing pose needs the hips (`offset`) over the supporting foot, not a lift.
 
+## In the editor
+
+People pose in the Scene view while the Pose Animation window poses a character: hand and foot
+spheres drag the limb (IK, feet snap to the floor), the hips cube moves the body with the feet
+planted, joint dots show rotation rings that stop at the joint limits (Shift: horizontal drag,
+Ctrl/Cmd: 5 degree ring steps, E: Global Edit). The floor disc shows contact rings and the centre
+of mass; ghosts show the previous/next pose. Each drag is one project undo step, like your edits.
+
 ## Humanoid mapping
 
 Bones are mapped to the slots automatically from their names (Mixamo, Blender/Rigify, Unreal, VRM,

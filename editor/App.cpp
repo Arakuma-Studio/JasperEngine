@@ -43,6 +43,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
+#include "pose/PoseViewport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -1943,7 +1944,9 @@ void editor::App::show(){
         }
 
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused());
+        // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
+        const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing);
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -2090,6 +2093,8 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     poseAnimationWindow->show();
+    // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
+    PoseViewport::frame(&project);
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
