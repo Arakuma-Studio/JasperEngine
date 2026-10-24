@@ -84,6 +84,7 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    LatticeTools.cpp      edit_lattice (lattice deformer cages)
     HtmlUiTools.cpp       HTML/CSS UI: inspect_ui, assert_ui, create_ui_document, the example resources
 ```
 

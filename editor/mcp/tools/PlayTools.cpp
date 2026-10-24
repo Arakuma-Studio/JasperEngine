@@ -3343,7 +3343,8 @@ void registerPlayTools(McpRegistry& registry) {
 
     const Json screenshotOption = w3::screenshotArgSchema();
     const Json maxWidth = w3::maxWidthArgSchema(4096, 768);
-    const Json runtimeScene = sceneRef("Default: the played scene.");
+    // the played scene by default: the instructions' Addressing says so once for every tool
+    const Json runtimeScene = sceneRef();
 
     {
         ToolDef tool;
@@ -3353,10 +3354,10 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Control Play mode. start: saves modified scenes, builds C++ scripts if any (minutes), waits until "
             "running; returns the state + console problems, or isError with compile/script errors; past "
-            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes the "
-            "session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any action; set "
-            "= only that; kept until changed): time_scale, fixed_fps, auto_pause = frozen between calls, runs only "
-            "inside wait / send_input / step.";
+            "timeout_seconds (or wait:false) a job_id (get_job). stop: restores the edit-time state, summarizes "
+            "the session. step: advance a paused game `frames` frames. Script errors stop play.\nClock (any "
+            "action; set = only it; kept until changed): time_scale, fixed_fps, auto_pause (frozen between "
+            "calls; runs only in wait / send_input / step).";
         tool.inputSchema = object({
             {"action", stringEnum("", {"start", "stop", "restart", "pause", "resume", "step", "set"})},
             {"scene", sceneRef("start: default the start scene (else selected).")},
@@ -3393,11 +3394,11 @@ void registerPlayTools(McpRegistry& registry) {
         tool.name = "wait";
         tool.title = "Wait / Run Game";
         tool.description =
-            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until the "
-            "Lua `until` is truthy (checked between frames; the others then cap it); returns reason, elapsed "
-            "time/frames/game_seconds, console lines, play state. input: send_input events from the first frame; it "
-            "ends at its condition (leftover input skipped, presses released) or when the input is done. isError if "
-            "play ended, input failed or `until` errored/timed out/hit its cap.";
+            "Let the game run `seconds` (wall clock), `game_seconds`, `frames` (steps a paused game) or until "
+            "the Lua `until` is truthy (checked between frames; the others cap it); returns reason, elapsed "
+            "time/frames/game_seconds, console lines, play state. input: send_input events from the first frame; "
+            "ends at its condition (leftover input skipped, presses released) or when the input is done. isError "
+            "if play ended, input failed or `until` errored/timed out/hit its cap.";
         tool.inputSchema = object({
             {"seconds", number("", 0, 600)},
             {"game_seconds", number("", 0, 3600)},
@@ -3423,9 +3424,9 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Evaluate Lua";
         tool.description =
             "Run Lua in the running game: the values as JSON (handles as {type, entity, name, path}), print() "
-            "output, console lines. Helpers: scene, script(ref [,class]) -> its self, object(ref [,type]) -> handle "
-            "(GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals persist; changes revert at stop. "
-            "Not playing: refused unless allow_edit_mode (NOT undoable).";
+            "output, console lines. Helpers: scene, script(ref [,class]) -> its self, object(ref [,type]) -> "
+            "handle (GameObject, Sprite...), entity(ref) -> id, getScene(name). Globals persist; changes revert "
+            "at stop. Stopped: refused unless allow_edit_mode (NOT undoable).";
         tool.inputSchema = object({
             {"code", string("Expression, or chunk with return.")},
             {"scene", runtimeScene},

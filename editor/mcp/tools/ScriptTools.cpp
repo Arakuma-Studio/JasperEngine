@@ -1767,10 +1767,10 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "create_script";
         tool.title = "Create Script";
         tool.description =
-            "Create a script from the engine template, optionally attached to entity; then edit the file yourself. "
-            "kind lua: module table in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: subclass of the "
-            "GameObject's class (e.g. Mesh), needs entity. content (Lua) or header_content + source_content (C++) "
-            "replace the template.";
+            "Create a script from the engine template, optionally attached to entity; then edit the file "
+            "yourself. kind lua: module table in the Lua dir; cpp_script: ScriptBase subclass; cpp_subclass: "
+            "subclass of the GameObject's class (e.g. Mesh), needs entity. content (Lua) or header_content + "
+            "source_content (C++) replace the template.";
         tool.inputSchema = object({
             {"kind", stringEnum("", {"lua", "cpp_script", "cpp_subclass"})},
             {"name", string("Class/module name = file name.")},
@@ -1850,10 +1850,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "set_script_properties";
         tool.title = "Set Script Properties";
         tool.description =
-            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= set_properties "
-            "scripts[i].<name>). Prefab properties take a .prefab path, GameObject ones an entity ref (another "
-            "scene: {\"scene\", \"id\"}); \"enabled\" toggles the script. Properties added to the file are picked up "
-            "before your next call.";
+            "Set a script's exposed properties (Lua `properties`, C++ DPROPERTY) on one GameObject (= "
+            "set_properties scripts[i].<name>, same values); \"enabled\" toggles the script. Properties added to "
+            "the file are picked up before your next call.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1907,8 +1906,8 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "sync_files";
         tool.title = "Sync Files";
         tool.description =
-            "Rarely needed (files edited on disk are picked up before every call: external_changes): a full rescan "
-            "of code editor buffers, attached scripts' properties, Lua syntax, materials, shaders, textures, assets; "
+            "Rarely needed (files edited on disk are picked up before every call: external_changes): a full "
+            "rescan of code editor buffers, script properties, Lua syntax, materials, shaders, textures, assets; "
             "returns what changed and the problems. Not for .scene/.prefab/project.yaml.";
         tool.inputSchema = object({
             {"paths", array(string(""), "Changed files (optional).")},
