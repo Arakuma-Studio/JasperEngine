@@ -34,6 +34,7 @@ MODULES: list[tuple[str, str]] = [
     ("PrefabTools", "Prefabs"),
     ("PlayTools", "Play mode and input"),
     ("ViewTools", "Views and screenshots"),
+    ("ShadowTools", "Shadows"),
     ("ConsoleTools", "Console"),
     ("ScriptTools", "Scripts"),
     ("AssetTools", "Assets, materials and shaders"),

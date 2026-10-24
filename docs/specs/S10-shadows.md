@@ -648,6 +648,10 @@ llvmpipe and Vulkan on lavapipe.
   subtracting `shadowBias × texelWorld / depthRangeWorld` from its NDC depth. For a directional
   cascade the two are the same; for a perspective slot the world offset is exact where an NDC
   offset is not linear in distance.
+- **Normal offset on Low.** Without the receiver-plane bias (the Low tier) the normal offset is
+  `shadowNormalBias × texelWorld × sin θ` (θ the angle between the normal and the light) instead
+  of `× (1 − cos θ)`: the latter leaves acne on surfaces grazing the light (a sphere's rim) at
+  default biases; with the receiver plane (Medium and above) R10's `(1 − n·l)` stays.
 - **PCSS kernel floor.** The PCF kernel radius is clamped to [0.5, 24] texels (R13 says
   [1, 24]): at 1 texel the comparison's own bilinear texel makes a contact penumbra at least
   2 texels wide, which AC8 (< 2 texels at the pole's base) excludes. 0.5 is a penumbra one texel

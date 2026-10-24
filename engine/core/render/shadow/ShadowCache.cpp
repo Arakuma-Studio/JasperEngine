@@ -134,9 +134,18 @@ ShadowSlotDecision ShadowCache::evaluate(ShadowSlotState& state, const ShadowSlo
         }
     }
 
-    // a caster mask that changed with the casters, the light the same: the casters' doing
-    if (setupCause == ShadowDirtyCause::LIGHT && key.lightRevision == state.key.lightRevision && (staticChanged || dynamicChanged))
-        setupCause = staticChanged ? ShadowDirtyCause::STATIC_CASTER : ShadowDirtyCause::DYNAMIC_CASTER;
+    // a caster mask that changed with the light the same: the layers casters are on changed (a
+    // caster moved to a layer, or the last one left one), wherever that caster is
+    if (setupCause == ShadowDirtyCause::LIGHT && key.lightRevision == state.key.lightRevision){
+        bool staticLayers = staticChanged;
+        bool dynamicLayers = dynamicChanged;
+        for (const ShadowCasterChange& change : changes){
+            staticLayers = staticLayers || change.staticLayer;
+            dynamicLayers = dynamicLayers || change.dynamicLayer;
+        }
+        if (staticLayers || dynamicLayers)
+            setupCause = staticLayers ? ShadowDirtyCause::STATIC_CASTER : ShadowDirtyCause::DYNAMIC_CASTER;
+    }
 
     auto redraw = [&](ShadowDirtyCause cause){
         decision.cause = cause;

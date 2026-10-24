@@ -26,7 +26,9 @@ Inspector > Light > **Shadows** (Unity's order):
 | Source Radius | spot and point: metres (default 0.05) | `shadowSourceRadius` | `shadowSourceRadius` |
 
 Biases are in texels, so one value works at every resolution and in every cascade: the depth
-offset is `Bias × texel size`, the normal offset `Normal Bias × texel size × (1 − n·l)`. A spot or
+offset is `Bias × texel size`, the normal offset `Normal Bias × texel size × (1 − n·l)` (on the
+Low tier, which has no receiver-plane bias, `× sin` of the angle to the light instead, which keeps
+grazing surfaces free of acne). A spot or
 point light's texel grows with the distance from it, so are its offsets. From the Medium tier on,
 the receiver-plane bias compares every filter tap against the plane through the receiver, so a
 slope does not shadow itself; the default biases need no tuning.

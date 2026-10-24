@@ -284,10 +284,14 @@ float shadowSlotVisibility(int slot, vec3 worldPos, vec3 dpdx, vec3 dpdy, float 
 }
 
 // the receiver offset by a slot's biases: towards the light by the depth bias, along the normal
-// by the normal offset (more the more it faces away from the light)
+// by the normal offset, more the more it faces away from the light: (1 - n.l) where the
+// receiver-plane bias follows the slope, sin of the angle without it (the Low tier), whose
+// margin over the surface, normalOffset * tan, keeps up with the slope's depth change across
+// the filter's texels
 vec3 shadowBiasedPosition(vec3 worldPos, vec3 worldNormal, vec3 towardsLight, float depthBias, float normalOffset){
     float NdotL = clamp(dot(worldNormal, towardsLight), 0.0, 1.0);
-    return worldPos + towardsLight * depthBias + worldNormal * (normalOffset * (1.0 - NdotL));
+    float slope = shadowReceiverPlaneEnabled() ? (1.0 - NdotL) : sqrt(1.0 - NdotL * NdotL);
+    return worldPos + towardsLight * depthBias + worldNormal * (normalOffset * slope);
 }
 
 // view depth of a world position along the camera the cascades are fitted to

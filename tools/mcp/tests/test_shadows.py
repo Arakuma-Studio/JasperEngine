@@ -509,13 +509,15 @@ async def test_bias(ed: Editor):
     slab = await entity(ed, scene, "cube", "Slab", [-5, 8, 0], scale=[10, 0.1, 30])
     await aim(ed, scene, [0, 5, 0.01], [0, 0, 0])
     await debug_view(ed, scene, "shadow_factor")
-    for angle in (1, 15, 30, 45, 60, 80):
+    # High (the receiver-plane bias) and Low (without it: the normal offset alone)
+    for tier, angle in [(t, a) for t in ("high", "low") for a in (1, 15, 30, 45, 60, 80)]:
+        await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": tier})
         a = math.radians(angle)
         await light_set(ed, scene, sun, direction=[math.sin(a), -math.cos(a), 0.0])
         # its shadow's edge on the ground at x = 0: the slab's right edge 8 m up the light
         await ed.call("set_transform", scene=scene, entity=slab, position=[-8.0 * math.tan(a) - 5.0, 8.0, 0.0])
         img = await shot(ed, scene, frames=6)
-        keep_shot(f"bias_{angle}", img)
+        keep_shot(f"bias_{tier}_{angle}", img)
         w, h, rgba = img
         lit = lit_full = 0
         values = []
@@ -529,14 +531,16 @@ async def test_bias(ed: Editor):
                     lit_full += 1 if grey(img, x, y) == 255 else 0
                 elif x < w // 2 - margin:
                     values.append(grey(img, x, y))
-        ed.check(lit > 1000 and len(values) > 1000, f"{angle} deg: the plane fills both halves ({lit}, {len(values)} pixels)")
+        ed.check(lit > 1000 and len(values) > 1000, f"{tier} {angle} deg: the plane fills both halves ({lit}, {len(values)} pixels)")
         mean = sum(values) / len(values)
         variance = sum((v - mean) ** 2 for v in values) / len(values)
-        ed.check(lit_full / lit >= 0.995, f"{angle} deg: {lit_full}/{lit} lit pixels at 255 (no acne)")
-        ed.check(mean < 8 and variance < 1.0, f"{angle} deg: the shadowed half is dark and even (mean {mean:.1f}, variance {variance:.2f})")
+        ed.check(lit_full / lit >= 0.995, f"{tier} {angle} deg: {lit_full}/{lit} lit pixels at 255 (no acne)")
+        ed.check(mean < 8 and variance < 1.0,
+                 f"{tier} {angle} deg: the shadowed half is dark and even (mean {mean:.1f}, variance {variance:.2f})")
 
     # contact: a cube on the lit side, seen from the side its shadow falls to; along the column
     # through its shaded face, the ground's shadow runs into the face with no lit texel between
+    await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "high"})
     a = math.radians(45)
     await light_set(ed, scene, sun, direction=[math.sin(a), -math.cos(a), 0.0])
     await ed.call("set_transform", scene=scene, entity=slab, position=[-13.0, 8.0, 0.0])
@@ -657,19 +661,22 @@ async def golden(ed: Editor, name: str, img):
 async def test_shadow_goldens(ed: Editor):
     scene = await make_scene(ed, "Filters")
     sun = await sun_of(ed, scene)
-    await light_set(ed, scene, sun, shadows=True, softShadows=True, shadowAngularDiameter=3.0, direction=[-0.4, -0.82, -0.4])
+    await light_set(ed, scene, sun, shadows=True, softShadows=True, shadowAngularDiameter=3.0, direction=[-0.4, -0.82, -0.4],
+                    intensity=2.5)
+    # little ambient light, so the filters' penumbras show at the goldens' tolerance
+    await ed.call("set_scene_settings", scene=scene, settings={"global_illumination_intensity": 0.03})
     await entity(ed, scene, "plane", "Ground", [0, 0, 0], scale=[3, 1, 3])
     # a contact-hardening pole, a hard and a soft spot, a point light
     await entity(ed, scene, "cylinder", "Pole", [0, 1.5, 0], scale=[0.15, 3.0, 0.15])
     await entity(ed, scene, "cube", "Box", [-4, 0.5, 2])
     hard = await entity(ed, scene, "spot_light", "HardSpot", [-4, 5, 4])
-    await light_set(ed, scene, hard, shadows=True, softShadows=False, range=12.0, intensity=60.0, direction=[0.0, -0.87, -0.5])
+    await light_set(ed, scene, hard, shadows=True, softShadows=False, range=12.0, intensity=25.0, direction=[0.0, -0.87, -0.5])
     soft = await entity(ed, scene, "spot_light", "SoftSpot", [4, 5, 4])
-    await light_set(ed, scene, soft, shadows=True, softShadows=True, range=12.0, intensity=60.0, shadowSourceRadius=0.3,
+    await light_set(ed, scene, soft, shadows=True, softShadows=True, range=12.0, intensity=25.0, shadowSourceRadius=0.3,
                     direction=[0.0, -0.87, -0.5])
     await entity(ed, scene, "sphere", "Ball", [4, 0.6, 2], scale=[1.2, 1.2, 1.2])
     point = await entity(ed, scene, "point_light", "Lamp", [0, 2.5, -4])
-    await light_set(ed, scene, point, shadows=True, range=10.0, intensity=25.0)
+    await light_set(ed, scene, point, shadows=True, range=10.0, intensity=12.0)
     await entity(ed, scene, "cube", "Crate", [1, 0.5, -3])
     await aim(ed, scene, [0, 9, 13], [0, 0, 0])
     for tier in ("low", "medium", "high", "ultra"):
