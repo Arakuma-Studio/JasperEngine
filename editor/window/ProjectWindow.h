@@ -72,6 +72,23 @@ namespace jasperengine::editor {
     };
 
     class ProjectWindow {
+    public:
+        // What the window showed in its last frame, in window pixels: the listing's entries,
+        // the search box and the S04 items of an open context menu (editor_status reports it,
+        // so a test or an agent can click them for real)
+        struct UiRect {
+            float x = 0, y = 0, w = 0, h = 0;
+        };
+        struct UiState {
+            bool drawn = false;
+            std::string directory;     // project-relative
+            std::string search;
+            std::string selected;
+            UiRect searchBox;
+            std::vector<std::pair<std::string, UiRect>> entries;
+            std::vector<std::pair<std::string, UiRect>> contextMenu;
+        };
+
     private:
         Project* project;
         CodeEditor* codeEditor;
@@ -336,21 +353,6 @@ namespace jasperengine::editor {
         static void importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir);
         fs::path getCurrentPath() const { return currentPath; }
 
-        // What the window showed in its last frame, in window pixels: the listing's entries,
-        // the search box and the S04 items of an open context menu (editor_status reports it,
-        // so a test or an agent can click them for real)
-        struct UiRect {
-            float x = 0, y = 0, w = 0, h = 0;
-        };
-        struct UiState {
-            bool drawn = false;
-            std::string directory;     // project-relative
-            std::string search;
-            std::string selected;
-            UiRect searchBox;
-            std::vector<std::pair<std::string, UiRect>> entries;
-            std::vector<std::pair<std::string, UiRect>> contextMenu;
-        };
         const UiState& getUiState() const { return uiState; }
         void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
 
