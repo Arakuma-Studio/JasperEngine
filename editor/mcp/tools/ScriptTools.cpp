@@ -36,6 +36,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
@@ -70,12 +71,9 @@ namespace fs = std::filesystem;
 
 namespace w4 {
 
+// A failed write keeps the file as it was
 bool writeFile(const fs::path& path, const std::string& content) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    return FileUtils::writeFileReplacing(path, content);
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {

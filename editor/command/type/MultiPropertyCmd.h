@@ -45,6 +45,20 @@ namespace jasperengine::editor {
             }
         }
 
+        bool canUndo() const override {
+            for (const auto& cmd : commands) {
+                if (!cmd->canUndo()) return false;
+            }
+            return true;
+        }
+
+        bool canRedo() const override {
+            for (const auto& cmd : commands) {
+                if (!cmd->canRedo()) return false;
+            }
+            return true;
+        }
+
         // Structural if any child is: a batch may mix an AddComponentCmd with properties.
         bool affectsStructure() const override {
             for (const auto& cmd : commands) {

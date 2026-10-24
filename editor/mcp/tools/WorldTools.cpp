@@ -293,7 +293,8 @@ public:
     void commit() { history->groupSince(start); }
     // Undoes what this step added (a failed call leaves the scene as it was)
     void rollback() {
-        while (history->position() > start && history->canUndo()) history->undo();
+        // a refused undo leaves the position, so it ends the loop too
+        while (history->position() > start && history->canUndo() && history->undo()) {}
     }
     // Rolls back and fails the call; when something had been applied, the error says it is
     // all gone (it may name a GameObject the call made)

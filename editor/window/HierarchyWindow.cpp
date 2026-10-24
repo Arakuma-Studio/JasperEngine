@@ -1192,11 +1192,14 @@ void editor::HierarchyWindow::showAddChildSceneMenu() {
 
         bool hasAvailableScenes = false;
         for (const auto& scene : scenes) {
-            // Skip current scene and already added child scenes
+            // Skip current scene, already added child scenes and scenes that contain it
             if (scene.id == currentSceneId) {
                 continue;
             }
             if (project->hasChildScene(currentSceneId, scene.id)) {
+                continue;
+            }
+            if (project->wouldCreateChildSceneCycle(currentSceneId, scene.id)) {
                 continue;
             }
 

@@ -910,6 +910,8 @@ namespace jasperengine::editor{
         bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
         bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
+        // Only the shaderKeys of the file on disk: what Stop saves of a scene that ran as a Play copy
+        bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true);
         void writeSceneSource(const SceneProject* sceneProject);
         bool hasMissingSceneSources() const;
@@ -1301,11 +1303,13 @@ namespace jasperengine::editor{
         bool loadChildSceneInline(uint32_t childSceneId);
         void unloadChildSceneInline(uint32_t childSceneId);
 
-        void addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
+        bool addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive = true);
         void removeChildScene(uint32_t sceneId, uint32_t childSceneId);
         // Dirties parents of a child scene and forces the Engine layers to rebuild.
         void markParentScenesNeedUpdate(uint32_t childSceneId);
         bool hasChildScene(uint32_t sceneId, uint32_t childSceneId) const;
+        // True when sceneId is childSceneId or one of its descendants: adding it would make a cycle
+        bool wouldCreateChildSceneCycle(uint32_t sceneId, uint32_t childSceneId) const;
         bool isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const;
         void setChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId, bool startActive);
         std::vector<uint32_t> getChildScenes(uint32_t sceneId) const;

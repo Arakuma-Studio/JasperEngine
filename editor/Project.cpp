@@ -2231,12 +2231,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
             continue;
         }
 
-        std::ofstream file(entry.path());
-        if (!file){
+        if (!FileUtils::writeFileReplacing(entry.path(), YAML::Dump(Stream::encodeMaterial(material)))){
             Out::error("Failed to write material: %s", entry.path().string().c_str());
             continue;
         }
-        file << YAML::Dump(Stream::encodeMaterial(material));
         changed = true;
     }
 
@@ -4395,36 +4393,43 @@ void editor::Project::unloadChildSceneInline(uint32_t childSceneId) {
     Out::info("Unloaded child scene '%s' from inline", childScene->name.c_str());
 }
 
-void editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
+bool editor::Project::addChildScene(uint32_t sceneId, uint32_t childSceneId, bool startActive) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         Out::error("Scene with ID %u not found", sceneId);
-        return;
+        return false;
     }
 
     // Prevent adding self as child
     if (sceneId == childSceneId) {
         Out::error("Cannot add a scene as its own child");
-        return;
+        return false;
     }
 
     // Check if child scene exists
     const SceneProject* childScene = getScene(childSceneId);
     if (!childScene) {
         Out::error("Child scene with ID %u not found", childSceneId);
-        return;
+        return false;
+    }
+
+    // A cycle would have every walk down the child scenes recurse forever
+    if (wouldCreateChildSceneCycle(sceneId, childSceneId)) {
+        Out::error("Cannot add '%s' to '%s': '%s' already contains '%s'", childScene->name.c_str(), sceneProject->name.c_str(), childScene->name.c_str(), sceneProject->name.c_str());
+        return false;
     }
 
     // Check if already added
     auto& childScenes = sceneProject->childScenes;
     if (findChildScene(childScenes, childSceneId) != childScenes.end()) {
         Out::warning("Child scene '%s' already exists in scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
-        return;
+        return false;
     }
 
     childScenes.push_back({childSceneId, startActive});
     sceneProject->isModified = true;
     Out::info("Added child scene '%s' to scene '%s'", childScene->name.c_str(), sceneProject->name.c_str());
+    return true;
 }
 
 void editor::Project::removeChildScene(uint32_t sceneId, uint32_t childSceneId) {
@@ -4458,6 +4463,27 @@ bool editor::Project::hasChildScene(uint32_t sceneId, uint32_t childSceneId) con
 
     const auto& childScenes = sceneProject->childScenes;
     return findChildScene(childScenes, childSceneId) != childScenes.end();
+}
+
+bool editor::Project::wouldCreateChildSceneCycle(uint32_t sceneId, uint32_t childSceneId) const {
+    std::unordered_set<uint32_t> visited;
+    std::vector<uint32_t> pending = {childSceneId};
+    while (!pending.empty()) {
+        const uint32_t id = pending.back();
+        pending.pop_back();
+        if (id == sceneId) {
+            return true;
+        }
+        if (!visited.insert(id).second) {
+            continue;
+        }
+        if (const SceneProject* scene = getScene(id)) {
+            for (const ChildSceneRef& childSceneRef : scene->childScenes) {
+                pending.push_back(childSceneRef.id);
+            }
+        }
+    }
+    return false;
 }
 
 bool editor::Project::isChildSceneStartActive(uint32_t sceneId, uint32_t childSceneId) const {
@@ -5225,18 +5251,10 @@ bool editor::Project::saveProjectFile() {
 
     try {
         std::filesystem::path projectFile = projectPath / "project.yaml";
-        std::ofstream fout(projectFile.string());
-        if (!fout) {
-            Out::error("Failed to open project file for writing: %s", projectFile.string().c_str());
-            return false;
-        }
 
         // Trailing newline: git reports a file without one as changed as soon as
         // anything is appended to it
-        fout << YAML::Dump(Stream::encodeProject(this)) << "\n";
-        fout.close();
-
-        if (!fout) {
+        if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n")) {
             Out::error("Failed to write project file: %s", projectFile.string().c_str());
             return false;
         }
@@ -5579,24 +5597,72 @@ bool editor::Project::saveLoadedSceneOnStop(SceneProject* loadedSceneProject, Sc
     bool success = false;
     if (loadedSceneProject == editorScene) {
         success = saveSceneFile(editorScene, editorScene->filepath, false);
-        if (success) {
-            editorScene->isModified = keepModified;
-        }
     } else {
-        loadedSceneProject->shaderKeys = editorScene->shaderKeys;
-        success = saveSceneFile(loadedSceneProject, editorScene->filepath, false);
-        if (success) {
-            editorScene->filepath = loadedSceneProject->filepath;
-            editorScene->shaderKeys = loadedSceneProject->shaderKeys;
-            editorScene->isModified = keepModified;
-        }
+        // A Play copy has no snapshot to go back to and holds the played state, so only the
+        // shader keys it found reach the file
+        success = saveSceneShaderKeys(editorScene);
     }
 
     if (success) {
+        editorScene->isModified = keepModified;
         Out::info("Auto-saved scene '%s' on stop", editorScene->name.c_str());
     }
 
     return success;
+}
+
+// The scene's shaderKeys written into its file as it is on disk, the rest of the file untouched
+bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) {
+        fullPath = getProjectPath() / fullPath;
+    }
+
+    try {
+        YAML::Node root = YAML::LoadFile(fullPath.string());
+        if (!root.IsMap()) {
+            Out::error("Failed to save shader keys of scene '%s': %s is not a scene file", sceneProject->name.c_str(), fullPath.string().c_str());
+            return false;
+        }
+
+        const YAML::Node& onDisk = root;
+
+        // The file's keys stay, as a full save keeps the ones saved before
+        for (ShaderKey key : Stream::decodeShaderKeys(onDisk["shaderKeys"])) {
+            sceneProject->shaderKeys.insert(key);
+        }
+        const YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
+
+        std::string content;
+        if (!shaderKeysNode.size()) {
+            root.remove("shaderKeys");
+            content = YAML::Dump(root);
+        } else if (onDisk["shaderKeys"] || !onDisk["maxValues"]) {
+            root["shaderKeys"] = shaderKeysNode;
+            content = YAML::Dump(root);
+        } else {
+            // After maxValues, where encodeSceneProject() puts them, so the next full save moves nothing
+            YAML::Node ordered(YAML::NodeType::Map);
+            for (const auto& item : onDisk) {
+                const std::string key = item.first.as<std::string>();
+                ordered[key] = item.second;
+                if (key == "maxValues") {
+                    ordered["shaderKeys"] = shaderKeysNode;
+                }
+            }
+            content = YAML::Dump(ordered);
+        }
+
+        if (!FileUtils::writeFileReplacing(fullPath, content + "\n")) {
+            Out::error("Failed to write scene file: %s", fullPath.string().c_str());
+            return false;
+        }
+    } catch (const std::exception& e) {
+        Out::error("Failed to save shader keys of scene '%s': %s", sceneProject->name.c_str(), e.what());
+        return false;
+    }
+
+    return true;
 }
 
 void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> callback) {
@@ -5729,14 +5795,10 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
-        std::ofstream fout(fullPath.string());
-        if (!fout) {
-            Out::error("Failed to open scene file for writing: %s", fullPath.string().c_str());
+        if (!FileUtils::writeFileReplacing(fullPath, YAML::Dump(root) + "\n")) {
+            Out::error("Failed to write scene file: %s", fullPath.string().c_str());
             return false;
         }
-
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
 
         // Every id this file carries has reached disk and can no longer be reclaimed
         sceneProject->transientId = false;
@@ -7285,9 +7347,11 @@ void editor::Project::collectStartActiveScenes(uint32_t sceneId, std::vector<uin
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) return;
 
-    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) == activeSceneIds.end()) {
-        activeSceneIds.push_back(sceneId);
+    // Skip if already visited - also guards against cycles in the child-scene graph
+    if (std::find(activeSceneIds.begin(), activeSceneIds.end(), sceneId) != activeSceneIds.end()) {
+        return;
     }
+    activeSceneIds.push_back(sceneId);
 
     for (const ChildSceneRef& childSceneRef : sceneProject->childScenes) {
         if (childSceneRef.startActive) {

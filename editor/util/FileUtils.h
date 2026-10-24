@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cerrno>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,9 @@
 #elif defined(__FreeBSD__)
     #include <sys/types.h>
     #include <sys/sysctl.h>
+#endif
+#ifndef _WIN32
+    #include <unistd.h>
 #endif
 
 namespace jasperengine::editor {
@@ -151,6 +155,67 @@ public:
         }
         ofs.write(newContent.data(), static_cast<std::streamsize>(newContent.size()));
         return ofs ? WriteResult::Written : WriteResult::Failed;
+    }
+
+    // Writes a temporary file next to the target and renames it over the target, so a save
+    // that fails (a full disk, a crash halfway) keeps the old file whole. rename() replaces an
+    // existing target on Windows too (MoveFileExW with MOVEFILE_REPLACE_EXISTING). As with a
+    // plain write, a symlink is written through and a file the user may not write (read-only,
+    // a locked file) is refused; an existing file keeps its permissions.
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content) {
+        namespace fs = std::filesystem;
+
+        std::error_code ec;
+        fs::path target = filePath;
+        if (fs::is_symlink(target, ec)) {
+            fs::path resolved = fs::canonical(target, ec);
+            if (!ec) {
+                target = resolved;
+            }
+        }
+
+        const fs::file_status status = fs::status(target, ec);
+        const bool exists = !ec && fs::exists(status);
+#ifndef _WIN32
+        // The directory's permissions would let the rename through
+        if (exists && ::access(target.c_str(), W_OK) != 0) {
+            return false;
+        }
+#endif
+
+        // Same directory, so the rename never crosses a file system
+        fs::path tempName(".");
+        tempName += target.filename();
+        tempName += ".tmp";
+        const fs::path tempPath = target.parent_path() / tempName;
+
+        bool written = false;
+        {
+            std::ofstream ofs(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
+            if (ofs) {
+                ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
+                ofs.flush();
+                ofs.close();
+                written = !ofs.fail();
+            }
+        }
+
+        if (written) {
+            if (exists) {
+                fs::permissions(tempPath, status.permissions(), fs::perm_options::replace, ec);
+            }
+            ec.clear();
+            fs::rename(tempPath, target, ec);
+            if (!ec) {
+                return true;
+            }
+        }
+
+        // errno still tells why the write failed
+        const int writeErrno = errno;
+        fs::remove(tempPath, ec);
+        errno = writeErrno;
+        return false;
     }
 
     // True when the file holds newContent afterwards, written or already up to date.

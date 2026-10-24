@@ -6,10 +6,10 @@
 #include "command/type/LinkMaterialCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "Stream.h"
+#include "util/FileUtils.h"
 
 #include "yaml-cpp/yaml.h"
 
-#include <fstream>
 #include <system_error>
 
 using namespace jasperengine;
@@ -69,13 +69,9 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 }
 
 bool editor::CreateMaterialFileCmd::execute() {
-    std::ofstream out(targetFile, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
+    if (!FileUtils::writeFileReplacing(targetFile, payload)) {
         return false;
     }
-
-    out.write(payload.c_str(), payload.size());
-    out.close();
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;
