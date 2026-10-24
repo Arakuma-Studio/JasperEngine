@@ -2,7 +2,6 @@
 # <path> :: <code fragment found on the line> :: <reason>
 
 # append-only logs: a crash loses at most the last lines, never earlier ones
-editor/Out.cpp :: std::ofstream logFileStream; :: the editor log, append-only
 editor/mcp/tools/BuildTools.cpp :: std::ofstream logFile; :: build log, append-only while the build runs
 editor/mcp/tools/BuildTools.cpp :: std::ofstream out(run->logPath :: build run log, streamed while the process runs
 editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log, append-only
