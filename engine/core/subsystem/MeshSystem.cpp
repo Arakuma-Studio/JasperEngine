@@ -3677,6 +3677,60 @@ void MeshSystem::createPlane(MeshComponent& mesh, float width, float depth, unsi
         mesh.needReload = true;
 }
 
+// createPlane's quad (horizontal, +Y normal, uv along X and Z) as a grid of segments x
+// segments quads with the same winding, uv and bounds
+void MeshSystem::createGrid(MeshComponent& mesh, float width, float depth, unsigned int segments, unsigned int tiles){
+    // 16-bit indices: at most 256 x 256 vertices
+    segments = std::clamp(segments, 1u, 255u);
+
+    mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
+    mesh.numSubmeshes = 1;
+
+    mesh.buffer.clear();
+    mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+    mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+    mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+
+    Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
+    Attribute* attTexcoord = mesh.buffer.getAttribute(AttributeType::TEXCOORD1);
+    Attribute* attNormal = mesh.buffer.getAttribute(AttributeType::NORMAL);
+
+    const unsigned int row = segments + 1;
+    for (unsigned int iz = 0; iz <= segments; iz++){
+        const float tz = (float)iz / segments;
+        for (unsigned int ix = 0; ix <= segments; ix++){
+            const float tx = (float)ix / segments;
+            mesh.buffer.addVector3(attVertex, Vector3((tx - 0.5f) * width, 0.0f, (tz - 0.5f) * depth));
+            mesh.buffer.addVector2(attTexcoord, Vector2(tx * tiles, tz * tiles));
+            mesh.buffer.addVector3(attNormal, Vector3(0.0f, 1.0f, 0.0f));
+        }
+    }
+
+    // each quad as createPlane's: (x0, z0) (x0, z1) (x1, z1), then (x0, z0) (x1, z1) (x1, z0)
+    std::vector<uint16_t> indices;
+    indices.reserve(segments * segments * 6);
+    for (unsigned int iz = 0; iz < segments; iz++){
+        for (unsigned int ix = 0; ix < segments; ix++){
+            const uint16_t a = (uint16_t)(iz * row + ix);
+            const uint16_t b = (uint16_t)((iz + 1) * row + ix);
+            const uint16_t c = (uint16_t)((iz + 1) * row + ix + 1);
+            const uint16_t d = (uint16_t)(iz * row + ix + 1);
+            indices.insert(indices.end(), {a, b, c, a, c, d});
+        }
+    }
+
+    mesh.indices.clear();
+
+    mesh.indices.setValues(
+        0, mesh.indices.getAttribute(AttributeType::INDEX),
+        indices.size(), (char*)&indices[0], sizeof(uint16_t));
+
+    calculateMeshAABB(mesh);
+
+    if (mesh.loaded)
+        mesh.needReload = true;
+}
+
 // Vertical quad in the XY plane facing +Z (width along X, height along Y).
 // Unlike createPlane (horizontal, +Y normal), a wall stands upright — its +Z
 // normal matches the MirrorComponent default, so a mirror needs no rotation.

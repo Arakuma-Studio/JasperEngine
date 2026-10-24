@@ -555,6 +555,13 @@ namespace jasperengine{
 		static uint32_t pixelsFlatNormal[64];
 		static TextureRender emptyGray;
 		static TextureRender emptyFlatNormal;
+		// shader library @texture defaults "ripples" and "noise" (Water::makeRipplesTexture,
+		// makeNoiseTexture)
+		static constexpr int DEFAULT_PATTERN_SIZE = 128;
+		static uint32_t pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static uint32_t pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static TextureRender defaultRipples;
+		static TextureRender defaultNoise;
 		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;

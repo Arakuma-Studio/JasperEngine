@@ -4,6 +4,7 @@
 #include "PhysicsSystem.h"
 #include "Scene.h"
 #include "subsystem/RenderSystem.h"
+#include "object/environment/Water.h"
 #include "util/Angle.h"
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -3134,6 +3135,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 			explicit StepScope(PhysicsSystem* s): system(s) { s->steppingWorld3D = true; }
 			~StepScope() { system->steppingWorld3D = false; system->flushPendingDestroys3D(); }
 		};
+
+		// the bodies floating in a library:water (Water.h)
+		Water::applyBuoyancy(scene, fixedStep);
 
 		StepScope stepScope(this);
 		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);

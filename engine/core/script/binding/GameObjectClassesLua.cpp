@@ -14,6 +14,7 @@
 #include "Fog.h"
 #include "ReflectionProbe.h"
 #include "Skybox.h"
+#include "Water.h"
 #include "GameObject.h"
 #include "Camera.h"
 #include "Polygon.h"
@@ -403,6 +404,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setLinearStartEnd", &Fog::setLinearStartEnd)
         .endClass();
 
+    // the water surfaces (meshes drawn with library:water) at a point, with their waves
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Water>("Water")
+        .addStaticFunction("getHeight", &Water::getHeight)
+        .addStaticFunction("getNormal", &Water::getNormal)
+        .addStaticFunction("isUnderwater", &Water::isUnderwater)
+        .addStaticFunction("getTime", &Water::getTime)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<Skybox, EntityHandle>("Skybox")
         .addConstructor <void (Scene*), void (*) (Scene*, Entity)> ()
@@ -789,6 +799,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("createPlane", 
             luabridge::overload<float, float>(&Primitive::createPlane),
             luabridge::overload<float, float, unsigned int>(&Primitive::createPlane))
+        .addFunction("createGrid",
+            luabridge::overload<float, float, unsigned int>(&Primitive::createGrid),
+            luabridge::overload<float, float, unsigned int, unsigned int>(&Primitive::createGrid))
         .addFunction("createWall", 
             luabridge::overload<float, float>(&Primitive::createWall),
             luabridge::overload<float, float, unsigned int>(&Primitive::createWall))
@@ -1733,6 +1746,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("allowSleeping", &Rigidbody::isAllowSleeping, &Rigidbody::setAllowSleeping)
         .addProperty("friction", &Rigidbody::getFriction, &Rigidbody::setFriction)
         .addProperty("restitution", &Rigidbody::getRestitution, &Rigidbody::setRestitution)
+        .addProperty("buoyancy", &Rigidbody::getBuoyancy, &Rigidbody::setBuoyancy)
+        .addProperty("waterDrag", &Rigidbody::getWaterDrag, &Rigidbody::setWaterDrag)
+        .addProperty("waterAngularDrag", &Rigidbody::getWaterAngularDrag, &Rigidbody::setWaterAngularDrag)
         .addProperty("position", &Rigidbody::getPosition, &Rigidbody::setPosition)
         .addProperty("rotation", &Rigidbody::getRotation, &Rigidbody::setRotation)
         .addProperty("linearVelocity", &Rigidbody::getLinearVelocity, &Rigidbody::setLinearVelocity)

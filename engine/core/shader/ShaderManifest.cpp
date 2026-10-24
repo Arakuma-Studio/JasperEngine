@@ -660,8 +660,10 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
             else if (def == "black") texture.defaultTexture = ShaderTextureDefault::BLACK;
             else if (def == "gray" || def == "grey") texture.defaultTexture = ShaderTextureDefault::GRAY;
             else if (def == "normal") texture.defaultTexture = ShaderTextureDefault::NORMAL;
+            else if (def == "ripples") texture.defaultTexture = ShaderTextureDefault::RIPPLES;
+            else if (def == "noise") texture.defaultTexture = ShaderTextureDefault::NOISE;
             else{
-                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal)");
+                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise)");
                 continue;
             }
             bool valid = true;

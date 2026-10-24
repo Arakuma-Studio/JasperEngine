@@ -175,6 +175,9 @@ namespace jasperengine{
         Entity getFoliageOwner(Entity foliageEntity) const;
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
+        // createPlane split into segments x segments quads (1..255), for a surface the vertex
+        // stage displaces (library:water's WAVES); no vertex colour
+        void createGrid(MeshComponent& mesh, float width=1, float depth=1, unsigned int segments=64, unsigned int tiles=1);
         void createWall(MeshComponent& mesh, float width=1, float height=1, unsigned int tiles=1);
         void createBox(MeshComponent& mesh, float width=1, float height=1, float depth=1, unsigned int tiles=1);
         void createSphere(MeshComponent& mesh, float radius=1, unsigned int slices=36, unsigned int stacks=18);

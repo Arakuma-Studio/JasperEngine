@@ -110,6 +110,13 @@ namespace jasperengine{
         // the larger restitution.
         float friction = 0.2f;
         float restitution = 0.0f;
+        // In a water (a mesh drawn with library:water, Water.h), Jolt's buoyancy at the centre
+        // of mass each fixed step: 1 neutral, more floats, less sinks, 0 ignores the water
+        // (the default). The drags slow the body moving and turning in it (Jolt's linear drag
+        // about 0.5, angular about 0.01 times the body's size).
+        float buoyancy = 0.0f;
+        float waterDrag = 0.5f;
+        float waterAngularDrag = 0.01f;
         uint8_t allowedDOFs = RigidbodyAllowedDOF_All;
         bool sensor = false;
         bool newBody = true;

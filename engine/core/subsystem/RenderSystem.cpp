@@ -22,6 +22,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "object/environment/Water.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -454,6 +455,10 @@ uint32_t RenderSystem::pixelsGray[64];
 uint32_t RenderSystem::pixelsFlatNormal[64];
 TextureRender RenderSystem::emptyGray;
 TextureRender RenderSystem::emptyFlatNormal;
+uint32_t RenderSystem::pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+TextureRender RenderSystem::defaultRipples;
+TextureRender RenderSystem::defaultNoise;
 TextureRender RenderSystem::emptyCubeGray;
 
 bool RenderSystem::emptyTexturesCreated = false;
@@ -804,6 +809,20 @@ void RenderSystem::createEmptyTextures(){
         emptyFlatNormal.createTexture(
                 "empty|flatnormal", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+
+        // shader library @texture defaults "ripples" and "noise" (library:water's): seamless
+        // patterns, filtered and mipmapped as an image would be
+        Water::makeRipplesTexture(pixelsRipples, DEFAULT_PATTERN_SIZE);
+        Water::makeNoiseTexture(pixelsNoise, DEFAULT_PATTERN_SIZE);
+        size_array[0] = DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE * 4;
+        data_array[0] = (void*)pixelsRipples;
+        defaultRipples.createTexture(
+                "default|ripples", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
+        data_array[0] = (void*)pixelsNoise;
+        defaultNoise.createTexture(
+                "default|noise", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
         emptyTexturesCreated = true;
     }
@@ -3462,6 +3481,8 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::BLACK:  return cube ? &emptyCubeBlack : &emptyBlack;
         case ShaderTextureDefault::GRAY:   return cube ? &emptyCubeGray : &emptyGray;
         case ShaderTextureDefault::NORMAL: return cube ? &emptyCubeGray : &emptyFlatNormal;
+        case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
+        case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
@@ -12066,6 +12087,9 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // library:underwater passes on while the main camera is under a water (Water.h)
+    Water::updateUnderwater(scene);
 
     int numLights = checkLightsAndShadow();
 

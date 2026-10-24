@@ -75,6 +75,8 @@ namespace {
             case ShaderTextureDefault::BLACK: return "Default (black)";
             case ShaderTextureDefault::GRAY: return "Default (gray)";
             case ShaderTextureDefault::NORMAL: return "Default (flat normal)";
+            case ShaderTextureDefault::RIPPLES: return "Default (built-in ripples)";
+            case ShaderTextureDefault::NOISE: return "Default (built-in noise)";
         }
         return "Default";
     }

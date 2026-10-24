@@ -3626,7 +3626,10 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v36: terrain triplanar: the vertex normal from central differences, the three projections
     //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
     //      projections under 2% skipped.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v36";
+    // v37: library:water's REFLECTION, CAUSTICS and UNDERSIDE features, its distant detail fade
+    //      and new parameters (u_fs_customParams grows); includes/lights.glsl gains ggxSpecular;
+    //      the library post-process shader library:underwater.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v37";
 }
 
 void editor::App::pushTabNotificationStyle(){
