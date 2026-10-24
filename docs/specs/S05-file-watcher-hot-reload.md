@@ -589,4 +589,13 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **ThreadSanitizer** (S02's `SANITIZE=thread`) reported every watch backend's flush: libstdc++'s
   `std::timed_mutex::try_lock_for` locks through `pthread_mutex_clocklock`, which TSan does not
   intercept, so the unlock that follows reads as "unlock of an unlocked mutex". The backends
-  use a plain mutex and a try-lock loop with the same timeout (`watch::lockWithin`).
+  use a plain mutex and a try-lock loop with the same timeout (`watch::lockWithin`); their
+  timed condition-variable waits go through S06's `jobs/detail/TimedWait.h` (GCC 11's TSan
+  misses libstdc++'s steady-clock wait too). `FileWatchServiceTests.SelfUnsubscribe` publishes
+  its holder through a mutex (a file write is no happens-before edge for TSan).
+- **Polling folders** have the racy-stamp rule too: a folder whose mtime was stamped within
+  100 ms of now is listed again on the next scan (two files added in one timestamp tick keep the
+  folder's mtime: on a fast server `FlushBarrier/Polling` missed 14 of 1000 new files).
+- **Unity build**: S05's sources shifted the unity chunks, putting `jobs/Primitives.cpp` next to
+  a file including `Engine.h`, whose `util/ThreadUtils.h` has a `jasperengine::Semaphore` too:
+  the `jobs::Semaphore` definitions are qualified. The hot reload helpers have unity-safe names.
