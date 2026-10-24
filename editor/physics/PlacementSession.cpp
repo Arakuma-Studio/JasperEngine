@@ -941,6 +941,9 @@ struct PlacementSession::Impl {
             body.start = world->getState(neighbour).pose;
             bodyIndex[neighbour] = bodies.size();
             bodies.push_back(body);
+            // the kill plane under where it starts (the scene still holds that pose: it was
+            // never stepped)
+            lowerKillY(subtreeBounds(sc, neighbour));
         }
     }
 
@@ -1338,8 +1341,8 @@ struct PlacementSession::Impl {
         pollDecompositions();
         updateTargets();
 
-        // context around everywhere the movers were, are and are heading
-        const AABB bounds = world->getMoversBounds();
+        // context around everywhere the movers and pushed neighbours were, are and are heading
+        const AABB bounds = world->getDynamicBounds();
         if (!bounds.isNull()) swept.merge(bounds);
         AABB region = swept;
         AABB sentTo;
@@ -1833,6 +1836,8 @@ struct PlacementRun::Impl {
             if (before.count(neighbour)) continue;
             before[neighbour] = world->getState(neighbour).pose;
             neighbourOrder.push_back(neighbour);
+            // the kill plane under where it starts (its scene pose: it was never stepped)
+            lowerKillY(expanded(subtreeBounds(scene, neighbour), margin));
         }
     }
 
@@ -2024,7 +2029,7 @@ struct PlacementRun::Impl {
         const double fixedStep = world->getSettings().fixedStep;
         world->step();
         const uint32_t step = world->getStepCount();
-        if (step % kContextEverySteps == 0) growContext(world->getMoversBounds());
+        if (step % kContextEverySteps == 0) growContext(world->getDynamicBounds());
 
         const std::vector<PlacementBodyState> states = world->getStates();
         asleepCount = 0;
@@ -2306,7 +2311,7 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
             if (spec.jitter.rotationDeg > 0.0f) pose.rotation = (axisAngle(axis, angle) * pose.rotation).normalized();
             r.world->teleport(m, pose);
         }
-        r.growContext(r.world->getMoversBounds());
+        r.growContext(r.world->getDynamicBounds());
         r.lowerKillY(expanded(r.world->getMoversBounds(), r.margin));
     }
 

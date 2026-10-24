@@ -1603,3 +1603,142 @@ TEST(PhysicsPlacementSim, InteractiveSnapHopsOntoTheTableInsteadOfJamming) {
     EXPECT_NEAR(transformOf(sceneId, cube).position.z, 3.0f, 0.02f);
     EXPECT_NEAR(transformOf(sceneId, cube).position.y, 0.25f, 0.003f);
 }
+
+namespace {
+
+    Quaternion euler(float xDeg, float yDeg, float zDeg) {
+        const float k = 3.14159265358979f / 180.0f;
+        auto about = [](const Vector3& axis, float r) {
+            return Quaternion(std::cos(r / 2.0f), axis.x * std::sin(r / 2.0f), axis.y * std::sin(r / 2.0f), axis.z * std::sin(r / 2.0f));
+        };
+        return about(Vector3(0, 1, 0), yDeg * k) * about(Vector3(1, 0, 0), xDeg * k) * about(Vector3(0, 0, 1), zDeg * k);
+    }
+
+    // The fixture's TableCrate scene (tools/fixtures/physics-placement): a table of five boxes
+    // (top face at y = 1.0), an open-top crate of five boxes standing on it (inside 0.52 x 0.52,
+    // floor at y = 1.04, rim at y = 1.42) and three small tilted boxes in the air above it
+    struct TableCrate {
+        uint32_t sceneId = 0;
+        Entity table = NULL_ENTITY;
+        Entity crate = NULL_ENTITY;
+        std::vector<Entity> boxes;
+    };
+
+    TableCrate tableCrate() {
+        TableCrate t;
+        t.sceneId = newScene();
+        const uint32_t id = t.sceneId;
+        create(id, "Floor", EntityCreationType::BOX, Vector3(0.0f, -0.1f, 0.0f), NULL_ENTITY, Vector3(12.0f, 0.2f, 12.0f));
+        t.table = create(id, "Table", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 0.0f, 0.0f));
+        create(id, "Top", EntityCreationType::BOX, Vector3(0.0f, 0.95f, 0.0f), t.table, Vector3(1.6f, 0.1f, 1.0f));
+        const float legs[4][2] = {{-0.7f, -0.4f}, {0.7f, -0.4f}, {-0.7f, 0.4f}, {0.7f, 0.4f}};
+        for (int i = 0; i < 4; i++) {
+            create(id, "Leg" + std::to_string(i + 1), EntityCreationType::BOX, Vector3(legs[i][0], 0.45f, legs[i][1]), t.table,
+                   Vector3(0.08f, 0.9f, 0.08f));
+        }
+        const Entity props = create(id, "Props", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 0.0f, 0.0f));
+        t.crate = create(id, "Crate", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 1.0f, 0.0f), props);
+        create(id, "Bottom", EntityCreationType::BOX, Vector3(0.0f, 0.02f, 0.0f), t.crate, Vector3(0.6f, 0.04f, 0.6f));
+        create(id, "WallN", EntityCreationType::BOX, Vector3(0.0f, 0.23f, 0.28f), t.crate, Vector3(0.6f, 0.38f, 0.04f));
+        create(id, "WallS", EntityCreationType::BOX, Vector3(0.0f, 0.23f, -0.28f), t.crate, Vector3(0.6f, 0.38f, 0.04f));
+        create(id, "WallE", EntityCreationType::BOX, Vector3(0.28f, 0.23f, 0.0f), t.crate, Vector3(0.04f, 0.38f, 0.52f));
+        create(id, "WallW", EntityCreationType::BOX, Vector3(-0.28f, 0.23f, 0.0f), t.crate, Vector3(0.04f, 0.38f, 0.52f));
+        t.boxes.push_back(create(id, "Box1", EntityCreationType::BOX, Vector3(-0.1f, 1.75f, -0.08f), props, Vector3(0.14f, 0.14f, 0.14f),
+                                 euler(12.0f, 25.0f, 4.0f)));
+        t.boxes.push_back(create(id, "Box2", EntityCreationType::BOX, Vector3(0.09f, 2.0f, 0.06f), props, Vector3(0.12f, 0.12f, 0.12f),
+                                 euler(-8.0f, 40.0f, 15.0f)));
+        t.boxes.push_back(create(id, "Box3", EntityCreationType::BOX, Vector3(0.0f, 2.3f, 0.1f), props, Vector3(0.16f, 0.1f, 0.12f),
+                                 euler(30.0f, 5.0f, -10.0f)));
+        return t;
+    }
+
+    // inside the crate (as it now stands): between its floor and its rim, within its walls
+    void expectInsideCrate(const Vector3& box, const Vector3& crate) {
+        EXPECT_GT(box.y, crate.y + 0.04f);
+        EXPECT_LT(box.y, crate.y + 0.42f);
+        EXPECT_LT(std::fabs(box.x - crate.x), 0.26f);
+        EXPECT_LT(std::fabs(box.z - crate.z), 0.26f);
+    }
+
+}
+
+TEST(PhysicsPlacementSim, TableCrateDropPushingNeighboursWithATightMargin) {
+    REQUIRE_PHYSICS();
+    const TableCrate t = tableCrate();
+    const Vector3 tableBefore = transformOf(t.sceneId, t.table).position;
+    PlacementSpec drop = specFor(t.sceneId, t.boxes);
+    drop.settings.pushNeighbours = true;
+    drop.contextMargin = 0.5f;
+    const PlacementResult result = runToEnd(drop);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_FALSE(contains(result.warnings, "fell out")) << (result.warnings.empty() ? "" : result.warnings[0]);
+    EXPECT_FALSE(contains(result.warnings, "nothing to land on"));
+    Vector3 crate(0.0f, 1.0f, 0.0f);
+    for (const PlacementEntityResult& e : result.entities) {
+        EXPECT_FALSE(e.fellOut) << e.path;
+        if (e.entity == t.table) EXPECT_LT(e.movedMeters, 0.02f);
+        if (e.entity == t.crate) {
+            crate = e.after.position;
+            EXPECT_FALSE(e.mover);   // nudged by the boxes landing in it: a pushed neighbour
+        }
+    }
+    ASSERT_NE(entityResult(result, t.crate), nullptr);
+    for (Entity box : t.boxes) {
+        const PlacementEntityResult* e = entityResult(result, box);
+        ASSERT_NE(e, nullptr);
+        EXPECT_TRUE(e->settled) << e->path;
+        EXPECT_FALSE(e->restingOn.empty()) << e->path;
+        expectInsideCrate(e->after.position, crate);
+    }
+    std::string error;
+    ASSERT_TRUE(commitPlacement(project(), result, error)) << error;
+    EXPECT_LT((transformOf(t.sceneId, t.table).position - tableBefore).length(), 0.02f);
+}
+
+TEST(PhysicsPlacementSim, TableCrateInteractiveDropPushingNeighboursWithATightMargin) {
+    REQUIRE_PHYSICS();
+    const TableCrate t = tableCrate();
+    const Vector3 tableBefore = transformOf(t.sceneId, t.table).position;
+    const size_t position = CommandHandle::get(t.sceneId)->position();
+    PlacementSession session(project(), t.sceneId);
+    PhysicsPlacementSettings settings;
+    settings.pushNeighbours = true;
+    settings.regionMargin = 0.5f;
+    session.setSettings(settings);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, t.boxes));
+    ticks(session, 360);
+    EXPECT_EQ(session.getHud().status, "Resting");
+    session.end();
+    EXPECT_FALSE(session.isBusy());
+    EXPECT_EQ(CommandHandle::get(t.sceneId)->position(), position + 1);
+    EXPECT_LT((transformOf(t.sceneId, t.table).position - tableBefore).length(), 0.02f);
+    const Vector3 crate = transformOf(t.sceneId, t.crate).position;   // Props is at the origin, unturned
+    EXPECT_GT(crate.y, 0.98f);   // still on the table
+    for (Entity box : t.boxes) expectInsideCrate(transformOf(t.sceneId, box).position, crate);
+    CommandHandle::get(t.sceneId)->undo();
+    EXPECT_EQ(transformOf(t.sceneId, t.table).position, tableBefore);
+}
+
+TEST(PhysicsPlacementSim, EveryBoxOfADroppedStackReportsWhatItRestsOn) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    const Entity floor = makeFloor(sceneId);
+    std::vector<Entity> boxes;
+    for (int i = 0; i < 5; i++) {
+        boxes.push_back(create(sceneId, "Box" + std::to_string(i + 1), EntityCreationType::BOX,
+                               Vector3(i % 2 ? 0.01f : -0.01f, 0.2f + i * 0.402f + 0.002f, 0.0f), NULL_ENTITY, Vector3(0.4f, 0.4f, 0.4f)));
+    }
+    const PlacementResult result = runToEnd(specFor(sceneId, boxes));
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_TRUE(result.allSettled);
+    for (size_t i = 0; i < boxes.size(); i++) {
+        const PlacementEntityResult* e = entityResult(result, boxes[i]);
+        ASSERT_NE(e, nullptr);
+        EXPECT_TRUE(e->settled);
+        EXPECT_GT(e->settleStep, 0u);
+        EXPECT_EQ(e->restingOn, std::vector<Entity>{i == 0 ? floor : boxes[i - 1]}) << e->path;
+        EXPECT_NEAR(e->after.position.y, 0.2f + 0.4f * i, 0.005f);
+    }
+    EXPECT_TRUE(result.warnings.empty()) << result.warnings[0];
+    EXPECT_NE(result.hint.find("All 5 settled"), std::string::npos) << result.hint;
+}
