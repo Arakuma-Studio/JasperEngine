@@ -72,6 +72,16 @@ EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
 }
 
 EntityRegistry::~EntityRegistry(){
+    // A camera owns the framebuffer its component allocates. The renderer deletes it when the
+    // camera's entity is destroyed, but a scene's (or a bare registry's) teardown reaches no
+    // system: the entity loop below runs after the Scene part is gone, so they go here
+    ComponentArray<CameraComponent>* cameras = componentManager.getComponentArray<CameraComponent>();
+    for (size_t i = 0; i < cameras->size(); i++) {
+        CameraComponent& camera = cameras->getComponentFromIndex(i);
+        delete camera.framebuffer;
+        camera.framebuffer = nullptr;
+    }
+
     Entity entity;
     while (entityManager.getFirstEntity(entity)) {
         // Destroy callbacks may remove other entities, so inspect the current first

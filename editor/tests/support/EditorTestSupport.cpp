@@ -22,17 +22,6 @@ void editor::test::ensureEngine() {
     // System would leave that capture reading the wrong object
 }
 
-void editor::test::releaseCameraFramebuffers(Scene* scene) {
-    if (!scene)
-        return;
-    ComponentArray<CameraComponent>* cameras = scene->getComponentArray<CameraComponent>();
-    for (size_t i = 0; i < cameras->size(); i++) {
-        CameraComponent& camera = cameras->getComponentFromIndex(i);
-        delete camera.framebuffer;
-        camera.framebuffer = nullptr;
-    }
-}
-
 fs::path editor::test::fixture(const std::string& relative) {
     return fs::path(JASPER_TEST_FIXTURES_DIR) / relative;
 }
@@ -44,7 +33,6 @@ std::string editor::test::readText(const fs::path& path) {
 
 editor::test::DecodedScene::~DecodedScene() {
     if (scene) {
-        releaseCameraFramebuffers(scene->scene);
         delete scene->scene;
         scene->scene = nullptr;
     }

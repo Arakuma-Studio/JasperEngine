@@ -25,10 +25,6 @@ namespace jasperengine::editor::test {
 
     std::string readText(const std::filesystem::path& path);
 
-    // Deletes the scene's camera framebuffers: a CameraComponent owns one, and RenderSystem frees
-    // it only when the entity is destroyed, not with the scene (LeakSanitizer reports the rest)
-    void releaseCameraFramebuffers(Scene* scene);
-
     // A scene file decoded the way Project::loadScene decodes it (report installed), into a
     // SceneProject of its own
     struct DecodedScene {

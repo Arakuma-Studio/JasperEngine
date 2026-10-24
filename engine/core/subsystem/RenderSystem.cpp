@@ -10142,6 +10142,7 @@ void RenderSystem::destroyCamera(CameraComponent& camera, bool entityDestroyed){
     if (camera.framebuffer){
         if (entityDestroyed){
             delete camera.framebuffer; // destroy framebuffer in destructor
+            camera.framebuffer = nullptr;
         }else{
             camera.framebuffer->destroy();
         }

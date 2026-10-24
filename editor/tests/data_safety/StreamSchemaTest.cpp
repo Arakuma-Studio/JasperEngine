@@ -50,7 +50,6 @@ TEST(StreamSchema, EncoderKeysAreKnown) {
         const YAML::Node components = Stream::encodeComponentsLive(entity, &scene, scene.getSignature(entity));
         expectKnownComponentKeys(components, Catalog::getComponentName(type, true));
     }
-    releaseCameraFramebuffers(&scene);
 
     // and with the values of real scenes (live values only: their unknown data is not the encoders')
     for (const char* file : {"data-safety/future.scene", "migrations/scene-v0.scene"}) {

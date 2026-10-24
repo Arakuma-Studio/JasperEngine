@@ -415,14 +415,7 @@ YAML::Node editor::EntityClipboard::encodeDefaultComponent(ComponentType type){
     Entity entity = scratch.createUserEntity();
     std::vector<Entity> tracked{entity};
     ProjectUtils::addEntityComponent(&scratch, entity, type, tracked);
-    YAML::Node value = encodeComponent(&scratch, entity, type);
-    if (type == ComponentType::CameraComponent) {
-        // Allocated by the component's initializer; nothing else owns it here
-        CameraComponent& camera = scratch.getComponent<CameraComponent>(entity);
-        delete camera.framebuffer;
-        camera.framebuffer = nullptr;
-    }
-    return value;
+    return encodeComponent(&scratch, entity, type);
 }
 
 void editor::EntityClipboard::applyComponentValue(EntityRegistry* registry, Entity entity, ComponentType type, YAML::Node value){

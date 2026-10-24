@@ -78,7 +78,6 @@ TEST(LoadReportOverheadBench, DecodeWithReport) {
             Stream::decodeSceneProjectEntities(nullptr, &scene, root);
         }
         const double elapsed = ms(start);
-        releaseCameraFramebuffers(scene.scene);
         delete scene.scene;
         return elapsed;
     };
