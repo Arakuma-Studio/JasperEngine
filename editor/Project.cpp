@@ -2231,7 +2231,7 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
             continue;
         }
 
-        if (!FileUtils::writeFileReplacing(entry.path(), YAML::Dump(Stream::encodeMaterial(material)))){
+        if (!FileUtils::writeFileReplacing(entry.path(), YAML::Dump(Stream::encodeMaterial(material)), FileUtils::LineEndings::KeepExisting)){
             Out::error("Failed to write material: %s", entry.path().string().c_str());
             continue;
         }
@@ -5239,7 +5239,7 @@ bool editor::Project::saveProjectFile() {
 
         // Trailing newline: git reports a file without one as changed as soon as
         // anything is appended to it
-        if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n")) {
+        if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n", FileUtils::LineEndings::KeepExisting)) {
             Out::error("Failed to write project file: %s", projectFile.string().c_str());
             return false;
         }
@@ -5638,7 +5638,7 @@ bool editor::Project::saveSceneShaderKeys(SceneProject* sceneProject) {
             content = YAML::Dump(ordered);
         }
 
-        if (!FileUtils::writeFileReplacing(fullPath, content + "\n")) {
+        if (!FileUtils::writeFileReplacing(fullPath, content + "\n", FileUtils::LineEndings::KeepExisting)) {
             Out::error("Failed to write scene file: %s", fullPath.string().c_str());
             return false;
         }
@@ -5780,7 +5780,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
-        if (!FileUtils::writeFileReplacing(fullPath, YAML::Dump(root) + "\n")) {
+        if (!FileUtils::writeFileReplacing(fullPath, YAML::Dump(root) + "\n", FileUtils::LineEndings::KeepExisting)) {
             Out::error("Failed to write scene file: %s", fullPath.string().c_str());
             return false;
         }

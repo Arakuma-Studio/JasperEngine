@@ -412,7 +412,7 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
     std::filesystem::path absolutePath = project->getProjectPath() / entry.relativePath;
 
     try {
-        if (FileUtils::writeFileReplacing(absolutePath, YAML::Dump(Stream::encodeMaterial(material)))) {
+        if (FileUtils::writeFileReplacing(absolutePath, YAML::Dump(Stream::encodeMaterial(material)), FileUtils::LineEndings::KeepExisting)) {
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
             project->refreshLinkedMaterials(true);
 
