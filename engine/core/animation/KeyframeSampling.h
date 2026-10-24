@@ -18,7 +18,11 @@
 //     segment (index - 1 .. index), clamped to 1 and shaped by easings[index - 1] (missing or
 //     LINEAR: linear). At or before the first key index is 0 (the samplers return key 0).
 //   * a cursor is only a hint (a search start): results never depend on it (spec 3.3
-//     determinism); a stale cursor costs time, never correctness.
+//     determinism); a stale cursor costs time, never correctness. The cursor walk needs
+//     sorted times (every AnimationClip track); without a cursor locateKey scans from key 0
+//     like keyframeUpdate did, which entity tracks (times not guaranteed sorted) rely on.
+//   * sampleTrack returns exactly the first key at or before its time and exactly the last
+//     key at or after its time (no interpolation round-off at the ends).
 //   * Hermite (cubic spline) is used when the segment's tangents are given (both non-null);
 //     rotations are normalized with the zero-norm guard (the nearer key), slerp otherwise.
 //   * samples are the raw track values: relative tracks are combined with their rest by the
