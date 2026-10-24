@@ -23,8 +23,8 @@ so its cost is taken relative to the frame without any atmosphere on the same ma
 (frame - baseline frame) / frame("none"), and checked against the budget's share of the
 reference frame, budget / 16.67 ms: the reference GPU is taken to draw the bench scene without
 atmosphere in the 60 fps frame the budgets are written for. The Game view renders at the editor
-window's size, so VRAM is scaled to 1080p by the pixel ratio (the noise volumes, which do not
-scale, are scaled too: conservative).
+window's size, so the view-sized part of the VRAM (get_atmosphere_info vramScreenBytes) is
+scaled to 1080p by the pixel ratio; the Sky Map and the noise volumes are fixed sizes.
 """
 
 from __future__ import annotations
@@ -121,14 +121,17 @@ async def render_size(ed: Editor) -> list[int]:
 
 async def measure(ed: Editor, frames: int) -> dict:
     results = {}
-    scene = (await ed.call("open_scene", path=SCENE))["scene"]["id"]
+    scene = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
     for name, fog, clouds, tier in CONFIGS:
-        await ed.call("set_properties", scene=scene, entity="Fog",
-                      values={"fog": fog if fog else {"type": "linear", "density": 0.0, "linearStart": 1e6, "linearEnd": 2e6}})
+        # "none": no Fog component at all (deleted, then undone) and the clouds' GameObject inactive
+        if fog:
+            await ed.call("set_properties", scene=scene, entity="Fog", values={"fog": fog})
+        else:
+            await ed.call("delete_entities", scene=scene, entities=["Fog"])
+        await ed.call("set_entity_state", scene=scene, entity="Clouds", active=clouds)
         await ed.call("configure_game_view", atmosphere_quality=tier)
         await ed.call("play", action="start", scene=scene)
         try:
-            await ed.call("eval_lua", code=f"local e = scene:findEntity('Clouds'); scene:setEntityActive(e, {str(clouds).lower()})")
             await ed.call("wait", frames=60)  # the noise bake, the Sky Map, the shader cache
             times = []
             for _ in range(max(frames // 30, 1)):
@@ -139,8 +142,11 @@ async def measure(ed: Editor, frames: int) -> dict:
             size = await render_size(ed)
         finally:
             await ed.call("play", action="stop")
+            if not fog:
+                await ed.call("undo", scope="timeline", scene=scene)
         results[name] = {"frame_ms": statistics.median(times), "passes": info["passes"], "vram_mb": info["vramBytes"] / 2 ** 20,
-                         "tier": tier, "render_size": size}
+                         "vram_screen_mb": info.get("vramScreenBytes", info["vramBytes"]) / 2 ** 20, "tier": tier,
+                         "render_size": size}
         print(f"{name:18s} {results[name]['frame_ms']:7.3f} ms  {results[name]['vram_mb']:6.2f} MB  "
               f"{', '.join(p['label'] for p in info['passes'])}")
     return results
@@ -149,7 +155,11 @@ async def measure(ed: Editor, frames: int) -> dict:
 def vram_at_1080p(result: dict, platform: str) -> float:
     w, h = result.get("render_size", [0, 0])
     target = (1280 * 720) if platform == "mobile" else (1920 * 1080)
-    return result["vram_mb"] * (target / (w * h)) if w and h else result["vram_mb"]
+    if not (w and h):
+        return result["vram_mb"]
+    # only the view-sized targets scale; the Sky Map and the noise volumes do not
+    screen = result.get("vram_screen_mb", result["vram_mb"])
+    return result["vram_mb"] - screen + screen * (target / (w * h))
 
 
 def report(results: dict, platform: str, relative: bool = False) -> bool:
@@ -190,6 +200,7 @@ def median_of_runs(runs: list[dict]) -> dict:
         merged[name]["frame_ms"] = statistics.median(r[name]["frame_ms"] for r in runs)
         merged[name]["runs_ms"] = [r[name]["frame_ms"] for r in runs]
         merged[name]["vram_mb"] = max(r[name]["vram_mb"] for r in runs)
+        merged[name]["vram_screen_mb"] = max(r[name].get("vram_screen_mb", 0.0) for r in runs)
     return merged
 
 

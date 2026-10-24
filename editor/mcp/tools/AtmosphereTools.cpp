@@ -164,7 +164,8 @@ void getAtmosphereInfoTool(const CallPtr& call) {
         {"clouds", {{"present", info.clouds}, {"active", info.cloudsActive}, {"mode", info.cloudsActive ? Json(mode) : Json(nullptr)},
                     {"noiseReady", info.noiseReady}, {"mapSize", info.mapSize}, {"sliceFrames", info.sliceFrames}}},
         {"passes", passes},
-        {"vramBytes", (uint64_t)info.vramBytes}
+        {"vramBytes", (uint64_t)info.vramBytes},
+        {"vramScreenBytes", (uint64_t)info.vramScreenBytes}
     };
     std::string text = "Atmosphere (" + view + " view): quality " + qualityName(info.quality) + ", " + std::to_string(info.passes.size()) + " passes";
     if (info.volumetricActive)

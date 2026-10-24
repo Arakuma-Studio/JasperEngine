@@ -142,6 +142,23 @@ size_t AtmosphereViewTargets::getBytes() const{
     return bytes;
 }
 
+size_t AtmosphereViewTargets::getScreenBytes() const{
+    size_t bytes = 0;
+    auto add = [&bytes](const Framebuffer& target, size_t texelBytes){
+        Framebuffer& fb = const_cast<Framebuffer&>(target);
+        if (fb.isCreated())
+            bytes += (size_t)fb.getWidth() * fb.getHeight() * texelBytes;
+    };
+    const size_t colorBytes = compressed ? 4 : 8;
+    for (const Framebuffer& target : depth)
+        add(target, 4);
+    for (const Framebuffer& target : fog)
+        add(target, colorBytes);
+    for (const Framebuffer& target : clouds)
+        add(target, colorBytes);
+    return bytes;
+}
+
 void AtmosphereViewTargets::releaseUnused(){
     if (!used[0]){
         depth[0].destroy();
@@ -1141,6 +1158,7 @@ void AtmosphereRenderer::endFrame(){
     AtmosphereViewTargets& targets = rs->rv().atmosphere;
     targets.releaseUnused();
     building.vramBytes = targets.getBytes();
+    building.vramScreenBytes = targets.getScreenBytes();
     if (noiseShape.isCreated())
         building.vramBytes += (size_t)AtmosphereNoise::SHAPE_SIZE * AtmosphereNoise::SHAPE_SIZE * AtmosphereNoise::SHAPE_SIZE * 4
                             + (size_t)AtmosphereNoise::DETAIL_SIZE * AtmosphereNoise::DETAIL_SIZE * AtmosphereNoise::DETAIL_SIZE * 4

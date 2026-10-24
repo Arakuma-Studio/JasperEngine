@@ -151,6 +151,9 @@ namespace jasperengine{
         std::string horizonSource = "fog_color";
         std::vector<std::string> passes;
         size_t vramBytes = 0;
+        // the part of vramBytes sized by the view (depth, fog and Screen clouds targets; the Sky
+        // Map and the noise are not)
+        size_t vramScreenBytes = 0;
         // the RenderSystem draw it was recorded in (which of two records is newer)
         uint64_t frame = 0;
     };
@@ -185,6 +188,7 @@ namespace jasperengine{
         AtmosphereInfo info;
 
         size_t getBytes() const;
+        size_t getScreenBytes() const;
         void releaseUnused();
         void destroy();
     };
