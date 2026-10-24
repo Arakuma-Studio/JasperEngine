@@ -1987,6 +1987,15 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // an Asset script property is project-relative: a GUID given names its file
+            if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
+                const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
+                if (found.empty()) {
+                    error = propertyName + ": no asset has the GUID " + text + ".";
+                    return nullptr;
+                }
+                text = found.generic_string();
+            }
             if (isShaderPathProperty(propertyName)) {
                 // an engine library shader of the component's type, or a fork whose files exist
                 std::string why;
