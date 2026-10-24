@@ -57,7 +57,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
 # S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
 # and editor_status' file_watcher and frame_ms
-TOTAL_LIMIT = 99800 + 837 + 1479 + 395
+# S06 (jobs and memory): +914, measured on the S05 branch after merging it (editor_status' jobs
+# and memory, the new project tool, view and script tool texts)
+TOTAL_LIMIT = 99800 + 837 + 1479 + 395 + 914
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
