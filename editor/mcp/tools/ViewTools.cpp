@@ -1176,7 +1176,8 @@ Json poseWindowState(const CallPtr& call) {
                  {"animation", state.animation.empty() ? Json() : Json(state.animation)},
                  {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
                  {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
-                 {"tab", state.tab}};
+                 {"tab", state.tab}, {"scene_keys", state.sceneKeys}, {"editable", state.editable},
+                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight}};
     if (state.entity != NULL_ENTITY) {
         if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
             if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);

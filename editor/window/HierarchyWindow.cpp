@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "pose/PoseEditSession.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -1280,12 +1281,14 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
 
     YAML::Node entityData;
     if (exportEntities.size() == 1) {
+        PoseEditSession::suspendActive();   // a posed character is dragged out with its rest bones
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
     } else {
         // Embed the full export data (including virtual action children) in the entity payload.
         // Hierarchy uses the EntityPayload header for reparenting; Resources uses the YAML tail.
         // With the project: prefab instances in it stay instances (their members are not
         // copied as plain GameObjects).
+        PoseEditSession::suspendActive();
         entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene, project, sceneProject);
     }
 

@@ -25,10 +25,8 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
-#if __has_include("pose/PoseInspectorHooks.h")
 #include "pose/PoseInspectorHooks.h"
-#define POSE_WINDOW_HAS_INSPECTOR_HOOKS 1
-#endif
+#include "AppSettings.h"
 
 #include <algorithm>
 #include <cmath>
@@ -73,12 +71,19 @@ namespace {
         ImGui::PopStyleColor();
     }
 
+    // form fields stop growing past this width in a wide window
+    constexpr float MAX_FIELD_WIDTH = 420.0f;
+
+    float fieldWidth(){
+        return std::min(ImGui::GetContentRegionAvail().x, editor::Theme::dpi(MAX_FIELD_WIDTH));
+    }
+
     // a label column then the widget, the Inspector way
     void fieldLabel(const char* label, float labelWidth){
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(label);
         ImGui::SameLine(labelWidth);
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::SetNextItemWidth(fieldWidth());
     }
 
     // the next item ends at the right edge of the line (after SameLine)
@@ -130,19 +135,15 @@ void editor::PoseAnimationWindow::addTab(Tab tab){
     std::stable_sort(tabs.begin(), tabs.end(), [](const Tab& a, const Tab& b){ return a.order < b.order; });
 }
 
-editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(project), session(project){
-#ifdef POSE_WINDOW_HAS_INSPECTOR_HOOKS
+editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(project), session(project), liveThumbnails(3){
     // the Pose Animator Inspector section's Open button
     poseInspectorHooks().open = [this](Project*, uint32_t sceneId, Entity model, const std::string& animation){
         openFromAsset(animation, sceneId, model);
     };
-#endif
 }
 
 editor::PoseAnimationWindow::~PoseAnimationWindow(){
-#ifdef POSE_WINDOW_HAS_INSPECTOR_HOOKS
     poseInspectorHooks().open = nullptr;
-#endif
     if (PoseEditSession::active() == &session){
         PoseEditSession::setActive(nullptr);
     }
@@ -157,7 +158,9 @@ void editor::PoseAnimationWindow::setOpen(bool open){
     }
     windowOpen = false;
     windowFocused = false;
+    windowVisible = false;
     focusRequested = false;
+    session.setKeyRouting(false);
     // closing the window: Global Edit is cancelled and the bones go back
     session.cancelGlobalEdit();
     session.goIdle();
@@ -249,20 +252,28 @@ void editor::PoseAnimationWindow::setStatus(const std::string& text, bool error)
 
 bool editor::PoseAnimationWindow::commit(const pose::PoseAnimationData& newData, const std::string& undoName, const std::string& mergeKey){
     std::string error;
-    if (!session.commitData(newData, undoName, mergeKey, nullptr, -1, &error)){
+    const pose::PoseAnimationData* current = data();
+    // angle, offset, hold, transition, feel and humanize edits keep an active Global Edit
+    const bool keep = poseui::keepsGlobalEdit(current ? current->poses.size() : 0, newData.poses.size(), false,
+                                              session.primary(), session.primary());
+    if (!session.commitData(newData, undoName, mergeKey, nullptr, -1, &error, keep)){
         setStatus(error, true);
         return false;
     }
     return true;
 }
 
-bool editor::PoseAnimationWindow::commitEdit(const poseui::Edit& edit, const std::string& undoName){
+bool editor::PoseAnimationWindow::commitEdit(const poseui::Edit& edit, const std::string& undoName, bool reordered){
     if (!edit.changed){
         if (edit.primary >= 0 && edit.primary != session.primary()) session.setSelection(edit.selection, edit.primary);
         return false;
     }
     std::string error;
-    if (!session.commitData(edit.data, undoName, "", &edit.selection, edit.primary, &error)){
+    const pose::PoseAnimationData* current = data();
+    // mirror, paste, reset, ground and center keep it; add, delete and reorder cancel it
+    const bool keep = poseui::keepsGlobalEdit(current ? current->poses.size() : 0, edit.data.poses.size(), reordered,
+                                              session.primary(), edit.primary);
+    if (!session.commitData(edit.data, undoName, "", &edit.selection, edit.primary, &error, keep)){
         setStatus(error, true);
         return false;
     }
@@ -472,6 +483,14 @@ void editor::PoseAnimationWindow::refreshCandidate(){
         candidateEntity = session.model();
         candidateError.clear();
         candidateInfo.reset();
+        wasBound = true;
+    }else if (wasBound){
+        // the session let go of a character that still exists (its mapping changed and it is no
+        // usable humanoid any more): show why, with Map Bones
+        wasBound = false;
+        if (candidateEntity != NULL_ENTITY){
+            bindCharacter(candidateScene, candidateEntity, nullptr);
+        }
     }
 }
 
@@ -535,6 +554,10 @@ editor::PoseAnimationWindow::State editor::PoseAnimationWindow::getState(){
     state.tab = activeTab;
     state.status = statusLine;
     state.emptyState = emptyState;
+    state.sceneKeys = session.keyRouting();
+    state.editable = session.editable();
+    state.layout = compactLayout ? "columns" : "stacked";
+    state.thumbnailHeight = thumbHeight;
     return state;
 }
 
@@ -631,7 +654,7 @@ void editor::PoseAnimationWindow::actionMove(int direction){
     if (!animation) return;
     const std::vector<int> order = poseui::reorderForShift(static_cast<int>(animation->poses.size()), selection(), direction);
     if (order.empty()) return;
-    commitEdit(poseui::movePoses(*animation, selection(), session.primary(), order), "Move pose");
+    commitEdit(poseui::movePoses(*animation, selection(), session.primary(), order), "Move pose", true);
 }
 
 void editor::PoseAnimationWindow::actionMoveTo(int insertBefore){
@@ -639,7 +662,7 @@ void editor::PoseAnimationWindow::actionMoveTo(int insertBefore){
     if (!animation) return;
     const std::vector<int> order = poseui::reorderForDrop(static_cast<int>(animation->poses.size()), selection(), insertBefore);
     if (order.empty()) return;
-    commitEdit(poseui::movePoses(*animation, selection(), session.primary(), order), "Move pose");
+    commitEdit(poseui::movePoses(*animation, selection(), session.primary(), order), "Move pose", true);
 }
 
 void editor::PoseAnimationWindow::actionResetNeutral(){
@@ -719,10 +742,49 @@ void editor::PoseAnimationWindow::actionGlobalEdit(){
 // ---- shortcuts ----
 
 bool editor::PoseAnimationWindow::ownsUndo(bool sceneViewFocused) const{
-    if (!windowOpen) return false;
+    if (!windowOpen || !windowVisible) return false;
     if (windowFocused) return true;
-    return sceneViewFocused && session.bound() && session.mode() == PoseEditSession::Mode::Posing &&
-           project->getSelectedSceneId() == session.sceneId();
+    return sceneViewFocused && sceneKeysRouted();
+}
+
+bool editor::PoseAnimationWindow::sceneKeysRouted() const{
+    // the Scene view poses only while the window shows (not behind another tab) and the user works
+    // on the character: it is selected (or one of its bones), or a phase 5 handle is in use
+    if (!windowOpen || !windowVisible || !session.bound() || session.mode() != PoseEditSession::Mode::Posing) return false;
+    if (project->getSelectedSceneId() != session.sceneId()) return false;
+    if (session.viewportHandleActive()) return true;
+    const std::vector<Entity> picked = project->getSelectedEntities(session.sceneId());
+    if (picked.empty()) return false;
+    for (Entity entity : picked){
+        if (!session.ownsEntity(session.sceneId(), entity)) return false;
+    }
+    return true;
+}
+
+void editor::PoseAnimationWindow::drawSceneKeysHint(){
+    // a small "Pose keys" label over the Scene view while its keys and undo go to this window:
+    // a tiny no-input overlay window (drawn with the windows, under popups and tooltips)
+    if (!session.keyRouting()) return;
+    const std::string name = "###Scene" + std::to_string(session.sceneId());
+    ImGuiWindow* scene = ImGui::FindWindowByName(name.c_str());
+    if (!scene || !scene->WasActive || scene->Hidden) return;
+    const char* text = ICON_FA_PERSON " Pose keys (Pose Animation window)";
+    const ImVec2 size = ImGui::CalcTextSize(text);
+    const ImVec2 pad(Theme::dpi(6.0f), Theme::dpi(3.0f));
+    ImGui::SetNextWindowPos(ImVec2(scene->InnerRect.Min.x + Theme::dpi(8.0f), scene->InnerRect.Max.y - size.y - pad.y * 2 - Theme::dpi(8.0f)));
+    ImGui::SetNextWindowBgAlpha(0.78f);
+    ImGui::SetNextWindowViewport(scene->ViewportId);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, pad);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, Theme::dpi(4.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
+                                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
+    if (ImGui::Begin("##PoseKeysHint", nullptr, flags)){
+        ImGui::TextColored(Theme::Colors::PrefabText, "%s", text);
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(3);
 }
 
 void editor::PoseAnimationWindow::handleShortcuts(bool fromSceneView){
@@ -783,9 +845,18 @@ void editor::PoseAnimationWindow::updateThumbnails(){
 void editor::PoseAnimationWindow::show(){
     session.update(ImGui::GetIO().DeltaTime);
     refreshCandidate();
+    session.setKeyRouting(sceneKeysRouted());
     if (!windowOpen){
         windowFocused = false;
+        windowVisible = false;
         return;
+    }
+    // the first open in a dock shorter than ~45% of the editor grows it, once ever
+    if (growNode != 0){
+        if (ImGuiDockNode* node = ImGui::DockBuilderGetNode(growNode)){
+            ImGui::DockBuilderSetNodeSize(growNode, ImVec2(node->Size.x, growHeight));
+        }
+        growNode = 0;
     }
     if (PoseEditSession::active() != &session){
         PoseEditSession::setActive(&session);
@@ -802,16 +873,32 @@ void editor::PoseAnimationWindow::show(){
     bool open = windowOpen;
     windowVisible = ImGui::Begin(WINDOW_NAME, &open);
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+    if (windowVisible && !AppSettings::getPoseDockGrown()){
+        if (ImGuiDockNode* node = ImGui::GetWindowDockNode()){
+            const float target = ImGui::GetMainViewport()->WorkSize.y * 0.45f;
+            if (node->Size.y + 1.0f < target){
+                growNode = node->ID;
+                growHeight = target;
+            }
+            AppSettings::setPoseDockGrown(true);
+            AppSettings::saveSettings();
+        }
+    }
     if (windowVisible){
         processPendingOpen();
         drawSetupRow();
         ImGui::Separator();
         if (!drawEmptyState()){
-            drawTransport();
-            drawGlobalEditBar();
-            drawStrip();
-            drawTimingBar();
-            drawTabs();
+            // while the scene is saved or played the bones are not ours: nothing edits
+            const bool locked = session.bound() && !session.editable();
+            if (locked){
+                ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s",
+                                   project->isAnyScenePlaying() ? "Play mode: the pose animation is read-only"
+                                                                : "Saving the scene: the pose animation is read-only for a moment");
+            }
+            ImGui::BeginDisabled(locked);
+            drawBody();
+            ImGui::EndDisabled();
         }
         drawMappingPopup();
         drawOpenPopup();
@@ -821,9 +908,50 @@ void editor::PoseAnimationWindow::show(){
         processPendingOpen();
     }
     ImGui::End();
+    drawSceneKeysHint();
     if (!open){
         setOpen(false);
     }
+}
+
+void editor::PoseAnimationWindow::drawBody(){
+    // Stacked (transport, strip, timing, tabs) when there is height for it or the window is
+    // narrow; wide and short (the default bottom dock): two columns, the strip and timing on
+    // the left with thumbnails sized to the height, the tabs on the right with their own scroll
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float line = ImGui::GetFrameHeightWithSpacing();
+    const float text = ImGui::GetTextLineHeight();
+    const float cardChrome = Theme::dpi(16.0f) + text * 2;                       // card minus its thumbnail
+    const float stripChrome = style.ScrollbarSize + Theme::dpi(8.0f) + style.ItemSpacing.y;
+    const float timing = line + Theme::dpi(TIMING_HEIGHT) + style.ItemSpacing.y;
+    const float globalBar = session.globalEditActive() ? line + Theme::dpi(8.0f) : 0.0f;
+    const float stackNeeds = line * 3 + globalBar + cardChrome + Theme::dpi(THUMB_HEIGHT) + stripChrome + timing + Theme::dpi(220.0f);
+    compactLayout = avail.x >= Theme::dpi(1050.0f) && avail.y < stackNeeds;
+    if (!compactLayout){
+        thumbHeight = THUMB_HEIGHT;
+        drawTransport();
+        drawGlobalEditBar();
+        drawStrip();
+        drawTimingBar();
+        drawTabs();
+        return;
+    }
+    float left = std::max(Theme::dpi(560.0f), avail.x * 0.6f);
+    if (avail.x - left - style.ItemSpacing.x < Theme::dpi(340.0f)) left = avail.x - Theme::dpi(340.0f) - style.ItemSpacing.x;
+    // two transport rows (the second has Bake, the status line and Global Edit)
+    const float forThumb = avail.y - line * 2 - globalBar - cardChrome - stripChrome - timing - Theme::dpi(6.0f);
+    thumbHeight = std::clamp(forThumb / Theme::dpi(1.0f), 64.0f, THUMB_HEIGHT);
+    ImGui::BeginChild("##PoseLeft", ImVec2(left, avail.y));
+    drawTransport();
+    drawGlobalEditBar();
+    drawStrip();
+    drawTimingBar();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##PoseRight", ImVec2(0, avail.y));
+    drawTabs();
+    ImGui::EndChild();
 }
 
 // ---- setup row ----
@@ -1051,7 +1179,7 @@ void editor::PoseAnimationWindow::drawTransport(){
                                                      session.previewFrame());
     const float labelWidth = ImGui::CalcTextSize("00.00 / 00.00 s \xC2\xB7 frame 0000").x;
     const float bakeWidth = ImGui::CalcTextSize(ICON_FA_FILM " Bake").x + ImGui::GetStyle().FramePadding.x * 2 + Theme::dpi(150.0f);
-    const bool oneRow = ImGui::GetContentRegionAvail().x > Theme::dpi(900.0f) + bakeWidth;
+    const bool oneRow = !compactLayout && ImGui::GetContentRegionAvail().x > Theme::dpi(900.0f) + bakeWidth;
     const bool narrow = ImGui::GetContentRegionAvail().x < labelWidth + Theme::dpi(320.0f);
     const float rightWidth = labelWidth + Theme::dpi(200.0f) + (oneRow ? bakeWidth + Theme::dpi(16.0f) : 0.0f);
     ImGui::SetNextItemWidth(narrow ? -FLT_MIN : std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x - rightWidth));
@@ -1102,33 +1230,32 @@ void editor::PoseAnimationWindow::drawTransport(){
         bakeName = nameBuffer;
     }
     ImGui::SetItemTooltip("The Animation's name (default: the asset's file name)");
+    if (compactLayout){
+        ImGui::SameLine();
+        drawStatusAndGlobalEditTool();
+    }
 }
 
 // ---- Global Edit bar ----
 
-void editor::PoseAnimationWindow::drawGlobalEditBar(){
-    // a snapshot: an edit committed below replaces the document's data, not this
-    const std::shared_ptr<const pose::PoseAnimationData> held = view();
-    const pose::PoseAnimationData* animation = held.get();
-    if (!animation) return;
-    // the strip header: its title and the Global Edit tool
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(Theme::Colors::SubtleText, "POSES");
-    ImGui::SameLine();
+void editor::PoseAnimationWindow::drawStatusAndGlobalEditTool(){
+    // the status line (bake result, errors), then the Global Edit tool at the right of the line
     const bool active = session.globalEditActive();
     const float toolWidth = ImGui::CalcTextSize(ICON_FA_LAYER_GROUP " Global Edit").x + ImGui::GetStyle().FramePadding.x * 2;
-    // the status line (bake result, errors) between the title and the tool
     if (!statusLine.empty()){
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(12.0f));
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(8.0f));
         const float room = ImGui::GetContentRegionAvail().x - toolWidth - Theme::dpi(12.0f);
-        ImGui::PushStyleColor(ImGuiCol_Text, statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
-        ImGui::PushClipRect(ImGui::GetCursorScreenPos(), ImVec2(ImGui::GetCursorScreenPos().x + std::max(0.0f, room),
-                            ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight()), true);
-        ImGui::TextUnformatted(statusLine.c_str());
-        ImGui::PopClipRect();
-        ImGui::PopStyleColor();
-        ImGui::SetItemTooltip("%s", statusLine.c_str());
-        ImGui::SameLine();
+        if (room > Theme::dpi(40.0f)){
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushStyleColor(ImGuiCol_Text, statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
+            const ImVec2 at = ImGui::GetCursorScreenPos();
+            ImGui::PushClipRect(at, ImVec2(at.x + room, at.y + ImGui::GetFrameHeight()), true);
+            ImGui::TextUnformatted(statusLine.c_str());
+            ImGui::PopClipRect();
+            ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("%s", statusLine.c_str());
+            ImGui::SameLine();
+        }
     }
     rightAlign(toolWidth);
     if (active) ImGui::PushStyleColor(ImGuiCol_Button, GLOBAL_EDIT_ORANGE);
@@ -1136,7 +1263,22 @@ void editor::PoseAnimationWindow::drawGlobalEditBar(){
     if (ImGui::Button(ICON_FA_LAYER_GROUP " Global Edit")) actionGlobalEdit();
     if (active) ImGui::PopStyleColor(2);
     ImGui::SetItemTooltip("Change this pose, then apply the same change to the other poses (E)");
-    if (!active) return;
+}
+
+void editor::PoseAnimationWindow::drawGlobalEditBar(){
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
+    if (!animation) return;
+    // the strip header (stacked layout): its title, the status line and the Global Edit tool;
+    // the compact layout has them in the transport's second row
+    if (!compactLayout){
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(Theme::Colors::SubtleText, "POSES");
+        ImGui::SameLine();
+        drawStatusAndGlobalEditTool();
+    }
+    if (!session.globalEditActive()) return;
 
     const ImVec2 start = ImGui::GetCursorScreenPos();
     const float width = ImGui::GetContentRegionAvail().x;
@@ -1146,12 +1288,19 @@ void editor::PoseAnimationWindow::drawGlobalEditBar(){
     draw->AddRect(start, ImVec2(start.x + width, start.y + height), color(GLOBAL_EDIT_ORANGE), 3.0f);
     ImGui::SetCursorScreenPos(ImVec2(start.x + ImGui::GetStyle().FramePadding.x, start.y + ImGui::GetStyle().FramePadding.y));
     const int changed = session.globalEditChangedSlots();
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(GLOBAL_EDIT_ORANGE, "%s", changed == 0 ? "Global Edit: Nothing changed yet. Change this pose, then apply the change to other poses."
-                                                             : "Global Edit: change this pose, then apply the same change to other poses");
-    ImGui::SameLine();
     const float buttons = ImGui::CalcTextSize("Apply to AllApply to SelectedCancel").x + ImGui::GetStyle().FramePadding.x * 6 +
                           ImGui::GetStyle().ItemSpacing.x * 2 + Theme::dpi(8.0f);
+    ImGui::AlignTextToFramePadding();
+    {
+        // the message gives way to the buttons in a narrow column
+        const ImVec2 at = ImGui::GetCursorScreenPos();
+        const float room = std::max(0.0f, width - buttons - ImGui::GetStyle().FramePadding.x * 2);
+        ImGui::PushClipRect(at, ImVec2(at.x + room, at.y + ImGui::GetFrameHeight()), true);
+        ImGui::TextColored(GLOBAL_EDIT_ORANGE, "%s", changed == 0 ? "Global Edit: nothing changed yet. Change this pose, then apply the change to other poses."
+                                                                 : "Global Edit: change this pose, then apply the same change to other poses");
+        ImGui::PopClipRect();
+    }
+    ImGui::SameLine();
     rightAlign(buttons);
     ImGui::BeginDisabled(changed == 0);
     if (ImGui::Button("Apply to All")){
@@ -1183,10 +1332,11 @@ void editor::PoseAnimationWindow::drawStrip(){
     const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const int count = static_cast<int>(animation->poses.size());
-    const float cardWidth = Theme::dpi(CARD_WIDTH);
+    // thumbnails keep 88:116; the card stays wide enough for the name
+    const float cardWidth = Theme::dpi(std::max(CARD_WIDTH * thumbHeight / THUMB_HEIGHT, 80.0f));
     const float chipWidth = Theme::dpi(CHIP_WIDTH);
     const float lineHeight = ImGui::GetTextLineHeight();
-    const float cardHeight = Theme::dpi(6.0f) + Theme::dpi(THUMB_HEIGHT) + Theme::dpi(4.0f) + lineHeight * 2 + Theme::dpi(6.0f);
+    const float cardHeight = Theme::dpi(6.0f) + Theme::dpi(thumbHeight) + Theme::dpi(4.0f) + lineHeight * 2 + Theme::dpi(6.0f);
     const float stripHeight = cardHeight + ImGui::GetStyle().ScrollbarSize + Theme::dpi(6.0f);
 
     ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::ToolbarBackground);
@@ -1221,12 +1371,15 @@ void editor::PoseAnimationWindow::drawStrip(){
     const ImVec2 addMin(x + Theme::dpi(6.0f), y + Theme::dpi(6.0f));
     const ImVec2 addMax(x + cardWidth - Theme::dpi(6.0f), y + cardHeight - Theme::dpi(6.0f));
     draw->AddRect(addMin, addMax, color(Theme::Colors::SubtleText, addHovered ? 0.9f : 0.45f), 4.0f, 0, Theme::dpi(1.5f));
-    const char* plus = ICON_FA_PLUS;
-    const ImVec2 plusSize = ImGui::CalcTextSize(plus);
-    draw->AddText(ImVec2((addMin.x + addMax.x - plusSize.x) * 0.5f, (addMin.y + addMax.y) * 0.5f - plusSize.y), color(Theme::Colors::SubtleText), plus);
+    // a big plus drawn with lines, the label under it
+    const ImVec2 centre((addMin.x + addMax.x) * 0.5f, (addMin.y + addMax.y) * 0.5f - Theme::dpi(8.0f));
+    const float arm = std::min(Theme::dpi(14.0f), (addMax.x - addMin.x) * 0.22f);
+    const ImU32 plusColor = color(Theme::Colors::SubtleText, addHovered ? 1.0f : 0.7f);
+    draw->AddLine(ImVec2(centre.x - arm, centre.y), ImVec2(centre.x + arm, centre.y), plusColor, Theme::dpi(3.0f));
+    draw->AddLine(ImVec2(centre.x, centre.y - arm), ImVec2(centre.x, centre.y + arm), plusColor, Theme::dpi(3.0f));
     const char* addText = "Add pose";
     const ImVec2 addTextSize = ImGui::CalcTextSize(addText);
-    draw->AddText(ImVec2((addMin.x + addMax.x - addTextSize.x) * 0.5f, (addMin.y + addMax.y) * 0.5f + Theme::dpi(2.0f)), color(Theme::Colors::SubtleText), addText);
+    draw->AddText(ImVec2((addMin.x + addMax.x - addTextSize.x) * 0.5f, centre.y + arm + Theme::dpi(6.0f)), color(Theme::Colors::SubtleText), addText);
     x += cardWidth + Theme::dpi(4.0f);
     ImGui::SetCursorScreenPos(origin);
     ImGui::Dummy(ImVec2(x - origin.x, cardHeight + Theme::dpi(2.0f)));
@@ -1319,12 +1472,14 @@ void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float c
     }
 
     // the thumbnail: the primary card is live while posing
-    const ImVec2 thumbMin(pos.x + (cardWidth - Theme::dpi(THUMB_WIDTH)) * 0.5f, pos.y + Theme::dpi(6.0f));
-    const ImVec2 thumbMax(thumbMin.x + Theme::dpi(THUMB_WIDTH), thumbMin.y + Theme::dpi(THUMB_HEIGHT));
-    const int width = static_cast<int>(std::lround(Theme::dpi(THUMB_WIDTH)));
-    const int height = static_cast<int>(std::lround(Theme::dpi(THUMB_HEIGHT)));
+    const float thumbWidth = thumbHeight * THUMB_WIDTH / THUMB_HEIGHT;
+    const ImVec2 thumbMin(pos.x + (cardWidth - Theme::dpi(thumbWidth)) * 0.5f, pos.y + Theme::dpi(6.0f));
+    const ImVec2 thumbMax(thumbMin.x + Theme::dpi(thumbWidth), thumbMin.y + Theme::dpi(thumbHeight));
+    const int width = static_cast<int>(std::lround(Theme::dpi(thumbWidth)));
+    const int height = static_cast<int>(std::lround(Theme::dpi(thumbHeight)));
     TextureRender* texture = nullptr;
-    if (session.bound()){
+    // cards scrolled out of the strip request nothing
+    if (session.bound() && ImGui::IsRectVisible(thumbMin, thumbMax)){
         if (primary && session.mode() == PoseEditSession::Mode::Posing){
             const pose::HumanPose& working = session.working();
             texture = liveThumbnails.get(PoseThumbnails::hashPose(working), working, width, height, 0);
@@ -1387,7 +1542,7 @@ void editor::PoseAnimationWindow::drawChip(int index, const ImVec2& pos, float c
     const std::string text = std::string(loopBack ? ICON_FA_ARROW_ROTATE_LEFT : ICON_FA_ARROW_RIGHT) + " " + fixed(transition.duration, 2) + "s";
     const ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
     const float chipHeight = textSize.y + Theme::dpi(6.0f);
-    const ImVec2 chipMin(pos.x + (chipWidth - textSize.x) * 0.5f - Theme::dpi(5.0f), pos.y + Theme::dpi(6.0f) + Theme::dpi(THUMB_HEIGHT) * 0.5f - chipHeight * 0.5f);
+    const ImVec2 chipMin(pos.x + (chipWidth - textSize.x) * 0.5f - Theme::dpi(5.0f), pos.y + Theme::dpi(6.0f) + Theme::dpi(thumbHeight) * 0.5f - chipHeight * 0.5f);
     const ImVec2 chipMax(chipMin.x + textSize.x + Theme::dpi(10.0f), chipMin.y + chipHeight);
     ImGui::SetCursorScreenPos(chipMin);
     ImGui::PushID(1000 + index);
@@ -1531,9 +1686,11 @@ void editor::PoseAnimationWindow::drawTimingBar(){
         if (hold.pose == session.primary()){
             draw->AddRect(ImVec2(x0, top + Theme::dpi(8.0f)), ImVec2(x1, bottom), color(Theme::Colors::PrefabText), 2.0f);
         }
+        // the pose number at the bottom of its hold, under the settle of the curve that arrives
         const std::string number = std::to_string(hold.pose);
         if (x1 - x0 > ImGui::CalcTextSize(number.c_str()).x + Theme::dpi(4.0f)){
-            draw->AddText(ImVec2(x0 + Theme::dpi(3.0f), top + Theme::dpi(9.0f)), color(ImGui::GetStyle().Colors[ImGuiCol_Text], 0.8f), number.c_str());
+            draw->AddText(ImVec2(x0 + Theme::dpi(3.0f), bottom - ImGui::GetTextLineHeight() - Theme::dpi(1.0f)),
+                          color(ImGui::GetStyle().Colors[ImGuiCol_Text], 0.8f), number.c_str());
         }
     }
     // transitions as their ease curve, continued over the next hold so overshoot shows
@@ -1757,7 +1914,7 @@ void editor::PoseAnimationWindow::drawPoseTab(){
     fieldLabel("Offset", labelWidth);
     poseui::MixedValue offsetLeft = poseui::mixedValue(*animation, sel, [](const pose::PoseKey& k){ return k.body.offset.x; });
     poseui::MixedValue offsetForward = poseui::mixedValue(*animation, sel, [](const pose::PoseKey& k){ return k.body.offset.z; });
-    const float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+    const float half = (fieldWidth() - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
     float leftValue = offsetLeft.value;
     ImGui::SetNextItemWidth(half);
     if (mixedSlider("##PoseOffsetLeft", leftValue, offsetLeft.mixed, pose::ranges::OFFSET_MIN, pose::ranges::OFFSET_MAX, "left %.3f", true, 0.002f)){
@@ -1839,7 +1996,7 @@ void editor::PoseAnimationWindow::drawPoseTab(){
         transitionSlider("Anticipation", "##PoseAnticipation", &pose::Transition::anticipation, pose::ranges::ANTICIPATION_MIN,
                          pose::ranges::ANTICIPATION_MAX, "%.2f", "Wind-up before the move (spring only)", spring);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + labelWidth);
-        drawCurvePlot(transition, ImVec2(std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x), Theme::dpi(54.0f)));
+        drawCurvePlot(transition, ImVec2(std::max(Theme::dpi(60.0f), fieldWidth()), Theme::dpi(54.0f)));
     }
 
     // tools
@@ -2024,7 +2181,7 @@ void editor::PoseAnimationWindow::drawFeelTab(){
                    pose::ranges::ANTICIPATION_MAX, "%.2f", [](pose::PoseAnimationSettings& s, float v){ s.transition.anticipation = v; },
                    "A small move backwards before each move", spring);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + labelWidth);
-    drawCurvePlot(settings.transition, ImVec2(std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x), Theme::dpi(60.0f)));
+    drawCurvePlot(settings.transition, ImVec2(std::max(Theme::dpi(60.0f), fieldWidth()), Theme::dpi(60.0f)));
     ImGui::Spacing();
     settingsSlider("Choppiness", "##FeelStepRate", settings.stepRate, pose::ranges::STEP_RATE_MIN, pose::ranges::STEP_RATE_MAX,
                    settings.stepRate <= 0.0f ? "off" : (std::abs(settings.stepRate - 12.0f) < 0.01f ? "%.0f steps/s (on twos)" : "%.0f steps/s"),
@@ -2093,7 +2250,7 @@ void editor::PoseAnimationWindow::drawHumanizeTab(){
     fieldLabel("Seed", labelWidth);
     int seed = static_cast<int>(std::min<uint32_t>(humanize.seed, pose::ranges::SEED_MAX));
     ImGui::BeginDisabled(!on);
-    ImGui::SetNextItemWidth(std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
+    ImGui::SetNextItemWidth(std::max(Theme::dpi(60.0f), fieldWidth() - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x));
     if (ImGui::InputInt("##HumanizeSeed", &seed, 1, 10, ImGuiInputTextFlags_EnterReturnsTrue) && seed >= 0){
         pose::PoseAnimationData edited = *animation;
         edited.settings.humanize.seed = static_cast<uint32_t>(seed);

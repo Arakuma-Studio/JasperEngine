@@ -906,8 +906,8 @@ void editor::PoseViewport::publishEngaged(){
     PoseEditSession* session = PoseEditSession::active();
     if (!session || session->scene() != scene) return;
     const bool engaged = isPosing() && (isDragging() || hoverKind != HandleKind::None);
-    if (engaged != engagedPublished || session->viewportHandleEngaged() != engaged){
-        session->setViewportHandleEngaged(engaged);
+    if (engaged != engagedPublished || session->viewportHandleActive() != engaged){
+        session->setViewportHandleActive(engaged);
         engagedPublished = engaged;
     }
 }
@@ -1081,7 +1081,7 @@ void editor::PoseViewport::clear(){
     hoverRing = -1;
     if (engagedPublished){
         if (PoseEditSession* session = PoseEditSession::active()){
-            if (session->scene() == scene || !session->bound()) session->setViewportHandleEngaged(false);
+            if (session->scene() == scene || !session->bound()) session->setViewportHandleActive(false);
         }
         engagedPublished = false;
     }

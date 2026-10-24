@@ -178,13 +178,32 @@ namespace jasperengine::editor::poseui{
     // seconds between frame ticks, 0 when they would be closer than `minPixels`
     double frameTickStep(double pixelsPerSecond, int frameRate, double minPixels = 6.0);
 
+    // ---- the session's bone writes ----
+
+    // When the edit session may write the bound model's bone transforms (phase 4 spec, section
+    // 2: never while the scene is saved or played). suspend() before a save (sync or async) or
+    // play mode; the bones stay untouched until resume() is called with the scene stopped
+    // again (the session's per-frame update), whatever starts in between (posing, preview,
+    // selection, document edits).
+    struct BoneWriteGate{
+        bool suspended = false;
+        void suspend() { suspended = true; }
+        // true when the session must apply its pose again now
+        bool resume(bool sceneStopped){
+            if (!suspended || !sceneStopped) return false;
+            suspended = false;
+            return true;
+        }
+        bool mayWrite(bool sceneStopped) const { return sceneStopped && !suspended; }
+    };
+
+    // Whether a window edit keeps an active Global Edit: edits that keep the pose count, the
+    // order and the edited (primary) pose do (angles, offset, hold, transition, feel,
+    // humanize); adding, deleting, reordering or selecting another pose cancels it
+    bool keepsGlobalEdit(size_t posesBefore, size_t posesAfter, bool reordered, int primaryBefore, int primaryAfter);
+
     // ---- Global Edit ----
 
-    // The joint-angle rotation E of a slot (phase 1, 4.5: swing about the two DOF axes, then
-    // the twist) from its three DOF values in degrees, and back (swing-twist about the neutral
-    // direction, twist wrapped to (-180, 180])
-    pose::Quatd jointRotation(pose::HumanBone bone, const float angles[pose::DOFS_PER_BONE]);
-    void jointAngles(pose::HumanBone bone, const pose::Quatd& rotation, float angles[pose::DOFS_PER_BONE]);
 
     // The change from `base` to `current` (one pose before and after an edit) applied to
     // `target`, per slot in joint-angle space: D_b = E_cur_b * E_base_b^-1 for every slot whose

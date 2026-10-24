@@ -17,6 +17,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "pose/PoseEditSession.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 
@@ -1729,6 +1730,8 @@ bool editor::App::canEditSelection(bool duplicate) {
 }
 
 void editor::App::deleteSelection() {
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     if (!canEditSelection(false)) return;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t selectedSceneForProperties = project.getSelectedSceneForProperties();
@@ -1790,6 +1793,8 @@ void editor::App::deleteSelection() {
 
 void editor::App::duplicateSelection() {
     if (!canEditSelection(true)) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
     SceneProject* sp = project.getScene(targetSceneId);
@@ -1864,6 +1869,8 @@ void editor::App::selectAll() {
 
 void editor::App::copySelection(bool cut) {
     if (!(cut ? canCutSelection() : canCopySelection())) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     std::vector<Entity> selection = EntityClipboard::getCopyableSelection(&project, sceneId);
     if (selection.empty()) return;
