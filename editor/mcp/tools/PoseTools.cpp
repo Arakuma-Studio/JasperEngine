@@ -7,6 +7,8 @@
 // are the rig-independent joint angles of engine/core/pose/PoseDofs (degrees, 0 = neutral
 // standing); the agent guide page is docs/mcp/guide/pose-animation.md. render_pose_animation
 // (phase 3) draws contact sheets of the key poses or the motion in its own block at the end.
+// Templates (phase 6, editor/pose/PoseTemplates): create.template, the apply_template and
+// save_template ops and get_pose_animation {templates: true}, in the "templates" block.
 #include "McpTools.h"
 #include "W4Shared.h"
 
@@ -27,6 +29,7 @@
 #include "pose/PoseRig.h"
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSheetRenderer.h"
+#include "pose/PoseTemplates.h"
 #include "pose/PoseSampler.h"
 #include "pose/PoseTween.h"
 #include "pose/PoseAnimationIO.h"
@@ -485,6 +488,7 @@ struct EditState {
     std::vector<std::string> changes;
     std::vector<std::string> warnings;
     std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
+    std::map<std::string, std::string> templateFiles;   // save_template (phase 6): absolute path -> text
 };
 
 const std::map<std::string, std::vector<std::string>>& opArguments() {
@@ -501,6 +505,9 @@ const std::map<std::string, std::vector<std::string>>& opArguments() {
         {"auto_timing", {"op"}},
         {"set_preview_model", {"op", "model"}},
         {"set_humanoid", {"op", "model", "bones"}},
+        // templates (phase 6)
+        {"apply_template", {"op", "name", "mode"}},
+        {"save_template", {"op", "name", "description", "category"}},
     };
     return table;
 }
@@ -960,6 +967,97 @@ bool autoTimingOp(EditState& state, const std::string& path, std::string& error)
     return true;
 }
 
+// ------------------------------------------------------------------ templates (phase 6, section 5)
+// apply_template / save_template ops, create.template and get_pose_animation {templates: true};
+// built-in and project templates are editor/pose/PoseTemplates. A saved template is written in
+// the call's undo step (an extra file of the document commit).
+
+// The template named by `value`; `path` names the argument in errors
+bool loadTemplateArg(EditState& state, const Json& value, const std::string& path, PoseTemplate& out, std::string& error) {
+    if (!value.is_string()) {
+        error = path + " must be a template name (get_pose_animation {templates: true} lists them)";
+        return false;
+    }
+    if (!PoseTemplates::load(state.project->getProjectPath(), value.get<std::string>(), out, &error)) {
+        error = path + ": " + error;
+        return false;
+    }
+    return true;
+}
+
+bool applyTemplateOp(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    if (!op.contains("name")) {
+        error = path + ".name is required: the template (get_pose_animation {templates: true} lists them)";
+        return false;
+    }
+    PoseTemplate found;
+    if (!loadTemplateArg(state, op["name"], path + ".name", found, error)) return false;
+    const std::string mode = op.contains("mode") && op["mode"].is_string() ? op["mode"].get<std::string>() : "replace";
+    if (mode != "replace" && mode != "append") {
+        error = path + ".mode must be \"replace\" (settings and poses) or \"append\" (poses after the existing ones)";
+        return false;
+    }
+    const bool append = mode == "append";
+    const size_t first = append ? state.data.poses.size() : 0;
+    if (first + found.data.poses.size() > static_cast<size_t>(MAX_POSES)) {
+        error = path + ": an animation has at most " + std::to_string(MAX_POSES) + " poses";
+        return false;
+    }
+    PoseTemplates::apply(found.data, state.data, append ? PoseTemplateApply::Append : PoseTemplateApply::Replace);
+    state.touched.resize(first);
+    state.touched.resize(state.data.poses.size(), static_cast<uint8_t>(TOUCHED | ANGLES_SET));
+    state.changes.push_back("apply_template \"" + found.info.name + "\" (" + mode + "): " +
+                            std::to_string(found.data.poses.size()) + " pose(s)" +
+                            (append ? " added at " + std::to_string(first) : std::string(", settings and poses replaced")));
+    return true;
+}
+
+bool saveTemplateOp(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    for (const char* key : {"name", "description", "category"}) {
+        if (op.contains(key) && !op[key].is_string()) {
+            error = path + "." + key + " must be a string";
+            return false;
+        }
+    }
+    if (!op.contains("name")) {
+        error = path + ".name is required: the template name";
+        return false;
+    }
+    const std::string name = op["name"].get<std::string>();
+    if (!PoseTemplates::validName(name, &error)) {
+        error = path + ".name: " + error;
+        return false;
+    }
+    if (state.data.poses.empty()) {
+        error = path + ": the animation has no poses to save";
+        return false;
+    }
+    // what this call's commit holds at this point: joint limits on the poses it set
+    PoseAnimationData data = state.data;
+    if (data.settings.humanize.jointLimits) {
+        for (size_t i = 0; i < data.poses.size() && i < state.touched.size(); i++) {
+            if (state.touched[i] & ANGLES_SET) clampToLimits(data.poses[i].body);
+        }
+    }
+    const fs::path file = PoseTemplates::userFile(state.project->getProjectPath(), name);
+    const PoseAnimationTemplateInfo info{name, op.value("description", std::string()), op.value("category", std::string("User"))};
+    state.templateFiles[file.lexically_normal().u8string()] = PoseTemplates::fileText(data, info);
+    state.changes.push_back("save_template \"" + name + "\": " + std::to_string(data.poses.size()) + " pose(s) -> " +
+                            projectRel(state.project, file));
+    return true;
+}
+
+Json templateListJson(Project* project) {
+    Json list = Json::array();
+    for (const PoseTemplateInfo& info : PoseTemplates::list(project->getProjectPath())) {
+        list.push_back({{"name", info.name}, {"category", info.category}, {"description", info.description},
+                        {"poses", info.poseCount}, {"loop", info.loop}, {"user", info.user}});
+    }
+    return list;
+}
+
+// ------------------------------------------------------------------ ops dispatch
+
 bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& error) {
     const std::string path = "ops[" + std::to_string(opIndex) + "]";
     if (!op.is_object() || !op.contains("op") || !op["op"].is_string()) {
@@ -989,6 +1087,8 @@ bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& erro
     if (name == "apply_preset") return applyPreset(state, op, path, error);
     if (name == "auto_timing") return autoTimingOp(state, path, error);
     if (name == "set_preview_model") return setPreviewModel(state, op, path, error);
+    if (name == "apply_template") return applyTemplateOp(state, op, path, error);
+    if (name == "save_template") return saveTemplateOp(state, op, path, error);
     return setHumanoid(state, op, path, error);
 }
 
@@ -1103,6 +1203,25 @@ void getPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     installSyncHook(call->ctx());
+    if (args.contains("templates")) {
+        // the template list (phase 6)
+        if (!args["templates"].is_boolean() || (args["templates"].get<bool>() && args.contains("path"))) {
+            call->fail("templates: true lists the pose templates; leave out path (and give path without templates to read an animation).");
+            return;
+        }
+        if (args["templates"].get<bool>()) {
+            const Json list = templateListJson(project);
+            std::string text = std::to_string(list.size()) + " pose template(s); use one with edit_pose_animation create: {template} "
+                               "or the op apply_template:";
+            for (const Json& t : list) {
+                text += "\n" + t["name"].get<std::string>() + " (" + t["category"].get<std::string>() + ", " +
+                        std::to_string(t["poses"].get<size_t>()) + " poses, " + (t["loop"].get<bool>() ? "loop" : "once") +
+                        (t["user"].get<bool>() ? ", project" : "") + "): " + t["description"].get<std::string>();
+            }
+            call->ok(text, Json{{"templates", list}});
+            return;
+        }
+    }
     std::string relative, error;
     fs::path absolute;
     if (!resolveAnimationPath(project, args, relative, absolute, error)) {
@@ -1275,7 +1394,7 @@ void editPoseAnimationTool(const CallPtr& call) {
     std::shared_ptr<PoseAnimationDocument> document;
     if (creating) {
         const Json& create = args["create"];
-        if (!readObject(create, "create", error) || !checkKeys(create, "create", {"preview_model", "preset"}, error)) {
+        if (!readObject(create, "create", error) || !checkKeys(create, "create", {"preview_model", "preset", "template"}, error)) {
             call->fail(error);
             return;
         }
@@ -1283,6 +1402,16 @@ void editPoseAnimationTool(const CallPtr& call) {
         if (fs::exists(absolute, ec)) {
             call->fail("create: " + relative + " already exists; leave out create to edit it.");
             return;
+        }
+        std::string fromTemplate;
+        if (create.contains("template")) {
+            PoseTemplate found;
+            if (!loadTemplateArg(state, create["template"], "create.template", found, error)) {
+                call->fail(error);
+                return;
+            }
+            state.data = PoseTemplates::newAnimation(found.data, "");
+            fromTemplate = found.info.name;
         }
         if (create.contains("preview_model")) {
             if (!setPreviewModel(state, {{"op", "set_preview_model"}, {"model", create["preview_model"]}}, "create", error)) {
@@ -1305,7 +1434,9 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
         state.changes.push_back("created " + relative + (state.data.previewModel.empty() ? std::string("") :
                                 " (preview " + previewModelPath(project, state.data) + ")") +
-                                (create.contains("preset") ? ", feel " + create["preset"].get<std::string>() : std::string("")));
+                                (create.contains("preset") ? ", feel " + create["preset"].get<std::string>() : std::string("")) +
+                                (fromTemplate.empty() ? std::string("") : ", from the template \"" + fromTemplate + "\" (" +
+                                 std::to_string(state.data.poses.size()) + " poses)"));
     } else {
         document = PoseAnimationDocument::open(project, relative, &error);
         if (!document) {
@@ -1343,6 +1474,14 @@ void editPoseAnimationTool(const CallPtr& call) {
         std::string existing;
         std::error_code ec;
         if (!fs::is_regular_file(sidecar.path, ec) || !ProjectChecks::readFile(sidecar.path, existing) || existing != extras.back().content) {
+            extrasChanged = true;
+        }
+    }
+    for (const auto& [file, text] : state.templateFiles) {
+        extras.push_back({fs::u8path(file), text});
+        std::string existing;
+        std::error_code ec;
+        if (!fs::is_regular_file(extras.back().path, ec) || !ProjectChecks::readFile(extras.back().path, existing) || existing != text) {
             extrasChanged = true;
         }
     }
@@ -1917,14 +2056,15 @@ void registerPoseTools(McpRegistry& registry) {
             "bones, missing slots) and its key poses (name, hold, grounded, lift, transition or null = the animation's, "
             "start_time, offset {left, forward}, angles: degrees, 0 = neutral standing; see jasper://docs/pose-animation "
             "for the DOF table) with metrics (feet height/contact, balanced, balance_margin, limit_hits). model: a scene "
-            "model's rig instead of preview_model.";
+            "model's rig instead of preview_model. templates: true (no path) lists the pose templates.";
         tool.inputSchema = object({
             {"path", assetPath("")},
+            {"templates", boolean("")},
             {"poses", array(integer(""), "Indices; default all.")},
             {"model", entityRef()},
             {"scene", sceneRef()},
             {"detail", withDefault(stringEnum("summary omits angles.", {"summary", "full"}), "full")}
-        }, {"path"});
+        });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.allowedWhilePlaying = true;
@@ -1940,13 +2080,14 @@ void registerPoseTools(McpRegistry& registry) {
             "Edit a .poseanim: ops in order (index 0-based, after earlier ops), all or nothing, one project undo step. "
             "add_pose copies from (default after; neutral if empty), blended toward blend_to; update_pose (metadata never "
             "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
-            "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto). "
+            "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto); "
+            "apply_template (mode replace: settings+poses, append: poses); save_template (project template). "
             "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file; bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's). Returns changes "
+            "file (template: from one); bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's). Returns changes "
             "and the touched poses with metrics.";
         tool.inputSchema = object({
             {"path", assetPath("")},
-            {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}})},
+            {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}, {"template", string("")}})},
             {"ops", array(obj({
                 {"op", stringEnum("", opNames())},
                 {"index", integer("")},
@@ -1973,7 +2114,10 @@ void registerPoseTools(McpRegistry& registry) {
                 {"humanize", anyObject("")},
                 {"model", assetPath("")},
                 {"bones", anyObject("")},
-                {"clear_custom", boolean("")}
+                {"clear_custom", boolean("")},
+                {"mode", stringEnum("", {"replace", "append"})},
+                {"description", string("")},
+                {"category", string("")}
             }, {"op"}), "")},
             {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}}, {"model"})},
             {"scene", sceneRef()}
