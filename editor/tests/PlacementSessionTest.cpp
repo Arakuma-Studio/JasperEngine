@@ -1963,3 +1963,32 @@ TEST(PhysicsPlacement, CommitRecordsOnlyRealOverridesOnAPrefabInstance) {
     CommandHandle::get(sceneId)->undo();
     EXPECT_TRUE(boardOverrides().empty());
 }
+
+// The surface a ray hits is the nearest one in the scene, loaded or not: a floor already in the
+// context under a table that is not yet must not take the hit
+TEST(PhysicsPlacementSim, SnapHitsTheNearestSurfaceNotTheNearestLoadedOne) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    create(sceneId, "Floor", EntityCreationType::BOX, Vector3(0.0f, -0.5f, 0.0f), NULL_ENTITY, Vector3(60.0f, 1.0f, 60.0f));
+    const Entity table = create(sceneId, "Table", EntityCreationType::BOX, Vector3(-10.0f, 0.5f, -10.0f), NULL_ENTITY, Vector3(2.0f, 1.0f, 2.0f));
+    const Entity cube = create(sceneId, "Snapper", EntityCreationType::BOX, Vector3(-6.0f, 0.5f, -10.0f));
+    const Ray ray(Vector3(-10.0f, 10.0f, -10.0f), Vector3(0.0f, -1.0f, 0.0f));
+
+    PlacementSpec snap = specFor(sceneId, {cube}, PlacementMode::Snap);
+    snap.hasSnapRay = true;
+    snap.snapRay = ray;
+    const PlacementResult result = runToEnd(snap);
+    ASSERT_TRUE(result.ok) << result.error;
+    const PlacementEntityResult* e = entityResult(result, cube);
+    expectNear(e->after.position, Vector3(-10.0f, 1.5f, -10.0f), 0.005f);
+    EXPECT_EQ(e->restingOn, std::vector<Entity>{table});
+
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Snap, {cube}));
+    session.setSnapRay(ray);
+    ticks(session, 60);
+    expectNear(transformOf(sceneId, cube).position, Vector3(-10.0f, 1.5f, -10.0f), 0.01f);   // on top while held
+    session.end();
+    ASSERT_TRUE(tickUntilIdle(session));
+    expectNear(transformOf(sceneId, cube).position, Vector3(-10.0f, 1.5f, -10.0f), 0.005f);
+}

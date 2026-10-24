@@ -309,8 +309,8 @@ namespace {
         return true;
     }
 
-    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
-                                       const std::unordered_set<Entity>& ignore, size_t maxCount) {
+    std::vector<std::pair<float, Vector3>> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                                         const std::unordered_set<Entity>& ignore, size_t maxCount) {
         std::vector<std::pair<float, Vector3>> entries;
         auto transforms = scene->getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
@@ -330,9 +330,10 @@ namespace {
             if (segmentEnters(worldFrameOf(scene, e).matrix * local, origin, d, t)) entries.push_back({t, origin + d * t});
         }
         std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        std::vector<Vector3> points;
-        for (size_t i = 0; i < entries.size() && i < maxCount; i++) points.push_back(entries[i].second);
-        return points;
+        if (entries.size() > maxCount) entries.resize(maxCount);
+        const float length = d.length();
+        for (auto& entry : entries) entry.first *= length;   // a fraction of the segment, to metres
+        return entries;
     }
 
     float longestAxis(const AABB& box) {
@@ -514,23 +515,25 @@ namespace {
     };
 
     // The points where a segment enters the bounds of the scene's meshes and terrains, nearest
-    // first, from the local transforms (Ray's BOUNDS query reads MeshComponent::worldAABB, which
-    // only the render pass refreshes)
-    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
-                                       const std::unordered_set<Entity>& ignore, size_t maxCount);
+    // first (with their distance along it), from the local transforms (Ray's BOUNDS query reads
+    // MeshComponent::worldAABB, which only the render pass refreshes)
+    std::vector<std::pair<float, Vector3>> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                                         const std::unordered_set<Entity>& ignore, size_t maxCount);
 
-    // A world raycast that first loads what the ray reaches: when nothing loaded is hit, the
-    // context around each bounds the ray enters (nearest first) is loaded and the ray cast again
+    // A world raycast that hits the nearest surface in the scene, loaded or not: the context
+    // around each bounds the ray enters is loaded, nearest first, while that bounds is nearer
+    // than what the world hits (a floor loaded under a table not loaded yet must not take it)
     bool raycastLoading(PlacementWorld& world, Scene* scene, const Ray& ray, const std::vector<Entity>& ignoreBodies,
                         const std::unordered_set<Entity>& ignoreBounds, const std::function<void(const AABB&)>& load,
                         PlacementRayHit& hit) {
-        if (world.raycast(ray, hit, ignoreBodies)) return true;
-        if (!load || !scene) return false;
-        for (const Vector3& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
-            load(AABB(entry, entry));
-            if (world.raycast(ray, hit, ignoreBodies)) return true;
+        bool found = world.raycast(ray, hit, ignoreBodies);
+        if (!load || !scene) return found;
+        for (const auto& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
+            if (found && entry.first >= hit.distance) break;
+            load(AABB(entry.second, entry.second));
+            found = world.raycast(ray, hit, ignoreBodies);
         }
-        return false;
+        return found;
     }
 
     // assess()-style: what happened, then what to do next
