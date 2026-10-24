@@ -27,9 +27,8 @@ Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scr
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, Light2DComponent...).
-Build Settings = export; Scenes in Build = the scene list in project.yaml.
+Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Build Settings = export; Scenes in Build = project.yaml scenes.
 
 ## Addressing
 - scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the selected
@@ -69,8 +68,7 @@ A tool error says what was wrong and lists valid choices: fix the arguments, don
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
 in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). Your edits are picked up before your next tool call (script
-properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
+folder (Lua API stubs). Your edits are picked up before your next tool call; that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
 fix those problems first. During play they wait until play stops.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
@@ -91,8 +89,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and its properties and catches typos.
+GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
+then types self and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -133,8 +131,8 @@ return Player
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
-  stubs or search_engine_api before using a name you have not seen there.
+  value". Check jasper://docs/lua-api, the Lua stubs or search_engine_api before
+  using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
@@ -244,6 +242,11 @@ no_overlap, within_viewport...) check layouts; import_files (fonts, icons, video
 brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
 set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
+
+## Pose animation
+Humanoid key poses (.poseanim): get_pose_animation (+ metrics), edit_pose_animation (one undo
+step). Angles: degrees from standing, arms down (not a T-pose); use mirror_pose.
+Guide: jasper://docs/pose-animation.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.

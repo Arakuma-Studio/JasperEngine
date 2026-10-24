@@ -51,6 +51,9 @@ namespace jasperengine::editor{
         bool groupSince(size_t mark);
         // Current position (what mark() returns, without its side effect)
         size_t position() const { return index; }
+        // Deletes the redo tail (the commands after position()): a call that rolled itself back
+        // with undo() leaves nothing to redo
+        void dropRedo();
 
         void beginPlaySession();
         // rolledBack: the scene was restored to its pre-play state, so the play-time commands

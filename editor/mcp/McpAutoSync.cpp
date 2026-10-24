@@ -154,7 +154,8 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    return ext == ".c" || ext == ".inl";
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose)
+    return ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid";
 }
 
 bool McpAutoSync::isUiCodeFile(const std::string& path) {

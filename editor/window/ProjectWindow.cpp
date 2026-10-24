@@ -30,6 +30,7 @@
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
+#include "pose/PoseAnimationDocument.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -3279,6 +3280,8 @@ void editor::ProjectWindow::show() {
 
     timeSinceLastCheck += ImGui::GetIO().DeltaTime;
     if (timeSinceLastCheck >= 1.0f) {
+        // open pose animation documents follow their files (edited outside, copied over)
+        editor::PoseAnimationDocument::checkDiskChanges();
         try {
             auto currentWriteTime = fs::last_write_time(currentPath);
             if (currentWriteTime != lastWriteTime) {

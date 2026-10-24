@@ -102,7 +102,7 @@ namespace jasperengine::editor::mcp {
         // {files, dirs, checked, complete, scan_ms, settle_ms, scan_cpu_ms, settle_cpu_ms} (editor_status)
         Json stats() const;
 
-        // Files the scan tracks: Lua, C++, shaders, .material, HTML UI and assets (by extension)
+        // Files the scan tracks: Lua, C++, shaders, .material, HTML UI, assets and pose files (.poseanim, .humanoid), by extension
         static bool isTrackedFile(const std::string& path);
         // .html/.htm/.css: the code tier (checked whole every scan)
         static bool isUiCodeFile(const std::string& path);
