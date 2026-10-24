@@ -177,6 +177,7 @@ async def test_copy_guid_from_the_menu(ed: Editor):
     state = await ui(ed)
     await click(ed, state["project_window"]["search_box"])
     xdo(ed, "key", "ctrl+a")
+    await frames(ed)
     xdo(ed, "key", "ctrl+v")
     rock = meta_guid(ed, "assets/textures/rock.png")
     await wait_ui(ed, lambda s: s["project_window"]["search"] == rock, f"the pasted search text is rock.png's GUID {rock}")
@@ -185,6 +186,7 @@ async def test_copy_guid_from_the_menu(ed: Editor):
     state = await ui(ed)
     await click(ed, state["project_window"]["search_box"])
     xdo(ed, "key", "ctrl+a")
+    await frames(ed)
     xdo(ed, "key", "BackSpace")
     await wait_ui(ed, lambda s: s["project_window"]["search"] == "", "the search cleared")
 
@@ -209,9 +211,10 @@ async def test_rename_from_the_menu(ed: Editor):
     mtimes = {r: (ed.project / r).stat().st_mtime_ns for r in referrers}
 
     await context_menu(ed, "brick.png", "Rename")
-    await asyncio.sleep(0.5)
+    await frames(ed, 4)         # the dialog opens and focuses its field
     # the dialog preselects the name without its extension
     xdo(ed, "type", "--delay", "50", "h2")
+    await frames(ed, 3)
     xdo(ed, "key", "Return")
     state = await wait_ui(ed, lambda s: entry(s, "h2.png") and not entry(s, "brick.png"), "h2.png listed instead of brick.png")
     names = [item["name"] for item in state["project_window"]["entries"]]
