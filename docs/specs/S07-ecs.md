@@ -594,8 +594,15 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   (1.45x / 1.16x the baseline index loop), 17.3 B per component and 76 B per entity at 100k,
   20 empty systems 3-4 us per frame. The pre-S07 engine is measured only for what R26
   compares: its one-by-one destroy at 100k is quadratic (hours).
-- **AC10's manual ASan check** (a sample project destroying the other body in a collision
-  callback for 1000 frames) was not run: S02's ASan preset is not on `oe-port`. The unit tests
-  (DeferScopeTest included) pass under ASan+UBSan in a Debug build; ASan needs
-  `alloc_dealloc_mismatch=0` because ThorVG replaces `operator new` with `malloc` in the static
-  engine.
+- **AC10's ASan check** runs as an MCP test against a sample project,
+  `tools/fixtures/ecs-collision` (`tools/mcp/tests/test_ecs_collision.py`): boxes fall on a floor
+  every third frame, and each `beginContact2D` destroys the other body with
+  `GameObject.destroyImmediate` and adds or removes a `Rigidbody2D` on the script's own
+  GameObject. Run with an ASan/UBSan editor (`SANITIZE=address,undefined tools/build.sh
+  linux`, `JASPER_EDITOR=build/linux/editor-address-undefined/jasperengine-editor`,
+  `ASAN_OPTIONS=detect_leaks=0:alloc_dealloc_mismatch=0`; ThorVG replaces `operator new` with
+  `malloc` in the static engine) it plays 1000 frames with no console error and no sanitizer
+  report. The first run stopped in UBSan on an unrelated read: `ShaderData` copied an
+  indeterminate `es` flag; its scalar fields are now initialized. AC10 is an MCP test rather
+  than a manual step, so it is repeatable; it is in the default suite (with a normal editor it
+  checks the same behaviour without the sanitizers).
