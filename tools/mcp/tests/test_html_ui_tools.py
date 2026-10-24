@@ -57,7 +57,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
 # S07 adds the four ECS tools (get_ecs_stats 276, get_system_schedule 292, set_system_options 332,
 # query_entities 640: +1540)
-TOTAL_LIMIT = 99800 + 837 + 1479 + 1540
+# S06 (jobs and memory) adds the threading settings and jobs_memory window text without a budget
+# of its own; measured on the S06+S07 merge, with focus_window's "systems": +808
+TOTAL_LIMIT = 99800 + 837 + 1479 + 1540 + 808
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
