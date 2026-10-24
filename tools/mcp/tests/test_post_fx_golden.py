@@ -97,7 +97,8 @@ async def capture(ed: Editor, label: str):
 
 def compare_golden(ed: Editor, name: str, image, tolerance: int = CHANNEL_TOLERANCE, max_fraction: float = MAX_FRACTION):
     path = GOLDEN_DIR / f"{name}.png"
-    if UPDATE_GOLDEN:
+    # the defaults' reference comes from the editor before S13: an S13 editor never rewrites it
+    if UPDATE_GOLDEN and not (name == "defaults" and path.is_file() and ed.has_tool("set_post_processing_debug")):
         GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
         path.write_bytes(pngdiff.encode(image))
         print(f"     [golden] wrote {path.relative_to(harness.REPO)}: look at it")
