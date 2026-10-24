@@ -123,8 +123,12 @@ async def measure(ed: Editor, frames: int) -> dict:
     results = {}
     scene = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
     for name, fog, clouds, tier in CONFIGS:
-        # "none": no Fog component at all (deleted, then undone) and the clouds' GameObject inactive
+        # "none" (first): no Fog component at all (the GameObject deleted; made again as the
+        # fixture made it for the next configuration) and the clouds' GameObject inactive
         if fog:
+            if not (await ed.call("find_entities", scene=scene, component="fog"))["entities"]:
+                made = await ed.call("create_entity", scene=scene, type="fog", name="Fog")
+                await ed.call("apply_atmosphere_preset", scene=scene, entity=made["entity_id"], preset="mountain_valley")
             await ed.call("set_properties", scene=scene, entity="Fog", values={"fog": fog})
         else:
             await ed.call("delete_entities", scene=scene, entities=["Fog"])
@@ -142,8 +146,6 @@ async def measure(ed: Editor, frames: int) -> dict:
             size = await render_size(ed)
         finally:
             await ed.call("play", action="stop")
-            if not fog:
-                await ed.call("undo", scope="timeline", scene=scene)
         results[name] = {"frame_ms": statistics.median(times), "passes": info["passes"], "vram_mb": info["vramBytes"] / 2 ** 20,
                          "vram_screen_mb": info.get("vramScreenBytes", info["vramBytes"]) / 2 ** 20, "tier": tier,
                          "render_size": size}
