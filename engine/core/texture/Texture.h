@@ -52,6 +52,8 @@ namespace jasperengine{
             bool alphaBorderAuto;
 
             void reloadAlphaBorder(bool wasFixed);
+            // after a sampler change: lets go of the texture of the previous pool key
+            void releaseSamplerRender(const std::string& previousRenderId);
 
         public:
             Texture();

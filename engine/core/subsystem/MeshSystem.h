@@ -216,7 +216,9 @@ namespace jasperengine{
         SubmeshOverrides collectSubmeshOverrides(Entity entity, const ModelComponent& model) const;
         void applySubmeshOverrides(const SubmeshOverrides& overrides, Entity entity, const ModelComponent& model) const;
 
-        bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true);
+        // bakeSceneRoot: the entity does not carry the file's scene root transform (a foliage
+        // chunk), so a lone mesh node bakes its whole global transform into the vertices
+        bool loadGLTF(Entity entity, const std::string filename, bool asyncLoad=false, bool skipEntities=false, bool changeRootTransform=true, bool bakeSceneRoot=false);
         bool loadOBJ(Entity entity, const std::string filename, bool asyncLoad=false);
 
         // Parses a model file into ModelPool without a scene, for SceneManager::preloadScene().

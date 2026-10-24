@@ -4,7 +4,9 @@
 // A glTF whose only mesh node sits under transform nodes: MeshSystem::loadGLTF gives the entity
 // the scene root's transform and bakes the nodes between the root and the mesh into the
 // vertices (they were lost), and Project::countGltfExternalBuffers counts, from the file, the
-// external buffers that load gives the mesh (a command line export loads no model).
+// external buffers that load gives the mesh (a command line export loads no model). The baked
+// copy is made once per pooled model (instances and reloads share it), an off-thread load
+// (thumbnail) bakes its own parse, and a foliage chunk bakes the node's whole transform.
 
 #include <gtest/gtest.h>
 
@@ -13,9 +15,11 @@
 #include "Scene.h"
 #include "System.h"
 #include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
 #include "component/Transform.h"
 #include "buffer/ExternalBuffer.h"
 #include "object/Model.h"
+#include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
 #include "json.hpp"
@@ -24,7 +28,9 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -121,6 +127,24 @@ namespace {
         }
     }
 
+    // the bytes the first submesh's POSITION attribute reads
+    const unsigned char* positionData(const MeshComponent& mesh) {
+        if (mesh.numSubmeshes < 1) return nullptr;
+        auto attribute = mesh.submeshes[0].attributes.find(AttributeType::POSITION);
+        if (attribute == mesh.submeshes[0].attributes.end()) return nullptr;
+        for (unsigned int b = 0; b < mesh.numExternalBuffers; b++) {
+            if (mesh.eBuffers[b].getName() == attribute->second.getBufferName())
+                return mesh.eBuffers[b].getData();
+        }
+        return nullptr;
+    }
+
+    const nlohmann::json nestedNodes = {
+        {{"name", "Root"}, {"translation", {1, 0, 0}}, {"children", {1}}},
+        {{"name", "Offset"}, {"translation", {0, 2, 0}}, {"scale", {2, 2, 2}}, {"children", {2}}},
+        {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"mesh", 0}},
+    };
+
 }
 
 TEST_F(GltfMeshOffset, NestedMeshNodeKeepsItsTransforms) {
@@ -190,6 +214,100 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
     // the mirror flips the winding
     EXPECT_EQ(mesh.windingOrder, WindingOrder::CW);
     EXPECT_GE(editor::Project::countGltfExternalBuffers(path, false), mesh.numExternalBuffers);
+}
+
+TEST_F(GltfMeshOffset, InstancesAndReloadsShareOneBake) {
+    const fs::path path = writeGltf("shared", nestedNodes, {0});
+    Scene scene;
+    std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
+
+    Model first(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(first.getEntity(), path.string()));
+    const unsigned char* baked = positionData(scene.getComponent<MeshComponent>(first.getEntity()));
+    ASSERT_NE(baked, nullptr);
+
+    // a second instance of the pooled file, and a reload, take the same baked copy
+    Model second(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(second.getEntity(), path.string()));
+    EXPECT_EQ(scene.getComponent<ModelComponent>(second.getEntity()).gltfModel,
+              scene.getComponent<ModelComponent>(first.getEntity()).gltfModel);
+    EXPECT_EQ(positionData(scene.getComponent<MeshComponent>(second.getEntity())), baked);
+    ASSERT_TRUE(meshSystem->loadGLTF(first.getEntity(), path.string(), false, true, false));
+    EXPECT_EQ(positionData(scene.getComponent<MeshComponent>(first.getEntity())), baked);
+    expectPositions(scene.getComponent<MeshComponent>(first.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
+}
+
+TEST_F(GltfMeshOffset, OffThreadLoadLeavesThePooledModel) {
+    const fs::path path = writeGltf("offthread", nestedNodes, {0});
+    Scene scene;
+    std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
+
+    Model pooled(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(pooled.getEntity(), path.string()));
+    const std::shared_ptr<tinygltf::Model> shared = ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string()));
+    ASSERT_EQ(shared, scene.getComponent<ModelComponent>(pooled.getEntity()).gltfModel);
+
+    // a thumbnail load parses its own copy, which it bakes
+    Scene preview;
+    Model thumbnail(&preview);
+    // on a thread flagged async, as ProjectWindow's thumbnail worker (no AsyncThreadScope: its
+    // end commits the render queue, which waits for a render thread this binary has not)
+    bool loaded = false;
+    std::thread worker([&]() {
+        Engine::startAsyncThread();
+        loaded = preview.getSystem<MeshSystem>()->loadGLTF(thumbnail.getEntity(), path.string());
+    });
+    worker.join();
+    ASSERT_TRUE(loaded);
+    EXPECT_NE(preview.getComponent<ModelComponent>(thumbnail.getEntity()).gltfModel, shared);
+    EXPECT_EQ(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string())), shared);
+    expectPositions(preview.getComponent<MeshComponent>(thumbnail.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
+}
+
+TEST_F(GltfMeshOffset, SceneLoadKeepsTheSavedRootTransform) {
+    // a scene load (changeRootTransform off): the saved entity transform is the root's, so only
+    // the nodes between the root and the mesh are baked, as on the first load
+    const fs::path path = writeGltf("sceneload", nestedNodes, {0});
+    Scene scene;
+    Model model(&scene);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), path.string(), false, false, false));
+    expectVector(scene.getComponent<Transform>(model.getEntity()).position, Vector3(0, 0, 0), "entity position");
+    expectPositions(scene.getComponent<MeshComponent>(model.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
+}
+
+TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
+    Scene scene;
+    std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
+
+    // loadFoliageMesh's load. Nested: Root * Offset * Mesh, (2x + 1, 2y + 2, 2z + 6), as merged nodes bake
+    const fs::path nested = writeGltf("foliage-nested", nestedNodes, {0});
+    Model chunk(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(chunk.getEntity(), nested.string(), false, true, false, true));
+    expectVector(scene.getComponent<Transform>(chunk.getEntity()).position, Vector3(0, 0, 0), "chunk position");
+    const MeshComponent& nestedMesh = scene.getComponent<MeshComponent>(chunk.getEntity());
+    expectPositions(nestedMesh, {Vector3(1, 2, 6), Vector3(3, 2, 6), Vector3(1, 4, 6)});
+    EXPECT_GE(editor::Project::countGltfExternalBuffers(nested, true), nestedMesh.numExternalBuffers);
+
+    // the mesh at the root, mirrored: its own transform, and the winding it flips
+    const nlohmann::json rootNodes = {
+        {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"scale", {-1, 1, 1}}, {"mesh", 0}},
+    };
+    const fs::path root = writeGltf("foliage-root", rootNodes, {0});
+    Model rootChunk(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(rootChunk.getEntity(), root.string(), false, true, false, true));
+    const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
+    expectPositions(rootMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
+    EXPECT_EQ(rootMesh.windingOrder, WindingOrder::CW);
+    EXPECT_GE(editor::Project::countGltfExternalBuffers(root, true), rootMesh.numExternalBuffers);
+
+    // a file without node transforms is not baked (and renders as before)
+    const nlohmann::json plainNodes = {{{"name", "Mesh"}, {"mesh", 0}}};
+    const fs::path plain = writeGltf("foliage-plain", plainNodes, {0});
+    Model plainChunk(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(plainChunk.getEntity(), plain.string(), false, true, false, true));
+    const MeshComponent& plainMesh = scene.getComponent<MeshComponent>(plainChunk.getEntity());
+    expectPositions(plainMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
+    EXPECT_EQ(plainMesh.windingOrder, WindingOrder::CCW);
 }
 
 TEST(GltfExternalBuffers, UnreadableFileCountsNothing) {

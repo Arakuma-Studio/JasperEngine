@@ -3465,7 +3465,8 @@ unsigned int editor::Project::countGltfExternalBuffers(const fs::path& path, boo
                 }
             }
             count.separate = countBuffers(meshNodes, meshNodes[0] != root);
-            count.merged = count.separate;
+            // a foliage layer (counted as merged) bakes the node's whole global transform
+            count.merged = countBuffers(meshNodes, true);
         } else {
             // a child mesh per node, or all of them baked onto the root when merged
             for (size_t node : meshNodes) {

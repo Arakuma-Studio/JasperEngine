@@ -428,6 +428,19 @@ void Texture::destroy(){
     }
 }
 
+// The sampler is part of the pool key, so the next getRender() takes (or builds) the texture of
+// the new one. The old one is removed from the pool unless other Textures still use it (a
+// loading placeholder is not the pool's, and leaves its entry alone).
+void Texture::releaseSamplerRender(const std::string& previousRenderId){
+    if (render && previousRenderId != getRenderId()){
+        const bool pooled = render == TexturePool::get(previousRenderId);
+        render.reset();
+        if (pooled){
+            TexturePool::remove(previousRenderId);
+        }
+    }
+}
+
 void Texture::invalidateRender(){
     if (!id.empty() && render) {
         render.reset();
@@ -593,7 +606,9 @@ void Texture::setMinFilter(TextureFilter filter){
     if (framebuffer){
         framebuffer->setMinFilter(filter);
     }
+    const std::string previousRenderId = getRenderId();
     minFilter = filter;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureFilter Texture::getMinFilter() const{
@@ -607,7 +622,9 @@ void Texture::setMagFilter(TextureFilter filter){
     if (framebuffer){
         framebuffer->setMagFilter(filter);
     }
+    const std::string previousRenderId = getRenderId();
     magFilter = filter;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureFilter Texture::getMagFilter() const{
@@ -621,7 +638,9 @@ void Texture::setWrapU(TextureWrap wrapU){
     if (framebuffer){
         framebuffer->setWrapU(wrapU);
     }
+    const std::string previousRenderId = getRenderId();
     this->wrapU = wrapU;
+    releaseSamplerRender(previousRenderId);
 }
 
 TextureWrap Texture::getWrapU() const{
@@ -635,7 +654,9 @@ void Texture::setWrapV(TextureWrap wrapV){
     if (framebuffer){
         framebuffer->setWrapV(wrapV);
     }
+    const std::string previousRenderId = getRenderId();
     this->wrapV = wrapV;
+    releaseSamplerRender(previousRenderId);
 }
 
 void Texture::setSvgScale(float scale){
