@@ -5,8 +5,8 @@ angles, snapped between with springy transitions ("feel"), optionally humanised 
 in-betweens, sway, follow-through, joint limits). The same asset plays live on a model (Pose
 Animator component, Lua `PoseAnimator`) or bakes to a normal Animation.
 
-Tools: `get_pose_animation` (read) and `edit_pose_animation` (every change, one project undo step
-per call: `undo {scope: "project"}`). The `.poseanim` file is JSON and safe to read, but edit it with
+Tools: `get_pose_animation` (read), `edit_pose_animation` (every change, one project undo step
+per call: `undo {scope: "project"}`) and `render_pose_animation` (pictures of the poses or the motion). The `.poseanim` file is JSON and safe to read, but edit it with
 the tool: it validates, clamps, echoes what it clamped and keeps the undo history.
 
 ## The loop
@@ -17,8 +17,15 @@ the tool: it validates, clamps, echoes what it clamped and keeps the undo histor
    model it is, how many slots are `mapped` (`bones`: slot -> bone), the `missing` required slots and
    `human_scale` (or the `error` that kept the model from being a usable humanoid).
 2. `edit_pose_animation {path, ops: [...]}`: change several poses and settings in one call.
-3. Check the metrics of the touched poses the result returns (and the motion in play mode or after
-   baking). Fix, repeat.
+3. Check the metrics of the touched poses the result returns. Fix, repeat.
+4. Look when the numbers are not enough: `render_pose_animation {path}` draws the key poses (front and
+   side rows); `mode: "motion"` (evenly spaced `frames`, side row) or `mode: "times"` (`times` in
+   seconds) draws the frames the bake and the runtime play, with feet in contact marked `[L]`, `[R]`,
+   `[LR]` in the labels. The skeleton overlay is coral for the character's left limbs and cyan for the
+   right (the front view faces you: its left is on image right); the orange line is the floor; every
+   view row has one scale, so a jump shows its height. The result also has per-column `metrics`. Each
+   image costs tokens: render the poses you changed (`poses`), few `frames`, one or two `views`.
+   For detail keep it to 8 columns or fewer per row (clients downscale images wider than about 1568 px).
 
 Start a new file with `create`: `{path: "assets/anim/walk.poseanim", create: {preview_model:
 "assets/models/hero.gltf"}, ops: [{op: "add_pose", name: "Contact R", angles: {...}}, ...]}`.
@@ -103,7 +110,9 @@ their values. Out-of-range values are clamped and listed in `clamped: [{field, r
 Animation of a model GameObject (one RotateTracks per mapped bone and a TranslateTracks for the
 hips, one key per frame at the frame times, step keys when `step_rate` > 0; its own scene undo step,
 `undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
-`Model:playAnimation(name)`. `bake` alone (no ops) re-bakes after edits.
+`Model:playAnimation(name)`; names are per model (the Hero and the Robot can both have "walk"). `bake`
+alone (no ops) re-bakes after edits; `bake` without `path` bakes what the model's Pose Animator plays
+(the Inspector's Bake button).
 
 ## Feel (`feel`) and humanize (`humanize`)
 
@@ -163,7 +172,10 @@ slots. When a mapping is wrong, `set_humanoid` stores the fix next to the model
 - Re-sending every angle to change one: `update_pose` with only the changed DOFs (or `add_angles`).
 - Swings over 180 degrees: the two swing DOFs of a slot form one swing whose length is
   sqrt(dof1^2 + dof2^2); past 180 it is the same rotation as a shorter swing the other way, so it
-  does not come back as written (`upper_arm.raise: 150, forward: 150` reads back differently). Keep
-  each slot's combined swing under 180, or twist instead.
+  does not come back as written (`upper_arm.raise: 150, forward: 150` reads back differently). With
+  `joint_limits` on, the combined swing is capped at 179.5 (both DOFs scaled, listed in `clamped`).
+  Keep each slot's combined swing under 180, or twist instead.
 - Even timing everywhere: vary holds, or run `auto_timing`, then adjust.
+- Changing the feel after `auto_timing`: it gives every pose its own transition, which then ignores
+  `apply_preset` / `set_settings` `transition` (the result warns); add `clear_custom: true` to clear them.
 - Editing the `.poseanim` file by hand: no clamping, no echo, no undo step.

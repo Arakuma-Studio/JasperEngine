@@ -5,7 +5,8 @@
 // timing and, on a rig, per-pose metrics) and edit_pose_animation (ops applied in order to a copy,
 // all or nothing, committed once through PoseAnimationDocument: one project undo step). Angles
 // are the rig-independent joint angles of engine/core/pose/PoseDofs (degrees, 0 = neutral
-// standing); the agent guide page is docs/mcp/guide/pose-animation.md.
+// standing); the agent guide page is docs/mcp/guide/pose-animation.md. render_pose_animation
+// (phase 3) draws contact sheets of the key poses or the motion in its own block at the end.
 #include "McpTools.h"
 #include "W4Shared.h"
 
@@ -17,6 +18,7 @@
 
 #include "Project.h"
 #include "component/ModelComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/PoseAnimationDocument.h"
@@ -24,18 +26,22 @@
 #include "pose/PoseMetrics.h"
 #include "pose/PoseRig.h"
 #include "pose/PoseRigProvider.h"
+#include "pose/PoseSheetRenderer.h"
 #include "pose/PoseSampler.h"
 #include "pose/PoseTween.h"
 #include "pose/PoseAnimationIO.h"
+#include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRanges.h"
 #include "pose/PoseTypes.h"
+#include "util/Base64.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <fstream>
 #include <map>
 #include <set>
 #include <sstream>
@@ -186,6 +192,8 @@ double r1(double value) {
 }
 
 std::string fmt(double value, int decimals = 2) {
+    // what rounds to zero prints as 0 (not "-0.00")
+    if (std::fabs(value) < 0.5 * std::pow(10.0, -decimals)) value = 0.0;
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(decimals);
@@ -467,10 +475,13 @@ struct SidecarEdit {
     HumanoidOverrides overrides;
 };
 
+constexpr uint8_t TOUCHED = 1;      // returned in the result
+constexpr uint8_t ANGLES_SET = 2;   // this call set its angles: joint limits apply to it
+
 struct EditState {
     Project* project = nullptr;
     PoseAnimationData data;
-    std::vector<bool> touched;      // per pose: added, updated, moved or mirrored by this call
+    std::vector<uint8_t> touched;   // per pose: TOUCHED (added, updated, moved, mirrored, retimed), ANGLES_SET
     std::vector<std::string> changes;
     std::vector<std::string> warnings;
     std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
@@ -484,8 +495,9 @@ const std::map<std::string, std::vector<std::string>>& opArguments() {
         {"delete_pose", {"op", "index"}},
         {"move_pose", {"op", "index", "to"}},
         {"mirror_pose", {"op", "index", "as_new", "name"}},
-        {"set_settings", {"op", "loop", "frame_rate", "transition", "step_rate", "overlap", "looseness", "weights", "humanize"}},
-        {"apply_preset", {"op", "name"}},
+        {"set_settings", {"op", "loop", "frame_rate", "transition", "step_rate", "overlap", "looseness", "weights", "humanize",
+                          "clear_custom"}},
+        {"apply_preset", {"op", "name", "clear_custom"}},
         {"auto_timing", {"op"}},
         {"set_preview_model", {"op", "model"}},
         {"set_humanoid", {"op", "model", "bones"}},
@@ -594,7 +606,7 @@ bool addPose(EditState& state, const Json& op, const std::string& path, std::str
     const size_t at = static_cast<size_t>(after + 1);
     key.name = "Pose " + std::to_string(count + 1);
     poses.insert(poses.begin() + at, key);
-    state.touched.insert(state.touched.begin() + at, true);
+    state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
     std::vector<std::string> fields;
     if (!applyKeyFields(state, at, op, path, fields, error)) return false;
     state.changes.push_back("add_pose: \"" + poses[at].name + "\" at " + std::to_string(at) + " (" + how + ")");
@@ -610,7 +622,8 @@ bool updatePose(EditState& state, const Json& op, const std::string& path, std::
     if (!readIndex(op["index"], path + ".index", state.data.poses.size(), index, error)) return false;
     std::vector<std::string> fields;
     if (!applyKeyFields(state, static_cast<size_t>(index), op, path, fields, error)) return false;
-    state.touched[index] = true;
+    state.touched[index] |= TOUCHED;
+    if (op.contains("angles") || op.contains("add_angles")) state.touched[index] |= ANGLES_SET;
     std::string list;
     for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
     state.changes.push_back("update_pose " + std::to_string(index) + " \"" + state.data.poses[index].name + "\": " +
@@ -647,11 +660,30 @@ bool movePose(EditState& state, const Json& op, const std::string& path, std::st
     if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
     if (!readIndex(op["to"], path + ".to", poses.size(), to, error)) return false;
     PoseKey key = poses[index];
+    const uint8_t mark = state.touched[index];
     poses.erase(poses.begin() + index);
     state.touched.erase(state.touched.begin() + index);
     poses.insert(poses.begin() + to, key);
-    state.touched.insert(state.touched.begin() + to, true);
+    state.touched.insert(state.touched.begin() + to, static_cast<uint8_t>(mark | TOUCHED));
     state.changes.push_back("move_pose \"" + key.name + "\": " + std::to_string(index) + " -> " + std::to_string(to));
+    return true;
+}
+
+// clear_custom: true -> every pose uses the animation's transition again
+bool clearCustomTransitions(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    bool clear = false;
+    if (op.contains("clear_custom") && !readBool(op["clear_custom"], path + ".clear_custom", clear, error)) return false;
+    if (!clear) return true;
+    int cleared = 0;
+    for (size_t i = 0; i < state.data.poses.size(); i++) {
+        PoseKey& key = state.data.poses[i];
+        if (!key.customTransition) continue;
+        key.customTransition = false;
+        key.transition = Transition();
+        state.touched[i] |= TOUCHED;
+        cleared++;
+    }
+    state.changes.push_back("clear_custom: " + std::to_string(cleared) + " pose(s) use the animation's transition again");
     return true;
 }
 
@@ -722,7 +754,7 @@ bool setSettings(EditState& state, const Json& op, const std::string& path, std:
     std::string list;
     for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
     state.changes.push_back("set_settings: " + (list.empty() ? std::string("nothing") : list));
-    return true;
+    return clearCustomTransitions(state, op, path, error);
 }
 
 // A model asset argument: project-relative, an existing model file inside the assets folder
@@ -880,12 +912,12 @@ bool mirrorPose(EditState& state, const Json& op, const std::string& path, std::
         key.name = op.contains("name") ? op["name"].get<std::string>() : key.name + " (mirrored)";
         at = static_cast<size_t>(index + 1);
         poses.insert(poses.begin() + at, key);
-        state.touched.insert(state.touched.begin() + at, true);
+        state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
         state.changes.push_back("mirror_pose " + std::to_string(index) + ": mirrored copy \"" + key.name + "\" at " + std::to_string(at));
     } else {
         if (op.contains("name")) key.name = op["name"].get<std::string>();
         poses[at] = key;
-        state.touched[at] = true;
+        state.touched[at] |= TOUCHED | ANGLES_SET;
         state.changes.push_back("mirror_pose " + std::to_string(index) + " \"" + key.name + "\": mirrored in place");
     }
     return true;
@@ -905,7 +937,7 @@ bool applyPreset(EditState& state, const Json& op, const std::string& path, std:
     }
     applyFeelPreset(*preset, state.data.settings);
     state.changes.push_back(std::string("apply_preset: ") + preset->name);
-    return true;
+    return clearCustomTransitions(state, op, path, error);
 }
 
 bool autoTimingOp(EditState& state, const std::string& path, std::string& error) {
@@ -922,7 +954,7 @@ bool autoTimingOp(EditState& state, const std::string& path, std::string& error)
     const std::shared_ptr<PoseRealisation> realised = PoseAnimationDocument::realiseData(state.data, rig.info->rig);
     const double before = buildTimeline(state.data).length;
     autoTiming(state.data, realised->keys, *rig.info->rig);
-    state.touched.assign(state.data.poses.size(), true);
+    for (uint8_t& mark : state.touched) mark |= TOUCHED;
     state.changes.push_back("auto_timing: holds and transitions from the motion (length " + fmt(before) + " -> " +
                             fmt(buildTimeline(state.data).length) + " s)");
     return true;
@@ -960,11 +992,48 @@ bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& erro
     return setHumanoid(state, op, path, error);
 }
 
-// humanize.joint_limits: the added and updated poses are clamped to the joint limits (reported)
+// "0, 2-4" from sorted indices
+std::string indexRanges(const std::vector<size_t>& indices) {
+    std::string text;
+    for (size_t i = 0; i < indices.size();) {
+        size_t j = i;
+        while (j + 1 < indices.size() && indices[j + 1] == indices[j] + 1) j++;
+        text += (text.empty() ? "" : ", ") + std::to_string(indices[i]) + (j > i ? "-" + std::to_string(indices[j]) : "");
+        i = j + 1;
+    }
+    return text;
+}
+
+// The animation's transition changed while some poses keep their own (auto_timing gives every pose
+// one): those poses do not follow it
+void warnOwnTransitions(EditState& state, const Transition& before) {
+    const Transition& now = state.data.settings.transition;
+    if (now.curve == before.curve && now.duration == before.duration && now.overshoot == before.overshoot &&
+        now.anticipation == before.anticipation) return;
+    std::vector<size_t> own;
+    for (size_t i = 0; i < state.data.poses.size(); i++) {
+        if (state.data.poses[i].customTransition) own.push_back(i);
+    }
+    if (own.empty()) return;
+    state.warnings.push_back("poses " + indexRanges(own) + " have their own transition (auto_timing or a pose transition) and "
+                             "keep it; clear with update_pose transition: null, or clear_custom: true on apply_preset / set_settings");
+}
+
+bool insideAssets(Project* project, const fs::path& absolute) {
+    return project->isInsideAssetsPath(project->normalizeToAssetsRelative(absolute));
+}
+
+std::string outsideAssetsWarning(Project* project, const std::string& relative) {
+    return relative + " is outside the assets folder (" + projectRel(project, project->getAssetsPath()) +
+           "): a Pose Animator in a game cannot load it";
+}
+
+// humanize.joint_limits: the poses whose angles this call set (add_pose, mirror_pose, angles,
+// add_angles) are clamped to the joint limits (reported); metadata-only edits are left alone
 void clampTouchedToLimits(EditState& state, std::vector<ClampReport>& reports) {
     if (!state.data.settings.humanize.jointLimits) return;
     for (size_t i = 0; i < state.data.poses.size() && i < state.touched.size(); i++) {
-        if (!state.touched[i]) continue;
+        if (!(state.touched[i] & ANGLES_SET)) continue;
         BodyPose& body = state.data.poses[i].body;
         const BodyPose before = body;
         for (int dof : clampToLimits(body)) {
@@ -1082,21 +1151,72 @@ void getPoseAnimationTool(const CallPtr& call) {
         for (size_t i = 0; i < count; i++) indices.push_back(i);
     }
     Json out = animationJson(project, *document, rig, indices, detail == "full");
+    if (!insideAssets(project, absolute)) {
+        if (!out.contains("warnings")) out["warnings"] = Json::array();
+        out["warnings"].push_back(outsideAssetsWarning(project, document->path()));
+    }
     std::string text = document->path() + ": " + std::to_string(count) + " pose(s), " + fmt(out["length"].get<double>()) + " s, " +
                        (out["loop"].get<bool>() ? "loop" : "one-shot") + ", " + std::to_string(out["frame_rate"].get<int>()) + " fps, preview " +
                        (out["preview_model"].get<std::string>().empty() ? std::string("none") : out["preview_model"].get<std::string>());
     if (out["preset"].is_string()) text += ", feel " + out["preset"].get<std::string>();
     if (rig.info && !rig.info->rig) text += "\nno metrics: " + rig.info->error;
+    if (out.contains("warnings")) {
+        for (const Json& warning : out["warnings"]) text += "\nwarning: " + warning.get<std::string>();
+    }
     for (const Json& pose : out["poses"]) text += "\n" + poseLine(pose);
     call->ok(text, out);
 }
 
 // ------------------------------------------------------------------ edit_pose_animation
 
+// bake without path: the animation the model's Pose Animator plays, as its Inspector Bake button does
+void bakeAnimatorTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    const Json& bake = args["bake"];
+    if (args.contains("ops") || args.contains("create")) {
+        call->fail("ops and create need path: the .poseanim file to edit.");
+        return;
+    }
+    if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model"}, error)) {
+        call->fail(error + " (without path the bake uses the Pose Animator's animation and its file name; pass path to choose a name)");
+        return;
+    }
+    if (!bake.contains("model")) {
+        call->fail("bake.model is required: the model GameObject to bake on.");
+        return;
+    }
+    SceneProject* scene = nullptr;
+    Entity model = NULL_ENTITY;
+    if (!resolveModelEntity(project, args, bake["model"], "bake.model", scene, model, error)) {
+        call->fail(error);
+        return;
+    }
+    const PoseAnimatorComponent* animator = scene->scene->findComponent<PoseAnimatorComponent>(model);
+    if (!animator || animator->animation.empty()) {
+        call->fail("bake.model: \"" + scene->scene->getEntityName(model) + "\" has no Pose Animator with an animation; pass path.");
+        return;
+    }
+    PoseBakeResult result;
+    if (!PoseBaker::bakeAnimatorAsset(project, scene->id, model, animator->animation, result, error)) {
+        call->fail("bake: " + error);
+        return;
+    }
+    Json out = {{"bake", {{"animation", McpRefs::entityJson(scene, result.animation)}, {"name", result.name},
+                          {"created", result.created}, {"frames", result.frames}, {"tracks", result.tracks},
+                          {"length", r4(result.length)}, {"source", animator->animation}}}};
+    call->ok(PoseBaker::bakeStatusLine(animator->animation, result) + " (scene undo step)", out);
+}
+
 void editPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     installSyncHook(call->ctx());
+    if (!args.contains("path") && args.contains("bake")) {
+        bakeAnimatorTool(call);
+        return;
+    }
     std::string relative, error;
     fs::path absolute;
     if (!resolveAnimationPath(project, args, relative, absolute, error)) {
@@ -1194,7 +1314,8 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
         state.data = document->data();
     }
-    state.touched.assign(state.data.poses.size(), false);
+    state.touched.assign(state.data.poses.size(), 0);
+    const Transition initialTransition = state.data.settings.transition;
 
     // all ops on the copy; the first failing one fails the call with nothing written
     for (size_t i = 0; i < ops.size(); i++) {
@@ -1209,6 +1330,11 @@ void editPoseAnimationTool(const CallPtr& call) {
     }
     std::vector<ClampReport> clamped;
     clampTouchedToLimits(state, clamped);
+    warnOwnTransitions(state, initialTransition);
+    if (document) {
+        for (const std::string& warning : document->loadWarnings()) state.warnings.push_back(relative + ": " + warning);
+    }
+    if (!insideAssets(project, absolute)) state.warnings.push_back(outsideAssetsWarning(project, relative));
 
     std::vector<PoseAnimationDocument::ExtraFile> extras;
     bool extrasChanged = false;
@@ -1236,7 +1362,7 @@ void editPoseAnimationTool(const CallPtr& call) {
 
     std::vector<size_t> touched;
     for (size_t i = 0; i < state.touched.size() && i < document->data().poses.size(); i++) {
-        if (state.touched[i]) touched.push_back(i);
+        if (state.touched[i] & TOUCHED) touched.push_back(i);
     }
     const Json full = animationJson(project, *document, previewRig(project, document->data()), touched, true);
     Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
@@ -1273,6 +1399,504 @@ Json obj(const Json& properties, const std::vector<std::string>& required = {}) 
     Json out = {{"type", "object"}, {"properties", properties}};
     if (!required.empty()) out["required"] = required;
     return out;
+}
+
+} // namespace
+
+// ================================================================== render_pose_animation
+// (spec: pose animation phase 3, section 4) Contact sheets of key poses or of the motion
+// (the frames of the bake and the runtime, pose::frames sampled as the runtime plays them),
+// one row per view, rendered offscreen by PoseSheetRenderer without blocking the editor.
+
+namespace {
+
+using namespace ::jasperengine::pose;
+
+constexpr int RENDER_MAX_COLUMNS = 24;
+constexpr int RENDER_ROW_COLUMNS = 12;
+constexpr int RENDER_MAX_SHEET = 2048;
+constexpr int RENDER_TIMEOUT_MS = 120000;
+constexpr size_t RENDER_KEPT_RENDERERS = 2;
+
+struct RenderColumn {
+    HumanPose pose;
+    Json key;               // {index, label} or {time, label}
+    std::string label;
+    Json metrics;
+    std::string line;       // the caption's metrics summary
+};
+
+struct RenderJob {
+    std::shared_ptr<PoseSheetRenderer> renderer;   // alive until every cell came back
+    std::vector<PoseImage> cells;                  // per sheet slot (row * columns + column)
+    std::vector<PoseSheetRenderer::PoseJoints> joints;   // per sheet slot, when asked
+    size_t remaining = 0;
+    bool failed = false;
+};
+
+// Sheet renderers kept warm between calls, per model file, least recently used first.
+// Deliberately never destroyed (the editor frees their GPU objects when the view goes away): a
+// PoseRender owns a scene that must not outlive the engine.
+std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>& sheetRenderers() {
+    static auto* renderers = new std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>();
+    return *renderers;
+}
+
+std::shared_ptr<PoseSheetRenderer> sheetRendererFor(const std::string& modelFile, const std::shared_ptr<PoseRig>& rig,
+                                                    std::string& error) {
+    auto& renderers = sheetRenderers();
+    auto it = std::find_if(renderers.begin(), renderers.end(), [&](const auto& entry) { return entry.first == modelFile; });
+    std::shared_ptr<PoseSheetRenderer> renderer;
+    // the same rig, or a scene model's rig of the same skeleton and map: the loaded model serves
+    if (it != renderers.end() && it->second->sameRig(rig) && it->second->setModel(modelFile, rig, &error)) {
+        renderer = it->second;
+    } else {
+        // a new one (a call still drawing with the old rig keeps the old renderer alive)
+        renderer = std::make_shared<PoseSheetRenderer>();
+        if (!renderer->setModel(modelFile, rig, &error)) return nullptr;
+    }
+    if (it != renderers.end()) renderers.erase(it);
+    while (renderers.size() >= RENDER_KEPT_RENDERERS) renderers.erase(renderers.begin());
+    renderers.emplace_back(modelFile, renderer);
+    return renderer;
+}
+
+// One caption hint per view: where the character's sides are
+std::string viewHint(const std::string& view) {
+    if (view == "front") return "front (faces you: its left is on image right)";
+    if (view == "side") return "side (faces image right, near side = right, cyan)";
+    if (view == "three_quarter") return "three_quarter (from its front-right: faces image right-ish, near side = right)";
+    if (view == "back") return "back (its left is on image left)";
+    if (view == "top") return "top (from above: forward is up, its left is on image left)";
+    return view;
+}
+
+std::string rigFailure(const PoseRigInfo& info) {
+    std::string text = info.error.empty() ? std::string("the model is not a usable humanoid") : info.error;
+    if (!info.missing.empty()) {
+        std::string slots;
+        for (const std::string& slot : info.missing) slots += (slots.empty() ? "" : ", ") + slot;
+        text += ". Missing slots: " + slots + ". Map them with edit_pose_animation ops [{op: \"set_humanoid\", model: \"" +
+                info.model + "\", bones: {slot: bone name}}]";
+    }
+    return text;
+}
+
+std::string metricsLine(const PoseMetrics& m) {
+    return "feet L " + fmt(m.left.height) + " R " + fmt(m.right.height) +
+           (m.balanced ? ", balanced" : ", unbalanced (" + fmt(m.balanceMargin, 3) + ")") +
+           (m.limitHits.empty() ? std::string("") : ", " + std::to_string(m.limitHits.size()) + " limit hit(s)");
+}
+
+bool readViews(const Json& args, const std::string& mode, std::vector<PoseView>& views, std::vector<std::string>& names,
+               std::string& error) {
+    Json list = args.contains("views") ? args["views"] : (mode == "poses" ? Json::array({"front", "side"}) : Json::array({"side"}));
+    if (!list.is_array() || list.empty()) {
+        error = "views must be a non-empty array of front, side, three_quarter, back, top";
+        return false;
+    }
+    for (size_t i = 0; i < list.size(); i++) {
+        PoseView view;
+        const std::string name = list[i].is_string() ? list[i].get<std::string>() : std::string();
+        if (!PoseView::fromName(name, view) || view.kind == PoseView::Custom) {
+            error = "views[" + std::to_string(i) + "]: '" + (list[i].is_string() ? name : list[i].dump()) +
+                    "' is not a view (front, side, three_quarter, back, top)";
+            return false;
+        }
+        if (std::find(names.begin(), names.end(), name) != names.end()) {
+            error = "views[" + std::to_string(i) + "]: '" + name + "' is listed twice";
+            return false;
+        }
+        views.push_back(view);
+        names.push_back(name);
+    }
+    return true;
+}
+
+// The columns of the sheet: key poses, evenly spaced motion frames or frames at given times
+bool readColumns(const Json& args, const std::string& mode, const PoseAnimationData& data, const PoseRig& rig,
+                 const PoseRealisation& realised, std::vector<RenderColumn>& columns, std::string& note, std::string& error) {
+    const size_t count = data.poses.size();
+    if (mode == "poses") {
+        std::vector<size_t> indices;
+        if (args.contains("poses")) {
+            if (!args["poses"].is_array() || args["poses"].empty()) {
+                error = "poses must be a non-empty array of pose indices";
+                return false;
+            }
+            if (args["poses"].size() > static_cast<size_t>(RENDER_MAX_COLUMNS)) {
+                error = "poses: at most " + std::to_string(RENDER_MAX_COLUMNS) + " per sheet (got " +
+                        std::to_string(args["poses"].size()) + ")";
+                return false;
+            }
+            for (size_t i = 0; i < args["poses"].size(); i++) {
+                int index = 0;
+                if (!readIndex(args["poses"][i], "poses[" + std::to_string(i) + "]", count, index, error)) return false;
+                indices.push_back(static_cast<size_t>(index));
+            }
+        } else {
+            for (size_t i = 0; i < count && i < static_cast<size_t>(RENDER_MAX_COLUMNS); i++) indices.push_back(i);
+            if (count > static_cast<size_t>(RENDER_MAX_COLUMNS)) {
+                note = "only the first " + std::to_string(RENDER_MAX_COLUMNS) + " of " + std::to_string(count) +
+                       " poses (pass poses for the others)";
+            }
+        }
+        for (size_t index : indices) {
+            RenderColumn column;
+            column.pose = realised.keys[index];
+            column.label = PoseContactSheet::poseLabel(static_cast<int>(index), data.poses[index].name);
+            column.key = {{"index", index}, {"label", column.label}};
+            column.metrics = metricsJson(realised.metrics[index]);
+            column.line = column.label + ": " + metricsLine(realised.metrics[index]);
+            columns.push_back(std::move(column));
+        }
+        return true;
+    }
+
+    const float length = static_cast<float>(realised.timeline.length);
+    const bool loop = data.settings.loop;
+    std::vector<float> times;
+    if (mode == "motion") {
+        int frames = 12;
+        if (args.contains("frames")) {
+            if (!args["frames"].is_number_integer() || args["frames"].get<long long>() < 4 ||
+                args["frames"].get<long long>() > RENDER_MAX_COLUMNS) {
+                error = "frames must be an integer 4.." + std::to_string(RENDER_MAX_COLUMNS) + " (default 12)";
+                return false;
+            }
+            frames = static_cast<int>(args["frames"].get<long long>());
+        }
+        // a loop's end is its start again: frames cover [0, length); a one-shot includes its end
+        for (int k = 0; k < frames; k++) {
+            times.push_back(static_cast<float>(static_cast<double>(k) * length / (loop ? frames : frames - 1)));
+        }
+    } else {
+        if (!args.contains("times") || !args["times"].is_array() || args["times"].empty()) {
+            error = "times mode needs times: an array of seconds (0.." + fmt(length) + ")";
+            return false;
+        }
+        if (args["times"].size() > static_cast<size_t>(RENDER_MAX_COLUMNS)) {
+            error = "times: at most " + std::to_string(RENDER_MAX_COLUMNS) + " (got " + std::to_string(args["times"].size()) + ")";
+            return false;
+        }
+        for (size_t i = 0; i < args["times"].size(); i++) {
+            float t = 0.0f;
+            const std::string path = "times[" + std::to_string(i) + "]";
+            if (!readNumber(args["times"][i], path, t, error)) return false;
+            if (t < 0.0f || t > length + 1e-4f) {
+                error = path + ": " + fmt(t) + " s is outside the animation (0.." + fmt(length) + " s)";
+                return false;
+            }
+            times.push_back(std::min(t, length));
+        }
+    }
+    const bool stepped = data.settings.stepRate > 0.0f;
+    for (float t : times) {
+        RenderColumn column;
+        // the runtime's sampling of the baked frames
+        sampleFrames(realised.frames, length, loop, stepped, t, column.pose);
+        const PoseMetrics m = computeMetrics(rig, column.pose, rig.toBodyPose(column.pose));
+        column.label = PoseContactSheet::timeLabel(t, m.left.contact, m.right.contact);
+        column.key = {{"time", r4(t)}, {"label", column.label}};
+        column.metrics = metricsJson(m);
+        column.line = column.label + ": " + metricsLine(m);
+        columns.push_back(std::move(column));
+    }
+    return true;
+}
+
+void renderPoseAnimationTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    installSyncHook(call->ctx());
+    std::string relative, error;
+    fs::path absolute;
+    if (!resolveAnimationPath(project, args, relative, absolute, error)) {
+        call->fail(error);
+        return;
+    }
+    const std::string mode = args.value("mode", std::string("poses"));
+    if (mode != "poses" && mode != "motion" && mode != "times") {
+        call->fail("mode must be poses (key poses), motion (evenly spaced frames) or times (frames at times).");
+        return;
+    }
+    for (const char* key : {"poses", "frames", "times"}) {
+        const std::string owner = std::string(key) == "poses" ? "poses" : (std::string(key) == "frames" ? "motion" : "times");
+        if (args.contains(key) && mode != owner) {
+            call->fail(std::string(key) + " is only for mode \"" + owner + "\" (mode is \"" + mode + "\"): leave it out or set mode.");
+            return;
+        }
+    }
+    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, relative, &error);
+    if (!document) {
+        call->fail(error + ". Create one with edit_pose_animation {path, create: {preview_model}}.");
+        return;
+    }
+    const PoseAnimationData& data = document->data();
+    if (data.poses.empty()) {
+        call->fail(document->path() + " has no poses: add some with edit_pose_animation add_pose.");
+        return;
+    }
+
+    // the rig and the model file drawn: a scene model's, else the preview model's
+    std::shared_ptr<const PoseRigInfo> info;
+    fs::path modelFile;
+    Json modelJson;
+    if (args.contains("model")) {
+        SceneProject* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        if (!resolveModelEntity(project, args, args["model"], "model", scene, entity, error)) {
+            call->fail(error);
+            return;
+        }
+        info = PoseRigProvider::forSceneModel(project, scene->scene, entity);
+        const std::string& file = scene->scene->getComponent<ModelComponent>(entity).filename;
+        modelFile = project->resolveAssetPath(fs::u8path(file)).lexically_normal();
+        modelJson = McpRefs::entityJson(scene, entity);
+    } else {
+        if (data.previewModel.empty()) {
+            call->fail("Set a preview model: edit_pose_animation set_preview_model, or pass model");
+            return;
+        }
+        modelFile = previewModelFile(project, data);
+        info = PoseRigProvider::forModelFile(project, modelFile);
+        modelJson = previewModelPath(project, data);
+    }
+    if (!info->rig) {
+        call->fail(rigFailure(*info));
+        return;
+    }
+    const std::shared_ptr<const PoseRealisation> realised = document->realise(info->rig);
+    if (!realised) {
+        call->fail("The animation could not be realised on " + info->model + ".");
+        return;
+    }
+
+    std::vector<RenderColumn> columns;
+    std::string note;
+    if (!readColumns(args, mode, data, *info->rig, *realised, columns, note, error)) {
+        call->fail(error);
+        return;
+    }
+    std::vector<PoseView> views;
+    std::vector<std::string> viewNames;
+    if (!readViews(args, mode, views, viewNames, error)) {
+        call->fail(error);
+        return;
+    }
+    int cellWidth = 160, cellHeight = 200;
+    if (args.contains("cell")) {
+        const Json& cell = args["cell"];
+        auto inRange = [](const Json& v) { return v.is_number_integer() && v.get<long long>() >= 64 && v.get<long long>() <= 512; };
+        if (!cell.is_array() || cell.size() != 2 || !inRange(cell[0]) || !inRange(cell[1])) {
+            call->fail("cell must be [width, height], integers 64..512 (default [160, 200]).");
+            return;
+        }
+        cellWidth = cell[0].get<int>();
+        cellHeight = cell[1].get<int>();
+    }
+    bool overlay = true;
+    if (args.contains("overlay") && !readBool(args["overlay"], "overlay", overlay, error)) {
+        call->fail(error);
+        return;
+    }
+    bool wantJoints = false;
+    if (args.contains("joints") && !readBool(args["joints"], "joints", wantJoints, error)) {
+        call->fail(error);
+        return;
+    }
+    fs::path saveTarget;
+    if (args.contains("save_path")) {
+        const std::string savePath = args["save_path"].is_string() ? args["save_path"].get<std::string>() : std::string();
+        if (lower(fs::u8path(savePath).extension().string()) != ".png") {
+            call->fail("save_path must be a project-relative .png path.");
+            return;
+        }
+        if (!McpRefs::resolveProjectPath(project, savePath, saveTarget, error, false)) {
+            call->fail("save_path: " + error);
+            return;
+        }
+    }
+
+    // layout: up to 12 columns a row; each block of columns has one row per view
+    PoseSheetLayout layout;
+    const int count = static_cast<int>(columns.size());
+    const int blocks = (count + RENDER_ROW_COLUMNS - 1) / RENDER_ROW_COLUMNS;
+    layout.columns = std::min(count, RENDER_ROW_COLUMNS);
+    layout.rows = blocks * static_cast<int>(views.size());
+    layout.labelHeight = overlay ? PoseSheetLayout::LABEL_HEIGHT : 0;
+    layout.titleHeight = overlay ? PoseSheetLayout::LABEL_HEIGHT : 0;
+    // cells shrink (keeping their aspect) to fit the sheet into 2048 px each way
+    const int title = layout.titleHeight > 0 ? layout.titleHeight + PoseSheetLayout::SEPARATOR : 0;
+    const int maxWidth = (RENDER_MAX_SHEET - (layout.columns - 1)) / layout.columns;
+    const int maxHeight = (RENDER_MAX_SHEET - title - (layout.rows - 1)) / layout.rows - layout.labelHeight;
+    const double shrink = std::min({1.0, static_cast<double>(maxWidth) / cellWidth, static_cast<double>(maxHeight) / cellHeight});
+    if (shrink < 1.0) {
+        cellWidth = std::max(16, static_cast<int>(std::floor(cellWidth * shrink)));
+        cellHeight = std::max(16, static_cast<int>(std::floor(cellHeight * shrink)));
+    }
+    layout.cellWidth = cellWidth;
+    layout.cellHeight = cellHeight;
+
+    std::shared_ptr<PoseSheetRenderer> renderer = sheetRendererFor(modelFile.string(), info->rig, error);
+    if (!renderer) {
+        call->fail("model: " + error);
+        return;
+    }
+
+    PoseRenderStyle style;
+    style.skeletonOverlay = overlay;
+    auto job = std::make_shared<RenderJob>();
+    job->renderer = renderer;
+    job->cells.resize(static_cast<size_t>(layout.columns * layout.rows));
+    job->joints.resize(job->cells.size());
+    std::vector<HumanPose> framing;
+    for (const RenderColumn& column : columns) framing.push_back(column.pose);
+    for (size_t v = 0; v < views.size(); v++) {
+        // one framing per view over every column: the cells of a view share one scale
+        renderer->beginBatch(framing, views[v]);
+        for (int c = 0; c < count; c++) {
+            const int row = (c / RENDER_ROW_COLUMNS) * static_cast<int>(views.size()) + static_cast<int>(v);
+            const size_t slot = static_cast<size_t>(row * layout.columns + c % RENDER_ROW_COLUMNS);
+            job->remaining++;
+            renderer->requestCell(columns[c].pose, views[v], cellWidth, cellHeight, style, [job, slot](bool ok, PoseImage&& image) {
+                if (ok) job->cells[slot] = std::move(image);
+                else job->failed = true;
+                job->remaining--;
+            }, wantJoints ? &job->joints[slot] : nullptr);
+        }
+    }
+    renderer->endBatches();
+
+    std::string titleText;
+    if (overlay) {
+        std::string rows;
+        for (const std::string& name : viewNames) rows += (rows.empty() ? "" : ", ") + name;
+        titleText = "rows: " + rows + "  coral = left, cyan = right";
+    }
+    const std::string path = document->path();
+    const bool loop = data.settings.loop;
+    const double length = realised->timeline.length;
+    const std::string modelName = info->model;
+    call->waitUntil([job] { return job->remaining == 0; }, RENDER_TIMEOUT_MS,
+                    [call, job, layout, columns, viewNames, titleText, saveTarget, project, path, mode, note, loop, length,
+                     modelJson, modelName, blocks, wantJoints](bool timedOut) {
+        if (timedOut || job->failed) {
+            call->fail(timedOut ? "The pose render timed out (the editor drew no frames?)." : "The pose render failed (no graphics view?).");
+            return;
+        }
+        PoseContactSheet sheet(layout, titleText);
+        if (!titleText.empty()) sheet.setTitle(titleText);
+        const int views = static_cast<int>(viewNames.size());
+        for (int row = 0; row < layout.rows; row++) {
+            for (int c = 0; c < layout.columns; c++) {
+                const int column = (row / views) * RENDER_ROW_COLUMNS + c;
+                if (column >= static_cast<int>(columns.size())) continue;
+                sheet.setCell(c, row, job->cells[static_cast<size_t>(row * layout.columns + c)]);
+                if (layout.labelHeight > 0) sheet.setLabel(c, row, columns[column].label);
+            }
+        }
+        std::vector<uint8_t> png;
+        if (!sheet.getImage().encodePng(png)) {
+            call->fail("Could not encode the sheet as PNG.");
+            return;
+        }
+
+        Json columnList = Json::array(), metrics = Json::array();
+        for (const RenderColumn& column : columns) {
+            columnList.push_back(column.key);
+            metrics.push_back(column.metrics);
+        }
+        const int width = sheet.getImage().getWidth(), height = sheet.getImage().getHeight();
+        Json out = {{"path", path}, {"model", modelJson}, {"mode", mode}, {"columns", columnList}, {"rows", viewNames},
+                    {"cell", {layout.cellWidth, layout.cellHeight}}, {"size", {width, height}},
+                    {"columns_per_row", layout.columns}, {"metrics", metrics}};
+        if (wantJoints) {
+            // per cell: its top-left corner and the slot joints, in sheet pixels
+            Json cells = Json::array();
+            for (int row = 0; row < layout.rows; row++) {
+                for (int c = 0; c < layout.columns; c++) {
+                    const int column = (row / views) * RENDER_ROW_COLUMNS + c;
+                    if (column >= static_cast<int>(columns.size())) continue;
+                    const int x0 = layout.cellX(c), y0 = layout.cellY(row);
+                    Json joints = Json::object();
+                    for (const auto& [bone, at] : job->joints[static_cast<size_t>(row * layout.columns + c)]) {
+                        joints[humanBoneName(bone)] = {r1(x0 + at.x), r1(y0 + at.y)};
+                    }
+                    cells.push_back({{"column", column}, {"view", viewNames[row % views]}, {"x", x0}, {"y", y0}, {"joints", joints}});
+                }
+            }
+            out["cells"] = cells;
+        }
+
+        // the caption: what is where, so the picture needs no guessing
+        std::string what;
+        if (mode == "poses") {
+            what = "key poses";
+            for (size_t i = 0; i < columns.size(); i++) what += (i == 0 ? " " : ", ") + columns[i].label;
+        } else {
+            what = std::to_string(columns.size()) + (mode == "motion" ? " evenly spaced frames" : " frames") + " (t=" +
+                   fmt(columns.front().key["time"].get<double>()) + ".." + fmt(columns.back().key["time"].get<double>()) +
+                   " s of the " + fmt(length) + " s " + (loop ? "loop" : "one-shot") + ", as baked and played)";
+        }
+        std::string rows;
+        for (const std::string& name : viewNames) rows += (rows.empty() ? "" : ", ") + viewHint(name);
+        std::string text = path + " on " + modelName + ", " + std::to_string(width) + "x" + std::to_string(height) + " sheet. Columns: " +
+                           what + ". Rows, one view each with one scale per view" +
+                           (blocks > 1 ? " (columns wrap after " + std::to_string(RENDER_ROW_COLUMNS) + ", the rows repeat)" : std::string("")) +
+                           ": " + rows + ". " + (layout.labelHeight > 0 ? "Labels under the cells; coral = the character's left limbs, cyan = right, "
+                                                             "white = centre; " : "") +
+                           "orange line = floor.";
+        if (!note.empty()) text += " Note: " + note + ".";
+        for (const RenderColumn& column : columns) text += "\n" + column.line;
+
+        if (!saveTarget.empty()) {
+            std::error_code ec;
+            if (saveTarget.has_parent_path()) fs::create_directories(saveTarget.parent_path(), ec);
+            std::ofstream file(saveTarget, std::ios::binary | std::ios::trunc);
+            if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
+                call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ".");
+                return;
+            }
+            out["saved_to"] = projectRel(project, saveTarget);
+            text += "\nSaved to " + projectRel(project, saveTarget) + ".";
+        }
+        ToolResult reply = ToolResult::success(text, out);
+        reply.images.push_back({Base64::encode(png.data(), png.size()), "image/png"});
+        call->reply(std::move(reply));
+    });
+}
+
+void registerRenderPoseAnimation(McpRegistry& registry) {
+    using namespace schema;
+    ToolDef tool;
+    tool.name = "render_pose_animation";
+    tool.title = "Render Pose Animation";
+    tool.description =
+        "Contact sheet PNG of a .poseanim on its preview model (or model: a scene model), drawn offscreen: one column "
+        "per key pose (mode poses) or per frame (motion: evenly spaced; times: at given seconds; the baked frames the "
+        "runtime plays), one row per view, each view one scale. Overlay: coral = the character's left limbs, cyan = "
+        "right, labels, orange floor line. Returns the image, a caption and per-column metrics (as get_pose_animation). "
+        "Images cost tokens: render few cells.";
+    tool.inputSchema = object({
+        {"path", assetPath("")},
+        {"mode", withDefault(stringEnum("", {"poses", "motion", "times"}), "poses")},
+        {"poses", array(integer(""), "Indices; default all (max 24).")},
+        {"frames", withDefault(integer("For motion.", 4, 24), 12)},
+        {"times", array(number(""), "Seconds.")},
+        {"views", array(stringEnum("", {"front", "side", "three_quarter", "back", "top"}), "Default poses [front, side], else [side].")},
+        {"model", entityRef()},
+        {"scene", sceneRef()},
+        {"cell", array(integer("", 64, 512), "[width, height], default [160, 200]; sheet max 2048 px.")},
+        {"overlay", withDefault(boolean(""), true)},
+        {"joints", boolean("Also return each cell's joint pixels.")},
+        {"save_path", string("Also write the PNG (project-relative).")}
+    }, {"path"});
+    tool.annotations.readOnly = true;
+    tool.annotations.idempotent = true;
+    tool.allowedWhilePlaying = true;
+    tool.handler = renderPoseAnimationTool;
+    registry.addTool(std::move(tool));
 }
 
 } // namespace
@@ -1318,7 +1942,8 @@ void registerPoseTools(McpRegistry& registry) {
             "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
             "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto). "
             "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file; bake writes an Animation on a scene model (scene undo). Returns changes and the touched poses with metrics.";
+            "file; bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's). Returns changes "
+            "and the touched poses with metrics.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}})},
@@ -1347,17 +1972,20 @@ void registerPoseTools(McpRegistry& registry) {
                 {"weights", obj({{"spine", number("")}, {"head", number("")}, {"arms", number("")}, {"legs", number("")}})},
                 {"humanize", anyObject("")},
                 {"model", assetPath("")},
-                {"bones", anyObject("")}
+                {"bones", anyObject("")},
+                {"clear_custom", boolean("")}
             }, {"op"}), "")},
             {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}}, {"model"})},
             {"scene", sceneRef()}
-        }, {"path"});
+        });
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = false;
         tool.allowedWhilePlaying = false;
         tool.handler = editPoseAnimationTool;
         registry.addTool(std::move(tool));
     }
+
+    registerRenderPoseAnimation(registry);
 }
 
 } // namespace jasperengine::editor::mcp

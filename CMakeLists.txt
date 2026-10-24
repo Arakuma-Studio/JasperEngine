@@ -712,6 +712,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/PoseRender.cpp
 
     ${EDITOR_DIR}/pose/PoseImage.cpp
+    ${EDITOR_DIR}/pose/PoseSheetRenderer.cpp
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseRigProvider.h"
 #include "Factory.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -4533,6 +4535,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
 }
 
 void editor::Project::resetConfigs() {
+    // pose animation documents and rigs belong to the project
+    PoseAnimationDocument::closeAll();
+    PoseRigProvider::clear();
+
     // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
     while (!prefabStages.empty()) {
         popPrefabStage();
