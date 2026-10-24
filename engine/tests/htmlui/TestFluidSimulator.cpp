@@ -59,6 +59,7 @@ namespace {
 
         void TearDown() override{
             FluidSimulator::setDisabledFeaturesForTesting(0);
+            Engine::setFixedDeltatime(0.0);
         }
     };
 
@@ -655,7 +656,9 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     EXPECT_LT((int)bottom[0], 60) << "and its bottom at its bottom";
     EXPECT_TRUE(probe.isBackground(400, 300));
 
-    // a paused system (the editor's edit mode) does not step; a preview does
+    // a paused system (the editor's edit mode) does not step; a preview does (frames of a
+    // step each: headless frames are so short that hundreds of them make no 1/60 s step)
+    Engine::setFixedDeltatime(1.0 / 60.0);
     fluid.paused = false;
     system->setPaused(true);
     const uint64_t before = fluid.simulator->getStats().steps;
@@ -665,6 +668,7 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     EXPECT_TRUE(system->isPreview(entity));
     EXPECT_TRUE(framesUntil([&](){ return fluid.simulator->getStats().steps > before; }));
     system->setPreview(entity, false);
+    Engine::setFixedDeltatime(0.0);
 
     // the editor's brush in edit mode (paused system, no preview): its own pointer id paints at once
     const uint64_t splats = fluid.simulator->getStats().splats;
