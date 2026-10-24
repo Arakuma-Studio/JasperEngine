@@ -236,6 +236,12 @@ bool editor::ToolsLayer::isGizmoVisible() const{
     return gizmoVisible;
 }
 
+void editor::ToolsLayer::setPhysicsTint(bool tint){
+    tGizmo->setPhysicsTint(tint);
+    rGizmo->setPhysicsTint(tint);
+    sGizmo->setPhysicsTint(tint);
+}
+
 Scene* editor::ToolsLayer::getScene(){
     return scene;
 }

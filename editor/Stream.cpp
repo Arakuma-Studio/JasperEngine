@@ -22,6 +22,7 @@
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
+#include "physics/PlacementSettingsLimits.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2291,6 +2292,132 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
 
 namespace {
 
+const char* decompositionQualityToString(DecompositionQuality quality) {
+    switch (quality) {
+        case DecompositionQuality::LOW: return "low";
+        case DecompositionQuality::HIGH: return "high";
+        default: return "medium";
+    }
+}
+
+bool stringToDecompositionQuality(const std::string& name, DecompositionQuality& out) {
+    if (name == "low") { out = DecompositionQuality::LOW; return true; }
+    if (name == "medium") { out = DecompositionQuality::MEDIUM; return true; }
+    if (name == "high") { out = DecompositionQuality::HIGH; return true; }
+    return false;
+}
+
+const char* rotatePivotToString(editor::PlacementRotatePivot pivot) {
+    return pivot == editor::PlacementRotatePivot::EachObject ? "each_object" : "group_center";
+}
+
+bool stringToRotatePivot(const std::string& name, editor::PlacementRotatePivot& out) {
+    if (name == "group_center") { out = editor::PlacementRotatePivot::GroupCenter; return true; }
+    if (name == "each_object") { out = editor::PlacementRotatePivot::EachObject; return true; }
+    return false;
+}
+
+// One key of a settings map: a value that does not read keeps the default, and the rest of
+// the map still loads
+template <typename Read>
+void decodeSettingKey(const YAML::Node& map, const char* key, Read read) {
+    const YAML::Node node = map[key];
+    if (!node.IsDefined() || node.IsNull()) return;
+    try {
+        read(node);
+    } catch (const YAML::Exception&) {
+    }
+}
+
+} // namespace
+
+YAML::Node editor::Stream::encodePhysicsPlacementSettings(const PhysicsPlacementSettings& ps) {
+    YAML::Node node;
+    node["feel"] = placementFeelName(ps.feel);
+    node["settleOnRelease"] = ps.settleOnRelease;
+    node["keepFormation"] = ps.keepFormation;
+    node["pushNeighbours"] = ps.pushNeighbours;
+    encodeFiniteVector3(node, "gravity", ps.gravity);
+    node["gravityTowardSurface"] = ps.gravityTowardSurface;
+    node["colliders"] = placementColliderPolicyName(ps.colliders);
+    node["decomposition"] = placementDecompositionName(ps.decomposition);
+    node["quality"] = decompositionQualityToString(ps.quality);
+    node["alignToSurface"] = ps.alignToSurface;
+    encodeFinite(node, "snapOffset", ps.snapOffset);
+    node["rotatePivot"] = rotatePivotToString(ps.rotatePivot);
+    encodeFinite(node, "regionMargin", ps.regionMargin);
+    node["ignoreLayerMask"] = ps.ignoreLayerMask;
+    encodeFinite(node, "maxMoverSize", ps.maxMoverSize);
+    encodeFinite(node, "maxSpeed", ps.maxSpeed);
+    encodeFinite(node, "contactSpeed", ps.contactSpeed);
+    encodeFinite(node, "maxAngularSpeed", ps.maxAngularSpeed);
+    node["substeps"] = ps.substeps;
+    node["velocityIterations"] = ps.velocityIterations;
+    node["positionIterations"] = ps.positionIterations;
+    encodeFinite(node, "teleportDistance", ps.teleportDistance);
+    encodeFinite(node, "sleepLinear", ps.sleepLinear);
+    encodeFinite(node, "sleepAngularDeg", ps.sleepAngularDeg);
+    encodeFinite(node, "sleepSeconds", ps.sleepSeconds);
+    encodeFinite(node, "maxSettleSeconds", ps.maxSettleSeconds);
+    encodeFinite(node, "killYDepth", ps.killYDepth);
+    node["showDistanceIndicators"] = ps.showDistanceIndicators;
+    node["showProxies"] = ps.showProxies;
+    return node;
+}
+
+editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(const YAML::Node& node) {
+    PhysicsPlacementSettings ps;
+    if (!node.IsMap()) return ps;
+
+    auto readBool = [&node](const char* key, bool& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<bool>(n); });
+    };
+    auto readFloat = [&node](const char* key, float& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = decodeFinite(n, value); });
+    };
+    auto readInt = [&node](const char* key, int& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<int>(n); });
+    };
+    auto readName = [&node](const char* key, auto parse) {
+        decodeSettingKey(node, key, [&parse](const YAML::Node& n) { parse(n.as<std::string>()); });
+    };
+
+    readName("feel", [&ps](const std::string& name) { parsePlacementFeel(name.c_str(), ps.feel); });
+    readBool("settleOnRelease", ps.settleOnRelease);
+    readBool("keepFormation", ps.keepFormation);
+    readBool("pushNeighbours", ps.pushNeighbours);
+    decodeSettingKey(node, "gravity", [&ps](const YAML::Node& n) { ps.gravity = decodeFiniteVector3(n, ps.gravity); });
+    readBool("gravityTowardSurface", ps.gravityTowardSurface);
+    readName("colliders", [&ps](const std::string& name) { parsePlacementColliderPolicy(name.c_str(), ps.colliders); });
+    readName("decomposition", [&ps](const std::string& name) { parsePlacementDecomposition(name.c_str(), ps.decomposition); });
+    readName("quality", [&ps](const std::string& name) { stringToDecompositionQuality(name, ps.quality); });
+    readBool("alignToSurface", ps.alignToSurface);
+    readFloat("snapOffset", ps.snapOffset);
+    readName("rotatePivot", [&ps](const std::string& name) { stringToRotatePivot(name, ps.rotatePivot); });
+    readFloat("regionMargin", ps.regionMargin);
+    decodeSettingKey(node, "ignoreLayerMask", [&ps](const YAML::Node& n) { ps.ignoreLayerMask = decodeLayerMask(n, ps.ignoreLayerMask); });
+    readFloat("maxMoverSize", ps.maxMoverSize);
+    readFloat("maxSpeed", ps.maxSpeed);
+    readFloat("contactSpeed", ps.contactSpeed);
+    readFloat("maxAngularSpeed", ps.maxAngularSpeed);
+    readInt("substeps", ps.substeps);
+    readInt("velocityIterations", ps.velocityIterations);
+    readInt("positionIterations", ps.positionIterations);
+    readFloat("teleportDistance", ps.teleportDistance);
+    readFloat("sleepLinear", ps.sleepLinear);
+    readFloat("sleepAngularDeg", ps.sleepAngularDeg);
+    readFloat("sleepSeconds", ps.sleepSeconds);
+    readFloat("maxSettleSeconds", ps.maxSettleSeconds);
+    readFloat("killYDepth", ps.killYDepth);
+    readBool("showDistanceIndicators", ps.showDistanceIndicators);
+    readBool("showProxies", ps.showProxies);
+    // a hand-edited value outside what the panel allows is brought into range
+    clampPhysicsPlacementSettings(ps);
+    return ps;
+}
+
+namespace {
+
 // The per-scene view keys an older project.yaml carried
 const char* const sceneDisplayKeys[] = {
     "showAllJoints", "showAllBones", "showAllBodies", "hideCameraView",
@@ -3027,6 +3154,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (workspace.hasTerrainEditorSettings()) {
         project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
     }
+    project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
 

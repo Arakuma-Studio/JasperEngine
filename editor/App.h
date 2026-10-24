@@ -19,6 +19,7 @@
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
+#include "window/PhysicsPlacementWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -169,6 +170,7 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
+        PhysicsPlacementWindow* physicsPlacementWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
@@ -326,6 +328,7 @@ namespace jasperengine::editor{
         void addNewCodeWindowToDock(fs::path path, bool force = false);
         void addImageViewerWindowToDock(fs::path path, bool force = false);
         void clearSceneWindowState(uint32_t sceneId) override;
+        void sceneDeleting(uint32_t sceneId) override;
         void prepareForProjectSwitch() override;
         // Runs a project switch between frames, with the loading screen (EditorHost)
         void requestProjectChange(std::function<void()> change) override;
@@ -400,6 +403,8 @@ namespace jasperengine::editor{
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         TextureSynthesisWindow* getTextureSynthesisWindow() const;
+        PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
+        MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

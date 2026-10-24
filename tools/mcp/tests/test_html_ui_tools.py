@@ -59,8 +59,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # import_files/get_asset_info, create_entity type water, physics_interpolation, edit_animation
 # loop/relative/ping-pong/spin, screenshot save_path project-relative), plus the fluid's (+51:
 # create_entity type fluid_simulation, {"fluid": <entity>} texture links, set_ui_effect_time's
-# pointer_path and splats, net of the tightened inspect_ui/assert_ui/create_ui_document texts)
-TOTAL_LIMIT = 105518
+# pointer_path and splats, net of the tightened inspect_ui/assert_ui/create_ui_document texts), plus
+# Physics Placement's (+3490: place_with_physics)
+TOTAL_LIMIT = 109008
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

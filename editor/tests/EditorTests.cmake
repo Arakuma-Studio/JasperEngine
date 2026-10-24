@@ -46,3 +46,14 @@ add_dependencies(jasperengine-editor-tests gtest gtest_main)
 target_link_libraries(jasperengine-editor-tests PRIVATE $<TARGET_FILE:gtest_main> $<TARGET_FILE:gtest>)
 # next to the editor and libjasperengine.so ($ORIGIN rpath)
 set_target_properties(jasperengine-editor-tests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# A process with nothing but the engine (the editor's static App builds a Scene before main, so
+# the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
+add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/standalone/PlacementWorldBeforeAnyScene.cpp)
+target_link_libraries(jasperengine-placement-fresh-process PRIVATE jasperengine)
+set_target_properties(jasperengine-placement-fresh-process PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+)
+add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)

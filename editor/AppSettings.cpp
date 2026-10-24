@@ -331,6 +331,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
+                if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
             }
@@ -486,6 +487,7 @@ bool AppSettings::saveSettings() {
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
+        panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
         editorNode["panels"] = panelsNode;

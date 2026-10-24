@@ -29,6 +29,14 @@ namespace jasperengine::editor {
         std::map<uint32_t, bool> draggingMouse;
         std::map<uint32_t, bool> suppressLeftMouseUntilRelease;
         std::map<uint32_t, bool> subSelectionClickConsumesRelease;
+        // Physics Snap: a Shift + LMB press on a selected object; past the drag threshold it
+        // snaps the selection along the surfaces under the cursor instead of box selecting.
+        // Begun (or refused) once per press.
+        std::map<uint32_t, bool> physicsSnapArmed;
+        std::map<uint32_t, bool> physicsSnapBegun;
+        // a menu or popup was open when the last frame's Scene views were drawn (its Esc is not
+        // the Physics tool's)
+        bool popupOpenLastFrame = false;
         std::map<uint32_t, bool> resyncLookDelta;
         std::map<uint32_t, bool> lookActive;
         std::map<uint32_t, ImVec2> lookReturnPos;

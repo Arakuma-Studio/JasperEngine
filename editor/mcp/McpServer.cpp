@@ -166,6 +166,7 @@ void McpServer::registerAllTools() {
     registerBuildTools(reg);
     registerWorldTools(reg);
     registerLatticeTools(reg);
+    registerPlacementTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
 }

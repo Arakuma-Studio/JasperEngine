@@ -3168,6 +3168,14 @@ const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings()
     return terrainEditorSettings;
 }
 
+editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings(){
+    return physicsPlacementSettings;
+}
+
+const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings() const{
+    return physicsPlacementSettings;
+}
+
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
 }
@@ -5109,6 +5117,10 @@ std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
 }
 
 void editor::Project::deleteSceneProject(SceneProject* sceneProject){
+    if (sceneProject->scene) {
+        editor::getEditorHost().sceneDeleting(sceneProject->id);
+    }
+
     if (sceneProject->sceneRender) {
         Camera* editorCam = sceneProject->sceneRender->getCamera();
         if (editorCam) {
@@ -5230,6 +5242,7 @@ void editor::Project::resetConfigs() {
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
     terrainEditorSettings = {};
+    physicsPlacementSettings = {};
     simulateTouch = false;
     projectPath.clear();
     assetDatabase.close();
@@ -5448,6 +5461,16 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
     for (size_t i = 0; i < terrains->size(); i++) {
         const std::vector<Entity> foliage = meshSystem->getFoliageEntities(terrains->getEntity(i));
         keep.insert(foliage.begin(), foliage.end());
+    }
+
+    // The Scene view's own gizmos and icons (SceneRender::overlay) are made when first needed,
+    // also while the game plays or between the play snapshot and the first frame; they are the
+    // editor's, which keeps pointers to them
+    auto renderSystem = scene->getSystem<RenderSystem>();
+    for (Entity entity : scene->getEntityList()) {
+        if (renderSystem->isEditorOverlay(entity)) {
+            keep.insert(entity);
+        }
     }
 
     return keep;
@@ -6602,6 +6625,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 }
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
+    // first: a physics gesture that settles now commits, and its scene counts as changed below
+    editor::getEditorHost().stopTransientPreviews();
+
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
     for (const auto& stage : prefabStages) {

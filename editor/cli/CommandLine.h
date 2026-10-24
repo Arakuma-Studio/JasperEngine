@@ -39,6 +39,9 @@ namespace jasperengine::editor {
         // Synthesizes a texture from example images, no window (editor/texsynth/SynthesisCli.h)
         static int runSynthesizeTextureCommand(int argc, char** argv, const char* executableName);
 
+        // Places GameObjects with an edit-time physics simulation, no window (editor/physics/PlacementCli.h)
+        static int runPlacePhysicsCommand(int argc, char** argv, const char* executableName);
+
         // Prints the top level usage, or reports an unrecognized argument.
         static int runHelpCommand(int argc, char** argv, const char* executableName);
 

@@ -10,7 +10,7 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 |---|---|---|
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |
 | [cpp-scripting.md](cpp-scripting.md) | `jasper://docs/cpp-scripting` | C++ script kinds, DPROPERTY, event macros, includes, script dirs, ProjectBuild.cmake |
-| [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |
+| [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts; placing objects with physics in edit mode (`place_with_physics`: drop, separate, move, snap, gather, distribute; preview then apply, results, determinism) |
 | [shaders.md](shaders.md) | `jasper://docs/shaders` | library shaders (list_shaders, material shader values and render state), forking built-in shaders, editing rules, the custom uniform block |
 | [post-processing.md](post-processing.md) | `jasper://docs/post-processing` | the main camera's post-processing: cost tiers, presets (list/apply_post_processing_preset), the cost readout, mobile advice, limits, fields, custom passes (`post_process`), Lua `scene.postProcessing` |
 | [lattice.md](lattice.md) | `jasper://docs/lattice` | lattice (free-form deformation) cages: concepts, coordinate spaces, `edit_lattice` ops and selectors, presets in words, results and warnings, recipes (bounce, big head, crumple, flag wind in Lua, jelly, rock variants with bake), costs and limits |

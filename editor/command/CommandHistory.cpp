@@ -56,6 +56,7 @@ public:
 }
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
@@ -65,6 +66,10 @@ editor::CommandHistory::~CommandHistory(){
 }
 
 bool editor::CommandHistory::addCommand(editor::Command* cmd){
+    // before execute(), which reads the values the command replaces
+    if (beforeChange){
+        beforeChange(sceneId, Change::Add);
+    }
     if (cmd->execute()){
         if (index < list.size()){
             for (auto it = list.begin() + index; it != list.end(); ++it) {
@@ -100,6 +105,10 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
 }
 
 bool editor::CommandHistory::insertCommand(Command* cmd){
+    // before execute(), as in addCommand: a running Physics Placement gesture settles first
+    if (beforeChange){
+        beforeChange(sceneId, Change::Add);
+    }
     if (!cmd->execute()){
         delete cmd;
         return false;
@@ -121,6 +130,9 @@ bool editor::CommandHistory::insertCommand(Command* cmd){
 }
 
 bool editor::CommandHistory::undo(){
+    if (beforeChange && !beforeChange(sceneId, Change::Undo)){
+        return false;
+    }
     if (index > undoFloor() && list[index-1]->canUndo()){
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
@@ -139,6 +151,9 @@ bool editor::CommandHistory::undo(){
 }
 
 bool editor::CommandHistory::redo(){
+    if (beforeChange && !beforeChange(sceneId, Change::Redo)){
+        return false;
+    }
     if (index < list.size() && list[index]->canRedo()){
         index++;
         list[index-1]->execute();

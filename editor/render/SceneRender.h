@@ -74,6 +74,7 @@ namespace jasperengine::editor{
     };
 
     class Project;
+    class PhysicsPlacementWindow;
 
     class SceneRender{
     private:
@@ -172,6 +173,20 @@ namespace jasperengine::editor{
         // the mouse through this scene's camera, for the terrain brush (mouseRay follows
         // the edit layer while one is set)
         Ray ownerMouseRay;
+
+        // Physics (G): a gizmo drag runs a placement gesture instead of transform commands.
+        // The click decides (physics active here, no point/instance/tile sub-selection), the
+        // first drag frame begins the gesture on the handle the click took.
+        bool physicsClick = false;
+        bool physicsDragBegun = false;
+        bool physicsGestureStarted = false;
+        // the movers' centre when the gesture began, and the gizmo's offset from it, so the
+        // gizmo follows the objects (not the mouse) without a jump
+        Vector3 physicsMoversStart;
+        Vector3 physicsGizmoOffset;
+        bool hasToolSubSelection(const std::vector<Entity>& selEntities);
+        void physicsGizmoDrag(PhysicsPlacementWindow* physics, uint32_t sceneId, bool invertRotationSnap);
+        void updatePhysicsOverlay(PhysicsPlacementWindow* physics, uint32_t sceneId);
 
         Scene* gizmoScene() const;
         ToolsLayer& gizmoTools();
@@ -291,6 +306,8 @@ namespace jasperengine::editor{
 
         LineRenderer* selLines;
         LineRenderer* terrainBrushLines;
+        // Physics Placement: region, contacts, teleport ring, ghosts, proxies, distance rays
+        LineRenderer* physicsLines;
 
         ToolsLayer toolslayer;
         UILayer uilayer;
@@ -396,6 +413,8 @@ namespace jasperengine::editor{
         Camera* getCamera();
         // ray through (x, y) of the Scene view (engine pixels) from the editor camera
         Ray screenToRay(float x, float y);
+        // where a world point is in the Scene view (engine pixels, y down); false behind the camera
+        bool worldToScreen(const Vector3& world, Vector2& screen) const;
         int getViewWidth() const { return viewWidth; }
         int getViewHeight() const { return viewHeight; }
         bool setPreviewCamera(Entity entity);
