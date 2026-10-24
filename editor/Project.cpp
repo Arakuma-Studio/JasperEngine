@@ -2776,6 +2776,14 @@ const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings()
     return terrainEditorSettings;
 }
 
+editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings(){
+    return physicsPlacementSettings;
+}
+
+const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings() const{
+    return physicsPlacementSettings;
+}
+
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
 }
@@ -4611,6 +4619,7 @@ void editor::Project::resetConfigs() {
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
     terrainEditorSettings = {};
+    physicsPlacementSettings = {};
     simulateTouch = false;
     projectPath.clear();
     assetDatabase.close();
