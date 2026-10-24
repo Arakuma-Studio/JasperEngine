@@ -163,6 +163,7 @@ void latticeDeformSmooth(int stage, inout vec3 position, inout vec3 normal, inou
             }else if (channel >= 0){
                 mask = color[channel];
             }
+            mask = clamp(mask, 0.0, 1.0); // as the CPU solver: keeps the culling bound
         #endif
         float weight = binding.y * mask;
         if (weight == 0.0)

@@ -7,6 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AE477AACA9CD044D49CC9570 /* LatticeSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 07861A57EAD4B9B2139B9D26 /* LatticeSystem.h */; };
+		49BAE5C2846632C9D339184A /* LatticeSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F171AE8F687232EF10A93687 /* LatticeSystem.cpp */; };
+		5AA6D17000D268974599294F /* LatticeSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F171AE8F687232EF10A93687 /* LatticeSystem.cpp */; };
+		376712A19E5CE766E9535136 /* Lattice.h in Headers */ = {isa = PBXBuildFile; fileRef = CDE55E0B4BF1BACFD2607525 /* Lattice.h */; };
+		76DC1432680F473127DEA3AD /* Lattice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E36685FD5981F1C9F28F1721 /* Lattice.cpp */; };
+		B0894968B112621342ACBE5C /* Lattice.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E36685FD5981F1C9F28F1721 /* Lattice.cpp */; };
+		214D393A231656D11BAC9A6F /* LatticeTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = D815C0A59DC6B3EB7C30A9F1 /* LatticeTypes.h */; };
+		8146BC310BF04F5B13A75F4C /* LatticeSolver.h in Headers */ = {isa = PBXBuildFile; fileRef = CCE24F7109CEAC2AB232D0AD /* LatticeSolver.h */; };
+		FB2FEDD3DF5C79019ECDB72E /* LatticeSolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 854AE05E93E92549E91723F3 /* LatticeSolver.cpp */; };
+		99B5733A395E368B9283F7EB /* LatticeSolver.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 854AE05E93E92549E91723F3 /* LatticeSolver.cpp */; };
+		AC729F63CB2CB33A89BC8705 /* LatticeRender.h in Headers */ = {isa = PBXBuildFile; fileRef = FCAD66FDF93437683A32F461 /* LatticeRender.h */; };
+		BB9CAE4A4AA766643CBE1255 /* LatticeRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B8EEB9CC7D77C831EEE0E18F /* LatticeRender.cpp */; };
+		F8CE5B862220D76D8960D3A2 /* LatticeRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B8EEB9CC7D77C831EEE0E18F /* LatticeRender.cpp */; };
+		7AA95711CD87ECCA0C9EF812 /* LatticePresets.h in Headers */ = {isa = PBXBuildFile; fileRef = 5392479CDCC7999BF4FD1F1F /* LatticePresets.h */; };
+		7093D51B23564E3E772C120A /* LatticePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 182B67D9F485BA7BC5F35EB8 /* LatticePresets.cpp */; };
+		1B0AB18B0EC130D66DD7901D /* LatticePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 182B67D9F485BA7BC5F35EB8 /* LatticePresets.cpp */; };
+		4950A2B2820C0D9C6FC9BC2C /* LatticeTracksComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = FB7BF5757FDA2AB79FF8A796 /* LatticeTracksComponent.h */; };
+		5BD7DB4313755206E1129D1A /* LatticeModifierComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 9F69D7D2B6D0F4AAAD549A55 /* LatticeModifierComponent.h */; };
+		2803B41576FF466F3C82DE99 /* LatticeFollowerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 55C6D5B83786D6CC968C89DB /* LatticeFollowerComponent.h */; };
+		48CF2984BA421E6B94D6B462 /* LatticeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 15B994C214060E452E62CA85 /* LatticeComponent.h */; };
+		DD48A305E5C3E4EA4FABC835 /* LatticeTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 927AF003263C5F09C07147C0 /* LatticeTracks.h */; };
+		ABB08569611C38FBF941088D /* LatticeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A965DB2EF593FEA46F292305 /* LatticeTracks.cpp */; };
+		83B2C1E9ABEE3701B8F2C8A9 /* LatticeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A965DB2EF593FEA46F292305 /* LatticeTracks.cpp */; };
 		17145B362FF7FC3B00543CB7 /* Light2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B342FF7FC3B00543CB7 /* Light2DComponent.h */; };
 		17145B372FF7FC3B00543CB7 /* ShadowCaster2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */; };
 		17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B382FF7FC5E00543CB7 /* Light2D.h */; };
@@ -3518,6 +3541,23 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		07861A57EAD4B9B2139B9D26 /* LatticeSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeSystem.h; sourceTree = "<group>"; };
+		F171AE8F687232EF10A93687 /* LatticeSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LatticeSystem.cpp; sourceTree = "<group>"; };
+		CDE55E0B4BF1BACFD2607525 /* Lattice.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Lattice.h; sourceTree = "<group>"; };
+		E36685FD5981F1C9F28F1721 /* Lattice.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Lattice.cpp; sourceTree = "<group>"; };
+		D815C0A59DC6B3EB7C30A9F1 /* LatticeTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeTypes.h; sourceTree = "<group>"; };
+		CCE24F7109CEAC2AB232D0AD /* LatticeSolver.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeSolver.h; sourceTree = "<group>"; };
+		854AE05E93E92549E91723F3 /* LatticeSolver.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LatticeSolver.cpp; sourceTree = "<group>"; };
+		FCAD66FDF93437683A32F461 /* LatticeRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeRender.h; sourceTree = "<group>"; };
+		B8EEB9CC7D77C831EEE0E18F /* LatticeRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LatticeRender.cpp; sourceTree = "<group>"; };
+		5392479CDCC7999BF4FD1F1F /* LatticePresets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticePresets.h; sourceTree = "<group>"; };
+		182B67D9F485BA7BC5F35EB8 /* LatticePresets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LatticePresets.cpp; sourceTree = "<group>"; };
+		FB7BF5757FDA2AB79FF8A796 /* LatticeTracksComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeTracksComponent.h; sourceTree = "<group>"; };
+		9F69D7D2B6D0F4AAAD549A55 /* LatticeModifierComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeModifierComponent.h; sourceTree = "<group>"; };
+		55C6D5B83786D6CC968C89DB /* LatticeFollowerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeFollowerComponent.h; sourceTree = "<group>"; };
+		15B994C214060E452E62CA85 /* LatticeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeComponent.h; sourceTree = "<group>"; };
+		927AF003263C5F09C07147C0 /* LatticeTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LatticeTracks.h; sourceTree = "<group>"; };
+		A965DB2EF593FEA46F292305 /* LatticeTracks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LatticeTracks.cpp; sourceTree = "<group>"; };
 		17145B342FF7FC3B00543CB7 /* Light2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2DComponent.h; sourceTree = "<group>"; };
 		17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowCaster2DComponent.h; sourceTree = "<group>"; };
 		17145B382FF7FC5E00543CB7 /* Light2D.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2D.h; sourceTree = "<group>"; };
@@ -6731,6 +6771,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		439FABFC000E9FEAFFC175CE /* lattice */ = {
+			isa = PBXGroup;
+			children = (
+				D815C0A59DC6B3EB7C30A9F1 /* LatticeTypes.h */,
+				CCE24F7109CEAC2AB232D0AD /* LatticeSolver.h */,
+				854AE05E93E92549E91723F3 /* LatticeSolver.cpp */,
+				FCAD66FDF93437683A32F461 /* LatticeRender.h */,
+				B8EEB9CC7D77C831EEE0E18F /* LatticeRender.cpp */,
+				5392479CDCC7999BF4FD1F1F /* LatticePresets.h */,
+				182B67D9F485BA7BC5F35EB8 /* LatticePresets.cpp */,
+			);
+			path = lattice;
+			sourceTree = "<group>";
+		};
 		1787AD932F6C333300DB1D75 /* manager */ = {
 			isa = PBXGroup;
 			children = (
@@ -7573,6 +7627,7 @@
 				175DCCBA300FA22F008C19EC /* SceneSettings.h */,
 				71BE622C25B1DB9D006D6E02 /* script */,
 				71CC839D26B8C54A00EEBB93 /* shader */,
+				439FABFC000E9FEAFFC175CE /* lattice */,
 				7162FC6F25962A0E0075B97D /* subsystem */,
 				71BE61FE25B1DB22006D6E02 /* System.h */,
 				71BE61FF25B1DB22006D6E02 /* System.cpp */,
@@ -7670,6 +7725,10 @@
 		7162FC4425962A0E0075B97D /* component */ = {
 			isa = PBXGroup;
 			children = (
+				FB7BF5757FDA2AB79FF8A796 /* LatticeTracksComponent.h */,
+				9F69D7D2B6D0F4AAAD549A55 /* LatticeModifierComponent.h */,
+				55C6D5B83786D6CC968C89DB /* LatticeFollowerComponent.h */,
+				15B994C214060E452E62CA85 /* LatticeComponent.h */,
 				71451BB4270C9D0F00712643 /* ActionComponent.h */,
 				71ABBD12277A3166001CE3AF /* AlphaTweenComponent.h */,
 				71E5450F284D5BDF00C68FAB /* AnimationComponent.h */,
@@ -7762,6 +7821,8 @@
 		7162FC6225962A0E0075B97D /* object */ = {
 			isa = PBXGroup;
 			children = (
+				CDE55E0B4BF1BACFD2607525 /* Lattice.h */,
+				E36685FD5981F1C9F28F1721 /* Lattice.cpp */,
 				7170A3CD2818A8A30003E965 /* Bone.h */,
 				7170A3CE2818A8A30003E965 /* Bone.cpp */,
 				7162FC6525962A0E0075B97D /* Camera.h */,
@@ -7823,6 +7884,8 @@
 		7162FC6F25962A0E0075B97D /* subsystem */ = {
 			isa = PBXGroup;
 			children = (
+				07861A57EAD4B9B2139B9D26 /* LatticeSystem.h */,
+				F171AE8F687232EF10A93687 /* LatticeSystem.cpp */,
 				71451BBC270CA16200712643 /* ActionSystem.cpp */,
 				71451BBD270CA16200712643 /* ActionSystem.h */,
 				717AD96B290B661A007D7DB5 /* AudioSystem.cpp */,
@@ -9060,6 +9123,8 @@
 		71E544F5284D5BB700C68FAB /* keyframe */ = {
 			isa = PBXGroup;
 			children = (
+				927AF003263C5F09C07147C0 /* LatticeTracks.h */,
+				A965DB2EF593FEA46F292305 /* LatticeTracks.cpp */,
 				71E544F6284D5BB700C68FAB /* TranslateTracks.cpp */,
 				71E544F7284D5BB700C68FAB /* ScaleTracks.cpp */,
 				71E544F8284D5BB700C68FAB /* TranslateTracks.h */,
@@ -11121,6 +11186,17 @@
 				71E54514284D5BE000C68FAB /* ScaleTracksComponent.h in Headers */,
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
+				AE477AACA9CD044D49CC9570 /* LatticeSystem.h in Headers */,
+				376712A19E5CE766E9535136 /* Lattice.h in Headers */,
+				214D393A231656D11BAC9A6F /* LatticeTypes.h in Headers */,
+				8146BC310BF04F5B13A75F4C /* LatticeSolver.h in Headers */,
+				AC729F63CB2CB33A89BC8705 /* LatticeRender.h in Headers */,
+				7AA95711CD87ECCA0C9EF812 /* LatticePresets.h in Headers */,
+				4950A2B2820C0D9C6FC9BC2C /* LatticeTracksComponent.h in Headers */,
+				5BD7DB4313755206E1129D1A /* LatticeModifierComponent.h in Headers */,
+				2803B41576FF466F3C82DE99 /* LatticeFollowerComponent.h in Headers */,
+				48CF2984BA421E6B94D6B462 /* LatticeComponent.h in Headers */,
+				DD48A305E5C3E4EA4FABC835 /* LatticeTracks.h in Headers */,
 				7170A3D72818A8A30003E965 /* Skybox.h in Headers */,
 				71BE620025B1DB22006D6E02 /* System.h in Headers */,
 				175DCCBB300FA22F008C19EC /* Export.h in Headers */,
@@ -13142,6 +13218,12 @@
 				713D82AE259D307F00567F9F /* Engine.cpp in Sources */,
 				71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				49BAE5C2846632C9D339184A /* LatticeSystem.cpp in Sources */,
+				76DC1432680F473127DEA3AD /* Lattice.cpp in Sources */,
+				FB2FEDD3DF5C79019ECDB72E /* LatticeSolver.cpp in Sources */,
+				BB9CAE4A4AA766643CBE1255 /* LatticeRender.cpp in Sources */,
+				7093D51B23564E3E772C120A /* LatticePresets.cpp in Sources */,
+				ABB08569611C38FBF941088D /* LatticeTracks.cpp in Sources */,
 				71ABBD25277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1A2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
 				A6E1909131064483572D2D7E /* EntityCloner.cpp in Sources */,
@@ -13510,6 +13592,12 @@
 				7162FD4325963AE00075B97D /* Camera.cpp in Sources */,
 				71ABBD1C277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				5AA6D17000D268974599294F /* LatticeSystem.cpp in Sources */,
+				B0894968B112621342ACBE5C /* Lattice.cpp in Sources */,
+				99B5733A395E368B9283F7EB /* LatticeSolver.cpp in Sources */,
+				F8CE5B862220D76D8960D3A2 /* LatticeRender.cpp in Sources */,
+				1B0AB18B0EC130D66DD7901D /* LatticePresets.cpp in Sources */,
+				83B2C1E9ABEE3701B8F2C8A9 /* LatticeTracks.cpp in Sources */,
 				71ABBD24277A31E6001CE3AF /* UISystem.cpp in Sources */,
 				71125F1B2E41845E006D11A1 /* EntityRegistry.cpp in Sources */,
 				A6E1411B44856780E2563E4B /* EntityCloner.cpp in Sources */,

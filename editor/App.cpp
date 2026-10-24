@@ -3600,7 +3600,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
+    // v34: lattice deformer (includes/lattice.glsl): HAS_LATTICE paths in mesh/depth/gbuffer.vert
+    //      and the surface includes (MESH bit 5 'Ltc', DEPTH bit 14, GBUFFER bits 10-12), the
+    //      tangent of includes/surface_vs.glsl transformed before the hooks; a cache filled by a
+    //      build of the lattice branch before its GLSL fixes held lattice variants by these names.
+    // v35: lattice vertex colour mask clamped to [0, 1] (a v34 cache from the lattice branch holds
+    //      unclamped lattice variants by the same names).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
 }
 
 void editor::App::pushTabNotificationStyle(){

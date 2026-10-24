@@ -728,6 +728,12 @@ TEST(LatticeSolver, VertexColorMaskAndWeight){
     EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::INVERTED_ALPHA, &color), expected(0.9f)), 1e-6f);
     // weight times mask
     EXPECT_LT(maxAbsDifference(moved(2, LatticeMaskChannel::BLUE, &color), expected(1.5f)), 1e-6f);
+    // float colours outside [0, 1] are clamped (the culling bound assumes a mask <= 1)
+    const Vector4 hdr(3.0f, -0.5f, 1.5f, -2.0f);
+    EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::RED, &hdr), expected(1.0f)), 1e-6f);
+    EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::GREEN, &hdr), rest), 1e-6f);
+    EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::INVERTED_BLUE, &hdr), rest), 1e-6f);
+    EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::INVERTED_ALPHA, &hdr), expected(1.0f)), 1e-6f);
     // no colour: mask 1, for the inverted channels too
     EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::RED, nullptr), expected(1)), 1e-6f);
     EXPECT_LT(maxAbsDifference(moved(1, LatticeMaskChannel::INVERTED_RED, nullptr), expected(1)), 1e-6f);

@@ -187,7 +187,7 @@ Inside `[0,1]` on that axis the derivative factor is `(r-1)`; outside it is 0 (c
 ### 3.4 Deformation, Jacobian, normals, tangents, stretch
 
 With binding weight `w` (default 1, range `[0, 2]`) and vertex mask `m` (1 unless a mask
-channel is set, then the vertex color channel, or `1 - channel` for the inverted ones):
+channel is set, then the vertex color channel, or `1 - channel` for the inverted ones, clamped to [0, 1]):
 
 - `delta(u) = w * m * f(u) * D(u)`; `u' = u + delta(u)`.
 - `J = I + w * m * (f * dD/du + D (x) grad f)` (3x3, columns = derivatives along x, y, z).
@@ -618,7 +618,8 @@ Behaviour the other packages rely on (all in the header comments too):
   exact at rest; the GPU may use either). A vertex the binding does not move (rest
   evaluation, mask 0) is left bit-identical, normal not renormalized. A normal or tangent whose
   transformed length is 0 keeps its old value (GPU: guard `normalize(0)` the same way).
-- Mask: `m` = colour channel, or `1 - channel` inverted, **not clamped**; a null colour means
+- Mask: `m` = colour channel, or `1 - channel` inverted, clamped to [0, 1] (integration: float
+  colours outside it broke the culling bound, which assumes m <= 1); a null colour means
   `m = 1` for every channel including the inverted ones (WP-RENDER: a mesh without a colour
   attribute must behave as mask 1, e.g. pack `maskChannel -1` for it).
 - `deformWorldPoint` returns `p + Lm * delta`; `worldJacobian` returns
@@ -1737,3 +1738,74 @@ undo, follower gizmo moving the rest. Five fail on the unreviewed build.
 
     JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
         tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_review_editor.py
+
+### 12.x Render review
+
+Adversarial review of the merged GPU path (`includes/lattice.glsl` and its call sites,
+`LatticeRender`, the RenderSystem, ShaderPool, compiler and collector changes).
+
+Fixed:
+
+- **Bounds of before-skinning bindings** (`LatticeRender::prepare`): the padding was the
+  lattice's scale times the largest bone scale, but the offset is added in the bind pose's
+  object space and carried by `model * bone`, and `model * bone * model^-1` stretches more than
+  either when the model's scale is not uniform (a turned bone maps x onto a long axis): a
+  skinned mesh scaled (1, 3, 1) with a 90 degree bone moved vertices 7.8 world units with a
+  padding of 5.6, a culling false negative. The bound is now `|model * bone| * |toObject|`
+  (max over bones) for a mesh with skinning; unchanged otherwise.
+- **Editor view instance bounds**: `buildInstanceList` (a secondary view culling its own
+  instances: billboards, distance fade) and the scene-colour reader check used rest bounds
+  without the lattice padding; both are grown as `worldAABB` is.
+- **Editor shader cache v34**: the merge changed the built-in vertex shaders and the surface
+  includes without bumping the version (the rule above it); a cache filled by a lattice-branch
+  build before its GLSL portability fixes held lattice variants under the same names.
+
+Checked, no bug found:
+
+- No regression without a lattice: every non-lattice key is unchanged (the trailing `lattice`
+  arguments default false, `Vc3`/`Vc4` are forced only with `Ltc`), the non-lattice shader paths
+  are textually the old ones in `#else` branches (the surface tangent is transformed earlier,
+  same maths), `lattice.glsl` declares nothing without `HAS_LATTICE`, the `COLOR` attribute the
+  depth/G-buffer loads now bind resolves to -1 in programs without `a_color`, `prepare` returns
+  at once with no modifier, `applyLattice` returns at once with slot -1, padding only with
+  `count > 0`.
+- MESH bit 5: the editor cache names files by property short names (old `Pcf` files had another
+  name and version directory), the runtime cache directory carries the library hash, exports
+  recompile. Keys persisted before the PCF retirement (2026-07) in a project's export
+  additions/exclusions now normalize to the lattice variant instead of dropping the bit; scene
+  key lists are recollected on save before an export. Not changed (no version to migrate on).
+- GLSL vs `LatticeSolver.cpp` line by line (ghost padding and grid indexing, cubic/smooth/sharp
+  weights and derivatives, clamping, fade and its gradient, `A^-1 J A` cofactor normals, tangent,
+  stretch, stacking, masks incl. inverted, weight, submesh bits): identical. Proven numerically
+  by the new tests below; mutations (cubic weights swapped, linear fade, `A^T`/`A^-1` swapped,
+  cubic derivative scaled 0.9, fade gradient dropped) each fail them.
+- Packing: record layout vs `texelFetch` indexing, texture remade on a row-count change, whole
+  rows uploaded (no stale texels), every change reaches the `memcmp` (lattice or target moved,
+  jiggle offsets, enabled, weight, order, resolution with the same texel count), inherited
+  bindings through reparenting and deletion, overflow warning, deleted lattice, singular and
+  negative scales.
+- Portability: the GLSL ES output declares `uniform highp sampler2D` for the record texture;
+  the block flattens to `vec4 u_vs_lattice[2]` (32 bytes, as applied); the heaviest built-in
+  variant (`Uv1,Uv2,Puc,Shw,Nor,Nmp,Tan,Vc4,Fog,Ski,Ist,Ibl,Mir,Sao,L2d,S2d,Ifd,Pcl`) with `Ltc`
+  uses 16 samplers and 14 uniform blocks in total (sokol's limits: 16 and 16), compiling on
+  every backend as its twin does.
+
+Not proven (no hardware here): the HLSL is only generated (SPIRV-Cross) on this host, FXC's
+handling of the nested `break` loops is untested; a mask channel reading float vertex colours
+above 1 can exceed the padding (the bound assumes masks in [0, 1]).
+
+Tests (htmlui `LatticeRender*`, 12 tests): `GpuMatchesTheSolverAtManyPoints` (20 markers per
+configuration inside, in the fade band and outside a rotated non-uniformly scaled 4x3x5 lattice
+with hashed offsets, every interpolation with extend / fade / fade 0, stacked lattices with
+weights, a mirrored lattice under a negatively scaled parent, bindings inherited through it:
+drawn centroids within 0.6 px of `deformWorldPoint`), `StretchAndNormalsMatchTheSolverInACurvedField`
+(`lattice_stretch` output and lit normals against `deformVertex` interpolated as the rasterizer
+does, smooth and cubic, inside and in the fade band), `EveryChangeDrawsWhatAFreshSceneDraws`,
+`InheritedBindingsFollowTheHierarchy`, `BoundsHoldBeforeSkinningOffsetsOfAScaledMesh` (failed
+before the fix), `SingularTransformsAreSkipped`.
+
+Runs: htmlui suite without perf tests 3242 passed; MCP `test_lattice*.py` (except shaders) 50
+passed; `test_lattice_shaders.py` 2 passed (8460 GL pairs, 1320 all-backend pairs, every lattice
+failure matched by its twin's: over 16 vertex attributes); `test_shader_library.py` passed,
+`test_shader_library_fixes.py` 13/15 with the two failures the baseline binary has too (the
+lattice fixture has no `assets/sprites/rock.png`).

@@ -184,21 +184,25 @@ namespace{
         return inverse.isValid();
     }
 
+    // clamped to [0, 1] (float vertex colours can leave it), so the culling bound of a
+    // masked binding (weight * largest offset) holds; includes/lattice.glsl clamps the same
     float maskValue(LatticeMaskChannel mask, const Vector4* color){
         if (!color){
             return 1.0f;
         }
+        float value;
         switch (mask){
-            case LatticeMaskChannel::RED: return color->x;
-            case LatticeMaskChannel::GREEN: return color->y;
-            case LatticeMaskChannel::BLUE: return color->z;
-            case LatticeMaskChannel::ALPHA: return color->w;
-            case LatticeMaskChannel::INVERTED_RED: return 1.0f - color->x;
-            case LatticeMaskChannel::INVERTED_GREEN: return 1.0f - color->y;
-            case LatticeMaskChannel::INVERTED_BLUE: return 1.0f - color->z;
-            case LatticeMaskChannel::INVERTED_ALPHA: return 1.0f - color->w;
+            case LatticeMaskChannel::RED: value = color->x; break;
+            case LatticeMaskChannel::GREEN: value = color->y; break;
+            case LatticeMaskChannel::BLUE: value = color->z; break;
+            case LatticeMaskChannel::ALPHA: value = color->w; break;
+            case LatticeMaskChannel::INVERTED_RED: value = 1.0f - color->x; break;
+            case LatticeMaskChannel::INVERTED_GREEN: value = 1.0f - color->y; break;
+            case LatticeMaskChannel::INVERTED_BLUE: value = 1.0f - color->z; break;
+            case LatticeMaskChannel::INVERTED_ALPHA: value = 1.0f - color->w; break;
             default: return 1.0f;
         }
+        return std::min(std::max(value, 0.0f), 1.0f);
     }
 
 }

@@ -206,10 +206,18 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
         if (count == 0)
             return; // reset below if it had bindings
 
-        // a before-skinning offset is moved by the bones too
-        float boneScale = 1.0f;
-        for (size_t b = 0; b < mesh.bonesMatrix.size(); b++){
-            boneScale = (b == 0) ? linearScale(mesh.bonesMatrix[b]) : std::max(boneScale, linearScale(mesh.bonesMatrix[b]));
+        // A before-skinning offset is added in the bind pose's object space and then carried
+        // by a bone (object space) and the model matrix: model * bone * toObject * delta. Its
+        // bound is |model * bone| * |toObject| (not the lattice's scale times the bone's: with
+        // a non-uniform model scale, model * bone * model^-1 stretches what a turned bone
+        // points along the long axis). Without skinning every binding is an after one.
+        bool skinned = false;
+        for (unsigned int s = 0; s < mesh.numSubmeshes && !skinned; s++)
+            skinned = mesh.submeshes[s].hasSkinning;
+        float boneScale = 0.0f;
+        if (skinned){
+            for (size_t b = 0; b < mesh.bonesMatrix.size(); b++)
+                boneScale = std::max(boneScale, linearScale(transform.modelMatrix * mesh.bonesMatrix[b]));
         }
 
         LatticeMeshState& lattice = mesh.lattice;
@@ -246,10 +254,10 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
 
             // spec 5.5: |delta| <= weight * mask * max |P| in local units (the interpolation
             // weights are a partition of unity, the fade at most 1), local to world at most
-            // the lattice's scale
+            // the lattice's scale (model * toObject is the lattice's linear part)
             float growth = std::fabs(binding.weight) * source.maxOffset * source.worldScale;
-            if (binding.stage == 0 && mesh.bonesMatrix.size() > 0)
-                growth *= boneScale;
+            if (binding.stage == 0 && skinned)
+                growth = std::fabs(binding.weight) * source.maxOffset * linearScale(binding.toObject) * boneScale;
             padding += growth;
         }
         for (int b = count; b < LATTICE_MAX_PER_MESH; b++){
