@@ -35,7 +35,7 @@ namespace jasperengine{
         std::shared_ptr<ShaderRender> shader;
         // optional custom shader: "library:<name>" or a project-relative fork base path
         // (no extension), empty = built-in. customShaderId is the resolved id for ShaderPool keys.
-        std::string customShader;
+        ShaderRef customShader;
         uint16_t customShaderId = 0;
         // the variant's property bits (the post-processing colour, 'Pcl')
         uint32_t shaderProperties = 0;

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Characterization tests of AssetDatabase (Unity's: assets by GUID, the GUID written in the
-// asset file) on a project in a TempDir. Only .prefab files are tracked today.
+// asset file) on a project in a TempDir, written with prefabs. Since S04 every asset type is
+// tracked (docs/specs/S04-asset-identity.md); its own suites are in editor/tests/asset/.
 
 #include "util/AssetDatabase.h"
 
@@ -80,10 +81,13 @@ TEST(AssetDatabaseGuid, LegacyGuidIsStableAndPathBased){
     EXPECT_NE(AssetDatabase::legacyGuid("prefabs/boss.prefab"), guid);
 }
 
-TEST(AssetDatabaseGuid, TracksPrefabsOnly){
-    EXPECT_TRUE(AssetDatabase::isTrackedFile("a/b.prefab"));
-    EXPECT_FALSE(AssetDatabase::isTrackedFile("a/b.scene"));
-    EXPECT_FALSE(AssetDatabase::isTrackedFile("a/b.png"));
+TEST(AssetDatabaseGuid, TracksEveryAssetType){
+    AssetDatabase database;
+    EXPECT_TRUE(database.isTrackedFile("a/b.prefab"));
+    EXPECT_TRUE(database.isTrackedFile("a/b.scene"));
+    EXPECT_TRUE(database.isTrackedFile("a/b.png"));
+    EXPECT_FALSE(database.isTrackedFile("a/b.png.meta"));
+    EXPECT_FALSE(database.isTrackedFile("a/b.bak"));
 }
 
 TEST(AssetDatabaseGuid, ReadGuidFindsTheTopLevelKey){
@@ -163,6 +167,31 @@ TEST(AssetDatabaseGuid, WriteGuidOutputReadsBackInBothStyles){
     EXPECT_EQ(nested["entities"][0]["name"].as<std::string>(), "child");
 }
 
+TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
+    // S04's identity: the former GUIDs travel with the GUID through a flow style rewrite too
+    TempDir dir;
+    const Guid current = Guid::parse(guidA);
+    const std::vector<Guid> former = {Guid::parse(guidB)};
+    for (const std::string text : {std::string("name: A\n"), std::string("{name: A, entities: [{name: child}]}\n"),
+                                   "{name: A, guid: " + guidB + ", formerGuids: [" + guidB + "]}\n"}){
+        dir.write("x.prefab", text);
+        Guid read;
+        std::vector<Guid> readFormer;
+        ASSERT_TRUE(AssetDatabase::writeInFileIdentity(dir.file("x.prefab"), current, former)) << text;
+        ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.file("x.prefab"), read, readFormer)) << text << dir.read("x.prefab");
+        EXPECT_EQ(read, current) << dir.read("x.prefab");
+        EXPECT_EQ(readFormer, former) << dir.read("x.prefab");
+        EXPECT_EQ(YAML::LoadFile(dir.file("x.prefab").string())["name"].as<std::string>(), "A");
+    }
+    // a flow style document another tool wrote reads as it is
+    dir.write("y.prefab", "{name: Y, guid: " + guidA + ", formerGuids: [" + guidB + "]}\n");
+    Guid read;
+    std::vector<Guid> readFormer;
+    ASSERT_TRUE(AssetDatabase::readInFileIdentity(dir.file("y.prefab"), read, readFormer));
+    EXPECT_EQ(read, current);
+    EXPECT_EQ(readFormer, former);
+}
+
 TEST(AssetDatabaseGuid, WriteGuidFailsWithoutAFile){
     TempDir dir;
     EXPECT_FALSE(AssetDatabase::writeGuid(dir.file("none.prefab"), guidA));
@@ -177,7 +206,8 @@ TEST_F(AssetDatabaseTest, OpenRegistersEveryPrefab){
     EXPECT_EQ(database.getPath(guidA), std::filesystem::path("prefabs/a.prefab"));
     EXPECT_EQ(database.getGuid("prefabs/deep/b.prefab"), guidB);
     EXPECT_TRUE(database.contains(guidB));
-    EXPECT_EQ(database.getGuid("scenes/main.scene"), "");
+    // a scene is an asset too: written before GUIDs, it gets its path's legacy GUID
+    EXPECT_EQ(database.getGuid("scenes/main.scene"), AssetDatabase::legacyGuid("scenes/main.scene"));
 }
 
 TEST_F(AssetDatabaseTest, OpenSkipsHiddenAndBuildDirectories){
@@ -229,8 +259,8 @@ TEST_F(AssetDatabaseTest, ADuplicatedGuidStaysWithTheFileTheCacheKnows){
 TEST_F(AssetDatabaseTest, OpenWritesTheCache){
     project.write("a.prefab", prefab(guidA));
     open();
-    EXPECT_TRUE(project.exists(".jasperengine/assetdb.yaml"));
-    EXPECT_NE(project.read(".jasperengine/assetdb.yaml").find(guidA), std::string::npos);
+    EXPECT_TRUE(project.exists(".jasperengine/assetdb/index.json"));
+    EXPECT_NE(project.read(".jasperengine/assetdb/index.json").find(guidA), std::string::npos);
 }
 
 TEST_F(AssetDatabaseTest, CloseForgetsEverything){
@@ -346,11 +376,11 @@ TEST_F(AssetDatabaseTest, MoveAssetsKeepsTheGuids){
     EXPECT_EQ(database.getPath(guidB), std::filesystem::path("other/b.prefab"));
 }
 
-TEST_F(AssetDatabaseTest, RenamingAwayFromPrefabRemovesTheAsset){
+TEST_F(AssetDatabaseTest, RenamingAwayFromAnAssetTypeRemovesTheAsset){
     project.write("a.prefab", prefab(guidA));
     open();
-    std::filesystem::rename(project.file("a.prefab"), project.file("a.txt"));
-    const std::vector<Change> changes = database.moveAssets(project.path() / "a.prefab", project.path() / "a.txt");
+    std::filesystem::rename(project.file("a.prefab"), project.file("a.bak"));
+    const std::vector<Change> changes = database.moveAssets(project.path() / "a.prefab", project.path() / "a.bak");
     ASSERT_EQ(changes.size(), 1u);
     EXPECT_EQ(changes[0].type, Change::Type::Removed);
     EXPECT_FALSE(database.contains(guidA));

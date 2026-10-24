@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "asset/AssetFileWrite.h"
+#include "asset/AssetMap.h"
+#include "asset/AssetTypes.h"
 #include "util/PngWriter.h"
 #include "util/AtomicFileStream.h"
 #include "EditorHost.h"
@@ -30,6 +33,7 @@
 #include <chrono>
 #include <thread>
 #include <array>
+#include <set>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
@@ -572,6 +576,7 @@ void editor::Exporter::runExport() {
     if (!clearGenerated()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!loadAndSaveAllScenes()) return;
+    if (!checkMissingAssets()) return;
     resolveShaderKeys();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyGenerated()) return;
@@ -582,6 +587,7 @@ void editor::Exporter::runExport() {
     if (!checkHtmlUIReferences()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1634,6 +1640,40 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 });
             }
 
+            // S04: the references of the build (its scenes, and the prefabs and materials they
+            // use) that resolve to no asset, checked by checkMissingAssets()
+            missingBuildReferences.clear();
+            project->getAssetIndex().waitUntilReady();
+            {
+                std::set<Guid> owners;
+                std::vector<Guid> queue;
+                for (const auto& sceneProject : scenes) {
+                    if (sceneProject.filepath.empty()) continue;
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(sceneProject.filepath);
+                    if (!guid.isNull() && owners.insert(guid).second) queue.push_back(guid);
+                }
+                for (size_t i = 0; i < queue.size(); i++) {
+                    for (const DepEdge& edge : project->getAssetIndex().dependenciesOf(queue[i], 1)) {
+                        if (edge.target.isNull() || (edge.expected != AssetType::Prefab && edge.expected != AssetType::Material)) continue;
+                        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(edge.target, edge.targetPath, edge.expected, false);
+                        if (found.found() && owners.insert(found.guid).second) queue.push_back(found.guid);
+                    }
+                }
+                MissingAssetTracker& tracker = project->getMissingAssets();
+                tracker.update(project->getAssetDatabase(), project->getAssetIndex(), true);
+                for (const MissingAssetTracker::Group& group : tracker.getGroups()) {
+                    for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
+                        if (!owners.count(referrer.owner)) continue;
+                        std::string line = referrer.ownerPath;
+                        if (!referrer.entityPath.empty()) line += " > " + referrer.entityPath;
+                        if (!referrer.component.empty()) line += " > " + referrer.component;
+                        line += "." + referrer.field + ": missing " + std::string(assetTypeName(group.expected)) + " " +
+                                group.lastPath + (group.guid.isNull() ? std::string() : " (GUID " + group.guid.str() + ")");
+                        missingBuildReferences.push_back(line);
+                    }
+                }
+            }
+
             // Unload all scenes that were not loaded before export
             for (uint32_t sceneId : temporarilyLoaded) {
                 SceneProject* sp = project->getScene(sceneId);
@@ -1888,6 +1928,53 @@ bool editor::Exporter::copyGenerated() {
     return true;
 }
 
+bool editor::Exporter::checkMissingAssets() {
+    if (missingBuildReferences.empty()) {
+        return true;
+    }
+    // errors that stop the build, warnings when it goes on anyway
+    for (const std::string& line : missingBuildReferences) {
+        if (config.allowMissingAssets) Out::warning("%s", line.c_str());
+        else Out::error("%s", line.c_str());
+    }
+    if (config.allowMissingAssets) {
+        Out::warning("Exporting with %zu missing asset reference(s) (Export Anyway)", missingBuildReferences.size());
+        return true;
+    }
+    setError(std::to_string(missingBuildReferences.size()) + " reference(s) of the build point at missing assets "
+             "(listed in the Console, and in Window > Assets > Missing Assets). Fix them, or export anyway.");
+    return false;
+}
+
+bool editor::Exporter::writeAssetMap() {
+    // every asset the game can name by GUID: its current path in the form references use
+    // (relative to the assets directory for asset types, to the project otherwise), its
+    // former GUIDs and its sub-assets ("<model>#<key>")
+    const AssetIndex::Roots roots = project->getAssetRoots();
+    std::vector<AssetMap::Entry> entries;
+    project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        const AssetTypeInfo& type = AssetTypes::info(info.type);
+        std::string path = info.path;
+        if (type.base == AssetPathBase::Assets) {
+            if (!roots.assetsDir.empty()) {
+                if (path.compare(0, roots.assetsDir.size() + 1, roots.assetsDir + "/") != 0) return; // not shipped
+                path = path.substr(roots.assetsDir.size() + 1);
+            }
+        }
+        entries.push_back({info.guid, info.type, false, path});
+        for (const Guid& former : info.formerGuids) entries.push_back({former, info.type, true, path});
+        for (const AssetDatabase::SubAsset& sub : info.subAssets) entries.push_back({sub.guid, AssetType::SubAsset, false, path + "#" + sub.key});
+    });
+    const std::vector<uint8_t> bytes = AssetMap::encode(std::move(entries));
+    const fs::path target = getExportProjectRoot() / "assets" / AssetMap::fileName;
+    std::string error;
+    if (!assetio::writeFile(target, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), assetio::Durability::Cache, &error)) {
+        setError("Failed to write " + target.string() + ": " + error);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
@@ -1925,8 +2012,14 @@ bool editor::Exporter::copyAssets() {
             return false;
         }
 
-        // Skip project support files that should not ship as assets
-        if (shouldSkipExportSupportFile(relPath)) continue;
+        // The exporter writes the asset map there (S04)
+        if (relPath == AssetMap::fileName) {
+            setError("\"" + std::string(AssetMap::fileName) + "\" is reserved for the asset map. Rename " + entry.path().string());
+            return false;
+        }
+
+        // Skip project support files that should not ship as assets, and the assets' metas
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
@@ -2049,8 +2142,8 @@ bool editor::Exporter::copyLua() {
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) { it.disable_recursion_pending(); continue; }
 
-        // Skip project support files that should not ship in the Lua directory
-        if (shouldSkipExportSupportFile(relPath)) continue;
+        // Skip project support files that should not ship in the Lua directory, and metas (S04)
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;

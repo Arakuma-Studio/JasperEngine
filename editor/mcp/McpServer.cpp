@@ -8,6 +8,7 @@
 #include "McpContext.h"
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
+#include "McpUndo.h"
 #include "tools/McpTools.h"
 
 #include "App.h"
@@ -20,6 +21,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <cstdio>
+#include <optional>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::mcp;
@@ -107,6 +109,7 @@ void McpServer::registerAllTools() {
     registerConsoleTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
+    registerAssetIdentityTools(reg);
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
@@ -744,9 +747,11 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     }
 
     std::string client;
+    std::string clientName;
     {
         std::lock_guard<std::mutex> lock(sessionMutex);
         client = session->clientName.empty() ? session->transport : session->clientName;
+        clientName = session->clientName;
     }
     const uint64_t seq = beginActivity(client, name, args);
     const std::string key = inflightKey(session->id, id);
@@ -790,6 +795,8 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 reply->cancelled();
             }
         });
+
+    call->setClient(McpUndo::clientName(clientName), id.dump());
 
     if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("progressToken")) {
         const Json token = params["_meta"]["progressToken"];
@@ -961,11 +968,34 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         }
     }
 
+    // An edit tool's undo steps are the agent's (S24 R24): attributed while its handler and
+    // its deferred continuations run, folded into one step per history when it replies, and
+    // named in the result (structured.undo). Read-only and control tools (batch) are not.
+    const ToolActivity activity = effectiveActivity(def);
+    if ((activity != ToolActivity::Read && activity != ToolActivity::Control) || def.attributesUndo) {
+        UndoOrigin origin;
+        origin.kind = UndoOriginKind::Agent;
+        origin.client = call->client().empty() ? std::string("Agent") : call->client();
+        origin.callId = call->requestId();
+        origin.tool = def.name;
+        origin.call = call->serial();
+        call->setUndoOrigin(std::move(origin));
+    }
+
     // Alerts raised by the tool are part of its answer: the agent can't see the window
     const uint64_t alertSerial = app.getAlertSerial();
-    call->setFinalizer([this, alertSerial, notes](ToolResult& result) {
+    const std::string toolTitle = def.title.empty() ? def.name : def.title;
+    std::weak_ptr<McpCall> weakCall = call;
+    call->setFinalizer([this, alertSerial, notes, toolTitle, weakCall](ToolResult& result) {
         result.text += notes;
         if (!appPtr || !appPtr->isMainThread()) return;
+        if (CallPtr done = weakCall.lock(); done && done->attributed()) {
+            Json undo = McpUndo::foldCall(*done, toolTitle);
+            if (!undo.is_null()) {
+                if (result.structured.is_null()) result.structured = Json::object();
+                if (result.structured.is_object()) result.structured["undo"] = undo;
+            }
+        }
         App& app = *appPtr;
         EditorDialogInfo raised;
         if (app.getAlertSerial() == alertSerial || !app.getOpenDialog(raised) || raised.kind != "alert") return;
@@ -983,6 +1013,8 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     });
 
     try {
+        std::optional<UndoOriginScope> attribution;
+        if (call->attributed()) attribution.emplace(call->getUndoOrigin());
         def.handler(call);
     } catch (const Json::type_error& e) {
         // an argument a handler read without checking its type: still an error the agent can fix
@@ -1015,6 +1047,7 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
         if (CallPtr p = weakParent.lock()) p->progress(progressDone, total, tool + ": " + message);
     });
     call->setParent(parent);
+    call->setClient(parent->client(), parent->requestId());
     execute(call, *def);
 }
 
@@ -1051,6 +1084,9 @@ void McpServer::tick() {
             continue;
         }
         try {
+            // a continuation of an attributed call is the agent's too
+            std::optional<UndoOriginScope> attribution;
+            if (call->attributed()) attribution.emplace(call->getUndoOrigin());
             if (item.frames >= 0) {
                 if (item.frames > 0) {
                     item.frames--;

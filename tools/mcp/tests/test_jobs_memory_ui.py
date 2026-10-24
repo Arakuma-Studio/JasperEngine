@@ -113,7 +113,13 @@ async def test_reserved_frame_workers_from_project_settings(ed: Editor):
 
     # Ctrl+Z in the panel: the project history's step
     await ui.click(PANEL_TITLE)
-    ui.xdo("key", "ctrl+z")
+    # Ctrl held across frames: `xdotool key ctrl+z` can land Z's press and Ctrl's release
+    # in one editor frame, where Ctrl reads up and the chord is lost
+    ui.xdo("keydown", "ctrl")
+    await asyncio.sleep(0.1)
+    ui.xdo("key", "z")
+    await asyncio.sleep(0.1)
+    ui.xdo("keyup", "ctrl")
     await asyncio.sleep(0.5)
     await ed.call("wait", frames=5)
     reverted = await gate(ed)

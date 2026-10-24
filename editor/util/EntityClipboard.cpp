@@ -486,8 +486,18 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     return copyGameObjects(project, sceneId, requested, nullptr);
 }
 
+std::shared_ptr<editor::GameObjectsClip> editor::EntityClipboard::snapshotGameObjects(Project* project, uint32_t sceneId,
+                                                                                     const std::vector<Entity>& entities) {
+    std::shared_ptr<GameObjectsClip> clip;
+    if (!copyGameObjects(project, sceneId, entities, nullptr, &clip, false)) {
+        return nullptr;
+    }
+    return clip;
+}
+
 bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& requested,
-                                              std::unordered_map<Entity, YAML::Node>* encodedRoots) {
+                                              std::unordered_map<Entity, YAML::Node>* encodedRoots,
+                                              std::shared_ptr<GameObjectsClip>* clipOut, bool write) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
         return false;
@@ -666,6 +676,13 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     }
     if (!clip->externalNames.empty()) {
         doc["external"] = encodeExternalNames(clip->externalNames);
+    }
+
+    if (clipOut) {
+        *clipOut = clip;
+    }
+    if (!write) {
+        return true;
     }
 
     Entry entry;

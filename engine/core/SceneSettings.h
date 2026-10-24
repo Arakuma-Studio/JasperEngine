@@ -7,6 +7,7 @@
 #include "render/Render.h"
 #include "shader/ShaderUniforms.h"
 #include "texture/Texture.h"
+#include "asset/AssetRef.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -84,7 +85,7 @@ namespace jasperengine{
         Vector3 lift = Vector3(0.0f, 0.0f, 0.0f);
         Vector3 gamma = Vector3(1.0f, 1.0f, 1.0f);
         Vector3 gain = Vector3(1.0f, 1.0f, 1.0f);
-        std::string lutTexture;
+        AssetRef lutTexture;
         float lutContribution = 1.0f;
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
@@ -166,7 +167,7 @@ namespace jasperengine{
 
         // the field table (name, type, accessor) every consumer iterates: serialization,
         // exported scene code, the editor's Catalog paths (post_processing.<snake name>) and MCP
-        enum class FieldType { Bool, Int, Float, Vector3, Enum, String };
+        enum class FieldType { Bool, Int, Float, Vector3, Enum, String, Asset };
         struct Field {
             const char* name;       // camelCase, the member and YAML key
             const char* snakeName;  // snake_case, the Catalog path after "post_processing."
@@ -195,7 +196,7 @@ namespace jasperengine{
     struct PostProcessPass {
         // a project fork base path, "library:<name>" (a library post-process shader,
         // @shader postprocess), or empty: the built-in passthrough
-        std::string shader;
+        ShaderRef shader;
         bool enabled = true;
         ShaderUniformValues uniforms;
         // the shader's textures by uniform (its manifest's @texture, or any it declares when it
@@ -281,11 +282,11 @@ namespace jasperengine{
 
         // scene-wide custom shaders, used when a component's customShader is empty
         // (project-relative base or "a.vert|b.frag"; empty = engine built-in)
-        std::string defaultMeshShader;
-        std::string defaultUIShader;
-        std::string defaultSkyShader;
-        std::string defaultPointsShader;
-        std::string defaultLinesShader;
+        ShaderRef defaultMeshShader;
+        ShaderRef defaultUIShader;
+        ShaderRef defaultSkyShader;
+        ShaderRef defaultPointsShader;
+        ShaderRef defaultLinesShader;
 
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;

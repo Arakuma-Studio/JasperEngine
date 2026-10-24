@@ -18,6 +18,10 @@
 #include "io/ScopedFileLock.h"
 #include <optional>
 #include "util/AssetDatabase.h"
+#include "asset/AssetIndex.h"
+#include "asset/AssetMap.h"
+#include "asset/AssetRefSchema.h"
+#include "asset/MissingAssetTracker.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
@@ -28,6 +32,8 @@
 
 #include <filesystem>
 #include <chrono>
+#include <future>
+#include "jobs/JobSystem.h"
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -69,6 +75,15 @@ namespace jasperengine::editor{
         BEFORE,
         AFTER,
         INTO
+    };
+
+    // Where a selection change comes from (Project::setSelection): the user (a standalone
+    // change is an undo step), an undo/redo putting a stored selection back, or forced
+    // (GameObjects destroyed, a scene reloaded). Only User changes are recorded.
+    enum class SelectionCause{
+        User,
+        Restore,
+        Forced
     };
 
     enum class TabType{
@@ -640,6 +655,9 @@ namespace jasperengine::editor{
         IOSProjectSettings iosProjectSettings;
         AndroidProjectSettings androidProjectSettings;
         CommandHistory projectHistory;
+        uint64_t selectionGesture = 1;
+        bool selectionGestureHeld = false;
+        void installUndoHooks();
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
@@ -830,8 +848,26 @@ namespace jasperengine::editor{
         // GUID <-> path of the prefab files (and later other asset types)
         AssetDatabase assetDatabase;
         std::chrono::steady_clock::time_point lastAssetRefreshTime;
+        // the poll's disk walk, an S06 Background job (R23); applied on the main thread
+        jobs::Task<AssetDatabase::DiskScan> assetScan;
+        std::chrono::steady_clock::duration lastAssetScanDuration{};
+        void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
+        // Who references what (S04): closed files from disk, documents with unsaved edits from memory
+        AssetIndex assetIndex;
+        MissingAssetTracker missingAssets;
+        // Lua's Asset module (AssetMap) in the editor and its Play: answered by the database
+        class EditorAssetResolver : public AssetMap::Resolver {
+        public:
+            explicit EditorAssetResolver(const Project* project) : project(project) {}
+            ~EditorAssetResolver() override { AssetMap::setResolver(nullptr); }
+            bool findPath(const Guid& guid, std::string& path, AssetType& type) const override;
+            Guid findGuid(const std::string& path) const override;
+        private:
+            const Project* project;
+        };
+        EditorAssetResolver assetResolver{this};
 
         // What the database reports changed: moved prefabs get their new path everywhere in
         // memory, removed ones leave Missing Prefab instances behind, added ones relink them
@@ -932,12 +968,6 @@ namespace jasperengine::editor{
                           const fs::path& currentPath, fs::path& updatedPath);
         static bool remapRelativeString(const fs::path& oldRelative, const fs::path& newRelative,
                         const std::string& currentPath, std::string& updatedPath);
-        static bool remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::path& oldRelative,
-                          const fs::path& newRelative);
-        // Absolute paths: Lua entries match against the Lua root, C++ entries against the project.
-        bool remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
-                        const fs::path& newPath);
-        bool cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath);
         // Runs transform over every stored asset reference (component textures and cubemap
         // faces, model and sound filenames, text fonts), rewriting the value in place.
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
@@ -949,17 +979,6 @@ namespace jasperengine::editor{
         // Reads every .material file of the project, calls visit on it and writes back the
         // ones visit changed (returns true for)
         bool visitMaterialFiles(const std::function<bool(Material&)>& visit);
-        // A transform of fork references over a material's shader and its extra pass's
-        static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
-        // Runs an asset transform over every scene, prefab and material file,
-        // marking what changed.
-        void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
-        // Applies a transform to the customShader of every renderable component (Mesh/UI/
-        // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
-        // fork shader of every submesh material and extra pass there and in .material files,
-        // flagging shader or mesh reloads and marking affected scenes/prefabs modified. The
-        // transform mutates the value in place and returns whether it changed.
-        void applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform);
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
         bool detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds);
 
@@ -1047,6 +1066,8 @@ namespace jasperengine::editor{
 
         Project();
         ~Project();
+        Project(const Project&) = delete;
+        Project& operator=(const Project&) = delete;
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -1115,6 +1136,8 @@ namespace jasperengine::editor{
 
         void setAssetsDir(const std::filesystem::path& assetsDir);
         std::filesystem::path getAssetsDir() const;
+        // Scans the project's assets (S04): every asset gets its GUID before anything references it
+        void openAssetDatabase();
 
         void setLuaDir(const std::filesystem::path& luaDir);
         std::filesystem::path getLuaDir() const;
@@ -1187,8 +1210,6 @@ namespace jasperengine::editor{
         Util::CustomShaderPaths resolveCustomShaderFiles(const std::string& customShader) const;
         // reads a fork file as the shader compilers and manifests see it
         bool readShaderFile(const std::string& relative, std::string& content) const;
-        // the project-relative files a fork path can name: itself and, under the assets directory
-        std::vector<std::string> shaderFileCandidates(const std::string& relative) const;
 
         // Applies new roots: referenced files outside them are moved in keeping their
         // layout, then every stored reference is rewritten and saved.
@@ -1339,23 +1360,6 @@ namespace jasperengine::editor{
         void unlinkAllMaterialFiles(uint32_t sceneId);
 
         //=== end Linked Material part ===
-
-        //=== File path remapping ===
-
-        void remapMaterialFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapPrefabFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
-        void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
-        void cleanupPrefabFilePath(const std::filesystem::path& deletedPath);
-        void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
-        void cleanupAssetFilePath(const std::filesystem::path& deletedPath);
-        void cleanupShaderFilePath(const std::filesystem::path& deletedPath);
-
-        //=== end File path remapping ===
 
         void checkUnsavedAndExecute(uint32_t sceneId, std::function<void()> action);
 
@@ -1541,6 +1545,20 @@ namespace jasperengine::editor{
         // and never part of the authored entities a file keeps
         std::vector<Entity> getPlayCreatedEntities(const SceneProject* sceneProject) const;
 
+        // Every write to a scene's selection: the GameObjects in order, the active one last.
+        // A User change outside a command is an undo step ("Select Player", R15) unless the
+        // timeline has a redo tail or Record Selection in Undo is off; changes made while a
+        // command runs belong to that command's step.
+        void setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause = SelectionCause::User);
+        SelectionState getSelection(uint32_t sceneId) const;
+        // Selection changes until the end are one undo step (a box select drag); otherwise the
+        // changes of one frame are (nextSelectionFrame, called once per editor frame)
+        void beginSelectionGesture();
+        void endSelectionGesture();
+        void nextSelectionFrame();
+        // Editor Settings > Undo > Record Selection in Undo
+        static bool recordSelectionInUndo;
+
         void replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities);
         // A running scene and its Stop destroy entities the Hierarchy lets the user select
         void deselectDestroyedEntities(SceneProject* sceneProject);
@@ -1577,6 +1595,47 @@ namespace jasperengine::editor{
         // reference that points outside the prefab (cross-scene, or a non-member local
         // entity). Such references cannot be shared, so overriding keeps and persists them.
         static void overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance);
+
+        //=== Asset identity (S04, editor/project/ProjectAssets.cpp) ===
+
+        AssetIndex& getAssetIndex() { return assetIndex; }
+        const AssetIndex& getAssetIndex() const { return assetIndex; }
+        // The Missing Assets lists, brought up to date with the database and the index
+        MissingAssetTracker& getMissingAssets();
+        // The roots reference hints are relative to (assets and Lua directories), project-relative
+        AssetIndex::Roots getAssetRoots() const;
+        std::string assetHintToProjectPath(const std::string& hint, AssetPathBase base) const;
+        std::string projectPathToAssetHint(const std::string& projectRelative, AssetPathBase base) const;
+        // A reference to the asset at a path (relative to base), with its GUID
+        AssetRef makeAssetRef(const std::string& hint, AssetPathBase base) const;
+        // Resolves every reference of a loaded scene, prefab stage or registry (S04 R10).
+        // loading: references read from a file (a reference without a GUID is a legacy one);
+        // otherwise references edited in memory (a path without a GUID is the file at the
+        // path, a path-fallback binding takes the file's GUID, as it is about to be saved).
+        // True when a path hint changed (the owner is then modified).
+        bool resolveSceneAssetRefs(SceneProject& sceneProject, bool loading);
+        // Before a file moves or goes: the references of the loaded documents that name an
+        // asset only by path (assigned since the last save) get its GUID, so they follow it
+        void bindLoadedAssetRefs();
+        bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
+        // The identity keys (guid, formerGuids) a scene, prefab or material file is written
+        // with, put at the top of its root; returns the GUID (a new one for a new file)
+        Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);
+        // Writes a .material file with its identity (and registers it), through S03's material
+        // save: a file that did not read completely is refused (RefusedDegraded, why in error)
+        // unless the policy accepts the loss
+        SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
+                                     DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The edges of the loaded documents, unsaved edits included (the index overlay)
+        void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
+        // After assets moved: the path hints of the loaded documents follow their GUIDs
+        void refreshAssetHints();
+        // What a file operation (AssetOps) or the refresh found changed reaches the editor:
+        // prefabs in memory, the dependency index, the loaded documents' hints
+        void onAssetFilesChanged(const std::vector<AssetDatabase::Change>& changes);
+        // A scene file or a directory holding some moved: the scene list and the open tabs
+        // follow (project.yaml is written); false when no scene was there
+        bool moveSceneFileHints(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
 
         //=== Prefab part ===
 

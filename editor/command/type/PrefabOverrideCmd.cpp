@@ -64,3 +64,23 @@ bool editor::PrefabOverrideCmd::execute(){
 void editor::PrefabOverrideCmd::undo(){
     project->restorePrefabUndoState(before);
 }
+
+std::string editor::PrefabOverrideCmd::describe() const{
+    const std::string what = properties.size() == 1 ? CommandNames::property(properties.front()) : CommandNames::component(componentType);
+    std::string verb;
+    switch (operation){
+        case Operation::RecordProperty: verb = "Record Override " + what; break;
+        case Operation::RevertProperty: verb = "Revert " + what; break;
+        case Operation::ApplyProperty: verb = "Apply " + what + " to Prefab"; break;
+        case Operation::RecordState: verb = "Record GameObject State Override"; break;
+        case Operation::RevertState: verb = "Revert GameObject State"; break;
+        case Operation::ApplyState: verb = "Apply GameObject State to Prefab"; break;
+        case Operation::RecordAddedComponent: verb = "Record Added Component " + CommandNames::component(componentType); break;
+        case Operation::RevertAddedComponent: verb = "Revert Added Component " + CommandNames::component(componentType); break;
+        case Operation::ApplyAddedComponent: verb = "Apply Added Component " + CommandNames::component(componentType); break;
+        case Operation::RecordRemovedComponent: verb = "Record Removed Component " + CommandNames::component(componentType); break;
+        case Operation::RevertRemovedComponent: verb = "Revert Removed Component " + CommandNames::component(componentType); break;
+        case Operation::ApplyRemovedComponent: verb = "Apply Removed Component " + CommandNames::component(componentType); break;
+    }
+    return verb + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+}

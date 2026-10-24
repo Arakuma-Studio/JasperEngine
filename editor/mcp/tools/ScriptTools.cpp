@@ -25,6 +25,7 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/CommandNames.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -202,6 +203,29 @@ void WriteFilesCmd::undo() {
     }
     createdDirs.clear();
     if (afterChange) afterChange(paths());
+}
+
+std::string WriteFilesCmd::describe() const {
+    if (items.size() == 1) {
+        const bool created = !previous.empty() && !previous.front().existed;
+        return std::string(created ? "Create File " : "Write File ") + CommandNames::file(items.front().path);
+    }
+    return "Write " + CommandNames::files(paths());
+}
+
+bool WriteFilesCmd::isNoOp() const {
+    if (previous.size() != items.size()) return false;
+    for (size_t i = 0; i < items.size(); i++) {
+        if (!previous[i].existed || previous[i].content != items[i].content) return false;
+    }
+    return true;
+}
+
+size_t WriteFilesCmd::memoryBytes() const {
+    size_t bytes = sizeof(*this);
+    for (const Item& item : items) bytes += sizeof(item) + item.content.capacity() + item.path.native().size();
+    for (const Previous& prev : previous) bytes += sizeof(prev) + prev.content.capacity();
+    return bytes;
 }
 
 bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error) {
@@ -823,6 +847,7 @@ std::string scriptPropertyTypeName(const ScriptProperty& prop) {
         case ScriptPropertyType::EntityReference:
             return prop.ptrTypeName.empty() ? "entity" : "entity:" + prop.ptrTypeName;
         case ScriptPropertyType::Prefab: return "prefab";
+        case ScriptPropertyType::Asset: return prop.assetType.empty() ? "asset" : "asset:" + prop.assetType;
     }
     return "unknown";
 }

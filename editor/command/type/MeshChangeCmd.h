@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include "util/PrimitiveParameters.h"
@@ -31,6 +33,12 @@ namespace jasperengine::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        std::string describe() const override { return "Change Mesh (" + CommandNames::entity(project, sceneId, entity) + ")"; }
+        const char* typeName() const override { return "MeshChangeCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + yamlFootprint(oldMesh) + yamlFootprint(newMesh); }
+        // Off-thread release: the destructor only frees YAML trees and override records; no editor/engine/GPU state (S24 R8).
+        bool releaseOffThread() const override { return true; }
     };
 
 }

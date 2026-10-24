@@ -25,6 +25,9 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
+
+        std::string describe() const override { return "Change Threading Settings"; }
+        const char* typeName() const override { return "ThreadingSettingsCmd"; }
     };
 
 }

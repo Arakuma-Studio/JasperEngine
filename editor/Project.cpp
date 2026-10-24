@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "asset/AssetRefSchema.h"
+#include "asset/AssetFileWrite.h"
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
 #include "io/AtomicFile.h"
@@ -43,6 +45,9 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
+#include "command/PlayChangeReview.h"
+#include "command/UndoTimeline.h"
+#include "command/type/SelectionCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "Stream.h"
@@ -158,6 +163,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const PrefabAsset* b = std::get_if<PrefabAsset>(&rhs);
             return a && b && a->getGuid() == b->getGuid() && a->getPath() == b->getPath();
         }
+        case ScriptPropertyType::Asset: {
+            const AssetRef* a = std::get_if<AssetRef>(&lhs);
+            const AssetRef* b = std::get_if<AssetRef>(&rhs);
+            return a && b && *a == *b;
+        }
     }
 
     return false;
@@ -226,15 +236,73 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+bool editor::Project::recordSelectionInUndo = true;
+
+editor::Project::Project(){
+    resetConfigs();
+    installUndoHooks();
+}
+
 editor::Project::~Project(){
     // the jobs capture the project
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
+    // the hooks point here: an editor or tool with a later Project installs its own
+    if (UndoTimeline::getProjectHistory() == &projectHistory){
+        UndoTimeline::setProjectHistory(nullptr);
+        UndoTimeline::selectedScene = nullptr;
+        UndoTimeline::historyName = nullptr;
+        CommandHistory::selectionHooks = CommandHistory::SelectionHooks();
+        CommandHistory::beforeMutation = nullptr;
+    }
 }
 
-editor::Project::Project(){
-    resetConfigs();
+void editor::Project::installUndoHooks(){
+    UndoTimeline::setProjectHistory(&projectHistory);
+    UndoTimeline::selectedScene = [this]() { return getSelectedSceneId(); };
+    UndoTimeline::historyName = [this](uint32_t sceneId) -> std::string {
+        if (sceneId == NULL_PROJECT_SCENE){
+            return "Project";
+        }
+        const SceneProject* sceneProject = getScene(sceneId);
+        return "Scene '" + (sceneProject ? sceneProject->name : std::to_string(sceneId)) + "'";
+    };
+    CommandHistory::selectionHooks.read = [this](size_t sceneId, SelectionState& state) {
+        const uint32_t id = (uint32_t)sceneId;
+        if (id == NULL_PROJECT_SCENE || !getScene(id) || isPlayRuntimeScene(id)){
+            return false;
+        }
+        state = getSelection(id);
+        return true;
+    };
+    CommandHistory::selectionHooks.restore = [this](size_t sceneId, const SelectionState& state) {
+        SceneProject* sceneProject = getScene((uint32_t)sceneId);
+        if (!sceneProject || !sceneProject->scene){
+            return;
+        }
+        // the GameObjects that exist again
+        SelectionState existing;
+        for (Entity entity : state.entities){
+            if (sceneProject->scene->isEntityCreated(entity)){
+                existing.entities.push_back(entity);
+            }
+        }
+        existing.active = existing.entities.empty() ? NULL_ENTITY : existing.entities.back();
+        setSelection((uint32_t)sceneId, existing, SelectionCause::Restore);
+    };
+    // Play start/stop swaps the scene for its snapshot: no edit may land meanwhile
+    CommandHistory::beforeMutation = [this](std::string& whyNot) {
+        for (const SceneProject& sceneProject : scenes){
+            switch (sceneProject.playState){
+                case ScenePlayState::SAVING: whyNot = "saving before Play"; return false;
+                case ScenePlayState::LOADING: whyNot = "Play mode is starting"; return false;
+                case ScenePlayState::CANCELLING: whyNot = "Play mode is stopping"; return false;
+                default: break;
+            }
+        }
+        return true;
+    };
 }
 
 fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const {
@@ -338,332 +406,20 @@ bool editor::Project::remapRelativeString(const fs::path& oldRelative, const fs:
     return true;
 }
 
-bool editor::Project::remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::path& oldRelative,
-                                            const fs::path& newRelative) {
-    bool changed = false;
-
-    if (!scriptEntry.path.empty()) {
-        std::string updatedPath;
-        if (remapRelativeString(oldRelative, newRelative, scriptEntry.path, updatedPath)) {
-            scriptEntry.path = updatedPath;
-            changed = true;
-        }
-    }
-
-    if (!scriptEntry.headerPath.empty()) {
-        std::string updatedHeaderPath;
-        if (remapRelativeString(oldRelative, newRelative, scriptEntry.headerPath, updatedHeaderPath)) {
-            scriptEntry.headerPath = updatedHeaderPath;
-            changed = true;
-        }
-    }
-
-    return changed;
-}
-
-bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
-                                                 const fs::path& newPath) {
-    if (!registry) {
-        return false;
-    }
-
-    const fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    const fs::path newRelative = normalizeToProjectRelative(newPath);
-    const fs::path oldLuaRelative = normalizeToLuaRelative(oldPath);
-    const fs::path newLuaRelative = normalizeToLuaRelative(newPath);
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); ++i) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        for (auto& scriptEntry : scriptComponent.scripts) {
-            const bool isLua = scriptEntry.type == ScriptType::LUA;
-            changed |= remapScriptEntryPaths(scriptEntry,
-                                             isLua ? oldLuaRelative : oldRelative,
-                                             isLua ? newLuaRelative : newRelative);
-        }
-    }
-
-    return changed;
-}
-
-bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath) {
-    if (!registry) {
-        return false;
-    }
-
-    const fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    const fs::path deletedLuaRelative = normalizeToLuaRelative(deletedPath);
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); ++i) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        const size_t originalSize = scriptComponent.scripts.size();
-
-        scriptComponent.scripts.erase(
-            std::remove_if(scriptComponent.scripts.begin(), scriptComponent.scripts.end(),
-                [&deletedRelative, &deletedLuaRelative](const ScriptEntry& scriptEntry) {
-                    if (scriptEntry.type == ScriptType::LUA) {
-                        return matchesRelativeString(deletedLuaRelative, scriptEntry.path);
-                    }
-                    return matchesRelativeString(deletedRelative, scriptEntry.path) ||
-                           matchesRelativeString(deletedRelative, scriptEntry.headerPath);
-                }),
-            scriptComponent.scripts.end());
-
-        changed |= (scriptComponent.scripts.size() != originalSize);
-    }
-
-    return changed;
-}
-
-static bool transformTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
-    // Framebuffer and camera-linked textures carry an id instead of a file path.
-    if (texture.isFramebuffer()) {
-        return false;
-    }
-
-    // Per-face paths only exist on cubemaps, incomplete ones included
-    bool hasFacePaths = false;
-    for (size_t face = 1; face < 6; face++) {
-        if (!texture.getPath(face).empty()) {
-            hasFacePaths = true;
-            break;
-        }
-    }
-
-    if (hasFacePaths) {
-        bool changed = false;
-        for (size_t face = 0; face < 6; face++) {
-            std::string path = texture.getPath(face);
-            if (path.empty() || !transform(path)) {
-                continue;
-            }
-            // One missing face leaves the whole cubemap unloadable
-            if (path.empty()) {
-                texture = Texture();
-                return true;
-            }
-            texture.setCubePath(face, path);
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    std::string path = texture.getPath(0);
-    if (path.empty() || !transform(path)) {
-        return false;
-    }
-
-    // setPath("") would instead leave the texture waiting for a load that cannot happen
-    if (path.empty()) {
-        texture = Texture();
-        return true;
-    }
-
-    if (texture.isCubeMap()) {
-        // Single-file cubemap: setPath() would turn it into a 2D texture.
-        texture.setCubeMap(path);
-        return true;
-    }
-
-    const float svgScale = texture.getSvgScale();
-    texture.setPath(path);
-    texture.setSvgScale(svgScale);
-
-    return true;
-}
-
-static bool visitTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
-    Texture updated(texture);
-    if (!transformTexturePaths(updated, transform)) {
-        return false;
-    }
-
-    // Renders keep drawing the old GPU texture until the new one exists, so the new path loads
-    // before the old texture is released. Kept in the pool, it would show for a reused name.
-    if (TexturePool::get(texture.getId())) {
-        const bool asyncLoading = Engine::isAsyncLoading();
-        Engine::setAsyncLoading(false);
-        updated.getRender();
-        Engine::setAsyncLoading(asyncLoading);
-    }
-
-    texture.destroy();
-    texture = updated;
-    return true;
-}
-
 bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     if (!registry) {
         return false;
     }
-
-    bool changed = false;
-
-    auto visitComponents = [&](auto* componentArray, auto&& visitComponent) {
-        for (size_t i = 0; i < componentArray->size(); i++) {
-            visitComponent(componentArray->getComponentFromIndex(i));
+    // the fields relative to the assets directory (textures, models, audio, fonts, documents)
+    return AssetRefSchema::forEachAssetRef(*registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.base != AssetPathBase::Assets || ref.path.empty()) {
+            return;
         }
-    };
-
-    visitComponents(registry->getComponentArray<MeshComponent>(), [&](MeshComponent& mesh) {
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-            Material& material = mesh.submeshes[s].material;
-            bool submeshChanged = visitTexturePaths(material.baseColorTexture, transform);
-            submeshChanged |= visitTexturePaths(material.emissiveTexture, transform);
-            submeshChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-            submeshChanged |= visitTexturePaths(material.occlusionTexture, transform);
-            submeshChanged |= visitTexturePaths(material.normalTexture, transform);
-            for (auto& shaderTexture : material.shaderTextures) {
-                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
-            }
-            if (MaterialPass* pass = material.extraPass.editIfSet()) {
-                for (auto& shaderTexture : pass->shaderTextures) {
-                    submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
-                }
-            }
-
-            if (submeshChanged) {
-                mesh.submeshes[s].needUpdateTexture = true;
-                changed = true;
-            }
+        std::string path = ref.path;
+        if (transform(path)) {
+            ref.path = path;
         }
     });
-
-    // shader library textures of the components without a material
-    auto visitShaderTextures = [&](std::vector<std::pair<std::string, Texture>>& textures, bool& needReload) {
-        bool texturesChanged = false;
-        for (auto& shaderTexture : textures) {
-            texturesChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-        if (texturesChanged) {
-            needReload = true;
-            changed = true;
-        }
-    };
-    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
-    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
-    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
-    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
-
-    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
-        if (visitTexturePaths(ui.texture, transform)) {
-            ui.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ButtonComponent>(), [&](ButtonComponent& button) {
-        bool buttonChanged = visitTexturePaths(button.textureNormal, transform);
-        buttonChanged |= visitTexturePaths(button.textureHovered, transform);
-        buttonChanged |= visitTexturePaths(button.texturePressed, transform);
-        buttonChanged |= visitTexturePaths(button.textureDisabled, transform);
-
-        if (buttonChanged) {
-            button.needUpdateButton = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
-        if (visitTexturePaths(sky.texture, transform)) {
-            sky.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
-        bool heightMapChanged = visitTexturePaths(terrain.heightMap, transform);
-        bool terrainChanged = heightMapChanged;
-        for (Texture& blendMap : terrain.blendMaps) {
-            terrainChanged |= visitTexturePaths(blendMap, transform);
-        }
-        for (TerrainSurfaceLayer& layer : terrain.surfaceLayers) {
-            forEachTerrainLayerTexture(layer, [&](Texture& texture) {
-                terrainChanged |= visitTexturePaths(texture, transform);
-            });
-        }
-
-        for (TerrainFoliageLayer& layer : terrain.foliageLayers) {
-            if (visitTexturePaths(layer.densityMap, transform) ||
-                (!layer.meshPath.empty() && transform(layer.meshPath))) {
-                terrain.needUpdateFoliage = true;
-                changed = true;
-            }
-        }
-
-        // The node tree and the physics heightfield are built from the map, so they follow it
-        if (heightMapChanged) {
-            terrain.heightMapLoaded = false;
-            terrain.needUpdateTerrain = true;
-        }
-
-        if (terrainChanged) {
-            terrain.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<LightComponent>(), [&](LightComponent& light) {
-        if (visitTexturePaths(light.spotMask, transform)) {
-            light.needUpdateShadowCamera = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
-        if (visitTexturePaths(points.texture, transform)) {
-            points.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ReflectionProbeComponent>(), [&](ReflectionProbeComponent& probe) {
-        if (visitTexturePaths(probe.texture, transform)) {
-            probe.needUpdate = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ModelComponent>(), [&](ModelComponent& model) {
-        if (!model.filename.empty() && transform(model.filename)) {
-            model.needUpdateModel = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
-        if (!sound.filename.empty() && transform(sound.filename)) {
-            sound.loaded = false;
-            sound.loadFailed = false;
-            sound.needUpdate = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
-        for (std::string& font : text.font) {
-            if (!font.empty() && transform(font)) {
-                text.needReloadAtlas = true;
-                changed = true;
-            }
-        }
-    });
-
-    // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
-    visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
-        if (!document.filename.empty() && transform(document.filename)) {
-            document.needReload = true;
-            changed = true;
-        }
-    });
-
-    return changed;
 }
 
 SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* registry) {
@@ -801,21 +557,15 @@ bool editor::Project::visitLuaPathsInRegistry(EntityRegistry* registry, const st
     if (!registry) {
         return false;
     }
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); i++) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        for (auto& scriptEntry : scriptComponent.scripts) {
-            if (scriptEntry.type != ScriptType::LUA) {
-                continue;
-            }
-            changed |= transform(scriptEntry.path);
+    return AssetRefSchema::forEachAssetRef(*registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.base != AssetPathBase::Lua || ref.path.empty()) {
+            return;
         }
-    }
-
-    return changed;
+        std::string path = ref.path;
+        if (transform(path)) {
+            ref.path = path;
+        }
+    });
 }
 
 bool editor::Project::detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds) {
@@ -997,73 +747,16 @@ void editor::Project::purgeReferencesToScene(uint32_t sceneId) {
     }
 }
 
-void editor::Project::remapMaterialFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+bool editor::Project::moveSceneFileHints(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
     if (projectPath.empty()) {
-        return;
+        return false;
     }
 
     fs::path oldRelative = normalizeToProjectRelative(oldPath);
     fs::path newRelative = normalizeToProjectRelative(newPath);
 
     if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    std::vector<std::pair<MaterialLinkKey, MaterialLinkEntry>> remappedEntries;
-
-    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
-        std::string updatedFilePath;
-        if (!remapRelativeString(oldRelative, newRelative, it->second.filePath, updatedFilePath)) {
-            ++it;
-            continue;
-        }
-
-        MaterialLinkEntry updatedEntry = it->second;
-        const std::string oldFilePath = updatedEntry.filePath;
-        updatedEntry.filePath = updatedFilePath;
-
-        std::error_code ec;
-        updatedEntry.lastWriteTime = fs::last_write_time(projectPath / updatedEntry.filePath, ec);
-
-        const MaterialLinkKey key = it->first;
-        const uint32_t sceneId = std::get<0>(key);
-        const Entity entity = std::get<1>(key);
-        const unsigned int submeshIndex = std::get<2>(key);
-
-        SceneProject* sceneProject = getScene(sceneId);
-        if (sceneProject && sceneProject->scene) {
-            MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
-            if (mesh && submeshIndex < mesh->numSubmeshes) {
-                Material& material = mesh->submeshes[submeshIndex].material;
-                std::string updatedMaterialName;
-                if (remapRelativeString(oldRelative, newRelative, material.name, updatedMaterialName)) {
-                    material.name = updatedMaterialName;
-                    mesh->submeshes[submeshIndex].needUpdateTexture = true;
-                    sceneProject->needUpdateRender = true;
-                    sceneProject->isModified = true;
-                }
-            }
-        }
-
-        remappedEntries.emplace_back(key, updatedEntry);
-        it = materialFileLinks.erase(it);
-    }
-
-    for (auto& [key, entry] : remappedEntries) {
-        materialFileLinks[key] = entry;
-    }
-}
-
-void editor::Project::remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
+        return false;
     }
 
     bool changed = false;
@@ -1090,452 +783,7 @@ void editor::Project::remapSceneFilePath(const std::filesystem::path& oldPath, c
     if (changed) {
         saveProject();
     }
-}
-
-void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty() || oldPath.empty() || newPath.empty()) {
-        return;
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        if (remapScriptPathsInRegistry(sceneProject.scene, oldPath, newPath)) {
-            sceneProject.isModified = true;
-            updateSceneCppScripts(&sceneProject);
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!remapScriptPathsInRegistry(prefab.registry.get(), oldPath, newPath)) {
-            continue;
-        }
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-}
-
-void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
-        if (matchesRelativeString(deletedRelative, it->second.filePath)) {
-            it = materialFileLinks.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        auto meshes = sceneProject.scene->getComponentArray<MeshComponent>();
-        bool sceneChanged = false;
-
-        for (size_t i = 0; i < meshes->size(); ++i) {
-            Entity entity = meshes->getEntity(i);
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-
-            for (unsigned int submeshIndex = 0; submeshIndex < mesh.numSubmeshes; ++submeshIndex) {
-                Material& material = mesh.submeshes[submeshIndex].material;
-                if (!matchesRelativeString(deletedRelative, material.name)) {
-                    continue;
-                }
-
-                material.name.clear();
-                mesh.submeshes[submeshIndex].needUpdateTexture = true;
-                sceneProject.needUpdateRender = true;
-                sceneProject.isModified = true;
-                sceneChanged = true;
-
-                unlinkMaterialFile(sceneProject.id, entity, submeshIndex);
-            }
-        }
-
-        if (sceneChanged) {
-            sceneProject.needUpdateRender = true;
-        }
-    }
-}
-
-void editor::Project::cleanupSceneFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    // A scene kept listed while its file was missing has no SceneProject for the
-    // Scenes dialog to offer, so deleting the file is the only way to drop it.
-    bool changed = clearUnresolvedScene(deletedRelative);
-
-    std::vector<uint32_t> scenesToRemove;
-    std::set<uint32_t> removedChildSceneIds;
-
-    for (auto& sceneProject : scenes) {
-        if (sceneProject.filepath.empty()) {
-            continue;
-        }
-
-        if (matchesRelativePath(deletedRelative, sceneProject.filepath)) {
-            removedChildSceneIds.insert(sceneProject.id);
-            if (sceneProject.opened) {
-                sceneProject.filepath.clear();
-                sceneProject.isModified = true;
-                sceneProject.needUpdateRender = true;
-            } else {
-                scenesToRemove.push_back(sceneProject.id);
-            }
-            changed = true;
-        }
-    }
-
-    for (uint32_t childSceneId : removedChildSceneIds) {
-        if (detachChildSceneFromParents(childSceneId, removedChildSceneIds)) {
-            changed = true;
-        }
-    }
-
-    for (uint32_t sceneId : scenesToRemove) {
-        auto it = std::find_if(scenes.begin(), scenes.end(),
-            [sceneId](const SceneProject& s) { return s.id == sceneId; });
-        if (it != scenes.end()) {
-            deleteSceneProject(&(*it));
-            cleanupPrefabsForScene(sceneId);
-            removeTab(TabType::SCENE, it->filepath.string());
-            markParentScenesNeedUpdate(sceneId);
-            editor::getEditorHost().clearSceneWindowState(sceneId);
-            scenes.erase(it);
-        }
-    }
-
-    if (changed) {
-        saveProject();
-    }
-}
-
-void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty() || deletedPath.empty()) {
-        return;
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        if (cleanupScriptPathsInRegistry(sceneProject.scene, deletedPath)) {
-            sceneProject.isModified = true;
-            updateSceneCppScripts(&sceneProject);
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!cleanupScriptPathsInRegistry(prefab.registry.get(), deletedPath)) {
-            continue;
-        }
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-}
-
-// the images the scene's settings name: its post-process passes' textures and the
-// post-processing LUT strip (phase 4)
-static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(std::string&)>& transform) {
-    std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
-    bool passesChanged = false;
-    for (PostProcessPass& pass : passes) {
-        for (auto& texture : pass.textures) {
-            passesChanged |= visitTexturePaths(texture.second, transform);
-        }
-    }
-    if (passesChanged) {
-        scene->setPostProcessPasses(passes);
-    }
-
-    // the LUT is a plain path (assets-relative), read by the renderer when it changes
-    PostProcessingSettings postProcessing = scene->getPostProcessing();
-    bool lutChanged = false;
-    if (!postProcessing.lutTexture.empty()) {
-        std::string lut = postProcessing.lutTexture;
-        if (transform(lut) && lut != postProcessing.lutTexture) {
-            postProcessing.lutTexture = lut;
-            scene->setPostProcessing(postProcessing);
-            lutChanged = true;
-        }
-    }
-    return passesChanged || lutChanged;
-}
-
-void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene)
-            continue;
-        const bool settingsChanged = visitSceneSettingsAssetPaths(sceneProject.scene, transform);
-        if (!visitAssetPathsInRegistry(sceneProject.scene, transform) && !settingsChanged) {
-            continue;
-        }
-
-        sceneProject.isModified = true;
-        sceneProject.needUpdateRender = true;
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform)) {
-            continue;
-        }
-
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-
-    visitAssetPathsInMaterialFiles(transform);
-}
-
-void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    // A file that left the assets directory cannot be referenced, so it counts as deleted
-    if (!isInsideAssetsPath(newPath)) {
-        cleanupAssetFilePath(oldPath);
-        return;
-    }
-
-    fs::path oldRelative = normalizeToAssetsRelative(oldPath);
-    fs::path newRelative = normalizeToAssetsRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    applyAssetPathChange([&](std::string& assetPath) -> bool {
-        std::string updated;
-        if (!remapRelativeString(oldRelative, newRelative, assetPath, updated)) {
-            return false;
-        }
-        assetPath = updated;
-        return true;
-    });
-}
-
-void editor::Project::cleanupAssetFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToAssetsRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    applyAssetPathChange([&](std::string& assetPath) -> bool {
-        if (!matchesRelativeString(deletedRelative, assetPath)) {
-            return false;
-        }
-        assetPath.clear();
-        return true;
-    });
-}
-
-void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform) {
-    // customShader lives on every renderable component type (a mesh also has its depth
-    // fork); visit each array in a registry, apply the transform, and flag a shader
-    // reload on the entities that changed.
-    auto applyToRegistry = [&](EntityRegistry* registry) -> bool {
-        bool changed = false;
-        auto applyToArray = [&](auto arr, auto shaderField) {
-            for (size_t i = 0; i < arr->size(); ++i) {
-                std::string& customShader = arr->getComponentFromIndex(i).*shaderField;
-                if (customShader.empty())
-                    continue;
-                if (transform(customShader)) {
-                    Catalog::updateEntity(registry, arr->getEntity(i), UpdateFlags_Shader_Reload);
-                    changed = true;
-                }
-            }
-        };
-        applyToArray(registry->getComponentArray<MeshComponent>(), &MeshComponent::customShader);
-        applyToArray(registry->getComponentArray<MeshComponent>(), &MeshComponent::customDepthShader);
-        applyToArray(registry->getComponentArray<UIComponent>(), &UIComponent::customShader);
-        applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
-        applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
-        applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
-        // a submesh material's own shader and its extra pass's (mesh reload)
-        auto meshes = registry->getComponentArray<MeshComponent>();
-        for (size_t i = 0; i < meshes->size(); ++i) {
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            bool meshChanged = false;
-            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-                meshChanged |= applyToMaterialShaders(mesh.submeshes[s].material, transform);
-            }
-            if (meshChanged) {
-                Catalog::updateEntity(registry, meshes->getEntity(i), UpdateFlags_Mesh_Reload);
-                changed = true;
-            }
-        }
-        return changed;
-    };
-
-    // scene-level default shaders reference the same files; the setter flags the reload
-    auto applyToSceneDefaults = [&](Scene* scene) -> bool {
-        bool changed = false;
-        for (ShaderType type : {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES}) {
-            std::string defaultShader = scene->getDefaultCustomShader(type);
-            if (!defaultShader.empty() && transform(defaultShader)) {
-                scene->setDefaultCustomShader(type, defaultShader);
-                changed = true;
-            }
-        }
-        return changed;
-    };
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-        bool changed = applyToRegistry(sceneProject.scene);
-        changed |= applyToSceneDefaults(sceneProject.scene);
-        if (changed) {
-            sceneProject.isModified = true;
-            sceneProject.needUpdateRender = true;
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry) {
-            continue;
-        }
-        if (applyToRegistry(prefab.registry.get())) {
-            prefab.isModified = true;
-            savePrefabToDisk(prefabPath);
-        }
-    }
-
-    // .material files (their linked submeshes were remapped above as well)
-    visitMaterialFiles([&](Material& material) {
-        return applyToMaterialShaders(material, transform);
-    });
-}
-
-// The fork references of a material (its shader and its extra pass's); library references
-// and empty ones name no file
-bool editor::Project::applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform) {
-    bool changed = false;
-    MaterialPass* pass = material.extraPass.editIfSet();
-    for (std::string* shader : {&material.shader, pass ? &pass->shader : nullptr}) {
-        if (!shader || shader->empty() || ShaderReference::isLibrary(*shader)) {
-            continue;
-        }
-        changed |= transform(*shader);
-    }
     return changed;
-}
-
-// The project-relative files a fork path can name (findShaderFile): itself, and under the
-// assets directory; whether they exist or not (a rename or delete has already happened)
-std::vector<std::string> editor::Project::shaderFileCandidates(const std::string& relative) const {
-    std::vector<std::string> candidates;
-    if (relative.empty()) {
-        return candidates;
-    }
-    candidates.push_back(relative);
-    const fs::path assetsRelative = normalizeToProjectRelative(getAssetsPath());
-    if (!assetsRelative.empty() && assetsRelative != "." && *assetsRelative.begin() != "..") {
-        candidates.push_back((assetsRelative / relative).lexically_normal().generic_string());
-    }
-    return candidates;
-}
-
-void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    // customShader resolves to a .vert and a .frag entry point; remap each path against the
-    // rename and rebuild the value. A single-file rename of a shared-base pair naturally
-    // becomes the separate-file form; a directory rename remaps both via child match.
-    // (an assets-relative entry point is matched at its project-relative path too, see
-    // findShaderFile; the remapped value is project-relative)
-    applyCustomShaderPathChange([&](std::string& customShader) -> bool {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        std::string newVert = paths.vert;
-        std::string newFrag = paths.frag;
-        bool changed = false;
-        std::string updated;
-        for (const std::string& candidate : shaderFileCandidates(paths.vert)) {
-            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
-                newVert = updated;
-                changed = true;
-                break;
-            }
-        }
-        for (const std::string& candidate : shaderFileCandidates(paths.frag)) {
-            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
-                newFrag = updated;
-                changed = true;
-                break;
-            }
-        }
-        if (changed) {
-            customShader = Util::makeCustomShader(newVert, newFrag);
-        }
-        return changed;
-    });
-}
-
-void editor::Project::cleanupShaderFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    // A custom shader needs both its .vert and .frag; deleting either entry point (or the
-    // containing folder) leaves the reference dangling, so reset it to built-in. Match the
-    // deleted path against each resolved entry point (handles shared-base and separate forms).
-    applyCustomShaderPathChange([&](std::string& customShader) -> bool {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        for (const std::string& entry : {paths.vert, paths.frag}) {
-            for (const std::string& candidate : shaderFileCandidates(entry)) {
-                if (matchesRelativeString(deletedRelative, candidate)) {
-                    customShader.clear();
-                    return true;
-                }
-            }
-        }
-        return false;
-    });
 }
 
 std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
@@ -2098,6 +1346,22 @@ static std::filesystem::path normalizeAgainstRoot(const std::filesystem::path& r
     return relativePath.lexically_normal();
 }
 
+void editor::Project::openAssetDatabase() {
+    waitForAssetScan();
+    assetIndex.close();
+    fs::path relativeAssets = normalizeToProjectRelative(getAssetsPath());
+    if (relativeAssets == ".") {
+        relativeAssets.clear();
+    }
+    assetDatabase.open(projectPath, relativeAssets);
+    // the dependency index builds in the background; documents with unsaved edits answer from memory
+    assetIndex.setOverlayProvider([this](std::unordered_map<Guid, std::vector<DepEdge>>& edges) {
+        collectMemoryEdges(edges);
+    });
+    assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
+    AssetMap::setResolver(&assetResolver);
+}
+
 std::filesystem::path editor::Project::getAssetsPath() const{
     return resolveRootDir(projectPath, assetsDir);
 }
@@ -2201,20 +1465,16 @@ static bool holdsOnlyAssets(const std::filesystem::path& directory){
 
 bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform){
     return visitMaterialFiles([&](Material& material) {
-        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
-        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
-        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
-        materialChanged |= visitTexturePaths(material.normalTexture, transform);
-        for (auto& shaderTexture : material.shaderTextures){
-            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-        if (MaterialPass* pass = material.extraPass.editIfSet()){
-            for (auto& shaderTexture : pass->shaderTextures){
-                materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        // the textures (paths relative to the assets directory)
+        return AssetRefSchema::forEachMaterialRef(material, std::string(), [&](AssetRef& ref, const AssetRefSite& site) {
+            if (site.base != AssetPathBase::Assets || ref.path.empty()) {
+                return;
             }
-        }
-        return materialChanged;
+            std::string path = ref.path;
+            if (transform(path)) {
+                ref.path = path;
+            }
+        });
     });
 }
 
@@ -2253,7 +1513,7 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
         }
 
         // a material this editor could not read completely is left as it is (the gate)
-        if (DocumentFiles::saveMaterial(entry.path(), Stream::encodeMaterial(material)) != SaveResult::Saved){
+        if (writeMaterialFile(normalizeToProjectRelative(entry.path()), material) != SaveResult::Saved){
             continue;
         }
         changed = true;
@@ -2359,6 +1619,17 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         completedMoves.emplace_back(source, destination);
+        // the asset's meta goes with it, so it keeps its GUID (S04)
+        const fs::path sourceMeta = AssetTypes::metaPathFor(source);
+        const fs::path destinationMeta = AssetTypes::metaPathFor(destination);
+        if (fs::is_regular_file(sourceMeta, moveEc) && !fs::exists(destinationMeta, moveEc)){
+            std::string metaError;
+            if (assetio::renameFile(sourceMeta, destinationMeta, &metaError)){
+                completedMoves.emplace_back(sourceMeta, destinationMeta);
+            } else {
+                Out::warning("Could not move %s: %s", sourceMeta.string().c_str(), metaError.c_str());
+            }
+        }
         return true;
     };
 
@@ -2591,6 +1862,9 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     }
 
     unloadTemporaryScenes();
+
+    // the scan follows the new roots (data files are assets only in the assets directory)
+    openAssetDatabase();
 
     saveProjectFile();
 }
@@ -3617,7 +2891,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                     try {
                         YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                         Material fileMaterial = Stream::decodeMaterial(materialNode);
-                        fileMaterial.name = normalizedPath;
+                        fileMaterial.name = AssetRef(normalizedPath, material.name.guid);
 
                         std::error_code ec;
                         materialFileLinks[MaterialLinkKey{targetScene->id, entity, submeshIndex}].lastWriteTime = fs::last_write_time(materialPath, ec);
@@ -3902,6 +3176,8 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
+        // a closed scene keeps no history (S24 R23)
+        CommandHandle::remove(sceneId);
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -4403,6 +3679,10 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
     sceneProject->defaultCamera = createDefaultCamera(sceneProject->sceneType, sceneProject->scene);
 
     Stream::decodeSceneProjectEntities(this, sceneProject, sceneNode);
+    // references by GUID (S04 R10): a hint that changed is saved with the new path
+    if (resolveSceneAssetRefs(*sceneProject, true)) {
+        sceneProject->prefabRefsChanged = true;
+    }
 
     for (Entity entity : sceneProject->entities) {
         MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
@@ -4734,12 +4014,16 @@ void editor::Project::resetConfigs() {
     terrainEditorSettings = {};
     simulateTouch = false;
     projectPath.clear();
+    AssetMap::setResolver(nullptr);
+    waitForAssetScan();
+    assetIndex.close();
     assetDatabase.close();
     pendingAssetChanges.clear();
     materialFileLinks.clear();
     tabs.clear();
     lastMaterialRefreshTime = std::chrono::steady_clock::time_point{};
     projectHistory.clear();
+    PlayChangeReview::get().discardAll();
 
     editor::getEditorHost().updateWindowTitle(name);
 
@@ -4975,7 +4259,15 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
-    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    // Stop's restore: only what was alive before Play stays. GameObjects an edit made while
+    // playing are tracked, yet go too (their steps go with the play session; Play Mode
+    // Changes can make them again)
+    std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    if (!sceneProject->playStateEntities.empty()) {
+        for (Entity entity : sceneProject->entities) {
+            if (!sceneProject->playStateEntities.count(entity)) keep.erase(entity);
+        }
+    }
 
     for (Entity entity : scene->getEntityList()) {
         // an owner's removal can destroy other entities in this list
@@ -4983,6 +4275,8 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
             scene->destroyEntity(entity);
         }
     }
+    sceneProject->entities.erase(std::remove_if(sceneProject->entities.begin(), sceneProject->entities.end(),
+        [scene](Entity entity) { return !scene->isEntityCreated(entity); }), sceneProject->entities.end());
 }
 
 bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
@@ -5148,6 +4442,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
         }
 
+        // Play Mode Changes: what was edited while playing, read before the snapshot puts the
+        // edit-time scene back (runtime copies have no history)
+        if (!entry.ownedRuntime) {
+            PlayChangeReview::get().capture(this, sceneProject);
+        }
+
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
@@ -5155,6 +4455,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (!entry.ownedRuntime) {
             // the edit-time scene itself played (runtime copies have no history)
             CommandHandle::get(sceneProject->id)->endPlaySession(restoredFromSnapshot);
+            if (restoredFromSnapshot) {
+                PlayChangeReview::get().afterRestore(this, sceneProject);
+            } else {
+                // nothing was rolled back: the play edits stayed
+                PlayChangeReview::get().discard(sceneProject->id);
+            }
         }
 
         Entity cameraEntity = sceneProject->scene->getCamera();
@@ -5282,7 +4588,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             }
 
             modelLoaded = true;
-            assetDatabase.open(projectPath);
+            openAssetDatabase();
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -5569,7 +4875,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
-        assetDatabase.open(projectPath);
+        openAssetDatabase();
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -5652,7 +4958,11 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it
         editor::getEditorHost().reportLoadingProgress("Scanning assets...");
-        assetDatabase.open(projectPath);
+        // the assets directory decides which data files are assets
+        if (projectNode["assetsDir"]) {
+            setAssetsDir(projectNode["assetsDir"].as<std::string>());
+        }
+        openAssetDatabase();
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 
@@ -5951,8 +5261,15 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     shaderKeys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
     sceneProject->shaderKeys = std::move(shaderKeys);
 
+    // paths assigned since the last save get their assets' GUIDs (S04); a background save
+    // had it done on the main thread (resolving may reload what a moved path feeds)
+    if (sceneProject->playState != ScenePlayState::SAVING) {
+        resolveSceneAssetRefs(*sceneProject, false);
+    }
+
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
+        const Guid guid = prepareDocumentIdentity(root, relPath);
         const std::string text = DocumentFiles::text(root);
         const io::WriteResult written = DocumentFiles::write(fullPath, text);
         if (!written.ok()) {
@@ -5963,6 +5280,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
             });
             return false;
         }
+        assetDatabase.registerAsset(relPath, guid.str());
+        assetIndex.updateReferrer(relPath.generic_string());
         sceneProject->diskSha1 = DocumentFiles::sha1(text);
         const size_t lost = sceneProject->loadReport.dropped();
         if (lost > 0) {
@@ -6180,6 +5499,12 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    resolveSceneAssetRefs(*sceneProject, false);
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {
+            resolveRegistryAssetRefs(prefab.registry.get(), false);
+        }
+    }
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
@@ -7193,7 +6518,11 @@ fs::path editor::Project::getThumbnailPath(const fs::path& originalPath) const {
         relativePath = resolvedPath.lexically_relative(projectPath.lexically_normal());
     }
 
-    std::string hashInput = relativePath.empty() ? resolvedPath.generic_string() : relativePath.generic_string();
+    // keyed by the asset's GUID and its content fingerprint (S04 R18): a rename or a move keeps
+    // the thumbnail, an edit makes a new one; a file without a GUID by its path
+    const Guid guid = relativePath.empty() ? Guid() : assetDatabase.getAssetGuid(relativePath);
+    std::string hashInput = !guid.isNull() ? "guid:" + guid.str()
+                          : relativePath.empty() ? resolvedPath.generic_string() : relativePath.generic_string();
 
     std::error_code ec;
     const auto fileSize = fs::file_size(resolvedPath, ec);
@@ -7225,27 +6554,88 @@ void editor::Project::markSelectionChanged(SceneProject* sceneProject){
     }
 }
 
-void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
-    // Ctrl-click deselect reaches the selection only through here.
-    markSelectionChanged(getScene(sceneId));
-    getScene(sceneId)->selectedEntities = selectedEntities;
+void editor::Project::setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause){
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    // the active GameObject last; no copy when the state already is that way, and none at
+    // all when nothing changes (a click on what is selected)
+    const bool ordered = state.active == NULL_ENTITY || (!state.entities.empty() && state.entities.back() == state.active) ||
+        std::find(state.entities.begin(), state.entities.end(), state.active) == state.entities.end();
+    if (ordered && sceneProject->selectedEntities == state.entities){
+        return;
+    }
+    std::vector<Entity> entities = state.entities;
+    if (!ordered){
+        entities.erase(std::find(entities.begin(), entities.end(), state.active));
+        entities.push_back(state.active);
+        if (sceneProject->selectedEntities == entities){
+            return;
+        }
+    }
+
+    const bool record = cause == SelectionCause::User && recordSelectionInUndo && !CommandHistory::isApplying() &&
+        !isPlayRuntimeScene(sceneId) && !UndoTimeline::canRedo(sceneId);
+    if (record){
+        SelectionState after;
+        after.entities = std::move(entities);
+        after.active = after.entities.empty() ? NULL_ENTITY : after.entities.back();
+        // its execute writes the selection; a refused push still selects
+        if (CommandHandle::get(sceneId)->addCommand(new SelectionCmd(this, sceneId, getSelection(sceneId), after, selectionGesture))){
+            return;
+        }
+        entities = after.entities;
+    }
+
+    markSelectionChanged(sceneProject);
+    sceneProject->selectedEntities = std::move(entities);
 }
 
-void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    // The selection outline/gizmo is rendered, so a selection change needs a redraw.
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
+editor::SelectionState editor::Project::getSelection(uint32_t sceneId) const{
+    SelectionState state;
+    if (const SceneProject* sceneProject = getScene(sceneId)){
+        state.entities = sceneProject->selectedEntities;
+        state.active = state.entities.empty() ? NULL_ENTITY : state.entities.back();
+    }
+    return state;
+}
 
-    entities.clear();
-    if (selectedEntity != NULL_ENTITY){
-        entities.push_back(selectedEntity);
+void editor::Project::beginSelectionGesture(){
+    selectionGesture++;
+    selectionGestureHeld = true;
+}
+
+void editor::Project::endSelectionGesture(){
+    selectionGestureHeld = false;
+    selectionGesture++;
+}
+
+void editor::Project::nextSelectionFrame(){
+    if (!selectionGestureHeld){
+        selectionGesture++;
     }
 }
 
+void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
+    // Ctrl-click deselect reaches the selection only through here.
+    SelectionState state;
+    state.entities = std::move(selectedEntities);
+    setSelection(sceneId, state);
+}
+
+void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
+    SelectionState state;
+    if (selectedEntity != NULL_ENTITY){
+        state.entities.push_back(selectedEntity);
+    }
+    setSelection(sceneId, state);
+}
+
 void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
-    Scene* scene = getScene(sceneId)->scene;
+    SceneProject* sceneProject = getScene(sceneId);
+    std::vector<Entity> entities = sceneProject->selectedEntities;
+    Scene* scene = sceneProject->scene;
     auto transforms = scene->getComponentArray<Transform>();
 
     if (selectedEntity != NULL_ENTITY){
@@ -7277,6 +6667,10 @@ void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity)
         }),
         entities.end()
     );
+
+    SelectionState state;
+    state.entities = std::move(entities);
+    setSelection(sceneId, state);
 }
 
 bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
@@ -7290,22 +6684,25 @@ bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
 }
 
 void editor::Project::deselectDestroyedEntities(SceneProject* sceneProject){
-    std::vector<Entity>& selected = sceneProject->selectedEntities;
-    auto destroyed = std::remove_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
+    const std::vector<Entity>& selected = sceneProject->selectedEntities;
+    auto destroyed = std::find_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
         return !sceneProject->scene->isEntityCreated(entity);
     });
-    if (destroyed != selected.end()){
-        selected.erase(destroyed, selected.end());
-        markSelectionChanged(sceneProject);
+    if (destroyed == selected.end()){
+        return;
     }
+    SelectionState state;
+    for (Entity entity : selected){
+        if (sceneProject->scene->isEntityCreated(entity)){
+            state.entities.push_back(entity);
+        }
+    }
+    // not a step of its own: what destroyed them is
+    setSelection(sceneProject->id, state, SelectionCause::Forced);
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
-    SceneProject* sceneProject = getScene(sceneId);
-    if (!sceneProject->selectedEntities.empty()){
-        markSelectionChanged(sceneProject);
-    }
-    sceneProject->selectedEntities.clear();
+    setSelection(sceneId, SelectionState());
 }
 
 void editor::Project::clearAllSelections(uint32_t sceneId){
@@ -8229,6 +7626,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // a review left from the last Play of this scene goes with the new one
+    PlayChangeReview::get().discard(sceneId);
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);

@@ -1000,7 +1000,9 @@ bool editor::Project::rebuildPrefabInstance(uint32_t sceneId, Entity root, const
             kept.push_back(entity);
         }
     }
-    sceneProject->selectedEntities = kept;
+    SelectionState keptSelection;
+    keptSelection.entities = kept;
+    setSelection(sceneProject->id, keptSelection, SelectionCause::Forced);
     updateScenePrefabs(sceneProject);
     sceneProject->needUpdateRender = true;
     sceneProject->structureVersion++;

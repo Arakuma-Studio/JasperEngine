@@ -18,17 +18,16 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, Unity glossary).
+prefabs, assets, HTML/CSS UI, data safety, Unity glossary).
 
 ## Unity names -> engine names
-Use Unity terms in prose; tools, component names and script APIs use the engine names.
+Tools, component names and script APIs use the engine names.
 GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, Light2DComponent...).
+Most others are Unity's name + "Component" (AudioSourceComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -46,14 +45,15 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
+- assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
+  referrer; see find_references, list_missing_assets, retarget_asset_references.
 
 ## The loop
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
    touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
-   (undo_group: one undo step). Edit code with your own tools (see Code).
+   (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
@@ -63,7 +63,18 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
 if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
-A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+A tool error says what was wrong and lists valid choices: fix the arguments.
+
+## Undo
+Every edit result carries `undo` {id, name}: your step, named "<your client name>: Set
+Intensity (Sun)" (one step per call and history; a `batch` with undo_group is one linked step,
+named by undo_name). undo/redo with scope "timeline" are exactly the human's Ctrl+Z/Ctrl+Y (the
+scene's steps and the asset steps in one order; the default scope "scene" will switch to it).
+To undo only your own last call, pass expect_top_id = that undo.id: it refuses, changing
+nothing, when someone edited since. get_undo_history lists the steps (to_id jumps). An edit
+that changes nothing makes no step. Edits made while playing are rolled back by play stop
+and then offered: get_play_changes, then apply_play_changes (one step) or discard_play_changes;
+play stop with keep_changes all|none decides at once.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work

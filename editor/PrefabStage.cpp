@@ -1024,7 +1024,9 @@ void editor::Project::updatePrefabStages(bool userEditing) {
                                     kept.push_back(entity);
                                 }
                             }
-                            sceneProject.selectedEntities = kept;
+                            SelectionState keptSelection;
+                            keptSelection.entities = kept;
+                            setSelection(sceneId, keptSelection, SelectionCause::Forced);
                             CommandHandle::get(sceneId)->clear();
                             Out::info("Prefab \"%s\" changed outside Prefab Mode: reloaded", stage.assetPath.generic_string().c_str());
                         } else {

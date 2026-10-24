@@ -61,6 +61,7 @@ editor/mcp/
   McpContext.{h,cpp}      access to App, Project, windows from tool handlers
   McpRefs.{h,cpp}         scene + entity + component + asset reference resolution
   McpValues.{h,cpp}       JSON <-> engine property values, PropertyCmd building
+  McpUndo.{h,cpp}         agent undo attribution: folding a call's steps, undo history JSON
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
@@ -70,13 +71,13 @@ editor/mcp/
   EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
     McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h, HtmlUiShared.h: helpers shared by modules
-    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, editor_status, respond_dialog
+    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, get_undo_history, editor_status, respond_dialog
     ProjectTools.cpp      project lifecycle and settings
     SceneTools.cpp        scenes and scene settings
     EntityTools.cpp       hierarchy, GameObjects, selection and clipboard
     ComponentTools.cpp    components and properties
     PrefabTools.cpp       prefabs, variants, overrides and Prefab Mode
-    PlayTools.cpp         play control, runtime inspection and Lua evaluation
+    PlayTools.cpp         play control, runtime inspection, Lua evaluation and the Play Mode Changes review
     ViewTools.cpp         screenshots and scene camera
     ConsoleTools.cpp      console logs
     ScriptTools.cpp       Lua/C++ scripts and compilation
@@ -153,9 +154,21 @@ take `wait` (bool, default true) and `timeout_seconds` (default 120). They start
 result); if not done within the timeout the tool returns the job id and the agent polls
 `get_job` / `cancel_job`.
 
-`batch` (CoreTools): `{calls: [{tool, arguments}], undo_group: bool, stop_on_error: bool}`
-runs several tool calls in one round-trip, sequentially on the main thread; with
-`undo_group` all scene edits are one Ctrl+Z step where possible.
+`batch` (CoreTools): `{calls: [{tool, arguments}], undo_group: bool, undo_name: string,
+stop_on_error: bool}` runs several tool calls in one round-trip, sequentially on the main
+thread; with `undo_group` each history the batch changed gets one step (`mark`/`groupSince`),
+named `undo_name` (default "Batch (N calls)") and linked across histories, so one Ctrl+Z
+undoes the whole batch; `complete` is false when a history refused to group.
+
+Undo attribution (`McpUndo`, docs/undo.md): `McpServer::execute` runs every edit tool's handler
+and its deferred continuations under an `UndoOriginScope` {agent, client name, request id,
+tool}; the steps are named "<client>: <name>". When the call replies, each history's
+contiguous top run of the call's steps is folded into one step ("<client>: <Tool Title>
+(<subject>)") and the folded steps are linked; `structured.undo` {id, name} names the newest.
+Read-only and control tools (batch, play) are not attributed. `undo`/`redo` take `scope:
+"timeline"` (UndoTimeline, Ctrl+Z), `to_id` and `expect_top_id`; `get_undo_history` lists the
+steps; the play-change tools (`get_play_changes`, `apply_play_changes`, `discard_play_changes`,
+`play stop keep_changes`) drive the Play Mode Changes review.
 
 ## Addressing (McpRefs)
 

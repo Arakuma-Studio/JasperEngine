@@ -316,11 +316,11 @@ namespace jasperengine{
         // e.g. "shaders/myMesh" -> shaders/myMesh.vert + shaders/myMesh.frag.
         // Empty = use the built-in Mesh shader. Drives the main render pass only;
         // the gbuffer pass keeps the built-in shader.
-        std::string customShader;
+        ShaderRef customShader;
         // Same for the depth shader (shadow maps, and the SSAO/post-process depth when SSR
         // is off; with SSR on those read the built-in gbuffer), so a fork that displaces
         // vertices or discards keeps its shadows in step.
-        std::string customDepthShader;
+        ShaderRef customDepthShader;
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
