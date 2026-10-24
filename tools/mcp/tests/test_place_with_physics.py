@@ -16,7 +16,13 @@ a new project whose scene is built here from engine primitives (cubes, a cylinde
   is one undo step and gives the same poses and state_hash when run again;
 - separate resolves an overlap; move stops at a wall; snap lands on the surface a ray hits (world
   ray and Scene view pixel);
-- decompose: always waits for the convex decomposition of a concave mover ("Decomposing k/n").
+- decompose: always waits for the convex decomposition of a concave mover ("Decomposing k/n"),
+  only its movers' (not another decomposition queued in the project);
+- an apply whose scene changes while it runs (a floor moved under it) stops and commits nothing;
+- a Scene view Physics gesture (driven with xdotool) holds preview poses: a run waits for it;
+- cancel_job after an apply committed (during its screenshot): succeeded, "use undo to revert";
+- large results: the text lists ten refusals and counts the rest; hundreds of movers keep the
+  structured result valid and under the cap (the first entities, entities_total, truncated).
 """
 
 from __future__ import annotations
@@ -24,6 +30,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -31,7 +39,8 @@ import yaml
 from harness import Editor, TestFailure
 from htmlui_pixels import decode_png
 
-EDITOR = {"create": True, "name": "PhysicsPlacement"}
+# a harness Xvfb: test_waits_for_a_scene_view_gesture drives the Scene view with xdotool
+EDITOR = {"create": True, "name": "PhysicsPlacement", "xvfb": "harness"}
 TIMEOUT = 900
 
 S: dict = {}
@@ -64,7 +73,7 @@ SCENE = [
     {"name": "Wall", "type": "cube", "position": [4, 1.5, 10], "scale": [0.5, 3, 4]},
     # snap: a table top at y = 1
     {"name": "Table", "type": "cube", "position": [-10, 0.5, -10], "scale": [2, 1, 2]},
-    # high enough to travel over the table's edge to where the ray hits (snap drives it there)
+    # snap places it on the surface the ray hits (then it settles), whatever lies between
     {"name": "Snapper", "type": "cube", "position": [-6, 4, -10]},
     # separate: two cubes overlapping by half a metre
     {"name": "OverA", "type": "cube", "position": [10, 0.5, -10]},
@@ -562,6 +571,11 @@ async def test_snap_lands_on_surface(ed: Editor):
     check(abs(pos[1] - 1.5) < 0.01 and abs(pos[0] + 10) < 0.1 and abs(pos[2] + 10) < 0.1, f"on the table top (y 1), where the ray hits: {pos}")
     check(any(e["path"] == "Table" for e in by_path(v, "Snapper")["resting_on"]), "resting on the table")
     check(near(v["ray"]["direction"], [0, -1000, 0], 1e-3), f"the ray used: {v.get('ray')}")
+    # a wall between the mover and the hit point does not stop a snap: it is placed there
+    await ed.call("create_entity", name="SnapWall", type="cube", position=[-8, 3, -10], scale=[0.3, 6, 4])
+    walled = by_path((await place(ed, entities=["Snapper"], mode="snap", ray={"origin": [-10, 10, -10], "direction": [0, -1, 0]})).structured, "Snapper")
+    check(near(walled["after"]["position"], pos, 0.01), f"the wall in between changes nothing: {walled['after']['position']} vs {pos}")
+    await ed.call("delete_entities", entities=["SnapWall"])
     # a Scene view pixel: the centre of a view looking straight down at the table
     await ed.call("set_scene_camera", position=[-10, 25, -9.999], target=[-10, 0, -10])
     shot = await ed.screenshot("scene", max_width=0)
@@ -608,3 +622,155 @@ async def test_decompose_always(ed: Editor):
     check(not ring2["collider"].startswith("decomposed"), f"not decomposed yet: a hull meanwhile: {ring2['collider']}")
     check(any("decompose: always" in w for w in fresh["warnings"]), f"the preview warns: {fresh['warnings']}")
     await ed.call("delete_entities", entities=["Ring", "Ring2"])
+
+
+# ---------------------------------------------------------------------------- review fixes
+
+def xdo(ed: Editor, *args: str) -> None:
+    env = dict(os.environ, DISPLAY=ed._xvfb.display)
+    subprocess.run(["xdotool", *args], env=env, check=True, capture_output=True, timeout=30)
+
+
+async def test_stale_apply_refused(ed: Editor):
+    """An edit while an apply runs (the floor moved under it): the run stops, nothing is committed."""
+    cubes = [{"name": f"Stale{i}", "type": "cube", "position": [-20 + (i % 10) * 1.3, 3 + (i // 10) * 1.3, 20 + (i % 3) * 1.3]}
+             for i in range(100)]
+    await ed.batch([("create_entity", c) for c in cubes])
+    await ed.call("create_entity", name="StaleFloor", type="cube", position=[-15, 0.5, 21], scale=[16, 1, 6])
+    names = [c["name"] for c in cubes]
+    before = await poses(ed, names[:5])
+    r = await ed.call_raw("place_with_physics", {"entities": names, "gravity": [0, -0.4, 0], "max_seconds": 120, "apply": True, "wait": False})
+    job = r.structured["job_id"]
+    for _ in range(2000):
+        state = await ed.call("get_job", job_id=job)
+        if state["message"].startswith("step "):
+            break
+        await asyncio.sleep(0.01)
+    check(state["status"] == "running", f"running: {state}")
+    await ed.call("set_transform", entity="StaleFloor", position=[-15, -2.5, 21])
+    state = await wait_job(ed, job, 120)
+    check(state["status"] == "failed" and "scene changed during the simulation" in state["message"] and "Run it again" in state["message"],
+          f"a moved floor stops the apply: {state['status']} {state['message'][:300]}")
+    check(await poses(ed, names[:5]) == before, "nothing committed")
+    await ed.call("delete_entities", entities=names + ["StaleFloor"])
+
+
+async def test_waits_for_a_scene_view_gesture(ed: Editor):
+    """A Scene view Physics gesture (G, then hold Space: Drop) holds preview poses in the scene's
+    Transforms: a run waits for it to end instead of reading or committing them."""
+    await ed.call("create_entity", name="Held", type="cube", position=[0, 5, -25])
+    await ed.call("create_entity", name="Waiter", type="cube", position=[4, 5, -25])
+    await ed.call("frame_entity", entity="Held")
+    await ed.call("select_entities", entities=["Held"])
+    await ed.call("focus_window", window="scene")
+    start = await world(ed, "Held")
+    # the pointer over the Scene view (the default layout puts it in the middle), G: Physics on
+    xdo(ed, "mousemove", "800", "300")
+    await asyncio.sleep(0.3)
+    xdo(ed, "key", "g")
+    await asyncio.sleep(0.3)
+    xdo(ed, "keydown", "space")
+    try:
+        held = False
+        for _ in range(100):
+            if (await world(ed, "Held"))[0] != start[0]:
+                held = True
+                break
+            await asyncio.sleep(0.05)
+        check(held, "holding Space drops the selection in the Scene view (preview poses)")
+        r = await ed.call_raw("place_with_physics", {"entities": ["Waiter"], "apply": True, "wait": False})
+        job = r.structured["job_id"]
+        await asyncio.sleep(0.5)
+        state = await ed.call("get_job", job_id=job)
+        check(state["status"] == "running" and "waiting for the Scene view's Physics gesture" in state["message"],
+              f"the run waits while the gesture holds preview poses: {state['status']} {state['message'][:200]}")
+    finally:
+        xdo(ed, "keyup", "space")
+    state = await wait_job(ed, job, 120)
+    check(state["status"] == "succeeded", f"then it runs: {state['message'][:300]}")
+    check(abs(by_path(state["result"], "Waiter")["after"]["position"][1] - 0.5) < 0.01, "and commits its own drop")
+    held_after = (await world(ed, "Held"))[0]
+    check(held_after[1] < 5.0, f"the gesture's drop was committed by the Scene view, not overwritten: {held_after}")
+    xdo(ed, "key", "g")
+    await ed.call("delete_entities", entities=["Held", "Waiter"])
+
+
+async def test_cancel_after_commit(ed: Editor):
+    """cancel_job during an apply's screenshot, after the commit: too late, the job says so."""
+    seen = False
+    for attempt in range(40):
+        call = asyncio.ensure_future(ed.call_raw("place_with_physics", {"entities": ["Crate"], "apply": True, "screenshot": True}, timeout=600))
+        job = None
+        for _ in range(500):
+            jobs = await ed.call("get_job")
+            running = [j for j in jobs["jobs"] if j["kind"] == "place_with_physics" and j["status"] == "running"]
+            if running and "screenshot" in running[0].get("message", ""):
+                job = running[0]["job_id"]
+                await ed.call("cancel_job", job_id=job)
+                break
+            if call.done():
+                break
+            await asyncio.sleep(0.005)
+        r = await call
+        check(not r.is_error, r.text)
+        if job:
+            state = await ed.call("get_job", job_id=job)
+            check(state["status"] == "succeeded", f"committed before the cancel: succeeded ({state['status']})")
+            check("already committed; use undo to revert" in state["result"].get("note", "") and "use undo" in r.text,
+                  f"the result says the cancel came too late: {state['result'].get('note')} / {r.text[-200:]}")
+            seen = True
+        check(abs((await world(ed, "Crate"))[0][1] - 0.5) < 0.01, "committed")
+        await ed.call("undo")
+        if seen:
+            break
+    check(seen, "a cancel_job arrived during the capture after the commit")
+
+
+async def test_decompose_always_waits_for_its_movers_only(ed: Editor):
+    """Another decomposition queued in the project (a bigger concave mesh, not a mover) is not waited for."""
+    others = [f"Other{i}" for i in range(4)]
+    for i, name in enumerate(others):
+        await ed.call("create_entity", name=name, type="torus", position=[30 + 5 * i, 3, 30])
+        await ed.call("set_mesh_geometry", entity=name, shape="torus", radius=2.0, ring_radius=0.3, sides=40 + 4 * i, rings=30)
+    await ed.call("create_entity", name="Hoop", type="torus", position=[30, 3, 25])
+    await ed.call("set_mesh_geometry", entity="Hoop", shape="torus", radius=0.8, ring_radius=0.2, sides=20, rings=12)
+    queued = (await place(ed, entities=others)).structured   # decompose: cached asks for theirs
+    check(any("decompose: always" in w for w in queued["warnings"]), f"the others' decompositions are queued: {queued['warnings']}")
+    r = await ed.call_raw("place_with_physics", {"entities": ["Hoop"], "decompose": "always", "wait": False})
+    job = r.structured["job_id"]
+    messages = set()
+    while True:
+        state = await ed.call("get_job", job_id=job)
+        messages.add(state.get("message", ""))
+        if state["status"] != "running":
+            break
+        await asyncio.sleep(0.01)
+    check(state["status"] == "succeeded" and by_path(state["result"], "Hoop")["collider"].startswith("decomposed"), f"{state['message'][:200]}")
+    decomposing = sorted(m for m in messages if m.startswith("Decomposing"))
+    check(decomposing and all(m.endswith("/1") for m in decomposing), f"counted per mover (1), not the project's queue: {decomposing}")
+    await ed.call("delete_entities", entities=others + ["Hoop"])
+
+
+async def test_large_results_stay_valid(ed: Editor):
+    # many refusals: the text lists the first ten and counts the rest; structuredContent has all
+    empties = [{"name": f"Nothing{i}", "type": "empty", "position": [0, 2, 0]} for i in range(60)]
+    await ed.batch([("create_entity", e) for e in empties])
+    names = [e["name"] for e in empties]
+    r = await place(ed, entities=names + ["Crate"])
+    v = r.structured
+    check(len(v["refused"]) == 60 and all("no mesh or collider" in x["reason"] for x in v["refused"]), f"every refusal listed: {len(v['refused'])}")
+    check(r.text.count("\nRefused ") == 10 and "+50 more refused (see refused)" in r.text, f"the text: {r.text[:1500]}")
+    await ed.call("delete_entities", entities=names)
+    # hundreds of movers: the first entities are listed, the result stays a valid object under the cap
+    cubes = [{"name": f"Many{i}", "type": "cube", "position": [-25 + (i % 20) * 1.2, 2 + (i // 100) * 1.5, -25 + (i // 20 % 5) * 1.2]}
+             for i in range(450)]
+    for chunk in range(0, len(cubes), 150):
+        await ed.batch([("create_entity", c) for c in cubes[chunk:chunk + 150]])
+    many = [c["name"] for c in cubes]
+    r = await place(ed, entities=many, max_seconds=5)
+    v = r.structured
+    size = len(json.dumps(v))
+    check(v.get("entities_total") == 450 and 0 < len(v["entities"]) < 450, f"the first entities only: {len(v['entities'])} of {v.get('entities_total')}")
+    check("only the first" in v.get("truncated", "") and v["state_hash"] and size < 300 * 1024, f"said so, {size} bytes")
+    check(len(r.text) < 4000, f"the text stays small: {len(r.text)}")
+    await ed.call("delete_entities", entities=many)
