@@ -69,6 +69,17 @@ namespace {
         }
         if (value.IsNull() || !value.IsDefined()){
             node.remove(parts.back());
+            // and the maps on the way that it leaves empty, innermost first
+            for (size_t depth = parts.size() - 1; depth > 0; depth--){
+                YAML::Node parent = root;
+                for (size_t i = 0; i + 1 < depth; i++){
+                    YAML::Node next = parent[parts[i]];
+                    parent.reset(next);
+                }
+                const YAML::Node child = parent[parts[depth - 1]];
+                if (!child.IsMap() || child.size() != 0) break;
+                parent.remove(parts[depth - 1]);
+            }
         }else{
             node[parts.back()] = YAML::Clone(value);
         }

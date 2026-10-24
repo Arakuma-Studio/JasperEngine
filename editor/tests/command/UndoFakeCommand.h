@@ -34,9 +34,12 @@ namespace jasperengine::editor::test {
         int mergeKey = 0;       // 0: never merges; equal keys merge
         bool offThread = false;
         bool executes = true;
+        // false for a step freed on the BackgroundRelease worker, after its test (and its
+        // state) is gone
+        bool recordDeletion = true;
 
         UndoFake(FakeState& state, std::string label, int newValue): state(state), label(std::move(label)), newValue(newValue) {}
-        ~UndoFake() override { state.deleted.push_back(label); }
+        ~UndoFake() override { if (recordDeletion) state.deleted.push_back(label); }
 
         bool execute() override {
             if (!executes) return false;

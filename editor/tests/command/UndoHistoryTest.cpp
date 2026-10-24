@@ -85,7 +85,7 @@ TEST_F(CommandHistoryTests, IdsAreGlobalAndIncreasing) {
 TEST_F(CommandHistoryTests, NamesAreClippedTo80CodePoints) {
     CommandHistory history(1);
     std::string longName = "Set Intensity (";
-    while (longName.size() < 120) longName += "\xC3\xA9";  // é, two bytes
+    while (longName.size() < 220) longName += "\xC3\xA9";  // é, two bytes: 100 code points and more
     history.addCommand(make(longName + ")", 1));
     const std::string& name = history.top()->name();
     size_t points = 0;

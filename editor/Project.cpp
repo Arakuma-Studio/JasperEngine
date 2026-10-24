@@ -5025,7 +5025,15 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
-    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    // Stop's restore: only what was alive before Play stays. GameObjects an edit made while
+    // playing are tracked, yet go too (their steps go with the play session; Play Mode
+    // Changes can make them again)
+    std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    if (!sceneProject->playStateEntities.empty()) {
+        for (Entity entity : sceneProject->entities) {
+            if (!sceneProject->playStateEntities.count(entity)) keep.erase(entity);
+        }
+    }
 
     for (Entity entity : scene->getEntityList()) {
         // an owner's removal can destroy other entities in this list
@@ -5033,6 +5041,8 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
             scene->destroyEntity(entity);
         }
     }
+    sceneProject->entities.erase(std::remove_if(sceneProject->entities.begin(), sceneProject->entities.end(),
+        [scene](Entity entity) { return !scene->isEntityCreated(entity); }), sceneProject->entities.end());
 }
 
 bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {

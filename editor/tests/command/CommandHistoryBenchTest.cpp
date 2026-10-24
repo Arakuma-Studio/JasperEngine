@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <string>
 
@@ -54,6 +55,7 @@ namespace {
             }
             bytes = yamlFootprint(data);
             offThread = true;
+            recordDeletion = false;
         }
     };
 
@@ -92,7 +94,8 @@ TEST(CommandHistoryBench, BigStepReleasedOffTheMainThread) {
 
 TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
     // a 1000-GameObject scene, decoded and encoded as the editor does it
-    std::string text = "name: Bench\nsceneType: scene_3d\nentities:\n";
+    std::string text = "formatVersion: 1\nid: 9001\nname: Bench\nscene:\n  backgroundColor: [0, 0, 0, 1]\nsceneType: scene_3d\n"
+                       "mainCamera: 0\nentities:\n";
     for (int i = 0; i < 1000; i++) {
         text += "  - type: Entity\n    entity: " + std::to_string(2000 + i) + "\n    name: Cube " + std::to_string(i) +
                 "\n    components:\n      transform:\n        position: [" + std::to_string(i) + ", 0, 0]\n"
@@ -100,13 +103,20 @@ TEST(CommandHistoryBench, YamlFootprintCostsLittleNextToTheEncode) {
     }
     DecodedScene decoded = decodeSceneText(text, "bench.scene");
     ASSERT_TRUE(decoded.scene);
+    ASSERT_EQ(decoded.scene->entities.size(), 1000u);
 
-    const auto encodeStart = Clock::now();
-    YAML::Node encoded = encodeScene(decoded);
-    const double encodeTime = microseconds(Clock::now() - encodeStart);
-    const auto footprintStart = Clock::now();
-    const size_t bytes = yamlFootprint(encoded);
-    const double footprintTime = microseconds(Clock::now() - footprintStart);
+    // the best of a few runs of each (a shared build server)
+    double encodeTime = 1e12;
+    double footprintTime = 1e12;
+    size_t bytes = 0;
+    for (int run = 0; run < 5; run++) {
+        const auto encodeStart = Clock::now();
+        YAML::Node encoded = encodeScene(decoded);
+        encodeTime = std::min(encodeTime, microseconds(Clock::now() - encodeStart));
+        const auto footprintStart = Clock::now();
+        bytes = yamlFootprint(encoded);
+        footprintTime = std::min(footprintTime, microseconds(Clock::now() - footprintStart));
+    }
     EXPECT_GT(bytes, 1000u * 64u);
     std::printf("[ bench ] yamlFootprint %.0f us, encode %.0f us (%.1f%%, budget 10%%)\n", footprintTime, encodeTime,
                 100.0 * footprintTime / encodeTime);

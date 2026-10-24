@@ -93,7 +93,8 @@ namespace {
                 a.removedComponents == b.removedComponents;
         }
         std::string encoded(Entity entity) {
-            return YAML::Dump(Stream::encodeEntity(entity, scene->scene, project.get(), scene));
+            // without the project context: a prefab member is encoded too (with it, its prefab holds it)
+            return YAML::Dump(Stream::encodeEntity(entity, scene->scene, nullptr, nullptr));
         }
 
         // Play as the CLI's playStart/playStop emulate it: the snapshot, the history's floor,
