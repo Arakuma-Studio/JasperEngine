@@ -219,7 +219,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
         outputDir,
         "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
         ".png");
-    if (!stbi_write_png(result.fullPath.string().c_str(), resolution, resolution, 4, pixels.data(), resolution * 4)) {
+    if (!writePng(result.fullPath, resolution, resolution, 4, pixels.data(), resolution * 4)) {
         result.error = "Failed to write generated terrain blendmap.";
         return result;
     }

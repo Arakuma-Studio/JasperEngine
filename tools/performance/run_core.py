@@ -50,9 +50,9 @@ def run_variant(out, name, revision, sanitize, only):
     morph.write_text((ROOT / "tools/performance/morph_tracks.cpp").read_text().replace("// PRODUCTION_METHODS", methods))
     includes = [ROOT / "engine/core"] + [p for p in (ROOT / "engine/core").iterdir() if p.is_dir()]
     includes += [ROOT / "engine/libs", ROOT / "engine/libs/lua", ROOT / "engine/libs/luabridge3", ROOT / "engine/libs/sokol", ROOT / "engine/renders"]
-    flags = ["-std=c++17", "-O3", "-DNO_LUA_INIT", "-DSOKOL_GLCORE"]
+    flags = ["-std=c++20", "-O3", "-DNO_LUA_INIT", "-DSOKOL_GLCORE"]
     if sanitize:
-        flags = ["-std=c++17", "-O1", "-g", "-DNO_LUA_INIT", "-DSOKOL_GLCORE", "-DCORE_CHECK_ONLY", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+        flags = ["-std=c++20", "-O1", "-g", "-DNO_LUA_INIT", "-DSOKOL_GLCORE", "-DCORE_CHECK_ONLY", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
     for kind, src in (("component", ROOT / "tools/performance/component_sort.cpp"), ("morph", morph)):
         if only and kind != only:
             continue
@@ -83,7 +83,7 @@ def paired_component(out):
     header = out / "ComponentArray.paired-baseline.h"
     header.write_text(baseline)
     binary = out / "component-paired"
-    subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17", "-O3",
+    subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-O3",
         f"-I{ROOT / 'engine/core'}", f"-I{ROOT / 'engine/core/ecs'}",
         f'-DBASELINE_COMPONENT_HEADER="{header}"',
         str(ROOT / "tools/performance/component_sort_paired.cpp"), "-o", str(binary)], check=True)

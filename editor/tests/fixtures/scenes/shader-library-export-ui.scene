@@ -1,0 +1,1020 @@
+id: 2461316713
+name: UI
+scene:
+  backgroundColor: [0.525, 0.525, 0.525, 1]
+  shadowQuality: low
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: off
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_ui
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: ui
+    properties: 2
+  - type: ui
+    properties: 8
+  - type: ui
+    properties: 9
+  - type: blit
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ALPHA
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ALPHA
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ALPHA
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ALPHA,GRAYSCALE
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ALPHA,GRAYSCALE
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ALPHA,GRAYSCALE
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ALPHA,HUE_SHIFT
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ALPHA,HUE_SHIFT
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ALPHA,HUE_SHIFT
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ALPHA,TINT_OVERLAY
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ALPHA,TINT_OVERLAY
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ALPHA,TINT_OVERLAY
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ALPHA,SHINE
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ALPHA,SHINE
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ALPHA,SHINE
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_NONE,TINT_OVERLAY
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_NONE,TINT_OVERLAY
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_NONE,TINT_OVERLAY
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_PREMULTIPLIED,TINT_OVERLAY
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_PREMULTIPLIED,TINT_OVERLAY
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_PREMULTIPLIED,TINT_OVERLAY
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_ADDITIVE,TINT_OVERLAY
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_ADDITIVE,TINT_OVERLAY
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_ADDITIVE,TINT_OVERLAY
+  - type: ui
+    properties: 2
+    customShader: library:ui_fx#BLEND_MULTIPLY,TINT_OVERLAY
+  - type: ui
+    properties: 8
+    customShader: library:ui_fx#BLEND_MULTIPLY,TINT_OVERLAY
+  - type: ui
+    properties: 9
+    customShader: library:ui_fx#BLEND_MULTIPLY,TINT_OVERLAY
+entities:
+  - type: Entity
+    entity: 1001
+    name: Backdrop
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [1280, 720, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [1280, 720, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/stripes.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [0.8, 0.75, 0.9, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+      recttransform:
+        width: 1280
+        height: 720
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 1280
+        anchorOffsetBottom: 720
+        positionOffset: [0, 0]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [50.000015, 49.999996, 894, 459]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1002
+    name: ui_fx-plain
+    components:
+      transform:
+        position: [80, 60, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [80, 60, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 60, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 60, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [80, 60, 0]
+          max: [340, 180, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [80, 60]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [130.00002, 110, 260, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1003
+    name: ui_fx-grayscale
+    components:
+      transform:
+        position: [380, 60, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [380, 60, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 60, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 60, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [380, 60, 0]
+          max: [640, 180, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          grayscaleAmount: [0.9, 0, 0, 0]
+        shaderFeatures: [GRAYSCALE]
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [380, 60]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [430.00003, 110, 259.99997, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1004
+    name: ui_fx-hue
+    components:
+      transform:
+        position: [680, 60, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [680, 60, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 60, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 60, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [680, 60, 0]
+          max: [940, 180, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          hueShift: [200, 0, 0, 0]
+          hueSpeed: [0, 0, 0, 0]
+        shaderFeatures: [HUE_SHIFT]
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [680, 60]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [730.00006, 110, 213.99994, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1005
+    name: ui_fx-tint
+    components:
+      transform:
+        position: [980, 60, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [980, 60, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [980, 60, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [980, 60, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [980, 60, 0]
+          max: [1240, 180, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.6, 0, 0, 0]
+          tintColor: [0.1, 0.9, 0.3, 1]
+        shaderFeatures: [TINT_OVERLAY]
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [980, 60]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [944, 110, 0, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1006
+    name: ui_fx-shine
+    components:
+      transform:
+        position: [80, 260, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [80, 260, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 260, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 260, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [80, 260, 0]
+          max: [340, 380, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          shineAngle: [-60, 0, 0, 0]
+          shineColor: [1, 1, 0.6, 0.9]
+          shineSpeed: [0, 0, 0, 0]
+          shineWidth: [80, 0, 0, 0]
+        shaderFeatures: [SHINE]
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [80, 260]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [130.00002, 310.00003, 260, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1007
+    name: ui_fx-auto
+    components:
+      transform:
+        position: [380, 260, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [380, 260, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 260, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 260, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [380, 260, 0]
+          max: [640, 380, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [380, 260]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [430.00003, 310.00003, 259.99997, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1008
+    name: ui_fx-opaque
+    components:
+      transform:
+        position: [680, 260, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [680, 260, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 260, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 260, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [680, 260, 0]
+          max: [940, 380, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+        blendMode: NONE
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [680, 260]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [730.00006, 310.00003, 213.99994, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1009
+    name: ui_fx-alpha
+    components:
+      transform:
+        position: [980, 260, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [980, 260, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [980, 260, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [980, 260, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [980, 260, 0]
+          max: [1240, 380, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+        blendMode: ALPHA
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [980, 260]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [944, 310.00003, 0, 120]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1010
+    name: ui_fx-premultiplied
+    components:
+      transform:
+        position: [80, 460, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [80, 460, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 460, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [80, 460, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [80, 460, 0]
+          max: [340, 580, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+        blendMode: PREMULTIPLIED
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [80, 460]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [130.00002, 509, 260, 0]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1011
+    name: ui_fx-additive
+    components:
+      transform:
+        position: [380, 460, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [380, 460, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 460, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [380, 460, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [380, 460, 0]
+          max: [640, 580, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+        blendMode: ADDITIVE
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [380, 460]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [430.00003, 509, 259.99997, 0]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0
+  - type: Entity
+    entity: 1012
+    name: ui_fx-multiply
+    components:
+      transform:
+        position: [680, 460, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [680, 460, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 460, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [680, 460, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      ui:
+        enabled: true
+        primitiveType: triangles
+        vertexCount: 54
+        aabb:
+          min: [0, 0, 0]
+          max: [260, 120, 0]
+        worldAABB:
+          min: [680, 460, 0]
+          max: [940, 580, 0]
+        texture:
+          textureType: 2D
+          source: path
+          path: assets/textures/button.png
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        color: [1, 1, 1, 1]
+        automaticFlipY: true
+        flipY: false
+        pointerMoved: false
+        focused: false
+        customShader: library:ui_fx
+        shaderUniforms:
+          tintAmount: [0.5, 0, 0, 0]
+          tintColor: [0.2, 0.4, 1, 1]
+        shaderFeatures: [TINT_OVERLAY]
+        blendMode: MULTIPLY
+      recttransform:
+        width: 260
+        height: 120
+        anchorPointLeft: 0
+        anchorPointTop: 0
+        anchorPointRight: 0
+        anchorPointBottom: 0
+        anchorOffsetLeft: 0
+        anchorOffsetTop: 0
+        anchorOffsetRight: 260
+        anchorOffsetBottom: 120
+        positionOffset: [680, 460]
+        pivot: [0, 0]
+        anchorPreset: TOP_LEFT
+        usingAnchors: true
+        panel: 0
+        containerBoxIndex: -1
+        scissor: [730.00006, 509, 213.99994, 0]
+        ignoreScissor: false
+        ignoreEvents: false
+      image:
+        patchMarginLeft: 0
+        patchMarginRight: 0
+        patchMarginTop: 0
+        patchMarginBottom: 0
+        textureScaleFactor: 0

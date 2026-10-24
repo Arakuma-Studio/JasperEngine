@@ -222,6 +222,9 @@ bool EntityRegistry::recreateEntity(Entity entity) {
 
 void EntityRegistry::destroyEntity(Entity entity) {
     onEntityDestroyed(entity, entityManager.getSignature(entity));
+    if (editorData) {
+        editorData->entityDestroyed(entity);
+    }
 
     componentManager.entityDestroyed(entity);
     entityManager.destroy(entity);
@@ -252,6 +255,9 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     }
     componentManager.entitiesDestroyed(doomed);
     for (Entity entity : doomed) {
+        if (editorData) {
+            editorData->entityDestroyed(entity);
+        }
         entityManager.destroy(entity);
     }
 }
@@ -473,6 +479,9 @@ void EntityRegistry::clear() {
     }
     // Reset user counter to just before the user range
     entityManager.setLastUserEntity(EntityManager::lastSystemEntity());
+    if (editorData) {
+        editorData->registryCleared();
+    }
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

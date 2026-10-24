@@ -16,26 +16,27 @@
 #include <typeinfo>
 #include <utility>
 #include <vector>
-#include <algorithm>
 
 #include "Log.h"
 #include "LuaFunction.h"
-#ifdef JASPERENGINE_CRASH_GUARD
-#include "util/CrashGuard.h"
-#endif
+#include "util/CrashHook.h"
+#include "util/Signal.h"
+#include "util/SubscriptionOwnerIndex.h"
 
 #define JASPERENGINE_EVENT_SUBSCRIPTION_TAG(METHOD) \
     (std::string(typeid(std::remove_pointer_t<decltype(this)>).name()) + \
      "_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)) + \
      "_" #METHOD)
 
+// The REGISTER_* macros of C++ scripts: the subscription's owner is the script (this), so
+// SubscriptionOwnerIndex::releaseOwner removes them all when the script goes away
 #define REGISTER_EVENT(EVENT_OBJ, METHOD) \
     do { \
         std::string __tag = JASPERENGINE_EVENT_SUBSCRIPTION_TAG(METHOD); \
         (EVENT_OBJ).add< \
             std::remove_pointer_t<decltype(this)>, \
             &std::remove_pointer_t<decltype(this)>::METHOD \
-        >(__tag, this); \
+        >(__tag, this, ::jasperengine::ownerKeyOf(this)); \
     } while (0)
 
 #define UNREGISTER_EVENT(EVENT_OBJ, METHOD) \
@@ -48,7 +49,7 @@
     do { \
         std::string __tag = JASPERENGINE_EVENT_SUBSCRIPTION_TAG(EVENT); \
         ::jasperengine::Engine::EVENT.add(__tag, ::jasperengine::detail::engineEventCallback( \
-            this, &std::remove_pointer_t<decltype(this)>::EVENT)); \
+            this, &std::remove_pointer_t<decltype(this)>::EVENT), ::jasperengine::ownerKeyOf(this)); \
     } while (0)
 
 #define UNREGISTER_ENGINE_EVENT(EVENT) \
@@ -64,7 +65,7 @@
                 __component->EVENT.add< \
                     std::remove_pointer_t<decltype(this)>, \
                     &std::remove_pointer_t<decltype(this)>::METHOD \
-                >(__tag, this); \
+                >(__tag, this, ::jasperengine::ownerKeyOf(this)); \
             } else { \
                 ::jasperengine::Log::warn("Cannot register " #COMPONENT "::" #EVENT ": component not found"); \
             } \
@@ -94,53 +95,96 @@
 #define REGISTER_PANEL_EVENT(EVENT, METHOD) REGISTER_COMPONENT_EVENT(::jasperengine::PanelComponent, EVENT, METHOD)
 #define UNREGISTER_PANEL_EVENT(EVENT, METHOD) UNREGISTER_COMPONENT_EVENT(::jasperengine::PanelComponent, EVENT, METHOD)
 
-
-template<size_t>
-struct MyPlaceholder {};
-
-template<size_t N>
-struct std::is_placeholder<MyPlaceholder<N>> : public std::integral_constant<size_t, N> {};
-
 namespace jasperengine {
-
-    #ifdef JASPERENGINE_CRASH_GUARD
-    using CrashHandler = std::function<void(const std::string& tag, const std::string& errorInfo)>;
-
-    class FunctionSubscribeGlobal {
-    public:
-        static CrashHandler& getCrashHandler() {
-            static CrashHandler handler = nullptr;
-            return handler;
-        }
-    };
-    #endif
 
     template<typename T>
     class FunctionSubscribe;
 
+    // An engine event: tagged subscribers (adding a tag again replaces it), callable from C++
+    // and Lua (the FunctionSubscribe_* bindings). Built on detail::SlotList, Signal's core:
+    // removing or adding subscribers from inside a callback is safe (see SlotList), and
+    // invoking allocates nothing. While a CrashHook is set every callback runs under the crash
+    // guard; one that faults is removed and reported with its tag. Like Signal, externally
+    // synchronized (PhysicsSystem invokes its events from Jolt threads under a mutex);
+    // hasSubscribers() is safe from any thread. Copying copies the subscribers.
     template<typename Ret, typename ...Args>
     class FunctionSubscribe<Ret(Args...)> {
 
     private:
-        std::vector<std::function<Ret(Args...)>> functions;
-        std::vector<std::string> tags;
+        using List = detail::SlotList<Ret(Args...)>;
+        using Slot = typename List::Slot;
+
+        std::shared_ptr<List> state;
         bool enabled = true;
 
-        void removeAt(size_t index) {
-            functions.erase(functions.begin() + index);
-            tags.erase(tags.begin() + index);
+        List& list() {
+            if (!state) state = std::make_shared<List>();
+            return *state;
         }
 
-        template<typename T, size_t... Idx>
-        std::function<Ret(Args...)> bindImpl(T *obj, Ret(T::*funcPtr)(Args...), std::index_sequence<Idx...>){
-            return std::bind(funcPtr, obj, MyPlaceholder<Idx + 1>{}...);
+        void detach() {
+            if (state) {
+                state->orphan();
+                state.reset();
+            }
+        }
+
+        // One callback, under the crash guard when a hook is set. False when it faulted (it
+        // is removed and reported).
+        template<typename Call>
+        bool runSlot(List& slots, Slot& slot, bool guarded, Call&& call) {
+            if (!guarded) {
+                call(slot.function);
+                return true;
+            }
+            struct Context {
+                Call* call;
+                Slot* slot;
+            } context{&call, &slot};
+            std::string errorInfo;
+            const bool ok = CrashHook::runGuarded([](void* data) {
+                Context* c = static_cast<Context*>(data);
+                (*c->call)(c->slot->function);
+            }, &context, errorInfo);
+            if (!ok) {
+                const std::string tag = slot.tag;
+                slots.removeSlot(slot.id);
+                CrashHook::report(tag, errorInfo);
+            }
+            return ok;
         }
 
     public:
 
         FunctionSubscribe() = default;
-        FunctionSubscribe(const FunctionSubscribe&) = default;
-        FunctionSubscribe& operator = (const FunctionSubscribe&) = default;
+
+        FunctionSubscribe(const FunctionSubscribe& other): enabled(other.enabled) {
+            if (other.state) state = other.state->clone();
+        }
+
+        FunctionSubscribe& operator = (const FunctionSubscribe& other) {
+            if (this != &other) {
+                detach();
+                enabled = other.enabled;
+                if (other.state) state = other.state->clone();
+            }
+            return *this;
+        }
+
+        FunctionSubscribe(FunctionSubscribe&& other) noexcept: state(std::move(other.state)), enabled(other.enabled) {}
+
+        FunctionSubscribe& operator = (FunctionSubscribe&& other) noexcept {
+            if (this != &other) {
+                detach();
+                state = std::move(other.state);
+                enabled = other.enabled;
+            }
+            return *this;
+        }
+
+        ~FunctionSubscribe() {
+            detach();
+        }
 
         FunctionSubscribe(std::function<Ret(Args...)> function){
             add("cFunction", function);
@@ -171,150 +215,105 @@ namespace jasperengine {
         }
 
         bool hasSubscribers() const {
-            return !functions.empty();
+            return state && state->size() > 0;
         }
 
+        size_t size() const {
+            return state ? state->size() : 0;
+        }
+
+        // The Lua binding (event:add(tag, function)): owned by the script RegisterEvent is
+        // registering for (SubscriptionOwnerIndex::registrationOwner), if any
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
-            return add(tag, function);
+            return add(tag, function, SubscriptionOwnerIndex::registrationOwner());
         }
 
-        bool add(const std::string& tag, std::function<Ret(Args...)> function) {
-            remove(tag);
-            functions.push_back(function);
-            tags.push_back(tag);
+        bool add(const std::string& tag, std::function<Ret(Args...)> function, uint64_t ownerKey = 0) {
+            List& slots = list();
+            slots.removeTag(tag);
+            slots.add(std::move(function), ownerKey, tag);
             return true;
         }
 
         template<Ret(*funcPtr)(Args...)>
-        bool add(const std::string& tag){
-            return add(tag, std::function<Ret(Args...)>(funcPtr));
+        bool add(const std::string& tag, uint64_t ownerKey = 0){
+            return add(tag, std::function<Ret(Args...)>(funcPtr), ownerKey);
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
-        bool add(const std::string& tag, std::shared_ptr<T> obj){
-            return add(tag, bindImpl(obj.get(), funcPtr, std::index_sequence_for<Args...>{}));
+        bool add(const std::string& tag, std::shared_ptr<T> obj, uint64_t ownerKey = 0){
+            T* target = obj.get();
+            return add(tag, std::function<Ret(Args...)>([target](Args... args) -> Ret { return (target->*funcPtr)(args...); }),
+                       ownerKey);
         }
 
         template<typename T, Ret(T::*funcPtr)(Args...)>
-        bool add(const std::string& tag, T* obj){
-            return add(tag, bindImpl(obj, funcPtr, std::index_sequence_for<Args...>{}));
+        bool add(const std::string& tag, T* obj, uint64_t ownerKey = 0){
+            return add(tag, std::function<Ret(Args...)>([obj](Args... args) -> Ret { return (obj->*funcPtr)(args...); }),
+                       ownerKey);
         }
 
         template<typename T>
-        bool add(const std::string& tag, std::shared_ptr<T> t){
-            return add(tag, std::function<Ret(Args...)>(*t.get()));
+        bool add(const std::string& tag, std::shared_ptr<T> t, uint64_t ownerKey = 0){
+            return add(tag, std::function<Ret(Args...)>(*t.get()), ownerKey);
+        }
+
+        // An untagged subscriber held by the returned Subscription (RAII)
+        [[nodiscard]] Subscription subscribe(std::function<Ret(Args...)> function, uint64_t ownerKey = 0) {
+            const uint64_t id = list().add(std::move(function), ownerKey, std::string());
+            return Subscription(std::weak_ptr<detail::SlotStateBase>(state), id);
         }
 
         bool remove(const std::string& tag){
-            auto it = find(tags.begin(), tags.end(), tag);
-            if (it == tags.end()){
-                return false;
-            }
-
-            auto index{ std::distance(tags.begin(), it) };
-            tags.erase(it);
-            functions.erase(functions.begin() + index);
-
-            return true;
+            return state && state->removeTag(tag);
         }
 
         size_t removeByTagSubstring(const std::string& substring){
-            size_t removed = 0;
-            for (size_t i = 0; i < tags.size(); ) {
-                if (tags[i].find(substring) != std::string::npos) {
-                    tags.erase(tags.begin() + i);
-                    functions.erase(functions.begin() + i);
-                    ++removed;
-                } else {
-                    ++i;
-                }
-            }
-            return removed;
+            return state ? state->removeTagSubstring(substring) : 0;
+        }
+
+        size_t removeOwner(uint64_t ownerKey) {
+            return state ? state->removeOwner(ownerKey) : 0;
         }
 
         Ret call(Args... args){
-            if (!enabled){
-                if constexpr (!std::is_void<Ret>::value) {
-                    return Ret();
-                }
-            }else{
-                if constexpr (std::is_void<Ret>::value) {
-                    for (size_t i = 0; i < functions.size(); ) {
-                        auto& function = functions[i];
-                        #ifdef JASPERENGINE_CRASH_GUARD
-                        // Use crash protection if handler is registered
-                        auto& tag = tags[i];
-                        auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
-                        if (crashHandler) {
-                            CrashInfo ci{};
-                            bool ok = callWithCrashGuard([&](){
-                                function(args...);
-                            }, &ci);
-
-                            if (!ok) {
-                                std::string errorInfo = std::string(ci.name ? ci.name : "UNKNOWN") + 
-                                                    " (" + (ci.description ? ci.description : "") + 
-                                                    ") [code=" + std::to_string(ci.code) + "]";
-
-                                crashHandler(tag, errorInfo);
-
-                                removeAt(i);
-                                continue;
-                            }
-                        } else {
-                            function(args...);
-                        }
-                        #else
-                        function(args...);
-                        #endif
-
-                        ++i;
-                    }
-                } else {
-                    return callRet(args..., Ret());
-                }
+            if constexpr (std::is_void<Ret>::value) {
+                if (!enabled || !state) return;
+                // the list, not the member: a subscriber may destroy this event
+                List* slots = state.get();
+                const bool guarded = CrashHook::active();
+                slots->invoke([&](Slot& slot) {
+                    runSlot(*slots, slot, guarded, [&](std::function<Ret(Args...)>& function) { function(args...); });
+                    return true;
+                });
+            } else {
+                return callRet(args..., Ret());
             }
         }
 
+        // The first subscriber's result (a faulting one is removed and the next one asked);
+        // def without subscribers or while disabled
         template<typename T>
         Ret callRet(Args... args, T def){
-            if (!enabled){
+            if (!enabled || !state) {
                 return def;
             }
-            for (size_t i = 0; i < functions.size(); ) {
-                auto& function = functions[i];
-                #ifdef JASPERENGINE_CRASH_GUARD
-                // Use crash protection if handler is registered
-                auto& tag = tags[i];
-                auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
-                if (crashHandler) {
-                    Ret result{};
-                    CrashInfo ci{};
-                    bool ok = callWithCrashGuard([&](){
-                        result = function(args...);
-                    }, &ci);
-
-                    if (ok) {
-                        return result;
-                    } else {
-                        std::string errorInfo = std::string(ci.name ? ci.name : "UNKNOWN") + 
-                                            " (" + (ci.description ? ci.description : "") + 
-                                            ") [code=" + std::to_string(ci.code) + "]";
-
-                        crashHandler(tag, errorInfo);
-
-                        removeAt(i);
-                        continue;
-                    }
-                } else {
-                    return function(args...);
+            List* slots = state.get();
+            const bool guarded = CrashHook::active();
+            Ret result = def;
+            slots->invoke([&](Slot& slot) {
+                Ret value{};
+                const bool ok = runSlot(*slots, slot, guarded, [&](std::function<Ret(Args...)>& function) {
+                    value = function(args...);
+                });
+                if (ok) {
+                    result = value;
+                    return false;
                 }
-                #else
-                return function(args...);
-                #endif
-            }
-            return def;
+                return true;
+            });
+            return result;
         }
 
         Ret operator()(Args... args){
@@ -322,8 +321,7 @@ namespace jasperengine {
         }
 
         void clear(){
-            functions.clear();
-            tags.clear();
+            if (state) state->clear();
         }
     };
 

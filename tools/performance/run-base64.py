@@ -21,7 +21,7 @@ before.write_bytes(subprocess.check_output(['git', 'show', f'{args.baseline}:eng
 for label, source in [('before', before), ('after', root / 'engine/core/util/Base64.cpp')]:
     binary = out / (label + ('-sanitized' if args.check else ''))
     flags = ['-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer'] if args.check else ['-O3', '-DNDEBUG']
-    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', *flags,
+    subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', *flags,
                     '-I' + str(root / 'engine/core'), '-I' + str(root / 'engine/core/util'),
                     str(root / 'tools/performance/base64.cpp'), str(source), '-o', str(binary)], check=True)
     result = subprocess.run([str(binary), *(['--check'] if args.check else [])], check=True, text=True, capture_output=True)

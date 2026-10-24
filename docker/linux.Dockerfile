@@ -56,3 +56,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && ! test -e /etc/ssl/certs/emSign_ECC_Root_CA_-_G3.pem
+
+# uv runs the MCP tests (tools/mcp/run-tests.sh, tools/build.sh mcp-tests): pinned by version and
+# sha256, bumped by hand. A layer of its own, after every other one, so cached images keep theirs.
+ARG UV_VERSION=0.13.5
+ARG UV_SHA256=f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
+RUN wget -q -O /tmp/uv.tar.gz \
+        "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+    && echo "${UV_SHA256}  /tmp/uv.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/uv.tar.gz -C /tmp \
+    && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/ \
+    && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu \
+    && uv --version

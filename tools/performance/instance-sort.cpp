@@ -43,7 +43,7 @@ double measure(Sort sort, const std::vector<InstanceRenderData>& instances,
     const double start = threadMicros();
     for (int i = 0; i < repeats; ++i) {
         const auto result = sort(instances, model, direction);
-        checksum += result.empty() ? 0 : result[result.size() / 2];
+        checksum = checksum + (result.empty() ? 0 : result[result.size() / 2]);
     }
     return (threadMicros() - start) / repeats;
 }

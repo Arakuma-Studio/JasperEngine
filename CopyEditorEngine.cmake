@@ -15,10 +15,14 @@ file(REMOVE_RECURSE
      "${ENGINE_DEST}/workspaces/androidstudio/app/build"
      "${ENGINE_DEST}/workspaces/androidstudio/app/.cxx")
 # engine/tests (test sources, fixtures, golden images) is not SDK input either; the regex
-# matches that one directory, not the tests directories of vendored libraries
+# matches that one directory, not the tests directories of vendored libraries. Nor are the
+# repository's presets (engine/CMakePresets.json): a project configures without them.
 file(COPY "${ENGINE_SOURCE}/" DESTINATION "${ENGINE_DEST}"
      PATTERN ".cxx" EXCLUDE
      PATTERN ".gradle" EXCLUDE
      PATTERN "build" EXCLUDE
      PATTERN ".git" EXCLUDE
-     REGEX "/engine/tests$" EXCLUDE)
+     REGEX "/engine/tests$" EXCLUDE
+     REGEX "/engine/CMakePresets.json$" EXCLUDE)
+# a copy made before the exclusion still has one
+file(REMOVE "${ENGINE_DEST}/CMakePresets.json")

@@ -170,6 +170,7 @@
     }
 
 namespace jasperengine {
+    class Scheduler;
 
     class JASPERENGINE_API Scene;
 
@@ -219,6 +220,14 @@ namespace jasperengine {
         Loading,
         Finished,
         Failed
+    };
+
+    // Project Settings > Player > Threading (project.yaml `threading:`). -1 is Auto.
+    struct ThreadingSettings {
+        int workers = -1;                // job system workers: applies when it starts (next launch)
+        int reservedFrameWorkers = -1;   // workers kept free of Background work: applies live
+        int ioThreads = -1;              // asset reader threads: applies when the reader service starts
+        double webPumpBudgetMs = 4.0;    // single-thread mode: Background work per frame, live
     };
 
     class JASPERENGINE_API Engine {
@@ -275,6 +284,8 @@ namespace jasperengine {
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
+        // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
+        static bool gameEventsPaused;
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
@@ -347,6 +358,10 @@ namespace jasperengine {
         static std::vector<Scene*> getSceneLayers();
 
         static void pauseGameEvents(bool pause);
+        static bool areGameEventsPaused();
+        // One frame of the scheduler's Game (scaled), Unscaled and Frames clocks, unless the
+        // game is paused, held or its events are (the editor's Pause). True when they ran.
+        static bool advanceGameClocks(Scheduler& scheduler, double frameTime);
         
         static int getCanvasWidth();
         static int getCanvasHeight();
@@ -466,8 +481,17 @@ namespace jasperengine {
         // inside systemDraw(): scenes are updating, a stack must not be torn down
         static bool isFrameRunning();
 
+        // The most workers Background (asset) jobs may occupy at once: the job system's gate,
+        // changed live. 0 returns to the reserve-derived maximum.
         static void setMaxResourceLoadingThreads(size_t maxThreads);
+        // Asset jobs queued or running, queued reads included: 0 only once loading is idle.
         static size_t getQueuedResourceCount();
+
+        // Starts the job system and the asset reader service with these settings when they
+        // are not running yet; once running, the reserve and the pump budget apply live and
+        // the thread counts on the next launch. The generated game main calls it first.
+        static void setThreadingSettings(const ThreadingSettings& settings);
+        static const ThreadingSettings& getThreadingSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();
@@ -479,6 +503,8 @@ namespace jasperengine {
         // Callbacks scripts left on a scene's components. Needed before the code behind them
         // goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
+        // Deprecated (kept one release for C++ glue generated before owner keys): scans every
+        // event for tags containing substring. Use SubscriptionOwnerIndex::releaseOwner.
         static void removeSubscriptionsByTag(const std::string& substring);
 
 #ifdef JASPERENGINE_EDITOR

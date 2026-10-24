@@ -1,6 +1,6 @@
 """Test harness for the JasperEngine editor's MCP server.
 
-Run with:  uv run --no-project --with mcp --with pyyaml python <script>
+Run with:  uv run --no-project --with-requirements tools/mcp/requirements.txt python <script>
 
     from harness import Editor, ToolError
 

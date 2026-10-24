@@ -55,6 +55,16 @@ namespace jasperengine::editor::mcp {
             void undo() override;
             bool affectsStructure() const override { return false; }
 
+            // "Write File player.lua", "Create File player.lua", "Write 3 Files"
+            std::string describe() const override;
+            const char* typeName() const override { return "WriteFilesCmd"; }
+            // Every file already held that content
+            bool isNoOp() const override;
+            size_t memoryBytes() const override;
+            // Off-thread release: the destructor only frees file contents, paths and the
+            // afterChange callback (it captures a context pointer); no editor/engine/GPU state (S24 R8).
+            bool releaseOffThread() const override { return true; }
+
         private:
             struct Previous {
                 bool existed = false;

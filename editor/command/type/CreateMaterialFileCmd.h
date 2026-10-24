@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "util/EntityPayload.h"
 #include <filesystem>
@@ -29,6 +30,11 @@ namespace jasperengine::editor {
 
         bool execute() override;
         void undo() override;
+
+        // "Create Material New Material.material"
+        std::string describe() const override { return "Create Material " + CommandNames::file(targetFile); }
+        const char* typeName() const override { return "CreateMaterialFileCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + payload.capacity() + (materialCmd ? materialCmd->memoryBytes() : 0); }
 
     };
 

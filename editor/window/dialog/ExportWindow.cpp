@@ -48,7 +48,7 @@ namespace {
         return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
     }
 
-    void beginSettingsRow(const char* label) {
+    void exportBeginSettingsRow(const char* label) {
         ImGui::TableNextRow(ImGuiTableRowFlags_None, ImGui::GetFrameHeight());
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -583,7 +583,7 @@ void ExportWindow::drawPlatformList() {
 }
 
 void ExportWindow::drawBuildTypeRow() {
-    beginSettingsRow("Build Type");
+    exportBeginSettingsRow("Build Type");
     if (!platformCanBuildPlayer(m_platform)) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("C++ Source Project");
@@ -601,7 +601,7 @@ void ExportWindow::drawBuildTypeRow() {
 }
 
 void ExportWindow::drawSourceBackendsRow() {
-    beginSettingsRow("Graphics APIs");
+    exportBeginSettingsRow("Graphics APIs");
     std::string names;
     for (ShaderBackend backend : platformBackends(m_platform)) {
         if (!names.empty()) names += ", ";
@@ -653,7 +653,7 @@ void ExportWindow::launchBuiltPlayer() {
 }
 
 void ExportWindow::drawOutputDirRow(const char* label) {
-    beginSettingsRow(label);
+    exportBeginSettingsRow(label);
     {
         float browseWidth = ImGui::CalcTextSize("Browse").x + ImGui::GetStyle().FramePadding.x * 2;
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
@@ -683,7 +683,7 @@ void ExportWindow::drawOutputDirRow(const char* label) {
 }
 
 void ExportWindow::drawGraphicBackendRow() {
-    beginSettingsRow("Graphics API");
+    exportBeginSettingsRow("Graphics API");
 
     if (m_mode == ExportMode::Web) {
         ImGui::AlignTextToFramePadding();
@@ -729,12 +729,12 @@ void ExportWindow::drawDesktopKitRows() {
         }
     }
 
-    beginSettingsRow("Compiler");
+    exportBeginSettingsRow("Compiler");
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("%s", kitDisplay.c_str());
     ImGui::SetItemTooltip("Change in Preferences > External Tools");
 
-    beginSettingsRow("Build Jobs");
+    exportBeginSettingsRow("Build Jobs");
     ImGui::SetNextItemWidth(-1);
     const int previousJobs = m_desktopBuildJobs;
     if (ImGui::InputInt("##DesktopBuildJobs", &m_desktopBuildJobs, 1, 8)) {

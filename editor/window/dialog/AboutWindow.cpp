@@ -13,7 +13,7 @@
 namespace jasperengine::editor {
 
 namespace {
-    static constexpr float dialogWidth = 440.0f;
+    static constexpr float aboutDialogWidth = 440.0f;
     static constexpr float logoWidth = 150.0f;
     static constexpr float buttonWidth = 120.0f;
 
@@ -43,7 +43,7 @@ void AboutWindow::show() {
 
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(dialogWidth), 0.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(aboutDialogWidth), 0.0f), ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoMove |
                              ImGuiWindowFlags_NoResize |

@@ -6,6 +6,7 @@
 #include "ImportManifestWriter.h"
 
 #include "htmlui/HtmlUIDependencies.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <fstream>
@@ -84,7 +85,7 @@ RemoveUnusedResult jasperengine::editor::htmlui::removeUnusedImports(const Impor
     const compat::FileAccess files = target.fileAccess();
     const fs::path assetsDir = target.assetsDir;
     const HtmlUIFileReader reader = [assetsDir](const std::string& path, std::string* content){
-        const fs::path file = assetsDir / fs::u8path(path);
+        const fs::path file = assetsDir / editor::FileUtils::pathFromUtf8(path);
         std::error_code ec;
         if (!fs::is_regular_file(file, ec))
             return false;

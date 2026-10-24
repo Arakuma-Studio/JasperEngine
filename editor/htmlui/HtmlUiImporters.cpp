@@ -8,6 +8,7 @@
 #include "RemoteImporter.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 
 // the built-in Lucide pack (p2-runtime); included unconditionally: ccache's direct mode does not
 // see a __has_include that turns true and can return an object built without the header
@@ -228,7 +229,7 @@ ImportResult jasperengine::editor::htmlui::importDocumentReferences(const fs::pa
         return result;
     const ImportTarget& target = importer->target();
 
-    fs::path file = fs::u8path(htmlOrCss);
+    fs::path file = editor::FileUtils::pathFromUtf8(htmlOrCss);
     if (file.is_relative())
         file = target.projectRoot / file;
     const std::string assetPath = target.toAssetPath(file);

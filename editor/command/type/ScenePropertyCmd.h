@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Scene.h"
 #include "Catalog.h"
 
@@ -67,6 +68,10 @@ namespace jasperengine::editor {
 
         // Render/physics settings only; scene names belong to SceneNameCmd.
         bool affectsStructure() const override { return false; }
+
+        // "Set Ambient Light (Level1)": the scene's name
+        std::string describe() const override { return "Set " + CommandNames::property(propertyName) + " (" + CommandNames::scene(project, sceneId) + ")"; }
+        const char* typeName() const override { return "ScenePropertyCmd"; }
 
         bool mergeWith(editor::Command* otherCommand) override {
             ScenePropertyCmd* otherCmd = dynamic_cast<ScenePropertyCmd*>(otherCommand);

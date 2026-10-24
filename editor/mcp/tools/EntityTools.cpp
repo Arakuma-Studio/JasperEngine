@@ -14,6 +14,7 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -595,6 +596,10 @@ void createEntityTool(const CallPtr& call) {
                 return true;
             }
             void undo() override { inner->undo(); }
+            std::string describe() const override { return inner->describe(); }
+            const char* typeName() const override { return inner->typeName(); }
+            size_t memoryBytes() const override { return sizeof(*this) + inner->memoryBytes(); }
+            void collectKeepCommands(KeepContext& context) const override { inner->collectKeepCommands(context); }
         };
         why = "The GameObject could not be created.";
         return new Capture(cmd, created);
@@ -1232,6 +1237,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"add", withDefault(boolean(""), false)}
         });
         tool.annotations.idempotent = true;
+        tool.attributesUndo = true;  // a selection step of the agent (S24 R40)
         tool.handler = selectEntitiesTool;
         registry.addTool(std::move(tool));
     }
