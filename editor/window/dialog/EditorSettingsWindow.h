@@ -36,6 +36,7 @@ namespace jasperengine::editor {
         std::string m_ffmpegStatus;
         bool m_ffmpegUsable = false;
         bool m_editorVSyncEnabled = true;
+        int m_uiScalePercent = 100;
         bool m_htmlUiAutoImport = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;

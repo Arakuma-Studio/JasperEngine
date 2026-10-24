@@ -34,6 +34,7 @@ namespace jasperengine::editor{
         Gizmo2DSideSelected gizmo2DSideSelected;
 
         bool anchorGizmoEnabled;
+        bool gizmoVisible;
 
     public:
         ToolsLayer(bool use2DGizmos);
@@ -59,6 +60,7 @@ namespace jasperengine::editor{
         void setShowObject2DCross(bool show);
 
         void setGizmoVisible(bool visible);
+        bool isGizmoVisible() const;
 
         Scene* getScene();
 

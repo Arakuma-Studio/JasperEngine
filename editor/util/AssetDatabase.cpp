@@ -4,6 +4,7 @@
 #include "AssetDatabase.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 
@@ -32,13 +33,9 @@ namespace {
         return true;
     }
 
+    // It rewrites the user's own files (a GUID put into a scene, prefab or material)
     bool writeText(const fs::path& path, const std::string& text) {
-        std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        if (!file) {
-            return false;
-        }
-        file << text;
-        return static_cast<bool>(file);
+        return editor::FileUtils::writeFileReplacing(path, text);
     }
 
     // A top-level `guid:` line: a key at column 0, which in block style YAML is a key of

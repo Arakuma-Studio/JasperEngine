@@ -8,12 +8,11 @@
 
 using namespace jasperengine;
 
-LatticeTracks::LatticeTracks(Scene* scene): Action(scene){
-    addComponent<KeyframeTracksComponent>();
+LatticeTracks::LatticeTracks(Scene* scene): KeyframeTracks(scene){
     addComponent<LatticeTracksComponent>();
 }
 
-LatticeTracks::LatticeTracks(Scene* scene, Entity entity): Action(scene, entity){
+LatticeTracks::LatticeTracks(Scene* scene, Entity entity): KeyframeTracks(scene, entity){
 
 }
 
@@ -26,10 +25,6 @@ LatticeTracks::LatticeTracks(Scene* scene, std::vector<float> times, std::vector
 
     latticetracks.points = points;
     latticetracks.values = values;
-}
-
-void LatticeTracks::setTimes(std::vector<float> times){
-    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void LatticeTracks::setPoints(std::vector<int> points){
@@ -49,12 +44,4 @@ void LatticeTracks::setValues(std::vector<std::vector<Vector3>> values){
     if (!latticetracks.outTangents.empty()){
         latticetracks.outTangents.resize(values.size(), zeroTangent);
     }
-}
-
-void LatticeTracks::setEasings(std::vector<EaseType> easings){
-    getComponent<KeyframeTracksComponent>().setEasings(easings);
-}
-
-void LatticeTracks::setEasing(unsigned int segment, EaseType ease){
-    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

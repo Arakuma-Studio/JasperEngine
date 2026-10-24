@@ -641,9 +641,20 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
 
         }else if (directive == "texture"){
             if (args.size() < 2){
-                report(lineNumber, true, "@texture takes <uniform> <default> [\"label\"] [cube] [feature=F]");
+                report(lineNumber, true, "@texture takes <uniform> <default> [\"label\"] [cube] [feature=F] [default[F]=<default>]");
                 continue;
             }
+            auto parseDefault = [](const std::string& name, ShaderTextureDefault& value){
+                const std::string def = lower(name);
+                if (def == "white") value = ShaderTextureDefault::WHITE;
+                else if (def == "black") value = ShaderTextureDefault::BLACK;
+                else if (def == "gray" || def == "grey") value = ShaderTextureDefault::GRAY;
+                else if (def == "normal") value = ShaderTextureDefault::NORMAL;
+                else if (def == "ripples") value = ShaderTextureDefault::RIPPLES;
+                else if (def == "noise") value = ShaderTextureDefault::NOISE;
+                else return false;
+                return true;
+            };
             ShaderManifestTexture texture;
             texture.line = lineNumber;
             texture.uniform = args[0].text;
@@ -655,19 +666,23 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "@texture '" + texture.uniform + "' declared twice");
                 continue;
             }
-            const std::string def = lower(args[1].text);
-            if (def == "white") texture.defaultTexture = ShaderTextureDefault::WHITE;
-            else if (def == "black") texture.defaultTexture = ShaderTextureDefault::BLACK;
-            else if (def == "gray" || def == "grey") texture.defaultTexture = ShaderTextureDefault::GRAY;
-            else if (def == "normal") texture.defaultTexture = ShaderTextureDefault::NORMAL;
-            else{
-                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal)");
+            if (!parseDefault(args[1].text, texture.defaultTexture)){
+                report(lineNumber, true, "unknown @texture default '" + args[1].text + "' (white, black, gray, normal, ripples, noise)");
                 continue;
             }
             bool valid = true;
             for (size_t a = 2; a < args.size(); a++){
                 std::string key, value;
-                if (splitOption(args[a], key, value) && key == "feature"){
+                // default[<DEFINE>]=<default>, the define as written
+                const std::string& text = args[a].text;
+                const size_t close = text.find("]=");
+                if (!args[a].quoted && lower(text.substr(0, 8)) == "default[" && close != std::string::npos && close > 8){
+                    texture.featureDefaultDefine = text.substr(8, close - 8);
+                    if (!parseDefault(text.substr(close + 2), texture.featureDefaultTexture)){
+                        report(lineNumber, true, "unknown @texture default '" + text.substr(close + 2) + "' (white, black, gray, normal, ripples, noise)");
+                        valid = false;
+                    }
+                }else if (splitOption(args[a], key, value) && key == "feature"){
                     texture.feature = value;
                 }else if (!args[a].quoted && lower(args[a].text) == "cube"){
                     texture.cube = true;
@@ -787,6 +802,8 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     for (const ShaderManifestTexture& texture : textures){
         if (!texture.feature.empty() && !knownFeature(texture.feature))
             report(texture.line, "@texture '" + texture.uniform + "' names undeclared feature '" + texture.feature + "'");
+        if (!texture.featureDefaultDefine.empty() && !knownFeature(texture.featureDefaultDefine))
+            report(texture.line, "@texture '" + texture.uniform + "' default[" + texture.featureDefaultDefine + "] names undeclared feature");
     }
     for (const ShaderManifestStateRule& rule : stateRules){
         if (!knownFeature(rule.define))
@@ -897,6 +914,16 @@ const ShaderManifestProperty* ShaderManifest::findProperty(const std::string& me
             return &property;
     }
     return nullptr;
+}
+
+ShaderTextureDefault ShaderManifestTexture::getDefault(const std::vector<std::string>& enabledFeatures) const{
+    if (featureDefaultDefine.empty())
+        return defaultTexture;
+    // "!<DEFINE>": while it is off
+    const bool negated = featureDefaultDefine[0] == '!';
+    const std::string define = negated ? featureDefaultDefine.substr(1) : featureDefaultDefine;
+    const bool on = std::find(enabledFeatures.begin(), enabledFeatures.end(), define) != enabledFeatures.end();
+    return on != negated ? featureDefaultTexture : defaultTexture;
 }
 
 const ShaderManifestTexture* ShaderManifest::findTexture(const std::string& uniform) const{
@@ -1468,7 +1495,8 @@ bool ShaderLibraryValues::setCubeTexture(std::vector<std::pair<std::string, Text
 bool ShaderLibraryValues::setCubeTextureFaces(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform,
                                               const std::string& front, const std::string& back, const std::string& left,
                                               const std::string& right, const std::string& up, const std::string& down){
-    const std::string faces[6] = {front, back, left, right, up, down};
+    // in face index order (+X, -X, +Y, -Y, +Z, -Z), as setCubePaths stores them
+    const std::string faces[6] = {right, left, up, down, front, back};
     for (auto& texture : textures){
         if (texture.first != uniform)
             continue;
@@ -1488,8 +1516,12 @@ bool ShaderLibraryValues::setCubeTextureFaces(std::vector<std::pair<std::string,
 
 std::string ShaderLibraryValues::getTexture(const std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform){
     for (const auto& texture : textures){
-        if (texture.first == uniform)
-            return texture.second.getPath();
+        if (texture.first != uniform)
+            continue;
+        // six face images: the front one (+Z, face 4); a single cube map image is face 0
+        if (texture.second.isCubeMap() && !texture.second.getPath(1).empty())
+            return texture.second.getPath(4);
+        return texture.second.getPath();
     }
     return "";
 }

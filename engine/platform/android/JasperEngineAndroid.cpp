@@ -362,9 +362,22 @@ void JasperEngineAndroid::removeKey(const char* key){
     env->DeleteLocalRef(strKey);
 }
 
+// The export compiles the AdMob wrapper in only when the project enables AdMob
+static bool hasAdMob(const JniData& jniData){
+    if (jniData.adMobWrapperObjRef)
+        return true;
+    static bool warned = false;
+    if (!warned){
+        warned = true;
+        jasperengine::Log::warn("AdMob is not in this build: enable Google AdMob in Project Settings > Player > Android");
+    }
+    return false;
+}
+
 void JasperEngineAndroid::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    if (!hasAdMob(jniData)) return;
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.initializeAdMob, tagForChildDirectedTreatment, tagForUnderAgeOfConsent);
 }
@@ -383,6 +396,7 @@ void JasperEngineAndroid::setMaxAdContentRating(jasperengine::AdMobRating rating
 
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    if (!hasAdMob(jniData)) return;
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.setMaxAdContentRating, irating);
 }
@@ -390,6 +404,7 @@ void JasperEngineAndroid::setMaxAdContentRating(jasperengine::AdMobRating rating
 void JasperEngineAndroid::loadInterstitialAd(const std::string& adUnitID){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    if (!hasAdMob(jniData)) return;
 
     jstring strAdUnitID = env->NewStringUTF(adUnitID.c_str());
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.loadInterstitialAd, strAdUnitID);
@@ -399,6 +414,7 @@ void JasperEngineAndroid::loadInterstitialAd(const std::string& adUnitID){
 bool JasperEngineAndroid::isInterstitialAdLoaded(){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    if (!hasAdMob(jniData)) return false;
 
     bool value = env->CallBooleanMethod(jniData.adMobWrapperObjRef, jniData.isInterstitialAdLoaded);
     return value;
@@ -407,6 +423,7 @@ bool JasperEngineAndroid::isInterstitialAdLoaded(){
 void JasperEngineAndroid::showInterstitialAd(){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    if (!hasAdMob(jniData)) return;
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.showInterstitialAd);
 }

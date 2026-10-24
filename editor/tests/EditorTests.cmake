@@ -28,6 +28,8 @@ add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
 target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp)
 target_include_directories(jasperengine-editor-tests-objects PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
 target_include_directories(jasperengine-editor-tests-objects SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/${IMGUI_DIR} ${CMAKE_SOURCE_DIR}/${IMGUI_DIR}/backends)
+# Test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)
+target_compile_definitions(jasperengine-editor-tests-objects PRIVATE JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures")
 set_target_properties(jasperengine-editor-tests-objects PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
     CXX_STANDARD_REQUIRED ON

@@ -62,3 +62,9 @@ Texture synthesis of the editor (editor-only: never part of an exported game):
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [texture-synthesis](https://github.com/EmbarkStudios/texture-synthesis) by Embark Studios (`lib/src`, ported to C++) | 0.8.2 (`22825ec4ad25`) | `editor/texsynth/` (`editor/texsynth/LICENSE-texture-synthesis.txt`) | MIT OR Apache-2.0 (used under MIT) | `jasperengine-editor synthesize-texture`: new, tileable, inpainted and guided textures from examples |
+
+FBX import of the editor (editor-only: an exported game ships the converted `.glb`, never ufbx):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |

@@ -53,13 +53,13 @@ async def lattice_state(ed: Editor, scene: int, entity: int) -> dict:
 
 
 async def menu_create_lattice(ed: Editor):
-    """GameObject > 3D Object > Lattice, by mouse."""
+    """GameObject > 3D Object > Lattice, by mouse (the last item, after Water)."""
     await ls.click(ed, 162, 10)
     ls.run_x(ed, "xdotool", "mousemove", "155", "95")
     await ls.settle(ed, 4)
     ls.run_x(ed, "xdotool", "mousemove", "430", "95")
     await ls.settle(ed, 4)
-    await ls.click(ed, 424, 295)
+    await ls.click(ed, 424, 314)
     await ls.settle(ed, 8)
 
 

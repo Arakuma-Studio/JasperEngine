@@ -18,6 +18,7 @@
 #include "component/MeshPolygonComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ModelComponent.h"
+#include "util/FbxImporter.h"
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -294,8 +295,10 @@ namespace {
     }
 
     const ModelProbe& probeModel(const std::string& filename, bool mergeStaticMeshes){
-        // The file as the engine opens it, for its modification time
-        const std::filesystem::path path(FileData::getSystemPath(filename));
+        // The file as the engine opens it, for its modification time: an FBX's import, which
+        // also changes when only its textures do
+        const std::filesystem::path path(editor::FbxImporter::isFbxFile(filename) ? MeshSystem::getImportedModelPath(filename)
+            : FileData::getSystemPath(filename));
         std::error_code timeError;
         std::error_code sizeError;
         const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, timeError);
@@ -950,6 +953,11 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR_BLUR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
+    }
+    // a reflection probe's runtime capture is prefiltered into roughness mips
+    // (RenderSystem::filterReflectionProbes)
+    if (allFacts & FACT_PROBES){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0));
     }
     // disabled passes ship too: the generated scene carries the whole chain
     for (const PostProcessPass& pass : scene->getPostProcessPasses()){

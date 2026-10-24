@@ -398,6 +398,20 @@ void TextureDataPool::remove(const std::string& id){
 	}
 }
 
+void TextureDataPool::invalidate(const std::string& id){
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        auto pendingIt = pendingBuilds.find(id);
+        if (pendingIt != pendingBuilds.end()) {
+            if (pendingIt->second.valid()) {
+                pendingIt->second.wait();
+            }
+            pendingBuilds.erase(pendingIt);
+        }
+    }
+    getMap().erase(id);
+}
+
 void TextureDataPool::clear(){
     {
 		std::lock_guard<std::mutex> lock(cacheMutex);

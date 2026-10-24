@@ -52,6 +52,8 @@ namespace jasperengine{
             bool alphaBorderAuto;
 
             void reloadAlphaBorder(bool wasFixed);
+            // after a sampler change: lets go of the texture of the previous pool key
+            void releaseSamplerRender(const std::string& previousRenderId);
 
         public:
             Texture();
@@ -95,6 +97,8 @@ namespace jasperengine{
             // keeps a null data pointer even though it is not empty().
             bool hasData() const;
             const std::string& getId() const;
+            // the TexturePool key: the id plus a non-default sampler state
+            std::string getRenderId() const;
 
             size_t getNumFaces() const;
             TextureType getType() const;

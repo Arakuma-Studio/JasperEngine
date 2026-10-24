@@ -4,6 +4,7 @@
 #include "McpRefs.h"
 
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -146,7 +147,7 @@ SceneProject* McpRefs::resolveScene(Project* project, const Json& ref, std::stri
     }
     if (matches.empty()) {
         // A .scene path, project-relative (or as stored)
-        const fs::path wanted = fs::path(text).lexically_normal();
+        const fs::path wanted = FileUtils::pathFromUtf8(text).lexically_normal();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
             if (scene->filepath.empty()) continue;
             const fs::path stored = scene->filepath.lexically_normal();
@@ -332,7 +333,7 @@ bool McpRefs::resolveEntityArgs(SceneProject* scene, const Json& args, std::vect
 std::string McpRefs::notOpenError(Project* project, const SceneProject& scene) {
     const std::string path = scene.filepath.empty() || !project
         ? std::string()
-        : project->normalizeToProjectRelative(scene.filepath).generic_string();
+        : FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath));
     const std::string ref = path.empty() ? std::to_string(scene.id) : "\"" + path + "\"";
     return "Scene " + std::to_string(scene.id) + " \"" + scene.name + "\" is not open (its contents are not loaded). Open it "
            "first: open_scene {\"scene\": " + ref + ", \"close_previous\": false} (then select_scene to switch back).";
@@ -349,7 +350,7 @@ Json McpRefs::sceneJson(Project* project, const SceneProject& scene) {
     };
     out["path"] = scene.filepath.empty() || !project
         ? std::string()
-        : project->normalizeToProjectRelative(scene.filepath).generic_string();
+        : FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(scene.filepath));
     return out;
 }
 
@@ -421,7 +422,8 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
         error = "No project is open.";
         return false;
     }
-    const fs::path rel = fs::path(relative).lexically_normal();
+    // Agents send UTF-8; a std::string path is the ANSI code page on Windows
+    const fs::path rel = FileUtils::pathFromUtf8(relative).lexically_normal();
     if (relative.empty() || rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {
         error = "\"" + relative + "\" must be a project-relative path (not absolute).";
         return false;

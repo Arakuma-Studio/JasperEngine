@@ -159,6 +159,12 @@ namespace jasperengine{
 		Vector4 boxMax_lod;       // xyz = influence AABB max, w = max available mip LOD
 	} fs_reflection_probe_t;
 
+	// probe_filter.frag
+	typedef struct fs_probe_filter_t {
+		Vector4 params; // x = roughness, y = cube face, z = samples (taps per side when downsampling), w = 1 to downsample
+		Vector4 source; // x = destination level size, y = source base size, z = source mip count, w = source level when downsampling
+	} fs_probe_filter_t;
+
 	typedef struct vs_shadow2d_t {
 		Vector4 lightPos_range; // xy = light world pos, w = range
 		Vector4 offset;         // x = NDC x offset for the polar seam duplication (-2, 0, +2)
@@ -559,9 +565,20 @@ namespace jasperengine{
 		static uint32_t pixelsFlatNormal[64];
 		static TextureRender emptyGray;
 		static TextureRender emptyFlatNormal;
+		// shader library @texture defaults "ripples" and "noise" (Water::makeRipplesTexture,
+		// makeNoiseTexture)
+		static constexpr int DEFAULT_PATTERN_SIZE = 128;
+		static uint32_t pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static uint32_t pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+		static TextureRender defaultRipples;
+		static TextureRender defaultNoise;
 		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;
+		// the RenderSystems drawing with the static textures above (their bindings hold the
+		// handles), and whether this one is one of them: the last to go destroys them
+		static int emptyTextureUsers;
+		bool usesEmptyTextures = false;
 		
 		// what LatticeRender::prepare keeps between frames
 		LatticeRenderState latticeState;
@@ -606,9 +623,24 @@ namespace jasperengine{
 			unsigned int observedCaptureRevision = 0;
 			Vector3 capturePosition;
 			Vector3 capturedPosition;
+			// the capture prefiltered into one GGX roughness per mip level (filterReflectionProbes),
+			// sampled instead of the capture once made
+			TextureRender filteredMap;
+			bool needFilter = false;
 		};
 
 		std::unordered_map<Entity, std::unique_ptr<ReflectionProbeRuntime>> reflectionProbeRuntimes;
+
+		// the prefilter of finished runtime captures (probe_filter.frag), shared by the probes
+		bool probeFilterLoaded = false;
+		TextureRender probeSourceMap;  // box-filtered mip chain of the capture
+		TextureRender probeReduceMap;  // scratch target while building that chain
+		int probeSourceSize = 0;
+		CameraRender probeFilterPassRender;
+		ObjectRender probeFilterRender;
+		std::shared_ptr<ShaderRender> probeFilterShader;
+		fs_probe_filter_t fs_probe_filter;
+		int probeFilterSlotParams = -1;
 		// Each mirror's reflection camera. Kept here so the authored component stays copiable.
 		std::unordered_map<Entity, Entity> mirrorCameras;
 		// Main camera position for the instance distance fade: the colour and depth passes must
@@ -663,6 +695,9 @@ namespace jasperengine{
 			int slots = 0;
 			Matrix4 viewProjection[SHADOW_KEY_SLOTS];
 			uint32_t casterMask[SHADOW_KEY_SLOTS] = {};
+			// a directional slot drawn only with the casters that can shadow its receiver slice
+			// (LightCamera::receiverViewProjection): that slice, else identity
+			Matrix4 receiver[SHADOW_KEY_SLOTS];
 			// the camera whose terrain cut, billboards and instance lists the casters were
 			// drawn with, when such camera-dependent casters are in the masks
 			const void* cameraCasters = nullptr;
@@ -1403,6 +1438,7 @@ namespace jasperengine{
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 
 		void createEmptyTextures();
+		static void destroyEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
@@ -1443,6 +1479,9 @@ namespace jasperengine{
 		void updateSkyEnvironment(SkyboxComponent& sky);
 		void updateReflectionProbes(double dt);
 		void renderReflectionProbeCapture();
+		void loadProbeFilter();
+		void destroyProbeFilter();
+		void filterReflectionProbes();
 		void releaseReflectionProbeMaps(ReflectionProbeRuntime& runtime);
 		void destroyReflectionProbe(Entity entity, ReflectionProbeComponent& probe);
 		bool selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture);
@@ -1528,9 +1567,11 @@ namespace jasperengine{
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
 		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
-		// binds the textures (false while one is still loading)
+		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
+		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
-		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest);
+		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
+		                               const std::vector<std::string>& enabledFeatures = {});
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);
@@ -1839,7 +1880,7 @@ namespace jasperengine{
 		void computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
-		void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
+		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
@@ -1870,6 +1911,14 @@ namespace jasperengine{
 
 		// the lattice bindings packed into the meshes (LatticeRender::prepare, once a frame)
 		LatticeRenderState& getLatticeState();
+
+		// Planes around the casters that can shadow the surfaces reading a directional cascade:
+		// its receiver slice (LightCamera::receiverViewProjection) extruded toward the light
+		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
+		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
+		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing.
+		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
+		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).

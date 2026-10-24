@@ -32,7 +32,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     `set_shader_uniform` (entity + `submesh`) sets one and `get_shader_uniforms` lists them
     with labels and defaults.
   - `shaderTextures`: `{uniform: "assets/path.png" | null}`, or `shaderTextures.<uniform>`.
-    Unset ones bind the declared default (white, black, gray or flat normal). Images only: a
+    Unset ones bind the declared default (white, black, gray, flat normal, or the engine's seamless `ripples` normal map and `noise`), or the one a `default[<DEFINE>]=` rule picks while that feature is on (`list_shaders`: `default_with`). Images only: a
     camera's render texture goes in a built-in material texture (`baseColorTexture`, ...).
   - `shaderFeatures`: the enabled `@feature` defines and chosen `@keywords` values
     (`"<GROUP>_<VALUE>"`), e.g. `["RIM", "SPEC_MODE_HARD"]`; `"!RIM"` turns off a feature that
@@ -291,6 +291,11 @@ Manifest lines (library shaders and forks that declare them) beyond the basic on
   value (`<GROUP>_<VALUE>`) is on; `[!<DEFINE>]` while it is off. Order: material value,
   then the matching `@state[...]` lines (later wins), then `@state`, then the engine's.
   Example: `// @state[MODE_ALPHA] blend=alpha zwrite=off`.
+- `// @texture <uniform> <default> ... default[<DEFINE>]=<default>`: while that `@feature` (or
+  `@keywords` value; `[!<DEFINE>]`: while it is off) is on, an unset slot binds the second
+  default instead. Defaults: `white`, `black`, `gray`, `normal` (flat), `ripples` (a seamless
+  ripple normal map) and `noise` (seamless grey value noise), the last two built by the engine,
+  so a material can use them without image files (`library:water`'s `BUILTIN_TEXTURES`).
 - `// @require <inputs> feature=<DEFINE>`: inputs required only while that define is on
   (`feature=!<DEFINE>`: while off). Inputs: `normals tangents uv1 uv2 color rawcolor
   position smoothnormals`; `rawcolor` gives `v_rawColor`, the vertex colour without the
@@ -382,3 +387,54 @@ particle on low-end mobile, a tinted alpha surface instead of refraction).
   `scene_inputs_cost`. `get_shader_uniforms`: `scene_inputs` and `cost_note` of that variant.
   The inspector marks the same shaders, features and keyword values in its picker with a gauge
   and shows a "Reads scene ..." row under a reading material, extra pass or points shader.
+
+## Water
+
+`library:water` (reference: `docs/shaders/library.md#librarywater`) is a stylised, mobile-first
+water: everything beyond the base look is a compile-time feature, off by default. The quickest
+start is the GameObject menu's **3D Object > Water** (`create_entity type=water`): a 20 x 20
+grid of 64 x 64 quads (`Primitive:createGrid`, fine enough for the waves) with a material of
+`BUILTIN_TEXTURES`, `WAVES`, `REFLECTION`, `UNDERSIDE`, `DEPTH_FOAM` and `REFRACTION`, lit per
+pixel, and, when the scene has none, a `library:underwater` pass (off) at the end of its
+post-processing chain; one undo step removes both. Unset, the ripple normal map is flat and the
+foam noise grey (no ripples, no noise foam: water made before these features looks as it did);
+`BUILTIN_TEXTURES` makes unset slots bind the engine's seamless `ripples` and `noise` instead
+(no image files; the shader code is the same), and a texture set on the material wins over
+either.
+
+| Feature | What it adds | Cost |
+|---|---|---|
+| (none) | shallow to deep colour by the view angle, two ripple layers, foam, Blinn-Phong glint (pixel lighting); distant waves and ripples fade by the pixel's footprint (no shimmer) | two normal and two noise fetches |
+| `BUILTIN_TEXTURES` | the engine's ripples and foam noise for unset texture slots | none (a different default binding) |
+| `WAVES` | two sine waves raising the vertices (tessellate the mesh) | vertex sines; the physics and `Water.getHeight` follow them |
+| `REFLECTION` | the sky's environment or the reflection probe around the water by Schlick's fresnel (f0 0.02), a GGX glint (`ggxSpecular`, `includes/lights.glsl`) | one cube map fetch |
+| `UNDERSIDE` | both faces drawn (`@state[UNDERSIDE] cull=off`): from below, Snell's window (the sky only within 48 degrees of straight up), the depths mirrored around it | a branch |
+| `DEPTH_FOAM` | foam along every shore and object crossing the surface | scene depth |
+| `ABSORPTION` | colour by the water's thickness, a soft shore; with `REFRACTION` the bed loses each colour at its own rate (Beer-Lambert from the shallow colour) | scene depth |
+| `REFRACTION` | the bed and what is under the surface bent by the ripples | scene colour and depth |
+| `CAUSTICS` | with `REFRACTION`: sunlight (the main directional light) focused on the bed, faded with depth and where its cells would be under a few pixels; procedural, no texture | a dozen ALU instructions |
+
+Scene depth and colour cost what the previous section says (a depth pre-pass, a copy of the
+screen); the others are a few instructions. On low-end mobile keep to the base, `WAVES` and
+`REFLECTION`.
+
+**Seen from below.** `UNDERSIDE` draws the surface from under it; the water between the camera
+and everything it sees is the post-process pass `library:underwater` (each colour fading at
+its own rate with the distance through the water, the view leaving the water at its surface
+fading only by the part below it). It is switched by the engine, not by hand: in a running
+scene (Play, an exported game; never the editor's Scene view of a stopped scene) the scene's
+`library:underwater` passes are on while the main camera is under the surface of the water it
+is in and off above it (`Water::updateUnderwater`, `engine/core/object/environment/Water.h`,
+called by the RenderSystem's update), with `waterLevel` set to the surface over the camera and,
+with `followWater` on (the default), that water's `shallowColor` and `deepColor`; a band of
+0.05 world units above the surface keeps waves from switching it every frame.
+
+**Physics and scripts.** The water's surface is known outside the shader (`Water.h`): its rest
+height is the top of the mesh's world bounds, its extent their XZ, its heights the same waves
+on the same clock (`frame.time.x`, wall-clock seconds since the engine started: the waves keep
+moving in the editor and while a game is paused, and so do the heights scripts read). A
+dynamic Rigidbody with a `buoyancy` above 0 floats in it (physics guide, "Floating in water");
+the material's `buoyancy` (on) and `buoyancyDepth` (0: no bottom) decide per water, the water
+whose bottom is highest wins where they overlap. Lua: `Water.getHeight(scene, x, z)`,
+`Water.getNormal(scene, x, z)` (nil where no water covers the point),
+`Water.isUnderwater(scene, point)`.

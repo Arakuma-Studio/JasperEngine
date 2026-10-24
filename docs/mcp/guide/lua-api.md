@@ -117,7 +117,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
-`MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
+`KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
 
 The wrapper only wraps the entity; it does not check the entity really has that component.
@@ -311,7 +311,7 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
-| `interpolationAlpha` | ro | fixed-step interpolation factor |
+| `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
 | `framerate` | ro | fps |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
@@ -370,6 +370,8 @@ Constants (static properties, integers, no parentheses):
   `KEY_APOSTROPHE`, `KEY_COMMA`, `KEY_MINUS`, `KEY_PERIOD`, `KEY_SLASH`, `KEY_SEMICOLON`,
   `KEY_EQUAL`, `KEY_LEFT_BRACKET`, `KEY_BACKSLASH`, `KEY_RIGHT_BRACKET`, `KEY_GRAVE_ACCENT`,
   `KEY_WORLD_1`, `KEY_WORLD_2`, `KEY_UNKNOWN`, `KEY_LAST`.
+  On Android the system Back button or gesture arrives as a `KEY_ESCAPE` press (released on
+  the next frame); volume and other device keys stay with the system.
 - Mouse: `Input.MOUSE_BUTTON_LEFT`, `MOUSE_BUTTON_RIGHT`, `MOUSE_BUTTON_MIDDLE`,
   `MOUSE_BUTTON_1` .. `MOUSE_BUTTON_8`, `MOUSE_BUTTON_LAST`.
 - Modifiers: `Input.MODIFIER_SHIFT`, `MODIFIER_CONTROL`, `MODIFIER_ALT`, `MODIFIER_SUPER`,
@@ -408,7 +410,9 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()`,
+`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
+export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
+`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
@@ -490,11 +494,12 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
+| `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `pointsToMeterScale2D` (rw), event objects (section 1.3),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
@@ -521,6 +526,33 @@ Entities are plain integers (`0` = none).
 local hit = Physics2D.raycast(self.scene, Vector2(x, y), Vector2(0, -1), 100)
 if hit.hit then local e = hit.body end
 ```
+
+### 2.10.1 Water (static)
+
+The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
+resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
+follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
+seconds since the engine started, wall-clock, running in the editor and while the game is
+paused or time-scaled), so a script and the screen agree. Where waters overlap the one whose
+bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
+looks through the scene's meshes: for many points a frame, keep the results.
+
+| Name | Notes |
+|---|---|
+| `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
+| `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
+| `Water.getTime()` | the shader library's clock, seconds |
+
+```lua
+local y = Water.getHeight(self.scene, pos.x, pos.z)
+if y and pos.y < y then -- swimming
+end
+```
+
+Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14). The
+`library:underwater` post-process pass switches itself on under a surface (shaders guide,
+"Water").
 
 ### 2.11 Angle (static)
 
@@ -602,8 +634,8 @@ EntityHandle
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
  |- AudioSource, Rigidbody2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
-             ParticleSystem, SpriteAnimation, Animation, MorphTracks, LatticeTracks,
-             RotateTracks, ScaleTracks, TranslateTracks
+             ParticleSystem, SpriteAnimation, Animation,
+             KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
 Joint2D, Joint3D (standalone classes)
 ```
 
@@ -721,7 +753,8 @@ against its own shader; e.g.
 
 ### 4.4 Primitive (Mesh)
 
-`createPlane(w, d [, tiles])`, `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
+`createPlane(w, d [, tiles])`, `createGrid(w, d, segments [, tiles])` (the plane as segments x
+segments quads, 1..255, for `library:water` WAVES), `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
 `createSphere(r)` / `createSphere(r, slices, stacks)`, `createCylinder(r, h)` /
 `(baseR, topR, h)` / `(r, h, slices, stacks)` / `(baseR, topR, h, slices, stacks)`,
 `createCapsule(...)` (same overload shapes as cylinder), `createTorus(r, ringR [, sides, rings])`.
@@ -763,6 +796,10 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `findAnimation(name)`, `playAnimation(indexOrName [, fadeTime])`, `stopAnimations()`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
 `resetToBindPose()`, `enabled` (rw).
+
+`loadModel` / `loadGLTF` also take an `.fbx` path: it loads the glTF the editor converted the FBX
+into (`.jasperengine/imported/<path>.fbx.glb` in the editor, `<path>.fbx.glb` next to it in an
+exported game, which ships only that). Every FBX of the assets is converted before Play and export.
 
 ### 4.9 Camera (GameObject) - partial
 
@@ -877,6 +914,7 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `type` | rw `BodyType.*` | |
 | `motionQuality` | rw | `RigidbodyMotionQuality.DISCRETE` / `LINEAR_CAST` |
 | `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | |
+| `buoyancy`, `waterDrag`, `waterAngularDrag` | rw numbers | floating in a `library:water` (2.10.1): Jolt's buoyancy at the centre of mass each fixed step of a dynamic body, 1 neutral, more floats, less sinks, 0 (default) ignores water; drags default 0.5 and 0.01 |
 | `applyForce(f)`, `applyForce(f, point)` | method | f in Vector3; single-arg = at center (no `applyForceToCenter` in 3D) |
 | `applyImpulse(i)`, `applyImpulse(i, point)`, `applyTorque(t)`, `applyAngularImpulse(a)` | methods | |
 | `activate()`, `deactivate()` | methods | |
@@ -894,17 +932,21 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 
 ### 4.15 Actions and Tweens
 
-Action (EntityHandle): `start()`, `pause()`, `stop()`, `isRunning()`, `isPaused()`,
+Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a running or paused
+action and starts it from the beginning, in the same update), `isRunning()`, `isPaused()`,
 `isStopped()`, `getTimeCount()`, `getActionComponent()`; rw `target` (Entity),
-`ownedTarget`, `speed`, `weight`; `setTarget(gameObjectOrEntity)`.
+`ownedTarget`, `speed` (scales the action's own time: 2 plays twice as fast, a negative speed
+plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntity)`.
+`stop()` also cancels a `start()` asked for earlier in the same frame.
 
-Tween (Action): rw `duration`, `loop`; `setFunctionType(EaseType.*)`, `getTime()`,
-`getValue()`, `getTweenComponent()`.
+Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
+duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
 |---|---|
 | `PositionTween` | `(startV3, endV3, duration, loop)` |
-| `RotationTween` | `(startQuat, endQuat, duration, loop)` |
+| `RotationTween` | `(startQuat, endQuat, duration, loop)`; `setSpinAction(startQuat, axisV3, angle, duration, loop)` turns by `angle` (any size, so full turns) around `axis` |
 | `ScaleTween` | `(startV3, endV3, duration, loop)` |
 | `ColorTween` | `(startV3, endV3, duration, loop)` or `(startV4, endV4, duration, loop)` |
 | `AlphaTween` | `(startAlpha, endAlpha, duration, loop)` |
@@ -920,10 +962,15 @@ tw:start()
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
 `getActionFrame(i)` (partial). Keyframe tracks: `TranslateTracks`, `RotateTracks`,
-`ScaleTracks`, `MorphTracks` with `setTimes`, `setValues`, `setEasings`, `setEasing`.
-`LatticeTracks(scene, times, points, values)` keys lattice offsets: `points` are flat indices
-(`i + rx*(j + ry*k)`), `values[key][n]` the offset of `points[n]`; also `setPoints`. Its target
-needs a LatticeComponent; points it does not animate keep their offsets.
+`ScaleTracks`, `MorphTracks` (all `KeyframeTracks`) with `setTimes`, `setValues`, `setEasings`,
+`setEasing`; rw `loop` (starts over after the last key) and `relative` (position, rotation
+and scale tracks: values are offsets from the target's pose when the track starts: position
+plus value, rotation times value, scale times value; an anchored UI element moves by its
+RectTransform position offset).
+`LatticeTracks(scene, times, points, values)` (a `KeyframeTracks` too) keys lattice offsets:
+`points` are flat indices (`i + rx*(j + ry*k)`), `values[key][n]` the offset of `points[n]`;
+also `setPoints`. Its target needs a LatticeComponent; points it does not animate keep their
+offsets (`relative` does not apply to it).
 
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).
@@ -955,7 +1002,9 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`.
-- `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
+- `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
+  images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
+  `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after

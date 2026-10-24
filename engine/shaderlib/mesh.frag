@@ -372,7 +372,12 @@ void main() {
 
                     float shadow = 1.0;
                     #ifdef USE_SHADOWS
-                        shadow = lightShadow(i, v_position, n);
+                        // a surface facing away from the light (n is the shading normal, flipped
+                        // on a double-sided back face) only needs it for foliage transmission:
+                        // its direct terms below are scaled by NdotL = 0
+                        if (NdotL > 0.0 || pbrParams.foliageTransmission > 0.0){
+                            shadow = lightShadow(i, v_position, n);
+                        }
                     #endif
 
                     if (pbrParams.foliageTransmission > 0.0) {

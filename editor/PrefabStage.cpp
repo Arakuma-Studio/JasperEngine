@@ -726,7 +726,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
             return (!guid.empty() && info.guid == guid) || info.prefabPath.lexically_normal() == path.lexically_normal();
         });
         if (uses) {
-            generator.clearSceneSource(other.name, getProjectInternalPath());
+            generator.clearSceneSource(other.id, other.name, getProjectInternalPath());
             invalidated = true;
         }
     }

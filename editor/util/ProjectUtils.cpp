@@ -2247,6 +2247,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");
+    if (signature.test(scene->getComponentId<KeyframeTracksComponent>())) return handleClass("KeyframeTracks");
     if (signature.test(scene->getComponentId<ParticleSystemComponent>()))   return handleClass("ParticleSystem");
     if (signature.test(scene->getComponentId<ActionComponent>()))      return handleClass("Action");
     if (signature.test(scene->getComponentId<Transform>()))            return objectClass("GameObject");

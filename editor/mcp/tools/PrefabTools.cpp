@@ -32,6 +32,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -66,8 +67,9 @@ std::string componentName(ComponentType type) {
     return lower(Catalog::getComponentName(type, true));
 }
 
+// Paths for the agent: UTF-8 (generic_string() is the ANSI code page on Windows)
 std::string generic(const fs::path& path) {
-    return path.generic_string();
+    return FileUtils::pathToGenericUtf8(path);
 }
 
 const char* kindName(Kind kind) {
@@ -226,7 +228,7 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
         error = "A project-relative .prefab path is required.";
         return false;
     }
-    fs::path rel = fs::path(text).lexically_normal();
+    fs::path rel = FileUtils::pathFromUtf8(text).lexically_normal();
     if (!mustExist && rel.extension() != ".prefab") rel += ".prefab";
     fs::path absolute;
     if (!McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) return false;
@@ -270,7 +272,7 @@ fs::path rootPrefabPath(Project* project, SceneProject* scene, Entity entity) {
 
 // The Inspector's labels for apply targets (InspectorPrefabBar.cpp applyTargetLabel)
 std::string applyTargetLabel(Project* project, const std::vector<fs::path>& targets, size_t t, uint32_t sceneId) {
-    const std::string name = "'" + targets[t].stem().string() + "'";
+    const std::string name = "'" + FileUtils::pathToUtf8(targets[t].stem()) + "'";
     const bool variant = !project->getPrefabFileBase(targets[t]).empty();
     if (t > 0) return (variant ? "Apply as Override in Prefab Variant " : "Apply as Override in Prefab ") + name;
     std::vector<fs::path> over(targets.begin() + 1, targets.end());
@@ -683,7 +685,7 @@ void createPrefabTool(const CallPtr& call) {
                    "(each root becomes <directory>/<name>.prefab).");
         return;
     }
-    fs::path dir = fs::path(args.value("directory", std::string("prefabs"))).lexically_normal();
+    fs::path dir = FileUtils::pathFromUtf8(args.value("directory", std::string("prefabs"))).lexically_normal();
     if (pathArg.empty()) {
         fs::path absolute;
         std::string error;
@@ -1277,7 +1279,7 @@ bool parseSelector(const CallPtr& call, Project* project, SceneProject* scene, c
         out.registryEntity = item["registry_entity"].get<Entity>();
     }
     const std::string prefab = item.value("prefab", std::string());
-    if (!prefab.empty()) out.prefab = fs::path(prefab).lexically_normal();
+    if (!prefab.empty()) out.prefab = FileUtils::pathFromUtf8(prefab).lexically_normal();
     if (!out.hasKind && out.entity == NULL_ENTITY && out.name.empty() && out.registryEntity == NULL_ENTITY) {
         error = "an override selector needs at least entity (or, for removed GameObjects, kind \"removed_gameobject\" with name or registry_entity).";
         return false;

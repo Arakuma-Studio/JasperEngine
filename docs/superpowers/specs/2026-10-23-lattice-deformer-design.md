@@ -1896,6 +1896,12 @@ prop at the squashed top, refusals); rest/pose keys and their errors; the play h
   lattice moved to MESH bit 32, DEPTH bit 15 and GBUFFER bits 11-13 (`Ltc`, `Vc3`, `Vc4`);
   the bit numbers in §12.3 and the reviews above are the branch's. The property functions take
   `stochasticTiling` then `lattice`. Editor shader cache v37.
+- Joining main after the upstream catch-up: `LatticeTracks` derives from the new `KeyframeTracks`
+  (times, easings and `loop` from the base; `relative` is refused for lattice tracks like
+  morph tracks, `edit_animation` says so), the end-of-clip sampling (§12.5) runs before a
+  non-looping clip stops in the reworked `animationUpdate`, `EntityCreationType` and
+  `TextureShaderType` carry both sides' additions (WATER, PROBESOURCE), editor shader cache v38.
+  The tool definitions measure 105466 characters against main's raised limit of 105467.
 - Unit test `BendAndTwistUseTheCageProportions` for the agent-UX pass's preset change.
 - Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj`): the new engine sources,
   in a `lattice` group and next to their siblings (the editor has no Xcode project).

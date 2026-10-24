@@ -52,6 +52,9 @@ namespace jasperengine::editor {
 
         static void apply();
         static void applyDpiScale(float dpiScale);
+        // Editor scale on top of the monitor DPI (Editor Settings > UI Scale)
+        static void setUiScale(float uiScale);
+        static float uiScale();
 
         // Unity darkens the editor while in play mode. Call every frame with the
         // play state; it only rewrites the style when the state changes.

@@ -429,6 +429,7 @@ include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/joltphysics)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/stb)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/harfbuzz)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sheenbidi/Headers)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/soloud/include)
@@ -491,8 +492,9 @@ endif()
 
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
+add_subdirectory(libs/ufbx)
 
-foreach(lib IN ITEMS nfd yaml-cpp)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -629,6 +631,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
@@ -731,6 +735,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
+    ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
@@ -805,6 +810,7 @@ function(configure_jasperengine_editor_target target_name)
         jasperengine
         nfd
         yaml-cpp
+        ufbx
     )
 
     if(WIN32)

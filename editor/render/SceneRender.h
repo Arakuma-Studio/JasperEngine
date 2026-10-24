@@ -371,6 +371,8 @@ namespace jasperengine::editor{
         // fitted and centered in a view of width x height
         Rect getGameLayerRect(int width, int height) const;
         bool isTerrainEditing() const;
+        // Gizmo hover highlight or terrain brush, which follow the mouse
+        bool hasHoverFeedback() const;
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen

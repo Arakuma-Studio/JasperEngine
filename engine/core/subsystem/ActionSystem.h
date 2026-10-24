@@ -75,7 +75,9 @@ namespace jasperengine{
 		void clearPoseBlend();
 		void flushPoseBlend();
 
-		void actionStateChange(Entity entity, ActionComponent& action);
+		// Applies the stop, start and pause triggers. Returns the entity's ActionComponent after
+		// their callbacks (which can move it), or nullptr when one removed it or the entity
+		ActionComponent* actionStateChange(Entity entity, ActionComponent& action);
 
 		void actionComponentStart(ActionComponent& action);
 		void actionComponentStop(ActionComponent& action);
@@ -95,7 +97,8 @@ namespace jasperengine{
 		void spriteActionUpdate(double dt, Entity entity, ActionComponent& action, MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);
 
 		void tweenStop(TweenComponent& tween);
-		void tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween);
+		// true when a non-looping tween reached its end
+		bool tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween);
 
 		void positionTweenUpdate(TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform);
 		void rotationTweenUpdate(TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform);
@@ -168,7 +171,8 @@ namespace jasperengine{
 	public:
 		ActionSystem(Scene* scene);
 
-		void actionStart(Entity entity);
+		// newRun false: a restart inside the same run of its animation (keeps a relative track's base)
+		void actionStart(Entity entity, bool newRun = true);
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
 		void particleActionReset(Entity entity);
@@ -179,6 +183,10 @@ namespace jasperengine{
 
 		float getDuration(Entity entity);
 		float getFrameDuration(const ActionFrame& frame);
+		// The pose relative tracks add to, where an anchored UI element moves by its layout offset
+		bool getRelativeTrackPose(Entity target, Vector3& position, Quaternion& rotation, Vector3& scale);
+		// Maps relative translate values from base to the target's parent space
+		Matrix4 getRelativeTrackMatrix(Entity target, const Vector3& base);
 		// True if target is reachable from `from` through action frames (from == target counts),
 		// i.e. adding `from` as an action of target's animation would create a cycle.
 		bool isAnimationReachable(Entity from, Entity target);

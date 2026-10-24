@@ -14,6 +14,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreateTrackKeyCmd.h"
+#include "command/type/AddActionFrameCmd.h"
 
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
@@ -436,6 +437,12 @@ void editor::AnimationWindow::restorePreviewState(Scene* scene) const {
         }
 
         Stream::decodeComponents(state.entity, state.parent, scene, state.components);
+
+        // tracks are left out of the snapshot: a relative one takes its base again from the
+        // restored pose when the preview starts it
+        if (KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
+            keyframe->hasBase = false;
+        }
     }
 }
 
@@ -697,6 +704,37 @@ bool writeLatticeTrackKey(editor::Project* project, editor::SceneProject* sceneP
         }
     }
     return queued;
+}
+
+// The values a key stores for the target's pose. A relative track keys offsets from
+// the pose the target had when the track started, or from this one before it starts.
+struct KeyValues {
+    Vector3 position;
+    Quaternion rotation;
+    Vector3 scale;
+};
+
+KeyValues getKeyValues(Scene* scene, Entity trackEntity, Entity target){
+    Transform& transform = scene->getComponent<Transform>(target);
+    KeyValues values = {transform.position, transform.rotation, transform.scale};
+
+    KeyframeTracksComponent* kf = scene->findComponent<KeyframeTracksComponent>(trackEntity);
+    if (!kf || !kf->relative){
+        return values;
+    }
+    if (!kf->hasBase){
+        return {Vector3(0, 0, 0), Quaternion(), Vector3(1, 1, 1)};
+    }
+
+    // an anchored element's position is its layout offset here, as the base is
+    scene->getSystem<ActionSystem>()->getRelativeTrackPose(target, values.position, values.rotation, values.scale);
+    values.position = values.position - kf->basePosition;
+    values.rotation = kf->baseRotation.inverse() * values.rotation;
+    values.scale = Vector3(
+        kf->baseScale.x != 0 ? values.scale.x / kf->baseScale.x : 1,
+        kf->baseScale.y != 0 ? values.scale.y / kf->baseScale.y : 1,
+        kf->baseScale.z != 0 ? values.scale.z / kf->baseScale.z : 1);
+    return values;
 }
 
 // Where a key goes: keys are stored in the track's local time, so the owning
@@ -972,9 +1010,9 @@ void editor::AnimationWindow::snapshotTracks(Scene* scene, SceneProject* scenePr
         }
         if (channel < 0) continue;
 
-        Transform& transform = scene->getComponent<Transform>(target);
+        KeyValues values = getKeyValues(scene, actionEntity, target);
         pending.push_back({actionEntity, std::max(0.0f, currentTime - frame.startTime), channel,
-                           transform.position, transform.rotation, transform.scale});
+                           values.position, values.rotation, values.scale});
     }
 
     if (pending.empty()){
@@ -1066,15 +1104,16 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
                 queuedKey = writeLatticeTrackKey(project, sceneProject, scene, track.entity, localTime, batch) || queuedKey;
                 continue;
             }
+            KeyValues values = getKeyValues(scene, track.entity, target);
             if (channel == 0){
                 writeTrackKey<TranslateTracksComponent, Vector3>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->position, batch);
+                    tracksType, localTime, values.position, batch);
             }else if (channel == 1){
                 writeTrackKey<RotateTracksComponent, Quaternion>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->rotation, batch);
+                    tracksType, localTime, values.rotation, batch);
             }else{
                 writeTrackKey<ScaleTracksComponent, Vector3>(project, sceneProject, scene, track.entity,
-                    tracksType, localTime, transform->scale, batch);
+                    tracksType, localTime, values.scale, batch);
             }
             queuedKey = true;
             continue;
@@ -1150,16 +1189,17 @@ void editor::AnimationWindow::keyTrackChannel(Scene* scene, SceneProject* sceneP
         return;
     }
 
+    KeyValues values = getKeyValues(scene, trackEntity, action->target);
     auto* batch = new MultiPropertyCmd();
     if (channel == 0 && scene->findComponent<TranslateTracksComponent>(trackEntity)){
         writeTrackKey<TranslateTracksComponent, Vector3>(project, sceneProject, scene, trackEntity,
-            ComponentType::TranslateTracksComponent, localTime, transform->position, batch);
+            ComponentType::TranslateTracksComponent, localTime, values.position, batch);
     }else if (channel == 1 && scene->findComponent<RotateTracksComponent>(trackEntity)){
         writeTrackKey<RotateTracksComponent, Quaternion>(project, sceneProject, scene, trackEntity,
-            ComponentType::RotateTracksComponent, localTime, transform->rotation, batch);
+            ComponentType::RotateTracksComponent, localTime, values.rotation, batch);
     }else if (channel == 2 && scene->findComponent<ScaleTracksComponent>(trackEntity)){
         writeTrackKey<ScaleTracksComponent, Vector3>(project, sceneProject, scene, trackEntity,
-            ComponentType::ScaleTracksComponent, localTime, transform->scale, batch);
+            ComponentType::ScaleTracksComponent, localTime, values.scale, batch);
     }else{
         delete batch;
         return;
@@ -1806,11 +1846,10 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         ImGui::OpenPopup("##add_action_popup");
         addPropertyRequested = false;
     }
+    EntityCreationType selectedType = EntityCreationType::EMPTY;
+    std::string entityName;
+    bool selected = false;
     if (ImGui::BeginPopup("##add_action_popup")) {
-        EntityCreationType selectedType = EntityCreationType::EMPTY;
-        std::string entityName;
-        bool selected = false;
-
         if (ImGui::MenuItem(ICON_FA_PLUS "  Empty Action")) {
             selected = true;
         }
@@ -1881,56 +1920,25 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
             selected = true;
         }
 
-        if (selected) {
-            // If a frame is selected, add to the same track, otherwise track 0
-            uint32_t targetTrack = 0;
-            if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
-                targetTrack = anim.actions[selectedFrameIndex].track;
-            }
-
-            Entity actionEntity = NULL_ENTITY;
-            if (selectedType != EntityCreationType::EMPTY) {
-                Entity target = scene->findComponent<ActionComponent>(selectedEntity)
-                    ? scene->getComponent<ActionComponent>(selectedEntity).target
-                    : NULL_ENTITY;
-                auto* cmd = new CreateEntityCmd(project, selectedSceneId, entityName, selectedType, target);
-                CommandHandle::get(selectedSceneId)->addCommandNoMerge(cmd);
-                actionEntity = cmd->getEntity();
-            }
-
-            // Duration 0 = auto: the frame follows the action's own duration.
-            // Empty frames have no action to resolve, so give a visible default.
-            float newDuration = (actionEntity != NULL_ENTITY) ? 0.0f : 1.0f;
-            ActionFrame newFrame = {0.0f, newDuration, actionEntity, targetTrack};
-
-            // Find non-overlapping track (zero-length frames floored so they still
-            // spread onto free tracks)
-            float newFrameDur = std::max(effectiveFrameDuration(newFrame, scene), 0.01f);
-            bool overlap;
-            do {
-                overlap = false;
-                for (const auto& a : anim.actions) {
-                    if (a.track == newFrame.track) {
-                        float startA = a.startTime;
-                        float endA = a.startTime + std::max(effectiveFrameDuration(a, scene), 0.01f);
-                        float startB = newFrame.startTime;
-                        float endB = newFrame.startTime + newFrameDur;
-                        if (std::max(startA, startB) < std::min(endA, endB)) {
-                            overlap = true;
-                            newFrame.track++;
-                            break;
-                        }
-                    }
-                }
-            } while (overlap);
-
-            anim.actions.push_back(newFrame);
-            selectedFrameIndex = anim.actions.size() - 1;
-        }
-
         ImGui::EndPopup();
     }
     ImGui::EndDisabled();
+
+    // Done last: an Animation action adds an AnimationComponent, which can move anim
+    if (selected) {
+        // If a frame is selected, add to the same track, otherwise track 0
+        uint32_t targetTrack = 0;
+        if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
+            targetTrack = anim.actions[selectedFrameIndex].track;
+        }
+        Entity target = scene->findComponent<ActionComponent>(selectedEntity)
+            ? scene->getComponent<ActionComponent>(selectedEntity).target
+            : NULL_ENTITY;
+
+        selectedFrameIndex = (int)anim.actions.size();
+        CommandHandle::get(sceneProject->id)->addCommandNoMerge(new AddActionFrameCmd(
+            project, sceneProject->id, selectedEntity, target, selectedType, entityName, targetTrack));
+    }
 }
 
 void editor::AnimationWindow::drawTimeRuler(ImVec2 canvasPos, ImVec2 canvasSize, float timeStart, float timeEnd) {
@@ -3005,6 +3013,8 @@ void editor::AnimationWindow::show() {
 
     // Draw toolbar
     drawToolbar(ImGui::GetContentRegionAvail().x, *animComp, scene, sceneProject);
+    // The toolbar can add an AnimationComponent, which can move this one
+    animComp = &scene->getComponent<AnimationComponent>(selectedEntity);
 
     ImGui::Separator();
 

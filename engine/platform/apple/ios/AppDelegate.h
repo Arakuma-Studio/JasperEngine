@@ -3,10 +3,7 @@
 
 #import <UIKit/UIKit.h>
 
+// The window and its life cycle belong to SceneDelegate
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
-@property (strong, nonatomic) UIWindow *window;
-                        
-
 @end
-

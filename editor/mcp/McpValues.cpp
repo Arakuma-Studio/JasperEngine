@@ -31,6 +31,8 @@
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
+#include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -1265,8 +1267,8 @@ Json McpValues::toJson(const Quaternion& value) {
 }
 
 std::string McpValues::assetPathToJson(Project* project, const std::string& stored) {
-    if (stored.empty() || !project) return stored;
-    return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
+    if (stored.empty() || !project) return FileUtils::pathToGenericUtf8(fs::path(stored));
+    return FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->resolveAssetPath(stored)));
 }
 
 bool McpValues::assetPathFromJson(Project* project, const std::string& projectRelative, std::string& stored, std::string& error) {
@@ -1274,14 +1276,15 @@ bool McpValues::assetPathFromJson(Project* project, const std::string& projectRe
         stored.clear();
         return true;
     }
-    if (!isSafeRelative(projectRelative)) {
+    const fs::path relative = FileUtils::pathFromUtf8(projectRelative);
+    if (!isSafeRelative(relative)) {
         error = "\"" + projectRelative + "\" must be a project-relative path (no '..', not absolute).";
         return false;
     }
-    const fs::path full = project->getProjectPath() / projectRelative;
+    const fs::path full = project->getProjectPath() / relative;
     if (!project->isInsideAssetsPath(full)) {
         error = "\"" + projectRelative + "\" must be inside the assets directory (\"" +
-                project->getAssetsDir().generic_string() + "\").";
+                FileUtils::pathToGenericUtf8(project->getAssetsDir()) + "\").";
         return false;
     }
     stored = project->normalizeToAssetsRelative(full).generic_string();
@@ -1374,8 +1377,9 @@ Json McpValues::textureToJson(Project* project, SceneProject* scene, const Textu
         if (!anyOtherFace && !texture.getPath(0).empty()) {
             out["cube"] = assetPathToJson(project, texture.getPath(0));
         } else {
+            // front, back, left, right, up, down: the order a write takes (setCubePaths)
             Json faces = Json::array();
-            for (size_t face = 0; face < 6; face++) faces.push_back(assetPathToJson(project, texture.getPath(face)));
+            for (size_t face : {4, 5, 1, 0, 2, 3}) faces.push_back(assetPathToJson(project, texture.getPath(face)));
             out["cube"] = faces;
         }
     }
@@ -1418,7 +1422,7 @@ bool McpValues::textureFromJson(Project* project, SceneProject* scene, const Jso
     }
     if (!value.is_object()) {
         error = "a texture is null, a project-relative path, {\"path\": ..., \"min_filter\": ...}, "
-                "{\"cube\": [6 paths] or \"path\"} or {\"camera\": <entity>}.";
+                "{\"cube\": [front, back, left, right, up, down] or \"path\"} or {\"camera\": <entity>}.";
         return false;
     }
     static const std::set<std::string> keys = {"path", "cube", "camera", "id", "min_filter", "mag_filter", "wrap_u",
@@ -1520,8 +1524,8 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
     // values when set
     materialShaderLibraryToJson(project, scene, material, out, false);
     if (!linkedFile.empty()) {
-        out["file"] = project ? project->normalizeToProjectRelative(project->getProjectPath() / linkedFile).generic_string()
-                              : linkedFile;
+        out["file"] = project ? FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getProjectPath() / linkedFile))
+                              : FileUtils::pathToGenericUtf8(fs::path(linkedFile));
     }
     return out;
 }
@@ -2089,12 +2093,18 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return new ModelClearCmd(project, sceneId, entity);
                 }
                 if (!Util::isModelFile(stored) || !fs::exists(project->resolveAssetPath(stored))) {
-                    error = "filename must be an existing .gltf, .glb or .obj file in the assets directory.";
+                    error = "filename must be an existing .gltf, .glb, .obj or .fbx file in the assets directory.";
                     return nullptr;
                 }
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // a foliage layer's FBX mesh loads from its import, created here the first time
+            if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
+                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                error = propertyName + ": " + text + " could not be imported (the console has details).";
+                return nullptr;
+            }
             if (isShaderPathProperty(propertyName)) {
                 // an engine library shader of the component's type, or a fork whose files exist
                 std::string why;

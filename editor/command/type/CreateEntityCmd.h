@@ -69,6 +69,7 @@ namespace jasperengine::editor{
         TERRAIN,
         REFLECTION_PROBE,
         UI_DOCUMENT,
+        WATER,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE
@@ -94,6 +95,8 @@ namespace jasperengine::editor{
         bool quiet = false;
         bool wasModified;
         bool wasMainCamera;
+        // WATER: the library:underwater pass it added to the scene's post-processing (-1: none)
+        int addedUnderwaterPass = -1;
 
         // Component type -> property name -> property setter function
         std::unordered_map<ComponentType, std::unordered_map<std::string, std::function<void(Entity)>>> propertySetters;

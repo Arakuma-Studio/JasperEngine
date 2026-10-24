@@ -480,6 +480,14 @@ void Scene::setGravity3D(float x, float y, float z){
     getSystem<PhysicsSystem>()->setGravity3D(x, y, z);
 }
 
+void Scene::setPhysicsInterpolation(bool interpolation){
+    getSystem<PhysicsSystem>()->setInterpolation(interpolation);
+}
+
+bool Scene::isPhysicsInterpolation() const{
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
+}
+
 void Scene::setDefaultMeshShader(const std::string& path){
     if (settings.defaultMeshShader != path){
         settings.defaultMeshShader = path;

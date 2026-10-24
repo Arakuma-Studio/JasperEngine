@@ -18,6 +18,7 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 
@@ -242,10 +243,14 @@ void undoRedo(const CallPtr& call, bool undo) {
     }
 
     int done = 0;
+    bool refused = false;
     for (; done < steps; done++) {
         if (undo ? !history->canUndo() : !history->canRedo()) break;
-        if (undo) history->undo();
-        else history->redo();
+        // the command itself can refuse (it would make a child scene cycle)
+        if (!(undo ? history->undo() : history->redo())) {
+            refused = true;
+            break;
+        }
     }
     if (scope == "project" && call->ctx().projectWindow()) {
         call->ctx().projectWindow()->refreshCurrentDirectory();
@@ -253,11 +258,15 @@ void undoRedo(const CallPtr& call, bool undo) {
     data["steps"] = done;
     data["can_undo"] = history->canUndo();
     data["can_redo"] = history->canRedo();
+    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") +
+        " now: it would make a child scene cycle (read_console has the scenes).";
+    if (refused) data["refused"] = true;
     if (done == 0) {
-        call->fail(std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
+        call->fail(refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
         return;
     }
-    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history.", data);
+    call->ok(std::string(undo ? "Undid " : "Redid ") + std::to_string(done) + " step(s) in the " + scope + " history." +
+             (refused ? " Stopped there: " + refusal : std::string()), data);
 }
 
 // ------------------------------------------------------------------ editor_status
@@ -305,7 +314,7 @@ void editorStatusTool(const CallPtr& call) {
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
         {"project", {
             {"name", project->getName()},
-            {"path", project->getProjectPath().generic_string()},
+            {"path", FileUtils::pathToGenericUtf8(project->getProjectPath())},
             {"temporary", project->isTempProject()},
             {"selected_scene_id", project->getSelectedSceneId()},
             {"start_scene_id", project->getStartSceneId()}
@@ -329,7 +338,7 @@ void editorStatusTool(const CallPtr& call) {
         }}
     };
 
-    std::string text = "Project \"" + project->getName() + "\" at " + project->getProjectPath().generic_string() +
+    std::string text = "Project \"" + project->getName() + "\" at " + FileUtils::pathToGenericUtf8(project->getProjectPath()) +
                        (project->isTempProject() ? " (temporary, never saved)" : "") + ". " +
                        std::to_string(scenes.size()) + " scene(s)";
     if (selected) text += ", selected: " + std::to_string(selected->id) + " \"" + selected->name + "\"";

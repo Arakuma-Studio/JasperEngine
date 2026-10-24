@@ -298,7 +298,8 @@ public:
     void commit() { history->groupSince(start); }
     // Undoes what this step added (a failed call leaves the scene as it was)
     void rollback() {
-        while (history->position() > start && history->canUndo()) history->undo();
+        // a refused undo leaves the position, so it ends the loop too
+        while (history->position() > start && history->canUndo() && history->undo()) {}
     }
     // Rolls back and fails the call; when something had been applied, the error says it is
     // all gone (it may name a GameObject the call made)
@@ -498,6 +499,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"local_bounds", {{"min", {-half, -half}}, {"max", {half, half}}}},
         {"height_map", McpValues::assetPathToJson(project, terrain.heightMap.getPath())},
         {"height_map_loaded", terrain.heightMap.hasData()},
+        // false until the editor has rebuilt the mesh (and collision) from the current height map
+        {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
         {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage}
     };
 }
@@ -638,11 +641,13 @@ void setTerrainMapsTool(const CallPtr& call) {
             SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
             TerrainComponent* t = sp && sp->scene ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
             if (!t) return;
+            // Only ever raised: the blend map / layers callback runs after the height one in a
+            // call that sets both, and must not clear the mesh / collision rebuild it asked for
             if (height) {
                 t->heightMapLoaded = false;
                 t->heightMap.invalidateRender();
+                t->needUpdateTerrain = true;
             }
-            t->needUpdateTerrain = height;
             t->needUpdateTexture = true;
         };
     };
@@ -2933,10 +2938,18 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         for (const auto& c : channels()) {
             if (kind == std::string(c.first) + "_track") item["keys"] = keysJson(scene, frame.action, c.second, keyLimit);
         }
+        if (KeyframeTracksComponent* kf = scene->findComponent<KeyframeTracksComponent>(frame.action)) {
+            item["loop"] = kf->loop;
+            item["relative"] = kf->relative;
+        }
         if (TweenComponent* tween = scene->findComponent<TweenComponent>(frame.action)) {
-            Json t = {{"duration", tween->duration}, {"loop", tween->loop}, {"ease", easeName(tween->function.getType())}};
+            Json t = {{"duration", tween->duration}, {"loop", tween->loop}, {"ping_pong", tween->pingPong}, {"ease", easeName(tween->function.getType())}};
             if (auto* p = scene->findComponent<PositionTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startPosition); t["to"] = McpValues::toJson(p->endPosition); }
-            if (auto* p = scene->findComponent<RotationTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startRotation); t["to"] = McpValues::toJson(p->endRotation); }
+            if (auto* p = scene->findComponent<RotationTweenComponent>(frame.action)) {
+                t["from"] = McpValues::toJson(p->startRotation);
+                if (p->spin) { t["spin"] = true; t["axis"] = McpValues::toJson(p->axis); t["angle"] = p->angle; }
+                else t["to"] = McpValues::toJson(p->endRotation);
+            }
             if (auto* p = scene->findComponent<ScaleTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startScale); t["to"] = McpValues::toJson(p->endScale); }
             if (auto* p = scene->findComponent<ColorTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startColor); t["to"] = McpValues::toJson(p->endColor); }
             if (auto* p = scene->findComponent<AlphaTweenComponent>(frame.action)) { t["from"] = p->startAlpha; t["to"] = p->endAlpha; }
@@ -3086,6 +3099,7 @@ void editAnimationTool(const CallPtr& call) {
             if (channel != Channel::Morph && !scene->findComponent<Transform>(trackTarget)) { failWith(where + ": the target has no Transform to animate."); return; }
             std::vector<Key> keys;
             if (!parseKeys(channel, has(item, "keys") ? item["keys"] : Json(), keys, error, lattice)) { failWith(where + "." + error); return; }
+            if ((channel == Channel::Morph || channel == Channel::Lattice) && boolOr(item, "relative", false)) { failWith(where + ".relative: only position, rotation and scale tracks can be relative."); return; }
 
             size_t frameIndex = 0;
             Entity track = findTrack(scene, kept, trackTarget, channel, frameIndex);
@@ -3097,6 +3111,7 @@ void editAnimationTool(const CallPtr& call) {
             }
             if (track != NULL_ENTITY && channel == Channel::Lattice) {
                 addLatticeTrackWrites(*edits, target, track, latticeTrackData(scene, track, keys, *lattice, merge));
+                if (has(item, "loop")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
                 if (has(item, "start_time")) kept[frameIndex].startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
                 tracksWritten++;
             } else if (track != NULL_ENTITY) {
@@ -3112,6 +3127,8 @@ void editAnimationTool(const CallPtr& call) {
                     keys = merged;
                 }
                 addTrackWrites(*edits, target, track, channel, keys);
+                if (has(item, "loop")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
+                if (has(item, "relative")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "relative", boolOr(item, "relative", false));
                 if (has(item, "start_time")) kept[frameIndex].startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
                 tracksWritten++;
             } else {
@@ -3120,6 +3137,8 @@ void editAnimationTool(const CallPtr& call) {
                                                    trackCreationType(channel), trackTarget);
                 if (channel == Channel::Lattice) seedLatticeTrack(*create, latticeTrackData(scene, NULL_ENTITY, keys, *lattice, false));
                 else seedTrack(*create, channel, keys);
+                create->addProperty<bool>(ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
+                create->addProperty<bool>(ComponentType::KeyframeTracksComponent, "relative", boolOr(item, "relative", false));
                 if (!step.add(create)) { failWith(where + ": could not create the track."); return; }
                 ActionFrame frame;
                 frame.startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
@@ -3147,7 +3166,9 @@ void editAnimationTool(const CallPtr& call) {
             Entity tweenTarget = animTarget;
             if (has(item, "target") && (tweenTarget = resolveRef(target.scene, item["target"], error)) == NULL_ENTITY) { failWith(where + ".target: " + error); return; }
             if (tweenTarget == NULL_ENTITY) { failWith(where + ": no target GameObject (pass target)."); return; }
-            if (!has(item, "to")) { failWith(where + ": to is required (and from, defaulting to the target's current value)."); return; }
+            const bool spin = typeName == "rotation" && boolOr(item, "spin", false);
+            if (has(item, "spin") && typeName != "rotation") { failWith(where + ".spin: only a rotation tween spins."); return; }
+            if (!spin && !has(item, "to")) { failWith(where + ": to is required (and from, defaulting to the target's current value)."); return; }
             const float duration = numberOr(item, "duration", 1.0f);
             if (duration <= 0.0f) { failWith(where + ".duration must be > 0 seconds."); return; }
             EaseType ease = EaseType::LINEAR;
@@ -3158,6 +3179,7 @@ void editAnimationTool(const CallPtr& call) {
             std::unique_ptr<CreateEntityCmd> guard(create);
             create->addProperty<float>(ComponentType::TweenComponent, "duration", duration);
             create->addProperty<bool>(ComponentType::TweenComponent, "loop", boolOr(item, "loop", false));
+            create->addProperty<bool>(ComponentType::TweenComponent, "pingPong", boolOr(item, "ping_pong", false));
             create->addProperty<Ease>(ComponentType::TweenComponent, "function", Ease(ease));
             Transform* tf = scene->findComponent<Transform>(tweenTarget);
             bool ok = true;
@@ -3167,6 +3189,17 @@ void editAnimationTool(const CallPtr& call) {
                 const ComponentType comp = typeName == "position" ? ComponentType::PositionTweenComponent : ComponentType::ScaleTweenComponent;
                 create->addProperty<Vector3>(comp, typeName == "position" ? "startPosition" : "startScale", from);
                 create->addProperty<Vector3>(comp, typeName == "position" ? "endPosition" : "endScale", to);
+            } else if (typeName == "rotation" && spin) {
+                // turns from by angle degrees around axis: full turns, which a tween to an end rotation cannot
+                Quaternion from = tf ? tf->rotation : Quaternion();
+                Vector3 axis(0.0f, 1.0f, 0.0f);
+                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) &&
+                     (!has(item, "axis") || McpValues::parseVector3(item["axis"], axis)) && axis.length() > 0.0f &&
+                     (!has(item, "angle") || item["angle"].is_number());
+                create->addProperty<Quaternion>(ComponentType::RotationTweenComponent, "startRotation", from);
+                create->addProperty<bool>(ComponentType::RotationTweenComponent, "spin", true);
+                create->addProperty<Vector3>(ComponentType::RotationTweenComponent, "axis", axis);
+                create->addProperty<float>(ComponentType::RotationTweenComponent, "angle", numberOr(item, "angle", 360.0f));
             } else if (typeName == "rotation") {
                 Quaternion from = tf ? tf->rotation : Quaternion(), to;
                 ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) && McpValues::parseQuaternion(item["to"], to);
@@ -3185,7 +3218,7 @@ void editAnimationTool(const CallPtr& call) {
                     create->addProperty<float>(ComponentType::AlphaTweenComponent, "endAlpha", item["to"].get<float>());
                 }
             }
-            if (!ok) { failWith(where + ": from / to don't fit a " + typeName + " tween (vectors [x,y,z], rotations [x,y,z,w] or {\"euler\": [...]}, colors [r,g,b], alpha numbers)."); return; }
+            if (!ok) { failWith(where + ": from / to don't fit a " + typeName + " tween (vectors [x,y,z], rotations [x,y,z,w] or {\"euler\": [...]}, colors [r,g,b], alpha numbers; a spin's axis a non-zero [x,y,z] and angle degrees)."); return; }
             if (!step.add(guard.release())) { failWith(where + ": could not create the tween."); return; }
             ActionFrame frame;
             frame.startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
@@ -4182,7 +4215,7 @@ void setModelTool(const CallPtr& call) {
     std::string error;
     const bool clear = boolOr(args, "clear", false);
     if (!clear && !has(args, "path")) {
-        call->fail("Pass path (a .gltf / .glb / .obj inside the assets directory) to load, or clear: true to clear the model.");
+        call->fail("Pass path (a .gltf / .glb / .obj / .fbx inside the assets directory) to load, or clear: true to clear the model.");
         return;
     }
     std::string stored;
@@ -4222,7 +4255,7 @@ void setModelTool(const CallPtr& call) {
         ? new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored, boolOr(args, "merge_static_meshes", false))
         : new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored);
     if (!step.add(load)) {
-        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ file (the console has details).");
+        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ/FBX file (the console has details).");
         return;
     }
     step.commit();
@@ -4654,10 +4687,11 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- animation
     add("edit_animation", "Edit Animation",
         "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
-        "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys), "
-        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]], \"current\" = "
-        "editor keying, \"rest\" or a pose name); ease to the next key: linear, step, "
-        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
+        "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys, "
+        "or a spin tween), morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]], "
+        "\"current\" = editor keying, \"rest\" or a pose name); ease to the next key: linear, step, "
+        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges; "
+        "relative: offsets from the target's pose when the track starts (anchored UI moves by its offset). "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
         "pre-call indices.",
         object({
@@ -4671,15 +4705,20 @@ void registerWorldTools(McpRegistry& registry) {
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+                {"loop", boolean("Starts over after the last key.")},
+                {"relative", boolean("Not morph.")},
                 {"name", string("")}
             }, {"channel", "keys"}), "")},
             {"tweens", array(object({
                 {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
                 {"from", any("")}, {"to", any("")},
                 {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
+                {"ping_pong", boolean("There and back, in twice the duration.")},
+                {"spin", boolean("rotation: turns from by angle around axis instead of reaching to.")},
+                {"axis", any("spin: default [0, 1, 0].")}, {"angle", number("spin: degrees, default 360.")},
                 {"start_time", number("")}, {"target", entityRef("Default: target.")},
                 {"name", string("")}
-            }, {"type", "to"}), "")},
+            }, {"type"}), "")},
             {"add_actions", array(object({{"action", entityRef()}, {"start_time", number("")},
                                           {"duration", number("0 = own.")}, {"lane", integer("")}}, {"action"}), "")},
             {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
@@ -4793,8 +4832,9 @@ void registerWorldTools(McpRegistry& registry) {
         getModelInfoTool, true, true);
 
     add("set_model", "Load / Clear Model",
-        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it; create instead of entity "
-        "makes one. Waits for the load; returns get_model_info's summary.",
+        "Load a .gltf/.glb/.obj/.fbx into a Model GameObject (replacing it), or clear it; create instead of entity "
+        "makes one; an .fbx loads through its glTF conversion, redone when it changes. Waits for the load; returns "
+        "get_model_info's summary.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

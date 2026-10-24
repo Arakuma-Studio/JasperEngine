@@ -585,6 +585,8 @@ TEST(StochasticTilingBuildKeys, ReflectionProbeDerivesTheLitVariant) {
     sceneProject.entities = {entity, probe, light};
     std::set<ShaderKey> keys;
     project.collectSceneShaderKeys(&sceneProject, keys);
+    // the probe's runtime capture is prefiltered into roughness mips (probe_filter.frag)
+    EXPECT_EQ(keys.count(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0)), 1u);
 
     // what loadMesh picks with the probe and the light
     MeshShaderEnvironment environment = scene.getSystem<RenderSystem>()->getMeshShaderEnvironment();

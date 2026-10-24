@@ -23,6 +23,11 @@ namespace {
     bool featuresQueried = false;
 }
 
+// release builds of sokol carry no message, the log item's name still says what failed
+#define _SG_LOGITEM_XMACRO(item, msg) #item,
+static const char* sokolLogItems[] = { _SG_LOG_ITEMS };
+#undef _SG_LOGITEM_XMACRO
+
 void sokol_log(const char* tag,                // e.g. 'sg'
                     uint32_t log_level,             // 0=panic, 1=error, 2=warn, 3=info
                     uint32_t log_item_id,           // SG_LOGITEM_*
@@ -39,9 +44,13 @@ void sokol_log(const char* tag,                // e.g. 'sg'
         return;
     }
     // release builds of sokol carry no message: name the log item and its line instead
-    char unnamed[96];
+    char unnamed[160];
     if (!message_or_null){
-        snprintf(unnamed, sizeof(unnamed), "sokol %s log item %u (line %u)", tag ? tag : "", log_item_id, line_nr);
+        if (log_item_id < sizeof(sokolLogItems) / sizeof(sokolLogItems[0])){
+            snprintf(unnamed, sizeof(unnamed), "sokol %s %s (line %u)", tag ? tag : "", sokolLogItems[log_item_id], line_nr);
+        }else{
+            snprintf(unnamed, sizeof(unnamed), "sokol %s log item %u (line %u)", tag ? tag : "", log_item_id, line_nr);
+        }
         message_or_null = unnamed;
     }
     if (log_level == 0){

@@ -189,6 +189,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshSystem>("MeshSystem")
         .addFunction("createPlane", &MeshSystem::createPlane)
+        .addFunction("createGrid", &MeshSystem::createGrid)
         .addFunction("createBox", &MeshSystem::createBox)
         .addFunction("createSphere", &MeshSystem::createSphere)
         .addFunction("createCylinder", &MeshSystem::createCylinder)
@@ -215,6 +216,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("setGravity3D",
             luabridge::overload<Vector3>(&PhysicsSystem::setGravity3D),
             luabridge::overload<float, float, float>(&PhysicsSystem::setGravity3D))
+        .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
         .addProperty("beginContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginContact2D = L; })
@@ -350,6 +352,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("value", &TweenComponent::value)
         .addProperty("duration", &TweenComponent::duration, &TweenComponent::duration)
         .addProperty("loop", &TweenComponent::loop, &TweenComponent::loop)
+        .addProperty("pingPong", &TweenComponent::pingPong, &TweenComponent::pingPong)
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
         .endClass();
     
