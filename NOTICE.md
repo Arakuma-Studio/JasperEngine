@@ -62,3 +62,9 @@ Texture synthesis of the editor (editor-only: never part of an exported game):
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [texture-synthesis](https://github.com/EmbarkStudios/texture-synthesis) by Embark Studios (`lib/src`, ported to C++) | 0.8.2 (`22825ec4ad25`) | `editor/texsynth/` (`editor/texsynth/LICENSE-texture-synthesis.txt`) | MIT OR Apache-2.0 (used under MIT) | `jasperengine-editor synthesize-texture`: new, tileable, inpainted and guided textures from examples |
+
+Convex decomposition of Physics Placement (edit-time placement in the Scene view and for agents):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [V-HACD](https://github.com/kmammou/v-hacd) by Khaled Mamou (version 4 by John W. Ratcliff) | 4.1.0 (`master` at `f900e4236149`, the single header `include/VHACD.h`) | `engine/libs/vhacd/` (`LICENSE`, `README.jasper.md`; three local fixes for its multithreaded mode, `jasper.patch`) | BSD-3-Clause | splitting concave meshes into convex hulls (`engine/core/physics/ConvexDecomposition`), the editor on desktop only, never exported games (`JASPERENGINE_CONVEX_DECOMPOSITION`) |

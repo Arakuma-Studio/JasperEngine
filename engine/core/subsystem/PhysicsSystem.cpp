@@ -3,6 +3,7 @@
 
 #include "PhysicsSystem.h"
 #include "Scene.h"
+#include "physics/JoltShapeBuilder.h"
 #include "subsystem/RenderSystem.h"
 #include "util/Angle.h"
 
@@ -15,9 +16,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <map>
-#include <set>
-#include <tuple>
 
 
 using namespace jasperengine;
@@ -28,8 +26,7 @@ namespace {
     // RenderSystem::updateTransform. Identity when there is no Transform, matching an
     // unscaled body.
     Vector3 entityWorldScale(Scene* scene, Entity entity){
-        Transform* transform = scene->findComponent<Transform>(entity);
-        return transform ? transform->worldScale : Vector3::UNIT_SCALE;
+        return JoltShapeBuilder::entityWorldScale(scene, entity);
     }
 
     Vector2 entityWorldScale2D(Scene* scene, Entity entity){
@@ -53,146 +50,6 @@ namespace {
         if (transform && transform->needUpdate){
             resolveWorldTransform(scene, *transform, entity);
         }
-    }
-
-#ifdef JASPERENGINE_PHYSICS_3D
-    // Jolt's global allocator/factory/type registration is process-wide; run once
-    // (the old per-constructor path re-created and leaked a Factory per scene).
-    void ensureJoltGlobalInit(){
-        static const bool done = [](){
-            JPH::RegisterDefaultAllocator();
-            JPH::Factory::sInstance = new JPH::Factory();
-            JPH::RegisterTypes();
-            return true;
-        }();
-        (void)done;
-    }
-
-    // One temp allocator + job pool shared by every scene's 3D world. Updates run
-    // sequentially on the main thread, so a single pool avoids a per-scene thread pool
-    // and 10 MiB buffer.
-    // Intentionally leaked, like Jolt's Factory: the editor keeps its App (and every
-    // Scene) in a static, so ~PhysicsSystem runs during static destruction and must not
-    // find these already gone.
-    JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
-        static JPH::TempAllocatorImpl* instance = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
-        return *instance;
-    }
-    JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
-        // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
-        // instead of subtracting into a huge worker count on a single-core machine.
-        const unsigned int cores = JPH::thread::hardware_concurrency();
-        const int workers = (cores > 1) ? (int)(cores - 1) : 1;
-        static JPH::JobSystemThreadPool* instance =
-            new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
-        return *instance;
-    }
-#endif
-
-    // POSITION/INDEX buffers one submesh reads: component-level first, overridden by
-    // any per-submesh attribute.
-    struct MeshSourceView{
-        Buffer* vertexBuffer = NULL;
-        Attribute vertexAttr;
-        Buffer* indexBuffer = NULL;
-        Attribute indexAttr;
-    };
-
-    // Submeshes commonly share one POSITION buffer and differ only in their indices,
-    // so a range is added once and its vertices reused.
-    typedef std::tuple<const void*, size_t, size_t> VertexRange;
-
-    VertexRange vertexRange(const MeshSourceView& view){
-        return VertexRange(view.vertexBuffer->getData(), view.vertexAttr.getOffset(), view.vertexAttr.getCount());
-    }
-
-    std::vector<MeshSourceView> collectMeshSourceViews(MeshComponent* mesh){
-        std::vector<MeshSourceView> views;
-        if (!mesh) return views;
-
-        std::map<std::string, Buffer*> buffers;
-        if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
-        if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-        for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
-
-        MeshSourceView view;
-        for (auto const& buf : buffers){
-            if (buf.second->getAttribute(AttributeType::POSITION)){
-                view.vertexBuffer = buf.second;
-                view.vertexAttr = *buf.second->getAttribute(AttributeType::POSITION);
-            }
-            if (buf.second->getAttribute(AttributeType::INDEX)){
-                view.indexBuffer = buf.second;
-                view.indexAttr = *buf.second->getAttribute(AttributeType::INDEX);
-            }
-        }
-
-        // An empty name keeps the buffer already in view; an unknown one drops the
-        // attribute, whose offset only means anything against its own buffer.
-        auto resolveNamedBuffer = [&buffers](const std::string& bufferName, Buffer* current) -> Buffer* {
-            if (bufferName.empty()) return current;
-            auto named = buffers.find(bufferName);
-            return named != buffers.end() ? named->second : NULL;
-        };
-
-        for (size_t i = 0; i < mesh->numSubmeshes; i++){
-            for (auto const& attr : mesh->submeshes[i].attributes){
-                if (attr.first == AttributeType::POSITION){
-                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.vertexBuffer)){
-                        view.vertexBuffer = resolved;
-                        view.vertexAttr = attr.second;
-                    }
-                }
-                if (attr.first == AttributeType::INDEX){
-                    if (Buffer* resolved = resolveNamedBuffer(attr.second.getBufferName(), view.indexBuffer)){
-                        view.indexBuffer = resolved;
-                        view.indexAttr = attr.second;
-                    }
-                }
-            }
-
-            if (view.vertexBuffer) views.push_back(view);
-        }
-
-        return views;
-    }
-
-    // A multi-node glTF root is only a hierarchy container, with the geometry living in
-    // its mesh-node children, so a shape sourced from it falls back to those nodes.
-    std::vector<Entity> meshSourceEntities(Scene* scene, Entity meshEntity){
-        std::vector<Entity> sources;
-
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(meshEntity);
-        if (mesh && mesh->numSubmeshes > 0){
-            sources.push_back(meshEntity);
-            return sources;
-        }
-
-        if (ModelComponent* model = scene->findComponent<ModelComponent>(meshEntity)){
-            for (auto const& node : model->meshNodesMapping){
-                MeshComponent* nodeMesh = scene->findComponent<MeshComponent>(node.second);
-                if (nodeMesh && nodeMesh->numSubmeshes > 0){
-                    sources.push_back(node.second);
-                }
-            }
-        }
-
-        return sources;
-    }
-
-    // Source vertices are in their own entity's space, which is the body's only when one
-    // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.
-    Matrix4 meshToBodyMatrix(Scene* scene, Entity bodyEntity, Entity meshEntity){
-        Transform* meshTransform = scene->findComponent<Transform>(meshEntity);
-        Transform* bodyTransform = scene->findComponent<Transform>(bodyEntity);
-
-        if (meshEntity == bodyEntity || !meshTransform || !bodyTransform){
-            return Matrix4::scaleMatrix(entityWorldScale(scene, meshEntity));
-        }
-
-        return bodyTransform->worldRotation.inverse().getRotationMatrix() *
-               Matrix4::translateMatrix(-bodyTransform->worldPosition) *
-               meshTransform->modelMatrix;
     }
 
 }
@@ -316,7 +173,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_3D
     // https://github.com/jrouwe/JoltPhysics/issues/244
     // Jolt globals are initialized once per process (see helper).
-    ensureJoltGlobalInit();
+    JoltShapeBuilder::ensureJoltGlobalInit();
 
     const unsigned int cMaxBodies = 1024;
     const unsigned int cNumBodyMutexes = 0;
@@ -337,8 +194,8 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
 
     // Shared across all scenes (created once); physics updates are sequential on the main thread.
-    temp_allocator = &sharedPhysicsTempAllocator();
-    job_system = &sharedPhysicsJobSystem();
+    temp_allocator = &JoltShapeBuilder::sharedPhysicsTempAllocator();
+    job_system = &JoltShapeBuilder::sharedPhysicsJobSystem();
 
     activationListener3D = new JoltActivationListener(scene, this);
     world3D.SetBodyActivationListener(activationListener3D);
@@ -1149,231 +1006,33 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
 bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& body, size_t index){
     Collider3D& shapeData = body.colliders[index];
     shapeData.shape = NULL;
-    const Vector3 entityScale = entityWorldScale(scene, entity);
-    const Vector3 absEntityScale = absScale(entityScale);
 
-    if (shapeData.type == Collider3DType::BOX){
-        JPH::BoxShapeSettings shape_settings(JPH::Vec3(shapeData.width * absEntityScale.x / 2.0f, shapeData.height * absEntityScale.y / 2.0f, shapeData.depth * absEntityScale.z / 2.0f));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::SPHERE){
-        JPH::SphereShapeSettings shape_settings(shapeData.radius * maxScaleXYZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CAPSULE){
-        JPH::CapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::TAPERED_CAPSULE){
-        const float radiusScale = maxScaleXZ(absEntityScale);
-        JPH::TaperedCapsuleShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.topRadius * radiusScale, shapeData.bottomRadius * radiusScale);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CYLINDER){
-        JPH::CylinderShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::CONVEX_HULL){
-        if (shapeData.source == Collider3DSource::NONE){
+    if (shapeData.source == Collider3DSource::NONE){
+        if (shapeData.type == Collider3DType::CONVEX_HULL){
             shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has CONVEX_HULL with Source=None. Falling back to Entity Mesh source.", entity);
-        }
-
-        JPH::Array<JPH::Vec3> jvertices;
-
-        if (shapeData.source == Collider3DSource::RAW_VERTICES){
-            jvertices.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
-                Vector3 vertex = shapeData.vertices[i] * entityScale;
-                jvertices[i] = JPH::Vec3(vertex.x, vertex.y, vertex.z);
-            }
-        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
-            Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
-            if (sourceEntities.empty()){
-                Log::error("Cannot create convex hull shape: no mesh geometry found for entity %u", meshEntity);
-                return false;
-            }
-
-            for (Entity sourceEntity : sourceEntities){
-                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
-                std::set<VertexRange> addedRanges;
-
-                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
-                    if (!addedRanges.insert(vertexRange(view)).second) continue;
-
-                    int verticesize = int(view.vertexAttr.getCount());
-                    for (int i = 0; i < verticesize; i++){
-                        Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
-                        jvertices.push_back(JPH::Vec3(vertice.x, vertice.y, vertice.z));
-                    }
-                }
-            }
-        }
-
-        if (jvertices.empty()){
-            Log::error("Cannot create convex hull shape without vertices for 3D Body entity: %u", entity);
-            return false;
-        }
-
-        JPH::ConvexHullShapeSettings shape_settings(jvertices);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::MESH){
-        if (shapeData.source == Collider3DSource::NONE){
+        }else if (shapeData.type == Collider3DType::MESH){
             shapeData.source = Collider3DSource::ENTITY_MESH;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has MESH with Source=None. Falling back to Entity Mesh source.", entity);
-        }
-
-        JPH::VertexList jvertices;
-        JPH::IndexedTriangleList jindices;
-
-        if (shapeData.source == Collider3DSource::RAW_MESH){
-            jvertices.resize(shapeData.numVertices);
-            for (size_t i = 0; i < shapeData.numVertices; i++){
-                Vector3 vertex = shapeData.vertices[i] * entityScale;
-                jvertices[i] = JPH::Float3(vertex.x, vertex.y, vertex.z);
-            }
-
-            int indicesize = int(shapeData.numIndices / 3);
-            jindices.resize(indicesize);
-            for (int i = 0; i < indicesize; i++){
-                for (int j = 0; j < 3; j++){
-                    jindices[i].mIdx[j] = shapeData.indices[(3 * i) + j];
-                }
-            }
-        }else if (shapeData.source == Collider3DSource::ENTITY_MESH){
-            Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-            std::vector<Entity> sourceEntities = meshSourceEntities(scene, meshEntity);
-            if (sourceEntities.empty()){
-                Log::error("Cannot create mesh shape: no mesh geometry found for entity %u", meshEntity);
-                return false;
-            }
-
-            for (Entity sourceEntity : sourceEntities){
-                const Matrix4 toBody = meshToBodyMatrix(scene, entity, sourceEntity);
-                std::map<VertexRange, JPH::uint32> vertexBases;
-
-                for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
-                    const VertexRange range = vertexRange(view);
-                    const int verticesize = int(view.vertexAttr.getCount());
-
-                    auto base = vertexBases.find(range);
-                    if (base == vertexBases.end()){
-                        base = vertexBases.emplace(range, (JPH::uint32)jvertices.size()).first;
-                        for (int i = 0; i < verticesize; i++){
-                            Vector3 vertice = toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i);
-                            jvertices.push_back(JPH::Float3(vertice.x, vertice.y, vertice.z));
-                        }
-                    }
-
-                    // Indices are local to their submesh, rebase onto its vertices
-                    const JPH::uint32 vertexBase = base->second;
-
-                    if (!view.indexBuffer){
-                        // No index buffer means a plain triangle list
-                        for (int i = 0; i + 2 < verticesize; i += 3){
-                            jindices.push_back(JPH::IndexedTriangle(vertexBase + i, vertexBase + i + 1, vertexBase + i + 2));
-                        }
-                        continue;
-                    }
-
-                    int numIdxTriangles = int(view.indexAttr.getCount() / 3);
-                    for (int i = 0; i < numIdxTriangles; i++){
-                        JPH::uint32 it[3];
-                        for (int j = 0; j < 3; j++){
-                            uint32_t indice = 0;
-                            if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
-                                indice = view.indexBuffer->getUInt32(&view.indexAttr, (3 * i) + j);
-                            }else if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
-                                indice = view.indexBuffer->getUInt16(&view.indexAttr, (3 * i) + j);
-                            }
-                            it[j] = vertexBase + indice;
-                        }
-                        jindices.push_back(JPH::IndexedTriangle(it[0], it[1], it[2]));
-                    }
-                }
-            }
-        }
-
-        if (jvertices.empty() || jindices.empty()){
-            Log::error("Cannot create mesh shape without vertices and indices for 3D Body entity: %u", entity);
-            return false;
-        }
-
-        JPH::MeshShapeSettings shape_settings(jvertices, jindices);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
-    }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
-        if (shapeData.source == Collider3DSource::NONE){
+        }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
             shapeData.source = Collider3DSource::ENTITY_HEIGHTFIELD;
             if (shapeData.sourceEntity == NULL_ENTITY){
                 shapeData.sourceEntity = entity;
             }
             Log::warn("Rigidbody entity %u has HEIGHTFIELD with Source=None. Falling back to Entity Heightfield source.", entity);
         }
+    }
 
-        Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
-        if (!terrain || !terrain->heightMapLoaded){
-            Log::error("Cannot create heightfield shape without loaded terrain heightmap");
-            return false;
-        }
-
-        TextureData& textureData = terrain->heightMap.getData();
-        unsigned int samplesSize = shapeData.samplesSize;
-        if (samplesSize == 0){
-            samplesSize = textureData.getMinNearestPowerOfTwo();
-            if (samplesSize > std::min(textureData.getOriginalWidth(), textureData.getOriginalHeight())){
-                samplesSize = samplesSize / 2;
-            }
-        }
-
-        JPH::Vec3 terrainOffset = JPH::Vec3(-terrain->terrainSize / 2.0, 0.0f, -terrain->terrainSize / 2.0);
-        JPH::Vec3 terrainScale = JPH::Vec3(terrain->terrainSize / samplesSize, terrain->maxHeight, terrain->terrainSize / samplesSize);
-
-        const unsigned char* heightPixels = static_cast<const unsigned char*>(textureData.getData());
-        const int heightChannels = textureData.getChannels();
-        const int heightBytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
-
-        float* samples = new float[samplesSize * samplesSize];
-        for (unsigned int x = 0; x < samplesSize; x++){
-            for (unsigned int y = 0; y < samplesSize; y++){
-                int posX = floor(textureData.getWidth() * x / samplesSize);
-                int posY = floor(textureData.getHeight() * y / samplesSize);
-                const size_t texelIndex = (static_cast<size_t>(posY) * textureData.getWidth() + posX);
-                const size_t index = texelIndex * static_cast<size_t>(heightChannels) * static_cast<size_t>(heightBytesPerChannel);
-                float val;
-                if (heightBytesPerChannel >= 2){
-                    const unsigned int raw = static_cast<unsigned int>(heightPixels[index]) |
-                                             (static_cast<unsigned int>(heightPixels[index + 1]) << 8);
-                    val = static_cast<float>(raw) / 65535.0f;
-                }else{
-                    val = heightPixels[index] / 255.0f;
-                }
-                samples[x + (y * samplesSize)] = val;
-            }
-        }
-
-        JPH::HeightFieldShapeSettings shape_settings(samples, terrainOffset, terrainScale, samplesSize);
-        JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-        delete[] samples;
-
-        if (!shape_result.IsValid()) return false;
-        shapeData.shape = shape_result.Get();
+    std::string error;
+    shapeData.shape = JoltShapeBuilder::buildColliderShape(scene, entity, shapeData, &error);
+    if (!error.empty()){
+        Log::error("%s", error.c_str());
     }
 
     if (!shapeData.shape){
@@ -1403,24 +1062,7 @@ bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Collider3D& shapeD
         return false;
     }
 
-    Entity current = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
-
-    while (current != NULL_ENTITY){
-        ModelComponent* model = scene->findComponent<ModelComponent>(current);
-        if (model && !model->filename.empty() && model->needUpdateModel){
-            return true;
-        }
-
-        TerrainComponent* terrain = scene->findComponent<TerrainComponent>(current);
-        if (terrain && !terrain->heightMap.empty() && terrain->needUpdateTerrain){
-            return true;
-        }
-
-        Transform* transform = scene->findComponent<Transform>(current);
-        current = transform ? transform->parent : NULL_ENTITY;
-    }
-
-    return false;
+    return JoltShapeBuilder::isGeometryLoading(scene, shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity);
 }
 
 bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){
