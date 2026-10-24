@@ -451,6 +451,11 @@ async def test_matches_the_mcp_preview(ed):
     cli = place(project(), "TableCrate", CRATE_BOXES, "--jitter", "0.05,15", "--seed", "4", "--decompose", "never")
     mcp = await ed.call("place_with_physics", scene="TableCrate", entities=CRATE_BOXES, jitter={"position": 0.05, "rotation_deg": 15},
                         seed=4, decompose="never")
-    mcp = {k: v for k, v in mcp.items() if k != "external_changes"}
+    # the tool's own keys (the job and whether an apply reused a preview) are all that differ: a
+    # new key on either side fails
+    tool_only = set(mcp) - set(cli)
+    check(tool_only == {"from_preview", "job_id", "status"}, f"keys only in the MCP result: {sorted(tool_only)}")
+    check(not set(cli) - set(mcp), f"keys only in the CLI result: {sorted(set(cli) - set(mcp))}")
+    mcp = {k: v for k, v in mcp.items() if k not in tool_only}
     check(mcp["state_hash"] == cli["state_hash"], f"MCP state {mcp['state_hash']}, CLI {cli['state_hash']}")
     check(mcp == cli, f"the MCP preview and the CLI dry run differ:\nMCP {json.dumps(mcp)[:3000]}\nCLI {json.dumps(cli)[:3000]}")
