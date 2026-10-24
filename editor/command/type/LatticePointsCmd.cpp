@@ -103,6 +103,13 @@ bool editor::LatticePointsCmd::execute(){
     if (wholeState){
         // resolution and poses: what differs from before (a resampled layout, a saved pose)
         project->recordPrefabComponentEdit(sceneId, entity, ComponentType::LatticeComponent, before);
+        if (!sameLayout){
+            // the instance's grid is its own as a whole: with only the changed axis overridden,
+            // the prefab changing another axis later would reach the instance and leave it with
+            // offsets laid out for another grid (a broken layout: no cage, no edits)
+            project->recordPrefabEdit(sceneId, entity, ComponentType::LatticeComponent,
+                                      {"offsets", "resolutionX", "resolutionY", "resolutionZ"});
+        }
     }
 
     sceneProject->isModified = true;

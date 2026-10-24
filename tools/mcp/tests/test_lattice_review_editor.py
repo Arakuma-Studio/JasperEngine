@@ -46,6 +46,12 @@ async def latticemodifier(ed: Editor, scene: int, entity: int):
     return (got.get("components") or {}).get("latticemodifier")
 
 
+async def lattice_state(ed: Editor, scene: int, entity: int) -> dict:
+    got = await ed.call("get_entity", scene=scene, entity=entity, components=["lattice"],
+                        properties=["resolutionX", "resolutionY", "resolutionZ", "offsets", "poses"])
+    return got["components"]["lattice"]
+
+
 async def menu_create_lattice(ed: Editor):
     """GameObject > 3D Object > Lattice, by mouse."""
     await ls.click(ed, 162, 10)
@@ -153,3 +159,86 @@ async def test_2d_space_click_pans_without_picking(ed: Editor):
     # without Space the same click picks it
     await ls.click(ed, x, y)
     ed.check(len(scene_blobs(ls.screen(ed))) >= 1, "a plain click picks the point")
+
+
+async def test_inspector_resolution_undo_restores_offsets_and_poses(ed: Editor):
+    sid = S["scene"]
+    await ed.call("select_scene", scene=sid)
+    await ed.call("focus_window", window="scene", scene=sid)
+    cage = S["cage"]
+    await ed.call("set_properties", scene=sid, entity=cage, values={"lattice": {
+        "offsets[26]": [0.1, 0.2, -0.1], "poses": [{"name": "Lean", "offsets": [[0.05, 0, 0]] * 27}]}})
+    await ed.call("select_entities", scene=sid, entities=[cage])
+    ls.focus_editor(ed)
+    await ls.settle(ed, 8)
+    before = await lattice_state(ed, sid, cage)
+
+    # Inspector > Lattice > Resolution X: Ctrl+click types a value, Enter applies it
+    await ls.click(ed, 1427, 327, modifier="ctrl")
+    await ls.key(ed, "ctrl+a")
+    ls.run_x(ed, "xdotool", "type", "5")
+    await ls.key(ed, "Return")
+    await ls.settle(ed, 6)
+    after = await lattice_state(ed, sid, cage)
+    ed.check_eq([after["resolutionX"], after["resolutionY"], after["resolutionZ"]], [5, 3, 3], "the X field resamples to 5")
+    ed.check_eq(len(after["offsets"]), 45, "offsets laid out for 5x3x3")
+    ed.check_eq(len(after["poses"][0]["offsets"]), 45, "the pose is resampled too")
+
+    await ed.call("undo", scene=sid)
+    undone = await lattice_state(ed, sid, cage)
+    ed.check_eq(undone["resolutionX"], 3, "one undo step restores the resolution")
+    ed.check_eq(undone["offsets"], before["offsets"], "and every offset exactly")
+    ed.check_eq(undone["poses"], before["poses"], "and the poses exactly")
+    await ed.call("redo", scene=sid)
+    redone = await lattice_state(ed, sid, cage)
+    ed.check_eq(redone["offsets"], after["offsets"], "redo gives the same resampled offsets")
+    await ed.call("undo", scene=sid)
+
+
+async def type_resolution(ed: Editor, axis: int, value: int, y: int = 327):
+    """Inspector > Lattice > Resolution field `axis` (0..2): Ctrl+click, type, Enter."""
+    await ls.click(ed, (1427, 1489, 1551)[axis], y, modifier="ctrl")
+    await ls.key(ed, "ctrl+a")
+    ls.run_x(ed, "xdotool", "type", str(value))
+    await ls.key(ed, "Return")
+    await ls.settle(ed, 6)
+
+
+async def test_prefab_instance_resolution_keeps_its_grid(ed: Editor):
+    # a prefab instance changes its X resolution in the Inspector (its offsets list follows); the
+    # prefab then changes Y. The instance's grid is its own: it must not take the prefab's Y with
+    # offsets laid out for its old grid (2x4x3 = 24 points, 18 offsets: no cage, no edits)
+    sid = S["scene"]
+    await ed.call("select_scene", scene=sid)
+    cage = (await ed.call("create_entity", type="empty", scene=sid, name="Instanced"))["entity_id"]
+    await ed.call("add_component", scene=sid, entity=cage, component="lattice")
+    await ed.call("create_prefab", scene=sid, entity=cage, path="prefabs/InstancedCage.prefab")
+    await ed.call("select_entities", scene=sid, entities=[cage])
+    ls.focus_editor(ed)
+    await ls.settle(ed, 8)
+    # a prefab instance's inspector has the Prefab rows above the Lattice component
+    await type_resolution(ed, 0, 2, y=438)
+    state = await lattice_state(ed, sid, cage)
+    ed.check_eq([state["resolutionX"], len(state["offsets"])], [2, 18], "the instance is 2x3x3")
+
+    st = await ed.call("prefab_mode", action="open", prefab="prefabs/InstancedCage.prefab", auto_save=False)
+    stage = st["scene_id"]
+    await ed.call("select_entities", scene=stage, entities=[st["root"]["id"]])
+    ls.focus_editor(ed)
+    await ls.settle(ed, 8)
+    await type_resolution(ed, 1, 4)
+    ed.check_eq(len((await lattice_state(ed, stage, st["root"]["id"]))["offsets"]), 36, "the prefab is 3x4x3")
+    await ed.call("prefab_mode", action="close", unsaved="save")
+    await ed.call("select_scene", scene=sid)
+
+    state = await lattice_state(ed, sid, cage)
+    res = [state["resolutionX"], state["resolutionY"], state["resolutionZ"]]
+    ed.check_eq(len(state["offsets"]), res[0] * res[1] * res[2],
+                f"the instance's offsets fit its resolution {res}: {len(state['offsets'])} offsets")
+    ed.check_eq(res, [2, 3, 3], "the instance keeps the grid it was given")
+
+    # undo of the instance's resolution change drops its overrides: the prefab's grid comes back
+    await ed.call("undo", scene=sid)
+    state = await lattice_state(ed, sid, cage)
+    res = [state["resolutionX"], state["resolutionY"], state["resolutionZ"]]
+    ed.check_eq(len(state["offsets"]), res[0] * res[1] * res[2], f"after undo too: {res}, {len(state['offsets'])} offsets")
