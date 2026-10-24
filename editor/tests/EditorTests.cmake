@@ -53,3 +53,24 @@ set_target_properties(jasperengine-placement-fresh-process PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "tests")
 add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)
+
+# A process of its own for the texture synthesis' out-of-memory check (an address-space limit
+# measured from the process size, which the engine-running test binary can't give); run by
+# TexSynthOutOfMemory.IsAFailedStatusNotATerminate, Linux only
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(jasperengine-texsynth-oom
+        ${CMAKE_CURRENT_LIST_DIR}/texsynth/standalone/SynthesisOutOfMemory.cpp
+        ${JASPERENGINE_TEXSYNTH_SOURCES}
+        ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/util/PngWriter.cpp)
+    target_include_directories(jasperengine-texsynth-oom PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
+    target_link_libraries(jasperengine-texsynth-oom PRIVATE jasperengine)
+    if(TARGET stb)
+        target_link_libraries(jasperengine-texsynth-oom PRIVATE stb)
+    endif()
+    set_target_properties(jasperengine-texsynth-oom PROPERTIES
+        CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+        CXX_STANDARD_REQUIRED ON
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+        FOLDER "tests")
+    add_dependencies(jasperengine-editor-tests jasperengine-texsynth-oom)
+endif()

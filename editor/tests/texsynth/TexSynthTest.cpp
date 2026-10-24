@@ -22,6 +22,11 @@
 #include <random>
 #include <thread>
 
+#ifdef __linux__
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
 using namespace jasperengine::editor::texsynth;
 namespace fs = std::filesystem;
 
@@ -1022,36 +1027,17 @@ TEST(TexSynth, OversizedInputsAreRefusedBeforeDecoding) {
 }
 
 #ifdef __linux__
-#include <sys/resource.h>
-
-namespace {
-
-    // in a child process: an address-space limit makes the synthesis' allocations fail
-    void synthesizeOutOfMemory() {
-        Request r = basicRequest(Mode::Guided, 0, 0);
-        // big enough that the free space the parent's allocator already holds (a test process
-        // that runs the engine has many threads, each with its malloc arena) can't hold it
-        r.examples[0] = Example::fromImage(noiseImage(4096, 4096, 1, 4));
-        r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 2));
-        long pages = 0;
-        std::ifstream("/proc/self/statm") >> pages;
-        const rlim_t limit = static_cast<rlim_t>(pages) * 4096 + (40u << 20);
-        rlimit rl;
-        rl.rlim_cur = limit;
-        rl.rlim_max = limit;
-        setrlimit(RLIMIT_AS, &rl);
-        const Result result = synthesize(r);
-        const bool failed = result.status == Status::Failed && !result.errors.empty() && result.errors[0].message.find("out of memory") != std::string::npos;
-        if (!failed) std::fprintf(stderr, "status %d: %s\n", static_cast<int>(result.status),
-                                  result.errors.empty() ? "no error" : result.errors[0].message.c_str());
-        // _Exit: the forked child of a test process that runs the engine (S02's TestMain: the
-        // logger, the job system) must not run its exit handlers
-        std::_Exit(failed ? 0 : 1);
-    }
-
-}
-
-TEST(TexSynthDeathTest, OutOfMemoryIsAFailedStatusNotATerminate) {
-    EXPECT_EXIT(synthesizeOutOfMemory(), ::testing::ExitedWithCode(0), "");
+// In a process of its own (jasperengine-texsynth-oom, built next to this binary, see
+// standalone/SynthesisOutOfMemory.cpp): an address-space limit makes the synthesis' allocations
+// fail, and the result is a failed status, not a terminate
+TEST(TexSynthOutOfMemory, IsAFailedStatusNotATerminate) {
+    char self[4096] = {};
+    const ssize_t length = ::readlink("/proc/self/exe", self, sizeof(self) - 1);
+    ASSERT_GT(length, 0);
+    std::string program(self, static_cast<size_t>(length));
+    program = program.substr(0, program.rfind('/') + 1) + "jasperengine-texsynth-oom";
+    const int status = std::system(program.c_str());
+    ASSERT_TRUE(WIFEXITED(status)) << "it crashed";
+    EXPECT_EQ(WEXITSTATUS(status), 0) << "the synthesis did not report out of memory (its stderr says why)";
 }
 #endif
