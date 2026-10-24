@@ -79,6 +79,9 @@ namespace jasperengine {
         // whose child meshes are filled in by the ancestor holding the ModelComponent.
         static bool isGeometryLoading(Scene* scene, Entity entity);
 
+        // One heightfield sample per heightmap texel (the smaller side), at least 4
+        static unsigned int defaultHeightFieldSamples(const TerrainComponent& terrain);
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Jolt's global allocator/factory/type registration is process-wide; run once.
         static void ensureJoltGlobalInit();
@@ -93,8 +96,12 @@ namespace jasperengine {
         static JPH::ShapeRefC buildConvexHullShape(const std::vector<Vector3>& points, std::string* error);
         static JPH::ShapeRefC buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
                                              std::string* error);
-        // The terrain's heightmap; samplesSize 0 picks it from the heightmap's size.
-        static JPH::ShapeRefC buildHeightFieldShape(TerrainComponent& terrain, unsigned int samplesSize, std::string* error);
+        // The rendered terrain surface (MeshSystem::sampleTerrainSurface) in terrain-local space,
+        // scaled by scale (the entity's world scale): samplesSize x samplesSize samples spanning
+        // the whole terrain, edge to edge. samplesSize 0 is defaultHeightFieldSamples. A terrain
+        // without a heightmap is flat.
+        static JPH::ShapeRefC buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
+                                                    unsigned int samplesSize, std::string* error);
 
         // One collider of entity's Rigidbody, sized by the entity's world scale, in the entity's
         // body space (its own position and rotation not applied). Source NONE reads the entity's

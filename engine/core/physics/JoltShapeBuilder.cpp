@@ -8,6 +8,7 @@
 #include "component/RigidbodyComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "subsystem/MeshSystem.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Jolt/RegisterTypes.h"
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <set>
 
@@ -305,49 +307,54 @@ JPH::ShapeRefC JoltShapeBuilder::buildMeshShape(const std::vector<Vector3>& vert
     return shape_result.Get();
 }
 
-JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(TerrainComponent& terrain, unsigned int samplesSize, std::string* error){
-    if (!terrain.heightMapLoaded){
-        setError(error, "Cannot create heightfield shape without loaded terrain heightmap");
+unsigned int JoltShapeBuilder::defaultHeightFieldSamples(const TerrainComponent& terrain){
+    if (terrain.heightMap.empty() || terrain.heightMap.isFramebuffer() || !terrain.heightMap.hasData()){
+        return 4;
+    }
+    TextureData& textureData = terrain.heightMap.getData();
+    return (unsigned int)std::max(4, std::min(textureData.getWidth(), textureData.getHeight()));
+}
+
+JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
+                                                       unsigned int samplesSize, std::string* error){
+    if (terrain.terrainSize <= std::numeric_limits<float>::epsilon()){
+        setError(error, "Cannot create heightfield shape for a terrain without size");
         return NULL;
     }
-
-    TextureData& textureData = terrain.heightMap.getData();
     if (samplesSize == 0){
-        samplesSize = textureData.getMinNearestPowerOfTwo();
-        if (samplesSize > std::min(textureData.getOriginalWidth(), textureData.getOriginalHeight())){
-            samplesSize = samplesSize / 2;
-        }
+        samplesSize = defaultHeightFieldSamples(terrain);
     }
+    samplesSize = std::max(samplesSize, 4u);
 
-    JPH::Vec3 terrainOffset = JPH::Vec3(-terrain.terrainSize / 2.0, 0.0f, -terrain.terrainSize / 2.0);
-    JPH::Vec3 terrainScale = JPH::Vec3(terrain.terrainSize / samplesSize, terrain.maxHeight, terrain.terrainSize / samplesSize);
-
-    const unsigned char* heightPixels = static_cast<const unsigned char*>(textureData.getData());
-    const int heightChannels = textureData.getChannels();
-    const int heightBytesPerChannel = TextureData::getBytesPerChannel(textureData.getColorFormat());
+    // Sample i of N sits at -half + size * i / (N - 1): the first and last samples are the
+    // terrain's edges, as in the renderer's [-half, half] -> [0, W - 1] heightmap mapping that
+    // sampleTerrainSurface reads, so with N = W every sample is a texel.
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
+    const float halfSize = terrain.terrainSize * 0.5f;
+    const float spacing = terrain.terrainSize / float(samplesSize - 1);
 
     std::vector<float> samples(samplesSize * samplesSize);
-    for (unsigned int x = 0; x < samplesSize; x++){
-        for (unsigned int y = 0; y < samplesSize; y++){
-            int posX = floor(textureData.getWidth() * x / samplesSize);
-            int posY = floor(textureData.getHeight() * y / samplesSize);
-            const size_t texelIndex = (static_cast<size_t>(posY) * textureData.getWidth() + posX);
-            const size_t index = texelIndex * static_cast<size_t>(heightChannels) * static_cast<size_t>(heightBytesPerChannel);
-            float val;
-            if (heightBytesPerChannel >= 2){
-                const unsigned int raw = static_cast<unsigned int>(heightPixels[index]) |
-                                         (static_cast<unsigned int>(heightPixels[index + 1]) << 8);
-                val = static_cast<float>(raw) / 65535.0f;
-            }else{
-                val = heightPixels[index] / 255.0f;
-            }
-            samples[x + (y * samplesSize)] = val;
+    for (unsigned int y = 0; y < samplesSize; y++){
+        const float localZ = (y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y);
+        for (unsigned int x = 0; x < samplesSize; x++){
+            const float localX = (x == samplesSize - 1) ? halfSize : (-halfSize + spacing * x);
+            float height = 0.0f;
+            Vector3 normal;
+            meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
+            samples[x + (y * samplesSize)] = height;
         }
     }
+
+    const Vector3 absEntityScale = absScale(scale);
+    const JPH::Vec3 terrainOffset(-halfSize * absEntityScale.x, 0.0f, -halfSize * absEntityScale.z);
+    const JPH::Vec3 terrainScale(spacing * absEntityScale.x, absEntityScale.y, spacing * absEntityScale.z);
 
     JPH::HeightFieldShapeSettings shape_settings(samples.data(), terrainOffset, terrainScale, samplesSize);
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-    if (!shape_result.IsValid()) return NULL;
+    if (!shape_result.IsValid()){
+        setError(error, "Cannot create heightfield shape: " + std::string(shape_result.GetError().c_str()));
+        return NULL;
+    }
     return shape_result.Get();
 }
 
@@ -436,12 +443,12 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
     }else if (shapeData.type == Collider3DType::HEIGHTFIELD){
         Entity terrainEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(terrainEntity);
-        if (!terrain){
+        if (!terrain || !terrain->heightMapLoaded){
             setError(error, "Cannot create heightfield shape without loaded terrain heightmap");
             return NULL;
         }
 
-        return buildHeightFieldShape(*terrain, shapeData.samplesSize, error);
+        return buildHeightFieldShape(scene, *terrain, entityScale, shapeData.samplesSize, error);
     }
 
     return NULL;

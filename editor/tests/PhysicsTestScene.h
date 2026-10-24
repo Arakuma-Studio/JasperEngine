@@ -132,17 +132,25 @@ namespace jasperengine::physicstest {
             return c;
         }
 
-        // A terrain whose 8-bit heightmap is height(u, v) * 255 for u, v in [0, 1] (texel
+        // A terrain whose heightmap is height(u, v) for u, v in [0, 1], 8-bit or 16-bit (texel
         // centres at i / (size - 1), the mapping MeshSystem::sampleTerrainSurface reads)
         template<typename F>
-        Entity terrain(int mapSize, float terrainSize, float maxHeight, const Vector3& position, F height) {
+        Entity terrain(int mapSize, float terrainSize, float maxHeight, const Vector3& position, F height, bool sixteenBit = false) {
             const Entity e = entity(position);
-            pixels.push_back(std::make_unique<std::vector<uint8_t>>(static_cast<size_t>(mapSize) * mapSize));
+            const size_t bytes = sixteenBit ? 2 : 1;
+            pixels.push_back(std::make_unique<std::vector<uint8_t>>(static_cast<size_t>(mapSize) * mapSize * bytes));
             std::vector<uint8_t>& data = *pixels.back();
             for (int z = 0; z < mapSize; z++) {
                 for (int x = 0; x < mapSize; x++) {
-                    const float h = height(x / float(mapSize - 1), z / float(mapSize - 1));
-                    data[static_cast<size_t>(z) * mapSize + x] = static_cast<uint8_t>(std::lround(std::fmin(std::fmax(h, 0.0f), 1.0f) * 255.0f));
+                    const float h = std::fmin(std::fmax(height(x / float(mapSize - 1), z / float(mapSize - 1)), 0.0f), 1.0f);
+                    const size_t index = (static_cast<size_t>(z) * mapSize + x) * bytes;
+                    if (sixteenBit) {
+                        const unsigned int value = static_cast<unsigned int>(std::lround(h * 65535.0f));
+                        data[index] = static_cast<uint8_t>(value & 0xFF);
+                        data[index + 1] = static_cast<uint8_t>(value >> 8);
+                    } else {
+                        data[index] = static_cast<uint8_t>(std::lround(h * 255.0f));
+                    }
                 }
             }
 
@@ -151,7 +159,8 @@ namespace jasperengine::physicstest {
             terrain.maxHeight = maxHeight;
             static int counter = 0;
             terrain.heightMap.setData("physics-test-heightmap-" + std::to_string(++counter),
-                                      TextureData(mapSize, mapSize, static_cast<unsigned int>(data.size()), ColorFormat::RED, 1, data.data()));
+                                      TextureData(mapSize, mapSize, static_cast<unsigned int>(data.size()),
+                                                  sixteenBit ? ColorFormat::RED16 : ColorFormat::RED, 1, data.data()));
             terrain.heightMapLoaded = true;
             terrain.needUpdateTerrain = false;
             scene.addComponent<TerrainComponent>(e, terrain);
