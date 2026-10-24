@@ -1621,3 +1621,42 @@ values list pointing at jasper://docs/shaders for the render-state fields, and t
 play, wait, eval_lua, get_entity, prefab tools, list_shaders, run_build, build_project and a few
 others. No WorldTools description was edited (its sizes moved only through the shared helpers).
 The instructions stay <= 16384 bytes (the lattice line paid by tighter Play/Build lines).
+
+Tests: `tools/mcp/tests/test_lattice.py` (17 tests, new empty project, one shared editor): creation
+around a glTF model by `edit_lattice create` and by `create_entity` (same fit: 2% padding, the
+target's frame; one undo step; `select: false`; a target without a mesh noted, not bound; a parent
+keeping the fitted world pose), around a sprite (flat cage, 2 points across, centred on the quad),
+`lattice_tracks` targeting the lattice; the lattice fallback and its errors; every selector with
+counts (faces and aliases, ranges, point lists, world box/sphere on current positions) and every
+selector error; every op against hand-computed numbers (set local/world offset/position, move
+offset local/world, rotate about the lattice and about a world pivot, scale about the centroid and a
+pivot, linear and constant falloff, all eight presets incl. the bend arc and noise determinism,
+replace mode, mirror both ways, poses, bind/re-bind/unbind, fit), undo/redo restoring offsets and
+settings exactly, a failing op rolling the whole call back without an undo step, the resample
+(coincident points bit-identical, sharp samples unchanged), `sample` numbers (sharp/extend: centre
+lift, stretch 1.5, extend beyond the cage; fade half way), every warning kind, a second editor
+reloading and re-saving the scene byte-identically, prefab instance per-point overrides from
+`set` and `move` (and undo), a Lua script moving a point in play mode read back by `edit_lattice`
+during play (and edits refused with terrain's message), bake through the op (file, model switch,
+binding removed, undo, the canBake refusal, two targets), the `show_all_lattices` Scene view golden
+(`golden/lattice_show_all.png`, 640 px: a rod bent 90 degrees in a cube cage, a twisted spare cage;
+the quarter arc also checked by `sample`; the view without the flag differs), the guide's names
+(every snake_case word is a tool, parameter, op key from the server's own "Keys:" errors, property,
+value, display flag, result key or warning kind), the budget. `test_lattice_bake.py::test_mcp_bake`
+checks baked vertex positions against `edit_lattice sample`.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice.py
+
+Verification on this branch (merge of lattice with every package): test_lattice.py 17/17,
+test_lattice_data/anim/lua/scene/bake 30/30 (incl. test_mcp_bake),
+`test_html_ui_tools.py -k budget` (100517 of 100637); test_stubs, test_docs, test_autosync
+(instructions size and names), test_generators, test_scene and test_prefab show no failure the
+baseline binary does not also show on the empty fixture (test_docs' three resource tests pass here
+and fail on the baseline only because the baseline has no jasper://docs/lattice). LatticeTools.cpp
+compiles clean with -Wall -Wextra.
+
+Integrator notes: `docs/mcp/TOOLS.md` must be regenerated again if another package changes a tool
+after this merge; the Xcode project needs `editor/mcp/tools/LatticeTools.cpp` and
+`LatticeShared.h`. The golden image is Mesa/llvmpipe on Xvfb (tolerance as the other pngdiff tests);
+other renderers may need `JASPER_UPDATE_GOLDEN=1` once, after looking at the image.
