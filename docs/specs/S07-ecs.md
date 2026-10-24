@@ -592,17 +592,25 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
 - **`move_branch` benchmark**: the 100-entity branch moves under a top-level GameObject about a
   thousand entities before it (a typical reparent); a move across the whole array is bounded by
   the Transform rotation itself, the same before and after S07.
-- **R25 absolute budgets were not met on the shared build servers.** The benchmark ran on
-  server B with a load average of 20-36 (three other streams compiling); every relative
-  budget (R26) and memory budget (R27) is met there, which shows the S07 gains, while the
-  absolute times are 1.1-4x over R25, mostly at 100k where the loops are memory-bound
-  (random lookups 65 ns/op, index loop 3.7 ms). `run-ecs-bench.py` keeps the R25 thresholds
-  and fails on them; it has to be run on the quiet S02 benchmark server for R25. Last run
-  (median of 7): destroy 10k 3.7 ms (295x faster than before), metadata get at 100k 57 ns
-  (7.9x), index loop 0.085 / 3.7 ms (1.12x / 1.25x the baseline's speed), view 0.094 / 4.1 ms
-  (1.45x / 1.16x the baseline index loop), 17.3 B per component and 76 B per entity at 100k,
-  20 empty systems 3-4 us per frame. The pre-S07 engine is measured only for what R26
-  compares: its one-by-one destroy at 100k is quadratic (hours).
+- **R25 and R26 are measured on the benchmark-only server E** (4 dedicated EPYC-Milan vCPUs,
+  nothing else running; the shared build servers ran at load 20-90 and gave 1.5-2x the times).
+  `run-ecs-bench.py --baseline-archive <git archive oe-port engine>` (7 runs each), three times;
+  every R25, R26 and R27 budget is met in the median of the three. Medians (ms; ns/op for
+  lookup), 10k / 100k: create 1.43 / 14.7, destroy one by one 1.05 / 23.4, remove 10% 0.16 /
+  3.55, add 0.25 / 2.51, index loop 0.025 / 0.41, view 0.035 / 0.60, lookup 6.0 / 11.5,
+  move_branch 0.13 / 0.34. R26: destroy 10k 530x, metadata at 100k 14x, index loop 1.2x /
+  1.2-1.3x faster than before, view 1.8x / 1.7-2.4x the baseline index loop. R27: 17.3 B per
+  component and 76 B per entity at 100k. Destroy at 100k varies most between processes
+  (21.5-27.7 ms across the 21 samples; the run medians were 23.4, 26.3 and 22.0): it is bound
+  by cache misses on randomly ordered entities. What got it there: Vector3, Quaternion and
+  Matrix4 construct and copy inline and trivially (a Transform move is a plain copy); a destroy
+  allocates nothing (an intrusive entity free list, arena chunks reserving their page lists,
+  operator-new pages kept until an array empties), because any malloc or large free in the
+  middle of a mass destroy made glibc consolidate every small block the destroy had freed;
+  a destroy or removal prefetches the metadata record, the arrays' slots and the heap blocks
+  the components own (pointer-like words of a non-trivially destructible component's first
+  line) before it frees anything; the index accessors have no call on their hot path, so a
+  caller's loop keeps its sums in registers (R26's index loop).
 - **AC10's ASan check** runs as an MCP test against a sample project,
   `tools/fixtures/ecs-collision` (`tools/mcp/tests/test_ecs_collision.py`): boxes fall on a floor
   every third frame, and each `beginContact2D` destroys the other body with
