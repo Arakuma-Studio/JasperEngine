@@ -239,26 +239,30 @@ namespace jasperengine::pose {
         // and in a segment between two grounded keys, 0 in a lifted key's hold and between two
         // lifted keys; a launch segment (grounded -> lifted) fades it out and a landing segment
         // (lifted -> grounded) in with smoothstep(clamp01(e)) of the hips' ease, so a wind-up dip
-        // (e < 0) stays fully grounded and g is continuous where the hips' motion is
+        // (e < 0) stays fully grounded and g is continuous where the hips' motion is. The hold
+        // before a launch or a landing uses the same formula: with moving holds the hips' ease of
+        // the next segment already drifts during the hold (0 at the hold's start, the drift value
+        // at the segment's start), and a flat 0 / 1 there would jump at the segment's start.
         double groundWeight(const SamplerInput& input, double time){
             const PoseTimeline& timeline = input.timeline;
             const size_t n = input.keys.size();
             const size_t segments = std::min(timeline.segmentCount(), timeline.loop ? n : n - 1);
             const double t = steppedTime(input.settings, time);
             auto grounded = [&](size_t key){ return input.grounded[key % n] ? 1.0 : 0.0; };
-            for (size_t s = 0; s < segments; s++){
-                if (t < timeline.start[s]){
-                    return grounded(s);   // the hold of key s
+            // segment s's weight at t (inside it, or in the hold before it)
+            auto segmentWeight = [&](size_t s){
+                const double from = grounded(s), to = grounded(s + 1);
+                if (from == to){
+                    return from;
                 }
+                double tau = 0.0, loose = 0.0;
+                boneTiming(input, 0, t, tau, loose);
+                const double w = smoothstep(0.0, 1.0, clampd(segmentEase(input, tau, loose, s, 0), 0.0, 1.0));
+                return from > 0.0 ? 1.0 - w : w;
+            };
+            for (size_t s = 0; s < segments; s++){
                 if (t < timeline.start[s] + std::max(0.0, static_cast<double>(timeline.transitions[s].duration))){
-                    const double from = grounded(s), to = grounded(s + 1);
-                    if (from == to){
-                        return from;
-                    }
-                    double tau = 0.0, loose = 0.0;
-                    boneTiming(input, 0, t, tau, loose);
-                    const double w = smoothstep(0.0, 1.0, clampd(segmentEase(input, tau, loose, s, 0), 0.0, 1.0));
-                    return from > 0.0 ? 1.0 - w : w;
+                    return segmentWeight(s);   // the hold of key s or segment s
                 }
             }
             // after the last segment: the last key's hold (a loop's last segment ends at the

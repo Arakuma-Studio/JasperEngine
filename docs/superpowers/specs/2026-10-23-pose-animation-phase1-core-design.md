@@ -393,12 +393,16 @@ in its review): the hips position is interpolated linearly while the legs swing,
 move between a deep crouch and standing would sink the feet (about 0.05 to 0.07 humanScale for a
 jump's crouch and landing). Each frame gets a ground weight `g` in [0, 1] from its time (after the
 `stepRate` quantisation, as `sample` sees it) on the timeline: `g = 1` in the hold of a grounded
-key (`PoseKey::grounded`) and in a segment whose both end keys are grounded; `g = 0` in a lifted
-key's hold and in a segment whose both ends are lifted; in a launch segment (grounded -> lifted)
-`g = 1 - smoothstep(0, 1, clamp01(e_hips))` and in a landing segment (lifted -> grounded)
-`g = smoothstep(0, 1, clamp01(e_hips))`, with `e_hips` the hips' ease value of that segment at that
-time (step 4, moving holds included), so a wind-up dip (`e < 0`) stays fully grounded and `g` is
-continuous where the hips' motion is. With `h` the frame's uncorrected lowest point above the
+key (`PoseKey::grounded`) followed by a grounded key, and in a segment whose both end keys are
+grounded; `g = 0` in the hold of a lifted key followed by a lifted key, and in a segment whose both
+ends are lifted; in a launch segment (grounded -> lifted) and in the hold before it
+`g = 1 - smoothstep(0, 1, clamp01(e_hips))`, in a landing segment (lifted -> grounded) and in the
+hold before it `g = smoothstep(0, 1, clamp01(e_hips))`, with `e_hips` the hips' ease value of that
+segment at that time (step 4, moving holds included: during the hold before the segment it drifts
+from 0 at the hold's start to the drift value at the segment's start, which a flat 0 / 1 in the
+hold would turn into a jump; it is 0 there without moving holds, and 1 at the segment's end). So a
+wind-up dip (`e < 0`) stays fully grounded and `g` is continuous where the hips' motion is (the
+last key's hold of a non-looping animation is flat). With `h` the frame's uncorrected lowest point above the
 floor, the hips move along up so it ends at `(1 - g) * max(h, 0)` (that is
 `g * exact + (1 - g) * max(0, penetration)`: on the floor when `g = 1`, only pushed out of it
 when `g = 0`, so lifts and launches are kept), through `groundPose`'s secant steps with the rig's

@@ -43,6 +43,10 @@ namespace {
         return h;
     }
 
+    // per-frame slack of the continuity bound, humanScale units (the old flat hold weight at
+    // moving holds 0.08 and lift 0.3 went 0.003 over the 1.5x term; the continuous one never does)
+    constexpr double CONTINUITY_TOLERANCE = 0.001;
+
     // a moderate crouch (the feet stay the lowest point) and the airborne tuck of a jump
     BodyPose bendPose(){
         return bodyWith({{"left_upper_leg.forward", 50}, {"right_upper_leg.forward", 50},
@@ -142,60 +146,68 @@ TEST(PoseFrameGrounding, JumpNeverPenetratesAndKeepsTheFlight){
 }
 
 TEST(PoseFrameGrounding, CorrectionIsContinuousAcrossHoldsAndSegments){
-    // reviewer probe: an exact correction in a grounded hold followed by a push-up-only launch
-    // segment popped 0.023 to 0.08 humanScale in one frame (moving holds, a still-bouncing
-    // spring). With the ground weight continuous (fading out over the launch and in over the
-    // landing) the correction (corrected minus uncorrected hips height) changes per frame no
-    // faster than the uncorrected height of the lowest point does nearby: jumps with a hold
-    // between the landing and the relaunch, moving holds on, every feel preset, loops
+    // reviewer probes: an exact correction in a grounded hold followed by a push-up-only launch
+    // popped 0.023 to 0.08 humanScale in one frame, and with moving holds a flat ground weight in
+    // the hold before a launch or a landing jumped by smoothstep(drift) at the segment's start
+    // (0.25 humanScale at moving holds 0.5, lift 1.0). With the ground weight continuous, the
+    // correction (corrected minus uncorrected hips height) changes per frame no faster than the
+    // uncorrected height of the lowest point does nearby: jumps with a hold between the landing
+    // and the relaunch, moving holds 0.08 / 0.25 / 0.5, lifts 0.3 / 1.0, every feel preset, loops
+    const std::vector<const PoseRig*> rigs = {allRigs()[0]->skinned.get(), allRigs()[1]->rig.get(), allRigs()[4]->rig.get()};
     int checked = 0;
-    double worst = 0.0;
-    for (const PoseRig* rig : everyRig()){
-        const double hs = rig->humanScale();
-        for (const FeelPreset& preset : feelPresets()){
-            for (bool loop : {false, true}){
-                PoseAnimationData data = makeAnimation({bendPose(), tuckPose(), bendPose(), tuckPose()}, loop, 0.2f);
-                if (!loop){
-                    PoseKey last = data.poses[0];
-                    data.poses.push_back(last);
-                }
-                applyFeelPreset(preset, data.settings);
-                data.settings.frameRate = 60;
-                data.settings.humanize.enabled = true;   // moving holds 0.08, in-betweens, follow-through
-                data.settings.humanize.life = 0.0f;
-                for (int k : {1, 3}){
-                    data.poses[k].grounded = false;
-                    data.poses[k].lift = 0.3f;
-                }
-                const SamplerInput input = makeSamplerInput(data, realiseKeys(data, *rig), rig);
-                SamplerInput uncorrected = input;
-                uncorrected.grounded.clear();
-                const std::vector<HumanPose> f = frames(input, 0);
-                const std::vector<HumanPose> raw = frames(uncorrected, 0);
-                const std::vector<double> h = heights(*rig, f), rawH = heights(*rig, raw);
-                const int count = static_cast<int>(f.size()) - 1;
-                std::vector<double> offset(f.size()), rawStep(f.size(), 0.0);
-                for (int i = 0; i <= count; i++){
-                    offset[i] = (rig->hipsWorldPosition(f[i]).y - rig->hipsWorldPosition(raw[i]).y) / hs;
-                    if (i > 0) rawStep[i] = std::fabs(rawH[i] - rawH[i - 1]);
-                }
-                for (int i = 1; i <= count; i++){
-                    double nearby = 0.0;
-                    for (int j = std::max(i - 1, 1); j <= std::min(i + 1, count); j++){
-                        nearby = std::max(nearby, rawStep[j]);
+    for (float drift : {0.08f, 0.25f, 0.5f}){
+        for (float lift : {0.3f, 1.0f}){
+            double worst = -1.0;
+            for (const PoseRig* rig : rigs){
+                const double hs = rig->humanScale();
+                for (const FeelPreset& preset : feelPresets()){
+                    for (bool loop : {false, true}){
+                        PoseAnimationData data = makeAnimation({bendPose(), tuckPose(), bendPose(), tuckPose()}, loop, 0.2f);
+                        if (!loop){
+                            PoseKey last = data.poses[0];
+                            data.poses.push_back(last);
+                        }
+                        applyFeelPreset(preset, data.settings);
+                        data.settings.frameRate = 60;
+                        data.settings.humanize.enabled = true;   // in-betweens, follow-through
+                        data.settings.humanize.life = 0.0f;
+                        data.settings.humanize.movingHolds = drift;
+                        for (int k : {1, 3}){
+                            data.poses[k].grounded = false;
+                            data.poses[k].lift = lift;
+                        }
+                        const SamplerInput input = makeSamplerInput(data, realiseKeys(data, *rig), rig);
+                        SamplerInput uncorrected = input;
+                        uncorrected.grounded.clear();
+                        const std::vector<HumanPose> f = frames(input, 0);
+                        const std::vector<HumanPose> raw = frames(uncorrected, 0);
+                        const std::vector<double> h = heights(*rig, f), rawH = heights(*rig, raw);
+                        const int count = static_cast<int>(f.size()) - 1;
+                        std::vector<double> offset(f.size()), rawStep(f.size(), 0.0);
+                        for (int i = 0; i <= count; i++){
+                            offset[i] = (rig->hipsWorldPosition(f[i]).y - rig->hipsWorldPosition(raw[i]).y) / hs;
+                            if (i > 0) rawStep[i] = std::fabs(rawH[i] - rawH[i - 1]);
+                        }
+                        for (int i = 1; i <= count; i++){
+                            double nearby = 0.0;
+                            for (int j = std::max(i - 1, 1); j <= std::min(i + 1, count); j++){
+                                nearby = std::max(nearby, rawStep[j]);
+                            }
+                            const double change = std::fabs(offset[i] - offset[i - 1]);
+                            EXPECT_LE(change, 1.5 * nearby + CONTINUITY_TOLERANCE) << preset.name << " loop " << loop << " drift " << drift
+                                << " lift " << lift << " frame " << i << " correction " << offset[i - 1] << " -> " << offset[i]
+                                << ", lowest point steps nearby " << nearby;
+                            EXPECT_GT(h[i], -1e-5) << preset.name << " loop " << loop << " frame " << i;
+                            worst = std::max(worst, change - 1.5 * nearby);
+                            checked++;
+                        }
                     }
-                    const double change = std::fabs(offset[i] - offset[i - 1]);
-                    EXPECT_LE(change, 1.5 * nearby + 0.005) << preset.name << " loop " << loop << " frame " << i
-                        << " correction " << offset[i - 1] << " -> " << offset[i] << ", lowest point steps nearby " << nearby;
-                    EXPECT_GT(h[i], -1e-5) << preset.name << " loop " << loop << " frame " << i;
-                    worst = std::max(worst, change - 1.5 * nearby);
-                    checked++;
                 }
             }
+            std::printf("[ info ] moving holds %.2f lift %.1f: worst correction change over 1.5 x the nearby lowest-point step %+.5f\n", drift, lift, worst);
         }
     }
-    std::printf("[ info ] worst correction change over 1.5 x the nearby lowest-point step: %+.5f humanScale\n", worst);
-    EXPECT_GT(checked, 1000);
+    EXPECT_GT(checked, 5000);
 }
 
 TEST(PoseFrameGrounding, FollowThroughFollowsTheCorrectedHips){

@@ -12,7 +12,8 @@
 //   correction need SamplerInput::rig; with rig == nullptr they are skipped.
 // - Ground correction of the frames (always on with a rig; spec 4.8): a ground weight g per
 //   frame (1 in grounded holds and between two grounded keys, 0 in lifted holds and between two
-//   lifted keys, faded with smoothstep(clamp01(e_hips)) over launch and landing segments) puts
+//   lifted keys, faded with smoothstep(clamp01(e_hips)) over launch and landing segments and over
+//   the hold before one, where moving holds already drift the hips' ease) puts
 //   the lowest point at (1 - g) * max(h, 0) for an uncorrected height h. It runs after the
 //   in-betweens and before follow-through; frames follow-through or the limits change are
 //   corrected again (their uncorrected height = the new lowest point minus the first shift). The
