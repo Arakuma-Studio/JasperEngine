@@ -67,7 +67,10 @@ namespace jasperengine::editor{
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE,
-        UI_DOCUMENT
+        UI_DOCUMENT,
+        // a unit lattice (Transform + LatticeComponent); the menus create one through
+        // LatticeEditorOps::createLattice, which fits and binds it around the selection
+        LATTICE
     };
 
     class CreateEntityCmd: public Command{

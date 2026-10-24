@@ -10,6 +10,7 @@
 #include "Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
+#include "lattice/LatticeTypes.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
@@ -1405,6 +1406,97 @@ std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mo
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
     if (str == "texture") return UIDocumentRenderMode::TEXTURE;
     return UIDocumentRenderMode::SCREEN;
+}
+
+std::string editor::Stream::latticeInterpolationToString(LatticeInterpolation interpolation) {
+    switch (interpolation) {
+        case LatticeInterpolation::SHARP: return "sharp";
+        case LatticeInterpolation::SMOOTH: return "smooth";
+        case LatticeInterpolation::CUBIC:
+        default: return "cubic";
+    }
+}
+
+LatticeInterpolation editor::Stream::stringToLatticeInterpolation(const std::string& str) {
+    if (str == "sharp") return LatticeInterpolation::SHARP;
+    if (str == "smooth") return LatticeInterpolation::SMOOTH;
+    return LatticeInterpolation::CUBIC;
+}
+
+std::string editor::Stream::latticeOutsideToString(LatticeOutside outside) {
+    switch (outside) {
+        case LatticeOutside::EXTEND: return "extend";
+        case LatticeOutside::FADE:
+        default: return "fade";
+    }
+}
+
+LatticeOutside editor::Stream::stringToLatticeOutside(const std::string& str) {
+    if (str == "extend") return LatticeOutside::EXTEND;
+    return LatticeOutside::FADE;
+}
+
+std::string editor::Stream::latticeJiggleAnchorToString(LatticeJiggleAnchor anchor) {
+    switch (anchor) {
+        case LatticeJiggleAnchor::NEGATIVE_X: return "negative_x";
+        case LatticeJiggleAnchor::POSITIVE_X: return "positive_x";
+        case LatticeJiggleAnchor::NEGATIVE_Y: return "negative_y";
+        case LatticeJiggleAnchor::POSITIVE_Y: return "positive_y";
+        case LatticeJiggleAnchor::NEGATIVE_Z: return "negative_z";
+        case LatticeJiggleAnchor::POSITIVE_Z: return "positive_z";
+        case LatticeJiggleAnchor::NONE:
+        default: return "none";
+    }
+}
+
+LatticeJiggleAnchor editor::Stream::stringToLatticeJiggleAnchor(const std::string& str) {
+    if (str == "negative_x") return LatticeJiggleAnchor::NEGATIVE_X;
+    if (str == "positive_x") return LatticeJiggleAnchor::POSITIVE_X;
+    if (str == "negative_y") return LatticeJiggleAnchor::NEGATIVE_Y;
+    if (str == "positive_y") return LatticeJiggleAnchor::POSITIVE_Y;
+    if (str == "negative_z") return LatticeJiggleAnchor::NEGATIVE_Z;
+    if (str == "positive_z") return LatticeJiggleAnchor::POSITIVE_Z;
+    return LatticeJiggleAnchor::NONE;
+}
+
+std::string editor::Stream::latticeStageToString(LatticeStage stage) {
+    switch (stage) {
+        case LatticeStage::BEFORE_SKINNING: return "before_skinning";
+        case LatticeStage::AFTER_SKINNING:
+        default: return "after_skinning";
+    }
+}
+
+LatticeStage editor::Stream::stringToLatticeStage(const std::string& str) {
+    if (str == "before_skinning") return LatticeStage::BEFORE_SKINNING;
+    return LatticeStage::AFTER_SKINNING;
+}
+
+std::string editor::Stream::latticeMaskChannelToString(LatticeMaskChannel mask) {
+    switch (mask) {
+        case LatticeMaskChannel::RED: return "red";
+        case LatticeMaskChannel::GREEN: return "green";
+        case LatticeMaskChannel::BLUE: return "blue";
+        case LatticeMaskChannel::ALPHA: return "alpha";
+        case LatticeMaskChannel::INVERTED_RED: return "inverted_red";
+        case LatticeMaskChannel::INVERTED_GREEN: return "inverted_green";
+        case LatticeMaskChannel::INVERTED_BLUE: return "inverted_blue";
+        case LatticeMaskChannel::INVERTED_ALPHA: return "inverted_alpha";
+        case LatticeMaskChannel::NONE:
+        default: return "none";
+    }
+}
+
+LatticeMaskChannel editor::Stream::stringToLatticeMaskChannel(const std::string& str) {
+    if (str == "red") return LatticeMaskChannel::RED;
+    if (str == "green") return LatticeMaskChannel::GREEN;
+    if (str == "blue") return LatticeMaskChannel::BLUE;
+    if (str == "alpha") return LatticeMaskChannel::ALPHA;
+    if (str == "inverted_red") return LatticeMaskChannel::INVERTED_RED;
+    if (str == "inverted_green") return LatticeMaskChannel::INVERTED_GREEN;
+    if (str == "inverted_blue") return LatticeMaskChannel::INVERTED_BLUE;
+    if (str == "inverted_alpha") return LatticeMaskChannel::INVERTED_ALPHA;
+    return LatticeMaskChannel::NONE;
 }
 
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
@@ -4313,6 +4405,26 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::UIDocumentComponent, true)] = encodeUIDocumentComponent(document);
     }
 
+    if (signature.test(registry->getComponentId<LatticeComponent>())) {
+        const LatticeComponent& lattice = registry->getComponent<LatticeComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeComponent, true)] = encodeLatticeComponent(lattice);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeModifierComponent>())) {
+        const LatticeModifierComponent& modifier = registry->getComponent<LatticeModifierComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeModifierComponent, true)] = encodeLatticeModifierComponent(modifier);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeFollowerComponent>())) {
+        const LatticeFollowerComponent& follower = registry->getComponent<LatticeFollowerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeFollowerComponent, true)] = encodeLatticeFollowerComponent(follower);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeTracksComponent>())) {
+        const LatticeTracksComponent& tracks = registry->getComponent<LatticeTracksComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeTracksComponent, true)] = encodeLatticeTracksComponent(tracks);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -4766,6 +4878,58 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::LatticeComponent, true);
+    if (compNode[compName]) {
+        LatticeComponent* existing = registry->findComponent<LatticeComponent>(entity);
+        LatticeComponent lattice = decodeLatticeComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<LatticeComponent>())){
+            registry->addComponent<LatticeComponent>(entity, std::move(lattice));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeComponent, existing, &lattice);
+            registry->getComponent<LatticeComponent>(entity) = std::move(lattice);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::LatticeModifierComponent, true);
+    if (compNode[compName]) {
+        LatticeModifierComponent* existing = registry->findComponent<LatticeModifierComponent>(entity);
+        LatticeModifierComponent modifier = decodeLatticeModifierComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<LatticeModifierComponent>())){
+            registry->addComponent<LatticeModifierComponent>(entity, std::move(modifier));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeModifierComponent, existing, &modifier);
+            registry->getComponent<LatticeModifierComponent>(entity) = std::move(modifier);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::LatticeFollowerComponent, true);
+    if (compNode[compName]) {
+        LatticeFollowerComponent* existing = registry->findComponent<LatticeFollowerComponent>(entity);
+        LatticeFollowerComponent follower = decodeLatticeFollowerComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<LatticeFollowerComponent>())){
+            registry->addComponent<LatticeFollowerComponent>(entity, std::move(follower));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeFollowerComponent, existing, &follower);
+            registry->getComponent<LatticeFollowerComponent>(entity) = std::move(follower);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::LatticeTracksComponent, true);
+    if (compNode[compName]) {
+        LatticeTracksComponent* existing = registry->findComponent<LatticeTracksComponent>(entity);
+        LatticeTracksComponent tracks = decodeLatticeTracksComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<LatticeTracksComponent>())){
+            registry->addComponent<LatticeTracksComponent>(entity, std::move(tracks));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeTracksComponent, existing, &tracks);
+            registry->getComponent<LatticeTracksComponent>(entity) = std::move(tracks);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -7965,6 +8129,267 @@ MorphTracksComponent editor::Stream::decodeMorphTracksComponent(const YAML::Node
     }
 
     decodeTrackLists(node, tracks, decodeFloatList);
+
+    return tracks;
+}
+
+// ==============================
+// Lattice components encode/decode
+// ==============================
+
+YAML::Node editor::Stream::encodeLatticeOffsets(const std::vector<Vector3>& offsets) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const Vector3& offset : offsets) {
+        node.push_back(encodeVector3(offset));
+    }
+    if (offsets.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<Vector3> editor::Stream::decodeLatticeOffsets(const YAML::Node& node) {
+    std::vector<Vector3> offsets;
+    if (node && node.IsSequence()) {
+        offsets.reserve(node.size());
+        for (const YAML::Node& offset : node) {
+            offsets.push_back(decodeVector3(offset));
+        }
+    }
+    return offsets;
+}
+
+YAML::Node editor::Stream::encodeLatticeComponent(const LatticeComponent& lattice) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(lattice.enabled);
+
+    node["resolutionX"] = YamlNumbers::integerText(lattice.resolutionX);
+    node["resolutionY"] = YamlNumbers::integerText(lattice.resolutionY);
+    node["resolutionZ"] = YamlNumbers::integerText(lattice.resolutionZ);
+    node["offsets"] = encodeLatticeOffsets(lattice.offsets);
+    node["interpolation"] = latticeInterpolationToString(lattice.interpolation);
+    node["outside"] = latticeOutsideToString(lattice.outside);
+    encodeFinite(node, "fadeDistance", lattice.fadeDistance);
+
+    YAML::Node posesNode(YAML::NodeType::Sequence);
+    for (const LatticePose& pose : lattice.poses) {
+        YAML::Node poseNode;
+        poseNode["name"] = pose.name;
+        poseNode["offsets"] = encodeLatticeOffsets(pose.offsets);
+        posesNode.push_back(poseNode);
+    }
+    if (lattice.poses.empty()) posesNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["poses"] = posesNode;
+
+    node["jiggle"] = YamlNumbers::text(lattice.jiggle);
+    encodeFinite(node, "jiggleStiffness", lattice.jiggleStiffness);
+    encodeFinite(node, "jiggleDamping", lattice.jiggleDamping);
+    encodeFinite(node, "jiggleInertia", lattice.jiggleInertia);
+    node["jiggleAnchor"] = latticeJiggleAnchorToString(lattice.jiggleAnchor);
+    encodeFinite(node, "jiggleMaxOffset", lattice.jiggleMaxOffset);
+
+    return node;
+}
+
+LatticeComponent editor::Stream::decodeLatticeComponent(const YAML::Node& node, const LatticeComponent* oldLattice) {
+    LatticeComponent lattice;
+
+    if (oldLattice) {
+        lattice = *oldLattice;
+    }
+
+    if (node["enabled"]) lattice.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["resolutionX"]) lattice.resolutionX = YamlNumbers::as<int>(node["resolutionX"]);
+    if (node["resolutionY"]) lattice.resolutionY = YamlNumbers::as<int>(node["resolutionY"]);
+    if (node["resolutionZ"]) lattice.resolutionZ = YamlNumbers::as<int>(node["resolutionZ"]);
+    lattice.resolutionX = std::clamp(lattice.resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionY = std::clamp(lattice.resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionZ = std::clamp(lattice.resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const size_t pointCount = static_cast<size_t>(lattice.resolutionX * lattice.resolutionY * lattice.resolutionZ);
+
+    if (node["offsets"]) lattice.offsets = decodeLatticeOffsets(node["offsets"]);
+    lattice.offsets.resize(pointCount, Vector3::ZERO);
+
+    if (node["interpolation"]) lattice.interpolation = stringToLatticeInterpolation(node["interpolation"].as<std::string>());
+    if (node["outside"]) lattice.outside = stringToLatticeOutside(node["outside"].as<std::string>());
+    if (node["fadeDistance"]) lattice.fadeDistance = decodeFinite(node["fadeDistance"], lattice.fadeDistance);
+
+    if (node["poses"]) {
+        lattice.poses.clear();
+        if (node["poses"].IsSequence()) {
+            for (const YAML::Node& poseNode : node["poses"]) {
+                LatticePose pose;
+                if (poseNode["name"]) pose.name = poseNode["name"].as<std::string>();
+                // a pose of another resolution is resampled where it is applied (spec §6.1)
+                pose.offsets = decodeLatticeOffsets(poseNode["offsets"]);
+                lattice.poses.push_back(std::move(pose));
+            }
+        }
+    }
+
+    if (node["jiggle"]) lattice.jiggle = YamlNumbers::as<bool>(node["jiggle"]);
+    if (node["jiggleStiffness"]) lattice.jiggleStiffness = decodeFinite(node["jiggleStiffness"], lattice.jiggleStiffness);
+    if (node["jiggleDamping"]) lattice.jiggleDamping = decodeFinite(node["jiggleDamping"], lattice.jiggleDamping);
+    if (node["jiggleInertia"]) lattice.jiggleInertia = decodeFinite(node["jiggleInertia"], lattice.jiggleInertia);
+    if (node["jiggleAnchor"]) lattice.jiggleAnchor = stringToLatticeJiggleAnchor(node["jiggleAnchor"].as<std::string>());
+    if (node["jiggleMaxOffset"]) lattice.jiggleMaxOffset = decodeFinite(node["jiggleMaxOffset"], lattice.jiggleMaxOffset);
+
+    // the old one's springs and tween are laid out for its own points
+    if (oldLattice && (oldLattice->resolutionX != lattice.resolutionX || oldLattice->resolutionY != lattice.resolutionY ||
+                       oldLattice->resolutionZ != lattice.resolutionZ)) {
+        lattice.dynamicOffsets.clear();
+        lattice.jiggleVelocities.clear();
+        lattice.jiggleSleeping = true;
+        lattice.tweenFrom.clear();
+        lattice.tweenTo.clear();
+        lattice.tweening = false;
+    }
+
+    return lattice;
+}
+
+YAML::Node editor::Stream::encodeLatticeModifierComponent(const LatticeModifierComponent& modifier) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(modifier.enabled);
+
+    YAML::Node bindingsNode(YAML::NodeType::Sequence);
+    for (const LatticeBinding& binding : modifier.bindings) {
+        YAML::Node bindingNode;
+        bindingNode["lattice"] = binding.lattice;
+        encodeFinite(bindingNode, "weight", binding.weight);
+        bindingNode["stage"] = latticeStageToString(binding.stage);
+        bindingNode["submesh"] = YamlNumbers::integerText(binding.submesh);
+        bindingNode["mask"] = latticeMaskChannelToString(binding.mask);
+        bindingsNode.push_back(bindingNode);
+    }
+    if (modifier.bindings.empty()) bindingsNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["bindings"] = bindingsNode;
+    node["includeChildren"] = YamlNumbers::text(modifier.includeChildren);
+    node["subdivisions"] = YamlNumbers::integerText(modifier.subdivisions);
+
+    return node;
+}
+
+LatticeModifierComponent editor::Stream::decodeLatticeModifierComponent(const YAML::Node& node, const LatticeModifierComponent* oldModifier) {
+    LatticeModifierComponent modifier;
+
+    if (oldModifier) {
+        modifier = *oldModifier;
+    }
+
+    if (node["enabled"]) modifier.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["bindings"]) {
+        modifier.bindings.clear();
+        if (node["bindings"].IsSequence()) {
+            for (const YAML::Node& bindingNode : node["bindings"]) {
+                LatticeBinding binding;
+                if (bindingNode["lattice"]) binding.lattice = YamlNumbers::as<Entity>(bindingNode["lattice"]);
+                if (bindingNode["weight"]) binding.weight = std::clamp(decodeFinite(bindingNode["weight"], binding.weight), 0.0f, 2.0f);
+                if (bindingNode["stage"]) binding.stage = stringToLatticeStage(bindingNode["stage"].as<std::string>());
+                if (bindingNode["submesh"]) binding.submesh = YamlNumbers::as<int>(bindingNode["submesh"]);
+                if (bindingNode["mask"]) binding.mask = stringToLatticeMaskChannel(bindingNode["mask"].as<std::string>());
+                modifier.bindings.push_back(binding);
+            }
+        }
+        modifier.warnedOverflow = false;
+    }
+    if (node["includeChildren"]) modifier.includeChildren = YamlNumbers::as<bool>(node["includeChildren"]);
+    if (node["subdivisions"]) modifier.subdivisions = std::clamp(YamlNumbers::as<int>(node["subdivisions"]), 1, 64);
+
+    return modifier;
+}
+
+YAML::Node editor::Stream::encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(follower.enabled);
+
+    node["lattice"] = follower.lattice;
+    node["rest"] = follower.rest;
+    node["applyPosition"] = YamlNumbers::text(follower.applyPosition);
+    node["applyRotation"] = YamlNumbers::text(follower.applyRotation);
+    node["applyScale"] = YamlNumbers::text(follower.applyScale);
+    encodeFinite(node, "weight", follower.weight);
+
+    return node;
+}
+
+LatticeFollowerComponent editor::Stream::decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower) {
+    LatticeFollowerComponent follower;
+
+    if (oldFollower) {
+        follower = *oldFollower;
+    }
+
+    if (node["enabled"]) follower.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["lattice"]) follower.lattice = YamlNumbers::as<Entity>(node["lattice"]);
+    if (node["rest"]) follower.rest = YamlNumbers::as<Entity>(node["rest"]);
+    if (node["applyPosition"]) follower.applyPosition = YamlNumbers::as<bool>(node["applyPosition"]);
+    if (node["applyRotation"]) follower.applyRotation = YamlNumbers::as<bool>(node["applyRotation"]);
+    if (node["applyScale"]) follower.applyScale = YamlNumbers::as<bool>(node["applyScale"]);
+    if (node["weight"]) follower.weight = decodeFinite(node["weight"], follower.weight);
+
+    return follower;
+}
+
+YAML::Node editor::Stream::encodeLatticeTrackKeys(const std::vector<std::vector<Vector3>>& keys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const std::vector<Vector3>& key : keys) {
+        node.push_back(encodeLatticeOffsets(key));
+    }
+    if (keys.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<std::vector<Vector3>> editor::Stream::decodeLatticeTrackKeys(const YAML::Node& node) {
+    std::vector<std::vector<Vector3>> keys;
+    if (node && node.IsSequence()) {
+        for (const YAML::Node& key : node) {
+            keys.push_back(decodeLatticeOffsets(key));
+        }
+    }
+    return keys;
+}
+
+YAML::Node editor::Stream::encodeLatticeTracksComponent(const LatticeTracksComponent& tracks) {
+    YAML::Node node;
+
+    YAML::Node pointsNode(YAML::NodeType::Sequence);
+    pointsNode.SetStyle(YAML::EmitterStyle::Flow);
+    for (int point : tracks.points) {
+        pointsNode.push_back(YamlNumbers::integerText(point));
+    }
+    node["points"] = pointsNode;
+    node["values"] = encodeLatticeTrackKeys(tracks.values);
+    // Hermite tangents only on cubic tracks
+    if (!tracks.inTangents.empty()) {
+        node["inTangents"] = encodeLatticeTrackKeys(tracks.inTangents);
+    }
+    if (!tracks.outTangents.empty()) {
+        node["outTangents"] = encodeLatticeTrackKeys(tracks.outTangents);
+    }
+
+    return node;
+}
+
+LatticeTracksComponent editor::Stream::decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks) {
+    LatticeTracksComponent tracks;
+
+    if (oldTracks) {
+        tracks = *oldTracks;
+    }
+
+    if (node["points"]) {
+        tracks.points.clear();
+        if (node["points"].IsSequence()) {
+            for (const YAML::Node& point : node["points"]) {
+                tracks.points.push_back(YamlNumbers::as<int>(point));
+            }
+        }
+    }
+    if (node["values"]) tracks.values = decodeLatticeTrackKeys(node["values"]);
+    // left out when empty, so an absent key is none
+    tracks.inTangents = decodeLatticeTrackKeys(node["inTangents"]);
+    tracks.outTangents = decodeLatticeTrackKeys(node["outTangents"]);
 
     return tracks;
 }

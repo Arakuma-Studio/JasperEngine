@@ -9,6 +9,7 @@
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
+#include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -20,6 +21,7 @@
 #include "soloud.h"
 #include "soloud_wav.h"
 
+#include <array>
 #include <functional>
 
 namespace jasperengine::editor{
@@ -143,6 +145,25 @@ namespace jasperengine::editor{
         std::map<std::string, bool> meshPolygonButtonGroups;
 
         std::map<std::string, bool> textureCubeSingleMode;
+
+        // Lattice inspector state (edits apply through LatticeEditorOps when a field is let go)
+        int latticeResolutionPending[3] = {3, 3, 3};
+        int latticeResolutionAxis = -1;      // axis field being edited, -1 none
+        Vector3 latticeOffsetPending;
+        bool latticeOffsetEditing = false;
+        lattice::PresetParams latticePreset;
+        char latticePoseName[128] = "";
+        std::string latticePoseRenaming;     // pose whose Rename popup is open
+        bool latticePosesExpanded = true;
+        bool latticeBindingsExpanded = true;
+        // folded cells of the shown lattice, kept while its points and settings stay the same
+        struct LatticeFoldCache {
+            uint32_t sceneId = 0;
+            Entity entity = NULL_ENTITY;
+            uint64_t key = 0;
+            std::vector<std::array<int, 3>> cells;
+        };
+        LatticeFoldCache latticeFoldCache;
 
         std::unordered_map<std::string, Texture> thumbnailTextures;
 
@@ -531,6 +552,10 @@ namespace jasperengine::editor{
         void drawRotateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScaleTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMorphTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeFollowerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
 
     public:
         static constexpr const char* WINDOW_NAME = "Inspector";

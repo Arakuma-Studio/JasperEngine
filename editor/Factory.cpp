@@ -2619,6 +2619,155 @@ std::string editor::Factory::createMorphTracksComponent(int indentSpaces, Entity
     return code.str();
 }
 
+static const char* formatLatticeInterpolation(LatticeInterpolation interpolation) {
+    switch (interpolation) {
+        case LatticeInterpolation::SHARP: return "LatticeInterpolation::SHARP";
+        case LatticeInterpolation::SMOOTH: return "LatticeInterpolation::SMOOTH";
+        case LatticeInterpolation::CUBIC: break;
+    }
+    return "LatticeInterpolation::CUBIC";
+}
+
+static const char* formatLatticeOutside(LatticeOutside outside) {
+    return outside == LatticeOutside::EXTEND ? "LatticeOutside::EXTEND" : "LatticeOutside::FADE";
+}
+
+static const char* formatLatticeJiggleAnchor(LatticeJiggleAnchor anchor) {
+    switch (anchor) {
+        case LatticeJiggleAnchor::NEGATIVE_X: return "LatticeJiggleAnchor::NEGATIVE_X";
+        case LatticeJiggleAnchor::POSITIVE_X: return "LatticeJiggleAnchor::POSITIVE_X";
+        case LatticeJiggleAnchor::NEGATIVE_Y: return "LatticeJiggleAnchor::NEGATIVE_Y";
+        case LatticeJiggleAnchor::POSITIVE_Y: return "LatticeJiggleAnchor::POSITIVE_Y";
+        case LatticeJiggleAnchor::NEGATIVE_Z: return "LatticeJiggleAnchor::NEGATIVE_Z";
+        case LatticeJiggleAnchor::POSITIVE_Z: return "LatticeJiggleAnchor::POSITIVE_Z";
+        case LatticeJiggleAnchor::NONE: break;
+    }
+    return "LatticeJiggleAnchor::NONE";
+}
+
+static const char* formatLatticeStage(LatticeStage stage) {
+    return stage == LatticeStage::BEFORE_SKINNING ? "LatticeStage::BEFORE_SKINNING" : "LatticeStage::AFTER_SKINNING";
+}
+
+static const char* formatLatticeMaskChannel(LatticeMaskChannel mask) {
+    switch (mask) {
+        case LatticeMaskChannel::RED: return "LatticeMaskChannel::RED";
+        case LatticeMaskChannel::GREEN: return "LatticeMaskChannel::GREEN";
+        case LatticeMaskChannel::BLUE: return "LatticeMaskChannel::BLUE";
+        case LatticeMaskChannel::ALPHA: return "LatticeMaskChannel::ALPHA";
+        case LatticeMaskChannel::INVERTED_RED: return "LatticeMaskChannel::INVERTED_RED";
+        case LatticeMaskChannel::INVERTED_GREEN: return "LatticeMaskChannel::INVERTED_GREEN";
+        case LatticeMaskChannel::INVERTED_BLUE: return "LatticeMaskChannel::INVERTED_BLUE";
+        case LatticeMaskChannel::INVERTED_ALPHA: return "LatticeMaskChannel::INVERTED_ALPHA";
+        case LatticeMaskChannel::NONE: break;
+    }
+    return "LatticeMaskChannel::NONE";
+}
+
+std::string editor::Factory::createLatticeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeComponent>(entity)) return "";
+    LatticeComponent& lattice = scene->getComponent<LatticeComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeComponent lattice;\n";
+    code << ind << "lattice.resolutionX = " << formatInt(lattice.resolutionX) << ";\n";
+    code << ind << "lattice.resolutionY = " << formatInt(lattice.resolutionY) << ";\n";
+    code << ind << "lattice.resolutionZ = " << formatInt(lattice.resolutionZ) << ";\n";
+    // zero offsets are the rest positions: only the moved points are written
+    code << ind << "lattice.offsets.assign(" << lattice.offsets.size() << ", Vector3(0.0f, 0.0f, 0.0f));\n";
+    for (size_t i = 0; i < lattice.offsets.size(); i++) {
+        if (lattice.offsets[i] != Vector3::ZERO) {
+            code << ind << "lattice.offsets[" << i << "] = " << formatVector3(lattice.offsets[i]) << ";\n";
+        }
+    }
+    code << ind << "lattice.interpolation = " << formatLatticeInterpolation(lattice.interpolation) << ";\n";
+    code << ind << "lattice.outside = " << formatLatticeOutside(lattice.outside) << ";\n";
+    code << ind << "lattice.fadeDistance = " << formatFloat(lattice.fadeDistance) << ";\n";
+    if (!lattice.poses.empty()) {
+        code << ind << "lattice.poses.resize(" << lattice.poses.size() << ");\n";
+        for (size_t i = 0; i < lattice.poses.size(); i++) {
+            const std::string pose = "lattice.poses[" + std::to_string(i) + "]";
+            code << ind << pose << ".name = " << formatString(lattice.poses[i].name) << ";\n";
+            emitValueList(code, ind, pose + ".offsets", lattice.poses[i].offsets, formatVector3);
+        }
+    }
+    code << ind << "lattice.jiggle = " << formatBool(lattice.jiggle) << ";\n";
+    code << ind << "lattice.jiggleStiffness = " << formatFloat(lattice.jiggleStiffness) << ";\n";
+    code << ind << "lattice.jiggleDamping = " << formatFloat(lattice.jiggleDamping) << ";\n";
+    code << ind << "lattice.jiggleInertia = " << formatFloat(lattice.jiggleInertia) << ";\n";
+    code << ind << "lattice.jiggleAnchor = " << formatLatticeJiggleAnchor(lattice.jiggleAnchor) << ";\n";
+    code << ind << "lattice.jiggleMaxOffset = " << formatFloat(lattice.jiggleMaxOffset) << ";\n";
+    if (!lattice.enabled) code << ind << "lattice.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeComponent", "lattice", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createLatticeModifierComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeModifierComponent>(entity)) return "";
+    LatticeModifierComponent& modifier = scene->getComponent<LatticeModifierComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeModifierComponent latticemodifier;\n";
+    if (!modifier.bindings.empty()) {
+        code << ind << "latticemodifier.bindings.resize(" << modifier.bindings.size() << ");\n";
+        for (size_t i = 0; i < modifier.bindings.size(); i++) {
+            const LatticeBinding& binding = modifier.bindings[i];
+            const std::string target = "latticemodifier.bindings[" + std::to_string(i) + "]";
+            code << ind << target << ".lattice = " << formatEntity(binding.lattice, entityVarNames) << ";\n";
+            code << ind << target << ".weight = " << formatFloat(binding.weight) << ";\n";
+            code << ind << target << ".stage = " << formatLatticeStage(binding.stage) << ";\n";
+            code << ind << target << ".submesh = " << formatInt(binding.submesh) << ";\n";
+            code << ind << target << ".mask = " << formatLatticeMaskChannel(binding.mask) << ";\n";
+        }
+    }
+    code << ind << "latticemodifier.includeChildren = " << formatBool(modifier.includeChildren) << ";\n";
+    code << ind << "latticemodifier.subdivisions = " << formatInt(modifier.subdivisions) << ";\n";
+    if (!modifier.enabled) code << ind << "latticemodifier.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeModifierComponent", "latticemodifier", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createLatticeFollowerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeFollowerComponent>(entity)) return "";
+    LatticeFollowerComponent& follower = scene->getComponent<LatticeFollowerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeFollowerComponent latticefollower;\n";
+    code << ind << "latticefollower.lattice = " << formatEntity(follower.lattice, entityVarNames) << ";\n";
+    code << ind << "latticefollower.rest = " << formatEntity(follower.rest, entityVarNames) << ";\n";
+    code << ind << "latticefollower.applyPosition = " << formatBool(follower.applyPosition) << ";\n";
+    code << ind << "latticefollower.applyRotation = " << formatBool(follower.applyRotation) << ";\n";
+    code << ind << "latticefollower.applyScale = " << formatBool(follower.applyScale) << ";\n";
+    code << ind << "latticefollower.weight = " << formatFloat(follower.weight) << ";\n";
+    if (!follower.enabled) code << ind << "latticefollower.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeFollowerComponent", "latticefollower", assignExisting);
+    return code.str();
+}
+
+template<typename FormatFn>
+static void emitVector3Lists(std::ostringstream& code, const std::string& ind, const std::string& target, const std::vector<std::vector<Vector3>>& lists, FormatFn format){
+    if (lists.empty()) return;
+    code << ind << target << ".resize(" << lists.size() << ");\n";
+    for (size_t i = 0; i < lists.size(); i++) {
+        emitValueList(code, ind, target + "[" + std::to_string(i) + "]", lists[i], format);
+    }
+}
+
+std::string editor::Factory::createLatticeTracksComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<LatticeTracksComponent>(entity)) return "";
+    LatticeTracksComponent& lt = scene->getComponent<LatticeTracksComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "LatticeTracksComponent ltcomp;\n";
+    emitValueList(code, ind, "ltcomp.points", lt.points, formatInt);
+    emitVector3Lists(code, ind, "ltcomp.values", lt.values, formatVector3);
+    // Hermite tangents only exist on cubic tracks
+    emitVector3Lists(code, ind, "ltcomp.inTangents", lt.inTangents, formatVector3);
+    emitVector3Lists(code, ind, "ltcomp.outTangents", lt.outTangents, formatVector3);
+    addComponentCode(code, ind, sceneName, entityName, entity, "LatticeTracksComponent", "ltcomp", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     switch (componentType) {
         case ComponentType::Transform: return createTransform(indentSpaces, scene, entity, sceneName, entityName, false, assignExisting, entityVarNames);
@@ -2669,6 +2818,10 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::RotateTracksComponent: return createRotateTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ScaleTracksComponent: return createScaleTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::MorphTracksComponent: return createMorphTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeComponent: return createLatticeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeModifierComponent: return createLatticeModifierComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeFollowerComponent: return createLatticeFollowerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::LatticeTracksComponent: return createLatticeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ParticleSystemComponent: return createParticleSystemComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LineRendererComponent: return createLineRendererComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::PointsComponent: return createPointsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);

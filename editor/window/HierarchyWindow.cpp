@@ -14,6 +14,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "command/type/SetChildSceneStartActiveCmd.h"
 #include "command/type/CreateEntityCmd.h"
+#include "lattice/LatticeEditorOps.h"
 #include "command/type/EntityNameCmd.h"
 #include "command/type/SceneNameCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -474,11 +475,14 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Model", ICON_FA_PERSON_RUNNING, T::MODEL, "Model", CREATE_IN_3D, true},
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
+        // around the selection (or its row's GameObject) when there is one, see createGameObject
+        {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
         {"2D Object", "Sprite", ICON_FA_IMAGE, T::SPRITE, "Sprite", CREATE_IN_WORLD},
         {"2D Object", "Tilemap", ICON_FA_BORDER_ALL, T::TILEMAP, "Tilemap", CREATE_IN_WORLD},
         {"2D Object", "Mesh Polygon", ICON_FA_VECTOR_SQUARE, T::MESH_POLYGON, "Mesh Polygon", CREATE_IN_WORLD},
         {"2D Object", "Shadow Caster 2D", ICON_FA_CIRCLE_HALF_STROKE, T::SHADOW_CASTER_2D, "Shadow Caster 2D", CREATE_IN_2D, true},
+        {"2D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_2D, true},
 
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
@@ -544,6 +548,16 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (!sceneProject || !sceneProject->scene) {
         return;
     }
+    if (entry.type == EntityCreationType::LATTICE) {
+        // a lattice wraps GameObjects instead of being made under one: the row it was asked
+        // from (unless that row is in the selection), else the selection
+        std::vector<Entity> targets = project->getSelectedEntities(sceneProject->id);
+        if (parent != NULL_ENTITY && std::find(targets.begin(), targets.end(), parent) == targets.end()) {
+            targets = {parent};
+        }
+        createLatticeAround(targets);
+        return;
+    }
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
     }
@@ -555,6 +569,38 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (selected.size() == 1) {
         revealEntity(sceneProject->id, selected[0]);
     }
+}
+
+void editor::HierarchyWindow::createLatticeAround(const std::vector<Entity>& targets){
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    // only authored GameObjects with a Transform can be bound and measured
+    std::vector<Entity> bound;
+    for (Entity entity : targets) {
+        if (cachedPlayCreatedEntities.count(entity) == 0 && sceneProject->scene->isEntityCreated(entity) &&
+            sceneProject->scene->findComponent<Transform>(entity)) {
+            bound.push_back(entity);
+        }
+    }
+    Vector3 focus = Vector3::ZERO;
+    if (sceneProject->sceneRender) {
+        if (Camera* camera = sceneProject->sceneRender->getCamera()) {
+            camera->updateTransform();
+            focus = camera->getWorldTarget();
+            if (!focus.isValid()) {
+                focus = Vector3::ZERO;
+            }
+        }
+    }
+    std::string error;
+    Entity lattice = LatticeEditorOps::createLattice(project, sceneProject->id, bound, focus, "Lattice", &error);
+    if (lattice == NULL_ENTITY) {
+        Out::error("Could not create the lattice: %s", error.c_str());
+        return;
+    }
+    revealEntity(sceneProject->id, lattice);
 }
 
 Entity editor::HierarchyWindow::getSelectedParentForCreate() const{
@@ -955,6 +1001,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_CLONE;
     }else if (signature.test(scene->getComponentId<MeshComponent>())){
         return ICON_FA_DICE_D20;
+    }else if (signature.test(scene->getComponentId<LatticeComponent>())){
+        return ICON_FA_BORDER_NONE;
     }else if (signature.test(scene->getComponentId<SkyboxComponent>())){
         return ICON_FA_CLOUD;
     }else if (signature.test(scene->getComponentId<FogComponent>())){
@@ -1015,6 +1063,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_MAXIMIZE;
     }else if (signature.test(scene->getComponentId<MorphTracksComponent>())){
         return ICON_FA_SHAPES;
+    }else if (signature.test(scene->getComponentId<LatticeTracksComponent>())){
+        return ICON_FA_CUBES_STACKED;
     }else if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
         return ICON_FA_FIRE;
     }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
@@ -2009,6 +2059,28 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                             || signature.test(scene->getComponentId<TilemapComponent>()));
                     if (!is3D && ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE "  Add Shadow Caster 2D", nullptr, false, !node.isLocked && canAddShadowCaster)) {
                         CommandHandle::get(sceneId)->addCommandNoMerge(new AddComponentCmd(project, sceneId, node.id, ComponentType::ShadowCaster2DComponent));
+                    }
+
+                    // a mesh on a target or below it: what the lattice is fitted to and deforms
+                    bool targetsHaveMesh = false;
+                    if (!node.isLocked) {
+                        const std::unordered_set<Entity> targetSet(targets.begin(), targets.end());
+                        auto meshes = scene->getComponentArray<MeshComponent>();
+                        for (size_t m = 0; m < meshes->size() && !targetsHaveMesh; m++) {
+                            // the mesh or one of its Transform parents is a target
+                            Entity current = meshes->getEntity(m);
+                            while (current != NULL_ENTITY && !targetsHaveMesh) {
+                                targetsHaveMesh = targetSet.count(current) > 0;
+                                const Transform* transform = scene->findComponent<Transform>(current);
+                                current = transform ? transform->parent : NULL_ENTITY;
+                            }
+                        }
+                    }
+                    if (ImGui::MenuItem(ICON_FA_BORDER_NONE "  Add Lattice to Selection", nullptr, false, targetsHaveMesh)) {
+                        createLatticeAround(targets);
+                    }
+                    if (!targetsHaveMesh && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                        ImGui::SetTooltip(node.isLocked ? "GameObject is locked" : "No mesh, sprite or model on the selection or below it");
                     }
 
                     bool hasMesh = signature.test(scene->getComponentId<MeshComponent>());
