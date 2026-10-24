@@ -174,7 +174,7 @@ void setUiEffectTimeTool(const CallPtr& call) {
     // stateful effects' scripted input: a pointer path and splats on one element (pinned clock only)
     const bool scripted = args.contains("pointer_path") || args.contains("splats");
     const std::string selector = args.value("selector", std::string());
-    const std::string effect = args.value("effect", std::string());
+    const std::string effect;   // every stateful effect of the element
     std::vector<Vector3> path;
     std::vector<UIEffectSplat> splats;
     if (scripted) {
@@ -293,12 +293,12 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.name = "list_ui_effects";
         tool.title = "List UI Effects";
         tool.description =
-            "The HTML/CSS UI GPU effects (CSS effect(<name>, ...)): name, kind (paint: background-image, mask-image; "
-            "filter: filter, backdrop-filter), category, cost, summary, example; parameters (name, type, default, "
-            "range) when one is named or few match. Project .frag effects included.";
+            "HTML/CSS UI GPU effects for CSS effect(<name>, ...): name, kind (paint: background-image/mask-image; filter: "
+            "filter/backdrop-filter), category, cost, summary, example; params (type, default, range) when named or few "
+            "match. Project .frag effects too.";
         tool.inputSchema = object({
-            {"name", string("One effect: all its parameters.")},
-            {"category", string("e.g. gradient, glass, blur, light, distort.")},
+            {"name", string("All its parameters.")},
+            {"category", string("e.g. glass, blur, light.")},
             {"kind", stringEnum("", {"paint", "filter"})}
         });
         tool.annotations.readOnly = true;
@@ -314,15 +314,14 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.name = "set_ui_effect_time";
         tool.title = "Set UI Effect Time";
         tool.description =
-            "Pin the HTML/CSS UI effect clock (edit/play views) for identical screenshots; null: live. pointer_path (a drag) "
-            "and splats replay exactly on selector's stateful effects.";
+            "Pin the HTML/CSS UI effect clock (edit/play) for identical screenshots; null: live. pointer_path (a drag), "
+            "splats: replayed exactly on selector's stateful effects.";
         tool.inputSchema = object({
-            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds, or null: live."}}},
-            {"entity", entityRef("Document.")},
+            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds."}}},
+            {"entity", entityRef("")},
             {"selector", string("")},
-            {"effect", string("Default: all.")},
-            {"pointer_path", array(Json{{"type", "array"}}, "[[x,y,t]]: element px, s. [] clears.")},
-            {"splats", array(Json{{"type", "object"}}, "[{x,y,dx,dy,radius,color,strength,t}]: area px, px/s; replaces.")}
+            {"pointer_path", Json{{"type", "array"}, {"description", "[[x,y,t]] element px, s; [] clears"}}},
+            {"splats", Json{{"type", "array"}, {"description", "[{x,y,dx,dy,radius,color,strength,t}] area px; replaces"}}}
         }, {"time"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = true;

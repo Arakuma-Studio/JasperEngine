@@ -2000,8 +2000,8 @@ vec4 jfx_paint(JfxContext c){
   element's simulations, and `splats: [{x, y, dx, dy, radius, color, strength, t}]` (the area's
   px, px/s; `t` defaults to the pinned time) are applied at the step their time falls in. Both
   stay until replaced (`[]` clears them; new splats replace the earlier ones), so the same call
-  twice gives the same screenshot, and other times show the same input's evolution (`effect`
-  names one effect; `entity` the document). A simulation starts at its element's first draw:
+  twice gives the same screenshot, and other times show the same input's evolution (`entity`
+  names the document). A simulation starts at its element's first draw:
   take a screenshot first if the call says there is none.
 - **Project effects**: `write_file` on an effect's `.frag` compiles it in each of its forms and
   returns the errors at their `.frag` line (`HTMLUI-FX-0015`; a manifest error is

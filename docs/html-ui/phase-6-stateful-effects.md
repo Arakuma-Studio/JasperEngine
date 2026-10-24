@@ -696,7 +696,7 @@ Shader note: llvmpipe spilled the first version's global arrays (the step's spla
 memory in every pass of the uber step variant, 4.5x the cost; the splats are now read from the
 step block.
 
-**Agents' determinism** (`set_ui_effect_time`): `selector` (+ `entity`, `effect`) with
+**Agents' determinism** (`set_ui_effect_time`): `selector` (+ `entity`; every stateful effect of the element) with
 `pointer_path` `[[x, y, t], ...]` (element border-box CSS px, effect seconds) stores a scripted path
 on the element's simulations (`EffectRuntime::setPointerPath`, `UIElement::effectPointerPath`): a
 pinned replay drags the pointer along it (known and down from its first sample's time to its
