@@ -707,6 +707,7 @@ struct ConvexDecompositionCache::Impl {
         uint64_t key;
         WeldedMesh mesh;
         DecompositionParams params;
+        bool urgent;
     };
 
     std::string directory;
@@ -741,6 +742,29 @@ struct ConvexDecompositionCache::Impl {
 
     std::string entryPath(uint64_t key) const{
         return (std::filesystem::path(directory) / (keyHex(key) + FILE_EXTENSION)).string();
+    }
+
+    // Urgent jobs queue ahead of every other one, in the order they were made urgent. Caller holds
+    // the state lock.
+    void enqueueLocked(Job job){
+        auto position = queue.end();
+        if (job.urgent){
+            position = std::find_if(queue.begin(), queue.end(), [](const Job& queuedJob){ return !queuedJob.urgent; });
+        }
+        queued.insert(job.key);
+        queue.insert(position, std::move(job));
+    }
+
+    // A queued job that is not urgent becomes urgent. Caller holds the state lock.
+    void promoteLocked(uint64_t key){
+        auto it = std::find_if(queue.begin(), queue.end(), [key](const Job& job){ return job.key == key; });
+        if (it == queue.end() || it->urgent){
+            return;
+        }
+        Job job = std::move(*it);
+        queue.erase(it);
+        job.urgent = true;
+        enqueueLocked(std::move(job));
     }
 
     // Queued or running. Caller holds the state lock.
@@ -955,12 +979,24 @@ DecompositionStatus ConvexDecompositionCache::status(uint64_t key) const{
 
 uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                                            const DecompositionParams& params){
+    return request(positions, indices, params, false);
+}
+
+uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
+                                           const DecompositionParams& params, bool urgent){
     WeldedMesh mesh = weld(positions, indices);
     const uint64_t key = hashWelded(mesh, params);
 
-    // cached, pending or failed for good: nothing to do
-    auto settled = [this, key](){
-        if (impl->memory.count(key) || impl->pendingLocked(key)){
+    // cached, pending or failed for good: nothing to do, except an urgent request moving its
+    // queued job up
+    auto settled = [this, key, urgent](){
+        if (impl->memory.count(key)){
+            return true;
+        }
+        if (impl->pendingLocked(key)){
+            if (urgent){
+                impl->promoteLocked(key);
+            }
             return true;
         }
         auto failure = impl->failures.find(key);
@@ -1000,8 +1036,7 @@ uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions
         return key;
     }
 #ifdef JASPERENGINE_CONVEX_DECOMPOSITION
-    impl->queue.push_back(Impl::Job{key, std::move(mesh), params});
-    impl->queued.insert(key);
+    impl->enqueueLocked(Impl::Job{key, std::move(mesh), params, urgent});
     if (!impl->worker.joinable()){
         Impl* state = impl.get();
         impl->worker = std::thread([state](){ state->workerLoop(); });
@@ -1009,6 +1044,11 @@ uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions
     impl->wake.notify_one();
 #endif
     return key;
+}
+
+void ConvexDecompositionCache::prioritize(uint64_t key){
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    impl->promoteLocked(key);
 }
 
 void ConvexDecompositionCache::cancel(uint64_t key){

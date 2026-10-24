@@ -780,6 +780,104 @@ TEST(ConvexDecomposition, CancelStopsARunningJobQuickly) {
     EXPECT_EQ(cache.completionVersion(), version);
 }
 
+namespace {
+
+    // A cache whose worker is held by a long job, so requests queue up behind it: release()
+    // cancels that job and the queue drains in order.
+    class BusyCache {
+    public:
+        BusyCache(): cache("") {
+            const Mesh dense = torus(1.0f, 0.35f, 256, 128);
+            blocker = cache.request(dense.positions, dense.indices, DecompositionParams::fromQuality(DecompositionQuality::HIGH));
+            // the worker has picked it up
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // Distinct quick jobs: boxes of their own size, coarse voxels
+        uint64_t request(int which, bool urgent) {
+            const Mesh mesh = box(Vector3(0, 0, 0), Vector3(1.0f + 0.1f * float(which), 1.0f, 1.0f));
+            DecompositionParams params = LOW;
+            params.resolution = 10000;
+            return cache.request(mesh.positions, mesh.indices, params, urgent);
+        }
+
+        // Cancels the blocker, then the keys in the order they become READY, until count of them did
+        std::vector<uint64_t> release(const std::vector<uint64_t>& keys, size_t count) {
+            EXPECT_EQ(cache.status(blocker), DecompositionStatus::PENDING);
+            EXPECT_EQ(cache.failureReason(blocker), "");   // not preempted by anything queued
+            cache.cancel(blocker);
+            std::vector<uint64_t> order;
+            waitUntil(std::chrono::seconds(10), [&]() {
+                for (uint64_t key : keys)
+                    if (std::find(order.begin(), order.end(), key) == order.end() && cache.status(key) == DecompositionStatus::READY)
+                        order.push_back(key);
+                return order.size() >= count;
+            });
+            cache.cancelAll();
+            EXPECT_EQ(cache.failureReason(blocker), "cancelled");
+            return order;
+        }
+
+        ConvexDecompositionCache cache;
+        uint64_t blocker = 0;
+    };
+
+}
+
+TEST(ConvexDecomposition, UrgentRequestJumpsTheQueue) {
+    REQUIRE_DECOMPOSITION();
+    BusyCache busy;
+    std::vector<uint64_t> keys;
+    for (int i = 0; i < 5; i++)
+        keys.push_back(busy.request(i, false));
+    const uint64_t urgent = busy.request(5, true);
+    keys.push_back(urgent);
+    EXPECT_EQ(busy.cache.pendingCount(), 7u);
+    const std::vector<uint64_t> order = busy.release(keys, 2);
+    ASSERT_EQ(order.size(), 2u);
+    EXPECT_EQ(order[0], urgent);
+    EXPECT_EQ(order[1], keys[0]);   // then the others, first come first served
+}
+
+TEST(ConvexDecomposition, PrioritizeMovesAQueuedKeyToTheFront) {
+    REQUIRE_DECOMPOSITION();
+    BusyCache busy;
+    std::vector<uint64_t> keys;
+    for (int i = 0; i < 5; i++)
+        keys.push_back(busy.request(i, false));
+    busy.cache.prioritize(keys[3]);
+    // no effect on the running job, an unknown key or one already urgent
+    busy.cache.prioritize(busy.blocker);
+    busy.cache.prioritize(12345);
+    busy.cache.prioritize(keys[3]);
+    EXPECT_EQ(busy.cache.pendingCount(), 6u);
+    EXPECT_EQ(busy.cache.status(12345), DecompositionStatus::NONE);
+    const std::vector<uint64_t> order = busy.release(keys, 3);
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[0], keys[3]);
+    EXPECT_EQ(order[1], keys[0]);
+    EXPECT_EQ(order[2], keys[1]);
+}
+
+TEST(ConvexDecomposition, UrgentRequestsRunFirstComeFirstServed) {
+    REQUIRE_DECOMPOSITION();
+    BusyCache busy;
+    std::vector<uint64_t> keys;
+    keys.push_back(busy.request(0, false));
+    keys.push_back(busy.request(1, false));
+    keys.push_back(busy.request(2, true));
+    keys.push_back(busy.request(3, true));
+    // a queued key requested again urgently, and one prioritized, line up behind them
+    EXPECT_EQ(busy.request(1, true), keys[1]);
+    keys.push_back(busy.request(4, false));
+    busy.cache.prioritize(keys[4]);
+    keys.push_back(busy.request(5, true));
+    EXPECT_EQ(busy.cache.pendingCount(), 7u);
+    const std::vector<uint64_t> order = busy.release(keys, 6);
+    ASSERT_EQ(order.size(), 6u);
+    EXPECT_EQ(order, (std::vector<uint64_t>{keys[2], keys[3], keys[1], keys[4], keys[5], keys[0]}));
+}
+
 TEST(ConvexDecomposition, ConcurrentRequests) {
     REQUIRE_DECOMPOSITION();
     TempDir dir;
