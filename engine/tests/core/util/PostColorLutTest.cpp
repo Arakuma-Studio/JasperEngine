@@ -93,6 +93,25 @@ namespace {
         return rgba;
     }
 
+    // the largest channel difference of the texels below the bake's top (a top texel decodes to
+    // 65504, the shaper's stand-in for unbounded light: beyond every LUT's input range, where a
+    // scene-stage LUT scales the colour into range and back and float precision cannot keep a
+    // channel 1e6 times smaller than another)
+    int maxDifferenceBelowTop(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int n){
+        std::vector<uint8_t> x = a, y = b;
+        for (size_t i = 0; i + 3 < x.size() && i + 3 < y.size(); i += 4){
+            const size_t texel = i / 4;
+            if ((int)(texel % n) == n - 1 || (int)(texel / ((size_t)n * n)) == n - 1 || (int)(texel / n % n) == n - 1){
+                for (int c = 0; c < 4; c++)
+                    x[i + c] = y[i + c];
+            }
+        }
+        int worst = 0;
+        for (size_t i = 0; i < std::min(x.size(), y.size()); i++)
+            worst = std::max(worst, std::abs((int)x[i] - (int)y[i]));
+        return worst;
+    }
+
     // the largest channel difference; with `n` the first worst texel is printed (r, g, b, channel)
     int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int n = 0){
         EXPECT_EQ(a.size(), b.size());
@@ -222,20 +241,25 @@ TEST(PostColorLut, SceneStageLogLut){
     ASSERT_TRUE(PostColorLut::getLutStage(settings, &identityLog, stage));
     EXPECT_EQ(stage, LutStage::SCENE);
 
-    // neutral: ACEScct covers linear 0..222, past which ACES is white anyway
+    // neutral: ACEScct covers linear 0..222 (brighter colours go through it scaled into range)
     for (const PostProcessingSettings& s : {neutralGrading(), settings}){
         for (int n : {16, 32}){
             for (PostColorLut::Stage bakeStage : STAGES){
-                EXPECT_LE(maxDifference(bake(s, &identityLog, bakeStage, n), bake(s, nullptr, bakeStage, n), n), 1)
+                EXPECT_LE(maxDifferenceBelowTop(bake(s, &identityLog, bakeStage, n), bake(s, nullptr, bakeStage, n), n), 1)
                     << "size " << n << " stage " << stageName(bakeStage);
             }
         }
     }
+    // a bright saturated colour past the range keeps its hue (a per-channel clamp made it white)
+    const Vector3 red = applySceneStage(identityLog, LutInputEncoding::ACESCCT, Vector3(1000.0f, 1.0f, 0.5f));
+    EXPECT_NEAR(red.x, 1000.0f, 1.0f);
+    EXPECT_NEAR(red.y, 1.0f, 0.05f);
+    EXPECT_NEAR(red.z, 0.5f, 0.05f);
     // the same with the encoding chosen in the settings rather than from the title
     CubeLut untitled = identityLog;
     untitled.title.clear();
     settings.lutInputEncoding = LutInputEncoding::ACESCCT;
-    EXPECT_LE(maxDifference(bake(settings, &untitled, PostColorLut::Stage::CURVE, 32), bake(settings, nullptr, PostColorLut::Stage::CURVE, 32)), 1);
+    EXPECT_LE(maxDifferenceBelowTop(bake(settings, &untitled, PostColorLut::Stage::CURVE, 32), bake(settings, nullptr, PostColorLut::Stage::CURVE, 32), 32), 1);
     settings.lutInputEncoding = LutInputEncoding::AUTO;
 
     // a scene LUT is a curve, even without exposure or tone mapping, and no grade
