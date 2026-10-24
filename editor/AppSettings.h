@@ -121,6 +121,8 @@ private:
     static int mcpHttpPort;
     static std::string mcpHttpToken;
     static bool mcpHttpAllowChanges;
+    static void loadMcpHttpToken();
+    static bool writeMcpHttpTokenFile(const std::string& token);
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -222,12 +224,15 @@ public:
 
     // MCP server HTTP transport: off by default, port 47615. Clients send
     // "Authorization: Bearer <token>"; the server makes the token the first time HTTP is
-    // enabled. With allow changes off, HTTP clients only get the read-only tools.
+    // enabled. It is kept in its own file next to settings.yaml, readable by its owner only
+    // (POSIX mode 0600; an mcp.http_token left in settings.yaml by older editors moves there).
+    // With allow changes off, HTTP clients only get the read-only tools.
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
     static void setMcpHttp(bool enabled, int port);
     static void setMcpHttpToken(const std::string& token);
+    static std::filesystem::path getMcpHttpTokenPath();
     static bool getMcpHttpAllowChanges();
     static void setMcpHttpAllowChanges(bool allow);
 

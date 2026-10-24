@@ -189,6 +189,9 @@ namespace jasperengine::editor::mcp {
         bool refuseIfBusy(const CallPtr& call, ToolActivity activity);
         // The activity the busy policy applies to a tool (resolves ToolActivity::Auto)
         static ToolActivity effectiveActivity(const ToolDef& def);
+        // Whether this call may change the project or write files: a tool not annotated
+        // read-only, or a read-only one with arguments that write (ToolDef::writesFiles)
+        static bool mayChange(const ToolDef& def, const Json& args);
 
         static Json makeError(const Json& id, int code, const std::string& message, Json data = nullptr);
         static Json makeResult(const Json& id, Json result);

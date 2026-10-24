@@ -18,6 +18,7 @@ Each stdio Editor gets a scratch directory (temp) holding:
     home/                $HOME of the editor
     settings.yaml        editor settings (the editor reads/writes it in its cwd); its
                          mcp.http_token is HTTP_TOKEN, so `--http-port` editors take that token
+                         (the editor moves it to mcp_http_token, an owner-only file, at start)
     editor.stderr.log    everything the editor wrote to stderr (stdout is the protocol)
 The scratch directory is deleted on success and kept (path printed) on failure,
 or always kept with keep=True / JASPER_KEEP_SCRATCH=1.

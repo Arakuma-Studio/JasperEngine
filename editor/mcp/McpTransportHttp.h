@@ -20,8 +20,9 @@ namespace jasperengine::editor::mcp {
     // MCP Streamable HTTP (http://127.0.0.1:<port>/mcp) on a minimal hand-written HTTP/1.1
     // server: BSD sockets / Winsock, one thread per connection.
     //  - binds 127.0.0.1 only; rejects an Origin or Host that is not localhost (DNS rebinding)
-    //  - requires "Authorization: Bearer <token>" (settings.yaml mcp.http_token, made the
-    //    first time HTTP is enabled; the MCP window copies it), compared in constant time
+    //  - requires "Authorization: Bearer <token>" (AppSettings: the owner-only mcp_http_token
+    //    file, made the first time HTTP is enabled; the MCP window copies it), compared in
+    //    constant time
     //  - POST /mcp: one JSON-RPC message. Requests answer application/json, or
     //    text/event-stream (progress notifications, then the response) when the client
     //    accepts it and sent a progressToken. Notifications/responses answer 202.

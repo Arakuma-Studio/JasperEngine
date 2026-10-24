@@ -771,10 +771,6 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     }
 }
 
-bool McpAutoSync::mayWriteFiles(bool readOnly, const Json& args) {
-    return !readOnly || (args.is_object() && args.contains("save_path"));
-}
-
 void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& paths, bool full) {
     bool rebased = false;
     if (!ensureRoot(ctx, &rebased) || rebased) return;

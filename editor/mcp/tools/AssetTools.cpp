@@ -56,6 +56,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -2939,6 +2940,15 @@ void registerAssetTools(McpRegistry& registry) {
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
+        // An .fbx may be converted to glTF first (the FBX import writes the .glb next to it)
+        tool.writesFiles = [](const Json& args) {
+            if (!args.contains("path") || !args["path"].is_string()) return false;
+            std::string path = args["path"].get<std::string>();
+            if (path.size() < 4) return false;
+            std::string ext = path.substr(path.size() - 4);
+            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            return ext == ".fbx";
+        };
         tool.handler = getAssetInfoTool;
         registry.addTool(std::move(tool));
     }

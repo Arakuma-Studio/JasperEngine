@@ -37,7 +37,9 @@ windows, Project, command histories). Two transports, same server:
    in AppSettings. Bind 127.0.0.1 only; reject requests whose `Origin` or `Host` is not
    localhost (DNS rebinding). Every request needs `Authorization: Bearer <token>` (401 and
    `WWW-Authenticate: Bearer` otherwise, compared in constant time): settings.yaml
-   `mcp.http_token`, 64 random hex digits made the first time HTTP is enabled; the MCP Server
+   64 random hex digits made the first time HTTP is enabled, in `mcp_http_token` next to
+   settings.yaml (POSIX mode 0600, set before the token is written and on a readable file at
+   load; an `mcp.http_token` older editors left in settings.yaml moves there); the MCP Server
    window shows and copies it, copies the `claude mcp add` connect command and makes a new
    one (applies to the next request). POST /mcp answers `application/json` (one JSON-RPC
    response) or `text/event-stream` when the request wants progress notifications (2026-07-28:
@@ -49,8 +51,11 @@ windows, Project, command histories). Two transports, same server:
    `mcp.allow_changes`, default on). Off, HTTP clients only get the tools annotated
    `readOnlyHint` in `tools/list` and `tools/call` (`batch` is not one, and every nested call
    of a batch is gated the same way: `McpCall::changesGated`), checked again when a queued
-   call runs. stdio clients are not affected: they launched the editor themselves (and the
-   spec has stdio take credentials from the environment, so stdio has no token either).
+   call runs. A read-only tool's call is refused too when its arguments write files
+   (`ToolDef::writesFiles`: screenshot `save_path`, get_asset_info on an .fbx;
+   `McpServer::mayChange`, which auto-sync's settle uses as well). stdio clients are not
+   affected: they launched the editor themselves (and the spec has stdio take credentials
+   from the environment, so stdio has no token either).
 
 Protocol: JSON-RPC 2.0, dual-era.
 
