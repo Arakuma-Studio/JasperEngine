@@ -97,9 +97,21 @@ namespace jasperengine {
 
         // Queues a background decomposition unless the key is cached, pending or failed (a key
         // that failed by being cancelled is queued again). A key on disk is loaded instead.
-        // Returns the key. Inputs are copied.
+        // Returns the key. Inputs are copied. Not urgent: behind every job already queued.
         uint64_t request(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                          const DecompositionParams& params);
+        // urgent: ahead of every job that is not urgent, behind the urgent ones queued before it
+        // (urgent jobs run first come, first served), for a caller waiting on the result (an
+        // agent run with decomposition "always") while a bake has queued many. A key already
+        // queued without urgency moves up the same way. The running job always finishes first:
+        // nothing is preempted. urgent false is the overload above.
+        uint64_t request(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
+                         const DecompositionParams& params, bool urgent);
+
+        // Makes a queued key urgent, as request(..., true) would: ahead of every job that is not
+        // urgent (the front of the queue when no other job is urgent), behind earlier urgent ones.
+        // No effect on a key that is running, already urgent, done or unknown.
+        void prioritize(uint64_t key);
 
         // A queued job is dropped, a running one stops as soon as V-HACD notices; either way the
         // key becomes FAILED with "cancelled" (and completionVersion bumps), and a later
