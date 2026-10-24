@@ -103,7 +103,22 @@ uniform u_fs_pbrParams {
         vec3 emissiveFactor;
         float foliageTransmission;
     #endif
+    #ifdef USE_STOCHASTIC_TILING
+        #ifdef MATERIAL_UNLIT
+            // up to the offset of the values in the CPU Material prefix (48 bytes)
+            #ifndef ALPHA_MASK
+                vec4 stochasticPadding0;
+            #endif
+            vec4 stochasticPadding1;
+        #endif
+        // Stochastic Tiling: cell size, blend sharpness, contrast, rotation (includes/pbr.glsl)
+        vec4 stochastic;
+    #endif
 } pbrParams;
+
+#ifdef USE_STOCHASTIC_TILING
+    #define LIT_STOCHASTIC_PARAMS pbrParams.stochastic
+#endif
 
 // Lit reads the camera (eye, ambient, environment, viewport, fog) from its own camera block
 // (includes/lit_frame.glsl, the part of the engine frame block it needs), and its lights
@@ -357,7 +372,12 @@ void main() {
 
                     float shadow = 1.0;
                     #ifdef USE_SHADOWS
-                        shadow = lightShadow(i, v_position, n);
+                        // a surface facing away from the light (n is the shading normal, flipped
+                        // on a double-sided back face) only needs it for foliage transmission:
+                        // its direct terms below are scaled by NdotL = 0
+                        if (NdotL > 0.0 || pbrParams.foliageTransmission > 0.0){
+                            shadow = lightShadow(i, v_position, n);
+                        }
                     #endif
 
                     if (pbrParams.foliageTransmission > 0.0) {

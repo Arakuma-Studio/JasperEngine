@@ -53,6 +53,7 @@ private:
 
     size_t builtHash = 0;
     float builtWrapWidth = -1.0f;
+    float builtFontSize = -1.0f;
 
     void rebuild(const std::vector<Paragraph>& paragraphs, float wrapWidth);
     int clampIndexToCodepointBoundary(int idx) const;

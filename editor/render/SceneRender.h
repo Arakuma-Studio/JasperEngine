@@ -46,6 +46,8 @@ namespace jasperengine::editor{
         bool snapTile            = false;
         bool snapRotation        = false;
         float rotationSnapDegrees = 15.0f;
+        // every lattice's cage, not only the selected ones' (faint)
+        bool showAllLattices     = false;
     };
 
     struct CameraObjects{
@@ -73,6 +75,7 @@ namespace jasperengine::editor{
     };
 
     class Project;
+    class PhysicsPlacementWindow;
 
     class SceneRender{
     private:
@@ -177,6 +180,20 @@ namespace jasperengine::editor{
         // the edit layer while one is set)
         Ray ownerMouseRay;
 
+        // Physics (G): a gizmo drag runs a placement gesture instead of transform commands.
+        // The click decides (physics active here, no point/instance/tile sub-selection), the
+        // first drag frame begins the gesture on the handle the click took.
+        bool physicsClick = false;
+        bool physicsDragBegun = false;
+        bool physicsGestureStarted = false;
+        // the movers' centre when the gesture began, and the gizmo's offset from it, so the
+        // gizmo follows the objects (not the mouse) without a jump
+        Vector3 physicsMoversStart;
+        Vector3 physicsGizmoOffset;
+        bool hasToolSubSelection(const std::vector<Entity>& selEntities);
+        void physicsGizmoDrag(PhysicsPlacementWindow* physics, uint32_t sceneId, bool invertRotationSnap);
+        void updatePhysicsOverlay(PhysicsPlacementWindow* physics, uint32_t sceneId);
+
         Scene* gizmoScene() const;
         ToolsLayer& gizmoTools();
         const ToolsLayer& gizmoTools() const;
@@ -202,6 +219,63 @@ namespace jasperengine::editor{
         // size the Scene view draws at, in engine pixels
         int viewWidth = 0;
         int viewHeight = 0;
+
+        // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
+        struct LatticeCageLines{
+            LineRenderer* overlay = nullptr; // tools scene: over the geometry (faded where hidden in 3D)
+            LineRenderer* depth = nullptr;   // this scene: depth tested, at full colour (3D views)
+            // what an unselected cage was last built from: its lines do not depend on the camera,
+            // so they are rebuilt only when one of these changes (many cages, Show all lattices)
+            bool cached = false;
+            Matrix4 cachedModel;
+            std::vector<Vector3> cachedOffsets;
+            int cachedResolution[3] = {0, 0, 0};
+            std::vector<float> cachedSettings;
+        };
+        // scratch of drawLatticeCage, kept between frames (no allocation per cage and frame)
+        std::vector<Vector3> latticeRestScratch;
+        std::vector<Vector3> latticeWorldScratch;
+        std::map<Entity, LatticeCageLines> latticeCages;
+        LineRenderer* latticeFalloffLines = nullptr;
+        // the project scene this view shows, found on first use (selections are per scene)
+        uint32_t latticeSceneId = 0;
+        bool latticeSceneIdKnown = false;
+        // a gizmo drag of lattice points, from mouseClickEvent to mouseReleaseEvent
+        struct LatticeDrag{
+            bool active = false;
+            Entity lattice = 0; // NULL_ENTITY
+            std::vector<int> points;
+            std::vector<Vector3> baseOffsets;
+            int resolution[3] = {0, 0, 0};
+            Matrix4 latticeModel;
+            Vector3 pivot;       // world, where the gizmo was
+            Quaternion rotation; // gizmo rotation
+        };
+        LatticeDrag latticeDrag;
+
+        uint32_t getLatticeSceneId();
+        // the lattice whose points the tools edit: the only tool entity, a lattice with an
+        // invertible Transform, in this scene (no edit layer); NULL_ENTITY otherwise
+        Entity getPointEditLattice(const std::vector<Entity>& toolEntities);
+        // world positions of every point of a lattice
+        bool getLatticeWorldPoints(Entity entity, std::vector<Vector3>& points);
+        // where the gizmo acts on the selected points: their centroid, lattice-local or world axes
+        bool getLatticePointsPivot(Entity entity, const std::vector<int>& points, Vector3& pivot, Quaternion& rotation, OBB& obb);
+        void updateLatticeCages(const std::vector<Entity>& selEntities, const std::vector<Entity>& entities, Entity editedLattice);
+        void drawLatticeCage(LatticeCageLines& lines, Entity entity, bool selected, bool editable);
+        void drawLatticeFalloff(Entity entity, bool visible);
+        void hideLatticeCages();
+        void destroyLatticeCages();
+        void beginLatticeDrag(Entity entity, const Vector3& pivot, const Quaternion& rotation);
+        // the gizmo's change since the drag began (the entity drag's math, about the pivot)
+        void dragLatticeGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap);
+        // a world-space change applied to the dragged points (and the falloff's)
+        void dragLatticePoints(Project* project, uint32_t sceneId, const Matrix4& worldDelta);
+        void endLatticeDrag();
+        // a Lattice Follower driven on the channel the grabbed gizmo edits (W position, E
+        // rotation, R scale, the 2D gizmo's move) is replaced by its rest: the follower is put
+        // back every frame, so the tools move the spot it follows instead
+        void redirectDrivenFollowers(Scene* target, std::vector<Entity>& entities);
 
     protected:
         // selection outline of boxes: their near face (2D views), or all twelve edges
@@ -238,6 +312,8 @@ namespace jasperengine::editor{
 
         LineRenderer* selLines;
         LineRenderer* terrainBrushLines;
+        // Physics Placement: region, contacts, teleport ring, ghosts, proxies, distance rays
+        LineRenderer* physicsLines;
 
         ToolsLayer toolslayer;
         UILayer uilayer;
@@ -318,6 +394,15 @@ namespace jasperengine::editor{
         // fitted and centered in a view of width x height
         Rect getGameLayerRect(int width, int height) const;
         bool isTerrainEditing() const;
+        // Gizmo hover highlight, terrain brush or Paint Dye brush, which follow the mouse
+        bool hasHoverFeedback() const;
+        // the Paint Dye brush is armed on a fluid of this scene (FluidEditorTools)
+        bool isFluidPainting() const;
+        // The Paint Dye brush's circle under the pointer, in pixels of this view (y down), for
+        // SceneWindow to draw over the image (a 2D scene draws sprites over its own lines)
+        bool getFluidBrushCircle(std::vector<Vector2>& points);
+        // a world point in pixels of this view (y down) through the editor camera; false behind it
+        bool projectToView(const Vector3& world, Vector2& point);
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen
@@ -334,6 +419,8 @@ namespace jasperengine::editor{
         Camera* getCamera();
         // ray through (x, y) of the Scene view (engine pixels) from the editor camera
         Ray screenToRay(float x, float y);
+        // where a world point is in the Scene view (engine pixels, y down); false behind the camera
+        bool worldToScreen(const Vector3& world, Vector2& screen) const;
         int getViewWidth() const { return viewWidth; }
         int getViewHeight() const { return viewHeight; }
         bool setPreviewCamera(Entity entity);
@@ -398,6 +485,19 @@ namespace jasperengine::editor{
         // world half-extent of a point handle so it stays a constant size on screen
         // (~8px): zoom-scaled in ortho views, distance-scaled in perspective views
         float getPointHandleHalfSize(const Vector3& worldPoint);
+
+        // Lattice point sub-selection (the selection itself is LatticeEditorOps')
+        // point of the lattice under the mouse (-1 when none)
+        int hitTestLatticePoint(Entity entity, float x, float y);
+        // the points drawn on the same spot as `index` (itself included): the stacked layers
+        // of a flat cage seen face on, which one click takes together
+        std::vector<int> getLatticeCoincidentPoints(Entity entity, int index);
+        // points of the lattice inside a Scene-view rectangle (NDC corners, as selectObjectsByRect)
+        std::vector<int> getLatticePointsInRect(Entity entity, Vector2 start, Vector2 end);
+        // world bounds of points of a lattice (all of them when points is empty)
+        AABB getLatticePointsAABB(Entity entity, const std::vector<int>& points);
+        // a gizmo drag of lattice points is under way (the mouse wheel sizes the falloff)
+        bool isLatticeDragActive() const { return latticeDrag.active; }
 
         // Polygon / MeshPolygon vertex sub-selection
         int getSelectedPolygonPointIndex() const { return selectedPolygonPointIndex; }

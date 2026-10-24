@@ -9,6 +9,7 @@
 #   tools/build.sh unit-tests [--clean]    builds and runs jasperengine-core-tests and jasperengine-editor-tests
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
+#   tools/build.sh texsynth-tests      builds and runs jasperengine-texsynth-tests (texture synthesis, editor/texsynth)
 #   tools/build.sh mcp-tests [args...]  the MCP tests against build/linux/editor-install (run tools/build.sh linux first)
 #   tools/build.sh web-gate            the web build (tools/build.sh web) in headless Chrome (tools/web/browser_gate.py)
 #   tools/build.sh shell <target>      interactive shell in that target's image
@@ -48,6 +49,9 @@
 # or a test project with a gate (tools/web/gates/<name>.json; build/web-<name>, WEB_PROJECT=<name>
 # tools/build.sh web first);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
+# texsynth-tests: TEXSYNTH_TEST_ARGS goes to the test binary, RUN=0 builds only. Without Docker:
+#   cmake -S . -B build/linux/editor -DJASPERENGINE_TEXSYNTH_TESTS=ON && cmake --build build/linux/editor
+#   --target jasperengine-texsynth-tests && build/linux/editor/jasperengine-texsynth-tests
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -61,7 +65,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=74
 
 usage() {
-    sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,55p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -77,7 +81,7 @@ if [[ "$TARGET" == shell || "$TARGET" == exec ]]; then
     TARGET="$1"; shift
 fi
 case "$TARGET" in
-    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate) ;;
+    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|texsynth-tests|mcp-tests|web-gate) ;;
     *) usage ;;
 esac
 if [[ $EXEC_MODE -eq 1 ]]; then
@@ -95,7 +99,7 @@ done
 # The tests run in the image of the build they test, next to its output
 IMAGE_TARGET="$TARGET"
 case "$TARGET" in
-    unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests) IMAGE_TARGET=linux ;;
+    unit-tests|htmlui-tests|htmlui-editor-tests|texsynth-tests|mcp-tests) IMAGE_TARGET=linux ;;
     web-gate) IMAGE_TARGET=web ;;
 esac
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
@@ -197,6 +201,9 @@ MOUNT_FLAGS=()
 if [[ "$TARGET" == mcp-tests && -n "${JASPER_FIXTURE:-}" ]]; then
     MOUNT_FLAGS+=(-v "$JASPER_FIXTURE:/fixture:ro" -e JASPER_FIXTURE=/fixture)
 fi
+# the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
+# EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
+for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)
@@ -391,24 +398,7 @@ htmlui-tests)
         exit \$status
     "
     ;;
-htmlui-editor-tests)
-    BT="${BUILD_TYPE:-Release}"
-    run bash -euo pipefail -c "
-        cmake --preset linux-release -B $OUT/editor -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_HTMLUI_EDITOR_TESTS=ON \
-            $OPTION_FLAGS -DJASPERENGINE_WERROR=$WERROR_VALUE -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
-        cmake --build $OUT/editor --target jasperengine-editor jasperengine-htmlui-editor-tests $JOBS_FLAG
-        [[ '${RUN:-1}' == 0 ]] && exit 0
-        set -f  # a --gtest_filter pattern is not a glob
-        rm -f $RESULTS/htmlui-editor.xml
-        status=0
-        xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests \
-            --gtest_output=xml:$RESULTS/htmlui-editor.xml ${HTMLUI_TEST_ARGS:-} || status=1
-        # the live Google Fonts test skips without HTMLUI_LIVE_NETWORK=1
-        $GTEST_GATE --xml $RESULTS/htmlui-editor.xml --max-skipped 1 || status=1
-        exit \$status
-    "
-    ;;
-mcp-tests)
+htmlui-mcp-tests)
     SUITE="${MCP_SUITE:-ci}"
     [[ "$SUITE" == ci || "$SUITE" == all ]] || { echo "MCP_SUITE must be ci or all" >&2; exit 1; }
     [[ "$SUITE" == all && -z "${JASPER_FIXTURE:-}" ]] && { echo "MCP_SUITE=all needs JASPER_FIXTURE (the fixture project)" >&2; exit 1; }
@@ -438,6 +428,28 @@ web-gate)
         python3 tools/web/browser_gate.py --root $WEB_DIR --page $ENGINE_TARGET.html --until-ready \
             --baseline tools/web/gates/$NAME.json --screenshot $RESULTS/web/$NAME.png \
             --transcript $RESULTS/web/$NAME.log ${GATE_ARGS:-}
+    "
+    ;;
+texsynth-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TEXSYNTH_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-texsynth-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        $OUT/editor/jasperengine-texsynth-tests ${TEXSYNTH_TEST_ARGS:-}
+    "
+    ;;
+editor-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_EDITOR_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-editor-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        $OUT/editor/jasperengine-editor-tests ${EDITOR_TEST_ARGS:-}
     "
     ;;
 android)

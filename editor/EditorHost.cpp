@@ -27,6 +27,9 @@ void EditorHost::addNewSceneToDock(uint32_t) {
 void EditorHost::clearSceneWindowState(uint32_t) {
 }
 
+void EditorHost::sceneDeleting(uint32_t) {
+}
+
 void EditorHost::prepareForProjectSwitch() {
 }
 
@@ -96,6 +99,10 @@ void EditorHost::registerSaveDiscardAlert(std::string, std::string, std::functio
 
 void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, uint32_t, bool) {
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
+}
+
+void EditorHost::openTextureSynthesis(const std::filesystem::path& image, bool) {
+    Out::warning("Texture Synthesis needs the editor window: %s not opened", image.string().c_str());
 }
 
 void EditorHost::registerSaveSceneDialog(uint32_t, std::function<void()> callback) {

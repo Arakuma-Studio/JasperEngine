@@ -6,6 +6,7 @@
 
 #include "Backend.h"
 #include "AppSettings.h"
+#include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "Generator.h"
 #include "util/ScriptParser.h"
@@ -1028,7 +1029,7 @@ void editor::CodeEditor::addScriptEvent(const std::string& filepath, size_t even
             }
             if (isTarget) target = &open->second;
         } else if (change.texts[i] != texts[i]) {
-            const io::WriteResult written = DocumentFiles::write(resolveFilepath(paths[i]), change.texts[i]);
+            const io::WriteResult written = DocumentFiles::write(resolveFilepath(paths[i]), FileUtils::withLineEndings(resolveFilepath(paths[i]), change.texts[i]));
             if (!written.ok()) {
                 Out::error(DocumentFiles::saveFailureMessage(paths[i], written));
                 continue;
@@ -1327,7 +1328,9 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
             }
         }
 
-        const io::WriteResult written = DocumentFiles::write(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos));
+        const fs::path headerFile = resolveFilepath(headerPath);
+        const io::WriteResult written = DocumentFiles::write(headerFile,
+                FileUtils::withLineEndings(headerFile, headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos)));
         if (!written.ok()) {
             Out::error(DocumentFiles::saveFailureMessage(headerPath, written));
             return;
@@ -1391,7 +1394,8 @@ void editor::CodeEditor::closeAll() {
 bool editor::CodeEditor::save(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
-        const io::WriteResult written = DocumentFiles::write(fullPath, instance.editor->GetText());
+        // a script of a Windows checkout keeps its \r\n; a failed write keeps it as it was on disk
+        const io::WriteResult written = DocumentFiles::write(fullPath, FileUtils::withLineEndings(fullPath, instance.editor->GetText()));
         if (!written.ok()) {
             Out::error(DocumentFiles::saveFailureMessage(instance.filepath, written));
             return false;

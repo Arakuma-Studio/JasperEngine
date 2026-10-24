@@ -33,6 +33,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -67,8 +68,9 @@ std::string componentName(ComponentType type) {
     return lower(Catalog::getComponentName(type, true));
 }
 
+// Paths for the agent: UTF-8 (generic_string() is the ANSI code page on Windows)
 std::string generic(const fs::path& path) {
-    return path.generic_string();
+    return FileUtils::pathToGenericUtf8(path);
 }
 
 const char* kindName(Kind kind) {
@@ -227,7 +229,7 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
         error = "A project-relative .prefab path is required.";
         return false;
     }
-    fs::path rel = fs::path(text).lexically_normal();
+    fs::path rel = FileUtils::pathFromUtf8(text).lexically_normal();
     if (!mustExist && rel.extension() != ".prefab") rel += ".prefab";
     fs::path absolute;
     if (!McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) return false;
@@ -271,7 +273,7 @@ fs::path rootPrefabPath(Project* project, SceneProject* scene, Entity entity) {
 
 // The Inspector's labels for apply targets (InspectorPrefabBar.cpp applyTargetLabel)
 std::string applyTargetLabel(Project* project, const std::vector<fs::path>& targets, size_t t, uint32_t sceneId) {
-    const std::string name = "'" + targets[t].stem().string() + "'";
+    const std::string name = "'" + FileUtils::pathToUtf8(targets[t].stem()) + "'";
     const bool variant = !project->getPrefabFileBase(targets[t]).empty();
     if (t > 0) return (variant ? "Apply as Override in Prefab Variant " : "Apply as Override in Prefab ") + name;
     std::vector<fs::path> over(targets.begin() + 1, targets.end());
@@ -684,7 +686,7 @@ void createPrefabTool(const CallPtr& call) {
                    "(each root becomes <directory>/<name>.prefab).");
         return;
     }
-    fs::path dir = fs::path(args.value("directory", std::string("prefabs"))).lexically_normal();
+    fs::path dir = FileUtils::pathFromUtf8(args.value("directory", std::string("prefabs"))).lexically_normal();
     if (pathArg.empty()) {
         fs::path absolute;
         std::string error;
@@ -1313,7 +1315,7 @@ bool parseSelector(const CallPtr& call, Project* project, SceneProject* scene, c
         out.registryEntity = item["registry_entity"].get<Entity>();
     }
     const std::string prefab = item.value("prefab", std::string());
-    if (!prefab.empty()) out.prefab = fs::path(prefab).lexically_normal();
+    if (!prefab.empty()) out.prefab = FileUtils::pathFromUtf8(prefab).lexically_normal();
     if (!out.hasKind && out.entity == NULL_ENTITY && out.name.empty() && out.registryEntity == NULL_ENTITY) {
         error = "an override selector needs at least entity (or, for removed GameObjects, kind \"removed_gameobject\" with name or registry_entity).";
         return false;
@@ -1926,10 +1928,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab";
         tool.title = "Create Prefab";
         tool.description =
-            "Unity's Create Prefab: saves the GameObject (with children) as a new .prefab and makes it that prefab's "
-            "instance root (same id). Several entities: one prefab each, <directory>/<name>.prefab. An instance root "
-            "becomes an original prefab (nested instances stay; variants: create_prefab_variant); an instance member "
-            "is refused (unpack_prefab first). Never overwrites.";
+            "Create Prefab: saves the GameObject (with children) as a new .prefab (never overwrites) and makes "
+            "it the instance root (same id). Several entities: one each, <directory>/<name>.prefab. An instance "
+            "root becomes an original prefab (variants: create_prefab_variant); an instance member is refused "
+            "(unpack_prefab first).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1970,7 +1972,7 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"prefab", prefabRef},
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"position", vec3("Local position.")},
             {"name", string("")},
             {"nest_in_parent_prefab", withDefault(boolean(""), false)}
@@ -1984,8 +1986,8 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "replace_prefab";
         tool.title = "Replace Prefab";
         tool.description =
-            "Unity's Replace Prefab Asset: an outermost (or added) instance root, or a Missing Prefab root, becomes "
-            "an instance of another prefab, keeping id, parent, name and pose. Overrides move to GameObjects matched "
+            "Replace Prefab Asset: an outermost (or added) instance root or a Missing Prefab root becomes an "
+            "instance of another prefab, keeping id, parent, name, pose. Overrides move to GameObjects matched "
             "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -2006,9 +2008,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "unpack_prefab";
         tool.title = "Unpack Prefab";
         tool.description =
-            "Unity's Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, "
-            "values stay). One level by default: nested instances stay, a variant instance becomes its base's. "
-            "completely: plain GameObjects all the way down. Missing Prefab roots become plain GameObjects.";
+            "Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, values "
+            "stay). One level by default (nested instances stay; a variant instance becomes its base's); "
+            "completely: plain GameObjects all the way down. Missing Prefab roots become plain.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Any GameObject of the instance.")},
@@ -2025,9 +2027,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "add_to_prefab";
         tool.title = "Add GameObject to Prefab";
         tool.description =
-            "Unity's Apply of an added GameObject: moves it (under parent) into that instance's prefab, so every "
-            "instance gets it. target: a prefab of the nested/variant chain (one of parent's apply_targets); an "
-            "outer one gets it as an override of its nested instance. Written when the scene is saved.";
+            "Apply an added GameObject: moves it (under parent) into that instance's prefab, so every instance "
+            "gets it. target: one of parent's apply_targets (an outer prefab gets it as an override of its "
+            "nested instance). Written when the scene is saved.";
         tool.inputSchema = object({
             {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
             {"scene", sceneRef()},
@@ -2062,10 +2064,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "get_prefab_info";
         tool.title = "Get Prefab Info";
         tool.description =
-            "Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesting (outermost first), "
-            "instance_root, prefab, apply_targets (innermost first), the outermost instance's overrides (pass "
-            "entries to prefab_overrides as is). prefab: path, guid, variant chain, variants, nested, standalone, "
-            "open_in_prefab_mode, usage, contents.";
+            "Prefab status of a GameObject or a .prefab. entity: missing_prefab, owner, nesting (outermost "
+            "first), instance_root, prefab, apply_targets (innermost first), the outermost instance's overrides "
+            "(pass entries to prefab_overrides as is). prefab: path, guid, variant chain, variants, nested, "
+            "standalone, open_in_prefab_mode, usage, contents.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -2082,19 +2084,19 @@ void registerPrefabTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     }
     {
-        const Json properties = array(string(""), "Only these properties.");
-        const Json state = array(stringEnum("", STATE_NAMES), "Only these state fields.");
+        const Json properties = array(string(""), "");
+        const Json state = array(stringEnum("", STATE_NAMES), "");
         const Json removedName = string("Removed GameObject: name in prefab.");
         const Json removedId = integer("Removed GameObject: file id in prefab.");
         ToolDef tool;
         tool.name = "prefab_overrides";
         tool.title = "Apply / Revert Prefab Overrides";
         tool.description =
-            "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with all=true + "
-            "entity (Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
-            "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). target: "
-            "one of the entry's apply_targets (default innermost = Apply to Prefab; outer = Apply as Override; a "
-            "base clears the overrides in between). The .prefab is written when a scene using it is saved.";
+            "Apply (into the asset; instances follow) or revert instance overrides, chosen by all=true + entity "
+            "(Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
+            "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). "
+            "target: one of the entry's apply_targets (default the innermost; an outer one applies it as an "
+            "override there). Written when a scene using the prefab is saved.";
         tool.inputSchema = object({
             {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
             {"action", stringEnum("", {"apply", "revert"})},
@@ -2120,11 +2122,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_mode";
         tool.title = "Prefab Mode";
         tool.description =
-            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks "
-            "inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths from "
-            "the prefab root). Edits change the asset; nested instances record overrides. Auto Save (default on) "
-            "writes ~0.35 s after each edit; save writes now. close keeps depth stages (unsaved ones follow "
-            "unsaved). status lists stages.";
+            "Prefab Mode. open: prefab (isolation) or entity (its prefab in context; stacks inside a stage); "
+            "returns the stage's scene_id for the scene/GameObject/component tools and undo (paths from the "
+            "prefab root). Edits change the asset; nested instances record overrides. auto_save (default on) "
+            "writes ~0.35 s after an edit; save writes now. close keeps depth stages. status lists stages.";
         tool.inputSchema = object({
             {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},

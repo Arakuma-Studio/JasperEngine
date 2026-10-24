@@ -164,7 +164,9 @@ namespace jasperengine{
         HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
-        UI_EFFECT        // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        PROBE_FILTER,    // reflection probe capture prefiltered into roughness mip levels (probe_filter.frag)
+        FLUID            // FluidSimulator's passes (the solver and the display), the pass in the property bits
     };
 
     enum class AttributeType{
@@ -247,6 +249,10 @@ namespace jasperengine{
         DEPTH_VS_SKINNING,
         VS_MORPHTARGET,
         DEPTH_VS_MORPHTARGET,
+        // u_vs_lattice (includes/lattice.glsl) of the colour, depth and G-buffer vertex stages
+        VS_LATTICE,
+        DEPTH_VS_LATTICE,
+        GBUFFER_VS_LATTICE,
         TERRAIN_VS_PARAMS,
         DEPTH_TERRAIN_VS_PARAMS,
         FS_TERRAIN_LAYERS,
@@ -257,7 +263,8 @@ namespace jasperengine{
         COMPOSITE_FS_PARAMS,
         FS_LIGHTING2D,
         SHADOW2D_VS_PARAMS,
-        BLIT_FS_PARAMS
+        BLIT_FS_PARAMS,
+        PROBE_FILTER_FS_PARAMS
     };
 
     enum class StorageBufferType{
@@ -293,7 +300,9 @@ namespace jasperengine{
         GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
-        BONES
+        BONES,
+        LATTICE,             // the lattice records of a mesh (RGBA32F, includes/lattice.glsl)
+        PROBESOURCE          // reflection probe capture (or its box mip chain) read by the prefilter
     };
 
     enum class TextureType {
@@ -332,7 +341,12 @@ namespace jasperengine{
         // SystemRender::getFeatures() before creating one
         RGBA16F,
         RGBA32F,
-        R32F
+        R32F,
+        // half-float two- and one-channel targets (the fluid simulation's velocity and its
+        // pressure, divergence and curl): renderable and filterable where RGBA16F is (same GLES3
+        // extension rules), half the memory of RGBA16F per channel dropped
+        RG16F,
+        R16F
     };
 
     enum class TextureFilter{
@@ -379,7 +393,11 @@ namespace jasperengine{
         // is the one the object's endLoad was given (its RenderSystem's)
         PIP_MSAA        = 1 << 12,
         PIP_MSAA_NODEPTH = 1 << 13,
-        PIP_ZPREPASS_MSAA = 1 << 14
+        PIP_ZPREPASS_MSAA = 1 << 14,
+        // a fullscreen pass into one face and mip level of an RGBA8 colour texture, no depth
+        // attachment, no blending (CameraRender::startRenderPass(TextureRender*, face, mip):
+        // the reflection probe prefilter)
+        PIP_RTT_COLORONLY = 1 << 15
     };
 
     // the depth attachment of an offscreen framebuffer

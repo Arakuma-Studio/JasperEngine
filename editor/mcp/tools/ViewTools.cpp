@@ -27,6 +27,7 @@
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -276,10 +277,8 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        const fs::path requested(job->req.savePath);
-        if (requested.is_absolute()) {
-            target = requested;
-        } else if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes
+        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
@@ -290,10 +289,10 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         const io::WriteResult written = io::writeFileAtomic(target,
                 std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
         if (!written.ok()) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ": " + io::describeWriteError(written) + ".");
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + io::describeWriteError(written) + ".");
             return;
         }
-        info["saved_to"] = target.generic_string();
+        info["saved_to"] = FileUtils::pathToGenericUtf8(target);
     }
 
     result.image.data = Base64::encode(png.data(), png.size());
@@ -775,6 +774,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"show_all_bodies", &SceneDisplaySettings::showAllBodies},
         {"show_all_joints", &SceneDisplaySettings::showAllJoints},
         {"show_all_bones", &SceneDisplaySettings::showAllBones},
+        {"show_all_lattices", &SceneDisplaySettings::showAllLattices},
         {"hide_camera_view", &SceneDisplaySettings::hideCameraView},
         {"hide_light_icons", &SceneDisplaySettings::hideLightIcons},
         {"hide_sound_icons", &SceneDisplaySettings::hideSoundIcons},
@@ -1084,9 +1084,12 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "play_mode_changes") {
         app.getPlayModeChangesWindow()->setOpen(true);
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
+    } else if (window == "texture_synthesis") {
+        app.getTextureSynthesisWindow()->open();
+        imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "jobs_memory, preferences, undo_history, play_mode_changes.");
+                   "jobs_memory, preferences, undo_history, play_mode_changes, texture_synthesis.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1201,11 +1204,14 @@ void registerViewTools(McpRegistry& registry) {
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
             {"max_width", w3::maxWidthArgSchema(8192, 1024)},
-            {"save_path", string("Also write the PNG (project-relative or absolute).")},
+            {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
             {"timeout_seconds", withDefault(number("", 1, 600), 30)}
         });
         tool.annotations.readOnly = true;
+        tool.writesFiles = [](const Json& args) {
+            return args.contains("save_path") && !(args["save_path"].is_string() && args["save_path"].get<std::string>().empty());
+        };
         tool.handler = screenshotTool;
         registry.addTool(std::move(tool));
     }
@@ -1263,7 +1269,7 @@ void registerViewTools(McpRegistry& registry) {
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "jobs_memory", "preferences", "undo_history", "play_mode_changes"})},
+                                       "jobs_memory", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},

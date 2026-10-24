@@ -100,7 +100,8 @@ namespace jasperengine::editor::mcp::w3 {
         };
     }
     inline Json maxWidthArgSchema(int maximum, int defaultWidth) {
-        return Json{{"type", "integer"}, {"description", "0 = full size."},
+        // "0 = full size" is in the server instructions (Addressing), not in every tool
+        return Json{{"type", "integer"},
                     {"minimum", 0}, {"maximum", maximum}, {"default", defaultWidth}};
     }
 

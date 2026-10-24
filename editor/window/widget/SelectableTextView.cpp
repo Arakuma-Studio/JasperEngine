@@ -341,14 +341,16 @@ void SelectableTextView::draw(const char* id, const ImVec2& size,
             hash ^= static_cast<size_t>(span.color) + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
         }
     }
-    if (hash != builtHash || fabsf(builtWrapWidth - wrapW) > 0.5f) {
+    // The wrap points move with the font size (UI Scale, monitor DPI)
+    const float fontSize = ImGui::GetFontSize();
+    if (hash != builtHash || fabsf(builtWrapWidth - wrapW) > 0.5f || builtFontSize != fontSize) {
         rebuild(paragraphs, wrapW);
         builtHash = hash;
         builtWrapWidth = wrapW;
+        builtFontSize = fontSize;
     }
 
     ImFont* font = ImGui::GetFont();
-    const float fontSize = ImGui::GetFontSize();
     const float lineBoxHeight = ImGui::GetTextLineHeight();
     const float rowSpacing = (lineSpacingY >= 0.0f)
         ? lineSpacingY
@@ -490,7 +492,8 @@ void SelectableTextView::draw(const char* id, const ImVec2& size,
                 }
                 ImGui::Dummy(ImVec2(x - linePos.x, lineBoxHeight));
             } else {
-                if (customFont) ImGui::PushFont(lineFont, fontSize);
+                // fontSize is already scaled; 0 keeps the current size
+                if (customFont) ImGui::PushFont(lineFont, 0.0f);
                 ImGui::PushStyleColor(ImGuiCol_Text, col);
                 if (ls < le) {
                     ImGui::TextUnformatted(buf.begin() + ls, buf.begin() + le);

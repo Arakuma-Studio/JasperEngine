@@ -210,6 +210,16 @@ namespace jasperengine::editor{
         XYZ
     };
 
+    // The Move/Rotate/Scale gizmos while Physics (G) is on: their colours pulled toward the
+    // Physics orange, so the axes still read apart and a highlight stays brighter
+    inline Vector4 physicsGizmoColor(const Vector3& color, float alpha, bool physics){
+        if (!physics){
+            return Vector4(color, alpha);
+        }
+        const Vector3 orange(0.94f, 0.55f, 0.16f);
+        return Vector4(color * 0.45f + orange * 0.55f, alpha);
+    }
+
     enum class Gizmo2DSideSelected{
         NONE,
         NX_NY, // -X -Y

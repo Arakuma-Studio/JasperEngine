@@ -40,7 +40,19 @@ void Action::pause(){
 void Action::stop(){
     ActionComponent& action = getComponent<ActionComponent>();
 
+    // a start (or pause) asked for earlier in the frame does not outlive the stop
+    action.startTrigger = false;
     action.stopTrigger = true;
+    action.pauseTrigger = false;
+}
+
+void Action::restart(){
+    ActionComponent& action = getComponent<ActionComponent>();
+
+    // the stop runs before the start in the same update
+    action.startTrigger = true;
+    action.stopTrigger = action.state != ActionState::Stopped;
+    action.pauseTrigger = false;
 }
 
 void Action::setOwnedTarget(bool ownedTarget){

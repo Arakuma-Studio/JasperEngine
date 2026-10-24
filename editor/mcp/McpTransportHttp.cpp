@@ -6,7 +6,7 @@
 
 #include "McpServer.h"
 
-#include "AppSettings.h"
+#include "util/Base64.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,6 +18,7 @@
 #include <deque>
 #include <map>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -35,6 +36,7 @@
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -89,6 +91,29 @@ bool ensureSocketsInitialized() {
 #else
     return true;
 #endif
+}
+
+// The client closed its end (or the connection broke). Bytes waiting to be read are not
+// a close: they are left for the next request.
+bool peerClosed(socket_t s) {
+#ifdef _WIN32
+    WSAPOLLFD pfd{};
+    pfd.fd = s;
+    pfd.events = POLLRDNORM;
+    if (WSAPoll(&pfd, 1, 0) <= 0) return false;
+#else
+    pollfd pfd{};
+    pfd.fd = s;
+    pfd.events = POLLIN;
+    if (::poll(&pfd, 1, 0) <= 0) return false;
+#endif
+    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) return true;
+    char byte;
+    const int n = static_cast<int>(::recv(s, &byte, 1, MSG_PEEK));
+#ifndef _WIN32
+    if (n < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)) return false;
+#endif
+    return n <= 0;
 }
 
 bool sendAll(socket_t s, const std::string& data) {
@@ -333,9 +358,14 @@ Json jsonError(int code, const std::string& message) {
 class HttpReply : public McpReply {
 public:
     void respond(const Json& message) override {
+        respondError(message, 200);
+    }
+
+    void respondError(const Json& message, int httpStatus) override {
         std::lock_guard<std::mutex> lock(mutex);
         if (responded) return;
         response = message;
+        status = httpStatus;
         responded = true;
         cv.notify_all();
     }
@@ -351,18 +381,26 @@ public:
         respond(McpServer::makeError(nullptr, -32800, "Request cancelled."));
     }
 
-    // Waits for the next notification or response, setting isResponse accordingly.
-    void next(Json& out, bool& isResponse) {
+    // Waits up to `timeout` for the next notification or response, setting isResponse
+    // accordingly; false when neither came.
+    bool next(Json& out, bool& isResponse, std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock, [this]() { return responded || !notifications.empty(); });
+        if (!cv.wait_for(lock, timeout, [this]() { return responded || !notifications.empty(); })) return false;
         if (!notifications.empty()) {
             out = std::move(notifications.front());
             notifications.pop_front();
             isResponse = false;
-            return;
+            return true;
         }
         out = response;
         isResponse = true;
+        return true;
+    }
+
+    // The HTTP status of the response
+    int httpStatus() {
+        std::lock_guard<std::mutex> lock(mutex);
+        return status;
     }
 
 private:
@@ -370,13 +408,118 @@ private:
     std::condition_variable cv;
     std::deque<Json> notifications;
     Json response;
+    int status = 200;
     bool responded = false;
 };
 
+// 2026-07-28 error code: the HTTP headers don't mirror the body
+constexpr int HEADER_MISMATCH = -32020;
+
+const char* nameHeaderSource(const std::string& method) {
+    if (method == "tools/call" || method == "prompts/get") return "name";
+    if (method == "resources/read") return "uri";
+    return nullptr;
+}
+
 } // namespace
+
+std::string McpTransportHttp::newToken() {
+    static const char* digits = "0123456789abcdef";
+    std::random_device device;
+    std::string token;
+    token.reserve(64);
+    for (int i = 0; i < 32; ++i) {
+        const unsigned int byte = device() & 0xFF;
+        token.push_back(digits[byte >> 4]);
+        token.push_back(digits[byte & 0x0F]);
+    }
+    return token;
+}
+
+bool McpTransportHttp::constantTimeEquals(const std::string& a, const std::string& b) {
+    // The length is no secret (every token has 64 digits); the content is compared in full
+    if (a.size() != b.size()) return false;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < a.size(); ++i) {
+        diff |= static_cast<unsigned char>(a[i] ^ b[i]);
+    }
+    return diff == 0;
+}
+
+bool McpTransportHttp::bearerMatches(const std::string& authorization, const std::string& token) {
+    if (token.empty()) return false;
+    const std::string value = trim(authorization);
+    const size_t space = value.find_first_of(" \t");
+    if (space == std::string::npos || lowerCase(value.substr(0, space)) != "bearer") return false;
+    return constantTimeEquals(trim(value.substr(space + 1)), token);
+}
+
+std::string McpTransportHttp::decodeHeaderValue(const std::string& value) {
+    const std::string prefix = "=?base64?";
+    const std::string suffix = "?=";
+    if (value.size() < prefix.size() + suffix.size() || value.compare(0, prefix.size(), prefix) != 0 ||
+        value.compare(value.size() - suffix.size(), suffix.size(), suffix) != 0) {
+        return value;
+    }
+    const std::vector<unsigned char> bytes = jasperengine::Base64::decode(value.substr(prefix.size(), value.size() - prefix.size() - suffix.size()));
+    return std::string(bytes.begin(), bytes.end());
+}
+
+Json McpTransportHttp::checkModernHeaders(const std::map<std::string, std::string>& headers, const Json& message) {
+    auto header = [&headers](const char* name, bool& present) {
+        auto it = headers.find(name);
+        present = it != headers.end();
+        return present ? it->second : std::string();
+    };
+    const Json id = message.contains("id") ? message["id"] : Json();
+    const std::string method = message.value("method", std::string());
+    auto mismatch = [&id](const std::string& text) {
+        return McpServer::makeError(id, HEADER_MISMATCH, "Header mismatch: " + text);
+    };
+
+    bool present = false;
+    const std::string metaVersion = McpServer::requestProtocolVersion(message);
+    const std::string headerVersion = header("mcp-protocol-version", present);
+    if (!present) return mismatch("the MCP-Protocol-Version header is missing.");
+    if (headerVersion != metaVersion) {
+        return mismatch("MCP-Protocol-Version header value '" + headerVersion + "' does not match the body's _meta " +
+                        "io.modelcontextprotocol/protocolVersion '" + metaVersion + "'.");
+    }
+    if (metaVersion != McpServer::MODERN_PROTOCOL_VERSION) {
+        return McpServer::makeError(id, -32022, "Unsupported protocol version",
+                                    Json{{"supported", McpServer::supportedProtocolVersions()}, {"requested", metaVersion}});
+    }
+    const std::string methodHeader = header("mcp-method", present);
+    if (!present) return mismatch("the Mcp-Method header is missing.");
+    if (methodHeader != method) {
+        return mismatch("Mcp-Method header value '" + methodHeader + "' does not match body value '" + method + "'.");
+    }
+    if (const char* source = nameHeaderSource(method)) {
+        const Json& params = message.contains("params") ? message["params"] : Json();
+        const std::string body = params.is_object() && params.contains(source) && params[source].is_string()
+            ? params[source].get<std::string>() : std::string();
+        const std::string nameHeader = header("mcp-name", present);
+        if (!present) return mismatch(std::string("the Mcp-Name header (params.") + source + ") is missing.");
+        const std::string decoded = decodeHeaderValue(nameHeader);
+        if (decoded != body) {
+            return mismatch("Mcp-Name header value '" + nameHeader + "' does not match body value '" + body + "'.");
+        }
+    }
+    return nullptr;
+}
 
 McpTransportHttp::McpTransportHttp(McpServer& server)
     : server(server) {
+}
+
+void McpTransportHttp::setToken(const std::string& value) {
+    std::lock_guard<std::mutex> lock(tokenMutex);
+    bearerToken = value;
+}
+
+std::string McpTransportHttp::token() const {
+    std::lock_guard<std::mutex> lock(tokenMutex);
+    return bearerToken;
 }
 
 McpTransportHttp::~McpTransportHttp() {
@@ -445,7 +588,6 @@ bool McpTransportHttp::start(int port, std::string& errorOut) {
         return false;
     }
 
-    bearerToken = AppSettings::getMcpHttpToken();
     listenPort = port;
     listenSocket = static_cast<intptr_t>(s);
     {
@@ -533,8 +675,11 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
             if (!sendResponse(s, 404, "text/plain", "Not found. The MCP endpoint is /mcp.", {}, keepAlive) || !keepAlive) return;
             continue;
         }
-        if (!bearerToken.empty() && request.header("authorization") != "Bearer " + bearerToken) {
-            if (!sendResponse(s, 401, "application/json", jsonError(-32600, "Unauthorized: missing or wrong bearer token.").dump(),
+        // Read per request, so a new token applies at once
+        if (!bearerMatches(request.header("authorization"), token())) {
+            if (!sendResponse(s, 401, "application/json",
+                              jsonError(-32600, "Unauthorized: missing or wrong bearer token. Send \"Authorization: Bearer <token>\"; "
+                                                "the JasperEngine editor's MCP window copies the token and the connect command.").dump(),
                               {{"WWW-Authenticate", "Bearer"}}, keepAlive) || !keepAlive) return;
             continue;
         }
@@ -575,8 +720,33 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
         const bool isRequest = message.contains("method") && message.contains("id") && !message["id"].is_null();
         const bool isInitialize = isRequest && message["method"] == "initialize";
 
+        // 2026-07-28: the version in the body's _meta or the header; no session at all
+        const std::string headerVersion = request.header("mcp-protocol-version");
+        const bool modern = !McpServer::requestProtocolVersion(message).empty() ||
+                            headerVersion == McpServer::MODERN_PROTOCOL_VERSION;
+
         SessionPtr session;
-        if (isInitialize) {
+        if (modern) {
+            if (!isRequest) {
+                // No client notification is defined over HTTP (closing the connection cancels)
+                if (!sendResponse(s, 202, "", "", {}, keepAlive) || !keepAlive) return;
+                continue;
+            }
+            const Json error = checkModernHeaders(request.headers, message);
+            if (!error.is_null()) {
+                if (!sendResponse(s, 400, "application/json", error.dump(-1, ' ', false, Json::error_handler_t::replace),
+                                  {}, keepAlive) || !keepAlive) return;
+                continue;
+            }
+            session = server.createStatelessSession("http");
+        } else if (!headerVersion.empty() && !isInitialize && !McpServer::isLegacyProtocolVersion(headerVersion)) {
+            Json error = McpServer::makeError(message.contains("id") ? message["id"] : Json(), -32600,
+                                              "Bad Request: unsupported MCP-Protocol-Version " + headerVersion + ".",
+                                              Json{{"supported", McpServer::supportedProtocolVersions()}});
+            if (!sendResponse(s, 400, "application/json", error.dump(-1, ' ', false, Json::error_handler_t::replace),
+                              {}, keepAlive) || !keepAlive) return;
+            continue;
+        } else if (isInitialize) {
             session = server.createSession("http");
         } else if (sessionHeader.empty()) {
             if (!sendResponse(s, 400, "application/json", jsonError(-32600, "Bad Request: missing Mcp-Session-Id header (call initialize first).").dump(),
@@ -590,7 +760,9 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
                 continue;
             }
         }
-        const std::vector<std::pair<std::string, std::string>> sessionHeaders = {{"Mcp-Session-Id", session->id}};
+        // 2026-07-28 never mints or echoes a session id
+        std::vector<std::pair<std::string, std::string>> sessionHeaders;
+        if (!modern) sessionHeaders.push_back({"Mcp-Session-Id", session->id});
 
         if (!isRequest) {
             server.handleMessage(session, message, nullptr);
@@ -608,28 +780,51 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
         auto reply = std::make_shared<HttpReply>();
         server.handleMessage(session, message, reply);
 
-        if (!sse) {
-            Json out;
-            bool isResponse = false;
-            do {
-                reply->next(out, isResponse);
-            } while (!isResponse);
-            if (!sendResponse(s, 200, "application/json", out.dump(-1, ' ', false, Json::error_handler_t::replace),
+        // The next message for the client; false when a 2026-07-28 client closed the
+        // connection first, which cancels the request (no answer is sent then)
+        const Json requestId = message["id"];
+        auto waitNext = [&](Json& out, bool& isResponse) {
+            while (!reply->next(out, isResponse, std::chrono::milliseconds(200))) {
+                if (!running.load()) return false;
+                if (modern && peerClosed(s)) {
+                    server.cancelRequest(session->id, requestId);
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        Json out;
+        bool isResponse = false;
+        // Up to 2025-11-25 the stream opens at once, as it always did. 2026-07-28 waits for the
+        // first message: answered before any notification (every protocol error, with its
+        // HTTP status), it goes as plain JSON
+        const bool streamNow = sse && !modern;
+        if (!streamNow && !waitNext(out, isResponse)) return;
+        if (!streamNow && (!sse || isResponse)) {
+            while (!isResponse) {
+                if (!waitNext(out, isResponse)) return;
+            }
+            if (!sendResponse(s, reply->httpStatus(), "application/json", out.dump(-1, ' ', false, Json::error_handler_t::replace),
                               sessionHeaders, keepAlive) || !keepAlive) return;
             continue;
         }
 
         // text/event-stream: notifications, then the response, then the stream closes
         std::string head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"
-                           "Mcp-Session-Id: " + session->id + "\r\nConnection: close\r\n\r\n";
+                           "X-Accel-Buffering: no\r\n";
+        for (const auto& header : sessionHeaders) head += header.first + ": " + header.second + "\r\n";
+        head += "Connection: close\r\n\r\n";
         if (!sendAll(s, head)) return;
+        if (streamNow && !waitNext(out, isResponse)) return;
         while (true) {
-            Json out;
-            bool isResponse = false;
-            reply->next(out, isResponse);
             const std::string event = "event: message\ndata: " + out.dump(-1, ' ', false, Json::error_handler_t::replace) + "\n\n";
-            if (!sendAll(s, event)) return;
+            if (!sendAll(s, event)) {
+                if (modern && !isResponse) server.cancelRequest(session->id, requestId);
+                return;
+            }
             if (isResponse) break;
+            if (!waitNext(out, isResponse)) return;
         }
         return;
     }

@@ -6,6 +6,7 @@
 
 #include "Export.h"
 #include "math/Rect.h"
+#include "math/Vector3.h"
 #include "UIValue.h"
 
 #include <cstdint>
@@ -59,6 +60,9 @@ namespace jasperengine{
         std::string color = "#ffffff";
         float strength = 1.f;
         std::string effect;
+        // with a pinned effect clock: the effect time (s) the splat is logged at (< 0: the pinned
+        // time), replayed at the step whose interval holds it
+        double time = -1.0;
     };
 
     // Phase-0 members and the phase-1 DOM API are defined in UIElement.cpp (p1-lua), the
@@ -181,6 +185,13 @@ namespace jasperengine{
         // their next step); the number that took it. effectReset restarts them ("" all); how many
         int effectSplat(const UIEffectSplat& splat);
         int effectReset(const std::string& effect = std::string());
+        // Agent determinism (MCP set_ui_effect_time): a scripted pointer path for the element's
+        // stateful effects ("" all): each point x, y in the element's border-box CSS px and z the
+        // effect time s. A pinned clock's replay drags the pointer along it (down from the first
+        // point's time to the last's); empty clears it. effectClearSplats drops the queued or
+        // logged splats. Both return how many simulations took it
+        int effectPointerPath(const std::vector<Vector3>& path, const std::string& effect = std::string());
+        int effectClearSplats(const std::string& effect = std::string());
 
         // --- phase 1 (p1-vector): <lottie> control; logs an error on other elements ---
 

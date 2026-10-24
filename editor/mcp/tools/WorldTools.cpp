@@ -36,6 +36,9 @@
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/LineRendererComponent.h"
@@ -74,6 +77,8 @@
 #include "Engine.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
+#include "lattice/LatticeSolver.h"
+#include "util/LatticeTrackKeys.h"
 #include "window/AnimationWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -294,7 +299,8 @@ public:
     void commit() { history->groupSince(start); }
     // Undoes what this step added (a failed call leaves the scene as it was)
     void rollback() {
-        while (history->position() > start && history->canUndo()) history->undo();
+        // a refused undo leaves the position, so it ends the loop too
+        while (history->position() > start && history->canUndo() && history->undo()) {}
     }
     // Rolls back and fails the call; when something had been applied, the error says it is
     // all gone (it may name a GameObject the call made)
@@ -494,6 +500,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"local_bounds", {{"min", {-half, -half}}, {"max", {half, half}}}},
         {"height_map", McpValues::assetPathToJson(project, terrain.heightMap.getPath())},
         {"height_map_loaded", terrain.heightMap.hasData()},
+        // false until the editor has rebuilt the mesh (and collision) from the current height map
+        {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
         {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage}
     };
 }
@@ -634,11 +642,13 @@ void setTerrainMapsTool(const CallPtr& call) {
             SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
             TerrainComponent* t = sp && sp->scene ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
             if (!t) return;
+            // Only ever raised: the blend map / layers callback runs after the height one in a
+            // call that sets both, and must not clear the mesh / collision rebuild it asked for
             if (height) {
                 t->heightMapLoaded = false;
                 t->heightMap.invalidateRender();
+                t->needUpdateTerrain = true;
             }
-            t->needUpdateTerrain = height;
             t->needUpdateTexture = true;
         };
     };
@@ -734,7 +744,37 @@ void setTerrainMapsTool(const CallPtr& call) {
             }
             if (layers.size() <= static_cast<size_t>(index)) layers.resize(index + 1);
             TerrainSurfaceLayer& layer = layers[index];
+            const std::string where = "layers[" + std::to_string(index) + "].";
             if (has(item, "pbr")) layer.pbr = boolOr(item, "pbr", layer.pbr);
+            if (has(item, "stochastic_tiling")) {
+                if (!item["stochastic_tiling"].is_boolean()) {
+                    call->fail(where + "stochastic_tiling must be true or false.");
+                    return;
+                }
+                layer.stochasticTiling = item["stochastic_tiling"].get<bool>();
+            }
+            // Stochastic Tiling's parameters, in the inspector's ranges
+            struct StochasticParam { const char* name; float TerrainSurfaceLayer::*field; float lo, hi; const char* meaning; };
+            static const StochasticParam stochasticParams[] = {
+                {"cell_size", &TerrainSurfaceLayer::stochasticCellSize, 0.25f, 4.0f, "the cell width in texture repeats, default 1"},
+                {"blend_sharpness", &TerrainSurfaceLayer::stochasticBlendSharpness, 0.0f, 1.0f, "default 0.4"},
+                {"contrast", &TerrainSurfaceLayer::stochasticContrast, 0.0f, 1.0f, "default 0.45, 0 blends linearly"},
+                {"rotation", &TerrainSurfaceLayer::stochasticRotation, 0.0f, 1.0f, "share of +-180 degrees per cell, default 0"}};
+            for (const StochasticParam& param : stochasticParams) {
+                if (!has(item, param.name)) continue;
+                const Json& value = item[param.name];
+                const double number = value.is_number() ? value.get<double>() : -1.0;
+                if (!value.is_number() || !std::isfinite(number) || number < param.lo || number > param.hi) {
+                    std::ostringstream range;
+                    range << where << param.name << " must be a number from " << param.lo << " to " << param.hi << " (" << param.meaning << ").";
+                    call->fail(range.str());
+                    return;
+                }
+                layer.*param.field = static_cast<float>(number);
+                if (!layer.stochasticTiling) {
+                    result["notes"].push_back(where + std::string(param.name) + " is stored but has no effect until stochastic_tiling is true.");
+                }
+            }
             for (const auto& map : maps) {
                 if (!has(item, map.first)) continue;
                 if (!texturePath(item[map.first], "layers[" + std::to_string(index) + "]." + map.first, layer.*map.second)) {
@@ -745,6 +785,14 @@ void setTerrainMapsTool(const CallPtr& call) {
             layersChanged = true;
         }
         result["layers"] = layers.size();
+        Json stochastic = Json::array();
+        for (size_t i = 0; i < layers.size(); i++) {
+            const TerrainSurfaceLayer& layer = layers[i];
+            if (!layer.stochasticTiling) continue;
+            stochastic.push_back({{"index", i}, {"cell_size", layer.stochasticCellSize}, {"blend_sharpness", layer.stochasticBlendSharpness},
+                                  {"contrast", layer.stochasticContrast}, {"rotation", layer.stochasticRotation}});
+        }
+        if (!stochastic.empty()) result["stochastic_tiling"] = stochastic;
     }
     if (blendChanged) {
         multi->addPropertyCmd<std::vector<Texture>>(project, sceneId, entity, ComponentType::TerrainComponent, "blendMaps",
@@ -2425,11 +2473,12 @@ void setSpriteAnimationTool(const CallPtr& call) {
 
 // ================================================================== keyframe animations and tweens
 
-enum class Channel { Position, Rotation, Scale, Morph };
+enum class Channel { Position, Rotation, Scale, Morph, Lattice };
 
 const std::vector<std::pair<const char*, Channel>>& channels() {
     static const std::vector<std::pair<const char*, Channel>> table = {
-        {"position", Channel::Position}, {"rotation", Channel::Rotation}, {"scale", Channel::Scale}, {"morph", Channel::Morph}};
+        {"position", Channel::Position}, {"rotation", Channel::Rotation}, {"scale", Channel::Scale}, {"morph", Channel::Morph},
+        {"lattice", Channel::Lattice}};
     return table;
 }
 
@@ -2439,6 +2488,7 @@ bool hasChannel(Scene* scene, Entity action, Channel channel) {
         case Channel::Rotation: return scene->findComponent<RotateTracksComponent>(action) != nullptr;
         case Channel::Scale: return scene->findComponent<ScaleTracksComponent>(action) != nullptr;
         case Channel::Morph: return scene->findComponent<MorphTracksComponent>(action) != nullptr;
+        case Channel::Lattice: return scene->findComponent<LatticeTracksComponent>(action) != nullptr;
     }
     return false;
 }
@@ -2466,10 +2516,112 @@ struct Key {
     Vector3 vec;
     Quaternion quat;
     std::vector<float> weights;
+    // lattice: offsets of points (flat indices, ascending, once each), or the lattice's own
+    // current offsets chosen as editor keying does (resolved by the caller)
+    std::vector<int> points;
+    std::vector<Vector3> offsets;
+    bool current = false;
+    bool rest = false;     // "rest": every keyed point at zero
+    std::string pose;      // a pose name: the pose's offsets
     EaseType ease = EaseType::LINEAR;
 };
 
-bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::string& error) {
+// A lattice key's points: {"<index>": [x,y,z]}, [[[i,j,k] | index, [x,y,z]], ...], "current",
+// "rest" or the name of one of the lattice's poses
+bool parseLatticePoints(const Json& v, const LatticeComponent& lattice, Key& key, std::string& error) {
+    if (v.is_string()) {
+        const std::string name = v.get<std::string>();
+        if (lowerText(name) == "current") {
+            key.current = true;
+            return true;
+        }
+        if (lowerText(name) == "rest") {
+            key.rest = true;
+            return true;
+        }
+        std::string poses;
+        for (const LatticePose& pose : lattice.poses) {
+            if (pose.name == name) {
+                key.pose = name;
+                return true;
+            }
+            poses += (poses.empty() ? "" : ", ") + pose.name;
+        }
+        error = "points: " + v.dump() + " is not \"current\", \"rest\" or a pose of the lattice (" +
+                (poses.empty() ? std::string("it has no poses: save one with edit_lattice ops [{op: pose, save: name}]") : "poses: " + poses) + ").";
+        return false;
+    }
+    const int rx = std::clamp(lattice.resolutionX, 2, 16), ry = std::clamp(lattice.resolutionY, 2, 16),
+              rz = std::clamp(lattice.resolutionZ, 2, 16);
+    const int count = rx * ry * rz;
+    const std::string shape = "{\"<index>\": [x,y,z]}, [[[i,j,k], [x,y,z]], ...] or \"current\"";
+    std::map<int, Vector3> offsets;
+    auto add = [&](int point, const Json& offset, const std::string& where) {
+        if (point < 0 || point >= count) {
+            error = where + ": point " + std::to_string(point) + " is out of range (" + std::to_string(count) + " points, resolution " +
+                    std::to_string(rx) + "x" + std::to_string(ry) + "x" + std::to_string(rz) + ", index i + rx*(j + ry*k)).";
+            return false;
+        }
+        Vector3 value;
+        if (!McpValues::parseVector3(offset, value)) {
+            error = where + " must be an offset [x, y, z] (lattice local units).";
+            return false;
+        }
+        offsets[point] = value;
+        return true;
+    };
+    if (v.is_object()) {
+        for (auto it = v.begin(); it != v.end(); ++it) {
+            const std::string& name = it.key();
+            const std::string where = "points[\"" + name + "\"]";
+            if (name.empty() || name.size() > 9 || !std::all_of(name.begin(), name.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)) != 0; })) {
+                error = where + ": keys are flat point indices (\"13\"); use [[[i,j,k], [x,y,z]], ...] for grid coordinates.";
+                return false;
+            }
+            if (!add(std::stoi(name), it.value(), where)) return false;
+        }
+    } else if (v.is_array()) {
+        for (size_t n = 0; n < v.size(); n++) {
+            const Json& pair = v[n];
+            const std::string where = "points[" + std::to_string(n) + "]";
+            if (!pair.is_array() || pair.size() != 2) {
+                error = where + " must be a pair [[i,j,k], [x,y,z]] (or [index, [x,y,z]]).";
+                return false;
+            }
+            const Json& at = pair[0];
+            int point = -1;
+            if (at.is_number_integer()) {
+                point = at.get<int>();
+            } else if (at.is_array() && at.size() == 3 && at[0].is_number_integer() && at[1].is_number_integer() && at[2].is_number_integer()) {
+                const int i = at[0].get<int>(), j = at[1].get<int>(), k = at[2].get<int>();
+                if (i < 0 || i >= rx || j < 0 || j >= ry || k < 0 || k >= rz) {
+                    error = where + ": (" + std::to_string(i) + ", " + std::to_string(j) + ", " + std::to_string(k) +
+                            ") is outside the " + std::to_string(rx) + "x" + std::to_string(ry) + "x" + std::to_string(rz) + " lattice (0-based).";
+                    return false;
+                }
+                point = lattice::pointIndex(rx, ry, i, j, k);
+            } else {
+                error = where + "[0] must be [i, j, k] (0-based integers) or a flat index.";
+                return false;
+            }
+            if (!add(point, pair[1], where + "[1]")) return false;
+        }
+    } else {
+        error = "points must be " + shape + ".";
+        return false;
+    }
+    if (offsets.empty()) {
+        error = "points is empty: give at least one point, or \"current\".";
+        return false;
+    }
+    for (const auto& entry : offsets) {
+        key.points.push_back(entry.first);
+        key.offsets.push_back(entry.second);
+    }
+    return true;
+}
+
+bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::string& error, const LatticeComponent* lattice = nullptr) {
     if (!value.is_array() || value.empty()) {
         error = "keys must be a non-empty array of {time, value, ease}.";
         return false;
@@ -2482,6 +2634,25 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
             return false;
         }
         key.time = item["time"].get<float>();
+        if (channel == Channel::Lattice) {
+            // spec §7 names it points; value is accepted too
+            const char* field = has(item, "points") ? "points" : "value";
+            if (!has(item, field)) {
+                error = "keys[" + std::to_string(i) + "].points is required (lattice offsets).";
+                return false;
+            }
+            if (!lattice || !parseLatticePoints(item[field], *lattice, key, error)) {
+                error = "keys[" + std::to_string(i) + "]." + (lattice ? (std::string(field) == "value" ? "value (a lattice key's points): " : "") + error
+                                                                       : std::string("points: the target has no Lattice."));
+                return false;
+            }
+            if (has(item, "ease") && !parseEase(item["ease"], key.ease, error)) {
+                error = "keys[" + std::to_string(i) + "]: " + error;
+                return false;
+            }
+            keys.push_back(key);
+            continue;
+        }
         if (!has(item, "value")) {
             error = "keys[" + std::to_string(i) + "].value is required.";
             return false;
@@ -2526,6 +2697,15 @@ void readKeys(Scene* scene, Entity action, Channel channel, std::vector<Key>& ke
             case Channel::Rotation: if (auto* t = scene->findComponent<RotateTracksComponent>(action)) { ok = i < t->values.size(); if (ok) key.quat = t->values[i]; } break;
             case Channel::Scale: if (auto* t = scene->findComponent<ScaleTracksComponent>(action)) { ok = i < t->values.size(); if (ok) key.vec = t->values[i]; } break;
             case Channel::Morph: if (auto* t = scene->findComponent<MorphTracksComponent>(action)) { ok = i < t->values.size(); if (ok) key.weights = t->values[i]; } break;
+            case Channel::Lattice:
+                if (auto* t = scene->findComponent<LatticeTracksComponent>(action)) {
+                    ok = i < t->values.size();
+                    for (size_t n = 0; ok && n < t->points.size() && n < t->values[i].size(); n++) {
+                        key.points.push_back(t->points[n]);
+                        key.offsets.push_back(t->values[i][n]);
+                    }
+                }
+                break;
         }
         if (ok) keys.push_back(key);
     }
@@ -2561,7 +2741,123 @@ void addTrackWrites(MultiPropertyCmd& multi, const Target& target, Entity action
         case Channel::Rotation: writeValues(Quaternion(), ComponentType::RotateTracksComponent, [](const Key& k) { return k.quat; }); break;
         case Channel::Scale: writeValues(Vector3(), ComponentType::ScaleTracksComponent, [](const Key& k) { return k.vec; }); break;
         case Channel::Morph: writeValues(std::vector<float>(), ComponentType::MorphTracksComponent, [](const Key& k) { return k.weights; }); break;
+        case Channel::Lattice: break; // whole tracks, addLatticeTrackWrites
     }
+}
+
+// The "current" lattice keys take the lattice's offsets, the points chosen as the Animation
+// window's keying chooses them (selected points, else moved points plus the track's own)
+void resolveCurrentLatticeKeys(uint32_t sceneId, Entity latticeEntity, const LatticeComponent& lattice,
+                               const LatticeTracksComponent* existing, std::vector<Key>& keys) {
+    for (Key& key : keys) {
+        if (!key.current) continue;
+        key.points = LatticeTrackKeys::pointsToKey(sceneId, latticeEntity, lattice, existing);
+        key.offsets.clear();
+        for (int point : key.points) key.offsets.push_back(LatticeTrackKeys::currentOffset(lattice, point));
+    }
+}
+
+// "rest" and pose keys name every point the other keys, the poses used and (merging) the track
+// already animate, so each holds the whole shape at its time (every point when none is named)
+void resolveShapeLatticeKeys(const LatticeComponent& lattice, const LatticeTracksComponent* existing, std::vector<Key>& keys) {
+    const int count = std::clamp(lattice.resolutionX, 2, 16) * std::clamp(lattice.resolutionY, 2, 16) * std::clamp(lattice.resolutionZ, 2, 16);
+    auto poseOf = [&lattice](const std::string& name) -> const LatticePose* {
+        for (const LatticePose& pose : lattice.poses) {
+            if (pose.name == name) return &pose;
+        }
+        return nullptr;
+    };
+    std::set<int> points;
+    bool shapes = false;
+    for (const Key& key : keys) {
+        if (key.rest || !key.pose.empty()) {
+            shapes = true;
+            if (const LatticePose* pose = key.pose.empty() ? nullptr : poseOf(key.pose)) {
+                for (size_t p = 0; p < pose->offsets.size() && static_cast<int>(p) < count; p++) {
+                    if (!(pose->offsets[p] == Vector3(0, 0, 0))) points.insert(static_cast<int>(p));
+                }
+            }
+        } else {
+            points.insert(key.points.begin(), key.points.end());
+        }
+    }
+    if (!shapes) return;
+    if (existing) points.insert(existing->points.begin(), existing->points.end());
+    if (points.empty()) {
+        for (int p = 0; p < count; p++) points.insert(p);
+    }
+    for (Key& key : keys) {
+        if (!key.rest && key.pose.empty()) continue;
+        const LatticePose* pose = key.pose.empty() ? nullptr : poseOf(key.pose);
+        key.points.assign(points.begin(), points.end());
+        key.offsets.clear();
+        for (int p : key.points) {
+            key.offsets.push_back(pose && static_cast<size_t>(p) < pose->offsets.size() ? pose->offsets[static_cast<size_t>(p)] : Vector3(0, 0, 0));
+        }
+    }
+}
+
+// Lattice keys as a whole track: one column per point any key names; a key that does not name
+// a point gets it interpolated in time between the nearest keys naming it (held past the first
+// and last). Merge: each key is set into the existing track (LatticeTrackKeys::setKey). Linear
+// keys, tangents cleared like the other channels.
+LatticeTrackData latticeTrackData(Scene* scene, Entity track, const std::vector<Key>& keys, const LatticeComponent& lattice, bool merge) {
+    LatticeTrackData data;
+    KeyframeTracksComponent* kf = track != NULL_ENTITY ? scene->findComponent<KeyframeTracksComponent>(track) : nullptr;
+    LatticeTracksComponent* tracks = track != NULL_ENTITY ? scene->findComponent<LatticeTracksComponent>(track) : nullptr;
+    if (merge && kf && tracks) {
+        data = LatticeTrackData(*kf, *tracks);
+        for (const Key& key : keys) {
+            LatticeTrackKeys::setKey(data, key.time, key.points, key.offsets, lattice, 0.001f);
+        }
+        // each given key sets the ease to its next key
+        if (data.times.size() > 1) data.easings.resize(data.times.size() - 1, EaseType::LINEAR);
+        for (const Key& key : keys) {
+            for (size_t i = 0; i + 1 < data.times.size(); i++) {
+                if (std::abs(data.times[i] - key.time) < 0.001f) data.easings[i] = key.ease;
+            }
+        }
+        if (std::all_of(data.easings.begin(), data.easings.end(), [](EaseType e) { return e == EaseType::LINEAR; })) data.easings.clear();
+    } else {
+        data.times = timesOf(keys);
+        data.easings = easingsOf(keys);
+        for (const Key& key : keys) data.points.insert(data.points.end(), key.points.begin(), key.points.end());
+        std::sort(data.points.begin(), data.points.end());
+        data.points.erase(std::unique(data.points.begin(), data.points.end()), data.points.end());
+        data.values.assign(keys.size(), std::vector<Vector3>(data.points.size()));
+        for (size_t column = 0; column < data.points.size(); column++) {
+            std::vector<int> known(keys.size(), -1); // index into the key's own lists
+            for (size_t k = 0; k < keys.size(); k++) {
+                auto it = std::find(keys[k].points.begin(), keys[k].points.end(), data.points[column]);
+                if (it != keys[k].points.end()) known[k] = static_cast<int>(it - keys[k].points.begin());
+            }
+            for (size_t k = 0; k < keys.size(); k++) {
+                if (known[k] >= 0) { data.values[k][column] = keys[k].offsets[known[k]]; continue; }
+                int before = -1, after = -1;
+                for (int b = static_cast<int>(k) - 1; b >= 0 && before < 0; b--) if (known[b] >= 0) before = b;
+                for (size_t a = k + 1; a < keys.size() && after < 0; a++) if (known[a] >= 0) after = static_cast<int>(a);
+                const Vector3 from = before >= 0 ? keys[before].offsets[known[before]] : keys[after].offsets[known[after]];
+                const Vector3 to = after >= 0 ? keys[after].offsets[known[after]] : from;
+                float t = 0.0f;
+                if (before >= 0 && after >= 0 && keys[after].time > keys[before].time) {
+                    t = (keys[k].time - keys[before].time) / (keys[after].time - keys[before].time);
+                }
+                data.values[k][column] = from + t * (to - from);
+            }
+        }
+    }
+    data.inTangents.clear();
+    data.outTangents.clear();
+    return data;
+}
+
+void addLatticeTrackWrites(MultiPropertyCmd& multi, const Target& target, Entity action, const LatticeTrackData& data) {
+    addProp<std::vector<float>>(multi, target, action, ComponentType::KeyframeTracksComponent, "times", data.times);
+    addProp<std::vector<EaseType>>(multi, target, action, ComponentType::KeyframeTracksComponent, "easings", data.easings);
+    addProp<std::vector<int>>(multi, target, action, ComponentType::LatticeTracksComponent, "points", data.points);
+    addProp<std::vector<std::vector<Vector3>>>(multi, target, action, ComponentType::LatticeTracksComponent, "values", data.values);
+    addProp<std::vector<std::vector<Vector3>>>(multi, target, action, ComponentType::LatticeTracksComponent, "inTangents", data.inTangents);
+    addProp<std::vector<std::vector<Vector3>>>(multi, target, action, ComponentType::LatticeTracksComponent, "outTangents", data.outTangents);
 }
 
 void seedTrack(CreateEntityCmd& create, Channel channel, const std::vector<Key>& keys) {
@@ -2572,7 +2868,15 @@ void seedTrack(CreateEntityCmd& create, Channel channel, const std::vector<Key>&
         case Channel::Rotation: { std::vector<Quaternion> v; for (const Key& k : keys) v.push_back(k.quat); create.addProperty(ComponentType::RotateTracksComponent, "values", v); break; }
         case Channel::Scale: { std::vector<Vector3> v; for (const Key& k : keys) v.push_back(k.vec); create.addProperty(ComponentType::ScaleTracksComponent, "values", v); break; }
         case Channel::Morph: { std::vector<std::vector<float>> v; for (const Key& k : keys) v.push_back(k.weights); create.addProperty(ComponentType::MorphTracksComponent, "values", v); break; }
+        case Channel::Lattice: break; // seedLatticeTrack
     }
+}
+
+void seedLatticeTrack(CreateEntityCmd& create, const LatticeTrackData& data) {
+    create.addProperty<std::vector<float>>(ComponentType::KeyframeTracksComponent, "times", data.times);
+    create.addProperty<std::vector<EaseType>>(ComponentType::KeyframeTracksComponent, "easings", data.easings);
+    create.addProperty<std::vector<int>>(ComponentType::LatticeTracksComponent, "points", data.points);
+    create.addProperty<std::vector<std::vector<Vector3>>>(ComponentType::LatticeTracksComponent, "values", data.values);
 }
 
 EntityCreationType trackCreationType(Channel channel) {
@@ -2581,6 +2885,7 @@ EntityCreationType trackCreationType(Channel channel) {
         case Channel::Rotation: return EntityCreationType::ROTATE_TRACKS;
         case Channel::Scale: return EntityCreationType::SCALE_TRACKS;
         case Channel::Morph: return EntityCreationType::MORPH_TRACKS;
+        case Channel::Lattice: return EntityCreationType::LATTICE_TRACKS;
     }
     return EntityCreationType::TRANSLATE_TRACKS;
 }
@@ -2593,6 +2898,13 @@ Json keysJson(Scene* scene, Entity action, Channel channel, size_t limit) {
         Json item = {{"time", keys[i].time}};
         if (channel == Channel::Rotation) item["value"] = McpValues::toJson(keys[i].quat);
         else if (channel == Channel::Morph) item["value"] = keys[i].weights;
+        else if (channel == Channel::Lattice) {
+            // a key holding every animated point at zero reads as "rest" (it is what "rest" writes)
+            const bool rest = std::all_of(keys[i].offsets.begin(), keys[i].offsets.end(), [](const Vector3& o) { return o == Vector3(0, 0, 0); });
+            Json points = Json::object();
+            for (size_t n = 0; n < keys[i].points.size(); n++) points[std::to_string(keys[i].points[n])] = McpValues::toJson(keys[i].offsets[n]);
+            item["points"] = rest ? Json("rest") : points;
+        }
         else item["value"] = McpValues::toJson(keys[i].vec);
         if (i + 1 < keys.size()) item["ease"] = easeName(keys[i].ease);
         out.push_back(item);
@@ -2627,10 +2939,18 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
         for (const auto& c : channels()) {
             if (kind == std::string(c.first) + "_track") item["keys"] = keysJson(scene, frame.action, c.second, keyLimit);
         }
+        if (KeyframeTracksComponent* kf = scene->findComponent<KeyframeTracksComponent>(frame.action)) {
+            item["loop"] = kf->loop;
+            item["relative"] = kf->relative;
+        }
         if (TweenComponent* tween = scene->findComponent<TweenComponent>(frame.action)) {
-            Json t = {{"duration", tween->duration}, {"loop", tween->loop}, {"ease", easeName(tween->function.getType())}};
+            Json t = {{"duration", tween->duration}, {"loop", tween->loop}, {"ping_pong", tween->pingPong}, {"ease", easeName(tween->function.getType())}};
             if (auto* p = scene->findComponent<PositionTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startPosition); t["to"] = McpValues::toJson(p->endPosition); }
-            if (auto* p = scene->findComponent<RotationTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startRotation); t["to"] = McpValues::toJson(p->endRotation); }
+            if (auto* p = scene->findComponent<RotationTweenComponent>(frame.action)) {
+                t["from"] = McpValues::toJson(p->startRotation);
+                if (p->spin) { t["spin"] = true; t["axis"] = McpValues::toJson(p->axis); t["angle"] = p->angle; }
+                else t["to"] = McpValues::toJson(p->endRotation);
+            }
             if (auto* p = scene->findComponent<ScaleTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startScale); t["to"] = McpValues::toJson(p->endScale); }
             if (auto* p = scene->findComponent<ColorTweenComponent>(frame.action)) { t["from"] = McpValues::toJson(p->startColor); t["to"] = McpValues::toJson(p->endColor); }
             if (auto* p = scene->findComponent<AlphaTweenComponent>(frame.action)) { t["from"] = p->startAlpha; t["to"] = p->endAlpha; }
@@ -2763,14 +3083,40 @@ void editAnimationTool(const CallPtr& call) {
             Entity trackTarget = animTarget;
             if (has(item, "target") && (trackTarget = resolveRef(target.scene, item["target"], error)) == NULL_ENTITY) { failWith(where + ".target: " + error); return; }
             if (trackTarget == NULL_ENTITY) { failWith(where + ": no target GameObject (pass target)."); return; }
+            LatticeComponent* lattice = scene->findComponent<LatticeComponent>(trackTarget);
+            if (channel == Channel::Lattice && !lattice) {
+                // the usual mistake: the mesh instead of the cage that deforms it
+                std::string cages;
+                if (const LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(trackTarget)) {
+                    for (const LatticeBinding& binding : modifier->bindings) {
+                        if (binding.lattice != NULL_ENTITY && scene->isEntityCreated(binding.lattice))
+                            cages += (cages.empty() ? "" : ", ") + ("\"" + scene->getEntityName(binding.lattice) + "\" [" + std::to_string(binding.lattice) + "]");
+                    }
+                }
+                failWith(where + ": \"" + scene->getEntityName(trackTarget) + "\" has no Lattice to animate: a lattice track's target is the cage "
+                         "(the lattice GameObject), not the mesh it deforms" + (cages.empty() ? std::string(".") : "; its cage: " + cages + "."));
+                return;
+            }
             if (channel != Channel::Morph && !scene->findComponent<Transform>(trackTarget)) { failWith(where + ": the target has no Transform to animate."); return; }
             std::vector<Key> keys;
-            if (!parseKeys(channel, has(item, "keys") ? item["keys"] : Json(), keys, error)) { failWith(where + "." + error); return; }
+            if (!parseKeys(channel, has(item, "keys") ? item["keys"] : Json(), keys, error, lattice)) { failWith(where + "." + error); return; }
+            if ((channel == Channel::Morph || channel == Channel::Lattice) && boolOr(item, "relative", false)) { failWith(where + ".relative: only position, rotation and scale tracks can be relative."); return; }
 
             size_t frameIndex = 0;
             Entity track = findTrack(scene, kept, trackTarget, channel, frameIndex);
-            if (track != NULL_ENTITY) {
-                if (lowerText(stringOr(item, "mode", "replace")) == "merge") {
+            const bool merge = lowerText(stringOr(item, "mode", "replace")) == "merge";
+            if (channel == Channel::Lattice) {
+                const LatticeTracksComponent* existing = track != NULL_ENTITY ? scene->findComponent<LatticeTracksComponent>(track) : nullptr;
+                resolveCurrentLatticeKeys(target.sceneId(), trackTarget, *lattice, existing, keys);
+                resolveShapeLatticeKeys(*lattice, merge ? existing : nullptr, keys);
+            }
+            if (track != NULL_ENTITY && channel == Channel::Lattice) {
+                addLatticeTrackWrites(*edits, target, track, latticeTrackData(scene, track, keys, *lattice, merge));
+                if (has(item, "loop")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
+                if (has(item, "start_time")) kept[frameIndex].startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
+                tracksWritten++;
+            } else if (track != NULL_ENTITY) {
+                if (merge) {
                     std::vector<Key> merged;
                     readKeys(scene, track, channel, merged);
                     for (const Key& key : keys) {
@@ -2782,13 +3128,18 @@ void editAnimationTool(const CallPtr& call) {
                     keys = merged;
                 }
                 addTrackWrites(*edits, target, track, channel, keys);
+                if (has(item, "loop")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
+                if (has(item, "relative")) addProp<bool>(*edits, target, track, ComponentType::KeyframeTracksComponent, "relative", boolOr(item, "relative", false));
                 if (has(item, "start_time")) kept[frameIndex].startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
                 tracksWritten++;
             } else {
-                static const char* names[] = {"Position Tracks", "Rotation Tracks", "Scale Tracks", "Morph Tracks"};
+                static const char* names[] = {"Position Tracks", "Rotation Tracks", "Scale Tracks", "Morph Tracks", "Lattice Tracks"};
                 auto* create = new CreateEntityCmd(target.project, target.sceneId(), stringOr(item, "name", names[static_cast<int>(channel)]),
                                                    trackCreationType(channel), trackTarget);
-                seedTrack(*create, channel, keys);
+                if (channel == Channel::Lattice) seedLatticeTrack(*create, latticeTrackData(scene, NULL_ENTITY, keys, *lattice, false));
+                else seedTrack(*create, channel, keys);
+                create->addProperty<bool>(ComponentType::KeyframeTracksComponent, "loop", boolOr(item, "loop", false));
+                create->addProperty<bool>(ComponentType::KeyframeTracksComponent, "relative", boolOr(item, "relative", false));
                 if (!step.add(create)) { failWith(where + ": could not create the track."); return; }
                 ActionFrame frame;
                 frame.startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
@@ -2816,7 +3167,9 @@ void editAnimationTool(const CallPtr& call) {
             Entity tweenTarget = animTarget;
             if (has(item, "target") && (tweenTarget = resolveRef(target.scene, item["target"], error)) == NULL_ENTITY) { failWith(where + ".target: " + error); return; }
             if (tweenTarget == NULL_ENTITY) { failWith(where + ": no target GameObject (pass target)."); return; }
-            if (!has(item, "to")) { failWith(where + ": to is required (and from, defaulting to the target's current value)."); return; }
+            const bool spin = typeName == "rotation" && boolOr(item, "spin", false);
+            if (has(item, "spin") && typeName != "rotation") { failWith(where + ".spin: only a rotation tween spins."); return; }
+            if (!spin && !has(item, "to")) { failWith(where + ": to is required (and from, defaulting to the target's current value)."); return; }
             const float duration = numberOr(item, "duration", 1.0f);
             if (duration <= 0.0f) { failWith(where + ".duration must be > 0 seconds."); return; }
             EaseType ease = EaseType::LINEAR;
@@ -2827,6 +3180,7 @@ void editAnimationTool(const CallPtr& call) {
             std::unique_ptr<CreateEntityCmd> guard(create);
             create->addProperty<float>(ComponentType::TweenComponent, "duration", duration);
             create->addProperty<bool>(ComponentType::TweenComponent, "loop", boolOr(item, "loop", false));
+            create->addProperty<bool>(ComponentType::TweenComponent, "pingPong", boolOr(item, "ping_pong", false));
             create->addProperty<Ease>(ComponentType::TweenComponent, "function", Ease(ease));
             Transform* tf = scene->findComponent<Transform>(tweenTarget);
             bool ok = true;
@@ -2836,6 +3190,17 @@ void editAnimationTool(const CallPtr& call) {
                 const ComponentType comp = typeName == "position" ? ComponentType::PositionTweenComponent : ComponentType::ScaleTweenComponent;
                 create->addProperty<Vector3>(comp, typeName == "position" ? "startPosition" : "startScale", from);
                 create->addProperty<Vector3>(comp, typeName == "position" ? "endPosition" : "endScale", to);
+            } else if (typeName == "rotation" && spin) {
+                // turns from by angle degrees around axis: full turns, which a tween to an end rotation cannot
+                Quaternion from = tf ? tf->rotation : Quaternion();
+                Vector3 axis(0.0f, 1.0f, 0.0f);
+                ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) &&
+                     (!has(item, "axis") || McpValues::parseVector3(item["axis"], axis)) && axis.length() > 0.0f &&
+                     (!has(item, "angle") || item["angle"].is_number());
+                create->addProperty<Quaternion>(ComponentType::RotationTweenComponent, "startRotation", from);
+                create->addProperty<bool>(ComponentType::RotationTweenComponent, "spin", true);
+                create->addProperty<Vector3>(ComponentType::RotationTweenComponent, "axis", axis);
+                create->addProperty<float>(ComponentType::RotationTweenComponent, "angle", numberOr(item, "angle", 360.0f));
             } else if (typeName == "rotation") {
                 Quaternion from = tf ? tf->rotation : Quaternion(), to;
                 ok = (!has(item, "from") || McpValues::parseQuaternion(item["from"], from)) && McpValues::parseQuaternion(item["to"], to);
@@ -2854,7 +3219,7 @@ void editAnimationTool(const CallPtr& call) {
                     create->addProperty<float>(ComponentType::AlphaTweenComponent, "endAlpha", item["to"].get<float>());
                 }
             }
-            if (!ok) { failWith(where + ": from / to don't fit a " + typeName + " tween (vectors [x,y,z], rotations [x,y,z,w] or {\"euler\": [...]}, colors [r,g,b], alpha numbers)."); return; }
+            if (!ok) { failWith(where + ": from / to don't fit a " + typeName + " tween (vectors [x,y,z], rotations [x,y,z,w] or {\"euler\": [...]}, colors [r,g,b], alpha numbers; a spin's axis a non-zero [x,y,z] and angle degrees)."); return; }
             if (!step.add(guard.release())) { failWith(where + ": could not create the tween."); return; }
             ActionFrame frame;
             frame.startTime = std::max(0.0f, numberOr(item, "start_time", 0.0f));
@@ -3854,7 +4219,7 @@ void setModelTool(const CallPtr& call) {
     std::string error;
     const bool clear = boolOr(args, "clear", false);
     if (!clear && !has(args, "path")) {
-        call->fail("Pass path (a .gltf / .glb / .obj inside the assets directory) to load, or clear: true to clear the model.");
+        call->fail("Pass path (a .gltf / .glb / .obj / .fbx inside the assets directory) to load, or clear: true to clear the model.");
         return;
     }
     std::string stored;
@@ -3894,7 +4259,7 @@ void setModelTool(const CallPtr& call) {
         ? new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored, boolOr(args, "merge_static_meshes", false))
         : new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored);
     if (!step.add(load)) {
-        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ file (the console has details).");
+        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ/FBX file (the console has details).");
         return;
     }
     step.commit();
@@ -4100,7 +4465,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- terrain
     add("sculpt_terrain", "Sculpt / Paint Terrain",
-        "Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding "
+        "Terrain-window brush strokes (a mouse drag): the brush moves along each stroke's points, "
         "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
         "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
         "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
@@ -4142,7 +4507,8 @@ void registerWorldTools(McpRegistry& registry) {
         "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
-        "normal/roughness/metallic/occlusion). Images under the assets dir.",
+        "normal/roughness/metallic/occlusion), stochastic_tiling (hides tiling repetition, up to 3x the reads) "
+        "and its cell_size/blend_sharpness/contrast/rotation. Images under the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -4161,7 +4527,12 @@ void registerWorldTools(McpRegistry& registry) {
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
                 {"pbr", boolean("")},
                 {"color", string("")}, {"normal", string("")}, {"roughness", string("")},
-                {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")}
+                {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")},
+                {"stochastic_tiling", boolean("")},
+                {"cell_size", withDefault(number("Texture repeats.", 0.25, 4), 1)},
+                {"blend_sharpness", withDefault(number("", 0, 1), 0.4)},
+                {"contrast", withDefault(number("", 0, 1), 0.45)},
+                {"rotation", withDefault(number("Of +-180 deg.", 0, 1), 0)}
             }, {"index"}), "")}
         }),
         setTerrainMapsTool, false, false);
@@ -4303,7 +4674,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_sprite_animation", "Set Sprite Animation",
         "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or "
         "names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) "
-        "starts it on play; make several (Idle, Run) and switch them in scripts.",
+        "starts it on play; make several (Idle, Run), switch them in scripts.",
         object({
             {"scene", sceneRef()},
             {"sprite", entityRef("Sprite with frames.")},
@@ -4319,32 +4690,39 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- animation
     add("edit_animation", "Edit Animation",
-        "Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: "
-        "keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs "
-        "middle keys) or morph weights; ease to the next key: linear, step, "
-        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
+        "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
+        "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys, "
+        "or a spin tween), morph weights or lattice offsets (points {\"i\": [x,y,z]} | [[[i,j,k],[x,y,z]]], "
+        "\"current\", \"rest\" or a pose name); ease to the next key: linear, step, "
+        "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges; "
+        "relative: offsets from the target's pose when the track starts (anchored UI moves by its offset). "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
-        "indices from before the call.",
+        "pre-call indices.",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef("Animation to edit.")},
             {"target", entityRef("Required to create.")},
             {"name", string("")},
             {"tracks", array(object({
-                {"channel", stringEnum("", {"position", "rotation", "scale", "morph"})},
-                {"keys", array(object({{"time", number("")}, {"value", any("")}, {"ease", string("")}}, {"time", "value"}), "")},
+                {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
+                {"keys", array(object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"}), "")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
                 {"mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+                {"loop", boolean("Starts over after the last key.")},
+                {"relative", boolean("Not morph.")},
                 {"name", string("")}
             }, {"channel", "keys"}), "")},
             {"tweens", array(object({
                 {"type", stringEnum("", {"position", "rotation", "scale", "color", "alpha"})},
                 {"from", any("")}, {"to", any("")},
                 {"duration", number("> 0.")}, {"ease", string("")}, {"loop", boolean("")},
+                {"ping_pong", boolean("There and back, in twice the duration.")},
+                {"spin", boolean("rotation: turns from by angle around axis instead of reaching to.")},
+                {"axis", any("spin: default [0, 1, 0].")}, {"angle", number("spin: degrees, default 360.")},
                 {"start_time", number("")}, {"target", entityRef("Default: target.")},
                 {"name", string("")}
-            }, {"type", "to"}), "")},
+            }, {"type"}), "")},
             {"add_actions", array(object({{"action", entityRef()}, {"start_time", number("")},
                                           {"duration", number("0 = own.")}, {"lane", integer("")}}, {"action"}), "")},
             {"set_frames", array(object({{"index", integer("")}, {"start_time", number("")},
@@ -4361,8 +4739,8 @@ void registerWorldTools(McpRegistry& registry) {
 
     add("get_animation", "Get Animation",
         "An Animation's timeline: loop, duration, autoplay, target and actions (index, kind, GameObject, target, "
-        "start_time, duration, lane, keys or tween values). For another GameObject: the animations targeting it "
-        "or its children (model clips too).",
+        "start_time, duration, lane, keys or tween values). For another GameObject: animations targeting it or "
+        "its children (model clips too).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Animation, or an animated GameObject.")},
@@ -4371,7 +4749,7 @@ void registerWorldTools(McpRegistry& registry) {
         getAnimationTool, true, true);
 
     add("preview_animation", "Preview Animation",
-        "Edit-mode preview (Animation window controls): play, pause, seek (time), stop (restores the authored "
+        "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
         "state; always stop when done). Selects the animation; wait_ms lets it play first.",
         object({
             {"scene", sceneRef()},
@@ -4458,8 +4836,9 @@ void registerWorldTools(McpRegistry& registry) {
         getModelInfoTool, true, true);
 
     add("set_model", "Load / Clear Model",
-        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it; create instead of entity "
-        "makes one. Waits for the load; returns get_model_info's summary.",
+        "Load a .gltf/.glb/.obj/.fbx into a Model GameObject (replacing it), or clear it; create instead of entity "
+        "makes one; an .fbx loads through its glTF conversion, redone when it changes. Waits for the load; returns "
+        "get_model_info's summary.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4474,8 +4853,8 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- shape points
     add("set_shape_points", "Set Shape Points",
         "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), "
-        "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip uses "
-        "points as is. Line renderers: polyline (closed joins ends) or lines.",
+        "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip: points "
+        "as is. Line renderers: polyline (closed joins ends) or lines.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

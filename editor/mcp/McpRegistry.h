@@ -45,6 +45,10 @@ namespace jasperengine::editor::mcp {
         Json inputSchema;          // JSON Schema object; put real constraints here
         Json outputSchema;         // optional (null = none)
         ToolAnnotations annotations;
+        // A read-only tool that writes files for some arguments (screenshot's save_path): true for
+        // such a call. The server then treats it as a change (McpServer::mayChange): refused to HTTP
+        // clients while "Allow changes" is off, and settled by auto-sync afterwards.
+        std::function<bool(const Json& args)> writesFiles;
         bool allowedWhilePlaying = true;       // the server refuses the call during play if false
         ToolActivity activity = ToolActivity::Auto;  // busy policy (see ToolActivity)
         // The call's undo steps are the agent's (S24 R24): edit tools always; a control tool

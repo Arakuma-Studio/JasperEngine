@@ -1208,7 +1208,22 @@ int UIElement::effectSplat(const UIEffectSplat& splat){
             Log::warn("[HTML UI] effectSplat: '%s' is not a colour (%s); white is used", splat.color.c_str(), error.c_str());
         }
     }
-    return htmlui::EffectRuntime::get().splat(element, data, splat.effect);
+    return htmlui::EffectRuntime::get().splat(element, data, splat.effect,
+                                              splat.time >= 0.0 ? std::optional<double>(splat.time) : std::nullopt);
+}
+
+int UIElement::effectPointerPath(const std::vector<Vector3>& path, const std::string& effect){
+    HTMLUI_ELEMENT(0)
+    std::vector<Rml::Vector3f> points;
+    points.reserve(path.size());
+    for (const Vector3& p : path)
+        points.emplace_back(p.x, p.y, p.z);
+    return htmlui::EffectRuntime::get().setPointerPath(element, std::move(points), effect);
+}
+
+int UIElement::effectClearSplats(const std::string& effect){
+    HTMLUI_ELEMENT(0)
+    return htmlui::EffectRuntime::get().clearSplats(element, effect);
 }
 
 int UIElement::effectReset(const std::string& effect){

@@ -159,10 +159,13 @@ std::string Text::getFont(unsigned int index) const{
 void Text::setFontSize(unsigned int fontSize){
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    textcomp.fontSize = fontSize;
+    // the atlas is rebuilt for a new size only; scripts set it every frame
+    if (textcomp.fontSize != fontSize){
+        textcomp.fontSize = fontSize;
 
-    textcomp.needReloadAtlas = true;
-    textcomp.needUpdateText = true;
+        textcomp.needReloadAtlas = true;
+        textcomp.needUpdateText = true;
+    }
 }
 
 unsigned int Text::getFontSize() const{

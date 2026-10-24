@@ -118,6 +118,11 @@ bool editor::MainToolbar::toolSupported(const SceneProject& sceneProject, Tool t
     return false;
 }
 
+bool editor::MainToolbar::physicsSupported(const SceneProject& sceneProject) const {
+    // 2D scenes are a later phase (Box2D)
+    return sceneProject.sceneType == SceneType::SCENE_3D && toolSupported(sceneProject, Tool::Move);
+}
+
 void editor::MainToolbar::applyTool(SceneProject& sceneProject, Tool tool) const {
     SceneRender* sceneRender = sceneProject.sceneRender;
     if (!sceneRender) return;
@@ -171,6 +176,8 @@ void editor::MainToolbar::setTool(Tool tool) {
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
         if (sceneProject->opened) applyTool(*sceneProject, tool);
     }
+    // Hand and Rect take no physics: a running gesture finishes (and commits)
+    Backend::getApp().getPhysicsPlacementWindow()->toolChanged(tool == Tool::Move || tool == Tool::Rotate || tool == Tool::Scale);
 }
 
 bool editor::MainToolbar::isGlobalTransform() const {
@@ -186,6 +193,32 @@ void editor::MainToolbar::toggleGlobalTransform() {
             sceneProject->needUpdateRender = true;
         }
     }
+}
+
+bool editor::MainToolbar::isPhysicsMode() const {
+    return physicsMode;
+}
+
+bool editor::MainToolbar::canUsePhysics() const {
+    if (project->isAnyScenePlaying()) return false;
+    const SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->sceneRender) return false;
+    if (sceneProject->sceneRender->isPreviewCameraActive()) return false;
+    return physicsSupported(*sceneProject);
+}
+
+void editor::MainToolbar::setPhysicsMode(bool on) {
+    // off is always allowed, on only where physics works
+    if (on == physicsMode || (on && !canUsePhysics())) return;
+    physicsMode = on;
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (sceneProject->opened) sceneProject->needUpdateRender = true;
+    }
+    Backend::getApp().getPhysicsPlacementWindow()->physicsModeChanged(on);
+}
+
+void editor::MainToolbar::togglePhysicsMode() {
+    setPhysicsMode(!physicsMode);
 }
 
 //=== Shortcuts ===
@@ -233,6 +266,8 @@ void editor::MainToolbar::handleShortcuts(bool toolShortcuts) {
     if (ImGui::IsKeyPressed(ImGuiKey_R, false)) setTool(Tool::Scale);
     if (ImGui::IsKeyPressed(ImGuiKey_T, false)) setTool(Tool::Rect);
     if (ImGui::IsKeyPressed(ImGuiKey_X, false)) toggleGlobalTransform();
+    // G alone: Shift+G and the like are left to whoever binds them
+    if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_G, false)) togglePhysicsMode();
 }
 
 //=== Drawing ===
@@ -265,6 +300,28 @@ void editor::MainToolbar::drawTools(float rowHeight) {
         ImGui::EndDisabled();
         ImGui::SetItemTooltip("%s", button.tooltip);
     }
+    ImGui::PopStyleVar();
+
+    // Physics (G), a modifier on the transform tools, and its panel
+    ImGui::SameLine(0, Theme::dpi(6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Theme::dpi(1.0f), 0.0f));
+    // where physics can't work (2D, camera preview, Play) it can still be turned off
+    ImGui::BeginDisabled(!physicsMode && !canUsePhysics());
+    if (toolbarButton(ICON_FA_MAGNET "##ToolPhysics", physicsMode, buttonSize, &Theme::Colors::PhysicsAccent, &Theme::Colors::PhysicsAccentHovered)) {
+        togglePhysicsMode();
+    }
+    ImGui::EndDisabled();
+    ImGui::SetItemTooltip("Physics (G)\nMove, Rotate and Scale push the selection through a physics\n"
+                          "simulation: it slides along and stops at what it touches, then settles.\n"
+                          "Hold Space to drop, Shift-drag a selected object to snap, Esc to cancel.\n"
+                          "3D scenes, not in Play mode.");
+    ImGui::SameLine();
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, ImGui::GetStyle().FramePadding.y));
+    if (ImGui::Button(ICON_FA_CARET_DOWN "##PhysicsPanel", ImVec2(Theme::dpi(16.0f), rowHeight))) {
+        Backend::getApp().getPhysicsPlacementWindow()->open();
+    }
+    ImGui::PopStyleVar();
+    ImGui::SetItemTooltip("Physics Placement settings");
     ImGui::PopStyleVar();
 
     // Global/Local handle orientation (Unity: X)

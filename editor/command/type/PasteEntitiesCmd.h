@@ -39,7 +39,7 @@ namespace jasperengine::editor{
         std::unordered_map<Entity, Entity> firstIds;
 
         void destroyCreated(SceneProject* sceneProject);
-        bool hasCamera(Scene* scene) const;
+        bool hasLinkSource(Scene* scene) const;
 
     public:
         PasteEntitiesCmd(Project* project, uint32_t sceneId, std::shared_ptr<const GameObjectsClip> clip,

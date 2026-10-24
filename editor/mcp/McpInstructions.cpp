@@ -38,7 +38,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
   and list the matching paths. Results return both id and path; prefer ids within a session.
-  `entities` (array) instead of `entity` applies a tool to several GameObjects.
+  `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
+  omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
@@ -62,7 +63,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
+past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Undo
@@ -143,8 +144,7 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
+  Engine.deltatime. Calling a non-existent method fails with "attempt to call a nil value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
   stubs or search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
@@ -169,20 +169,19 @@ attached); build settings go in ProjectBuild.cmake, never the generated CMakeLis
 compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart. Clock options with any action, or
-  alone with action "set": time_scale (slow motion / fast forward), fixed_fps (every frame
-  advances exactly 1/fixed_fps s: reproducible runs), auto_pause (the game is frozen between
-  your calls and runs only inside wait, send_input or step).
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
+  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+  auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch); returns its errors (Lua ones too) and the log tail.
+- run_build runs an exported desktop player with input events and screenshots_at (seconds
+  since launch); returns its errors (Lua too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
   canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
-  adds to the scene's 2D ambient (lower ambient_light_2d_intensity to see lights); Shadow Caster 2D casts
-  when the light's shadows are on.
+  adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+  light's shadows on.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
@@ -193,14 +192,12 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
-  body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
-  actors, static for floors and level geometry, kinematic for scripted movers.
-- Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
-  or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
-  measured mesh bounds.
-- Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
-  meter), never set directly. Size forces as mass x acceleration; if movement needs huge
-  forces, lower the density instead.
+  body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
+  static: floors, level geometry; kinematic: scripted movers.
+- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
+  Omit sizes to fit the mesh bounds (never guess).
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D), never set directly.
+  Size forces as mass x acceleration; if they get huge, lower the density.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
   mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
@@ -210,6 +207,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
   optional layer mask.
+- Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -238,12 +236,16 @@ forks: jasper://docs/shaders. A failing shader draws as the built-in one (error 
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
+Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+(jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
+(jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform; it is a
-long job (wait/timeout_seconds, get_job). The 2D/3D physics switches strip backends from the
-export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
+(Build Settings) produces a standalone CMake project or builds players per platform (a long
+job, see The loop). The 2D/3D physics switches strip backends from the export
+(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
@@ -254,7 +256,7 @@ inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert
 no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
 brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
 set_ui_effect_time).
-Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
+Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Data safety
 Save after each step (Auto Save keeps backups only). degraded_document, recovery,

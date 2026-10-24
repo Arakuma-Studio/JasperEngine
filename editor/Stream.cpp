@@ -14,16 +14,19 @@
 #include "Base64.h"
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
+#include "lattice/LatticeTypes.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
+#include "physics/PlacementSettingsLimits.h"
 
 #include <algorithm>
 #include <cctype>
@@ -35,63 +38,106 @@
 
 using namespace jasperengine;
 
+// The meaning of a key's property bits changed once since keys were written to files: MESH bit
+// 5 was 'Pcf' (USE_SHADOWS_PCF) until July 2026, then unnamed (stripped as keys were read), and
+// is Stochastic Tiling ('Sto') since October 2026. An editor of the time between could still
+// leave it set in what it wrote, so a key without a version (1) that has it holds a stale 'Pcf':
+// it is cleared as the key is read, or it would turn into a Stochastic Tiling variant. A key
+// written with the bit on carries `keyVersion: 2`; every other key is written as before, so
+// files without such variants keep their bytes.
 namespace {
-    // The customShaderId in a key is a session-local registry index, so a fork is
-    // named by its project-relative path instead, the way scenes name theirs.
-    // Both directions normalize, keeping a since-retired property bit out of the file.
-    YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
-        YAML::Node node(YAML::NodeType::Sequence);
-        for (ShaderKey rawKey : shaderKeys) {
-            const ShaderKey key = ShaderPool::normalizeKey(rawKey);
-            const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-            std::string customShader;
-            if (customId != 0) {
-                // Without a name there is nothing stable to write, and dropping only
-                // the id would turn the override into one for the built-in shader
-                customShader = ShaderPool::getCustomShaderName(customId);
-                if (customShader.empty()) continue;
-            }
+    constexpr int SHADER_KEY_VERSION_STOCHASTIC = 2;
 
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
-            YAML::Node entry(YAML::NodeType::Map);
-            entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
-            if (properties) entry["properties"] = properties;
-            if (!customShader.empty()) entry["customShader"] = customShader;
-            node.push_back(entry);
-        }
-        return node;
+    bool hasVersionedBits(ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & shaderPropertyBit(5));
     }
 
-    std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node) {
-        std::vector<ShaderKey> shaderKeys;
-        if (!node || !node.IsSequence()) {
-            return shaderKeys;
-        }
+    ShaderKey stripStaleBits(ShaderKey key, int version) {
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && version < SHADER_KEY_VERSION_STOCHASTIC)
+            key.properties &= ~shaderPropertyBit(5);
+        return key;
+    }
+}
 
-        for (const auto& keyNode : node) {
-            if (!keyNode.IsMap()) {
-                // Backward compatibility: scenes saved before forks were named by path
-                // stored the packed key, so only its stable half survives and the fork
-                // is re-paired on the next save. Remove this branch with support for them.
-                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(editor::YamlNumbers::as<uint64_t>(keyNode))));
-                continue;
-            }
-            ShaderType shaderType;
-            if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
-                continue;
-            }
+// The customShaderId in a key is a session-local registry index, so a fork is
+// named by its project-relative path instead, the way scenes name theirs.
+YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+    std::string customShader;
+    if (customId != 0) {
+        // Without a name there is nothing stable to write, and dropping only
+        // the id would turn the override into one for the built-in shader
+        customShader = ShaderPool::getCustomShaderName(customId);
+        if (customShader.empty()) return YAML::Node();
+    }
 
-            // Keyed by name, so this returns the id the scenes resolve for it too
-            uint16_t customId = 0;
-            if (keyNode["customShader"]) {
-                customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
-            }
-            const uint32_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint32_t>(keyNode["properties"]) : 0;
-            shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getShaderKey(shaderType, properties, customId)));
+    // a plain integer: the 32-bit values files hold read and write as before
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+    YAML::Node entry(YAML::NodeType::Map);
+    entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
+    if (properties) entry["properties"] = properties;
+    if (!customShader.empty()) entry["customShader"] = customShader;
+    if (hasVersionedBits(key)) entry["keyVersion"] = SHADER_KEY_VERSION_STOCHASTIC;
+    return entry;
+}
+
+bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) {
+    if (!keyNode) {
+        return false;
+    }
+    if (!keyNode.IsMap()) {
+        // Backward compatibility: scenes saved before forks were named by path
+        // stored the packed key (32 property bits), so only its stable half survives and
+        // the fork is re-paired on the next save. Remove this branch with support for them.
+        if (!keyNode.IsScalar()) {
+            return false;
         }
+        key = stripStaleBits(ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode))), 1);
+        return true;
+    }
+    ShaderType shaderType;
+    if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
+        return false;
+    }
+
+    // Keyed by name, so this returns the id the scenes resolve for it too
+    uint16_t customId = 0;
+    if (keyNode["customShader"]) {
+        customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
+    }
+    // 64 bits; a file written before they were widened holds a 32-bit value
+    const uint64_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint64_t>(keyNode["properties"]) : 0;
+    const int version = keyNode["keyVersion"] ? editor::YamlNumbers::as<int>(keyNode["keyVersion"]) : 1;
+    key = stripStaleBits(ShaderPool::getShaderKey(shaderType, properties, customId), version);
+    return true;
+}
+
+// Both directions normalize, keeping a since-retired property bit out of the file.
+YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (ShaderKey rawKey : shaderKeys) {
+        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
+        if (entry.IsMap()) node.push_back(entry);
+    }
+    return node;
+}
+
+std::vector<ShaderKey> editor::Stream::decodeShaderKeys(const YAML::Node& node) {
+    std::vector<ShaderKey> shaderKeys;
+    if (!node || !node.IsSequence()) {
         return shaderKeys;
     }
 
+    for (const auto& keyNode : node) {
+        ShaderKey key;
+        if (decodeShaderKey(keyNode, key)) {
+            shaderKeys.push_back(ShaderPool::normalizeKey(key));
+        }
+    }
+    return shaderKeys;
+}
+
+namespace {
     YAML::Node encodeExportBackendSet(const std::set<ShaderBackend>& backends) {
         YAML::Node node(YAML::NodeType::Sequence);
         for (ShaderBackend backend : backends) {
@@ -678,7 +724,7 @@ YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std:
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
         // an empty one binds the manifest default, like no entry
-        if (texture.empty() && !CameraTextureLink::isCameraTexture(texture)) continue;
+        if (texture.empty() && !CameraTextureLink::isLinkTexture(texture)) continue;
         node[uniform] = encodeTexture(texture, embedData);
     }
     return node;
@@ -839,6 +885,112 @@ std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mo
 
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
     return StreamSchema::uiDocumentRenderMode().fromString(str);
+}
+
+std::string editor::Stream::fluidOutputToString(FluidOutput output) {
+    switch (output) {
+        case FluidOutput::SCREEN: return "screen";
+        case FluidOutput::TEXTURE: return "texture";
+        case FluidOutput::MATERIAL:
+        default: return "material";
+    }
+}
+
+FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {
+    if (str == "screen") return FluidOutput::SCREEN;
+    if (str == "texture") return FluidOutput::TEXTURE;
+    return FluidOutput::MATERIAL;
+}
+
+std::string editor::Stream::latticeInterpolationToString(LatticeInterpolation interpolation) {
+    switch (interpolation) {
+        case LatticeInterpolation::SHARP: return "sharp";
+        case LatticeInterpolation::SMOOTH: return "smooth";
+        case LatticeInterpolation::CUBIC:
+        default: return "cubic";
+    }
+}
+
+LatticeInterpolation editor::Stream::stringToLatticeInterpolation(const std::string& str) {
+    if (str == "sharp") return LatticeInterpolation::SHARP;
+    if (str == "smooth") return LatticeInterpolation::SMOOTH;
+    return LatticeInterpolation::CUBIC;
+}
+
+std::string editor::Stream::latticeOutsideToString(LatticeOutside outside) {
+    switch (outside) {
+        case LatticeOutside::EXTEND: return "extend";
+        case LatticeOutside::FADE:
+        default: return "fade";
+    }
+}
+
+LatticeOutside editor::Stream::stringToLatticeOutside(const std::string& str) {
+    if (str == "extend") return LatticeOutside::EXTEND;
+    return LatticeOutside::FADE;
+}
+
+std::string editor::Stream::latticeJiggleAnchorToString(LatticeJiggleAnchor anchor) {
+    switch (anchor) {
+        case LatticeJiggleAnchor::NEGATIVE_X: return "negative_x";
+        case LatticeJiggleAnchor::POSITIVE_X: return "positive_x";
+        case LatticeJiggleAnchor::NEGATIVE_Y: return "negative_y";
+        case LatticeJiggleAnchor::POSITIVE_Y: return "positive_y";
+        case LatticeJiggleAnchor::NEGATIVE_Z: return "negative_z";
+        case LatticeJiggleAnchor::POSITIVE_Z: return "positive_z";
+        case LatticeJiggleAnchor::NONE:
+        default: return "none";
+    }
+}
+
+LatticeJiggleAnchor editor::Stream::stringToLatticeJiggleAnchor(const std::string& str) {
+    if (str == "negative_x") return LatticeJiggleAnchor::NEGATIVE_X;
+    if (str == "positive_x") return LatticeJiggleAnchor::POSITIVE_X;
+    if (str == "negative_y") return LatticeJiggleAnchor::NEGATIVE_Y;
+    if (str == "positive_y") return LatticeJiggleAnchor::POSITIVE_Y;
+    if (str == "negative_z") return LatticeJiggleAnchor::NEGATIVE_Z;
+    if (str == "positive_z") return LatticeJiggleAnchor::POSITIVE_Z;
+    return LatticeJiggleAnchor::NONE;
+}
+
+std::string editor::Stream::latticeStageToString(LatticeStage stage) {
+    switch (stage) {
+        case LatticeStage::BEFORE_SKINNING: return "before_skinning";
+        case LatticeStage::AFTER_SKINNING:
+        default: return "after_skinning";
+    }
+}
+
+LatticeStage editor::Stream::stringToLatticeStage(const std::string& str) {
+    if (str == "before_skinning") return LatticeStage::BEFORE_SKINNING;
+    return LatticeStage::AFTER_SKINNING;
+}
+
+std::string editor::Stream::latticeMaskChannelToString(LatticeMaskChannel mask) {
+    switch (mask) {
+        case LatticeMaskChannel::RED: return "red";
+        case LatticeMaskChannel::GREEN: return "green";
+        case LatticeMaskChannel::BLUE: return "blue";
+        case LatticeMaskChannel::ALPHA: return "alpha";
+        case LatticeMaskChannel::INVERTED_RED: return "inverted_red";
+        case LatticeMaskChannel::INVERTED_GREEN: return "inverted_green";
+        case LatticeMaskChannel::INVERTED_BLUE: return "inverted_blue";
+        case LatticeMaskChannel::INVERTED_ALPHA: return "inverted_alpha";
+        case LatticeMaskChannel::NONE:
+        default: return "none";
+    }
+}
+
+LatticeMaskChannel editor::Stream::stringToLatticeMaskChannel(const std::string& str) {
+    if (str == "red") return LatticeMaskChannel::RED;
+    if (str == "green") return LatticeMaskChannel::GREEN;
+    if (str == "blue") return LatticeMaskChannel::BLUE;
+    if (str == "alpha") return LatticeMaskChannel::ALPHA;
+    if (str == "inverted_red") return LatticeMaskChannel::INVERTED_RED;
+    if (str == "inverted_green") return LatticeMaskChannel::INVERTED_GREEN;
+    if (str == "inverted_blue") return LatticeMaskChannel::INVERTED_BLUE;
+    if (str == "inverted_alpha") return LatticeMaskChannel::INVERTED_ALPHA;
+    return LatticeMaskChannel::NONE;
 }
 
 std::string editor::Stream::audioSourceAttenuationToString(AudioSourceAttenuation attenuation) {
@@ -1033,6 +1185,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["camera"] = linkedCamera;
         return node;
     }
+    // a FluidSimulation's output (FluidTextureLink), the same way
+    Entity linkedFluid = FluidTextureLink::parse(texture.getId());
+    if (linkedFluid != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "fluid";
+        node["fluid"] = linkedFluid;
+        return node;
+    }
 
     if (texture.empty() || texture.isFramebuffer())
         return node;
@@ -1153,6 +1313,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // after every entity of the scene exists
                 if (node["camera"]) {
                     texture.setId(CameraTextureLink::makeId(YamlNumbers::as<Entity>(node["camera"])));
+                }
+            } else if (source == "fluid") {
+                // a FluidSimulation's output, bound by CameraTextureLink::resolve too
+                if (node["fluid"]) {
+                    texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
                 }
             }
         }
@@ -1494,6 +1659,132 @@ editor::TerrainEditorSettings editor::Stream::decodeTerrainEditorSettings(const 
 
 namespace {
 
+const char* decompositionQualityToString(DecompositionQuality quality) {
+    switch (quality) {
+        case DecompositionQuality::LOW: return "low";
+        case DecompositionQuality::HIGH: return "high";
+        default: return "medium";
+    }
+}
+
+bool stringToDecompositionQuality(const std::string& name, DecompositionQuality& out) {
+    if (name == "low") { out = DecompositionQuality::LOW; return true; }
+    if (name == "medium") { out = DecompositionQuality::MEDIUM; return true; }
+    if (name == "high") { out = DecompositionQuality::HIGH; return true; }
+    return false;
+}
+
+const char* rotatePivotToString(editor::PlacementRotatePivot pivot) {
+    return pivot == editor::PlacementRotatePivot::EachObject ? "each_object" : "group_center";
+}
+
+bool stringToRotatePivot(const std::string& name, editor::PlacementRotatePivot& out) {
+    if (name == "group_center") { out = editor::PlacementRotatePivot::GroupCenter; return true; }
+    if (name == "each_object") { out = editor::PlacementRotatePivot::EachObject; return true; }
+    return false;
+}
+
+// One key of a settings map: a value that does not read keeps the default, and the rest of
+// the map still loads
+template <typename Read>
+void decodeSettingKey(const YAML::Node& map, const char* key, Read read) {
+    const YAML::Node node = map[key];
+    if (!node.IsDefined() || node.IsNull()) return;
+    try {
+        read(node);
+    } catch (const YAML::Exception&) {
+    }
+}
+
+} // namespace
+
+YAML::Node editor::Stream::encodePhysicsPlacementSettings(const PhysicsPlacementSettings& ps) {
+    YAML::Node node;
+    node["feel"] = placementFeelName(ps.feel);
+    node["settleOnRelease"] = ps.settleOnRelease;
+    node["keepFormation"] = ps.keepFormation;
+    node["pushNeighbours"] = ps.pushNeighbours;
+    encodeFiniteVector3(node, "gravity", ps.gravity);
+    node["gravityTowardSurface"] = ps.gravityTowardSurface;
+    node["colliders"] = placementColliderPolicyName(ps.colliders);
+    node["decomposition"] = placementDecompositionName(ps.decomposition);
+    node["quality"] = decompositionQualityToString(ps.quality);
+    node["alignToSurface"] = ps.alignToSurface;
+    encodeFinite(node, "snapOffset", ps.snapOffset);
+    node["rotatePivot"] = rotatePivotToString(ps.rotatePivot);
+    encodeFinite(node, "regionMargin", ps.regionMargin);
+    node["ignoreLayerMask"] = ps.ignoreLayerMask;
+    encodeFinite(node, "maxMoverSize", ps.maxMoverSize);
+    encodeFinite(node, "maxSpeed", ps.maxSpeed);
+    encodeFinite(node, "contactSpeed", ps.contactSpeed);
+    encodeFinite(node, "maxAngularSpeed", ps.maxAngularSpeed);
+    node["substeps"] = ps.substeps;
+    node["velocityIterations"] = ps.velocityIterations;
+    node["positionIterations"] = ps.positionIterations;
+    encodeFinite(node, "teleportDistance", ps.teleportDistance);
+    encodeFinite(node, "sleepLinear", ps.sleepLinear);
+    encodeFinite(node, "sleepAngularDeg", ps.sleepAngularDeg);
+    encodeFinite(node, "sleepSeconds", ps.sleepSeconds);
+    encodeFinite(node, "maxSettleSeconds", ps.maxSettleSeconds);
+    encodeFinite(node, "killYDepth", ps.killYDepth);
+    node["showDistanceIndicators"] = ps.showDistanceIndicators;
+    node["showProxies"] = ps.showProxies;
+    return node;
+}
+
+editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(const YAML::Node& node) {
+    PhysicsPlacementSettings ps;
+    if (!node.IsMap()) return ps;
+
+    auto readBool = [&node](const char* key, bool& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<bool>(n); });
+    };
+    auto readFloat = [&node](const char* key, float& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = decodeFinite(n, value); });
+    };
+    auto readInt = [&node](const char* key, int& value) {
+        decodeSettingKey(node, key, [&value](const YAML::Node& n) { value = YamlNumbers::as<int>(n); });
+    };
+    auto readName = [&node](const char* key, auto parse) {
+        decodeSettingKey(node, key, [&parse](const YAML::Node& n) { parse(n.as<std::string>()); });
+    };
+
+    readName("feel", [&ps](const std::string& name) { parsePlacementFeel(name.c_str(), ps.feel); });
+    readBool("settleOnRelease", ps.settleOnRelease);
+    readBool("keepFormation", ps.keepFormation);
+    readBool("pushNeighbours", ps.pushNeighbours);
+    decodeSettingKey(node, "gravity", [&ps](const YAML::Node& n) { ps.gravity = decodeFiniteVector3(n, ps.gravity); });
+    readBool("gravityTowardSurface", ps.gravityTowardSurface);
+    readName("colliders", [&ps](const std::string& name) { parsePlacementColliderPolicy(name.c_str(), ps.colliders); });
+    readName("decomposition", [&ps](const std::string& name) { parsePlacementDecomposition(name.c_str(), ps.decomposition); });
+    readName("quality", [&ps](const std::string& name) { stringToDecompositionQuality(name, ps.quality); });
+    readBool("alignToSurface", ps.alignToSurface);
+    readFloat("snapOffset", ps.snapOffset);
+    readName("rotatePivot", [&ps](const std::string& name) { stringToRotatePivot(name, ps.rotatePivot); });
+    readFloat("regionMargin", ps.regionMargin);
+    decodeSettingKey(node, "ignoreLayerMask", [&ps](const YAML::Node& n) { ps.ignoreLayerMask = decodeLayerMask(n, ps.ignoreLayerMask); });
+    readFloat("maxMoverSize", ps.maxMoverSize);
+    readFloat("maxSpeed", ps.maxSpeed);
+    readFloat("contactSpeed", ps.contactSpeed);
+    readFloat("maxAngularSpeed", ps.maxAngularSpeed);
+    readInt("substeps", ps.substeps);
+    readInt("velocityIterations", ps.velocityIterations);
+    readInt("positionIterations", ps.positionIterations);
+    readFloat("teleportDistance", ps.teleportDistance);
+    readFloat("sleepLinear", ps.sleepLinear);
+    readFloat("sleepAngularDeg", ps.sleepAngularDeg);
+    readFloat("sleepSeconds", ps.sleepSeconds);
+    readFloat("maxSettleSeconds", ps.maxSettleSeconds);
+    readFloat("killYDepth", ps.killYDepth);
+    readBool("showDistanceIndicators", ps.showDistanceIndicators);
+    readBool("showProxies", ps.showProxies);
+    // a hand-edited value outside what the panel allows is brought into range
+    clampPhysicsPlacementSettings(ps);
+    return ps;
+}
+
+namespace {
+
 // The per-scene view keys an older project.yaml carried
 const char* const sceneDisplayKeys[] = {
     "showAllJoints", "showAllBones", "showAllBodies", "hideCameraView",
@@ -1529,6 +1820,8 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableFog"]           = ds.disableFog;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
+    if (ds.showAllLattices)
+        sceneNode["showAllLattices"] = ds.showAllLattices;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -1555,6 +1848,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
@@ -1680,8 +1974,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         YAML::Node exportNode;
 
         const ShaderOverrides& shaders = project->getShaderOverrides();
-        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = encodeShaderKeys(shaders.additions);
-        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = encodeShaderKeys(shaders.exclusions);
+        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = Stream::encodeShaderKeys(shaders.additions);
+        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = Stream::encodeShaderKeys(shaders.exclusions);
 
         const SourceCodeExportSettings& sourceCode = project->getSourceCodeExportSettings();
         if (sourceCode.graphicBackendsConfigured) {
@@ -1773,6 +2067,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.hideStatusBar != defaultIOS.hideStatusBar) iosNode["hideStatusBar"] = ios.hideStatusBar;
         if (ios.hideHomeIndicator != defaultIOS.hideHomeIndicator) iosNode["hideHomeIndicator"] = ios.hideHomeIndicator;
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
+        if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
+        if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -1815,6 +2111,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.allowBackup != defaults.allowBackup) androidNode["allowBackup"] = android.allowBackup;
         if (android.fullscreen != defaults.fullscreen) androidNode["fullscreen"] = android.fullscreen;
         if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
+        if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
+        if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -2114,8 +2412,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         const YAML::Node& exportNode = node["export"];
 
         ShaderOverrides& shaders = project->getShaderOverrides();
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderExclusions"])) {
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderExclusions"])) {
             shaders.exclusions.insert(key);
             shaders.additions.erase(key);
         }
@@ -2201,6 +2499,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["hideStatusBar"].IsDefined()) ios.hideStatusBar = YamlNumbers::as<bool>(iosNode["hideStatusBar"]);
         if (iosNode["hideHomeIndicator"].IsDefined()) ios.hideHomeIndicator = YamlNumbers::as<bool>(iosNode["hideHomeIndicator"]);
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
+        if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
+        if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2236,6 +2536,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["allowBackup"].IsDefined()) android.allowBackup = YamlNumbers::as<bool>(androidNode["allowBackup"]);
         if (androidNode["fullscreen"].IsDefined()) android.fullscreen = YamlNumbers::as<bool>(androidNode["fullscreen"]);
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
+        if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
+        if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
     }
 
     if (node["startSceneId"]) {
@@ -2286,6 +2588,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (workspace.hasTerrainEditorSettings()) {
         project->getTerrainEditorSettings() = workspace.getTerrainEditorSettings();
     }
+    project->getPhysicsPlacementSettings() = workspace.getPhysicsPlacementSettings();
 
     project->setSimulateTouch(workspace.isSimulateTouch());
 
@@ -2411,7 +2714,7 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
-    YAML::Node shaderKeysNode = encodeShaderKeys(sceneProject->shaderKeys);
+    YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
     if (shaderKeysNode.size()) {
         root["shaderKeys"] = shaderKeysNode;
     }
@@ -2470,6 +2773,14 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
             prefabsNode.push_back(prefabNode);
         }
         root["prefabs"] = prefabsNode;
+    }
+
+    if (!sceneProject->imports.empty()) {
+        YAML::Node importsNode;
+        for (const auto& [path, id] : sceneProject->imports) {
+            importsNode[path] = id;
+        }
+        root["imports"] = importsNode;
     }
 
     YAML::Node entitiesNode;
@@ -2539,7 +2850,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     }
 
     sceneProject->shaderKeys.clear();
-    for (ShaderKey key : decodeShaderKeys(node["shaderKeys"])) {
+    for (ShaderKey key : Stream::decodeShaderKeys(node["shaderKeys"])) {
         sceneProject->shaderKeys.insert(key);
     }
 
@@ -2611,6 +2922,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             }
             info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
+        }
+    }
+
+    sceneProject->imports.clear();
+    if (node["imports"] && node["imports"].IsMap()) {
+        for (const auto& entry : node["imports"]) {
+            sceneProject->imports[entry.first.as<std::string>()] = entry.second.as<std::string>();
         }
     }
 }
@@ -2795,6 +3113,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["ssrBlur"] = scene->getSSRBlur();
     sceneNode["gravity2D"] = encodeVector2(scene->getGravity2D());
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -2988,6 +3308,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
+    scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
 
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
@@ -3492,7 +3813,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode textures using the helper method. A camera link is one even unbound (a prefab
     // registry, its camera a stripped object or not resolved yet)
     auto present = [](const Texture& texture) {
-        return !texture.empty() || CameraTextureLink::isCameraTexture(texture);
+        return !texture.empty() || CameraTextureLink::isLinkTexture(texture);
     };
     if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);
@@ -3541,6 +3862,14 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (material.depthOffsetUnits != 0.0f) node["depthOffsetUnits"] = YamlNumbers::text(finiteOr(material.depthOffsetUnits));
     if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
     if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
+
+    // Stochastic Tiling the same way: each value only away from its default
+    static const Material defaults = Material();
+    if (material.stochasticTiling) node["stochasticTiling"] = true;
+    if (material.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = YamlNumbers::text(finiteOr(material.stochasticCellSize));
+    if (material.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = YamlNumbers::text(finiteOr(material.stochasticBlendSharpness));
+    if (material.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = YamlNumbers::text(finiteOr(material.stochasticContrast));
+    if (material.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = YamlNumbers::text(finiteOr(material.stochasticRotation));
 
     // Phase 2, the same way: stencil, colour write and the extra pass when set
     encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
@@ -3598,6 +3927,12 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
     material.lighting = node["lighting"] ? decodeEnum(node, "lighting", StreamSchema::materialLighting()) : MaterialLighting::AUTO;
+    static const Material defaults = Material();
+    material.stochasticTiling = node["stochasticTiling"] ? YamlNumbers::as<bool>(node["stochasticTiling"]) : false;
+    material.stochasticCellSize = decodeFinite(node["stochasticCellSize"], defaults.stochasticCellSize);
+    material.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], defaults.stochasticBlendSharpness);
+    material.stochasticContrast = decodeFinite(node["stochasticContrast"], defaults.stochasticContrast);
+    material.stochasticRotation = decodeFinite(node["stochasticRotation"], defaults.stochasticRotation);
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
 
@@ -3786,6 +4121,31 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
     if (signature.test(registry->getComponentId<UIDocumentComponent>())) {
         const UIDocumentComponent& document = registry->getComponent<UIDocumentComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::UIDocumentComponent, true)] = encodeUIDocumentComponent(document);
+    }
+
+    if (signature.test(registry->getComponentId<FluidSimulationComponent>())) {
+        const FluidSimulationComponent& fluid = registry->getComponent<FluidSimulationComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::FluidSimulationComponent, true)] = encodeFluidSimulationComponent(fluid);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeComponent>())) {
+        const LatticeComponent& lattice = registry->getComponent<LatticeComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeComponent, true)] = encodeLatticeComponent(lattice);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeModifierComponent>())) {
+        const LatticeModifierComponent& modifier = registry->getComponent<LatticeModifierComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeModifierComponent, true)] = encodeLatticeModifierComponent(modifier);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeFollowerComponent>())) {
+        const LatticeFollowerComponent& follower = registry->getComponent<LatticeFollowerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeFollowerComponent, true)] = encodeLatticeFollowerComponent(follower);
+    }
+
+    if (signature.test(registry->getComponentId<LatticeTracksComponent>())) {
+        const LatticeTracksComponent& tracks = registry->getComponent<LatticeTracksComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LatticeTracksComponent, true)] = encodeLatticeTracksComponent(tracks);
     }
 
     if (signature.test(registry->getComponentId<CameraComponent>())) {
@@ -4221,6 +4581,66 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::FluidSimulationComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        FluidSimulationComponent* existing = registry->findComponent<FluidSimulationComponent>(entity);
+        FluidSimulationComponent fluid = decodeFluidSimulationComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<FluidSimulationComponent>())){
+            registry->addComponent<FluidSimulationComponent>(entity, std::move(fluid));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FluidSimulationComponent, existing, &fluid);
+            registry->getComponent<FluidSimulationComponent>(entity) = std::move(fluid);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::LatticeComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        LatticeComponent* existing = registry->findComponent<LatticeComponent>(entity);
+        LatticeComponent lattice = decodeLatticeComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<LatticeComponent>())){
+            registry->addComponent<LatticeComponent>(entity, std::move(lattice));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeComponent, existing, &lattice);
+            registry->getComponent<LatticeComponent>(entity) = std::move(lattice);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::LatticeModifierComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        LatticeModifierComponent* existing = registry->findComponent<LatticeModifierComponent>(entity);
+        LatticeModifierComponent modifier = decodeLatticeModifierComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<LatticeModifierComponent>())){
+            registry->addComponent<LatticeModifierComponent>(entity, std::move(modifier));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeModifierComponent, existing, &modifier);
+            registry->getComponent<LatticeModifierComponent>(entity) = std::move(modifier);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::LatticeFollowerComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        LatticeFollowerComponent* existing = registry->findComponent<LatticeFollowerComponent>(entity);
+        LatticeFollowerComponent follower = decodeLatticeFollowerComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<LatticeFollowerComponent>())){
+            registry->addComponent<LatticeFollowerComponent>(entity, std::move(follower));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeFollowerComponent, existing, &follower);
+            registry->getComponent<LatticeFollowerComponent>(entity) = std::move(follower);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::LatticeTracksComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        LatticeTracksComponent* existing = registry->findComponent<LatticeTracksComponent>(entity);
+        LatticeTracksComponent tracks = decodeLatticeTracksComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<LatticeTracksComponent>())){
+            registry->addComponent<LatticeTracksComponent>(entity, std::move(tracks));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LatticeTracksComponent, existing, &tracks);
+            registry->getComponent<LatticeTracksComponent>(entity) = std::move(tracks);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -5387,6 +5807,14 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["occlusionStrength"] = layer.occlusionStrength;
     node["uvScale"] = encodeVector2(layer.uvScale);
     node["uvOffset"] = encodeVector2(layer.uvOffset);
+    // Stochastic Tiling writes only what differs from the defaults, so a layer without it
+    // saves as it always did
+    static const TerrainSurfaceLayer defaults;
+    if (layer.stochasticTiling != defaults.stochasticTiling) node["stochasticTiling"] = layer.stochasticTiling;
+    if (layer.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = layer.stochasticCellSize;
+    if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = layer.stochasticBlendSharpness;
+    if (layer.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = layer.stochasticContrast;
+    if (layer.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = layer.stochasticRotation;
     return node;
 }
 
@@ -5406,6 +5834,11 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.roughnessFactor = decodeFinite(node["roughnessFactor"], layer.roughnessFactor);
     layer.metallicFactor = decodeFinite(node["metallicFactor"], layer.metallicFactor);
     layer.occlusionStrength = decodeFinite(node["occlusionStrength"], layer.occlusionStrength);
+    if (node["stochasticTiling"]) layer.stochasticTiling = YamlNumbers::as<bool>(node["stochasticTiling"]);
+    layer.stochasticCellSize = decodeFinite(node["stochasticCellSize"], layer.stochasticCellSize);
+    layer.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], layer.stochasticBlendSharpness);
+    layer.stochasticContrast = decodeFinite(node["stochasticContrast"], layer.stochasticContrast);
+    layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
     return layer;
 }
 
@@ -5991,6 +6424,113 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     return document;
 }
 
+YAML::Node editor::Stream::encodeFluidSimulationComponent(const FluidSimulationComponent& fluid) {
+    YAML::Node node;
+    node["enabled"] = fluid.enabled;
+
+    // only what differs from the defaults (Pavel's); decode restores the defaults
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) node["output"] = fluidOutputToString(fluid.output);
+    if (fluid.interactive != defaults.interactive) node["interactive"] = fluid.interactive;
+    if (fluid.aspectRatio != defaults.aspectRatio) encodeFinite(node, "aspectRatio", fluid.aspectRatio);
+    if (fluid.simResolution != defaults.simResolution) node["simResolution"] = fluid.simResolution;
+    if (fluid.dyeResolution != defaults.dyeResolution) node["dyeResolution"] = fluid.dyeResolution;
+    if (fluid.densityDissipation != defaults.densityDissipation) encodeFinite(node, "densityDissipation", fluid.densityDissipation);
+    if (fluid.velocityDissipation != defaults.velocityDissipation) encodeFinite(node, "velocityDissipation", fluid.velocityDissipation);
+    if (fluid.pressure != defaults.pressure) encodeFinite(node, "pressure", fluid.pressure);
+    if (fluid.pressureIterations != defaults.pressureIterations) node["pressureIterations"] = fluid.pressureIterations;
+    if (fluid.curl != defaults.curl) encodeFinite(node, "curl", fluid.curl);
+    if (fluid.gradientScale != defaults.gradientScale) encodeFinite(node, "gradientScale", fluid.gradientScale);
+    if (fluid.simulationRate != defaults.simulationRate) encodeFinite(node, "simulationRate", fluid.simulationRate);
+    if (fluid.maxSubsteps != defaults.maxSubsteps) node["maxSubsteps"] = fluid.maxSubsteps;
+    if (fluid.timeScale != defaults.timeScale) encodeFinite(node, "timeScale", fluid.timeScale);
+    if (fluid.paused != defaults.paused) node["paused"] = fluid.paused;
+    if (fluid.splatRadius != defaults.splatRadius) encodeFinite(node, "splatRadius", fluid.splatRadius);
+    if (fluid.splatForce != defaults.splatForce) encodeFinite(node, "splatForce", fluid.splatForce);
+    if (fluid.colorful != defaults.colorful) node["colorful"] = fluid.colorful;
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) encodeFinite(node, "colorUpdateSpeed", fluid.colorUpdateSpeed);
+    if (fluid.splatsOnStart != defaults.splatsOnStart) node["splatsOnStart"] = fluid.splatsOnStart;
+    if (fluid.randomSplatCount != defaults.randomSplatCount) node["randomSplatCount"] = fluid.randomSplatCount;
+    if (fluid.seed != defaults.seed) node["seed"] = fluid.seed;
+    if (fluid.shading != defaults.shading) node["shading"] = fluid.shading;
+    if (fluid.backColor != defaults.backColor) encodeFiniteVector3(node, "backColor", fluid.backColor);
+    if (fluid.transparent != defaults.transparent) node["transparent"] = fluid.transparent;
+    if (fluid.bloom != defaults.bloom) node["bloom"] = fluid.bloom;
+    if (fluid.bloomIterations != defaults.bloomIterations) node["bloomIterations"] = fluid.bloomIterations;
+    if (fluid.bloomResolution != defaults.bloomResolution) node["bloomResolution"] = fluid.bloomResolution;
+    if (fluid.bloomIntensity != defaults.bloomIntensity) encodeFinite(node, "bloomIntensity", fluid.bloomIntensity);
+    if (fluid.bloomThreshold != defaults.bloomThreshold) encodeFinite(node, "bloomThreshold", fluid.bloomThreshold);
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) encodeFinite(node, "bloomSoftKnee", fluid.bloomSoftKnee);
+    if (fluid.sunrays != defaults.sunrays) node["sunrays"] = fluid.sunrays;
+    if (fluid.sunraysResolution != defaults.sunraysResolution) node["sunraysResolution"] = fluid.sunraysResolution;
+    if (fluid.sunraysWeight != defaults.sunraysWeight) encodeFinite(node, "sunraysWeight", fluid.sunraysWeight);
+
+    return node;
+}
+
+FluidSimulationComponent editor::Stream::decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid) {
+    // the old one's runtime state (its simulator, which textures linked to "fluid|<entity>"
+    // show, and what is queued for it) stays
+    FluidSimulationComponent fluid;
+    if (oldFluid) {
+        fluid = *oldFluid;
+    }
+
+    if (node["enabled"]) fluid.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults, so a missing key is the default, not the old value
+    // (paste and play-stop restore decode over an existing component); the clipboard fills a
+    // key it has no default for with an empty scalar, which is the default too
+    const FluidSimulationComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    fluid.output = given("output") ? stringToFluidOutput(node["output"].as<std::string>()) : defaults.output;
+    fluid.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
+    fluid.aspectRatio = given("aspectRatio") ? decodeFinite(node["aspectRatio"], defaults.aspectRatio) : defaults.aspectRatio;
+    fluid.simResolution = given("simResolution") ? YamlNumbers::as<unsigned int>(node["simResolution"]) : defaults.simResolution;
+    fluid.dyeResolution = given("dyeResolution") ? YamlNumbers::as<unsigned int>(node["dyeResolution"]) : defaults.dyeResolution;
+    fluid.densityDissipation = given("densityDissipation") ? decodeFinite(node["densityDissipation"], defaults.densityDissipation) : defaults.densityDissipation;
+    fluid.velocityDissipation = given("velocityDissipation") ? decodeFinite(node["velocityDissipation"], defaults.velocityDissipation) : defaults.velocityDissipation;
+    fluid.pressure = given("pressure") ? decodeFinite(node["pressure"], defaults.pressure) : defaults.pressure;
+    fluid.pressureIterations = given("pressureIterations") ? YamlNumbers::as<unsigned int>(node["pressureIterations"]) : defaults.pressureIterations;
+    fluid.curl = given("curl") ? decodeFinite(node["curl"], defaults.curl) : defaults.curl;
+    fluid.gradientScale = given("gradientScale") ? decodeFinite(node["gradientScale"], defaults.gradientScale) : defaults.gradientScale;
+    fluid.simulationRate = given("simulationRate") ? decodeFinite(node["simulationRate"], defaults.simulationRate) : defaults.simulationRate;
+    fluid.maxSubsteps = given("maxSubsteps") ? YamlNumbers::as<unsigned int>(node["maxSubsteps"]) : defaults.maxSubsteps;
+    fluid.timeScale = given("timeScale") ? decodeFinite(node["timeScale"], defaults.timeScale) : defaults.timeScale;
+    fluid.paused = given("paused") ? YamlNumbers::as<bool>(node["paused"]) : defaults.paused;
+    fluid.splatRadius = given("splatRadius") ? decodeFinite(node["splatRadius"], defaults.splatRadius) : defaults.splatRadius;
+    fluid.splatForce = given("splatForce") ? decodeFinite(node["splatForce"], defaults.splatForce) : defaults.splatForce;
+    fluid.colorful = given("colorful") ? YamlNumbers::as<bool>(node["colorful"]) : defaults.colorful;
+    fluid.colorUpdateSpeed = given("colorUpdateSpeed") ? decodeFinite(node["colorUpdateSpeed"], defaults.colorUpdateSpeed) : defaults.colorUpdateSpeed;
+    fluid.splatsOnStart = given("splatsOnStart") ? YamlNumbers::as<bool>(node["splatsOnStart"]) : defaults.splatsOnStart;
+    fluid.randomSplatCount = given("randomSplatCount") ? YamlNumbers::as<unsigned int>(node["randomSplatCount"]) : defaults.randomSplatCount;
+    fluid.seed = given("seed") ? YamlNumbers::as<uint32_t>(node["seed"]) : defaults.seed;
+    fluid.shading = given("shading") ? YamlNumbers::as<bool>(node["shading"]) : defaults.shading;
+    fluid.backColor = given("backColor") ? decodeFiniteVector3(node["backColor"], defaults.backColor) : defaults.backColor;
+    fluid.transparent = given("transparent") ? YamlNumbers::as<bool>(node["transparent"]) : defaults.transparent;
+    fluid.bloom = given("bloom") ? YamlNumbers::as<bool>(node["bloom"]) : defaults.bloom;
+    fluid.bloomIterations = given("bloomIterations") ? YamlNumbers::as<unsigned int>(node["bloomIterations"]) : defaults.bloomIterations;
+    fluid.bloomResolution = given("bloomResolution") ? YamlNumbers::as<unsigned int>(node["bloomResolution"]) : defaults.bloomResolution;
+    fluid.bloomIntensity = given("bloomIntensity") ? decodeFinite(node["bloomIntensity"], defaults.bloomIntensity) : defaults.bloomIntensity;
+    fluid.bloomThreshold = given("bloomThreshold") ? decodeFinite(node["bloomThreshold"], defaults.bloomThreshold) : defaults.bloomThreshold;
+    fluid.bloomSoftKnee = given("bloomSoftKnee") ? decodeFinite(node["bloomSoftKnee"], defaults.bloomSoftKnee) : defaults.bloomSoftKnee;
+    fluid.sunrays = given("sunrays") ? YamlNumbers::as<bool>(node["sunrays"]) : defaults.sunrays;
+    fluid.sunraysResolution = given("sunraysResolution") ? YamlNumbers::as<unsigned int>(node["sunraysResolution"]) : defaults.sunraysResolution;
+    fluid.sunraysWeight = given("sunraysWeight") ? decodeFinite(node["sunraysWeight"], defaults.sunraysWeight) : defaults.sunraysWeight;
+
+    // what the start depends on: a new seed or start burst restarts it (sizes and the look
+    // are read by FluidSimulator each frame)
+    if (oldFluid && (oldFluid->seed != fluid.seed || oldFluid->splatsOnStart != fluid.splatsOnStart ||
+                     oldFluid->randomSplatCount != fluid.randomSplatCount)) {
+        fluid.needReset = true;
+    }
+
+    return fluid;
+}
+
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {
     ReflectionProbeComponent probe;
     if (oldProbe) probe = *oldProbe;
@@ -6462,6 +7002,9 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["gravityFactor"] = body.gravityFactor;
     node["friction"] = body.friction;
     node["restitution"] = body.restitution;
+    node["buoyancy"] = body.buoyancy;
+    node["waterDrag"] = body.waterDrag;
+    node["waterAngularDrag"] = body.waterAngularDrag;
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -6536,6 +7079,9 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
     if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
     if (node["restitution"]) body.restitution = YamlNumbers::as<float>(node["restitution"]);
+    if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
+    if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
+    if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];
@@ -6835,6 +7381,7 @@ YAML::Node editor::Stream::encodeTweenComponent(const TweenComponent& timed) {
 
     node["duration"] = timed.duration;
     node["loop"] = timed.loop;
+    node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
 
     return node;
@@ -6852,6 +7399,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
 
     if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
     return timed;
@@ -6889,6 +7437,9 @@ YAML::Node editor::Stream::encodeRotationTweenComponent(const RotationTweenCompo
     node["endRotation"] = encodeQuaternion(rotAction.endRotation);
     node["startRotation"] = encodeQuaternion(rotAction.startRotation);
     node["shortestPath"] = rotAction.shortestPath;
+    node["spin"] = rotAction.spin;
+    node["axis"] = encodeVector3(rotAction.axis);
+    node["angle"] = rotAction.angle;
 
     return node;
 }
@@ -6903,6 +7454,9 @@ RotationTweenComponent editor::Stream::decodeRotationTweenComponent(const YAML::
     if (node["endRotation"]) rotAction.endRotation = decodeQuaternion(node["endRotation"]);
     if (node["startRotation"]) rotAction.startRotation = decodeQuaternion(node["startRotation"]);
     if (node["shortestPath"]) rotAction.shortestPath = YamlNumbers::as<bool>(node["shortestPath"]);
+    if (node["spin"]) rotAction.spin = YamlNumbers::as<bool>(node["spin"]);
+    if (node["axis"]) rotAction.axis = decodeVector3(node["axis"]);
+    if (node["angle"]) rotAction.angle = YamlNumbers::as<float>(node["angle"]);
 
     return rotAction;
 }
@@ -7123,6 +7677,8 @@ YAML::Node editor::Stream::encodeKeyframeTracksComponent(const KeyframeTracksCom
 
     node["index"] = tracks.index;
     node["interpolation"] = tracks.interpolation;
+    node["loop"] = tracks.loop;
+    node["relative"] = tracks.relative;
 
     YAML::Node timesNode;
     for (float t : tracks.times) {
@@ -7150,8 +7706,13 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
         tracks = *oldTracks;
     }
 
+    // a decoded track takes its base again when it starts
+    tracks.hasBase = false;
+
     if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
     if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
+    if (node["loop"]) tracks.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["relative"]) tracks.relative = YamlNumbers::as<bool>(node["relative"]);
 
     if (node["times"]) {
         tracks.times.clear();
@@ -7294,6 +7855,267 @@ MorphTracksComponent editor::Stream::decodeMorphTracksComponent(const YAML::Node
     }
 
     decodeTrackLists(node, tracks, decodeFloatList);
+
+    return tracks;
+}
+
+// ==============================
+// Lattice components encode/decode
+// ==============================
+
+YAML::Node editor::Stream::encodeLatticeOffsets(const std::vector<Vector3>& offsets) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const Vector3& offset : offsets) {
+        node.push_back(encodeVector3(offset));
+    }
+    if (offsets.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<Vector3> editor::Stream::decodeLatticeOffsets(const YAML::Node& node) {
+    std::vector<Vector3> offsets;
+    if (node && node.IsSequence()) {
+        offsets.reserve(node.size());
+        for (const YAML::Node& offset : node) {
+            offsets.push_back(decodeVector3(offset));
+        }
+    }
+    return offsets;
+}
+
+YAML::Node editor::Stream::encodeLatticeComponent(const LatticeComponent& lattice) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(lattice.enabled);
+
+    node["resolutionX"] = YamlNumbers::integerText(lattice.resolutionX);
+    node["resolutionY"] = YamlNumbers::integerText(lattice.resolutionY);
+    node["resolutionZ"] = YamlNumbers::integerText(lattice.resolutionZ);
+    node["offsets"] = encodeLatticeOffsets(lattice.offsets);
+    node["interpolation"] = latticeInterpolationToString(lattice.interpolation);
+    node["outside"] = latticeOutsideToString(lattice.outside);
+    encodeFinite(node, "fadeDistance", lattice.fadeDistance);
+
+    YAML::Node posesNode(YAML::NodeType::Sequence);
+    for (const LatticePose& pose : lattice.poses) {
+        YAML::Node poseNode;
+        poseNode["name"] = pose.name;
+        poseNode["offsets"] = encodeLatticeOffsets(pose.offsets);
+        posesNode.push_back(poseNode);
+    }
+    if (lattice.poses.empty()) posesNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["poses"] = posesNode;
+
+    node["jiggle"] = YamlNumbers::text(lattice.jiggle);
+    encodeFinite(node, "jiggleStiffness", lattice.jiggleStiffness);
+    encodeFinite(node, "jiggleDamping", lattice.jiggleDamping);
+    encodeFinite(node, "jiggleInertia", lattice.jiggleInertia);
+    node["jiggleAnchor"] = latticeJiggleAnchorToString(lattice.jiggleAnchor);
+    encodeFinite(node, "jiggleMaxOffset", lattice.jiggleMaxOffset);
+
+    return node;
+}
+
+LatticeComponent editor::Stream::decodeLatticeComponent(const YAML::Node& node, const LatticeComponent* oldLattice) {
+    LatticeComponent lattice;
+
+    if (oldLattice) {
+        lattice = *oldLattice;
+    }
+
+    if (node["enabled"]) lattice.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["resolutionX"]) lattice.resolutionX = YamlNumbers::as<int>(node["resolutionX"]);
+    if (node["resolutionY"]) lattice.resolutionY = YamlNumbers::as<int>(node["resolutionY"]);
+    if (node["resolutionZ"]) lattice.resolutionZ = YamlNumbers::as<int>(node["resolutionZ"]);
+    lattice.resolutionX = std::clamp(lattice.resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionY = std::clamp(lattice.resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    lattice.resolutionZ = std::clamp(lattice.resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const size_t pointCount = static_cast<size_t>(lattice.resolutionX * lattice.resolutionY * lattice.resolutionZ);
+
+    if (node["offsets"]) lattice.offsets = decodeLatticeOffsets(node["offsets"]);
+    lattice.offsets.resize(pointCount, Vector3::ZERO);
+
+    if (node["interpolation"]) lattice.interpolation = stringToLatticeInterpolation(node["interpolation"].as<std::string>());
+    if (node["outside"]) lattice.outside = stringToLatticeOutside(node["outside"].as<std::string>());
+    if (node["fadeDistance"]) lattice.fadeDistance = decodeFinite(node["fadeDistance"], lattice.fadeDistance);
+
+    if (node["poses"]) {
+        lattice.poses.clear();
+        if (node["poses"].IsSequence()) {
+            for (const YAML::Node& poseNode : node["poses"]) {
+                LatticePose pose;
+                if (poseNode["name"]) pose.name = poseNode["name"].as<std::string>();
+                // a pose of another resolution is resampled where it is applied (spec §6.1)
+                pose.offsets = decodeLatticeOffsets(poseNode["offsets"]);
+                lattice.poses.push_back(std::move(pose));
+            }
+        }
+    }
+
+    if (node["jiggle"]) lattice.jiggle = YamlNumbers::as<bool>(node["jiggle"]);
+    if (node["jiggleStiffness"]) lattice.jiggleStiffness = decodeFinite(node["jiggleStiffness"], lattice.jiggleStiffness);
+    if (node["jiggleDamping"]) lattice.jiggleDamping = decodeFinite(node["jiggleDamping"], lattice.jiggleDamping);
+    if (node["jiggleInertia"]) lattice.jiggleInertia = decodeFinite(node["jiggleInertia"], lattice.jiggleInertia);
+    if (node["jiggleAnchor"]) lattice.jiggleAnchor = stringToLatticeJiggleAnchor(node["jiggleAnchor"].as<std::string>());
+    if (node["jiggleMaxOffset"]) lattice.jiggleMaxOffset = decodeFinite(node["jiggleMaxOffset"], lattice.jiggleMaxOffset);
+
+    // the old one's springs and tween are laid out for its own points
+    if (oldLattice && (oldLattice->resolutionX != lattice.resolutionX || oldLattice->resolutionY != lattice.resolutionY ||
+                       oldLattice->resolutionZ != lattice.resolutionZ)) {
+        lattice.dynamicOffsets.clear();
+        lattice.jiggleVelocities.clear();
+        lattice.jiggleSleeping = true;
+        lattice.tweenFrom.clear();
+        lattice.tweenTo.clear();
+        lattice.tweening = false;
+    }
+
+    return lattice;
+}
+
+YAML::Node editor::Stream::encodeLatticeModifierComponent(const LatticeModifierComponent& modifier) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(modifier.enabled);
+
+    YAML::Node bindingsNode(YAML::NodeType::Sequence);
+    for (const LatticeBinding& binding : modifier.bindings) {
+        YAML::Node bindingNode;
+        bindingNode["lattice"] = binding.lattice;
+        encodeFinite(bindingNode, "weight", binding.weight);
+        bindingNode["stage"] = latticeStageToString(binding.stage);
+        bindingNode["submesh"] = YamlNumbers::integerText(binding.submesh);
+        bindingNode["mask"] = latticeMaskChannelToString(binding.mask);
+        bindingsNode.push_back(bindingNode);
+    }
+    if (modifier.bindings.empty()) bindingsNode.SetStyle(YAML::EmitterStyle::Flow);
+    node["bindings"] = bindingsNode;
+    node["includeChildren"] = YamlNumbers::text(modifier.includeChildren);
+    node["subdivisions"] = YamlNumbers::integerText(modifier.subdivisions);
+
+    return node;
+}
+
+LatticeModifierComponent editor::Stream::decodeLatticeModifierComponent(const YAML::Node& node, const LatticeModifierComponent* oldModifier) {
+    LatticeModifierComponent modifier;
+
+    if (oldModifier) {
+        modifier = *oldModifier;
+    }
+
+    if (node["enabled"]) modifier.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    if (node["bindings"]) {
+        modifier.bindings.clear();
+        if (node["bindings"].IsSequence()) {
+            for (const YAML::Node& bindingNode : node["bindings"]) {
+                LatticeBinding binding;
+                if (bindingNode["lattice"]) binding.lattice = YamlNumbers::as<Entity>(bindingNode["lattice"]);
+                if (bindingNode["weight"]) binding.weight = std::clamp(decodeFinite(bindingNode["weight"], binding.weight), 0.0f, 2.0f);
+                if (bindingNode["stage"]) binding.stage = stringToLatticeStage(bindingNode["stage"].as<std::string>());
+                if (bindingNode["submesh"]) binding.submesh = YamlNumbers::as<int>(bindingNode["submesh"]);
+                if (bindingNode["mask"]) binding.mask = stringToLatticeMaskChannel(bindingNode["mask"].as<std::string>());
+                modifier.bindings.push_back(binding);
+            }
+        }
+        modifier.warnedOverflow = false;
+    }
+    if (node["includeChildren"]) modifier.includeChildren = YamlNumbers::as<bool>(node["includeChildren"]);
+    if (node["subdivisions"]) modifier.subdivisions = std::clamp(YamlNumbers::as<int>(node["subdivisions"]), 1, 64);
+
+    return modifier;
+}
+
+YAML::Node editor::Stream::encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(follower.enabled);
+
+    node["lattice"] = follower.lattice;
+    node["rest"] = follower.rest;
+    node["applyPosition"] = YamlNumbers::text(follower.applyPosition);
+    node["applyRotation"] = YamlNumbers::text(follower.applyRotation);
+    node["applyScale"] = YamlNumbers::text(follower.applyScale);
+    encodeFinite(node, "weight", follower.weight);
+
+    return node;
+}
+
+LatticeFollowerComponent editor::Stream::decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower) {
+    LatticeFollowerComponent follower;
+
+    if (oldFollower) {
+        follower = *oldFollower;
+    }
+
+    if (node["enabled"]) follower.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["lattice"]) follower.lattice = YamlNumbers::as<Entity>(node["lattice"]);
+    if (node["rest"]) follower.rest = YamlNumbers::as<Entity>(node["rest"]);
+    if (node["applyPosition"]) follower.applyPosition = YamlNumbers::as<bool>(node["applyPosition"]);
+    if (node["applyRotation"]) follower.applyRotation = YamlNumbers::as<bool>(node["applyRotation"]);
+    if (node["applyScale"]) follower.applyScale = YamlNumbers::as<bool>(node["applyScale"]);
+    if (node["weight"]) follower.weight = decodeFinite(node["weight"], follower.weight);
+
+    return follower;
+}
+
+YAML::Node editor::Stream::encodeLatticeTrackKeys(const std::vector<std::vector<Vector3>>& keys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (const std::vector<Vector3>& key : keys) {
+        node.push_back(encodeLatticeOffsets(key));
+    }
+    if (keys.empty()) node.SetStyle(YAML::EmitterStyle::Flow);
+    return node;
+}
+
+std::vector<std::vector<Vector3>> editor::Stream::decodeLatticeTrackKeys(const YAML::Node& node) {
+    std::vector<std::vector<Vector3>> keys;
+    if (node && node.IsSequence()) {
+        for (const YAML::Node& key : node) {
+            keys.push_back(decodeLatticeOffsets(key));
+        }
+    }
+    return keys;
+}
+
+YAML::Node editor::Stream::encodeLatticeTracksComponent(const LatticeTracksComponent& tracks) {
+    YAML::Node node;
+
+    YAML::Node pointsNode(YAML::NodeType::Sequence);
+    pointsNode.SetStyle(YAML::EmitterStyle::Flow);
+    for (int point : tracks.points) {
+        pointsNode.push_back(YamlNumbers::integerText(point));
+    }
+    node["points"] = pointsNode;
+    node["values"] = encodeLatticeTrackKeys(tracks.values);
+    // Hermite tangents only on cubic tracks
+    if (!tracks.inTangents.empty()) {
+        node["inTangents"] = encodeLatticeTrackKeys(tracks.inTangents);
+    }
+    if (!tracks.outTangents.empty()) {
+        node["outTangents"] = encodeLatticeTrackKeys(tracks.outTangents);
+    }
+
+    return node;
+}
+
+LatticeTracksComponent editor::Stream::decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks) {
+    LatticeTracksComponent tracks;
+
+    if (oldTracks) {
+        tracks = *oldTracks;
+    }
+
+    if (node["points"]) {
+        tracks.points.clear();
+        if (node["points"].IsSequence()) {
+            for (const YAML::Node& point : node["points"]) {
+                tracks.points.push_back(YamlNumbers::as<int>(point));
+            }
+        }
+    }
+    if (node["values"]) tracks.values = decodeLatticeTrackKeys(node["values"]);
+    // left out when empty, so an absent key is none
+    tracks.inTangents = decodeLatticeTrackKeys(node["inTangents"]);
+    tracks.outTangents = decodeLatticeTrackKeys(node["outTangents"]);
 
     return tracks;
 }

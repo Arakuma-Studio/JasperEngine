@@ -35,8 +35,21 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # the repository root (the data-safety corpus reads tools/fixtures)
         JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
+        # test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)
+        JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper)
+
+# A process with nothing but the engine (the editor's static App builds a Scene before main, so
+# the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
+add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/standalone/PlacementWorldBeforeAnyScene.cpp)
+target_link_libraries(jasperengine-placement-fresh-process PRIVATE jasperengine)
+set_target_properties(jasperengine-placement-fresh-process PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
+add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)

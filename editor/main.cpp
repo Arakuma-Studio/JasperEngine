@@ -46,6 +46,12 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "import-ui") == 0) {
         return editor::CommandLine::runImportUiCommand(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "synthesize-texture") == 0) {
+        return editor::CommandLine::runSynthesizeTextureCommand(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "place-physics") == 0) {
+        return editor::CommandLine::runPlacePhysicsCommand(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "benchmark") == 0) {
         if (argc >= 3 && (std::strcmp(argv[2], "-h") == 0 || std::strcmp(argv[2], "--help") == 0 || std::strcmp(argv[2], "help") == 0)) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);

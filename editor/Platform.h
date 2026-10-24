@@ -28,6 +28,7 @@ namespace jasperengine::editor{
         std::string getLuaPath() override;
         std::string getShaderPath() override;
         std::string getUserDataPath() override;
+        std::string getImportPath() override;
 
         sg_environment getSokolEnvironment() override;
         sg_swapchain getSokolSwapchain() override;

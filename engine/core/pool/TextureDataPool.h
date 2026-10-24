@@ -74,6 +74,8 @@ namespace jasperengine{
         static void cancelShutdown();
 
         static void remove(const std::string& id);
+        // Drops the entry even while others hold it, so the next load decodes again
+        static void invalidate(const std::string& id);
         static void clear();
         // removes only entries no one else references (safe while other scenes are alive)
         static void clearUnused();

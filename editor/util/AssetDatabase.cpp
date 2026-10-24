@@ -5,6 +5,7 @@
 #include "io/AtomicFile.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 

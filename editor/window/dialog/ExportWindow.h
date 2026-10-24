@@ -69,7 +69,7 @@ namespace jasperengine::editor {
         struct ShaderEntry {
             ShaderKey key;
             ShaderType type;
-            uint32_t properties;
+            uint64_t properties;
             std::string displayName;
             bool fromScene = false;
         };
@@ -81,7 +81,7 @@ namespace jasperengine::editor {
         // Add Shader dialog state
         bool m_addShaderOpen = false;
         int m_addShaderTypeIndex = 0;
-        bool m_addShaderProps[32] = {};
+        bool m_addShaderProps[SHADER_PROPERTY_BITS] = {};
         int m_addShaderEffectIndex = 0;   // UI Effect: the effect (EffectRegistry::all() order)
 
         // Graphic backend selection (Source Code mode only)

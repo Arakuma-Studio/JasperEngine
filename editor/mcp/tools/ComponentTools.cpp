@@ -25,6 +25,7 @@
 #include "registry/TagManager.h"
 #include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
+#include "util/FileUtils.h"
 #include "util/Prefab.h"
 #include "window/dialog/ComponentAddDialog.h"
 
@@ -59,7 +60,9 @@ SceneProject* sceneArg(const CallPtr& call) {
 }
 
 Json componentsArgSchema(const std::string& description) {
-    return {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", description}};
+    Json schema = {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}};
+    if (!description.empty()) schema["description"] = description;
+    return schema;
 }
 
 bool wildcardMatch(const std::string& pattern, const std::string& text) {
@@ -187,7 +190,7 @@ void getEntityTool(const CallPtr& call) {
         PrefabObjectRef ref;
         if (project->findPrefabObject(scene->id, entity, ref) && ref.instance) {
             Json prefab = {
-                {"path", project->normalizeToProjectRelative(ref.path).generic_string()},
+                {"path", FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(ref.path))},
                 {"instance_root", McpRefs::entityJson(scene, ref.instance->rootEntity)},
                 {"is_root", ref.isRoot}
             };
@@ -299,6 +302,14 @@ void getEntityTool(const CallPtr& call) {
         components[name] = props;
     }
     data["components"] = components;
+    // a fluid's runtime state (read only; FluidStats, the matching preset)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::FluidSimulationComponent) != filter.end()) {
+        const Json fluid = McpValues::fluidStatsToJson(registry, entity);
+        if (!fluid.is_null()) {
+            data["fluid_stats"] = fluid;
+            text += ". fluid_stats: " + fluid.dump();
+        }
+    }
     // what its draws read of the scene (phase 3) in their current variants, and the cost
     const Json sceneInputs = McpValues::entitySceneInputsToJson(registry, entity);
     if (!sceneInputs.empty()) {
@@ -815,8 +826,7 @@ void listComponentTypesTool(const CallPtr& call) {
     }
     Json list = Json::array();
     std::string text;
-    const int last = static_cast<int>(ComponentType::UIDocumentComponent);
-    for (int i = 0; i <= last; i++) {
+    for (int i = 0; i < ComponentTypeCount; i++) {
         const ComponentType type = static_cast<ComponentType>(i);
         const std::string name = McpRefs::componentName(type);
         if (name.empty()) continue;
@@ -835,16 +845,15 @@ void registerComponentTools(McpRegistry& registry) {
         tool.name = "get_entity";
         tool.title = "Get Entity";
         tool.description =
-            "A GameObject as the Inspector shows it: {id, name, path, active, tag, layer, parent, children, world "
-            "transform, prefab} and its components. detail: summary (names), values ({component: {property: "
-            "value}}), full (+ type, default, enum options, prefab-overridden flag), yaml (scene-file encoding). "
-            "Filter by components and properties (globs, e.g. \"submeshes[0].*\"); big custom values are elided "
-            "unless named.";
+            "A GameObject as the Inspector shows it (id, name, path, active, tag, layer, parent, children, world "
+            "transform, prefab) and its components. detail: summary (names), values ({component: {property: "
+            "value}}), full (+ type, default, enum options, overridden flag), yaml (scene-file encoding). Filter "
+            "by components and properties (globs: \"submeshes[0].*\"); big custom values are elided unless named.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"detail", withDefault(stringEnum("", {"summary", "values", "full", "yaml"}), "values")},
-            {"components", componentsArgSchema("Only these components.")},
+            {"components", componentsArgSchema("")},
             {"properties", array(string(""), "Only these properties (names or globs).")},
             {"runtime", withDefault(boolean("While playing: read the running scene."), false)}
         }, {"entity"});
@@ -859,17 +868,16 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Set Properties";
         tool.description =
             "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
-            "values read back. Shapes: vectors [x,y,z]; colors [r,g,b(,a)] or \"#RRGGBB[AA]\"; rotations "
-            "{\"euler\":[x,y,z]} or [x,y,z,w]; enums/eases by name; textures/fonts/models by asset path (texture "
-            "{\"camera\": <entity>} = render texture); material: fields object or a .material path (links it); "
-            "GameObject refs (other scene: {\"scene\", \"id\"}) or null; Prefab script properties a .prefab path; "
-            "custom values (colliders, frames, scripts...) as get_entity returns them. Lists: {component, property, "
-            "insert: value, index?} / {..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
+            "values read back. Values as the guide's Addressing says, plus colors \"#RRGGBB[AA]\", texture "
+            "{\"camera\": <entity>} (render texture), material: a fields object or a .material path (links it), "
+            "null clears a reference, custom values (colliders, frames, scripts...) as get_entity returns them. "
+            "Lists: {component, property, insert: value, index?} / {..., remove: index}. Paths index "
+            "(\"submeshes[0].material.baseColorFactor\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"changes", array(anyObject("{component, property, value|insert|remove, index?}"), "Edits, in order.")},
+            {"changes", array(anyObject("{component, property, value|insert|remove, index?}"), "")},
             {"values", anyObject("{component: {property: value}}")}
         });
         tool.handler = setPropertiesTool;
@@ -906,7 +914,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"component", componentsArgSchema("Component name(s).")},
+            {"component", componentsArgSchema("")},
             {"values", anyObject("{component: {property: value}}")}
         }, {"component"});
         tool.handler = addComponentTool;
@@ -921,7 +929,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"component", componentsArgSchema("Component name(s).")}
+            {"component", componentsArgSchema("")}
         }, {"component"});
         tool.annotations.destructive = true;
         tool.handler = removeComponentTool;
@@ -991,8 +999,9 @@ void registerComponentTools(McpRegistry& registry) {
         tool.description =
             "Replace a mesh's geometry with a generated primitive (the Inspector's shape fields). Sizes: plane "
             "width/depth, wall width/height, box width/height/depth, sphere radius, cylinder/capsule "
-            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. Omitted "
-            "values take defaults, not current ones. Not for model, sprite, tilemap, polygon or terrain meshes.";
+            "radius/top_radius/height, torus radius/ring_radius; segments tiles, slices/stacks, sides/rings. "
+            "Omitted values take defaults, not current ones. Not for models, sprites, tilemaps, polygons, "
+            "terrains.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

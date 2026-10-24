@@ -25,6 +25,9 @@
     #include <sys/types.h>
     #include <sys/sysctl.h>
 #endif
+#ifndef _WIN32
+    #include <unistd.h>
+#endif
 
 namespace jasperengine::editor {
 
@@ -163,6 +166,178 @@ public:
         return published.ok();
     }
 
+    // How writeFileReplacing() treats the line endings of the content
+    enum class LineEndings {
+        AsGiven,        // the bytes as they are (binary files, content that is already final)
+        KeepExisting    // text the editor makes with \n: a file there already written with
+                        // \r\n (an existing Windows checkout) gets \r\n again, a new one \n
+    };
+
+    // True when the first line of the file ends with \r\n
+    static bool fileUsesCrlf(const std::filesystem::path& filePath) {
+        std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
+        char previous = 0;
+        char c = 0;
+        while (ifs.get(c)) {
+            if (c == '\n') {
+                return previous == '\r';
+            }
+            previous = c;
+        }
+        return false;
+    }
+
+    // Every line ending as \r\n (an \r\n already there stays one)
+    static std::string toCrlf(const std::string& text) {
+        std::string out;
+        out.reserve(text.size() + text.size() / 16);
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] == '\n' && (i == 0 || text[i - 1] != '\r')) {
+                out += '\r';
+            }
+            out += text[i];
+        }
+        return out;
+    }
+
+    // Writes a temporary file next to the target and renames it over the target, so a save
+    // that fails (a full disk, a crash halfway) keeps the old file whole. rename() replaces an
+    // existing target on Windows too (MoveFileExW with MOVEFILE_REPLACE_EXISTING). As with a
+    // plain write, a symlink is written through and a file the user may not write (read-only,
+    // a locked file) is refused; an existing file keeps its permissions.
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
+                                   LineEndings lineEndings = LineEndings::AsGiven) {
+        namespace fs = std::filesystem;
+
+        std::error_code ec;
+        fs::path target = filePath;
+        if (fs::is_symlink(target, ec)) {
+            fs::path resolved = fs::canonical(target, ec);
+            if (!ec) {
+                target = resolved;
+            }
+        }
+
+        const fs::file_status status = fs::status(target, ec);
+        const bool exists = !ec && fs::exists(status);
+        const bool existingFile = exists && fs::is_regular_file(status);
+#ifndef _WIN32
+        // The directory's permissions would let the rename through
+        if (exists && ::access(target.c_str(), W_OK) != 0) {
+            return false;
+        }
+#endif
+
+        const bool crlf = lineEndings == LineEndings::KeepExisting && existingFile && fileUsesCrlf(target);
+
+        // Same directory, so the rename never crosses a file system
+        fs::path tempName(".");
+        tempName += target.filename();
+        tempName += ".tmp";
+        const fs::path tempPath = target.parent_path() / tempName;
+
+        bool written = false;
+        {
+            std::ofstream ofs(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
+            if (ofs) {
+                const std::string converted = crlf ? toCrlf(content) : std::string();
+                const std::string& data = crlf ? converted : content;
+                ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
+                ofs.flush();
+                ofs.close();
+                written = !ofs.fail();
+            }
+        }
+
+        if (written) {
+            if (existingFile) {
+                fs::permissions(tempPath, status.permissions(), fs::perm_options::replace, ec);
+            }
+            // Windows cannot replace a file that a reader, the indexer or a virus scan
+            // briefly holds, so the rename is tried again for a while
+            for (int attempt = 0; attempt < renameAttempts; attempt++) {
+                if (attempt > 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(renameRetryMs));
+                }
+                ec.clear();
+                fs::rename(tempPath, target, ec);
+                if (!ec) {
+                    return true;
+                }
+            }
+        }
+
+        // errno still tells why the write failed
+        const int writeErrno = errno;
+        fs::remove(tempPath, ec);
+        errno = writeErrno;
+        return false;
+    }
+
+    // writeFileReplacing(): renames tried before it fails, and the wait between them
+    static constexpr int renameAttempts = 10;
+    static constexpr int renameRetryMs = 50;
+
+    // How a document write treats the line endings of the content
+    enum class LineEndings {
+        AsGiven,        // the bytes as they are (binary files, content that is already final)
+        KeepExisting    // text the editor makes with \n: a file there already written with
+                        // \r\n (an existing Windows checkout) gets \r\n again, a new one \n
+    };
+
+    // True when the first line of the file ends with \r\n
+    static bool fileUsesCrlf(const std::filesystem::path& filePath) {
+        std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
+        char previous = 0;
+        char c = 0;
+        while (ifs.get(c)) {
+            if (c == '\n') {
+                return previous == '\r';
+            }
+            previous = c;
+        }
+        return false;
+    }
+
+    // Every line ending as \r\n (an \r\n already there stays one)
+    static std::string toCrlf(const std::string& text) {
+        std::string out;
+        out.reserve(text.size() + text.size() / 16);
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] == '\n' && (i == 0 || text[i - 1] != '\r')) {
+                out += '\r';
+            }
+            out += text[i];
+        }
+        return out;
+    }
+
+    // The bytes a document's text is written as: with \r\n when the file it replaces (through
+    // a symlink too) has them and lineEndings is KeepExisting, else the text as it is. Hash
+    // what this returns (SceneProject::diskSha1): it is what lands on disk.
+    static std::string withLineEndings(const std::filesystem::path& filePath, const std::string& text,
+                                       LineEndings lineEndings = LineEndings::KeepExisting) {
+        if (lineEndings != LineEndings::KeepExisting) {
+            return text;
+        }
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(filePath, ec) || !fileUsesCrlf(filePath)) {
+            return text;
+        }
+        return toCrlf(text);
+    }
+
+    // A document written the atomic way (io::writeFileAtomic, Document durability: fsync, mode
+    // and symlink kept, a read-only file refused, retried publish), with its line endings
+    // (withLineEndings). A failed write leaves the old file whole. DocumentFiles::write is the
+    // same with the reason of a failure.
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
+                                   LineEndings lineEndings = LineEndings::AsGiven) {
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Document;
+        return io::writeFileAtomic(filePath, withLineEndings(filePath, content, lineEndings), options).ok();
+    }
+
     // True when the file holds newContent afterwards, written or already up to date.
     // Use writeFile() when a no-op has to be told apart from a failure.
     static bool writeIfChanged(const std::filesystem::path& filePath, const std::string& newContent) {
@@ -180,9 +355,15 @@ public:
         return std::string(utf8.begin(), utf8.end());
     }
 
-    // with '/' separators on every platform
-    static std::string genericPathToUtf8(const std::filesystem::path& path) {
+    // generic_string() in UTF-8: '/' separators on every platform
+    static std::string pathToGenericUtf8(const std::filesystem::path& path) {
         const std::u8string utf8 = path.generic_u8string();
+        return std::string(utf8.begin(), utf8.end());
+    }
+
+    // generic_string() in UTF-8: '/' separators on every platform
+    static std::string pathToGenericUtf8(const std::filesystem::path& path) {
+        const auto utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
     }
 };

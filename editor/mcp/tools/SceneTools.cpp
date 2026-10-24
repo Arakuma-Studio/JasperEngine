@@ -27,6 +27,7 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 #include "shader/ShaderManifest.h"
 #include "window/ProjectWindow.h"
@@ -81,10 +82,10 @@ Json nullableEntityRef(const std::string& description = {}) {
 
 // A project-relative .scene path for a new file (".scene" added when missing)
 bool scenePathArg(Project* project, const std::string& given, fs::path& relative, std::string& error) {
-    fs::path rel = fs::path(given).lexically_normal();
+    fs::path rel = FileUtils::pathFromUtf8(given).lexically_normal();
     if (rel.extension() != ".scene") rel += ".scene";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, rel.generic_string(), absolute, error)) return false;
+    if (!McpRefs::resolveProjectPath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
     relative = rel;
     return true;
 }
@@ -137,7 +138,7 @@ void listScenesTool(const CallPtr& call) {
         scenes.push_back(item);
     }
     Json unresolved = Json::array();
-    for (const auto& entry : project->getUnresolvedScenes()) unresolved.push_back(entry.second.generic_string());
+    for (const auto& entry : project->getUnresolvedScenes()) unresolved.push_back(FileUtils::pathToGenericUtf8(entry.second));
     Json data = {{"scenes", scenes}, {"selected_scene_id", project->getSelectedSceneId()}};
     if (!unresolved.empty()) data["unresolved_scene_files"] = unresolved;
     call->ok(std::to_string(scenes.size()) + " scene(s):" + text, data);
@@ -161,7 +162,7 @@ void createSceneTool(const CallPtr& call) {
             return;
         }
         if (fs::exists(project->getProjectPath() / path)) {
-            call->fail("\"" + path.generic_string() + "\" exists already; open it with open_scene, or pick another path.");
+            call->fail("\"" + FileUtils::pathToGenericUtf8(path) + "\" exists already; open it with open_scene, or pick another path.");
             return;
         }
     }
@@ -252,7 +253,7 @@ void openSceneTool(const CallPtr& call) {
                 call->fail("Scene \"" + known->name + "\" has no file.");
                 return;
             }
-            given = known->filepath.generic_string();
+            given = FileUtils::pathToGenericUtf8(known->filepath);
         } else if (given.empty() || !Util::isSceneFile(given)) {
             call->fail(error + " To open a file, pass its project-relative .scene path.");
             return;
@@ -396,18 +397,18 @@ void saveSceneTool(const CallPtr& call) {
             }
             const uint32_t owner = project->findSceneByPath(relative);
             if (owner != NULL_PROJECT_SCENE && owner != id) {
-                call->fail("Scene " + std::to_string(owner) + " of the project is saved at " + relative.generic_string() + ".");
+                call->fail("Scene " + std::to_string(owner) + " of the project is saved at " + FileUtils::pathToGenericUtf8(relative) + ".");
                 return;
             }
             std::error_code ec;
             fs::create_directories((project->getProjectPath() / relative).parent_path(), ec);
             if (!project->saveSceneToPath(id, relative)) {
-                call->fail("Failed to save the scene to " + relative.generic_string() + " (see the console).");
+                call->fail("Failed to save the scene to " + FileUtils::pathToGenericUtf8(relative) + " (see the console).");
                 return;
             }
             if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
             SceneProject* saved = project->getScene(id);
-            call->ok("Saved scene " + std::to_string(id) + " as " + relative.generic_string() + ".",
+            call->ok("Saved scene " + std::to_string(id) + " as " + FileUtils::pathToGenericUtf8(relative) + ".",
                      Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
             return;
         }
@@ -444,7 +445,7 @@ void saveSceneTool(const CallPtr& call) {
         return;
     }
     call->ok("Saved scene " + std::to_string(id) + " \"" + saved->name + "\"" +
-             (saved->filepath.empty() ? "." : " to " + project->normalizeToProjectRelative(saved->filepath).generic_string() + "."),
+             (saved->filepath.empty() ? "." : " to " + FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(saved->filepath)) + "."),
              Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
 }
 
@@ -636,9 +637,9 @@ void deleteSceneTool(const CallPtr& call) {
         if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
     }
     call->ok("Removed scene " + std::to_string(id) + " \"" + name + "\" from the project" +
-             (deleteFile ? " and moved " + relative.generic_string() + " to the project's .trash" : " (file kept)") +
+             (deleteFile ? " and moved " + FileUtils::pathToGenericUtf8(relative) + " to the project's .trash" : " (file kept)") +
              ". Undo with undo scope=project.",
-             Json{{"removed_scene_id", id}, {"path", relative.generic_string()}, {"file_deleted", deleteFile},
+             Json{{"removed_scene_id", id}, {"path", FileUtils::pathToGenericUtf8(relative)}, {"file_deleted", deleteFile},
                   {"selected_scene_id", project->getSelectedSceneId()}});
 }
 
@@ -667,6 +668,11 @@ void setChildSceneTool(const CallPtr& call) {
     }
     const bool attachedNow = project->hasChildScene(parentId, childId);
     const bool attach = args.contains("attached") ? args["attached"].get<bool>() : true;
+    if (attach && !attachedNow && project->wouldCreateChildSceneCycle(parentId, childId)) {
+        call->fail("\"" + child->name + "\" already contains \"" + parent->name + "\" as a child scene (directly or "
+                   "deeper), so adding it would make a cycle.");
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     bool any = false;
     if (attach && !attachedNow) {
@@ -776,6 +782,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
+        {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
@@ -1670,10 +1677,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
-            "scene-reading shaders).";
+            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, default shaders, "
+            "post_process, post_processing...): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (made by the last frame for scene-reading "
+            "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},
@@ -1704,8 +1711,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "List Post-processing Presets";
         tool.description =
             "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
-            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
+            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens; vs Unity "
+            "URP). current: the scene's preset (null = custom), settings, cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

@@ -110,6 +110,7 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
             current.depthOffsetFactor != material.depthOffsetFactor || current.depthOffsetUnits != material.depthOffsetUnits ||
             current.sortPriority != material.sortPriority || current.lighting != material.lighting ||
             current.stencil != material.stencil || current.colorWrite != material.colorWrite ||
+            current.stochasticTiling != material.stochasticTiling ||
             current.shaderTextures.size() != material.shaderTextures.size();
         for (size_t t = 0; !reload && t < material.shaderTextures.size(); t++){
             reload = current.shaderTextures[t].first != material.shaderTextures[t].first;

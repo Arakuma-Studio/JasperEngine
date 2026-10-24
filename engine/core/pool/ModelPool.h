@@ -30,6 +30,8 @@ namespace jasperengine{
         static std::shared_ptr<ObjModelData> addObj(const std::string& id, std::shared_ptr<ObjModelData> model);
         static void removeGLTF(const std::string& id);
         static void removeObj(const std::string& id);
+        // Drops the entry even while others hold it, so the next load parses the file again
+        static void invalidate(const std::string& id);
 
         // necessary for engine shutdown
         static void clear();

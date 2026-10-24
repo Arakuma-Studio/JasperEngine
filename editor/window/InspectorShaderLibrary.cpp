@@ -78,6 +78,8 @@ namespace {
             case ShaderTextureDefault::BLACK: return "Default (black)";
             case ShaderTextureDefault::GRAY: return "Default (gray)";
             case ShaderTextureDefault::NORMAL: return "Default (flat normal)";
+            case ShaderTextureDefault::RIPPLES: return "Default (built-in ripples)";
+            case ShaderTextureDefault::NOISE: return "Default (built-in noise)";
         }
         return "Default";
     }
@@ -580,7 +582,10 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
         };
 
         const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
-        const std::string shown = current.empty() ? textureDefaultLabel(declared.defaultTexture)
+        // the default the material's features pick (a @texture's default[<DEFINE>]=)
+        const ShaderTextureDefault unsetDefault = (!declared.featureDefaultDefine.empty() && featureOn(declared.featureDefaultDefine))
+                                                  ? declared.featureDefaultTexture : declared.defaultTexture;
+        const std::string shown = current.empty() ? textureDefaultLabel(unsetDefault)
                                                   : std::filesystem::path(current).filename().string();
         ImGui::PushStyleColor(ImGuiCol_Text, current.empty() ? ImGui::GetStyle().Colors[ImGuiCol_TextDisabled] : ImGui::GetStyle().Colors[ImGuiCol_Text]);
         ImGui::Button((shown + "##texture_slot_" + declared.uniform).c_str(),
