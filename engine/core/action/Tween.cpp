@@ -65,3 +65,15 @@ bool Tween::isLoop() const{
 
     return tween.loop;
 }
+
+void Tween::setPingPong(bool pingPong){
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    tween.pingPong = pingPong;
+}
+
+bool Tween::isPingPong() const{
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    return tween.pingPong;
+}

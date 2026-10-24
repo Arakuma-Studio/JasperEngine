@@ -423,11 +423,13 @@ include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sokol)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/json)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/lua)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/luabridge3)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/box2d/include)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/joltphysics)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/stb)
+include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/tinygltf)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/harfbuzz)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/sheenbidi/Headers)
 include_directories (SYSTEM ${JASPERENGINE_ROOT}/libs/soloud/include)
@@ -490,8 +492,9 @@ endif()
 
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
+add_subdirectory(libs/ufbx)
 
-foreach(lib IN ITEMS nfd yaml-cpp)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -602,6 +605,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
@@ -612,6 +616,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CrashHandler.cpp
     ${EDITOR_DIR}/util/GraphicUtils.cpp
     ${EDITOR_DIR}/util/CameraTextureLink.cpp
+    ${EDITOR_DIR}/util/FluidTextureLink.cpp
+    ${EDITOR_DIR}/util/FluidEditorTools.cpp
+    ${EDITOR_DIR}/util/UIProbe.cpp
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
@@ -619,6 +626,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
@@ -627,6 +635,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
@@ -668,6 +678,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
+    ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -683,6 +694,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
+    ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
+    ${EDITOR_DIR}/lattice/LatticeBake.cpp
+    ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
+    ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
+    ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
@@ -728,6 +744,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
+    ${EDITOR_DIR}/command/type/AddActionFrameCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
@@ -761,6 +778,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
+    ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
 
     ${IMGUI_SOURCES}
     ${BACKEND_SOURCES}
@@ -799,6 +819,7 @@ function(configure_jasperengine_editor_target target_name)
         jasperengine
         nfd
         yaml-cpp
+        ufbx
     )
 
     if(WIN32)

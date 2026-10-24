@@ -58,6 +58,13 @@ struct InspectEffect {
     int64_t steps = 0;
     double simTime = 0.0;
     bool paused = false;
+    // its state images, pinned-clock replays run (one still running), splats queued or logged,
+    // and the scripted pointer path's samples (MCP set_ui_effect_time)
+    int stateImages = 0;
+    uint64_t replays = 0;
+    bool replaying = false;
+    int splats = 0;
+    int pathSamples = 0;
 };
 
 // The state of a <video> (phase 6, p6-video): HTMLMediaElement's values, the decoder's statistics,

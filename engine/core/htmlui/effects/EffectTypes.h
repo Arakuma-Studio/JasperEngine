@@ -46,17 +46,22 @@ namespace jasperengine::htmlui {
         int line = 0;                // manifest line
     };
 
-    // Persistent per-element state (phase 6, docs/html-ui/phase-6-stateful-effects.md 3.2-3.3)
-    enum class EffectStateFormat : uint8_t { RGBA8, RGBA16F, RGBA32F, R32F };
+    // Persistent per-element state (phase 6, docs/html-ui/phase-6-stateful-effects.md 3.2-3.3).
+    // Appended only: a value is its bit in EffectStatePool::setUnsupportedFormatsForTesting.
+    // RG16F and R16F: half-float two- and one-channel images (velocity, pressure fields)
+    enum class EffectStateFormat : uint8_t { RGBA8, RGBA16F, RGBA32F, R32F, RG16F, R16F };
 
-    // @state <name> <format> <w>x<h>|box[*<scale>] [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
+    // @state <name> <format> <w>x<h>|box[*<scale>] [max <px>]|aspect <short> [max <px>] [linear|nearest] [clamp|repeat] [clear|resample]
     struct EffectStateDef {
         std::string name;
         EffectStateFormat format = EffectStateFormat::RGBA16F;
         bool fixedSize = false;      // <w>x<h>
         int width = 1, height = 1;   // fixed size
         float boxScale = 1.f;        // box: the area's CSS px x scale
-        int boxMax = 1024;           // box: the larger side at most this (the aspect kept)
+        int boxMax = 1024;           // box, aspect: the larger side at most this (the aspect kept)
+        // aspect <short>: the area's aspect, the shorter side `aspectShort` texels whatever the
+        // area's size in px (a grid whose cells stay square: Pavel's getResolution)
+        int aspectShort = 0;
         bool linear = true;          // the sampler's filter
         bool repeat = false;         // the sampler's wrap
         bool resample = true;        // box states on a resize: redrawn into the new size (false: restart)
@@ -64,15 +69,28 @@ namespace jasperengine::htmlui {
         int line = 0;
     };
 
-    // @init <pass> <state> | @step <pass> <state> [x<count>|x<param>] [add] [scatter <state>]
+    // @init <pass> <state> | @step <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]
+    // | @frame <pass> <state> [x<count>|x<param>] [add] [scatter <state>] [if <param>]
     struct EffectPassDef {
         std::string name;            // JFX_PASS_<NAME> = its index in EffectManifest::passes
         bool init = false;           // @init: once after allocation and every reset
+        // @frame: once a drawn frame after that frame's steps, when the state changed (a step ran,
+        // a reset, a finished replay): what only the draw reads (a bloom chain, light shafts)
+        bool frame = false;
         int state = -1;              // the target, an index in EffectManifest::states
         int repeat = 1;              // x<count>
         std::string repeatParam;     // x<param> (rounded, clamped to [1, 64])
         bool additive = false;       // add: blended ONE, ONE into the cleared target
         int scatterState = -1;       // scatter <state>: one quad per texel of that placement state
+        std::string ifParam;         // if <param>: run only while that boolean or number parameter is not 0
+        int line = 0;
+    };
+
+    // @preset <option> <param> <value>[, <param> <value>...]: the values the option of the enum
+    // parameter `preset` gives the parameters an author leaves at their defaults
+    struct EffectPresetDef {
+        std::string option;
+        std::vector<std::pair<std::string, std::string>> values;   // parameter name, CSS value text
         int line = 0;
     };
 
@@ -100,6 +118,7 @@ namespace jasperengine::htmlui {
         int maxSubsteps = 4;
         float replaySeconds = 2.f;             // @replay <seconds>
         std::vector<std::string> reseedParams; // @reseed <param>[, <param>]: a change restarts the simulation
+        std::vector<EffectPresetDef> presets;  // @preset (the enum parameter `preset`'s options)
         bool builtin = true;
         // builtin: "effects/<name>.frag" (the library); project: the asset-relative .frag
         std::string sourcePath;
@@ -112,6 +131,8 @@ namespace jasperengine::htmlui {
         // phase 6
         bool stateful() const { return !states.empty(); }
         bool hasScatter() const;
+        bool hasFramePasses() const;
+        const EffectPresetDef* findPreset(const std::string& option) const;
         int stateIndex(const std::string& stateName) const;
         // a hash of the states and passes: a simulation restarts when it changes (hot reload)
         uint64_t stateSignature() const;

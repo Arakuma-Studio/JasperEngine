@@ -25,12 +25,70 @@ using namespace jasperengine::editor::mcp;
 
 namespace {
 
-// Newest first: an unknown client version gets the newest
-const char* const SUPPORTED_PROTOCOL_VERSIONS[] = {
+// Versions that open with an initialize handshake, newest first: an unknown client version
+// gets the newest. 2026-07-28 (McpServer::MODERN_PROTOCOL_VERSION) has no handshake.
+const char* const LEGACY_PROTOCOL_VERSIONS[] = {
     "2025-11-25",
     "2025-06-18",
     "2025-03-26",
     "2024-11-05"
+};
+
+constexpr const char* META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+constexpr const char* META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo";
+constexpr const char* META_CLIENT_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities";
+constexpr const char* META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+
+// 2026-07-28 error code
+constexpr int UNSUPPORTED_PROTOCOL_VERSION = -32022;
+
+// Results 2026-07-28 gives cache hints
+bool cacheableMethod(const std::string& method) {
+    return method == "server/discover" || method == "tools/list" || method == "prompts/list" ||
+           method == "resources/list" || method == "resources/templates/list" || method == "resources/read";
+}
+
+// A 2026-07-28 request's answer: every result says resultType "complete" and who answered
+// it; the cacheable ones are always stale (turning changes on or off for HTTP changes the
+// tool list, and resources read the open project) and private to the token
+class ModernReply : public McpReply {
+public:
+    ModernReply(ReplyPtr inner, std::string method)
+        : inner(std::move(inner)), method(std::move(method)) {
+    }
+
+    void respond(const Json& message) override {
+        if (!message.contains("result") || !message["result"].is_object()) {
+            inner->respond(message);
+            return;
+        }
+        Json out = message;
+        Json& result = out["result"];
+        result["resultType"] = "complete";
+        if (cacheableMethod(method)) {
+            result["ttlMs"] = 0;
+            result["cacheScope"] = "private";
+        }
+        if (!result.contains("_meta") || !result["_meta"].is_object()) result["_meta"] = Json::object();
+        result["_meta"][META_SERVER_INFO] = McpServer::serverInfo();
+        inner->respond(out);
+    }
+
+    void respondError(const Json& message, int httpStatus) override {
+        inner->respondError(message, httpStatus);
+    }
+
+    void notify(const Json& notification) override {
+        inner->notify(notification);
+    }
+
+    void cancelled() override {
+        inner->cancelled();
+    }
+
+private:
+    ReplyPtr inner;
+    std::string method;
 };
 
 constexpr size_t ACTIVITY_LOG_SIZE = 300;
@@ -67,6 +125,8 @@ void McpServer::start(App& app) {
     McpAutoSync::get().serverStarted();
 
     registerAllTools();
+
+    httpChangesAllowed = AppSettings::getMcpHttpAllowChanges();
 
     const McpLaunchOptions& options = mcpLaunchOptions();
 #ifndef _WIN32
@@ -105,6 +165,7 @@ void McpServer::registerAllTools() {
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
+    registerLatticeTools(reg);
     registerPlacementTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
@@ -134,6 +195,11 @@ void McpServer::setHttpEnabled(bool enabled, int port) {
         httpTransport->stop();
         return;
     }
+    // The first time HTTP is on: from now on clients need the token
+    if (AppSettings::getMcpHttpToken().empty()) {
+        AppSettings::setMcpHttpToken(McpTransportHttp::newToken());
+    }
+    httpTransport->setToken(AppSettings::getMcpHttpToken());
     if (httpTransport->isRunning() && httpTransport->port() == port) return;
     std::string error;
     if (httpTransport->start(port, error)) {
@@ -143,9 +209,41 @@ void McpServer::setHttpEnabled(bool enabled, int port) {
     }
 }
 
+std::string McpServer::httpToken() const {
+    return AppSettings::getMcpHttpToken();
+}
+
+std::string McpServer::newHttpToken() {
+    const std::string token = McpTransportHttp::newToken();
+    AppSettings::setMcpHttpToken(token);
+    if (httpTransport) httpTransport->setToken(token);
+    Out::info("MCP: made a new HTTP token; HTTP clients need it to keep working");
+    return token;
+}
+
+void McpServer::setHttpAllowChanges(bool allow) {
+    httpChangesAllowed = allow;
+    AppSettings::setMcpHttpAllowChanges(allow);
+}
+
+bool McpServer::toolHidden(const McpSession& session, const ToolDef& def) const {
+    return session.transport == "http" && !httpChangesAllowed.load() && !def.annotations.readOnly;
+}
+
+std::string McpServer::instructionsFor(const McpSession& session) const {
+    std::string text = mcpServerInstructions();
+    if (session.transport == "http" && !httpChangesAllowed.load()) {
+        text += "\n\nREAD-ONLY: the user turned off changes for MCP clients over HTTP (MCP window: \"Allow changes\"), "
+                "so only the read-only tools are listed and run: inspect, take screenshots, read files and the Console, "
+                "and suggest changes instead of making them.";
+    }
+    return text;
+}
+
 McpServerStatus McpServer::status() const {
     McpServerStatus out;
     out.started = started;
+    out.httpAllowChanges = httpChangesAllowed.load();
     out.stdio = stdioTransport != nullptr;
     out.stdioOpen = stdioTransport && stdioTransport->isOpen();
     if (httpTransport) {
@@ -220,6 +318,17 @@ SessionPtr McpServer::createSession(const std::string& transport) {
     return session;
 }
 
+SessionPtr McpServer::createStatelessSession(const std::string& transport) {
+    auto session = std::make_shared<McpSession>();
+    session->transport = transport;
+    session->stateless = true;
+    session->protocolVersion = MODERN_PROTOCOL_VERSION;
+    std::lock_guard<std::mutex> lock(sessionMutex);
+    // Keys its in-flight request (cancellation) apart from every other request's
+    session->id = "request-" + std::to_string(++sessionCounter);
+    return session;
+}
+
 SessionPtr McpServer::findSession(const std::string& id) const {
     std::lock_guard<std::mutex> lock(sessionMutex);
     auto it = sessions.find(id);
@@ -256,6 +365,14 @@ std::string McpServer::inflightKey(const std::string& sessionId, const Json& id)
     return sessionId + "|" + id.dump();
 }
 
+void McpServer::cancelRequest(const std::string& sessionId, const Json& requestId) {
+    std::lock_guard<std::mutex> lock(inflightMutex);
+    auto it = inflight.find(inflightKey(sessionId, requestId));
+    if (it != inflight.end()) {
+        if (CallPtr call = it->second.lock()) call->requestCancel();
+    }
+}
+
 // ---------------------------------------------------------------- JSON-RPC
 
 Json McpServer::makeError(const Json& id, int code, const std::string& message, Json data) {
@@ -266,6 +383,32 @@ Json McpServer::makeError(const Json& id, int code, const std::string& message, 
 
 Json McpServer::makeResult(const Json& id, Json result) {
     return Json{{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}};
+}
+
+Json McpServer::supportedProtocolVersions() {
+    Json versions = Json::array({MODERN_PROTOCOL_VERSION});
+    for (const char* version : LEGACY_PROTOCOL_VERSIONS) versions.push_back(version);
+    return versions;
+}
+
+bool McpServer::isLegacyProtocolVersion(const std::string& version) {
+    for (const char* legacy : LEGACY_PROTOCOL_VERSIONS) {
+        if (version == legacy) return true;
+    }
+    return false;
+}
+
+std::string McpServer::requestProtocolVersion(const Json& message) {
+    if (!message.is_object() || !message.contains("params") || !message["params"].is_object()) return {};
+    const Json& params = message["params"];
+    if (!params.contains("_meta") || !params["_meta"].is_object()) return {};
+    const Json& meta = params["_meta"];
+    if (!meta.contains(META_PROTOCOL_VERSION) || !meta[META_PROTOCOL_VERSION].is_string()) return {};
+    return meta[META_PROTOCOL_VERSION].get<std::string>();
+}
+
+Json McpServer::serverInfo() {
+    return Json{{"name", SERVER_NAME}, {"title", "JasperEngine Editor"}, {"version", JASPERENGINE_EDITOR_VERSION}};
 }
 
 // ---------------------------------------------------------------- transport helpers
@@ -398,33 +541,69 @@ void McpServer::handleMessage(const SessionPtr& session, const Json& message, co
         const Json params = message.value("params", Json::object());
         if (method == "notifications/cancelled") {
             if (params.is_object() && params.contains("requestId")) {
-                std::lock_guard<std::mutex> lock(inflightMutex);
-                auto it = inflight.find(inflightKey(session->id, params["requestId"]));
-                if (it != inflight.end()) {
-                    if (CallPtr call = it->second.lock()) call->requestCancel();
-                }
+                cancelRequest(session->id, params["requestId"]);
             }
         }
         // Other notifications (roots/list_changed, progress...) need nothing
         return;
     }
 
+    // 2026-07-28 (stateless): the request names its version in _meta (the HTTP transport
+    // checked its headers already); other requests follow their session's initialize
+    const std::string metaVersion = requestProtocolVersion(message);
+    const bool modern = session->stateless || !metaVersion.empty();
+    ReplyPtr out = reply;
+    if (modern) {
+        const Json& id = message["id"];
+        if (metaVersion != MODERN_PROTOCOL_VERSION) {
+            reply->respondError(makeError(id, UNSUPPORTED_PROTOCOL_VERSION, "Unsupported protocol version",
+                                          Json{{"supported", supportedProtocolVersions()}, {"requested", metaVersion}}), 400);
+            return;
+        }
+        const Json& meta = message["params"]["_meta"];
+        if (!meta.contains(META_CLIENT_CAPABILITIES) || !meta[META_CLIENT_CAPABILITIES].is_object()) {
+            reply->respondError(makeError(id, -32602, std::string("Invalid params: _meta needs ") + META_CLIENT_CAPABILITIES +
+                                                      " (an object) on every " + MODERN_PROTOCOL_VERSION + " request."), 400);
+            return;
+        }
+        // Who sent it comes with every request now (the Activity window shows it)
+        if (meta.contains(META_CLIENT_INFO) && meta[META_CLIENT_INFO].is_object()) {
+            const Json& info = meta[META_CLIENT_INFO];
+            std::lock_guard<std::mutex> lock(sessionMutex);
+            session->protocolVersion = MODERN_PROTOCOL_VERSION;
+            if (info.contains("name") && info["name"].is_string()) session->clientName = info["name"].get<std::string>();
+            if (info.contains("version") && info["version"].is_string()) session->clientVersion = info["version"].get<std::string>();
+        }
+        out = std::make_shared<ModernReply>(reply, message["method"].get<std::string>());
+    }
+
     try {
-        handleRequest(session, message, reply);
+        handleRequest(session, message, out, modern);
     } catch (const std::exception& e) {
-        reply->respond(makeError(message["id"], -32603, std::string("Internal error: ") + e.what()));
+        out->respond(makeError(message["id"], -32603, std::string("Internal error: ") + e.what()));
     }
 }
 
-void McpServer::handleRequest(const SessionPtr& session, const Json& message, const ReplyPtr& reply) {
+void McpServer::handleRequest(const SessionPtr& session, const Json& message, const ReplyPtr& reply, bool modern) {
     const Json id = message["id"];
     const std::string method = message["method"].get<std::string>();
     const Json params = message.contains("params") && message["params"].is_object() ? message["params"] : Json::object();
 
-    if (method == "initialize") {
+    // 2026-07-28 has no handshake: server/discover tells what initialize did
+    if (method == "server/discover") {
+        reply->respond(makeResult(id, Json{
+            {"supportedVersions", supportedProtocolVersions()},
+            {"capabilities", {{"tools", Json::object()}, {"resources", Json::object()}, {"prompts", Json::object()}}},
+            {"_meta", {{META_SERVER_INFO, serverInfo()}}},
+            {"instructions", instructionsFor(*session)}
+        }));
+        return;
+    }
+
+    if (method == "initialize" && !modern) {
         std::string requested = params.value("protocolVersion", "");
-        std::string version = SUPPORTED_PROTOCOL_VERSIONS[0];
-        for (const char* supported : SUPPORTED_PROTOCOL_VERSIONS) {
+        std::string version = LEGACY_PROTOCOL_VERSIONS[0];
+        for (const char* supported : LEGACY_PROTOCOL_VERSIONS) {
             if (requested == supported) version = supported;
         }
         std::string clientName;
@@ -449,12 +628,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
                 {"prompts", {{"listChanged", false}}},
                 {"logging", Json::object()}
             }},
-            {"serverInfo", {
-                {"name", SERVER_NAME},
-                {"title", "JasperEngine Editor"},
-                {"version", JASPERENGINE_EDITOR_VERSION}
-            }},
-            {"instructions", mcpServerInstructions()}
+            {"serverInfo", serverInfo()},
+            {"instructions", instructionsFor(*session)}
         };
         std::fprintf(stderr, "[mcp] %s session initialized by %s %s (protocol %s)\n",
                      session->transport.c_str(), clientName.c_str(), clientVersion.c_str(), version.c_str());
@@ -470,6 +645,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
     if (method == "tools/list") {
         Json tools = Json::array();
         for (const ToolDef& def : reg.tools()) {
+            if (toolHidden(*session, def)) continue;
             tools.push_back(McpRegistry::toolToJson(def));
         }
         reply->respond(makeResult(id, Json{{"tools", tools}}));
@@ -513,7 +689,9 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
             return;
         }
         const std::string uri = params["uri"].get<std::string>();
-        runOnMainThread([this, id, uri, reply]() {
+        // Resource not found: -32002 up to 2025-11-25, Invalid params since
+        const int notFound = modern ? -32602 : -32002;
+        runOnMainThread([this, id, uri, reply, notFound]() {
             ResourceResult result;
             try {
                 std::map<std::string, std::string> vars;
@@ -522,7 +700,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
                 } else if (const ResourceTemplateDef* tmpl = reg.matchResourceTemplate(uri, vars)) {
                     result = tmpl->read ? tmpl->read(uri, vars) : ResourceResult{false, "Resource has no reader.", {}};
                 } else {
-                    reply->respond(makeError(id, -32002, "Resource not found: " + uri, Json{{"uri", uri}}));
+                    reply->respond(makeError(id, notFound, "Resource not found: " + uri, Json{{"uri", uri}}));
                     return;
                 }
             } catch (const std::exception& e) {
@@ -530,7 +708,7 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
                 result.error = e.what();
             }
             if (!result.ok) {
-                reply->respond(makeError(id, -32002, result.error.empty() ? "Resource not found: " + uri : result.error,
+                reply->respond(makeError(id, notFound, result.error.empty() ? "Resource not found: " + uri : result.error,
                                          Json{{"uri", uri}}));
                 return;
             }
@@ -603,7 +781,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         return;
     }
 
-    if (method == "logging/setLevel") {
+    // Gone in 2026-07-28 (the log level comes with each request there)
+    if (method == "logging/setLevel" && !modern) {
         reply->respond(makeResult(id, Json::object()));
         return;
     }
@@ -613,6 +792,15 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         return;
     }
 
+    // 2026-07-28 answers an unknown method (initialize included) with HTTP 404
+    if (modern) {
+        const bool initialize = method == "initialize";
+        reply->respondError(makeError(id, -32601, "Method not found: " + method +
+                                      (initialize ? std::string(" (") + MODERN_PROTOCOL_VERSION +
+                                                    " has no initialize: send requests directly, or server/discover)" : ""),
+                                      initialize ? Json{{"supported", supportedProtocolVersions()}} : Json()), 404);
+        return;
+    }
     reply->respond(makeError(id, -32601, "Method not found: " + method));
 }
 
@@ -641,6 +829,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
     }
     const uint64_t seq = beginActivity(client, name, args);
     const std::string key = inflightKey(session->id, id);
+    const bool gated = session->transport == "http";
 
     // Files changed on disk since the last call (McpAutoSync): the report the main thread
     // writes before the handler runs, and when the handler started (unset: it never ran)
@@ -650,7 +839,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         bool settle = true;
     };
     auto autoSync = std::make_shared<AutoSyncState>();
-    autoSync->settle = McpAutoSync::mayWriteFiles(def->annotations.readOnly, args);
+    autoSync->settle = mayChange(*def, args);
 
     auto call = std::make_shared<McpCall>(*this, name, args,
         [this, id, reply, seq, key, autoSync](McpCall& done, const ToolResult& result) {
@@ -680,6 +869,8 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 reply->cancelled();
             }
         });
+
+    call->setChangesGated(gated);
 
     if (params.contains("_meta") && params["_meta"].is_object() && params["_meta"].contains("progressToken")) {
         const Json token = params["_meta"]["progressToken"];
@@ -739,6 +930,10 @@ std::string McpServer::blockingDialogMessage() const {
         text += ", which only a human can close in the editor window";
     }
     return text + ".";
+}
+
+bool McpServer::mayChange(const ToolDef& def, const Json& args) {
+    return !def.annotations.readOnly || (def.writesFiles && args.is_object() && def.writesFiles(args));
 }
 
 ToolActivity McpServer::effectiveActivity(const ToolDef& def) {
@@ -827,6 +1022,15 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         call->fail("Cancelled.");
         return;
     }
+    // Checked when the call runs (changes may have been turned off while it waited), with its
+    // arguments: a read-only tool may still write a file on request (screenshot save_path)
+    if (call->changesGated() && !httpChangesAllowed.load() && mayChange(def, call->args())) {
+        call->fail("Changes are turned off for MCP clients over HTTP in the JasperEngine editor (MCP window: "
+                   "\"Allow changes\" is off), so only the read-only tools run, without arguments that write "
+                   "files, and this " + def.name + " call changes the project. Ask the user to allow changes, "
+                   "then list the tools again.");
+        return;
+    }
     if (!def.allowedWhilePlaying && app.getProject()->isAnyScenePlaying()) {
         call->fail("This tool is not available while a scene is playing. Stop Play mode first "
                    "(play with action \"stop\"), then retry.");
@@ -904,6 +1108,8 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
         if (CallPtr p = weakParent.lock()) p->progress(progressDone, total, tool + ": " + message);
     });
     call->setParent(parent);
+    // A batch can't run what its own client may not
+    call->setChangesGated(parent->changesGated());
     execute(call, *def);
 }
 

@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
+#include "lattice/LatticeTypes.h"
 #include "shader/ShaderManifest.h"
 
 #include <algorithm>
@@ -167,7 +168,7 @@ std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es
 }
 
 // The defines and annotations of a stateful UI effect (phase 6), read from its manifest block (the
-// "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step pass in
+// "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step/@frame pass in
 // declaration order, JFX_PASSES (their count), JFX_STATEFUL; and the 32-bit float states' textures and
 // samplers annotated unfilterable (GLES3/WebGL2 cannot filter them), in a buffer of their own.
 void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args_t& args) {
@@ -210,7 +211,7 @@ void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args
         const std::vector<std::string> w = words(lines[i]);
         if (w.size() < 2 || w[0] != "//" || w[1].empty() || w[1][0] != '@')
             break;
-        if ((w[1] == "@init" || w[1] == "@step") && w.size() >= 3) {
+        if ((w[1] == "@init" || w[1] == "@step" || w[1] == "@frame") && w.size() >= 3) {
             std::string macro = "JFX_PASS_";
             for (char c : w[2])
                 macro += c == '-' ? '_' : (char)std::toupper((unsigned char)c);
@@ -392,6 +393,8 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // bits 29-30: capacity tier of the per-object lights blocks ('Lc4', 'L16', neither = 8)
     defs.push_back({"LIGHT_CAPACITY", (prop & shaderPropertyBit(29)) ? "4" : ((prop & shaderPropertyBit(30)) ? "16" : "8")});
     if (prop & shaderPropertyBit(31)) defs.push_back({"USE_POST_COLOR", "1"});          // 'Pcl'
+    // a terrain is never deformed (its variant keeps the bit inert)
+    if ((prop & shaderPropertyBit(32)) && !(prop & shaderPropertyBit(17))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -410,6 +413,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_UV_SET1", "1"});           // 'Uv1'
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_TEXTURERECT", "1"});       // 'Txr'
     if (prop & shaderPropertyBit(14)) defs.push_back({"USE_STOCHASTIC_TILING", "1"}); // 'Sto'
+    if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -424,6 +428,9 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(8))  defs.push_back({"HAS_METALLICROUGHNESS_TEXTURE", "1"}); // 'Mrt'
     if (prop & shaderPropertyBit(9))  defs.push_back({"HAS_TERRAIN_PBR", "1"});               // 'Tpb'
     if (prop & shaderPropertyBit(10)) defs.push_back({"USE_STOCHASTIC_TILING", "1"});         // 'Sto'
+    if ((prop & shaderPropertyBit(11)) && !(prop & shaderPropertyBit(6))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
+    if (prop & shaderPropertyBit(12)) defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});         // 'Vc3' (a lattice mask's)
+    if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -477,6 +484,12 @@ void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(1))  defs.push_back({"BLOOM_THRESHOLD", "1"});          // 'Thr'
     if (prop & shaderPropertyBit(2))  defs.push_back({"BLOOM_UPSAMPLE", "1"});           // 'Ups'
     if (prop & shaderPropertyBit(3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
+}
+
+// FluidSimulator's programs: the solver (none), the look passes, the solver without linear filtering
+void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"FLUID_LOOK", "1"});               // 'Lok'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"FLUID_MANUAL_FILTERING", "1"});   // 'Mfl'
 }
 
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -544,6 +557,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }else if (shaderType == ShaderType::POSTPROCESS){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "postprocess.frag";
+    }else if (shaderType == ShaderType::PROBE_FILTER){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "probe_filter.frag";
     }else if (shaderType == ShaderType::BLOOM){
         args.vert_file = "bloom.vert";
         args.frag_file = "bloom.frag";
@@ -580,12 +596,22 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
             args.defines.push_back({"JFX_STEP_FORM", "1"});
         if (scatterForm)
             args.defines.push_back({"JFX_SCATTER_FORM", "1"});
+    }else if (shaderType == ShaderType::FLUID){
+        args.vert_file = "fluid.vert";
+        args.frag_file = "fluid.frag";
+        addFluidPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }
 
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
         args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
+    }
+    if (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH || shaderType == ShaderType::GBUFFER){
+        // the record layout of includes/lattice.glsl (lattice/LatticeTypes.h)
+        args.defines.push_back({"LATTICE_MAX_PER_MESH", std::to_string(LATTICE_MAX_PER_MESH)});
+        args.defines.push_back({"LATTICE_TEXTURE_WIDTH", std::to_string(LATTICE_TEXTURE_WIDTH)});
+        args.defines.push_back({"LATTICE_RECORD_HEADER", std::to_string(LATTICE_RECORD_HEADER)});
     }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting
@@ -674,7 +700,8 @@ uint64_t ShaderVariantCompiler::getLibraryHash(){
             std::to_string(MAX_TERRAIN_LAYERS) + "," + std::to_string(MAX_LIGHTS_2D) + "," +
             std::to_string(MAX_SHADOW_ATLAS_SLOTS) + "," + std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS) + "," +
             std::to_string(MAX_SHADOWCASCADES) + "," + std::to_string(MAX_LIGHTS) + "," +
-            std::to_string(SPOT_MASK_ATLAS_TILES));
+            std::to_string(SPOT_MASK_ATLAS_TILES) + "," + std::to_string(LATTICE_MAX_PER_MESH) + "," +
+            std::to_string(LATTICE_TEXTURE_WIDTH) + "," + std::to_string(LATTICE_RECORD_HEADER));
 
         const auto& sources = getLibrarySources();
         std::vector<std::string> names;

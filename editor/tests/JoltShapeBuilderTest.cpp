@@ -157,10 +157,11 @@ TEST(ScenePhysics, BoxOnHeightfield) {
     EXPECT_NEAR(t.transform(crate).position.y, 2.0f + 0.5f, 0.05f);
 }
 
-// The heightfield collider is the rendered surface: at 20 points across a moved, scaled terrain
-// (an odd-sized 16-bit heightmap, heights linear within each cell so the collider's triangles
-// and the renderer's bilinear filtering agree), a ray cast down onto it lands on
-// MeshSystem::sampleTerrainSurface's height, to Jolt's 8-bit-per-block height quantisation. It used to sit about a cell short, with no
+// The heightfield collider is the rendered surface on a moved, scaled terrain (an odd-sized
+// 16-bit heightmap). At the collider's samples (one per texel, edge to edge) a ray cast down
+// lands on MeshSystem::sampleTerrainSurface's height (the shader's texel-centre lookup) to
+// Jolt's 8-bit-per-block height quantisation; anywhere else, within the resampling between the
+// collider's grid and the texel-centre grid. It used to sit about a cell short, with no
 // last-texel row and no entity scale.
 TEST(ScenePhysics, HeightfieldMatchesTerrainSurface) {
     TestScene t;
@@ -177,12 +178,18 @@ TEST(ScenePhysics, HeightfieldMatchesTerrainSurface) {
 
     TerrainComponent& component = t.scene.getComponent<TerrainComponent>(terrain);
     MeshSystem* meshSystem = t.scene.getSystem<MeshSystem>().get();
+    // the collider's sample grid: one sample per texel of the 33-wide map, edge to edge
+    const int samples = 33;
+    const float spacing = terrainSize / float(samples - 1);
     float maxError = 0.0f;
     int hits = 0;
-    for (int i = 0; i < 20; i++) {
-        // spread over the terrain, edges included
-        const float localX = -terrainSize * 0.5f + terrainSize * std::fmod(0.05f + i * 0.618034f, 1.0f);
-        const float localZ = -terrainSize * 0.5f + terrainSize * (i / 19.0f);
+    for (int i = 0; i < 40; i++) {
+        // 20 points on the collider's samples (edges included), then 20 anywhere
+        const bool onSample = i < 20;
+        const float localX = onSample ? -terrainSize * 0.5f + spacing * float((i * 7) % samples)
+                                      : -terrainSize * 0.5f + terrainSize * std::fmod(0.05f + i * 0.618034f, 1.0f);
+        const float localZ = onSample ? -terrainSize * 0.5f + spacing * float((i * 13 + (i == 19 ? 7 : 0)) % samples)
+                                      : -terrainSize * 0.5f + terrainSize * ((i - 20) / 19.0f);
         float height = 0.0f;
         Vector3 normal;
         meshSystem->sampleTerrainSurface(component, localX, localZ, height, normal);
@@ -195,17 +202,18 @@ TEST(ScenePhysics, HeightfieldMatchesTerrainSurface) {
         ASSERT_TRUE(hit.hit) << "point " << i;
         hits++;
         maxError = std::fmax(maxError, std::fabs(hit.point.y - world.y));
-        EXPECT_NEAR(hit.point.y, world.y, 2e-3f) << "point " << i << " local (" << localX << ", " << localZ << ")";
+        EXPECT_NEAR(hit.point.y, world.y, onSample ? 2e-3f : 1e-2f) << "point " << i << " local (" << localX << ", " << localZ << ")";
     }
-    EXPECT_EQ(hits, 20);
+    EXPECT_EQ(hits, 40);
 
     // mirrored along x, the collider mirrors with the rendered surface
     t.setScale(terrain, Vector3(-scale.x, scale.y, scale.z));
     t.scene.getComponent<RigidbodyComponent>(terrain).needReloadBody = true;
     runScene(t, 1);
     for (int i = 0; i < 20; i++) {
-        const float localX = -terrainSize * 0.45f + terrainSize * 0.9f * (i / 19.0f);
-        const float localZ = 3.0f;
+        // on the collider's samples, across the terrain
+        const float localX = -terrainSize * 0.5f + spacing * float(2 + i * 3 / 2);
+        const float localZ = -terrainSize * 0.5f + spacing * 18.0f;
         float height = 0.0f;
         Vector3 normal;
         meshSystem->sampleTerrainSurface(component, localX, localZ, height, normal);

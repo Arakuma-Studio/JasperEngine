@@ -219,25 +219,26 @@ async def test_scene_settings(ed: Editor):
     await lab(ed)
     got = await ed.call("get_scene_settings", detail=True)
     settings, schema = got["settings"], got["schema"]
-    for name in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "ssao_enabled",
+    for name in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "physics_interpolation", "ssao_enabled",
                  "fixed_resolution_filter", "post_process", "default_mesh_shader", "ssr_max_steps"):
         ed.check_in(name, settings)
     ed.check_eq(schema["shadows_quality"]["options"], ["none", "low", "medium", "high"])
     before = settings
     out = await ed.call("set_scene_settings", settings={
         "background_color": "#336699", "shadows_quality": "High", "light_state": "on",
-        "physics_gravity_3d": [0, -20, 0], "ssao_enabled": True, "ssao_radius": 0.75, "ssr_max_steps": 32,
+        "physics_gravity_3d": [0, -20, 0], "physics_interpolation": False, "ssao_enabled": True, "ssao_radius": 0.75, "ssr_max_steps": 32,
         "fixed_resolution_filter": "linear", "ambient_light_2d_color": [0.5, 0.5, 0.5]})
     s = out["settings"]
     check_close(ed, s["background_color"], [0.2, 0.4, 0.6, before["background_color"][3]], "hex color keeps alpha")
     ed.check_eq(s["shadows_quality"], "high")
     ed.check_eq(s["light_state"], "on")
     ed.check_eq(s["ssao_enabled"], True)
+    ed.check_eq(s["physics_interpolation"], False)
     ed.check_eq(s["fixed_resolution_filter"], "linear")
     # one undo step for all of them
     await undo(ed)
     after = (await ed.call("get_scene_settings"))["settings"]
-    for k in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "ssao_enabled",
+    for k in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "physics_interpolation", "ssao_enabled",
               "ssao_radius", "ssr_max_steps", "fixed_resolution_filter"):
         ed.check(close(after[k], before[k]), f"{k} not undone: {after[k]} vs {before[k]}")
     # errors

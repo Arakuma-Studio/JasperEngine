@@ -1,6 +1,8 @@
 // The waves of library:water (WAVES): their height and slope at a world XZ, shared by the
 // vertex stages that raise the surface (library/water_vs.glsl) and the fragment stage that
-// lights it (water.frag), so the normal fits the displaced shape.
+// lights it (water.frag), so the normal fits the displaced shape. The engine has a C++ copy
+// (Water::getWaves, engine/core/object/environment/Water.cpp) for the buoyancy and the Lua
+// height queries, on the same clock (frame.time.x): change both together.
 //
 // Two sine waves: one along direction, one turned 50 degrees from it, 0.6 times as long
 // and half as high; each travels at speed world units per second. Phases are in cycles,

@@ -52,7 +52,14 @@ namespace jasperengine{
         static std::string getShaderKeyText(ShaderKey key);
         static bool parseShaderKeyText(const std::string& text, ShaderKey& key);
 
+        // A build without the runtime compiler (or with it off) that lacks a variant draws
+        // with the nearest one it ships (a warning names both); none: reported missing
         static std::shared_ptr<ShaderRender> get(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
+        // The variants a missing one falls back to, nearest first: its optional features (SSAO,
+        // fog, 2D shadows, shadows, mirror, IBL, normal map, tangents, UV sets; depth: alpha
+        // mask, texture; G-buffer: metallic-roughness, base colour texture) given up, the
+        // fewest first. Never a bit that changes a uniform block the draw uploads by its key.
+        static std::vector<uint64_t> getFallbackProperties(ShaderType shaderType, uint64_t properties);
         static void remove(ShaderType shaderType, uint64_t properties, uint16_t customId = 0);
 
         // True when the last get() attempt failed, either building the source or creating
@@ -204,14 +211,18 @@ namespace jasperengine{
                         bool light2d = false, bool shadows2d = false,
                         bool alphaMask = false, bool alphaOpaque = false, bool instanceFade = false,
                         bool terrainPBR = false,
-                        bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false);
-        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires;
-        // textureRect: the sprite texture rect its UV (texture or uv1) goes through
+                        bool vertexLights = false, int lightCapacity = 8, bool stochasticTiling = false,
+                        bool lattice = false);
+        // normals, vertexColorVec3/4 and uv1: the inputs a library depth program requires
+        // (vertexColorVec3/4 also a lattice's vertex colour mask); textureRect: the sprite
+        // texture rect its UV (texture or uv1) goes through
         static uint64_t getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask = false, bool instanceFade = false,
                                                bool normals = false, bool vertexColorVec3 = false, bool vertexColorVec4 = false, bool uv1 = false,
-                                               bool textureRect = false, bool stochasticTiling = false);
+                                               bool textureRect = false, bool stochasticTiling = false, bool lattice = false);
+        // vertexColorVec3/4: the vertex colour a lattice's mask reads (set only with lattice)
         static uint64_t getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR = false,
-                                                 bool stochasticTiling = false);
+                                                 bool stochasticTiling = false, bool lattice = false,
+                                                 bool vertexColorVec3 = false, bool vertexColorVec4 = false);
         static uint64_t getUIProperties(bool texture, bool fontAtlasTexture, bool vertexColorVec3, bool vertexColorVec4);
         static uint64_t getHtmlUIProperties(bool texture);
         // HTMLUI_POST: one property bit per (exclusive) variant

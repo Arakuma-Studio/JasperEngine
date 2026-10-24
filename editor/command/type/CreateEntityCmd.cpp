@@ -8,7 +8,10 @@
 #include "util/ProjectUtils.h"
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
+#include "object/environment/Water.h"
+#include "component/FluidSimulationComponent.h"
 
+#include <algorithm>
 #include <utility>
 
 using namespace jasperengine;
@@ -440,6 +443,24 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<UIDocumentComponent>(entity, {});
 
+    }else if (type == EntityCreationType::FLUID_SIMULATION){
+
+        // A Sprite showing the fluid (output MATERIAL, the component's default): seen and
+        // dragged in the Scene view, placed, sized and sorted like any sprite, in 2D and 3D
+        // scenes alike (aspectRatio 0 follows the sprite's size). SCREEN (an overlay over the
+        // whole main camera) and TEXTURE ("fluid|<entity>" links) are one Output change away.
+        // 512 px in a 2D scene; 4 units, a quad standing in the world, in a 3D one.
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<SpriteComponent>(entity, {});
+        scene->addComponent<FluidSimulationComponent>(entity, {});
+
+        const unsigned int size = sceneProject->sceneType == SceneType::SCENE_3D ? 4 : 512;
+        SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
+        sprite.width = size;
+        sprite.height = size;
+        sprite.pivotPreset = PivotPreset::CENTER;
+
     }else if (type == EntityCreationType::ANIMATION){
 
         scene->addComponent<ActionComponent>(entity, {});
@@ -533,6 +554,15 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<ActionComponent>(entity, {});
         scene->addComponent<KeyframeTracksComponent>(entity, {});
         scene->addComponent<MorphTracksComponent>(entity, {});
+        if (parent != NULL_ENTITY){
+            scene->getComponent<ActionComponent>(entity).target = parent;
+        }
+
+    }else if (type == EntityCreationType::LATTICE_TRACKS){
+
+        scene->addComponent<ActionComponent>(entity, {});
+        scene->addComponent<KeyframeTracksComponent>(entity, {});
+        scene->addComponent<LatticeTracksComponent>(entity, {});
         if (parent != NULL_ENTITY){
             scene->getComponent<ActionComponent>(entity).target = parent;
         }
@@ -638,6 +668,46 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
 
+    }else if (type == EntityCreationType::WATER){
+
+        // a 20 x 20 grid fine enough for the waves, drawn with library:water: the engine's
+        // ripples and foam noise (no image files), waves, reflection, the underside, shore
+        // foam and refraction, lit per pixel
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<MeshComponent>(entity, {});
+
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        scene->getSystem<MeshSystem>()->createGrid(mesh, 20.0f, 20.0f, 64);
+
+        Material& material = mesh.submeshes[0].material;
+        material.name = "Water";
+        material.shader = Water::SHADER;
+        material.shaderFeatures = {"BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"};
+        material.lighting = MaterialLighting::PIXEL;
+        ShaderUniforms::set(material.shaderParams, "waveHeight", Vector4(0.1f, 0.0f, 0.0f, 0.0f));
+        ShaderUniforms::set(material.shaderParams, "waveLength", Vector4(4.0f, 0.0f, 0.0f, 0.0f));
+
+        // the view under its surface: a library:underwater pass, off (the engine switches it
+        // on while the main camera is under a water, Water::updateUnderwater)
+        addedUnderwaterPass = -1;
+        std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
+        const bool hasUnderwater = std::any_of(passes.begin(), passes.end(), [](const PostProcessPass& pass){
+            return ShaderReference::getBase(pass.shader) == Water::UNDERWATER_SHADER;
+        });
+        if (!hasUnderwater){
+            PostProcessPass pass;
+            pass.shader = Water::UNDERWATER_SHADER;
+            pass.enabled = false;
+            passes.push_back(pass);
+            addedUnderwaterPass = (int)passes.size() - 1;
+            scene->setPostProcessPasses(passes);
+        }
+
+    }else if (type == EntityCreationType::LATTICE){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LatticeComponent>(entity, {});
+
     }
 
     scene->setEntityName(entity, entityName);
@@ -708,6 +778,17 @@ void editor::CreateEntityCmd::undo(){
         entitiesToDestroy.push_back(entity);
         DeleteEntityCmd::destroyEntities(sceneProject->scene, entitiesToDestroy,
             sceneProject->entities, project, sceneId);
+
+        // the underwater pass a Water added
+        if (addedUnderwaterPass >= 0){
+            std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
+            if (addedUnderwaterPass < (int)passes.size() &&
+                    ShaderReference::getBase(passes[addedUnderwaterPass].shader) == Water::UNDERWATER_SHADER){
+                passes.erase(passes.begin() + addedUnderwaterPass);
+                sceneProject->scene->setPostProcessPasses(passes);
+            }
+            addedUnderwaterPass = -1;
+        }
 
         sceneProject->isModified = wasModified;
     }

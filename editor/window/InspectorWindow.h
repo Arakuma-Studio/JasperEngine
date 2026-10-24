@@ -9,6 +9,7 @@
 #include "render/preview/MeshPreviewRender.h"
 #include "render/preview/DirectionRender.h"
 #include "util/PrimitiveParameters.h"
+#include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
@@ -20,6 +21,7 @@
 #include "soloud.h"
 #include "soloud_wav.h"
 
+#include <array>
 #include <functional>
 
 namespace jasperengine::editor{
@@ -152,6 +154,25 @@ namespace jasperengine::editor{
 
         std::map<std::string, bool> textureCubeSingleMode;
 
+        // Lattice inspector state (edits apply through LatticeEditorOps when a field is let go)
+        int latticeResolutionPending[3] = {3, 3, 3};
+        int latticeResolutionAxis = -1;      // axis field being edited, -1 none
+        Vector3 latticeOffsetPending;
+        bool latticeOffsetEditing = false;
+        lattice::PresetParams latticePreset;
+        char latticePoseName[128] = "";
+        std::string latticePoseRenaming;     // pose whose Rename popup is open
+        bool latticePosesExpanded = true;
+        bool latticeBindingsExpanded = true;
+        // folded cells of the shown lattice, kept while its points and settings stay the same
+        struct LatticeFoldCache {
+            uint32_t sceneId = 0;
+            Entity entity = NULL_ENTITY;
+            uint64_t key = 0;
+            std::vector<std::array<int, 3>> cells;
+        };
+        LatticeFoldCache latticeFoldCache;
+
         std::unordered_map<std::string, Texture> thumbnailTextures;
 
         // Dirty material deferred-write state
@@ -263,6 +284,8 @@ namespace jasperengine::editor{
         void drawFontFallbacksPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void dragDropResourcesTexture(ComponentType cpType, std::string id, SceneProject* sceneProject, std::vector<Entity> entities);
         void applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
+        // a texture slot showing a FluidSimulation's output ("fluid|<entity>", FluidTextureLink)
+        void applyFluidTexture(Entity fluidEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void drawTextureSettingsPopup(const char* popupId, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged);
         void dragDropResourcesTextureCube(ComponentType cpType, const std::string& id, const ImVec2& rectMin, const ImVec2& rectMax, SceneProject* sceneProject, const std::vector<Entity>& entities, int faceIndex = -1);
 
@@ -472,6 +495,24 @@ namespace jasperengine::editor{
                                         const std::string& help, bool indent);
         void drawPostProcessingCost(SceneProject* sceneProject, const PostProcessingSettings& settings);
 
+        // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
+        // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
+        // readOnly: the property rows disabled, the preview bar and the stats still work
+        void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
+        // why the fluid draws nothing (device, simulator error, no surface for Material)
+        void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawFluidStats(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // a fluid row's label cell (prefab override marker, help tooltip, reset arrow; true when
+        // the arrow is clicked), leaving the value cell current at full width
+        bool fluidRowHeader(const std::string& property, const std::string& label, const std::string& help, bool defChanged, bool indent);
+        // a value for every selected fluid: merged while the widget is held, else one step
+        template<typename T>
+        void commitFluidProperty(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& property,
+                                 const T& value, bool merge);
+        // a FluidPreset's fields on every selected fluid, one undo step
+        void applyFluidPreset(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& presetId);
+
         // Commits a planned fork as one undoable step and opens the new .vert/.frag in the
         // code editor. Alerts instead when the plan is invalid or the files cannot be written.
         void commitShaderFork(uint32_t sceneId, std::unique_ptr<ForkShaderCmd> forkCmd);
@@ -545,6 +586,10 @@ namespace jasperengine::editor{
         void drawRotateTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawScaleTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMorphTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeFollowerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLatticeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
 
     public:
         static constexpr const char* WINDOW_NAME = "Inspector";

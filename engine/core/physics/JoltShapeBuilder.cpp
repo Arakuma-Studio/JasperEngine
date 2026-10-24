@@ -369,8 +369,9 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
     samplesSize = std::max(samplesSize, 4u);
 
     // Sample i of N sits at -half + size * i / (N - 1): the first and last samples are the
-    // terrain's edges, as in the renderer's [-half, half] -> [0, W - 1] heightmap mapping that
-    // sampleTerrainSurface reads, so with N = W every sample is a texel.
+    // terrain's edges. Each is read through sampleTerrainSurface, the terrain vertex shader's
+    // lookup (linear filtering, texel i at (i + 0.5) / W), so every sample sits on the drawn
+    // surface; between samples the collider interpolates on its own grid.
     MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
     const float halfSize = terrain.terrainSize * 0.5f;
     const float spacing = terrain.terrainSize / float(samplesSize - 1);

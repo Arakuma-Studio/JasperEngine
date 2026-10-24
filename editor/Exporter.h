@@ -110,6 +110,9 @@ namespace jasperengine::editor {
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
         // Android's merged assets root free of paths both trees would ship
         std::set<fs::path> luaExportedPaths;
+        // C++ files copyGenerated() and copyCppScripts() wrote, relative to the project root,
+        // so the Xcode workspace leaves out files an earlier export left there
+        std::set<fs::path> cppExportedPaths;
 
         // Scales values passed to setProgress so the generation steps (written
         // for the [0,1] SourceCode range) map into [0, 0.5] for Desktop/Web,
@@ -167,22 +170,39 @@ namespace jasperengine::editor {
         bool writeExportSettingsScript(std::string& cmakeContent);
         bool writeAndroidProjectSettings();
         bool writeAppleProjectSettings();
+        // The exported project's sources (scenes, prefabs, scene_scripts.cpp, C++ scripts) in
+        // the Xcode app targets, with the include directories CMake gives the game target
+        bool addXcodeProjectSources(std::string& xcodeProject);
+        // The project's C++ standard and the scene capacities, as the CMake build sets them
+        bool writeXcodeBuildSettings(std::string& xcodeProject);
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();
-        // licenses/shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5 spec
-        // 3.16); removed when they do not. copyLicenses: the build's to the destination.
+        // The third-party notices the shipped shaders need, under licenses/ (each removed when
+        // not needed): shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5
+        // spec 3.16), webgl-fluid-simulation-LICENSE.txt when they run Pavel Dobryakov's fluid
+        // (shipsWebGLFluid). copyLicenses: the build's to the destination.
         bool writeEffectLicense();
         bool copyLicenses();
-        // the path the export writes the shaders.com notice to, relative to its root
+        // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
+        static const char* fluidLicensePath();
+        // Pavel Dobryakov's WebGL-Fluid-Simulation (MIT) ships when either of these does: the
+        // native FluidSimulation component (its FLUID variants: a scene or prefab of the export
+        // has one) or the HTML UI `fluid` effect (its UI_EFFECT variants)
+        bool shipsWebGLFluid() const;
+        bool shipsFluidComponent() const;
+        bool shipsFluidEffect() const;
 
-        // Aggregates SceneMaxValues across all project scenes and builds the
-        // add_definitions() block that sizes the engine's fixed-capacity
-        // HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...) for the export.
+        // Aggregates SceneMaxValues across all project scenes into the capacities that
+        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
+        std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
+        // add_definitions() block applying them to the export.
         std::string buildSceneMaxValuesDefinitions() const;
         // Project-relative form of a script root, empty when it falls outside the project.
         fs::path scriptDirRelativePath(const fs::path& scriptDir) const;
+        // Script roots inside the exported project, as copyCppScripts() lays them out.
+        std::vector<std::string> getExportedScriptRoots() const;
         // target_include_directories() call putting the script roots on the exported game target.
         std::string buildScriptDirIncludes() const;
 

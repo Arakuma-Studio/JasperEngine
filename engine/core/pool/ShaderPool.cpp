@@ -135,6 +135,14 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "probefilter") {
+        shaderType = ShaderType::PROBE_FILTER;
+        return true;
+    }
+    if (typeToken == "fluid") {
+        shaderType = ShaderType::FLUID;
+        return true;
+    }
 
     return false;
 }
@@ -490,6 +498,8 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::PROBE_FILTER: return lowerCase ? "probefilter" : "Probe Filter";
+        case ShaderType::FLUID:  return lowerCase ? "fluid"  : "Fluid";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -508,9 +518,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 32;
-        case ShaderType::DEPTH:  return 15;
-        case ShaderType::GBUFFER: return 11;
+        case ShaderType::MESH:   return 33;
+        case ShaderType::DEPTH:  return 16;
+        case ShaderType::GBUFFER: return 14;
         case ShaderType::UI:     return 4;
         case ShaderType::POINTS: return 5;
         case ShaderType::LINES:  return 3;
@@ -528,6 +538,9 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::PROBE_FILTER: return 0;
+        // Lok (the look program), Mfl (the solver with manual filtering)
+        case ShaderType::FLUID:  return 2;
         default:                 return 0;
     }
 }
@@ -572,6 +585,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 30: return shortName ? "L16" : "Light Capacity 16";
             // the post-processing colour (phase 4, USE_POST_COLOR): one global bit
             case 31: return shortName ? "Pcl" : "Post Color";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl): the first property past
+            // the 32 of older keys, so keys without a lattice read as they always did
+            case 32: return shortName ? "Ltc" : "Lattice";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -593,6 +609,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 13: return shortName ? "Txr" : "Texture Rect";
             // the alpha clip reads the base colour as the colour pass's Stochastic Tiling does
             case 14: return shortName ? "Sto" : "Stochastic Tiling";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
+            case 15: return shortName ? "Ltc" : "Lattice";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -608,6 +626,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 9: return shortName ? "Tpb" : "Terrain PBR";
             // base colour and metallic-roughness read as the colour pass's Stochastic Tiling does
             case 10: return shortName ? "Sto" : "Stochastic Tiling";
+            // the lattice deformer (HAS_LATTICE, includes/lattice.glsl)
+            case 11: return shortName ? "Ltc" : "Lattice";
+            // the vertex colour a lattice's mask reads, never set without 'Ltc'
+            case 12: return shortName ? "Vc3" : "Vertex Color 3";
+            case 13: return shortName ? "Vc4" : "Vertex Color 4";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -679,6 +702,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Thr" : "Threshold";
             case 2: return shortName ? "Ups" : "Upsample";
             case 3: return shortName ? "Mix" : "Mix Level";
+        }
+    } else if (shaderType == ShaderType::FLUID) {
+        // FluidSimulator's programs (fluid.frag): 0 is the solver
+        switch (bit) {
+            case 0: return shortName ? "Lok" : "Look";
+            case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     }
     return shortName ? "?" : "Unknown";
@@ -837,10 +866,28 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                                    RuntimeShaderCompiler::getError(shaderKey).c_str());
                     }
                 } else {
-                    // Not in this build: reported once (RenderSystem::draw), and not looked
-                    // for again every frame by whatever needs it
-                    addMissingShader(shaderStr);
-                    failedShaders().insert(shaderKey);
+                    // A build whose variant set came from stale scene keys can lack this
+                    // one: the nearest variant it ships draws instead, with the optional
+                    // features it lacks left out (getFallbackProperties)
+                    bool fallback = false;
+                    for (uint64_t candidate : getFallbackProperties(shaderType, properties)){
+                        const ShaderKey candidateKey = getShaderKey(shaderType, candidate, customId);
+                        const std::string candidateStr = getShaderStr(shaderType, candidate, customId);
+                        ShaderData candidateData;
+                        if (loadPrecompiledShader(candidateKey, candidateStr, candidateData)){
+                            Log::warn("Shader %s (%s) is not in this build, using %s",
+                                      shaderStr.c_str(), getShaderLangStr().c_str(), candidateStr.c_str());
+                            shared->createShader(candidateData);
+                            fallback = true;
+                            break;
+                        }
+                    }
+                    if (!fallback){
+                        // Not in this build: reported once (RenderSystem::draw), and not looked
+                        // for again every frame by whatever needs it
+                        addMissingShader(shaderStr);
+                        failedShaders().insert(shaderKey);
+                    }
                 }
             }
         }
@@ -859,6 +906,58 @@ bool ShaderPool::loadPrecompiledShader(ShaderKey shaderKey, const std::string& s
         return true;
     }
     return ShaderDataSerializer::readFromFile("shader://"+getShaderName(shaderStr)+".sdat", storageKey, shaderData);
+}
+
+std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, uint64_t properties){
+    // The optional features, in the order they are given up. Only features whose loss keeps
+    // every uniform block the draw uploads by the key's own bits: their resources are blocks,
+    // textures and attributes of their own, which the renderer binds by the variant's
+    // reflection (absent: skipped), and u_fs_litFrame is uploaded at its reflected size, a
+    // prefix (includes/lit_frame.glsl). Never the lighting model or the per-object lights
+    // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
+    // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
+    // Ter, Ist, Txr...).
+    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    static const int depthBits[] = {7, 0};                               // Ams Tex
+    static const int gbufferBits[] = {8, 0};                             // Mrt Bct
+
+    const int* bits = nullptr;
+    size_t bitCount = 0;
+    if (shaderType == ShaderType::MESH){
+        bits = meshBits;
+        bitCount = sizeof(meshBits) / sizeof(meshBits[0]);
+    }else if (shaderType == ShaderType::DEPTH){
+        bits = depthBits;
+        bitCount = sizeof(depthBits) / sizeof(depthBits[0]);
+    }else if (shaderType == ShaderType::GBUFFER){
+        bits = gbufferBits;
+        bitCount = sizeof(gbufferBits) / sizeof(gbufferBits[0]);
+    }
+
+    std::vector<uint64_t> present;
+    for (size_t i = 0; i < bitCount; i++){
+        if (properties & shaderPropertyBit(bits[i]))
+            present.push_back(shaderPropertyBit(bits[i]));
+    }
+
+    // fewest features dropped first; among as many, the earlier ones in the order above
+    std::vector<uint64_t> candidates;
+    const uint32_t combinations = 1u << present.size();
+    for (size_t dropped = 1; dropped <= present.size(); dropped++){
+        for (uint32_t combination = 1; combination < combinations; combination++){
+            size_t count = 0;
+            uint64_t candidate = properties;
+            for (size_t i = 0; i < present.size(); i++){
+                if (combination & (1u << i)){
+                    candidate &= ~present[i];
+                    count++;
+                }
+            }
+            if (count == dropped)
+                candidates.push_back(candidate);
+        }
+    }
+    return candidates;
 }
 
 bool ShaderPool::warmUp(ShaderType shaderType, uint64_t properties, uint16_t customId){
@@ -1137,13 +1236,15 @@ bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey
         const size_t end = kind == std::string::npos ? kind : source.find('\n', kind);
         const bool paint = kind != std::string::npos && source.substr(kind, end - kind).find("paint") != std::string::npos;
         // phase 6: a stateful effect (// @state lines) has a step form per draw form, and a
-        // scatter form when a step pass scatters
+        // scatter form when a step (or frame) pass scatters
         const bool stateful = source.find("\n// @state") != std::string::npos;
         bool scatter = false;
-        for (size_t at = source.find("\n// @step"); stateful && at != std::string::npos; at = source.find("\n// @step", at + 1)) {
-            const size_t lineEnd = source.find('\n', at + 1);
-            if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
-                scatter = true;
+        for (const char* directive : {"\n// @step", "\n// @frame"}) {
+            for (size_t at = source.find(directive); stateful && at != std::string::npos; at = source.find(directive, at + 1)) {
+                const size_t lineEnd = source.find('\n', at + 1);
+                if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
+                    scatter = true;
+            }
         }
         auto addForms = [&](uint64_t drawForm){
             shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm, customId));
@@ -1339,7 +1440,7 @@ uint64_t ShaderPool::getMeshProperties(
     bool fog, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent,
     bool terrain, bool instanced, bool ibl, bool mirror, bool ssao, bool light2d, bool shadows2d,
     bool alphaMask, bool alphaOpaque, bool instanceFade, bool terrainPBR,
-    bool vertexLights, int lightCapacity, bool stochasticTiling){
+    bool vertexLights, int lightCapacity, bool stochasticTiling, bool lattice){
     uint64_t prop = 0;
 
     prop |= unlit            ? shaderPropertyBit(0) : 0;
@@ -1376,13 +1477,14 @@ uint64_t ShaderPool::getMeshProperties(
     // the default capacity (8) sets neither bit, so it keeps the keys it had before tiers
     prop |= (lightCapacity == 4)  ? shaderPropertyBit(29) : 0;
     prop |= (lightCapacity == 16) ? shaderPropertyBit(30) : 0;
+    prop |= lattice          ? shaderPropertyBit(32) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool alphaMask, bool instanceFade,
                                             bool normals, bool vertexColorVec3, bool vertexColorVec4, bool uv1, bool textureRect,
-                                            bool stochasticTiling){
+                                            bool stochasticTiling, bool lattice){
     uint64_t prop = 0;
 
     prop |= texture          ? shaderPropertyBit(0) : 0;
@@ -1400,12 +1502,13 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
     prop |= uv1              ? shaderPropertyBit(12) : 0;
     prop |= textureRect      ? shaderPropertyBit(13) : 0;
     prop |= stochasticTiling ? shaderPropertyBit(14) : 0;
+    prop |= lattice          ? shaderPropertyBit(15) : 0;
 
     return prop;
 }
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
-                                              bool stochasticTiling){
+                                              bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1419,6 +1522,9 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= metallicRoughnessTexture ? shaderPropertyBit(8) : 0;
     prop |= terrainPBR              ? shaderPropertyBit(9) : 0;
     prop |= stochasticTiling        ? shaderPropertyBit(10) : 0;
+    prop |= lattice                 ? shaderPropertyBit(11) : 0;
+    prop |= (lattice && vertexColorVec3) ? shaderPropertyBit(12) : 0;
+    prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
 
     return prop;
 }

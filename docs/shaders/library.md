@@ -105,6 +105,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
+| [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
 | [Outline](#libraryoutline) `library:outline` | mesh | Outline and stencil | none | opaque |
 | [Outline (stencil)](#libraryoutline_stencil) `library:outline_stencil` | mesh | Outline and stencil | none | opaque |
@@ -125,6 +126,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Toon](#librarytoon) `library:toon` | mesh | Stylized | pixel, mixed, vertex | opaque |
 | [Triplanar](#librarytriplanar) `library:triplanar` | mesh | Stylized | none, pixel, vertex | opaque |
 | [UI Effects](#libraryui_fx) `library:ui_fx` | ui | 2D | none | alpha (Auto) |
+| [Underwater](#libraryunderwater) `library:underwater` | postprocess | Post-processing | none | - |
 | [Unlit](#libraryunlit) `library:unlit` | mesh | Basic | none | opaque |
 | [Vertex Color](#libraryvertex_color) `library:vertex_color` | mesh | Stylized | none, vertex, pixel | opaque |
 | [Vertex Lit](#libraryvertex_lit) `library:vertex_lit` | mesh | Lit | vertex | opaque |
@@ -702,6 +704,28 @@ Sci-fi hologram: scanlines scrolling along world Y (procedural or from a texture
 |---|---|---|
 | `BLEND_MODE` | `BLEND_MODE_ADDITIVE`, `BLEND_MODE_ALPHA` | Default blend |
 
+<a id="librarylattice_stretch"></a>
+### Lattice Stretch (`library:lattice_stretch`)
+
+Heat map of how much the lattices bound to the mesh squash or stretch it: white at rest, the squash colour where the volume shrinks, the stretch colour where it grows, full at range times (or 1 / range) the rest volume; folded (inside-out) cells show the squash colour. Tinted by the base map; unlit. A mesh without a lattice draws white.
+
+- **Type**: mesh (a material's shader); category Effects.
+- **Lighting**: none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend opaque.
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `squashColor` | colour | (0.1, 0.35, 1, 1) | Squashed colour |
+| `stretchColor` | colour | (1, 0.15, 0.1, 1) | Stretched colour |
+| `range` | range 1.05 to 16 | 2 | Volume ratio of the full colour |
+| `baseColor` | colour | (1, 1, 1, 1) | Tint |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map |
+
 <a id="librarypanner"></a>
 ### Panner (`library:panner`)
 
@@ -852,13 +876,13 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
-Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint. Optional scene-reading features: DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness) read the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth. Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Alpha blended; casts no shadows.
+Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION and CAUSTICS are a few instructions (one cube map read). REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows.
 
 - **Type**: mesh (a material's shader); category Nature.
 - **Lighting**: none (default), per pixel.
-- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`.
+- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`; `environment` with `REFLECTION`.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
-- **Default state**: blend alpha, shadows off.
+- **Default state**: blend alpha, shadows off; with `UNDERSIDE`: cull off (both faces).
 - **Depth program**: yes (shadows and depth follow its vertices and clipping).
 
 | Property | Kind | Default | Description |
@@ -880,24 +904,36 @@ Stylised water: shallow to deep colour by the view angle, two scrolling normal l
 | `waveHeight` | float | 0.06 | Wave height (world units) (with `WAVES`) |
 | `waveLength` | float | 2.5 | Wave length (world units) (with `WAVES`) |
 | `waveSpeed` | float | 0.8 | Wave speed (world units per second) (with `WAVES`) |
+| `reflectionColor` | colour | (0.9, 0.95, 1, 1) | Reflection colour (times the environment; alone without one) (with `REFLECTION`) |
+| `reflectionStrength` | range 0 to 2 | 1 | Reflection strength (with `REFLECTION`) |
 | `shoreFoamWidth` | float | 0.12 | Shore foam width (world units of depth) (with `DEPTH_FOAM`) |
 | `shoreFoamBreakup` | range 0 to 1 | 0.7 | Shore foam break-up (by the foam noise) (with `DEPTH_FOAM`) |
 | `absorptionDepth` | float | 1.5 | Deep colour thickness (world units of water along the view) (with `ABSORPTION`) |
 | `shoreFade` | float | 0.1 | Shore fade (world units of water) (with `ABSORPTION`) |
 | `refractionStrength` | range 0 to 0.2 | 0.04 | Refraction (screen UV per unit of ripple) (with `REFRACTION`) |
 | `refractionDepth` | float | 0.5 | Full refraction from this thickness (world units) (with `REFRACTION`) |
+| `causticsStrength` | range 0 to 4 | 1.2 | Caustics brightness (in full sunlight) (with `CAUSTICS`) |
+| `causticsScale` | float | 1.5 | Caustics size (world units per cell) (with `CAUSTICS`) |
+| `causticsSpeed` | float | 0.7 | Caustics speed (with `CAUSTICS`) |
+| `causticsDepth` | float | 3 | Caustics fade depth (world units below the surface) (with `CAUSTICS`) |
+| `buoyancy` | toggle | on | Floats rigidbodies (those with a Buoyancy) |
+| `buoyancyDepth` | float | 0 | Floating depth (world units below the surface; 0: no bottom) |
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_normalTexture` | flat normal | Ripple normal map |
-| `u_noiseTexture` | gray | Foam noise (red) |
+| `u_normalTexture` | flat normal; built-in ripples with `BUILTIN_TEXTURES` | Ripple normal map |
+| `u_noiseTexture` | gray; built-in noise with `BUILTIN_TEXTURES` | Foam noise (red) |
 
 | Feature | Default | Description |
 |---|---|---|
 | `WAVES` | off | Waves |
+| `BUILTIN_TEXTURES` | off | Built-in ripples and foam noise (unset textures) |
+| `REFLECTION` | off | Reflection (sky or reflection probe, GGX glint) |
+| `UNDERSIDE` | off | Seen from below (both faces, Snell's window) |
 | `DEPTH_FOAM` | off | Shore foam (reads the scene depth) |
 | `ABSORPTION` | off | Depth colour (reads the scene depth) |
 | `REFRACTION` | off | Refraction (reads the scene colour and depth) |
+| `CAUSTICS` | off | Caustics (with REFRACTION) |
 
 ## Animated
 
@@ -1233,6 +1269,22 @@ Fewer colours: each channel rounded to a few levels, with an optional ordered di
 | `levels` | range 2 to 32 | 5 | Levels per channel |
 | `dither` | range 0 to 1 | 0.5 | Dither |
 | `saturation` | range 0 to 2 | 1 | Saturation |
+
+<a id="libraryunderwater"></a>
+### Underwater (`library:underwater`)
+
+The view from inside a water: the scene fades into the water with the distance the view travels through it, each colour at its own rate (Beer-Lambert: a blue-green water loses red first), towards the water's colour lit by the sun and the ambient; the view leaving the water at its surface fades only by the water in front of it. Add it to the chain switched off: while the main camera is under a library:water surface (a running scene) the engine switches it on and gives it that surface's height and, with Follow water, its shallow and deep colours, and switches it off again above (Water, engine/core/object/environment/Water.h). Reads the scene depth: a depth pre-pass of the opaque meshes while it is on (none extra with SSAO or SSR); one full-screen pass.
+
+- **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
+- **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `shallowColor` | colour | (0.25, 0.8, 0.85, 1) | Clear colour (the hue the view fades through) |
+| `deepColor` | colour | (0.03, 0.25, 0.45, 1) | Water colour (what the distance fades to) |
+| `visibility` | float | 6 | Visibility (world units: the clearest colour keeps 37%) |
+| `waterLevel` | float | 0 | Surface height (world Y; the engine sets it under a water) |
+| `followWater` | toggle | on | Follow water (colours from the water the camera is in) |
 
 ## Outline and stencil
 

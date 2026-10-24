@@ -55,11 +55,12 @@ namespace {
         ShaderType::GBUFFER, ShaderType::UI, ShaderType::SSAO, ShaderType::SSAO_BLUR, ShaderType::SSR,
         ShaderType::SSR_BLUR, ShaderType::COMPOSITE, ShaderType::SHADOW2D, ShaderType::BLIT,
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
-        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT};
+        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
-    const uint64_t meshValidMask = 0xFFFFFFFFULL;
+    // bits 0-31 and bit 32, the lattice deformer ('Ltc')
+    const uint64_t meshValidMask = 0x1FFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -253,11 +254,11 @@ TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
             EXPECT_EQ(ShaderPool::getValidPropertyMask(type) >> count, 0u) << ShaderPool::getShaderTypeName(type);
         }
     }
-    // the masks every type has (32-bit; MESH bit 5, DEPTH bit 14 and GBUFFER bit 10 are
-    // Stochastic Tiling)
+    // the masks every type has (MESH bit 5, DEPTH bit 14 and GBUFFER bit 10 are Stochastic
+    // Tiling; MESH bit 32, DEPTH bit 15 and GBUFFER bits 11-13 the lattice deformer)
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::MESH), meshValidMask);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::DEPTH), 0x7FFFu);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), 0x7FFu);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::DEPTH), 0xFFFFu);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER), 0x3FFFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI), 0xFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::POINTS), 0x1Fu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::LINES), 0x7u);
@@ -268,6 +269,7 @@ TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI_POST), 0x7Fu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI_EFFECT), 0x7u);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::SSAO), 0u);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::PROBE_FILTER), 0u);
 }
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
@@ -283,7 +285,7 @@ TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
             EXPECT_EQ(ShaderPool::normalizeKey(normalized), normalized);
         }
     }
-    // MESH: every bit past 31 (none named yet) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 32 (the lattice's) goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -490,10 +492,12 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(32) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(33) | shaderPropertyBit(63), "mesh_UltNor"},
+        // bit 32, the first past the 32 older keys use, is the lattice deformer
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(32), "mesh_UltNorLtc"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtc"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -513,6 +517,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::HTMLUI, 1, "htmlui_Tex"},
         {ShaderType::HTMLUI_GRADIENT, 0, "htmluigradient"},
         {ShaderType::HTMLUI_POST, 1u << 6, "htmluipost_Yuv"},
+        {ShaderType::PROBE_FILTER, 0, "probefilter"},
     };
     for (const Case& c : cases) {
         EXPECT_EQ(ShaderPool::getShaderStr(c.type, c.properties), c.name);

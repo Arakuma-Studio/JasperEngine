@@ -41,12 +41,15 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <queue>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
+
+struct ImGuiDockNode;
 
 namespace jasperengine::editor::mcp {
     class McpActivityWindow;
@@ -196,6 +199,13 @@ namespace jasperengine::editor{
         float layoutUiScale = 0.0f;
         bool layoutScaleApplied = false;
 
+        // Sizes scaleDockChildren() capped, so scaling back down restores them.
+        struct CappedDockSize {
+            float capped;
+            float uncapped;
+        };
+        std::map<ImGuiID, CappedDockSize> cappedDockSizes;
+
         AlertData alert;
         // Bumped by every registered alert, so MCP can tell a tool raised one
         uint64_t alertSerial = 0;
@@ -257,6 +267,11 @@ namespace jasperengine::editor{
         void buildDefaultLayout();
         // Matches a layout restored from the ini to the current UI scale.
         void rescaleRestoredLayout();
+        void scaleDockChildren(ImGuiDockNode* node, float ratio);
+        // The layout scale and capped panel sizes, in their own section of the layout ini
+        void registerLayoutSettings();
+        // Follows Editor Settings > UI Scale, resizing the docked panels with it
+        void applyUiScale();
         void dockProjectTabs();
         void dockTabWindow(const std::string& windowName, bool force = false);
         void captureTabOrder();
@@ -395,6 +410,8 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        // Preferences on one of its pages ("Lattice" from the Scene view's lattice menu)
+        void openPreferences(const std::string& category);
         PlayInput* getPlayInput() const;
         void resetLayout();
 

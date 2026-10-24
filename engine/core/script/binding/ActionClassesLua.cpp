@@ -19,7 +19,9 @@
 #include "action/ParticleSystem.h"
 #include "action/SpriteAnimation.h"
 #include "action/Ease.h"
+#include "action/keyframe/KeyframeTracks.h"
 #include "action/keyframe/MorphTracks.h"
+#include "action/keyframe/LatticeTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
@@ -79,6 +81,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addFunction("start", &Action::start)
         .addFunction("pause", &Action::pause)
         .addFunction("stop", &Action::stop)
+        .addFunction("restart", &Action::restart)
         .addProperty("ownedTarget", &Action::getOwnedTarget, &Action::setOwnedTarget)
         .addProperty("target", (Entity(Action::*)()const)&Action::getTarget, (void(Action::*)(Entity))&Action::setTarget)
         .addFunction("setTarget", 
@@ -102,6 +105,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addFunction("getValue", &Tween::getValue)
         .addProperty("duration", &Tween::getDuration, &Tween::setDuration)
         .addProperty("loop", &Tween::isLoop, &Tween::setLoop)
+        .addProperty("pingPong", &Tween::isPingPong, &Tween::setPingPong)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -128,6 +132,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .deriveClass<RotationTween, Tween>("RotationTween")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("setAction", &RotationTween::setAction)
+        .addFunction("setSpinAction", &RotationTween::setSpinAction)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -240,6 +245,8 @@ void LuaBinding::registerActionClasses(lua_State *L){
             luabridge::overload<float, float, float, float>(&ParticleSystem::setScaleModifier),
             luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setScaleModifier),
             luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setScaleModifier))
+        .addFunction("getParticleSystemComponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
+        // deprecated: the old misspelt name, kept so existing scripts still run
         .addFunction("getParticlesomponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
         .endClass();
 
@@ -319,39 +326,44 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<MorphTracks, Action>("MorphTracks")
+        .deriveClass<KeyframeTracks, Action>("KeyframeTracks")
+        .addConstructor <void(Scene*), void(Scene*, Entity)> ()
+        .addFunction("setTimes", &KeyframeTracks::setTimes)
+        .addFunction("setEasings", &KeyframeTracks::setEasings)
+        .addFunction("setEasing", &KeyframeTracks::setEasing)
+        .addProperty("loop", &KeyframeTracks::isLoop, &KeyframeTracks::setLoop)
+        .addProperty("relative", &KeyframeTracks::isRelative, &KeyframeTracks::setRelative)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<MorphTracks, KeyframeTracks>("MorphTracks")
         .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<std::vector<float>>)> ()
-        .addFunction("setTimes", &MorphTracks::setTimes)
         .addFunction("setValues", &MorphTracks::setValues)
-        .addFunction("setEasings", &MorphTracks::setEasings)
-        .addFunction("setEasing", &MorphTracks::setEasing)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<RotateTracks, Action>("RotateTracks")
+        .deriveClass<LatticeTracks, KeyframeTracks>("LatticeTracks")
+        .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<int>, std::vector<std::vector<Vector3>>)> ()
+        .addFunction("setPoints", &LatticeTracks::setPoints)
+        .addFunction("setValues", &LatticeTracks::setValues)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<RotateTracks, KeyframeTracks>("RotateTracks")
         .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<Quaternion>)> ()
-        .addFunction("setTimes", &RotateTracks::setTimes)
         .addFunction("setValues", &RotateTracks::setValues)
-        .addFunction("setEasings", &RotateTracks::setEasings)
-        .addFunction("setEasing", &RotateTracks::setEasing)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<ScaleTracks, Action>("ScaleTracks")
+        .deriveClass<ScaleTracks, KeyframeTracks>("ScaleTracks")
         .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<Vector3>)> ()
-        .addFunction("setTimes", &ScaleTracks::setTimes)
         .addFunction("setValues", &ScaleTracks::setValues)
-        .addFunction("setEasings", &ScaleTracks::setEasings)
-        .addFunction("setEasing", &ScaleTracks::setEasing)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<TranslateTracks, Action>("TranslateTracks")
+        .deriveClass<TranslateTracks, KeyframeTracks>("TranslateTracks")
         .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<Vector3>)> ()
-        .addFunction("setTimes", &TranslateTracks::setTimes)
         .addFunction("setValues", &TranslateTracks::setValues)
-        .addFunction("setEasings", &TranslateTracks::setEasings)
-        .addFunction("setEasing", &TranslateTracks::setEasing)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

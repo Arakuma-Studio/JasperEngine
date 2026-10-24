@@ -290,6 +290,7 @@ std::vector<Contact2D> Rigidbody2D::getBodyContacts(){
     std::vector<Contact2D> contacts;
 
     int bodyContactCapacity = b2Body_GetContactCapacity(body.body);
+    if (bodyContactCapacity == 0) return contacts;
     std::vector<b2ContactData> contactData(bodyContactCapacity);
     int bodyContactCount = b2Body_GetContactData(body.body, &contactData.front(), bodyContactCapacity);
 
@@ -307,6 +308,7 @@ std::vector<Contact2D> Rigidbody2D::getColliderContacts(size_t index){
 
     if (index >= 0 && index < body.numColliders && body.colliders[index].type != Collider2DType::CHAIN){
         int shapeContactCapacity = b2Shape_GetContactCapacity(body.colliders[index].shape);
+        if (shapeContactCapacity == 0) return contacts;
         std::vector<b2ContactData> contactData(shapeContactCapacity);
         int shapeContactCount = b2Shape_GetContactData(body.colliders[index].shape, &contactData.front(), shapeContactCapacity);
 
@@ -635,11 +637,15 @@ void Rigidbody2D::setPosition(Vector2 position){
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
+    // the script takes the position over from the Transform a kinematic body was following
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
     b2Body_SetAwake(body.body, true);
+    // jumps, not interpolated
+    body.previousTransform.p = b2Body_GetPosition(body.body);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, position, getAngle());
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 float Rigidbody2D::getAngle() const{
@@ -653,11 +659,13 @@ void Rigidbody2D::setAngle(float angle){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
     b2Body_SetAwake(body.body, true);
+    body.previousTransform.q = b2Body_GetRotation(body.body);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, getPosition(), angle);
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
@@ -665,6 +673,7 @@ void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){
     float pointsToMeterScale = getPointsToMeterScale();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, false);
     // points per second, like positions
     b2Body_SetLinearVelocity(body.body, {linearVelocity.x / pointsToMeterScale, linearVelocity.y / pointsToMeterScale});
 }
@@ -673,6 +682,7 @@ void Rigidbody2D::setAngularVelocity(float angularVelocity){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, false, true);
     b2Body_SetAngularVelocity(body.body, angularVelocity);
 }
 
@@ -720,6 +730,9 @@ void Rigidbody2D::setBullet(bool bullet){
 
 void Rigidbody2D::setType(BodyType type){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+
+    // the script takes over a body that was following its Transform
+    scene->getSystem<PhysicsSystem>()->stopFollowing2D(body, true, true);
 
     if (b2Body_IsValid(body.body)){
         b2Body_SetType(body.body, getBodyTypeToB2(type));

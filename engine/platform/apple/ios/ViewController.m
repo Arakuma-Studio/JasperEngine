@@ -41,14 +41,16 @@
 
     _view.delegate = _renderer;
     
+    // Pause game when its scene is backgrounded.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(pauseGame)
-                                                 name:UIApplicationDidEnterBackgroundNotification
+                                                 name:UISceneDidEnterBackgroundNotification
                                                object:nil];
 
+    // Resume game when its scene becomes active.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(resumeGame)
-                                                 name:UIApplicationDidBecomeActiveNotification
+                                                 name:UISceneDidActivateNotification
                                                object:nil];
 }
 

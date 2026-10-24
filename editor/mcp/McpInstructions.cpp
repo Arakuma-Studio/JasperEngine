@@ -14,9 +14,9 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
-screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
+scripts. Every tool edit is an undoable editor command, visible live to a human watching.
+Build scenes with tools, write code with your own file tools, verify by playing, screenshots
+and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
 C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
 
@@ -38,7 +38,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
   and list the matching paths. Results return both id and path; prefer ids within a session.
-  `entities` (array) instead of `entity` applies a tool to several GameObjects.
+  `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
+  omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
@@ -62,7 +63,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
+past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
@@ -132,8 +133,7 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
+  Engine.deltatime. Calling a non-existent method fails with "attempt to call a nil value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
   stubs or search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
@@ -158,14 +158,13 @@ attached); build settings go in ProjectBuild.cmake, never the generated CMakeLis
 compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart. Clock options with any action, or
-  alone with action "set": time_scale (slow motion / fast forward), fixed_fps (every frame
-  advances exactly 1/fixed_fps s: reproducible runs), auto_pause (the game is frozen between
-  your calls and runs only inside wait, send_input or step).
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
+  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+  auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch); returns its errors (Lua ones too) and the log tail.
+- run_build runs an exported desktop player with input events and screenshots_at (seconds
+  since launch); returns its errors (Lua too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -197,7 +196,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
   optional layer mask.
-- Drop/settle/separate objects in edit mode: place_with_physics (preview, then apply:true).
+- Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -227,12 +226,15 @@ Post-processing (main camera only): apply_post_processing_preset, then set_scene
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
-(jasper://docs/texture-synthesis).
+(jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
+(jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
-job). The 2D/3D physics switches strip backends from the export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
+job, see The loop). The 2D/3D physics switches strip backends from the export
+(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
@@ -243,7 +245,7 @@ inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert
 no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
 brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
 set_ui_effect_time).
-Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
+Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.

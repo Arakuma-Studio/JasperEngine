@@ -308,6 +308,10 @@ RayReturn Ray::intersects(const Sphere& sphere) const{
         if (t < 0){
             t = ( -b + sqrt(d) ) / (2 * a);
         }
+        // the sphere lies behind the origin or past the end of the ray
+        if (t < 0 || t > 1){
+            return NO_HIT;
+        }
 
         Vector3 point = getPoint(t);
         Vector3 normal = (point - sphere.center).normalize();
@@ -322,6 +326,10 @@ RayReturn Ray::intersects(const Sphere& sphere) const{
 RayReturn Ray::intersects(const Rigidbody2D& body) const{
     Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
 
+    if (!b2Body_IsValid(bodycomp.body)){
+        return NO_HIT;
+    }
+
     float ptmScale = body.getPointsToMeterScale();
 
     Vector3 end = origin + direction;
@@ -331,6 +339,9 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
     b2Vec2 translation = b2Sub(bEnd, bOrigin);
 
     const int shapesCount = b2Body_GetShapeCount(bodycomp.body);
+    if (shapesCount == 0){
+        return NO_HIT;
+    }
     std::vector<b2ShapeId> shapeIds(shapesCount);
     int returnCount = b2Body_GetShapes(bodycomp.body, &shapeIds.front(), shapesCount);
 
@@ -343,7 +354,8 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
         const b2RayCastInput rayCastInput = {bOrigin, translation, 1.0};
         b2CastOutput castOutput = b2Shape_RayCast(shapeid, &rayCastInput);
 
-        if (castOutput.hit){
+        // the nearest collider, whatever order the body lists them in
+        if (castOutput.hit && castOutput.fraction < closestFraction){
             closestFraction = castOutput.fraction;
             intersectionPoint = castOutput.point;
             intersectionNormal = castOutput.normal;
@@ -363,6 +375,10 @@ RayReturn Ray::intersects(const Rigidbody2D& body) const{
 
 RayReturn Ray::intersects(const Rigidbody2D& body, size_t shape) const{
     Rigidbody2DComponent& bodycomp = body.getComponent<Rigidbody2DComponent>();
+
+    if (shape >= bodycomp.numColliders || !b2Shape_IsValid(bodycomp.colliders[shape].shape)){
+        return NO_HIT;
+    }
 
     float ptmScale = body.getPointsToMeterScale();
 

@@ -13,7 +13,9 @@
 #include "EntityHandle.h"
 #include "Fog.h"
 #include "ReflectionProbe.h"
+#include "object/FluidSimulation.h"
 #include "Skybox.h"
+#include "Water.h"
 #include "GameObject.h"
 #include "Camera.h"
 #include "Polygon.h"
@@ -24,6 +26,7 @@
 #include "Mesh.h"
 #include "Primitive.h"
 #include "Mirror.h"
+#include "Lattice.h"
 #include "Tilemap.h"
 #include "Bone.h"
 #include "Model.h"
@@ -403,6 +406,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setLinearStartEnd", &Fog::setLinearStartEnd)
         .endClass();
 
+    // the water surfaces (meshes drawn with library:water) at a point, with their waves
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Water>("Water")
+        .addStaticFunction("getHeight", &Water::getHeight)
+        .addStaticFunction("getNormal", &Water::getNormal)
+        .addStaticFunction("isUnderwater", &Water::isUnderwater)
+        .addStaticFunction("getTime", &Water::getTime)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .deriveClass<Skybox, EntityHandle>("Skybox")
         .addConstructor <void (Scene*), void (*) (Scene*, Entity)> ()
@@ -670,6 +682,100 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("FluidOutput")
+        .addVariable("SCREEN", FluidOutput::SCREEN)
+        .addVariable("MATERIAL", FluidOutput::MATERIAL)
+        .addVariable("TEXTURE", FluidOutput::TEXTURE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FluidStats>("FluidStats")
+        .addProperty("steps", &FluidStats::steps)
+        .addProperty("time", &FluidStats::time)
+        .addProperty("splats", &FluidStats::splats)
+        .addProperty("simWidth", &FluidStats::simWidth)
+        .addProperty("simHeight", &FluidStats::simHeight)
+        .addProperty("dyeWidth", &FluidStats::dyeWidth)
+        .addProperty("dyeHeight", &FluidStats::dyeHeight)
+        .addProperty("gpuBytes", &FluidStats::gpuBytes)
+        .addProperty("passesLastFrame", &FluidStats::passesLastFrame)
+        .addProperty("seed", &FluidStats::seed)
+        .addProperty("shadingActive", &FluidStats::shadingActive)
+        .addProperty("bloomActive", &FluidStats::bloomActive)
+        .addProperty("sunraysActive", &FluidStats::sunraysActive)
+        .addProperty("manualFiltering", &FluidStats::manualFiltering)
+        .addProperty("compactFormats", &FluidStats::compactFormats)
+        .addProperty("outputWidth", &FluidStats::outputWidth)
+        .addProperty("outputHeight", &FluidStats::outputHeight)
+        .addProperty("targetFailures", &FluidStats::targetFailures)
+        .addProperty("drawn", &FluidStats::drawn)
+        .endClass();
+
+    // Pavel Dobryakov's WebGL fluid on a GameObject (GameObject > Effects > Fluid Simulation)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<FluidSimulation, GameObject>("FluidSimulation")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &FluidSimulation::isEnabled, &FluidSimulation::setEnabled)
+        .addProperty("output", &FluidSimulation::getOutput, &FluidSimulation::setOutput)
+        .addProperty("interactive", &FluidSimulation::isInteractive, &FluidSimulation::setInteractive)
+        .addProperty("aspectRatio", &FluidSimulation::getAspectRatio, &FluidSimulation::setAspectRatio)
+        .addProperty("simResolution", &FluidSimulation::getSimResolution, &FluidSimulation::setSimResolution)
+        .addProperty("dyeResolution", &FluidSimulation::getDyeResolution, &FluidSimulation::setDyeResolution)
+        .addProperty("densityDissipation", &FluidSimulation::getDensityDissipation, &FluidSimulation::setDensityDissipation)
+        .addProperty("velocityDissipation", &FluidSimulation::getVelocityDissipation, &FluidSimulation::setVelocityDissipation)
+        .addProperty("pressure", &FluidSimulation::getPressure, &FluidSimulation::setPressure)
+        .addProperty("pressureIterations", &FluidSimulation::getPressureIterations, &FluidSimulation::setPressureIterations)
+        .addProperty("curl", &FluidSimulation::getCurl, &FluidSimulation::setCurl)
+        .addProperty("gradientScale", &FluidSimulation::getGradientScale, &FluidSimulation::setGradientScale)
+        .addProperty("simulationRate", &FluidSimulation::getSimulationRate, &FluidSimulation::setSimulationRate)
+        .addProperty("maxSubsteps", &FluidSimulation::getMaxSubsteps, &FluidSimulation::setMaxSubsteps)
+        .addProperty("timeScale", &FluidSimulation::getTimeScale, &FluidSimulation::setTimeScale)
+        .addProperty("paused", &FluidSimulation::isPaused, &FluidSimulation::setPaused)
+        .addProperty("splatRadius", &FluidSimulation::getSplatRadius, &FluidSimulation::setSplatRadius)
+        .addProperty("splatForce", &FluidSimulation::getSplatForce, &FluidSimulation::setSplatForce)
+        .addProperty("colorful", &FluidSimulation::isColorful, &FluidSimulation::setColorful)
+        .addProperty("colorUpdateSpeed", &FluidSimulation::getColorUpdateSpeed, &FluidSimulation::setColorUpdateSpeed)
+        .addProperty("splatsOnStart", &FluidSimulation::isSplatsOnStart, &FluidSimulation::setSplatsOnStart)
+        .addProperty("randomSplatCount", &FluidSimulation::getRandomSplatCount, &FluidSimulation::setRandomSplatCount)
+        .addProperty("seed", &FluidSimulation::getSeed, &FluidSimulation::setSeed)
+        .addProperty("shading", &FluidSimulation::isShading, &FluidSimulation::setShading)
+        .addProperty("backColor", &FluidSimulation::getBackColor, (void(FluidSimulation::*)(Vector3))&FluidSimulation::setBackColor)
+        .addFunction("setBackColor", (void(FluidSimulation::*)(const float, const float, const float))&FluidSimulation::setBackColor)
+        .addProperty("transparent", &FluidSimulation::isTransparent, &FluidSimulation::setTransparent)
+        .addProperty("bloom", &FluidSimulation::isBloom, &FluidSimulation::setBloom)
+        .addProperty("bloomIterations", &FluidSimulation::getBloomIterations, &FluidSimulation::setBloomIterations)
+        .addProperty("bloomResolution", &FluidSimulation::getBloomResolution, &FluidSimulation::setBloomResolution)
+        .addProperty("bloomIntensity", &FluidSimulation::getBloomIntensity, &FluidSimulation::setBloomIntensity)
+        .addProperty("bloomThreshold", &FluidSimulation::getBloomThreshold, &FluidSimulation::setBloomThreshold)
+        .addProperty("bloomSoftKnee", &FluidSimulation::getBloomSoftKnee, &FluidSimulation::setBloomSoftKnee)
+        .addProperty("sunrays", &FluidSimulation::isSunrays, &FluidSimulation::setSunrays)
+        .addProperty("sunraysResolution", &FluidSimulation::getSunraysResolution, &FluidSimulation::setSunraysResolution)
+        .addProperty("sunraysWeight", &FluidSimulation::getSunraysWeight, &FluidSimulation::setSunraysWeight)
+        // splat(x, y, dx, dy, r, g, b) or splat(position, velocity, color[, radius])
+        .addFunction("splat",
+            luabridge::overload<const float, const float, const float, const float, const float, const float, const float>(&FluidSimulation::splat),
+            luabridge::overload<Vector2, Vector2, Vector3, float>(&FluidSimulation::splat),
+            luabridge::overload<FluidSimulation*, Vector2, Vector2, Vector3>(+[](FluidSimulation* self, Vector2 position, Vector2 velocity, Vector3 color){
+                self->splat(position, velocity, color);
+            }))
+        .addFunction("randomSplats",
+            luabridge::overload<unsigned int>(&FluidSimulation::randomSplats),
+            luabridge::overload<FluidSimulation*>(+[](FluidSimulation* self){ self->randomSplats(); }))
+        .addFunction("reset", &FluidSimulation::reset)
+        .addFunction("step",
+            luabridge::overload<int>(&FluidSimulation::step),
+            luabridge::overload<FluidSimulation*>(+[](FluidSimulation* self){ self->step(); }))
+        .addFunction("applyPreset", &FluidSimulation::applyPreset)
+        .addFunction("getPreset", &FluidSimulation::getPreset)
+        .addProperty("preset", &FluidSimulation::getPreset)
+        .addStaticFunction("getPresetIds", &FluidSimulation::getPresetIds)
+        // the output texture (a copy of the handle: it shows the fluid while the entity lives)
+        .addFunction("getTexture", +[](const FluidSimulation* self) -> Texture { return self->getTexture(); })
+        .addFunction("getStats", &FluidSimulation::getStats)
+        .addFunction("getFluidSimulationComponent", (FluidSimulationComponent&(FluidSimulation::*)() const)&FluidSimulation::getComponent)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         .deriveClass<Mesh, GameObject>("Mesh")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Mesh::isEnabled, &Mesh::setEnabled)
@@ -789,6 +895,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("createPlane", 
             luabridge::overload<float, float>(&Primitive::createPlane),
             luabridge::overload<float, float, unsigned int>(&Primitive::createPlane))
+        .addFunction("createGrid",
+            luabridge::overload<float, float, unsigned int>(&Primitive::createGrid),
+            luabridge::overload<float, float, unsigned int, unsigned int>(&Primitive::createGrid))
         .addFunction("createWall", 
             luabridge::overload<float, float>(&Primitive::createWall),
             luabridge::overload<float, float, unsigned int>(&Primitive::createWall))
@@ -818,6 +927,126 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("normal", &Mirror::getNormal, (void(Mirror::*)(Vector3))&Mirror::setNormal)
         .addFunction("setNormal", (void(Mirror::*)(const float, const float, const float))&Mirror::setNormal)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<Lattice, GameObject>("Lattice")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &Lattice::isEnabled, &Lattice::setEnabled)
+        .addFunction("getLatticeComponent", &Lattice::getLatticeComponent)
+        .addFunction("setResolution", &Lattice::setResolution)
+        .addFunction("getResolution", &Lattice::getResolution)
+        .addFunction("getResolutionX", &Lattice::getResolutionX)
+        .addFunction("getResolutionY", &Lattice::getResolutionY)
+        .addFunction("getResolutionZ", &Lattice::getResolutionZ)
+        .addFunction("getPointCount", &Lattice::getPointCount)
+        .addFunction("getPointIndex", &Lattice::getPointIndex)
+        .addFunction("getOffset", &Lattice::getOffset)
+        .addFunction("setOffset", &Lattice::setOffset)
+        .addFunction("getOffsetAt", &Lattice::getOffsetAt)
+        .addFunction("setOffsetAt", &Lattice::setOffsetAt)
+        .addFunction("getRestPosition", &Lattice::getRestPosition)
+        .addFunction("getPointPosition", &Lattice::getPointPosition)
+        .addFunction("setPointPosition", &Lattice::setPointPosition)
+        .addFunction("getPointWorldPosition", &Lattice::getPointWorldPosition)
+        .addFunction("setPointWorldPosition", &Lattice::setPointWorldPosition)
+        .addFunction("resetOffsets", &Lattice::resetOffsets)
+        .addProperty("interpolation", &Lattice::getInterpolation, &Lattice::setInterpolation)
+        .addFunction("setInterpolation", &Lattice::setInterpolation)
+        .addProperty("outside", &Lattice::getOutside, &Lattice::setOutside)
+        .addFunction("setOutside", &Lattice::setOutside)
+        .addProperty("fadeDistance", &Lattice::getFadeDistance, &Lattice::setFadeDistance)
+        .addFunction("setFadeDistance", &Lattice::setFadeDistance)
+        .addFunction("applyPreset",
+            luabridge::overload<Lattice*, const std::string&, const std::string&, float>(+[](Lattice* self, const std::string& name, const std::string& axis, float amount) -> bool {
+                return self->applyPreset(name, axis, amount);
+            }),
+            luabridge::overload<const std::string&, const std::string&, float, const std::string&>(&Lattice::applyPreset))
+        .addFunction("savePose", &Lattice::savePose)
+        .addFunction("hasPose", &Lattice::hasPose)
+        .addFunction("removePose", &Lattice::removePose)
+        .addFunction("applyPose",
+            luabridge::overload<Lattice*, const std::string&>(+[](Lattice* self, const std::string& name) -> bool {
+                return self->applyPose(name);
+            }),
+            luabridge::overload<const std::string&, float>(&Lattice::applyPose))
+        .addFunction("tweenToPose",
+            luabridge::overload<Lattice*, const std::string&, float>(+[](Lattice* self, const std::string& name, float duration) -> bool {
+                return self->tweenToPose(name, duration);
+            }),
+            luabridge::overload<const std::string&, float, EaseType>(&Lattice::tweenToPose))
+        .addFunction("tweenToRest",
+            luabridge::overload<Lattice*, float>(+[](Lattice* self, float duration) {
+                self->tweenToRest(duration);
+            }),
+            luabridge::overload<float, EaseType>(&Lattice::tweenToRest))
+        .addFunction("isTweening", &Lattice::isTweening)
+        .addFunction("stopTween", &Lattice::stopTween)
+        .addProperty("jiggle", &Lattice::isJiggle, &Lattice::setJiggle)
+        .addFunction("setJiggle", &Lattice::setJiggle)
+        .addProperty("jiggleStiffness", &Lattice::getJiggleStiffness, &Lattice::setJiggleStiffness)
+        .addFunction("setJiggleStiffness", &Lattice::setJiggleStiffness)
+        .addProperty("jiggleDamping", &Lattice::getJiggleDamping, &Lattice::setJiggleDamping)
+        .addFunction("setJiggleDamping", &Lattice::setJiggleDamping)
+        .addProperty("jiggleInertia", &Lattice::getJiggleInertia, &Lattice::setJiggleInertia)
+        .addFunction("setJiggleInertia", &Lattice::setJiggleInertia)
+        .addProperty("jiggleAnchor", &Lattice::getJiggleAnchor, &Lattice::setJiggleAnchor)
+        .addFunction("setJiggleAnchor", &Lattice::setJiggleAnchor)
+        .addProperty("jiggleMaxOffset", &Lattice::getJiggleMaxOffset, &Lattice::setJiggleMaxOffset)
+        .addFunction("setJiggleMaxOffset", &Lattice::setJiggleMaxOffset)
+        .addFunction("isJiggleSleeping", &Lattice::isJiggleSleeping)
+        .addFunction("getJiggleOffset", &Lattice::getJiggleOffset)
+        .addFunction("resetJiggle", &Lattice::resetJiggle)
+        .addFunction("poke", &Lattice::poke)
+        .addFunction("pokeAt", &Lattice::pokeAt)
+        .addFunction("deformPoint", &Lattice::deformPoint)
+        // a GameObject (any wrapper) or an entity
+        .addFunction("bind",
+            luabridge::overload<Lattice*, Entity>(+[](Lattice* self, Entity target) -> bool {
+                return self->bind(target);
+            }),
+            luabridge::overload<Entity, float>(&Lattice::bind),
+            luabridge::overload<Lattice*, EntityHandle*>(+[](Lattice* self, EntityHandle* target) -> bool {
+                return self->bind(target);
+            }),
+            luabridge::overload<EntityHandle*, float>(&Lattice::bind))
+        .addFunction("unbind",
+            luabridge::overload<Entity>(&Lattice::unbind),
+            luabridge::overload<EntityHandle*>(&Lattice::unbind))
+        // every arity of addFollower(follower, rest [, applyPosition, applyRotation, applyScale,
+        // weight]): LuaBridge picks an overload by its exact argument count
+        .addFunction("addFollower",
+            luabridge::overload<Lattice*, Entity, Entity>(+[](Lattice* self, Entity follower, Entity rest) -> bool {
+                return self->addFollower(follower, rest);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
+            }),
+            luabridge::overload<Entity, Entity, bool, bool, bool, float>(&Lattice::addFollower),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest) -> bool {
+                return self->addFollower(follower, rest);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
+            }),
+            luabridge::overload<EntityHandle*, EntityHandle*, bool, bool, bool, float>(&Lattice::addFollower))
+        .addFunction("removeFollower",
+            luabridge::overload<Entity>(&Lattice::removeFollower),
+            luabridge::overload<EntityHandle*>(&Lattice::removeFollower))
+        .addFunction("getModifierComponent", &Lattice::getModifierComponent)
+        .addFunction("getFollowerComponent", &Lattice::getFollowerComponent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1733,6 +1962,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("allowSleeping", &Rigidbody::isAllowSleeping, &Rigidbody::setAllowSleeping)
         .addProperty("friction", &Rigidbody::getFriction, &Rigidbody::setFriction)
         .addProperty("restitution", &Rigidbody::getRestitution, &Rigidbody::setRestitution)
+        .addProperty("buoyancy", &Rigidbody::getBuoyancy, &Rigidbody::setBuoyancy)
+        .addProperty("waterDrag", &Rigidbody::getWaterDrag, &Rigidbody::setWaterDrag)
+        .addProperty("waterAngularDrag", &Rigidbody::getWaterAngularDrag, &Rigidbody::setWaterAngularDrag)
         .addProperty("position", &Rigidbody::getPosition, &Rigidbody::setPosition)
         .addProperty("rotation", &Rigidbody::getRotation, &Rigidbody::setRotation)
         .addProperty("linearVelocity", &Rigidbody::getLinearVelocity, &Rigidbody::setLinearVelocity)
