@@ -125,9 +125,13 @@ namespace jasperengine::ecs {
         }
 
         // Frees the pages past the one that holds element count-1, keeping one spare page
-        // so that an array that shrinks and grows around a page boundary does not churn
+        // so that an array that shrinks and grows around a page boundary does not churn.
+        // The first pages (operator new, under kArenaFirstPage) stay until the array empties:
+        // freeing one there lets the allocator coalesce a large free block, and that makes it
+        // consolidate every small block freed since (a mass destroy's strings and vectors) in
+        // the middle of the compaction that called this.
         void shrinkTo(size_t count){
-            const size_t needed = (count + kPageCapacity - 1) / kPageCapacity + 1;
+            const size_t needed = count == 0 ? 1 : std::max((count + kPageCapacity - 1) / kPageCapacity + 1, std::min(pages.size(), kArenaFirstPage));
             while (pages.size() > needed){
                 freePage(pages.back(), pages.size() - 1);
                 pages.pop_back();
