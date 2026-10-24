@@ -587,6 +587,10 @@ Land S09 early in wave 1 so the others build on it.
   `build/test-results/logging-ui/`, and restarts the editor to check the levels persist. AC21 is
   verified with GCC (`-Wformat=2` over the engine and editor sources); MSVC and Clang are covered by
   CI.
+- **Web builds relink when project files change.** emcc packs `project/assets` and `project/lua` at
+  link time (`--preload-file`), which ninja did not track, so an edited Lua script shipped the old
+  bundle until something else relinked. `engine/CMakeLists.txt` now lists those files as the
+  target's `LINK_DEPENDS` (globbed with `CONFIGURE_DEPENDS`).
 - **Tests** live in S02's targets: `engine/tests/core/log/`, `engine/tests/core/util/`
   (`jasperengine-core-tests`, plus `support/AllocationCounterTest.cpp`, the binary's counting
   `operator new`), `editor/tests/OutTest.cpp` and `editor/tests/util/CrashHandlerTest.cpp` with
