@@ -40,9 +40,13 @@ TEST(ShaderKey, CustomShadersAreInterned){
 }
 
 TEST(ShaderKey, NormalizeDropsRetiredPropertyBits){
-    const uint32_t valid = ShaderPool::getValidPropertyMask(ShaderType::MESH);
-    EXPECT_EQ(valid & (1u << 5), 0u);    // the retired 'Pcf' bit
-    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, 0xFFFFFFFFu, 2);
+    // MESH uses every bit since S12 took the retired 'Pcf' bit 5 for the height fog ('Hfg')
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::MESH), 0xFFFFFFFFu);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5), "Hfg");
+    // a type with fewer properties drops the bits past them
+    const uint32_t valid = ShaderPool::getValidPropertyMask(ShaderType::UI);
+    EXPECT_EQ(valid, 0xFu);
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::UI, 0xFFFFFFFFu, 2);
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(key)), valid);
     EXPECT_EQ(ShaderPool::getCustomIdFromKey(ShaderPool::normalizeKey(key)), 2u);
 }
@@ -88,9 +92,9 @@ TEST(ShaderVariantCollection, AddsEachVariantOnce){
 
 TEST(ShaderVariantCollection, KeysAreNormalized){
     ShaderVariantCollection collection;
-    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::MESH, 0x1 | (1u << 5))));
-    EXPECT_TRUE(collection.contains(ShaderType::MESH, 0x1));
-    EXPECT_FALSE(collection.add(ShaderType::MESH, 0x1));
+    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::UI, 0x1 | (1u << 5))));
+    EXPECT_TRUE(collection.contains(ShaderType::UI, 0x1));
+    EXPECT_FALSE(collection.add(ShaderType::UI, 0x1));
 }
 
 TEST(ShaderVariantCollection, CustomShadersAreSeparateVariants){
