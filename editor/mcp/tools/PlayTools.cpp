@@ -2062,6 +2062,11 @@ Json cppMemberJson(Project* project, SceneProject* sp, const ScriptProperty& pro
             const std::string& path = static_cast<PrefabAsset*>(member)->getPath();
             return path.empty() ? Json(nullptr) : Json(path);
         }
+        case ScriptPropertyType::Asset: {
+            const AssetRef& ref = *static_cast<AssetRef*>(member);
+            if (!ref.isSet()) return nullptr;
+            return Json{{"path", ref.path}, {"guid", ref.guid.str()}};
+        }
     }
     return nullptr;
 }
