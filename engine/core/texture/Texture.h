@@ -90,7 +90,11 @@ namespace jasperengine{
             void destroy();
             void invalidateRender();
 
+            // a framebuffer that was made and is gone draws the destroyed-framebuffer fallback
+            // (setDestroyedFramebufferFallback: RenderSystem's transparent black), else
+            // fallBackTexture; with no fallBackTexture, its texture as it is
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
+            static void setDestroyedFramebufferFallback(TextureRender* texture);
             std::string getPath(size_t index = 0) const;
             TextureData& getData(size_t index = 0) const;
             // True when the backing data array exists, so getData() can be dereferenced.

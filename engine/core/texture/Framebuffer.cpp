@@ -33,6 +33,9 @@ Framebuffer::Framebuffer(const Framebuffer& rhs) = default;
 Framebuffer& Framebuffer::operator=(const Framebuffer& rhs) = default;
 
 void Framebuffer::create(){
+    // a new version when an image was made or one was replaced (a failed first creation
+    // changes nothing the textures bound to it show)
+    const bool hadImage = render.isCreated();
     if (hasDesc){
         render.createFramebuffer(desc);
     }else if (numColorAttachments > 1){
@@ -40,7 +43,8 @@ void Framebuffer::create(){
     }else{
         render.createFramebuffer(TextureType::TEXTURE_2D, width, height, minFilter, magFilter, wrapU, wrapV, false, depth, colorFormats[0]);
     }
-    version++;
+    if (hadImage || render.isCreated())
+        version++;
 }
 
 bool Framebuffer::create(const FramebufferDesc& desc){
@@ -54,7 +58,7 @@ bool Framebuffer::create(const FramebufferDesc& desc){
     this->wrapV = desc.wrapV;
     this->numColorAttachments = 1;
     this->colorFormats[0] = desc.color;
-    render.destroyFramebuffer();
+    destroy();
     create();
     return isCreated();
 }

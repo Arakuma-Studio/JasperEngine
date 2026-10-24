@@ -23,8 +23,13 @@ struct CloneContext {
     bool sameRegistry;
     Entity sourceRoot;
     // a copied camera's framebuffer (a copied fluid's output) -> the copy's, for textures
-    // that show it
-    std::unordered_map<const Framebuffer*, Framebuffer*> framebuffers;
+    // that show it, with the entities they belong to (the link ids name them)
+    struct FramebufferCopy {
+        Framebuffer* framebuffer = nullptr;
+        Entity source = NULL_ENTITY;
+        Entity copy = NULL_ENTITY;
+    };
+    std::unordered_map<const Framebuffer*, FramebufferCopy> framebuffers;
     // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
     std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
     // meshes whose external buffers point into the file data of a model copied with them
@@ -57,14 +62,41 @@ void detachExternalBuffer(ExternalBuffer& buffer) {
     }
 }
 
+// A texture showing a copied camera's or fluid's framebuffer shows the copy's. A link id
+// naming the original ("camera|<e>", "fluid|<e>": the editor's, kept in scene files) names
+// the copy (setFramebuffer clears the id)
 void remapFramebufferTexture(Texture& texture, const CloneContext& ctx) {
     Framebuffer* framebuffer = texture.getFramebuffer();
     if (!framebuffer) {
         return;
     }
     auto it = ctx.framebuffers.find(framebuffer);
-    if (it != ctx.framebuffers.end()) {
-        texture.setFramebuffer(it->second);
+    if (it == ctx.framebuffers.end()) {
+        return;
+    }
+    const std::string id = texture.getId();
+    texture.setFramebuffer(it->second.framebuffer);
+    const size_t bar = id.rfind('|');
+    if (bar != std::string::npos && it->second.source != NULL_ENTITY && id.compare(bar + 1, std::string::npos, std::to_string(it->second.source)) == 0) {
+        texture.setId(id.substr(0, bar + 1) + std::to_string(it->second.copy));
+    }
+}
+
+void remapFramebufferTextures(std::vector<std::pair<std::string, Texture>>& textures, const CloneContext& ctx) {
+    for (auto& entry : textures) {
+        remapFramebufferTexture(entry.second, ctx);
+    }
+}
+
+// every texture slot of a material: its PBR maps, its shader's textures and its extra pass's
+void remapMaterialTextures(Material& material, const CloneContext& ctx) {
+    for (Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
+            &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
+        remapFramebufferTexture(*texture, ctx);
+    }
+    remapFramebufferTextures(material.shaderTextures, ctx);
+    if (MaterialPass* pass = material.extraPass.editIfSet()) {
+        remapFramebufferTextures(pass->shaderTextures, ctx);
     }
 }
 
@@ -118,10 +150,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
         submesh.needUpdateTexture = false;
         submesh.needUpdateDepthTexture = false;
         submesh.needUpdateGBufferTexture = false;
-        for (Texture* texture : {&submesh.material.baseColorTexture, &submesh.material.emissiveTexture,
-                &submesh.material.metallicRoughnessTexture, &submesh.material.occlusionTexture, &submesh.material.normalTexture}) {
-            remapFramebufferTexture(*texture, ctx);
-        }
+        remapMaterialTextures(submesh.material, ctx);
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
@@ -149,6 +178,7 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
     ui.focused = false;
     ui.pointerMoved = false;
     remapFramebufferTexture(ui.texture, ctx);
+    remapFramebufferTextures(ui.shaderTextures, ctx);
     ui.onGetFocus.clear();
     ui.onLostFocus.clear();
     ui.onPointerEnter.clear();
@@ -164,7 +194,9 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
 }
 
 template<>
-void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext&) {
+void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(points.texture, ctx);
+    remapFramebufferTextures(points.shaderTextures, ctx);
     points.loaded = false;
     points.loadCalled = false;
     points.needReload = false;
@@ -182,7 +214,8 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext&) {
 }
 
 template<>
-void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneContext&) {
+void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneContext& ctx) {
+    remapFramebufferTextures(lines.shaderTextures, ctx);
     lines.loaded = false;
     lines.loadCalled = false;
     lines.needReload = false;
@@ -196,7 +229,9 @@ void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneC
 }
 
 template<>
-void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext&) {
+void prepare<SkyboxComponent>(SkyboxComponent& sky, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(sky.texture, ctx);
+    remapFramebufferTextures(sky.shaderTextures, ctx);
     sky.loaded = false;
     sky.loadCalled = false;
     sky.needReload = false;
@@ -228,7 +263,19 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
 }
 
 template<>
-void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext&) {
+void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(terrain.heightMap, ctx);
+    for (Texture& blendMap : terrain.blendMaps) {
+        remapFramebufferTexture(blendMap, ctx);
+    }
+    for (TerrainSurfaceLayer& layer : terrain.surfaceLayers) {
+        for (Texture* texture : {&layer.colorTexture, &layer.normalTexture, &layer.roughnessTexture, &layer.metallicTexture}) {
+            remapFramebufferTexture(*texture, ctx);
+        }
+    }
+    for (TerrainFoliageLayer& layer : terrain.foliageLayers) {
+        remapFramebufferTexture(layer.densityMap, ctx);
+    }
     for (TerrainView& view : terrain.views) {
         resetBuffer(view.nodesbuffer[0]);
         resetBuffer(view.nodesbuffer[1]);
@@ -254,13 +301,14 @@ void prepare<CameraComponent>(CameraComponent& camera, Entity, CloneContext& ctx
     // its own render target (clone() made it, so the textures showing the original's can
     // be pointed at it whatever the order); the RenderSystem deletes it with the entity
     auto it = camera.framebuffer ? ctx.framebuffers.find(camera.framebuffer) : ctx.framebuffers.end();
-    camera.framebuffer = it != ctx.framebuffers.end() ? it->second : new Framebuffer();
+    camera.framebuffer = it != ctx.framebuffers.end() ? it->second.framebuffer : new Framebuffer();
     camera.render = CameraRender();
     camera.needUpdate = true;
 }
 
 template<>
-void prepare<LightComponent>(LightComponent& light, Entity, CloneContext&) {
+void prepare<LightComponent>(LightComponent& light, Entity, CloneContext& ctx) {
+    remapFramebufferTexture(light.spotMask, ctx);
     for (LightCamera& lightCamera : light.cameras) {
         lightCamera.render = CameraRender();
     }
@@ -379,6 +427,9 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
 
 template<>
 void prepare<ButtonComponent>(ButtonComponent& button, Entity, CloneContext& ctx) {
+    for (Texture* texture : {&button.textureNormal, &button.textureHovered, &button.texturePressed, &button.textureDisabled}) {
+        remapFramebufferTexture(*texture, ctx);
+    }
     button.label = ctx.remap(button.label);
     button.pressed = false;
     button.hovered = false;
@@ -726,13 +777,13 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
-                ctx.framebuffers[camera->framebuffer] = new Framebuffer();
+                ctx.framebuffers[camera->framebuffer] = {new Framebuffer(), entity, map[entity]};
             }
         }
         FluidSimulationComponent* fluid = fluidsRegistered ? source->findComponent<FluidSimulationComponent>(entity) : nullptr;
         if (fluid && fluid->simulator) {
             std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
-            ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = copy->getOutputFramebuffer();
+            ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = {copy->getOutputFramebuffer(), entity, map[entity]};
             ctx.fluidSimulators[entity] = copy;
         }
     }

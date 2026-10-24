@@ -19,10 +19,13 @@
 
 #include "Engine.h"
 #include "System.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "fluid/FluidSimulator.h"
 #include "object/Sprite.h"
+#include "object/Terrain.h"
 #include "object/ui/Image.h"
+#include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
 #include "render/ShaderRender.h"
 #include "render/SystemRender.h"
@@ -840,12 +843,14 @@ TEST_F(FluidSimulatorTest, RemovedFluidLeavesItsLinkedTexturesSafe){
     EXPECT_GT(output->getVersion(), version) << "a new version: the textures bound to it rebind";
     EXPECT_EQ(sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorTexture.getFramebuffer(), output);
 
-    // drawn: no stale image, the texture's fallback (white, the untextured look)
+    // drawn: no stale image, the transparent placeholder (nothing, as before; black where
+    // the sprite is drawn opaque), not the freed fluid nor an opaque white
     GpuEnvironment::drawFrames(3);
     rgba = readTarget(w, h);
     const uint8_t* shown = probe.at(200, 150);
-    EXPECT_GT((int)shown[1], 200) << "the sprite shows the placeholder, not the freed fluid";
-    EXPECT_GT((int)shown[2], 200);
+    EXPECT_LT((int)shown[0], 60) << "the sprite shows the placeholder, not the freed fluid";
+    EXPECT_LT((int)shown[1], 60);
+    EXPECT_LT((int)shown[2], 60);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
 
     // the last texture gone, the object goes too
@@ -1174,4 +1179,88 @@ TEST_F(FluidSimulatorTest, ManualFilteringReadsUnfilterableImages){
     auto plain = samplerTypes(1u);
     ASSERT_TRUE(plain.first.count("u_fluidTex2"));
     EXPECT_EQ(plain.first["u_fluidTex2"], TextureSamplerType::FLOAT);
+}
+
+TEST_F(FluidSimulatorTest, ScreenFluidIgnoresUIElementsNotDrawn){
+    // a hidden UI element first, then a sprite: the fluid covers the sprite (it goes before
+    // the first UI element the pass draws, none here). A canvas camera (no depth test) draws
+    // everything in the hierarchy's order, the sprite after the hidden element
+    TestSystem::get().clearLogs();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    fixture.getCamera().getComponent<CameraComponent>().depthTest = false;
+    jasperengine::Image& hidden = fixture.add<jasperengine::Image>();
+    hidden.setPosition(400, 40);
+    hidden.setSize(150, 80);
+    hidden.setColor(0.0f, 1.0f, 0.0f, 1.0f);
+    hidden.setVisible(false);
+    jasperengine::Image& inactive = fixture.add<jasperengine::Image>();
+    inactive.setPosition(400, 200);
+    inactive.setSize(150, 80);
+    inactive.setActive(false);
+    Sprite& sprite = fixture.add<Sprite>();
+    sprite.setSize(80, 60);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(140.0f, 280.0f, 0.0f);
+
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::SCREEN;
+    c.paused = true;
+    c.backColor = Vector3(0.0f, 0.0f, 1.0f);
+    const Entity entity = scene.createEntity();
+    scene.addComponent<FluidSimulationComponent>(entity, c);
+    FluidSystem* system = scene.getSystem<FluidSystem>().get();
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return system->hasScreenFluids(); }));
+    GpuEnvironment::drawFrames(3);
+
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgba = readTarget(w, h);
+    PixelProbe probe{rgba, w};
+    EXPECT_TRUE(probe.is(140, 280, 0, 0, 255, 255, 8)) << "the fluid over the sprite (hidden UI does not pull it forward)";
+    EXPECT_TRUE(probe.is(475, 80, 0, 0, 255, 255, 8));
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+    scene.removeComponent<FluidSimulationComponent>(entity);
+}
+
+TEST_F(FluidSimulatorTest, TerrainMapsFollowARemadeFramebuffer){
+    // a terrain whose height and blend maps show a fluid's output; the view is lost and
+    // given back: the output is made again and the terrain binds it again
+    TestSystem::get().clearLogs();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::TEXTURE;
+    c.paused = true;
+    c.simulator = std::make_shared<FluidSimulator>();
+    Framebuffer* output = c.simulator->getOutputFramebuffer();
+    const Entity fluidEntity = scene.createEntity();
+    scene.addComponent<FluidSimulationComponent>(fluidEntity, c);
+    c.simulator.reset();
+
+    Terrain& terrain = fixture.add<Terrain>();
+    terrain.setHeightMap(output);
+    terrain.setBlendMap(output);
+    TerrainComponent& tc = terrain.getComponent<TerrainComponent>();
+    MeshComponent& mesh = terrain.getComponent<MeshComponent>();
+    auto bound = [&](){
+        return output->isCreated() && mesh.loaded && !tc.needUpdateTexture && !tc.heightMap.isFramebufferOutdated() &&
+               !tc.blendMaps[0].isFramebufferOutdated();
+    };
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil(bound)) << "loaded " << mesh.loaded << ", needUpdateTexture " << tc.needUpdateTexture;
+
+    Engine::systemViewDestroyed();
+    Engine::systemViewLoaded();
+    Engine::systemViewChanged();
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return output->isCreated() && mesh.loaded; }));
+    GpuEnvironment::drawFrames(4);
+    EXPECT_FALSE(tc.heightMap.isFramebufferOutdated()) << "the height map stays on the placeholder";
+    EXPECT_FALSE(tc.blendMaps[0].isFramebufferOutdated()) << "the blend map stays on the placeholder";
+    EXPECT_FALSE(tc.needUpdateTexture);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+    scene.destroyEntity(fluidEntity);
 }

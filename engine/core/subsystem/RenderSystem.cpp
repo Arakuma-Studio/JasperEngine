@@ -426,11 +426,13 @@ namespace {
 
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
+uint32_t RenderSystem::pixelsTransparent[64];
 uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
 TextureRender RenderSystem::emptyBlack;
+TextureRender RenderSystem::emptyTransparent;
 TextureRender RenderSystem::emptyCubeBlack;
 TextureRender RenderSystem::emptyCubeWhite;
 TextureRender RenderSystem::emptyNormal;
@@ -763,6 +765,17 @@ void RenderSystem::createEmptyTextures(){
         emptyBlack.createTexture(
                 "empty|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+
+        // what a texture of a framebuffer that is gone shows (Texture::getRender): nothing
+        for (int i = 0; i < 64; i++) {
+            pixelsTransparent[i] = 0x00000000;
+        }
+        data_array[0] = (void*)pixelsTransparent;
+        emptyTransparent.createTexture(
+                "empty|transparent", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+        Texture::setDestroyedFramebufferFallback(&emptyTransparent);
+        data_array[0] = (void*)pixelsBlack;
         emptyCubeBlack.createTexture(
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
@@ -4975,6 +4988,9 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
     for (int m = 0; m < MAX_TERRAIN_BLENDMAPS; m++){
         const bool covered = m < coveredMaps && m < static_cast<int>(terrain.blendMaps.size());
         textureRender = covered ? terrain.blendMaps[m].getRender(&emptyBlack) : NULL;
+        // (a render target not drawn: its version is taken, it is not outdated for the reload check)
+        if (!covered && m < static_cast<int>(terrain.blendMaps.size()) && terrain.blendMaps[m].isFramebuffer())
+            terrain.blendMaps[m].getRender(&emptyBlack);
         slotTex = shaderData.getTextureIndex(static_cast<TextureShaderType>(static_cast<int>(TextureShaderType::BLENDMAP) + m));
         if (textureRender){
             if (!textureRender->isCreated()){
@@ -5005,6 +5021,15 @@ bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRen
 }
 
 bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh){
+    // a render target its maps show was made again (a fluid's output, a camera's after a view
+    // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
+    if (!terrain.needUpdateTexture){
+        bool outdated = terrain.heightMap.isFramebufferOutdated();
+        for (const Texture& blendMap : terrain.blendMaps)
+            outdated = outdated || blendMap.isFramebufferOutdated();
+        if (outdated)
+            terrain.needUpdateTexture = true;
+    }
     if (!terrain.needUpdateTexture){
         return true;
     }
@@ -14326,7 +14351,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             continue;
         }
 
-        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>())){
+        // (a UI element this pass draws: not one hidden, inactive or culled)
+        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
+                isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask) &&
+                !samplesCameraTarget(camera, scene->getComponent<UIComponent>(entity).texture)){
             drawScreenFluids();
         }
 

@@ -15,6 +15,9 @@
 #include "fluid/FluidPresets.h"
 #include "fluid/FluidSimulator.h"
 #include "component/MeshComponent.h"
+#include "component/PointsComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "object/FluidSimulation.h"
 #include "object/Sprite.h"
 #include "registry/EntityCloner.h"
@@ -30,6 +33,7 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -417,6 +421,72 @@ TEST_F(FluidSimulationTest, ClonedHierarchyShowsItsOwnFluid){
     scene->destroyEntity(loneCopies[0]);
     scene->destroyEntity(copies[1]);
     scene->destroyEntity(copies[0]);
+}
+
+TEST_F(FluidSimulationTest, ClonesRemapEveryTextureSlot){
+    // every texture slot showing a copied camera's or fluid's framebuffer shows the copy's,
+    // its link id naming the copy
+    FluidSimulation fluid(scene.get());
+    fluid.setOutput(FluidOutput::TEXTURE);
+    Framebuffer* output = fluid.getTexture().getFramebuffer();
+    const Entity fluidEntity = fluid.getEntity();
+    auto linked = [&](){
+        Texture texture(output);
+        texture.setId("fluid|" + std::to_string(fluidEntity));
+        return texture;
+    };
+    Sprite sprite(scene.get());
+    fluid.addChild(&sprite);
+    MeshComponent& mesh = sprite.getComponent<MeshComponent>();
+    mesh.submeshes[0].material.baseColorTexture = linked();
+    mesh.submeshes[0].material.shaderTextures.push_back({"u_custom", linked()});
+    mesh.submeshes[0].material.extraPass.edit().shaderTextures.push_back({"u_outline", linked()});
+    // other components on other children
+    const Entity pointsEntity = scene->createEntity();
+    scene->addComponent<Transform>(pointsEntity, {});
+    PointsComponent points;
+    points.texture = linked();
+    points.shaderTextures.push_back({"u_points", linked()});
+    scene->addComponent<PointsComponent>(pointsEntity, points);
+    fluid.addChild(pointsEntity);
+    const Entity terrainEntity = scene->createEntity();
+    scene->addComponent<Transform>(terrainEntity, {});
+    TerrainComponent terrain;
+    terrain.heightMap = linked();
+    terrain.blendMaps.push_back(linked());
+    scene->addComponent<TerrainComponent>(terrainEntity, terrain);
+    fluid.addChild(terrainEntity);
+
+    std::unordered_map<Entity, Entity> map;
+    std::vector<Entity> copies = EntityCloner::clone(scene.get(), EntityCloner::collectHierarchy(scene.get(), fluidEntity), scene.get(), NULL_ENTITY, &map);
+    ASSERT_EQ(copies.size(), 4u);
+    const Entity fluidCopy = map[fluidEntity];
+    FluidSimulationComponent& copy = scene->getComponent<FluidSimulationComponent>(fluidCopy);
+    ASSERT_NE(copy.simulator, nullptr);
+    Framebuffer* copyOutput = copy.simulator->getOutputFramebuffer();
+    const std::string copyId = "fluid|" + std::to_string(fluidCopy);
+    auto expectCopy = [&](const Texture& texture, const char* slot){
+        EXPECT_EQ(texture.getFramebuffer(), copyOutput) << slot;
+        EXPECT_EQ(texture.getId(), copyId) << slot;
+    };
+    const Submesh& submesh = scene->getComponent<MeshComponent>(map[sprite.getEntity()]).submeshes[0];
+    expectCopy(submesh.material.baseColorTexture, "base colour");
+    expectCopy(submesh.material.shaderTextures[0].second, "material shader texture");
+    expectCopy(submesh.material.extraPass->shaderTextures[0].second, "extra pass texture");
+    const PointsComponent& copiedPoints = scene->getComponent<PointsComponent>(map[pointsEntity]);
+    expectCopy(copiedPoints.texture, "points");
+    expectCopy(copiedPoints.shaderTextures[0].second, "points shader texture");
+    const TerrainComponent& copiedTerrain = scene->getComponent<TerrainComponent>(map[terrainEntity]);
+    expectCopy(copiedTerrain.heightMap, "height map");
+    expectCopy(copiedTerrain.blendMaps[0], "blend map");
+    // the originals keep theirs
+    EXPECT_EQ(mesh.submeshes[0].material.shaderTextures[0].second.getFramebuffer(), output);
+    EXPECT_EQ(scene->getComponent<TerrainComponent>(terrainEntity).heightMap.getId(), "fluid|" + std::to_string(fluidEntity));
+
+    for (auto it = copies.rbegin(); it != copies.rend(); ++it)
+        scene->destroyEntity(*it);
+    scene->destroyEntity(terrainEntity);
+    scene->destroyEntity(pointsEntity);
 }
 
 TEST_F(FluidSimulationTest, SanitizedSettings){
