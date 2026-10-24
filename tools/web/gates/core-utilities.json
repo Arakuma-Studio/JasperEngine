@@ -23,12 +23,12 @@
       "level": "warning"
     },
     {
-      "text": "[gate] coroutine resumed",
-      "level": "log"
+      "text": "[gate] timer fired after 0.",
+      "level": "warning"
     },
     {
-      "text": "[gate] timer fired after 0.1",
-      "level": "warning"
+      "text": "[gate] coroutine resumed",
+      "level": "log"
     }
   ],
   "ordered": true

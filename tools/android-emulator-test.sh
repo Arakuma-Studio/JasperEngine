@@ -27,7 +27,9 @@
 # not run (no KVM, the emulator did not boot, the APK did not install).
 #
 # EMULATOR_BOOT_TIMEOUT (default 600 s), EMULATOR_MEMORY (MB, default 3072), EMULATOR_CORES
-# (default 4) and JASPER_DOCKER_IMAGE (an emulator image id/tag, skips docker build) tune it.
+# (default 4), EMULATOR_TMPFS_GB (the tmpfs the AVD lives on, default 10: only what the run
+# writes takes memory) and JASPER_DOCKER_IMAGE (an emulator image id/tag, skips docker build)
+# tune it.
 #
 # Example (S09: the logger's logcat sink):
 #   ANDROID_PROJECT=core-utilities tools/build.sh android
@@ -105,20 +107,18 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
+    --tmpfs "/avd:rw,exec,size=${EMULATOR_TMPFS_GB:-10}g,mode=1777" \
     "$IMAGE_ID" bash -euo pipefail -c '
         log() { echo "android-emulator-test: $*"; }
-        # on the host disk (the container layer is small), removed at the end
-        export ANDROID_AVD_HOME="$OUT/avd"
-        export ANDROID_EMULATOR_HOME="$ANDROID_AVD_HOME"
-        rm -rf "$ANDROID_AVD_HOME"
-        mkdir -p "$ANDROID_AVD_HOME"
+        # on a tmpfs: the emulator wants room for its sparse userdata image (about 7 GB), of
+        # which a run writes a few hundred MB; neither the host disk nor the container layer pays
+        export ANDROID_AVD_HOME=/avd
+        export ANDROID_EMULATOR_HOME=/avd
         IMAGE="system-images;android-${EMULATOR_API};${EMULATOR_TAG};x86_64"
         echo no | avdmanager --silent create avd --force -n jasper -k "$IMAGE" -d pixel_6 >/dev/null
-        # a 2 GB userdata partition is plenty for one app (the default is 6 GB)
-        echo "disk.dataPartition.size=2048M" >> "$ANDROID_AVD_HOME/jasper.avd/config.ini"
         log "booting $IMAGE"
         emulator -avd jasper -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
-            -partition-size 2048 -gpu swiftshader_indirect -accel on -memory "$MEMORY" -cores "$CORES" -no-metrics \
+            -gpu swiftshader_indirect -accel on -memory "$MEMORY" -cores "$CORES" -no-metrics \
             > "$OUT/emulator.log" 2>&1 &
         EMULATOR_PID=$!
         cleanup() {
@@ -126,7 +126,6 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             sleep 2
             kill "$EMULATOR_PID" >/dev/null 2>&1 || true
             wait "$EMULATOR_PID" 2>/dev/null || true
-            rm -rf "$ANDROID_AVD_HOME"
         }
         trap cleanup EXIT
 
@@ -157,63 +156,49 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
 
         # every expected line (in order with ORDERED=1) in the logcat; a crash ends the wait
-        if python3 - "$OUT" "$PACKAGE" <<"PY"
-import os, subprocess, sys, time
-out, package = sys.argv[1], sys.argv[2]
-expects = [l for l in open(os.path.join(out, "expect.txt")).read().split("\n") if l]
-forbids = [l for l in open(os.path.join(out, "forbid.txt")).read().split("\n") if l]
-ordered = os.environ["ORDERED"] == "1"
-deadline = time.monotonic() + (float(os.environ["TIMEOUT"]) if expects else float(os.environ["SECONDS_TO_RUN"]))
-
-def logcat(fmt):
-    return subprocess.run(["adb", "logcat", "-d", "-v", fmt], capture_output=True, text=True, errors="replace").stdout
-
-def check(lines):
-    found, position = [], 0
-    for text in expects:
-        start = position if ordered else 0
-        index = next((i for i in range(start, len(lines)) if text in lines[i]), None)
-        found.append(index)
-        if index is not None:
-            position = index + 1
-    return found
-
-def crashed(full):
-    return [l for l in full.splitlines() if ("FATAL EXCEPTION" in l or "Fatal signal" in l or ">>> " + package in l)]
-
-while True:
-    lines = logcat("tag").splitlines()
-    found = check(lines)
-    full = logcat("threadtime")
-    crashes = crashed(full)
-    if (expects and all(i is not None for i in found)) or crashes or time.monotonic() > deadline:
-        break
-    time.sleep(2)
-
-open(os.path.join(out, "logcat.txt"), "w").write("\n".join(lines) + "\n")
-open(os.path.join(out, "logcat-full.txt"), "w").write(full)
-report, failed = [], False
-for text, index in zip(expects, found):
-    if index is None:
-        earlier = any(text in l for l in lines)
-        report.append(("OUT OF ORDER " if earlier else "MISSING ") + text)
-        failed = True
-    else:
-        report.append("found        " + lines[index])
-for text in forbids:
-    hits = [l for l in lines if text in l]
-    if hits:
-        report.append("FORBIDDEN    " + hits[0])
-        failed = True
-for line in crashes[:10]:
-    report.append("CRASH        " + line)
-    failed = True
-report.append("FAIL" if failed else "PASS")
-open(os.path.join(out, "result.txt"), "w").write("\n".join(report) + "\n")
-print("\n".join("android-emulator-test: " + r for r in report))
-sys.exit(1 if failed else 0)
-PY
-        then result=0; else result=$?; fi
+        # check: one line per expectation (found / OUT OF ORDER / MISSING), exit 1 if one is missing
+        check() {
+            awk -v ordered="$ORDERED" "
+                FILENAME == ARGV[1] { if (length(\$0)) expected[++n] = \$0; next }
+                { lines[++m] = \$0 }
+                END {
+                    position = 1; failed = 0
+                    for (i = 1; i <= n; i++) {
+                        found = 0
+                        for (j = (ordered == 1 ? position : 1); j <= m; j++) if (index(lines[j], expected[i])) { found = j; break }
+                        if (found) { position = found + 1; print \"found        \" lines[found]; continue }
+                        anywhere = 0
+                        for (j = 1; j <= m; j++) if (index(lines[j], expected[i])) anywhere = 1
+                        print (anywhere ? \"OUT OF ORDER \" : \"MISSING      \") expected[i]
+                        failed = 1
+                    }
+                    exit failed
+                }" "$OUT/expect.txt" "$OUT/logcat.txt"
+        }
+        if [[ -s "$OUT/expect.txt" ]]; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
+        start=$SECONDS
+        while true; do
+            adb logcat -d -v tag > "$OUT/logcat.txt"
+            adb logcat -d -v threadtime > "$OUT/logcat-full.txt"
+            crashes="$(grep -E "FATAL EXCEPTION|Fatal signal|>>> $PACKAGE <<<" "$OUT/logcat-full.txt" | head -10 || true)"
+            if [[ -s "$OUT/expect.txt" ]] && check > /dev/null; then break; fi
+            [[ -n "$crashes" ]] && break
+            (( SECONDS - start > WAIT )) && break
+            sleep 2
+        done
+        result=0
+        check > "$OUT/result.txt" || result=1
+        while IFS= read -r forbidden; do
+            [[ -z "$forbidden" ]] && continue
+            hit="$(grep -F -- "$forbidden" "$OUT/logcat.txt" | head -1 || true)"
+            if [[ -n "$hit" ]]; then echo "FORBIDDEN    $hit" >> "$OUT/result.txt"; result=1; fi
+        done < "$OUT/forbid.txt"
+        if [[ -n "$crashes" ]]; then
+            echo "$crashes" | sed "s/^/CRASH        /" >> "$OUT/result.txt"
+            result=1
+        fi
+        if (( result )); then echo FAIL >> "$OUT/result.txt"; else echo PASS >> "$OUT/result.txt"; fi
+        sed "s/^/android-emulator-test: /" "$OUT/result.txt"
         adb exec-out screencap -p > "$OUT/screen.png" 2>/dev/null || true
         exit $result
     ' || status=$?
