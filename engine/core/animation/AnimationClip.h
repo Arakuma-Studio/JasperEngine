@@ -49,6 +49,10 @@
 #include <utility>
 #include <vector>
 
+namespace jasperengine::anim{
+    struct ClipParseResult;
+}
+
 namespace jasperengine{
 
     // ClipKey rotation layout (x y z w) <-> engine Quaternion (w, x, y, z)
@@ -179,6 +183,9 @@ namespace jasperengine{
         // build() of a parsed clip: getWarnings() lists `loadWarnings` (the parser's) first
         static std::shared_ptr<const AnimationClip> build(const ClipData& data, const std::vector<ClipWarning>& loadWarnings,
                                                           std::vector<ClipWarning>* warnings);
+        // build() of a parseClip result without normalizing again (it is normalized already);
+        // null when the parse failed. getWarnings() = the parser's warnings
+        static std::shared_ptr<const AnimationClip> build(const anim::ClipParseResult& parsed);
         // back to the value form (round trip: build(toData()) samples identically)
         ClipData toData() const;
 
@@ -204,6 +211,9 @@ namespace jasperengine{
 
     private:
         AnimationClip() = default;
+
+        // `data` must satisfy the invariants above (normalized)
+        static std::shared_ptr<const AnimationClip> buildNormalized(const ClipData& data, std::vector<ClipWarning> clipWarnings);
 
         float frameRate = 30.0f;
         ClipWrapMode wrap = ClipWrapMode::Once;

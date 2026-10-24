@@ -16,6 +16,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
+#include <type_traits>
 #include <random>
 #include <variant>
 
@@ -128,6 +130,18 @@ namespace{
         {EaseType::BOUNCE_IN, "bounce_in"}, {EaseType::BOUNCE_OUT, "bounce_out"}, {EaseType::BOUNCE_IN_OUT, "bounce_in_out"}
     };
 
+}
+
+Quaternion anim::eulerDegreesToQuaternion(float x, float y, float z){
+    // Quaternion::fromEulerAngles(ZYX) with each factor built in radians (fromAngleAxis'
+    // half-angle form), so Engine::useDegrees plays no part
+    auto axis = [](float degrees, int which){
+        const double pi = 3.14159265358979323846;
+        float half = 0.5f * (float)(degrees * (pi / 180.0));
+        float s = std::sin(half);
+        return Quaternion(std::cos(half), which == 0 ? s : 0.0f, which == 1 ? s : 0.0f, which == 2 ? s : 0.0f);
+    };
+    return axis(z, 2) * (axis(y, 1) * axis(x, 0));
 }
 
 bool anim::isUnityYamlClip(const std::string& text){
@@ -338,6 +352,13 @@ namespace{
         for (float& value : values) value = -value;
     }
 
+    // a renormalized rotation key: its tangents scale with it (they are relative to the key)
+    void scaleRotationKey(ClipKey& key, float factor){
+        for (float& v : key.value) v *= factor;
+        for (float& v : key.inTangent) v *= factor;
+        for (float& v : key.outTangent) v *= factor;
+    }
+
     // hemisphere continuity along a rotation track: each key on the side of the previous one
     // (a flipped key's tangents flip with it)
     void enforceHemisphere(ClipTrackData& track){
@@ -522,7 +543,7 @@ namespace{
 
     // Step 3: keys sorted by time (stable: file order at equal times), equal times collapse
     // into the later key
-    void sortAndCollapseKeys(ClipTrackData& track, TrackOrigin& origin, bool merged, std::vector<ClipWarning>* warnings){
+    void sortAndCollapseKeys(ClipTrackData& track, TrackOrigin& origin, std::vector<ClipWarning>* warnings){
         std::vector<size_t> order(track.keys.size());
         for (size_t i = 0; i < order.size(); i++) order[i] = i;
         bool sorted = true;
@@ -530,7 +551,6 @@ namespace{
             if (track.keys[i].time < track.keys[i - 1].time) sorted = false;
         }
         if (!sorted){
-            if (!merged) warn(warnings, member(origin.path, "keys"), "keys were not sorted by time: sorted");
             std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){ return track.keys[a].time < track.keys[b].time; });
         }
         std::vector<ClipKey> keys;
@@ -578,7 +598,10 @@ namespace{
             key.inTangent = k > 0 ? before : after;
             key.outTangent = k + 1 < track.keys.size() ? after : before;
             // tangents win over the ease
-            key.ease = EaseType::LINEAR;
+            if (key.ease != EaseType::LINEAR){
+                warn(warnings, member(origin.keys[k], "ease"), "ignored: the track uses tangents");
+                key.ease = EaseType::LINEAR;
+            }
         }
     }
 
@@ -629,6 +652,14 @@ namespace{
         for (size_t i = 0; i < data.tracks.size(); i++){
             if (data.tracks[i].channel != ClipChannel::Property){
                 sanitizeKeys(data.tracks[i], origins.tracks[i], warnings);
+                // reported per track as written (a merge concatenates sorted tracks out of order)
+                const std::vector<ClipKey>& keys = data.tracks[i].keys;
+                for (size_t k = 1; k < keys.size(); k++){
+                    if (keys[k].time < keys[k - 1].time){
+                        warn(warnings, member(origins.tracks[i].path, "keys"), "keys were not sorted by time: sorted");
+                        break;
+                    }
+                }
             }
         }
 
@@ -639,14 +670,12 @@ namespace{
         std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b){ return trackLess(data.tracks[a], data.tracks[b]); });
         std::vector<ClipTrackData> tracks;
         std::vector<TrackOrigin> trackOrigins;
-        std::vector<bool> merged;
         for (size_t i : order){
             ClipTrackData& track = data.tracks[i];
             TrackOrigin& origin = origins.tracks[i];
             if (tracks.empty() || !sameTrack(tracks.back(), track)){
                 tracks.push_back(std::move(track));
                 trackOrigins.push_back(std::move(origin));
-                merged.push_back(false);
                 continue;
             }
             ClipTrackData& into = tracks.back();
@@ -680,7 +709,6 @@ namespace{
             into.loop = track.loop;
             into.keys.insert(into.keys.end(), track.keys.begin(), track.keys.end());
             intoOrigin.keys.insert(intoOrigin.keys.end(), origin.keys.begin(), origin.keys.end());
-            merged.back() = true;
         }
 
         // steps 3-5 per track
@@ -702,7 +730,7 @@ namespace{
                 }
             }
 
-            sortAndCollapseKeys(track, origin, merged[t], warnings);
+            sortAndCollapseKeys(track, origin, warnings);
 
             if (track.channel == ClipChannel::Rotation){
                 for (size_t k = 0; k < track.keys.size(); k++){
@@ -711,7 +739,7 @@ namespace{
                     if (std::fabs(length - 1.0f) > 1e-5f){
                         warn(warnings, member(origin.keys[k], "value"),
                              "not a unit quaternion (length " + shortNumber(length) + "): normalized");
-                        for (float& v : key.value) v /= length;
+                        scaleRotationKey(key, 1.0f / length);
                     }
                 }
                 enforceHemisphere(track);
@@ -801,10 +829,9 @@ namespace{
                         warn(&warnings, path, "expected {\"euler\": [x, y, z]} degrees");
                         return false;
                     }
-                    // the order edit_animation uses (Quaternion's Euler constructor)
-                    Quaternion q(euler[0], euler[1], euler[2]);
+                    // degrees whatever Engine::useDegrees says, in edit_animation's order
                     out.values.resize(4);
-                    quaternionToXYZW(q, out.values.data());
+                    quaternionToXYZW(anim::eulerDegreesToQuaternion(euler[0], euler[1], euler[2]), out.values.data());
                     out.euler = true;
                     for (int i = 0; i < 3; i++) out.eulerAngles[i] = euler[i];
                     return true;
@@ -935,8 +962,11 @@ namespace{
         return true;
     }
 
+    // Euler angles (degrees) of the keys written as Euler, by key path
+    using EulerKeys = std::map<std::string, std::array<float, 3>>;
+
     bool readTrack(const OJson& json, size_t index, ClipTrackData& track, TrackOrigin& origin,
-                   std::vector<ClipWarning>& warnings){
+                   EulerKeys& eulerKeys, std::vector<ClipWarning>& warnings){
         std::string path = "tracks[" + std::to_string(index) + "]";
         origin.path = path;
         if (!json.is_object()){
@@ -995,36 +1025,20 @@ namespace{
         }
 
         std::vector<ParsedKey> parsed;
-        // the previous key's Euler angles when it was written as Euler
-        bool previousEuler = false;
-        float previousAngles[3] = {0, 0, 0};
         for (size_t k = 0; k < keys->size(); k++){
             std::string keyPath = indexed(path, "keys", k);
             ParsedKey key;
             key.origin = k;
             if (!readKey((*keys)[k], track.channel, keyPath, key, warnings)){
-                previousEuler = false;
                 parsed.push_back(ParsedKey());
                 parsed.back().origin = SIZE_MAX;
                 continue;
             }
-            parsed.push_back(key);
+            // the >180 degrees check runs on the keys in time order, after normalize
             if (key.value.euler){
-                if (previousEuler){
-                    static const char* const axes[] = {"x", "y", "z"};
-                    for (int axis = 0; axis < 3; axis++){
-                        if (std::fabs(key.value.eulerAngles[axis] - previousAngles[axis]) > 180.0f){
-                            warn(&warnings, member(keyPath, "value"), std::string("turns more than 180 degrees on ") + axes[axis] +
-                                 " from the previous key, which a quaternion can't keep: insert a middle key");
-                            break;
-                        }
-                    }
-                }
-                previousEuler = true;
-                for (int axis = 0; axis < 3; axis++) previousAngles[axis] = key.value.eulerAngles[axis];
-            }else{
-                previousEuler = false;
+                eulerKeys[keyPath] = {key.value.eulerAngles[0], key.value.eulerAngles[1], key.value.eulerAngles[2]};
             }
+            parsed.push_back(key);
         }
 
         if (track.channel == ClipChannel::Lattice){
@@ -1129,19 +1143,70 @@ namespace{
         return true;
     }
 
-    void syntaxPosition(const std::string& text, size_t byte, int& line, int& column){
-        size_t index = byte > 0 ? byte - 1 : 0;
+    // A segment between two keys written as Euler that turns more than 180 degrees on an axis
+    // can't be kept by quaternions: warned on the later key, in time order
+    void checkEulerSegments(const ClipData& data, const ClipOrigins& origins, const EulerKeys& eulerKeys,
+                            std::vector<ClipWarning>& warnings){
+        static const char* const axes[] = {"x", "y", "z"};
+        for (size_t t = 0; t < data.tracks.size() && t < origins.tracks.size(); t++){
+            if (data.tracks[t].channel != ClipChannel::Rotation) continue;
+            const std::vector<std::string>& keys = origins.tracks[t].keys;
+            for (size_t k = 1; k < keys.size(); k++){
+                auto previous = eulerKeys.find(keys[k - 1]);
+                auto current = eulerKeys.find(keys[k]);
+                if (previous == eulerKeys.end() || current == eulerKeys.end()) continue;
+                for (int axis = 0; axis < 3; axis++){
+                    if (std::fabs(current->second[axis] - previous->second[axis]) > 180.0f){
+                        warn(&warnings, member(keys[k], "value"), std::string("turns more than 180 degrees on ") + axes[axis] +
+                             " from the previous key, which a quaternion can't keep: insert a middle key");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // line and column (1-based, in code points; a UTF-8 BOM is not a column) of the byte at
+    // `index` (0-based)
+    void textPosition(const std::string& text, size_t index, int& line, int& column){
         if (index > text.size()) index = text.size();
         line = 1;
-        size_t lineStart = 0;
-        for (size_t i = 0; i < index; i++){
+        size_t lineStart = text.compare(0, 3, "\xEF\xBB\xBF") == 0 ? std::min<size_t>(3, index) : 0;
+        for (size_t i = lineStart; i < index; i++){
             if (text[i] == '\n'){
                 line++;
                 lineStart = i + 1;
             }
         }
-        column = (int)(index - lineStart) + 1;
+        column = 1;
+        for (size_t i = lineStart; i < index; i++){
+            // UTF-8 continuation bytes belong to the previous code point
+            if (((unsigned char)text[i] & 0xC0) != 0x80) column++;
+        }
     }
+
+    // nlohmann's DOM builder, recording where and why the parse stopped: syntax errors and
+    // numbers outside the double range (out_of_range.406) alike, without exceptions
+    class ClipSaxParser : public nlohmann::detail::json_sax_dom_parser<OJson>{
+    public:
+        explicit ClipSaxParser(OJson& root): json_sax_dom_parser<OJson>(root, false){}
+
+        template<class Exception>
+        bool parse_error(std::size_t position, const std::string& lastToken, const Exception& ex){
+            failed = true;
+            errorPosition = position;
+            errorToken = lastToken;
+            message = ex.what();
+            overflow = std::is_same<Exception, nlohmann::detail::out_of_range>::value;
+            return json_sax_dom_parser<OJson>::parse_error(position, lastToken, ex);
+        }
+
+        bool failed = false;
+        bool overflow = false;
+        std::size_t errorPosition = 0;   // characters read when the parse stopped (1-based last one)
+        std::string errorToken;
+        std::string message;
+    };
 
     // ---- writing ----
 
@@ -1260,7 +1325,26 @@ namespace{
 
 }
 
+static anim::ClipParseResult parseClipText(const std::string& text);
+
 anim::ClipParseResult anim::parseClip(const std::string& text){
+    // the parser reports every problem as a result; anything thrown below is a bug, never a
+    // reason to take the caller (a loader thread, play mode, a game) down
+    try{
+        return parseClipText(text);
+    }catch (const std::exception& e){
+        ClipParseResult result;
+        result.error.message = std::string("cannot read the clip: ") + e.what();
+        return result;
+    }catch (...){
+        ClipParseResult result;
+        result.error.message = "cannot read the clip";
+        return result;
+    }
+}
+
+static anim::ClipParseResult parseClipText(const std::string& text){
+    using namespace anim;
     ClipParseResult result;
     if (isUnityYamlClip(text)){
         result.error.message = unityYamlRefusal();
@@ -1268,13 +1352,21 @@ anim::ClipParseResult anim::parseClip(const std::string& text){
     }
 
     OJson root;
-    try{
-        root = OJson::parse(text);
-    }catch (const OJson::parse_error& e){
-        syntaxPosition(text, e.byte, result.error.line, result.error.column);
-        std::string message = e.what();
-        size_t at = message.find("syntax error");
-        result.error.message = "not valid JSON: " + (at != std::string::npos ? message.substr(at) : message);
+    ClipSaxParser sax(root);
+    OJson::sax_parse(text, &sax);
+    if (sax.failed){
+        std::string message = sax.message;
+        if (sax.overflow){
+            // at the start of the number token (the parse stopped after it)
+            size_t end = std::min(sax.errorPosition, text.size());
+            size_t start = sax.errorToken.empty() ? std::string::npos : text.rfind(sax.errorToken, end);
+            textPosition(text, start != std::string::npos ? start : (end > 0 ? end - 1 : 0), result.error.line, result.error.column);
+            result.error.message = "not valid JSON: the number " + sax.errorToken + " is out of range";
+        }else{
+            textPosition(text, sax.errorPosition > 0 ? sax.errorPosition - 1 : 0, result.error.line, result.error.column);
+            size_t at = message.find("syntax error");
+            result.error.message = "not valid JSON: " + (at != std::string::npos ? message.substr(at) : message);
+        }
         return result;
     }
     if (!root.is_object()){
@@ -1305,6 +1397,7 @@ anim::ClipParseResult anim::parseClip(const std::string& text){
     std::vector<ClipWarning>& warnings = result.warnings;
     ClipData data;
     ClipOrigins origins;
+    EulerKeys eulerKeys;
     std::string unknownNames;
     for (auto it = root.begin(); it != root.end(); ++it){
         const std::string& name = it.key();
@@ -1344,7 +1437,7 @@ anim::ClipParseResult anim::parseClip(const std::string& text){
             for (size_t i = 0; i < value.size(); i++){
                 ClipTrackData track;
                 TrackOrigin origin;
-                if (readTrack(value[i], i, track, origin, warnings)){
+                if (readTrack(value[i], i, track, origin, eulerKeys, warnings)){
                     data.tracks.push_back(std::move(track));
                     origins.tracks.push_back(std::move(origin));
                 }
@@ -1403,6 +1496,7 @@ anim::ClipParseResult anim::parseClip(const std::string& text){
     }
 
     normalizeClip(data, &warnings, &origins);
+    checkEulerSegments(data, origins, eulerKeys, warnings);
     result.data = std::move(data);
     return result;
 }
@@ -1415,14 +1509,26 @@ std::string anim::writeClip(const ClipData& input){
     ClipData data = input;
     normalizeClip(data, nullptr, nullptr);
 
-    // values as the file stores them, so that reading the text back decides hemispheres on the
-    // same numbers (the canonical text is a fixed point)
+    // values as the file stores them, so that reading the text back takes the same normalize
+    // and hemisphere decisions on the same numbers (the canonical text is a fixed point)
+    auto quantize = [](ClipKey& key){
+        for (float& v : key.value) v = quantizeValue(v);
+        for (float& v : key.inTangent) v = quantizeValue(v);
+        for (float& v : key.outTangent) v = quantizeValue(v);
+    };
     for (ClipTrackData& track : data.tracks){
         if (track.channel == ClipChannel::Property) continue;
         for (ClipKey& key : track.keys){
-            for (float& v : key.value) v = quantizeValue(v);
-            for (float& v : key.inTangent) v = quantizeValue(v);
-            for (float& v : key.outTangent) v = quantizeValue(v);
+            quantize(key);
+            // a quaternion just inside the 1e-5 band can leave it once rounded: normalized
+            // and rounded again it lands within ~1e-6, where the reader keeps it
+            if (track.channel == ClipChannel::Rotation){
+                float length = quaternionLength(key.value);
+                if (std::fabs(length - 1.0f) > 1e-5f && length > 0.0f){
+                    scaleRotationKey(key, 1.0f / length);
+                    quantize(key);
+                }
+            }
         }
         if (track.channel == ClipChannel::Rotation) enforceHemisphere(track);
     }
