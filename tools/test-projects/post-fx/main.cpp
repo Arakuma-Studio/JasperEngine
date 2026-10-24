@@ -3,7 +3,7 @@
 
 // S13's test project: the post FX of a game on a phone's GPU path (GLES3 / WebGL2). A lit box on
 // a floor drawn through the uber pass with the VHS tape, the Lens film grain, film damage and
-// halation (its own two passes, bloom being off), with dynamic resolution on. After two seconds
+// halation (its own two passes, bloom being off), with dynamic resolution on. After eight frames
 // it logs what the renderer applies; tools/android-emulator-test.sh checks the lines
 // (ANDROID_PROJECT=post-fx tools/build.sh android, then android-expect.txt).
 
@@ -46,8 +46,10 @@ JASPERENGINE_INIT void init(){
     post.dynamicResolutionEnabled = true;
     scene.setPostProcessing(post);
 
+    // logged at the 8th frame: before the web gate's "ready" (frame 15), after the controller's
+    // first measurements
     Engine::onUpdate.add("postFxTest", [](){
-        if (++frames != 120)
+        if (++frames != 8)
             return;
         RenderSystem* render = scene.getSystem<RenderSystem>().get();
         const PostProcessingTiers& tiers = render->getActivePostProcessingTiers();
