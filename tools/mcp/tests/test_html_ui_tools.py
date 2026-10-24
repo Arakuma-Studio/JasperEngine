@@ -48,11 +48,12 @@ SEND_INPUT_BEFORE = 1780
 IMPORT_FILES_BEFORE = 452
 # phase 5 (p5-tooling, spec 3.13): the effects tools within their caps, inspect_ui's `effects`
 # within +150 of its size before (1806), the total raised by what they measure (+837:
-# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9)
+# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9); fluid-fx: set_ui_effect_time's scripted
+# pointer_path and splats (cap 750), paid for inside the total
 INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
-          "list_ui_effects": 900, "set_ui_effect_time": 500}
+          "list_ui_effects": 900, "set_ui_effect_time": 750}
 TOTAL_LIMIT = 99800 + 837
 
 CYAN = (0x00, 0xC8, 0xFF)

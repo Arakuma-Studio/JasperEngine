@@ -11,13 +11,16 @@ and the agents' determinism tools for stateful UI effects, through MCP.
 - set_ui_effect_time splats: scripted splats paint (and replace the earlier ones); inspect_ui
   reports the simulation (images, replays, splats, path samples).
 - The mistakes: pointer_path without a pinned time or a selector, an element without a stateful effect.
+- A CLI export with the effect's variants ships Pavel Dobryakov's notice, one with another effect does not.
 
 Runs in a new empty project (EDITOR create).
 """
 
 import asyncio
 import math
+import shutil
 import time
+from pathlib import Path
 
 from harness import Editor
 from htmlui_pixels import Shot
@@ -214,3 +217,26 @@ async def test_mistakes(ed: Editor):
     r = await ed.call_raw("set_ui_effect_time", {"time": 1.0, "entity": S["entity"], "selector": ".nothing", "splats": []})
     ed.check(r.is_error, f"a selector matching nothing: {r.text}")
     await ed.call("set_ui_effect_time", time=None)
+
+
+async def test_export_ships_the_notice(ed: Editor):
+    """A CLI export with the effect's variants ships Pavel Dobryakov's notice (and the shaders.com
+    one: every UI effect uses the include library); one with another UI effect only, just the latter."""
+    from test_fluid_agent import cli_export, copy_project  # the native fluid's export helpers
+
+    notice = Path("licenses") / "webgl-fluid-simulation-LICENSE.txt"
+    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("save_project")
+    project = copy_project(ed.project)
+    try:
+        with_fluid = project.parent / "export-fluid-effect"
+        cli_export(ed, project, with_fluid, "--shader", "uieffect/fluid")
+        ed.check((with_fluid / notice).is_file(), f"the fluid effect ships the notice: {sorted(p.name for p in with_fluid.iterdir())}")
+        ed.check("Copyright (c) 2017 Pavel Dobryakov" in (with_fluid / notice).read_text(), "Pavel Dobryakov's MIT notice")
+        ed.check((with_fluid / "licenses" / "shaders.com-LICENSE.txt").is_file(), "and the UI effects' notice")
+        other = project.parent / "export-stripes"
+        cli_export(ed, project, other, "--shader", "uieffect/stripes")
+        ed.check(not (other / notice).exists(), "another UI effect alone: no fluid notice")
+        ed.check((other / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the UI effects' notice")
+    finally:
+        shutil.rmtree(project.parent, ignore_errors=True)

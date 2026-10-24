@@ -314,15 +314,15 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.name = "set_ui_effect_time";
         tool.title = "Set UI Effect Time";
         tool.description =
-            "Pin the HTML/CSS UI effect clock (edit and play views) so screenshots are identical, or null: live. "
-            "Stateful effects of selector's element replay pointer_path (a drag) and splats exactly at every pinned time.";
+            "Pin the HTML/CSS UI effect clock (edit/play views) for identical screenshots; null: live. pointer_path (a drag) "
+            "and splats replay exactly on selector's stateful effects.";
         tool.inputSchema = object({
             {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds, or null: live."}}},
-            {"entity", entityRef("UI Document (default: topmost match).")},
+            {"entity", entityRef("Document.")},
             {"selector", string("")},
-            {"effect", string("Default: all its stateful effects.")},
-            {"pointer_path", array(vec3(""), "[[x,y,t]..]: element px, s. []: clear.")},
-            {"splats", array(Json{{"type", "object"}}, "{x,y,dx,dy,radius,color,strength,t}: area px, px/s; replace earlier ones.")}
+            {"effect", string("Default: all.")},
+            {"pointer_path", array(Json{{"type", "array"}}, "[[x,y,t]]: element px, s. [] clears.")},
+            {"splats", array(Json{{"type", "object"}}, "[{x,y,dx,dy,radius,color,strength,t}]: area px, px/s; replaces.")}
         }, {"time"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = true;
