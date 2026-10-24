@@ -139,6 +139,17 @@ ColorFormat editor::Stream::stringToColorFormat(const std::string& value, int ch
     return channels == 1 ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
+namespace {
+    // A texture whose file is missing (its load failed) is empty() but keeps its path: a save,
+    // a copy or an undo snapshot must keep the reference (S04 R15)
+    bool hasTexturePath(const Texture& texture) {
+        for (size_t face = 0; face < 6; face++) {
+            if (!texture.getPath(face).empty()) return true;
+        }
+        return false;
+    }
+}
+
 bool editor::Stream::getEmbeddedTextureData(const Texture& texture, TextureData*& data){
     if (texture.empty() || texture.isFramebuffer()){
         return false;
@@ -677,7 +688,7 @@ YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std:
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
         // an empty one binds the manifest default, like no entry
-        if (texture.empty() && !CameraTextureLink::isCameraTexture(texture)) continue;
+        if (texture.empty() && !hasTexturePath(texture) && !CameraTextureLink::isCameraTexture(texture)) continue;
         node[uniform] = encodeTexture(texture, embedData);
     }
     return node;
@@ -1087,7 +1098,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         return node;
     }
 
-    if (texture.empty() || texture.isFramebuffer())
+    if ((texture.empty() && !hasTexturePath(texture)) || texture.isFramebuffer())
         return node;
 
     const bool isCube = texture.isCubeMap() || (texture.getNumFaces() == 6);
@@ -3552,7 +3563,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode textures using the helper method. A camera link is one even unbound (a prefab
     // registry, its camera a stripped object or not resolved yet)
     auto present = [](const Texture& texture) {
-        return !texture.empty() || CameraTextureLink::isCameraTexture(texture);
+        return !texture.empty() || hasTexturePath(texture) || CameraTextureLink::isCameraTexture(texture);
     };
     if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);

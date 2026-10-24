@@ -309,6 +309,9 @@ async def test_unsaved_path_follows_the_file(ed: Editor):
     await ed.call("delete_asset", paths=["assets/rock-moved.png"])
     group = missing_group(await ed.call("list_missing_assets"), guid=rock)
     ed.check(group is not None and any(r["entity"]["path"] == "Ship" for r in group["referrers"]), f"{group}")
+    # saved while missing, the reference stays (R15: a missing texture is not an empty one)
+    await ed.call("save_scene", scene="Main.scene")
+    ed.check(rock in (ed.project / "Main.scene").read_text(), "the saved scene dropped the missing texture")
     for _ in range(4):
         await ed.call("undo", scope="project")   # the delete, the move
         if (ed.project / "assets/textures/rock.png").exists():
