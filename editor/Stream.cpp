@@ -3387,6 +3387,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["ssrBlur"] = scene->getSSRBlur();
     sceneNode["gravity2D"] = encodeVector2(scene->getGravity2D());
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -3580,6 +3582,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     // absent key restores the engine default so decoding into a reused scene (play restore) is exact
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
+    scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
 
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));

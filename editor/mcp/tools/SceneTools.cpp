@@ -611,6 +611,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
+        {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},

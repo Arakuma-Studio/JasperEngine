@@ -311,7 +311,7 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
-| `interpolationAlpha` | ro | fixed-step interpolation factor |
+| `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
 | `framerate` | ro | fps |
 | `systemTime` | ro | |
 | `canvasWidth`, `canvasHeight` | ro | current canvas; can be 0 in `init()` of exported builds |
@@ -490,11 +490,12 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
+| `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `pointsToMeterScale2D` (rw), event objects (section 1.3),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 

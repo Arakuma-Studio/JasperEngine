@@ -3111,6 +3111,8 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";
     out << ind2 << "scene->setGravity2D(" << formatVector2(scene->getGravity2D()) << ");\n";
     out << ind2 << "scene->setGravity3D(" << formatVector3(scene->getGravity3D()) << ");\n";
+    if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
+        out << ind2 << "scene->setPhysicsInterpolation(" << formatBool(scene->isPhysicsInterpolation()) << ");\n";
     out << ind2 << "scene->setLightState(" << formatLightState(scene->getLightState()) << ");\n";
     out << ind2 << "scene->setSSAOEnabled(" << formatBool(scene->isSSAOEnabled()) << ");\n";
     out << ind2 << "scene->setSSAORadius(" << formatFloat(scene->getSSAORadius()) << ");\n";

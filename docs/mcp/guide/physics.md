@@ -69,7 +69,22 @@ default arguments): a missing `wake` reads as false.
   (`object.position = ...`, `setPosition`): the body is synced from the transform before the
   step and written back after it, so the write is silently discarded. Teleport through the body.
   GameObjects without a body have no such restriction.
+- A transform moved outside the fixed step (`onUpdate`, an animation, a Tween, the editor)
+  moves its body at the next step: a dynamic or static body jumps there, a **kinematic** body
+  is moved there with a velocity spread over the fixed steps of the frame, so it pushes and
+  carries the bodies it touches (a platform carries what stands on it).
 - Never describe transform-only movement as physics.
+
+## Interpolation
+
+Bodies are drawn interpolated between their last two fixed steps (scene setting
+`physics_interpolation`, Inspector > Scene > Physics > Interpolate, Lua
+`scene.physicsInterpolation`; on by default), so they move smoothly whatever the frame rate,
+drawn up to one step behind the simulation. A camera or anything else that follows a body
+reads the GameObject's world position (`object:getWorldPosition()`, C++ `getWorldPosition()`), not
+`body.position`, which moves once per step. Teleports through the body (`body.position`,
+`setPosition`) are not interpolated, and a body whose transform a script or animation moved
+keeps that pose until the next step.
 
 ## Layers, contacts and queries
 

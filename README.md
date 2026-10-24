@@ -27,7 +27,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
-- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints
+- Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
