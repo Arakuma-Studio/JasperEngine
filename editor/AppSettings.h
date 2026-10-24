@@ -63,7 +63,7 @@ struct LatticeViewSettings {
     std::array<float, 4> squashColor = {0.25f, 0.45f, 1.0f, 1.0f};    // at half the rest length
     std::array<float, 4> stretchColor = {1.0f, 0.25f, 0.2f, 1.0f};    // at twice the rest length
     int falloffCurve = 0;                                             // LatticeFalloffCurve: smooth, linear, sharp, constant
-    float falloffRadius = 0.5f;                                       // lattice local units
+    float falloffRadius = 1.0f;                                       // lattice local units (the cage is 1 across)
 
     bool operator==(const LatticeViewSettings& other) const {
         return lineColor == other.lineColor && lineThickness == other.lineThickness
