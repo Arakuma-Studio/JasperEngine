@@ -1330,7 +1330,12 @@ std::shared_ptr<MeshSystem::ModelReload> MeshSystem::parseModelForReload(const s
     reload->filename = filename;
     reload->poolKey = getModelFilenameKey(filename);
     reload->obj = FileData::getFilePathExtension(filename) == "obj";
-    reload->result = loadModelFileOnWorker(filename, reload->obj, 0);
+    // the whole file (the I/O service's read, with its retry window for a file being replaced)
+    std::vector<uint8_t> bytes;
+    std::string readError;
+    if (!AssetIOService::readFile(filename, 0, 0, bytes, readError))
+        throw std::runtime_error(readError);
+    reload->result = loadModelFileOnWorker(filename, reload->obj, 0, bytes);
     if (!reload->result || !reload->result->success){
         const std::string error = reload->result && !reload->result->err.empty() ? reload->result->err : std::string("the model could not be parsed");
         throw std::runtime_error(error);
