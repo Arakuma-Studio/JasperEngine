@@ -102,6 +102,11 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
 - `ImageCompare`: `EXPECT_GOLDEN("name")` compares the target with `golden/name.png`; on a
   mismatch `<build>/test-output/` gets `name.actual.png` and `name.diff.png`.
 - googletest 1.17 and googlemock (`libs/googletest/`, tests only).
+- `engine/tests/core/support/AllocationCounter.h` (core tests): `ScopedAllocationCount` counts the
+  heap allocations of the calling thread (the binary replaces `operator new`), for zero-allocation
+  tests; `perfSlack()` scales performance budgets by `JASPER_TEST_PERF_SLACK` (0 under a
+  sanitizer: budgets are only printed). `*Bench` suites (`LoggerBench`, `SchedulerBench`,
+  `SignalBench`) check the S09 budgets that way and print `[bench]` lines.
 
 ### Golden images
 

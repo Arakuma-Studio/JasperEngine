@@ -12,7 +12,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_scheduler {}
+using namespace je_scheduler;
+
+namespace je_scheduler {
 
     // the slot state word: generation << 2 | running | cancelled
     constexpr uint64_t kCancelled = 1;
@@ -37,7 +40,7 @@ namespace {
         std::vector<Scheduler*> schedulers;
     };
 
-    Registry& registry() {
+    Registry& schedulerRegistry() {
         static Registry* instance = new Registry();
         return *instance;
     }
@@ -135,14 +138,14 @@ size_t TimerGroup::size() const {
 
 Scheduler::Scheduler(const char* name): schedulerName(name), ownerThread(std::this_thread::get_id()) {
     for (auto& chunk : chunks) chunk.store(nullptr, std::memory_order_relaxed);
-    Registry& r = registry();
+    Registry& r = schedulerRegistry();
     std::lock_guard<std::mutex> lock(r.mutex);
     r.schedulers.push_back(this);
 }
 
 Scheduler::~Scheduler() {
     {
-        Registry& r = registry();
+        Registry& r = schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         r.schedulers.erase(std::remove(r.schedulers.begin(), r.schedulers.end(), this), r.schedulers.end());
     }
@@ -159,7 +162,7 @@ Scheduler& Scheduler::game() {
 size_t Scheduler::cancelOwnerEverywhere(uint64_t ownerKey) {
     std::vector<Scheduler*> schedulers;
     {
-        Registry& r = registry();
+        Registry& r = schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         schedulers = r.schedulers;
     }
@@ -409,7 +412,8 @@ size_t Scheduler::process(TimeDomain domain) {
     std::vector<HeapEntry>& heap = heaps[static_cast<size_t>(domain)];
     if (heap.empty()) return 0;
     const auto compare = [](const HeapEntry& a, const HeapEntry& b) { return greaterEntry(a, b); };
-    const double nowTime = time[static_cast<size_t>(domain)];
+    // a little slack: 30 frames of 1/60 s add up to 0.5 give or take the last bit
+    const double nowTime = time[static_cast<size_t>(domain)] + 1e-9 * std::max(1.0, std::abs(time[static_cast<size_t>(domain)]));
     // only what was scheduled before this call, and due now
     const uint64_t seqLimit = nextSeq;
     size_t count = 0;

@@ -32,7 +32,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_backtrace {}
+using namespace je_backtrace;
+
+namespace je_backtrace {
 
 #if defined(__ANDROID__)
     struct UnwindState {

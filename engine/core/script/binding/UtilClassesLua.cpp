@@ -12,6 +12,7 @@
 #include "util/Color.h"
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
+#include "util/SubscriptionOwnerIndex.h"
 
 #include <cstring>
 #include <memory>
@@ -29,7 +30,10 @@ using namespace jasperengine;
 // (the editor pauses Play) or the log, and cancels the timer or coroutine. Without an owner a
 // timer lives until Play stops; { owner = self } ends it with the script.
 
-namespace {
+namespace je_lua_timer {}
+using namespace je_lua_timer;
+
+namespace je_lua_timer {
 
     const char* const TIMER_HANDLE_META = "JasperEngine.TimerHandle";
     const char* const TIMER_COROUTINE_META = "JasperEngine.TimerCoroutine";

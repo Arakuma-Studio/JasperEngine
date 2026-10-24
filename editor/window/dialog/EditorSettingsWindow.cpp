@@ -601,15 +601,15 @@ void EditorSettingsWindow::drawVideoImportSettings() {
 }
 
 namespace {
-    const char* const logLevelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Fatal", "Off"};
+    const char* const prefsLogLevelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Fatal", "Off"};
 
     // A level combo over the level names of LoggingSettings; true when changed
-    bool levelCombo(const char* id, std::string& levelName) {
+    bool prefsLogLevelCombo(const char* id, std::string& levelName) {
         LogLevel level = LogLevel::Info;
         parseLogLevel(levelName.c_str(), level);
         int index = static_cast<int>(level);
         ImGui::SetNextItemWidth(Theme::dpi(140.0f));
-        if (ImGui::Combo(id, &index, logLevelLabels, IM_ARRAYSIZE(logLevelLabels))) {
+        if (ImGui::Combo(id, &index, prefsLogLevelLabels, IM_ARRAYSIZE(prefsLogLevelLabels))) {
             levelName = logLevelName(static_cast<LogLevel>(index));
             return true;
         }
@@ -618,22 +618,22 @@ namespace {
 }
 
 void EditorSettingsWindow::drawLoggingSettings() {
-    drawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
+    prefsDrawSettingsPanel("##EditorLoggingSettingsPanel", [this]() {
         const LoggingSettings defaults;
-        if (beginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
+        if (prefsBeginSettingsRow("Log File Level", "The lowest level written to editor.log (next to settings.yaml).",
                              m_logging.fileLevel != defaults.fileLevel)) {
             m_logging.fileLevel = defaults.fileLevel;
         }
-        levelCombo("##LogFileLevel", m_logging.fileLevel);
+        prefsLogLevelCombo("##LogFileLevel", m_logging.fileLevel);
 
-        if (beginSettingsRow("Capture Backtrace on Errors",
+        if (prefsBeginSettingsRow("Capture Backtrace on Errors",
                              "Errors logged by the engine and editor record their call stack; editor.log shows it.",
                              m_logging.backtraceOnError != defaults.backtraceOnError)) {
             m_logging.backtraceOnError = defaults.backtraceOnError;
         }
         ImGui::Checkbox("##LogBacktraces", &m_logging.backtraceOnError);
 
-        if (beginSettingsRow("Show Source Location",
+        if (prefsBeginSettingsRow("Show Source Location",
                              "The file and line a message was logged from, in the Console's details and editor.log.",
                              m_logging.showSource != defaults.showSource)) {
             m_logging.showSource = defaults.showSource;
@@ -641,7 +641,7 @@ void EditorSettingsWindow::drawLoggingSettings() {
         ImGui::Checkbox("##LogShowSource", &m_logging.showSource);
 
         sectionRow("Category Levels");
-        beginSettingsRow("Reset", "Every category back to Info.");
+        prefsBeginSettingsRow("Reset", "Every category back to Info.");
         ImGui::BeginDisabled(m_logging.categoryLevels.empty());
         if (ImGui::Button("Reset All##LogLevels")) {
             m_logging.categoryLevels.clear();
@@ -651,11 +651,11 @@ void EditorSettingsWindow::drawLoggingSettings() {
             const std::string name = Logger::categoryAt(i).name;
             auto it = m_logging.categoryLevels.find(name);
             std::string level = it != m_logging.categoryLevels.end() ? it->second : std::string("info");
-            if (beginSettingsRow(name.c_str(), "Messages of this category below the level are not logged anywhere.",
+            if (prefsBeginSettingsRow(name.c_str(), "Messages of this category below the level are not logged anywhere.",
                                  level != "info")) {
                 level = "info";
             }
-            levelCombo(("##LogCategory" + name).c_str(), level);
+            prefsLogLevelCombo(("##LogCategory" + name).c_str(), level);
             if (level == "info") {
                 m_logging.categoryLevels.erase(name);
             } else {

@@ -33,7 +33,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_logger {}
+using namespace je_logger;
+
+namespace je_logger {
 
     constexpr size_t kMaxSinks = 16;
     constexpr size_t kMaxCategories = LogCategory::MAX_CATEGORIES;
@@ -114,7 +117,7 @@ namespace {
     };
     static_assert(sizeof(EntryHeader) % 8 == 0, "queue entries stay 8-byte aligned");
 
-    size_t alignUp(size_t value) {
+    size_t logAlignUp(size_t value) {
         return (value + 7) & ~static_cast<size_t>(7);
     }
 
@@ -152,12 +155,12 @@ namespace {
         void* frames[LogRecord::MAX_FRAMES];
     };
 
-    ThreadState& threadState() {
+    ThreadState& logThreadState() {
         thread_local ThreadState state;
         return state;
     }
 
-    uint64_t osThreadId() {
+    uint64_t logOsThreadId() {
 #if defined(_WIN32)
         return static_cast<uint64_t>(GetCurrentThreadId());
 #elif defined(__APPLE__)
@@ -173,7 +176,7 @@ namespace {
 #endif
     }
 
-    void osThreadName(char* out, size_t size) {
+    void logOsThreadName(char* out, size_t size) {
         out[0] = '\0';
 #if defined(__linux__) || defined(__ANDROID__)
         char name[17] = {0};
@@ -187,7 +190,7 @@ namespace {
 #endif
     }
 
-    void setOsThreadName(const char* name) {
+    void logSetOsThreadName(const char* name) {
 #if defined(__APPLE__)
         pthread_setname_np(name);
 #elif defined(__linux__) || defined(__ANDROID__)
@@ -208,21 +211,21 @@ namespace {
 #endif
     }
 
-    ThreadState& currentThread() {
-        ThreadState& state = threadState();
+    ThreadState& logCurrentThread() {
+        ThreadState& state = logThreadState();
         if (state.id == 0) {
-            state.id = osThreadId();
+            state.id = logOsThreadId();
             if (state.id == 0) state.id = 1;
         }
         if (!state.named) {
             state.named = true;
-            osThreadName(state.name, sizeof(state.name));
+            logOsThreadName(state.name, sizeof(state.name));
         }
         return state;
     }
 
     // Monotonic milliseconds; async-signal-safe (clock_gettime / GetTickCount64)
-    int64_t monotonicMs() {
+    int64_t logMonotonicMs() {
 #if defined(_WIN32)
         return static_cast<int64_t>(GetTickCount64());
 #else
@@ -232,7 +235,7 @@ namespace {
 #endif
     }
 
-    void sleepMs(int ms) {
+    void logSleepMs(int ms) {
 #if defined(_WIN32)
         Sleep(static_cast<DWORD>(ms));
 #else
@@ -241,11 +244,11 @@ namespace {
 #endif
     }
 
-    double wallSeconds() {
+    double logWallSeconds() {
         return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
 
-    uint64_t hashText(std::string_view text) {
+    uint64_t logHashText(std::string_view text) {
         // FNV-1a over at most the first 64 bytes
         uint64_t hash = 1469598103934665603ull;
         const size_t length = std::min<size_t>(text.size(), 64);
@@ -309,7 +312,7 @@ namespace {
         std::atomic<uint64_t> suppressed{0};
     };
 
-    LoggerState& state() {
+    LoggerState& logState() {
         // Never destroyed: logging must keep working from static destructors and exit paths
         static LoggerState* instance = new LoggerState();
         return *instance;
@@ -353,8 +356,8 @@ namespace {
         }
     }
 
-    void recomputeGates() {
-        LoggerState& s = state();
+    void logRecomputeGates() {
+        LoggerState& s = logState();
         std::lock_guard<std::mutex> lock(s.queueMutex);
         recomputeGatesLocked(s);
     }
@@ -367,7 +370,7 @@ namespace {
     };
 
     void dispatchToSink(SinkEntry& entry, const LogRecord& record) {
-        ThreadState& thread = threadState();
+        ThreadState& thread = logThreadState();
         const uint32_t previous = thread.currentSink;
         thread.currentSink = entry.id;
         entry.sink->write(record);
@@ -417,7 +420,7 @@ namespace {
     }
 
     size_t entrySize(const LogRecord& record) {
-        return alignUp(sizeof(EntryHeader) + record.frameCount * sizeof(void*) + record.file.size() +
+        return logAlignUp(sizeof(EntryHeader) + record.frameCount * sizeof(void*) + record.file.size() +
                        record.function.size() + record.threadName.size() + record.text.size());
     }
 
@@ -458,7 +461,7 @@ namespace {
     void readEntry(const uint8_t* at, LogRecord& record, uint32_t& excludedSink) {
         EntryHeader header;
         std::memcpy(&header, at, sizeof(header));
-        LoggerState& s = state();
+        LoggerState& s = logState();
         record.id = header.id;
         record.level = static_cast<LogLevel>(header.level);
         record.category = &s.categories[header.category].category;
@@ -499,10 +502,10 @@ namespace {
         notice.category = &logCategoryEngine();
         notice.flags = LogFlagInternal | LogFlagNoBacktrace;
         notice.text = std::string_view(text, static_cast<size_t>(std::max(0, length)));
-        ThreadState& thread = currentThread();
+        ThreadState& thread = logCurrentThread();
         notice.threadId = thread.id;
         notice.threadName = std::string_view(thread.name, std::strlen(thread.name));
-        notice.wallTime = wallSeconds();
+        notice.wallTime = logWallSeconds();
         notice.frame = s.frame.load(std::memory_order_relaxed);
         // only once there is room again, so the notice itself is not lost
         if (reserveLocked(s, entrySize(notice)) == SIZE_MAX) return;
@@ -511,7 +514,7 @@ namespace {
     }
 
     void deliverLocked(LoggerState& s, std::unique_lock<std::mutex>* lock, LogRecord& record, bool mayWait) {
-        ThreadState& thread = threadState();
+        ThreadState& thread = logThreadState();
         const uint32_t excluded = thread.currentSink;
         const bool async = s.async.load(std::memory_order_relaxed);
 
@@ -664,11 +667,11 @@ namespace {
     // ---- the drain thread
 
     void drainLoop() {
-        LoggerState& s = state();
-        ThreadState& thread = currentThread();
+        LoggerState& s = logState();
+        ThreadState& thread = logCurrentThread();
         thread.isDrainThread = true;
         std::snprintf(thread.name, sizeof(thread.name), "je-log");
-        setOsThreadName("je-log");
+        logSetOsThreadName("je-log");
 
         std::array<SinkPtr, kMaxSinks> sinks;
         size_t sinkCount = 0;
@@ -682,7 +685,7 @@ namespace {
                 s.drainSleeping = false;
                 if (s.used == 0) {
                     lock.unlock();
-                    const int64_t now = monotonicMs();
+                    const int64_t now = logMonotonicMs();
                     if (now >= s.nextValveSweepMs.load(std::memory_order_relaxed)) sweepValve(s, now);
                     lock.lock();
                 }
@@ -758,7 +761,7 @@ namespace {
 #endif
 
     JE_LOGGER_NOINLINE bool captureBacktrace(LoggerState& s, LogRecord& record, ThreadState& thread) {
-        const int64_t now = monotonicMs();
+        const int64_t now = logMonotonicMs();
         {
             std::lock_guard<std::mutex> lock(s.backtraceMutex);
             if (now - s.backtraceWindowMs >= 1000) {
@@ -795,7 +798,7 @@ namespace {
         }
         if (!s.async.load(std::memory_order_relaxed)) return;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
-        const uint32_t current = threadState().currentSink;
+        const uint32_t current = logThreadState().currentSink;
         for (size_t i = 0; i < sinkCount; i++) {
             SinkEntry& entry = *sinks[i];
             // the sink this thread is inside of (a Fatal from a sink) holds its own lock
@@ -807,17 +810,17 @@ namespace {
         }
     }
 
-    void submit(LogLevel level, const LogCategory& category, const LogSource* source, std::string_view text,
+    void logSubmit(LogLevel level, const LogCategory& category, const LogSource* source, std::string_view text,
                 uint32_t flags, uint64_t valveKey) {
-        LoggerState& s = state();
-        ThreadState& thread = currentThread();
+        LoggerState& s = logState();
+        ThreadState& thread = logCurrentThread();
 
         if (!s.initialized.load(std::memory_order_acquire)) {
             writeFallback(level, &category, text);
             return;
         }
 
-        const int64_t nowMs = monotonicMs();
+        const int64_t nowMs = logMonotonicMs();
         ValveSummary summaries[2];
         size_t summaryCount = 0;
         bool pass = true;
@@ -836,7 +839,7 @@ namespace {
         record.level = level;
         record.category = &category;
         record.flags = flags;
-        record.wallTime = wallSeconds();
+        record.wallTime = logWallSeconds();
         record.frame = s.frame.load(std::memory_order_relaxed);
         record.threadId = thread.id;
         record.threadName = std::string_view(thread.name, std::strlen(thread.name));
@@ -890,19 +893,19 @@ namespace {
     }
 
     void emitSummaries(const ValveSummary* summaries, size_t count) {
-        LoggerState& s = state();
+        LoggerState& s = logState();
         for (size_t i = 0; i < count; i++) {
             char text[160];
             const int length = std::snprintf(text, sizeof(text), "suppressed %u similar messages: \"%s\"",
                                              summaries[i].suppressed, summaries[i].sample);
             const LogCategory& category = s.categories[summaries[i].category].category;
-            submit(static_cast<LogLevel>(summaries[i].level), category, nullptr,
+            logSubmit(static_cast<LogLevel>(summaries[i].level), category, nullptr,
                    std::string_view(text, static_cast<size_t>(std::max(0, std::min<int>(length, sizeof(text) - 1)))),
                    LogFlagInternal | LogFlagNoBacktrace, 0);
         }
     }
 
-    LogCategory& builtIn(const char* name) {
+    LogCategory& logBuiltIn(const char* name) {
         return Logger::registerCategory(name, LogLevel::Info);
     }
 
@@ -951,23 +954,23 @@ bool jasperengine::parseLogLevel(const char* name, LogLevel& out) {
     return false;
 }
 
-LogCategory& jasperengine::logCategoryEngine() { static LogCategory& c = builtIn("engine"); return c; }
-LogCategory& jasperengine::logCategoryEditor() { static LogCategory& c = builtIn("editor"); return c; }
-LogCategory& jasperengine::logCategoryBuild() { static LogCategory& c = builtIn("build"); return c; }
-LogCategory& jasperengine::logCategoryLua() { static LogCategory& c = builtIn("lua"); return c; }
-LogCategory& jasperengine::logCategoryScript() { static LogCategory& c = builtIn("script"); return c; }
-LogCategory& jasperengine::logCategoryRender() { static LogCategory& c = builtIn("render"); return c; }
-LogCategory& jasperengine::logCategoryShader() { static LogCategory& c = builtIn("shader"); return c; }
-LogCategory& jasperengine::logCategoryPhysics() { static LogCategory& c = builtIn("physics"); return c; }
-LogCategory& jasperengine::logCategoryAudio() { static LogCategory& c = builtIn("audio"); return c; }
-LogCategory& jasperengine::logCategoryAsset() { static LogCategory& c = builtIn("asset"); return c; }
-LogCategory& jasperengine::logCategoryHtmlUI() { static LogCategory& c = builtIn("htmlui"); return c; }
-LogCategory& jasperengine::logCategoryIO() { static LogCategory& c = builtIn("io"); return c; }
-LogCategory& jasperengine::logCategoryMcp() { static LogCategory& c = builtIn("mcp"); return c; }
+LogCategory& jasperengine::logCategoryEngine() { static LogCategory& c = logBuiltIn("engine"); return c; }
+LogCategory& jasperengine::logCategoryEditor() { static LogCategory& c = logBuiltIn("editor"); return c; }
+LogCategory& jasperengine::logCategoryBuild() { static LogCategory& c = logBuiltIn("build"); return c; }
+LogCategory& jasperengine::logCategoryLua() { static LogCategory& c = logBuiltIn("lua"); return c; }
+LogCategory& jasperengine::logCategoryScript() { static LogCategory& c = logBuiltIn("script"); return c; }
+LogCategory& jasperengine::logCategoryRender() { static LogCategory& c = logBuiltIn("render"); return c; }
+LogCategory& jasperengine::logCategoryShader() { static LogCategory& c = logBuiltIn("shader"); return c; }
+LogCategory& jasperengine::logCategoryPhysics() { static LogCategory& c = logBuiltIn("physics"); return c; }
+LogCategory& jasperengine::logCategoryAudio() { static LogCategory& c = logBuiltIn("audio"); return c; }
+LogCategory& jasperengine::logCategoryAsset() { static LogCategory& c = logBuiltIn("asset"); return c; }
+LogCategory& jasperengine::logCategoryHtmlUI() { static LogCategory& c = logBuiltIn("htmlui"); return c; }
+LogCategory& jasperengine::logCategoryIO() { static LogCategory& c = logBuiltIn("io"); return c; }
+LogCategory& jasperengine::logCategoryMcp() { static LogCategory& c = logBuiltIn("mcp"); return c; }
 
-namespace {
+namespace je_logger {
     // the built-ins in their documented order, before any other category
-    void registerBuiltIns() {
+    void logRegisterBuiltIns() {
         static const bool registered = []() {
             logCategoryEngine(); logCategoryEditor(); logCategoryBuild(); logCategoryLua(); logCategoryScript();
             logCategoryRender(); logCategoryShader(); logCategoryPhysics(); logCategoryAudio(); logCategoryAsset();
@@ -979,7 +982,7 @@ namespace {
 }
 
 LogCategory& Logger::registerCategory(std::string_view name, LogLevel defaultLevel) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     LogCategory* found = nullptr;
     bool full = false;
     {
@@ -1011,17 +1014,17 @@ LogCategory& Logger::registerCategory(std::string_view name, LogLevel defaultLev
         return logCategoryEngine();
     }
     // a category first used while this thread delivers a record (holding the queue lock)
-    if (threadState().holdsQueueLock) {
+    if (logThreadState().holdsQueueLock) {
         recomputeGatesLocked(s);
     } else {
-        recomputeGates();
+        logRecomputeGates();
     }
     return *found;
 }
 
 LogCategory* Logger::findCategory(std::string_view name) {
-    registerBuiltIns();
-    LoggerState& s = state();
+    logRegisterBuiltIns();
+    LoggerState& s = logState();
     const size_t count = s.categoryCount.load(std::memory_order_acquire);
     for (size_t i = 0; i < count; i++) {
         if (name == s.categories[i].name) return &s.categories[i].category;
@@ -1030,40 +1033,40 @@ LogCategory* Logger::findCategory(std::string_view name) {
 }
 
 size_t Logger::categoryCount() {
-    registerBuiltIns();
-    return state().categoryCount.load(std::memory_order_acquire);
+    logRegisterBuiltIns();
+    return logState().categoryCount.load(std::memory_order_acquire);
 }
 
 LogCategory& Logger::categoryAt(size_t index) {
-    registerBuiltIns();
-    LoggerState& s = state();
+    logRegisterBuiltIns();
+    LoggerState& s = logState();
     if (index >= s.categoryCount.load(std::memory_order_acquire)) return logCategoryEngine();
     return s.categories[index].category;
 }
 
 void Logger::setCategoryLevel(LogCategory& category, LogLevel level) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     s.categories[category.index].level.store(static_cast<uint8_t>(level), std::memory_order_relaxed);
-    recomputeGates();
+    logRecomputeGates();
 }
 
 LogLevel Logger::categoryLevel(const LogCategory& category) {
-    return static_cast<LogLevel>(state().categories[category.index].level.load(std::memory_order_relaxed));
+    return static_cast<LogLevel>(logState().categories[category.index].level.load(std::memory_order_relaxed));
 }
 
 void Logger::setDefaultLevel(LogLevel level) {
-    registerBuiltIns();
-    LoggerState& s = state();
+    logRegisterBuiltIns();
+    LoggerState& s = logState();
     s.defaultLevel.store(static_cast<uint8_t>(level), std::memory_order_relaxed);
     const size_t count = s.categoryCount.load(std::memory_order_acquire);
     for (size_t i = 0; i < count; i++) {
         s.categories[i].level.store(static_cast<uint8_t>(level), std::memory_order_relaxed);
     }
-    recomputeGates();
+    logRecomputeGates();
 }
 
 LogLevel Logger::defaultLevel() {
-    return static_cast<LogLevel>(state().defaultLevel.load(std::memory_order_relaxed));
+    return static_cast<LogLevel>(logState().defaultLevel.load(std::memory_order_relaxed));
 }
 
 bool Logger::applyLevelSpec(std::string_view spec, std::string* error) {
@@ -1114,8 +1117,8 @@ bool Logger::applyLevelSpec(std::string_view spec, std::string* error) {
 // ------------------------------------------------------------ lifecycle
 
 void Logger::init(const Config& config) {
-    registerBuiltIns();
-    LoggerState& s = state();
+    logRegisterBuiltIns();
+    LoggerState& s = logState();
     {
         std::lock_guard<std::mutex> lock(s.queueMutex);
         if (s.initialized.load(std::memory_order_relaxed)) return;
@@ -1127,7 +1130,7 @@ void Logger::init(const Config& config) {
 #else
         const bool async = config.asyncDrain;
 #endif
-        s.capacity = std::max<size_t>(alignUp(config.queueBytes), 256 * 1024);
+        s.capacity = std::max<size_t>(logAlignUp(config.queueBytes), 256 * 1024);
         s.ring.reset(new uint8_t[s.capacity]);
         s.head = s.tail = s.used = s.highWater = 0;
         s.stopping = false;
@@ -1141,7 +1144,7 @@ void Logger::init(const Config& config) {
     if (static_cast<uint8_t>(config.defaultLevel) != s.defaultLevel.load(std::memory_order_relaxed)) {
         setDefaultLevel(config.defaultLevel);
     } else {
-        recomputeGates();
+        logRecomputeGates();
     }
     // a process that exits without shutdown() still writes what was logged
     static const bool exitHook = []() {
@@ -1152,11 +1155,11 @@ void Logger::init(const Config& config) {
 }
 
 bool Logger::isInitialized() {
-    return state().initialized.load(std::memory_order_acquire);
+    return logState().initialized.load(std::memory_order_acquire);
 }
 
 void Logger::shutdown() {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     if (!s.initialized.load(std::memory_order_acquire)) return;
     // what the rate limit still holds back is reported while the sinks are there
     sweepValve(s, std::numeric_limits<int64_t>::max() / 2);
@@ -1207,7 +1210,7 @@ LogSink::~LogSink() = default;
 
 Logger::SinkId Logger::addSink(std::unique_ptr<LogSink> sink) {
     if (!sink) return 0;
-    LoggerState& s = state();
+    LoggerState& s = logState();
     auto entry = std::make_shared<SinkEntry>();
     entry->inlineDelivery = sink->delivery() == LogSink::Delivery::Inline;
     entry->sink = std::move(sink);
@@ -1221,7 +1224,7 @@ Logger::SinkId Logger::addSink(std::unique_ptr<LogSink> sink) {
 }
 
 void Logger::removeSink(SinkId id) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     SinkPtr removed;
     {
         std::lock_guard<std::mutex> lock(s.queueMutex);
@@ -1243,7 +1246,7 @@ void Logger::removeSink(SinkId id) {
 }
 
 Logger::SinkId Logger::findSink(std::string_view name) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     std::lock_guard<std::mutex> lock(s.queueMutex);
     for (size_t i = 0; i < s.sinkCount; i++) {
         if (name == s.sinks[i]->sink->name()) return s.sinks[i]->id;
@@ -1252,7 +1255,7 @@ Logger::SinkId Logger::findSink(std::string_view name) {
 }
 
 void Logger::setSinkLevel(SinkId id, LogLevel level, const LogCategory* category) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     std::lock_guard<std::mutex> lock(s.queueMutex);
     for (size_t i = 0; i < s.sinkCount; i++) {
         SinkEntry& entry = *s.sinks[i];
@@ -1268,7 +1271,7 @@ void Logger::setSinkLevel(SinkId id, LogLevel level, const LogCategory* category
 }
 
 void Logger::clearSinkCategoryLevel(SinkId id, const LogCategory& category) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     std::lock_guard<std::mutex> lock(s.queueMutex);
     for (size_t i = 0; i < s.sinkCount; i++) {
         SinkEntry& entry = *s.sinks[i];
@@ -1280,7 +1283,7 @@ void Logger::clearSinkCategoryLevel(SinkId id, const LogCategory& category) {
 }
 
 LogLevel Logger::sinkLevel(SinkId id, const LogCategory* category) {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     std::lock_guard<std::mutex> lock(s.queueMutex);
     for (size_t i = 0; i < s.sinkCount; i++) {
         const SinkEntry& entry = *s.sinks[i];
@@ -1292,7 +1295,7 @@ LogLevel Logger::sinkLevel(SinkId id, const LogCategory* category) {
 }
 
 std::vector<Logger::SinkInfo> Logger::sinkInfo() {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     std::vector<SinkInfo> result;
     std::lock_guard<std::mutex> lock(s.queueMutex);
     const size_t categories = s.categoryCount.load(std::memory_order_acquire);
@@ -1323,7 +1326,7 @@ void Logger::writef(LogLevel level, const LogCategory& category, const LogSource
 
 void Logger::vwritef(LogLevel level, const LogCategory& category, const LogSource* source, const char* format, va_list args) {
     if (!format) return;
-    ThreadState& thread = threadState();
+    ThreadState& thread = logThreadState();
     va_list sizing;
     va_copy(sizing, args);
     const int length = std::vsnprintf(thread.formatBuffer, sizeof(thread.formatBuffer), format, sizing);
@@ -1342,27 +1345,27 @@ void Logger::vwritef(LogLevel level, const LogCategory& category, const LogSourc
         text = large;
     }
     // the rate limit's key: the call site's format, or the text of a pass-through format
-    const uint64_t key = isPassThroughFormat(format) ? hashText(text)
+    const uint64_t key = isPassThroughFormat(format) ? logHashText(text)
                                                      : static_cast<uint64_t>(reinterpret_cast<uintptr_t>(format));
-    submit(level, category, source, text, 0, key);
+    logSubmit(level, category, source, text, 0, key);
 }
 
 void Logger::write(LogLevel level, const LogCategory& category, std::string_view text, const LogSource* source,
                    uint32_t flags, const void* rateKey) {
     if (!shouldLog(level, category)) return;
-    submit(level, category, source, text, flags,
-           rateKey ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rateKey)) : hashText(text));
+    logSubmit(level, category, source, text, flags,
+           rateKey ? static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rateKey)) : logHashText(text));
 }
 
 // ------------------------------------------------------------ flushing
 
 void Logger::flush() {
-    LoggerState& s = state();
-    ThreadState& thread = threadState();
+    LoggerState& s = logState();
+    ThreadState& thread = logThreadState();
     if (thread.isDrainThread || thread.holdsQueueLock) return;
     if (!s.initialized.load(std::memory_order_acquire)) return;
     // windows of the rate limit that ended report what they held back
-    sweepValve(s, monotonicMs());
+    sweepValve(s, logMonotonicMs());
     if (!s.async.load(std::memory_order_relaxed)) {
         std::array<SinkPtr, kMaxSinks> sinks;
         size_t sinkCount = 0;
@@ -1384,50 +1387,50 @@ void Logger::flush() {
 }
 
 bool Logger::flushForCrash(std::chrono::milliseconds timeout, uint64_t* unwritten) noexcept {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     if (unwritten) *unwritten = 0;
     if (!s.initialized.load(std::memory_order_acquire)) return false;
     const uint64_t target = s.pushedSeq.load(std::memory_order_acquire);
     if (!s.async.load(std::memory_order_relaxed)) return true;
-    if (threadState().isDrainThread) {
+    if (logThreadState().isDrainThread) {
         if (unwritten) *unwritten = target - std::min(target, s.drainedSeq.load(std::memory_order_acquire));
         return false;
     }
     // no locks, no condition variables: the drain thread wakes on its own within kDrainInterval
-    const int64_t deadline = monotonicMs() + timeout.count();
+    const int64_t deadline = logMonotonicMs() + timeout.count();
     while (true) {
         const uint64_t drained = s.drainedSeq.load(std::memory_order_acquire);
         if (drained >= target) return true;
-        if (monotonicMs() >= deadline) {
+        if (logMonotonicMs() >= deadline) {
             if (unwritten) *unwritten = target - drained;
             return false;
         }
-        sleepMs(1);
+        logSleepMs(1);
     }
 }
 
 // ------------------------------------------------------------ misc
 
 void Logger::setFrame(uint64_t frame) {
-    state().frame.store(frame, std::memory_order_relaxed);
+    logState().frame.store(frame, std::memory_order_relaxed);
 }
 
 void Logger::setThreadName(const char* name) {
-    ThreadState& thread = threadState();
+    ThreadState& thread = logThreadState();
     thread.named = true;
     std::snprintf(thread.name, sizeof(thread.name), "%s", name ? name : "");
 }
 
 void Logger::setBacktraceOnError(bool enabled) {
-    state().backtraceOnError.store(enabled, std::memory_order_relaxed);
+    logState().backtraceOnError.store(enabled, std::memory_order_relaxed);
 }
 
 bool Logger::backtraceOnError() {
-    return state().backtraceOnError.load(std::memory_order_relaxed);
+    return logState().backtraceOnError.load(std::memory_order_relaxed);
 }
 
 Logger::Stats Logger::stats() {
-    LoggerState& s = state();
+    LoggerState& s = logState();
     Stats result;
     result.records = s.lastId.load(std::memory_order_relaxed);
     result.dropped = s.dropped.load(std::memory_order_relaxed);
@@ -1442,11 +1445,11 @@ Logger::Stats Logger::stats() {
 }
 
 uint64_t Logger::lastId() {
-    return state().lastId.load(std::memory_order_relaxed);
+    return logState().lastId.load(std::memory_order_relaxed);
 }
 
 bool Logger::passEvery(std::atomic<int64_t>& next, double seconds) {
-    const int64_t now = monotonicMs();
+    const int64_t now = logMonotonicMs();
     int64_t due = next.load(std::memory_order_relaxed);
     if (now < due) return false;
     const int64_t following = now + static_cast<int64_t>(seconds * 1000.0);

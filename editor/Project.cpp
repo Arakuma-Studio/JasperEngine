@@ -1839,6 +1839,14 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
+    playerLogging = settings;
+}
+
+const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
+    return playerLogging;
+}
+
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
     return samples == 1 || samples == 2 || samples == 4 || samples == 8;
 }
@@ -4656,6 +4664,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;

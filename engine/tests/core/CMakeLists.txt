@@ -11,3 +11,7 @@ jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES}
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR}
 )
+
+# the logger's backtraces name the test functions (LoggerTest.ErrorCarriesBacktrace): dladdr
+# sees the executable's symbols
+set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)

@@ -1236,6 +1236,37 @@ const std::vector<Setting>& settingsTable() {
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
 
+        // ---- player logging
+        {
+            Setting s;
+            s.key = "player.logging.level";
+            s.type = "enum";
+            s.description = "The lowest level the built game logs.";
+            s.values = {"trace", "debug", "info", "warn", "error", "off"};
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getPlayerLogging().level); };
+            s.set = [values = s.values](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error)) return false;
+                if (std::find(values.begin(), values.end(), text) == values.end()) {
+                    error = "\"" + text + "\" is not one of trace, debug, info, warn, error, off";
+                    return false;
+                }
+                if (apply) {
+                    PlayerLoggingSettings logging = ctx.project()->getPlayerLogging();
+                    logging.level = text;
+                    ctx.project()->setPlayerLogging(logging);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        add(boolSetting("player.logging.file", "Desktop builds also write <userdata>/logs/player.log.",
+                        [](Project& p) { return p.getPlayerLogging().fileLog; },
+                        [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.fileLog = v; p.setPlayerLogging(l); }));
+        add(boolSetting("player.logging.backtrace", "Errors in the built game record their call stack.",
+                        [](Project& p) { return p.getPlayerLogging().backtrace; },
+                        [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.backtrace = v; p.setPlayerLogging(l); }));
+
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));

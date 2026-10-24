@@ -169,6 +169,7 @@
     }
 
 namespace jasperengine {
+    class Scheduler;
 
     class JASPERENGINE_API Scene;
 
@@ -343,6 +344,9 @@ namespace jasperengine {
 
         static void pauseGameEvents(bool pause);
         static bool areGameEventsPaused();
+        // One frame of the scheduler's Game (scaled), Unscaled and Frames clocks, unless the
+        // game is paused, held or its events are (the editor's Pause). True when they ran.
+        static bool advanceGameClocks(Scheduler& scheduler, double frameTime);
         
         static int getCanvasWidth();
         static int getCanvasHeight();

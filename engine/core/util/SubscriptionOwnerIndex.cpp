@@ -11,7 +11,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_owner_index {}
+using namespace je_owner_index;
+
+namespace je_owner_index {
 
     struct Entry {
         std::weak_ptr<detail::SlotStateBase> state;
@@ -97,7 +100,7 @@ size_t SubscriptionOwnerIndex::entryCount(uint64_t ownerKey) {
     return it == index.owners.end() ? 0 : it->second.size();
 }
 
-namespace {
+namespace je_owner_index {
     uint64_t& threadRegistrationOwner() {
         thread_local uint64_t owner = 0;
         return owner;

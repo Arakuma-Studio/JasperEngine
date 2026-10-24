@@ -368,6 +368,14 @@ Scene* Engine::getLastScene(){
     return scenes.empty() ? nullptr : scenes.back();
 }
 
+bool Engine::advanceGameClocks(Scheduler& scheduler, double frameTime) {
+    if (paused || simulationHeld || gameEventsPaused) return false;
+    scheduler.advance(TimeDomain::Game, frameTime * timeScale);
+    scheduler.advance(TimeDomain::Unscaled, frameTime);
+    scheduler.advance(TimeDomain::Frames, 1.0);
+    return true;
+}
+
 bool Engine::areGameEventsPaused() {
     return gameEventsPaused;
 }
@@ -1080,7 +1088,9 @@ namespace {
     #endif
     #ifdef JASPERENGINE_LOG_BACKTRACE
         config.backtraceOnError = JASPERENGINE_LOG_BACKTRACE != 0;
-    #elif !defined(NDEBUG)
+    #endif
+    #ifndef NDEBUG
+        // debug builds always do
         config.backtraceOnError = true;
     #endif
         Logger::init(config);
@@ -1344,12 +1354,7 @@ void Engine::systemDraw(){
         gameTime += frameDelta;
         gameFrames++;
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
-        const bool gameClocks = !gameEventsPaused;
-        if (gameClocks) {
-            scheduler.advance(TimeDomain::Game, frameDelta);
-            scheduler.advance(TimeDomain::Unscaled, frameTime);
-            scheduler.advance(TimeDomain::Frames, 1.0);
-        }
+        const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().

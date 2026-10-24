@@ -7,7 +7,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_console_sink {}
+using namespace je_console_sink;
+
+namespace je_console_sink {
 
     const char* editorPrefix(const LogRecord& record) {
         if (record.category == &logCategoryBuild()) return "[BUILD] ";

@@ -24,7 +24,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_file_sink {}
+using namespace je_file_sink;
+
+namespace je_file_sink {
 
 #if defined(_WIN32)
     std::wstring widen(const std::string& text) {

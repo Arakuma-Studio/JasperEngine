@@ -20,7 +20,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_platform_sinks {}
+using namespace je_platform_sinks;
+
+namespace je_platform_sinks {
 
     void makeDirectory(const std::string& path) {
 #if defined(_WIN32)

@@ -10,7 +10,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_crash_hook {}
+using namespace je_crash_hook;
+
+namespace je_crash_hook {
 
     struct HookState {
         std::mutex mutex;

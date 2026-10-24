@@ -17,7 +17,10 @@ using namespace jasperengine::editor;
 
 ConsoleWindow* Out::consoleWindow = nullptr;
 
-namespace {
+namespace je_out {}
+using namespace je_out;
+
+namespace je_out {
 
 // Several sessions fit, so a crash log survives the restarts before it is sent.
 constexpr size_t kMaxLogFileSize = 2 * 1024 * 1024;
@@ -27,21 +30,21 @@ constexpr size_t kMaxLogBufferBytes = 16 * 1024 * 1024;
 constexpr size_t kEditorQueueBytes = 4 * 1024 * 1024;
 
 std::mutex sinkMutex;
-MemorySink* memory = nullptr;              // owned by the Logger while memorySink is set
+MemorySink* memoryStore = nullptr;              // owned by the Logger while memorySink is set
 Logger::SinkId memorySink = 0;
 Logger::SinkId consoleSink = 0;
 Logger::SinkId fileSink = 0;
-RotatingFileSink* file = nullptr;          // owned by the Logger while fileSink is set
+RotatingFileSink* fileStore = nullptr;          // owned by the Logger while fileSink is set
 std::filesystem::path logFilePath;
 bool fileShowsSource = true;
 std::string levelSpec;
 LogLevel fileLevel = LogLevel::Info;
 
-bool isProblem(LogType type) {
+bool outIsProblem(LogType type) {
     return type == LogType::Warning || type == LogType::Error || type == LogType::Build;
 }
 
-std::string vformat(const char* fmt, va_list args) {
+std::string outFormat(const char* fmt, va_list args) {
     if (!fmt) return std::string();
     char stackBuffer[1024];
     va_list sizing;
@@ -57,18 +60,18 @@ std::string vformat(const char* fmt, va_list args) {
 }
 
 // rateKey: the call's format string; a pass-through "%s" groups by text instead
-void log(LogLevel level, const std::string& message, uint32_t flags = 0, const char* rateKey = nullptr) {
+void logEditor(LogLevel level, const std::string& message, uint32_t flags = 0, const char* rateKey = nullptr) {
     if (rateKey && rateKey[0] == '%' && rateKey[1] == 's' && rateKey[2] == '\0') rateKey = nullptr;
     Logger::write(level, logCategoryEditor(), message, nullptr, flags, rateKey);
 }
 
-void logBuild(const std::string& message) {
+void logBuildLine(const std::string& message) {
     // compiler output in bursts is the point of a build: never rate limited
     Logger::write(Out::buildLineLevel(message), logCategoryBuild(), message, nullptr,
                   LogFlagNoRateLimit | LogFlagNoBacktrace);
 }
 
-bool contains(const std::string& text, const char* needle) {
+bool outContains(const std::string& text, const char* needle) {
     return text.find(needle) != std::string::npos;
 }
 
@@ -83,7 +86,7 @@ void Out::startLogging() {
     std::lock_guard<std::mutex> lock(sinkMutex);
     if (!memorySink) {
         auto sink = std::make_unique<MemorySink>(kMaxLogBufferBytes, MAX_LOG_ENTRIES);
-        memory = sink.get();
+        memoryStore = sink.get();
         memorySink = Logger::addSink(std::move(sink));
     }
     if (!consoleSink && !consoleWindow) {
@@ -94,8 +97,8 @@ void Out::startLogging() {
 void Out::stopLogging() {
     {
         std::lock_guard<std::mutex> lock(sinkMutex);
-        memory = nullptr;
-        file = nullptr;
+        memoryStore = nullptr;
+        fileStore = nullptr;
         memorySink = consoleSink = fileSink = 0;
         logFilePath.clear();
     }
@@ -126,7 +129,7 @@ void Out::setLogFile(const std::filesystem::path& path) {
     if (fileSink) {
         Logger::removeSink(fileSink);
         fileSink = 0;
-        file = nullptr;
+        fileStore = nullptr;
     }
 
     char stamp[20];
@@ -145,7 +148,7 @@ void Out::setLogFile(const std::filesystem::path& path) {
     }
     // Info and above by default, as before (Preferences > Logging)
     sink->minLevel.store(fileLevel, std::memory_order_relaxed);
-    file = sink.get();
+    fileStore = sink.get();
     fileSink = Logger::addSink(std::move(sink));
     logFilePath = path;
 }
@@ -168,7 +171,7 @@ Logger::SinkId Out::consoleSinkId() {
 void Out::setFileShowsSource(bool show) {
     std::lock_guard<std::mutex> lock(sinkMutex);
     fileShowsSource = show;
-    if (file) file->setShowSource(show);
+    if (fileStore) fileStore->setShowSource(show);
 }
 
 void Out::setFileLevel(LogLevel level) {
@@ -203,12 +206,12 @@ LogType Out::typeOf(LogLevel level, uint32_t flags, const LogCategory& category)
 
 LogLevel Out::buildLineLevel(const std::string& line) {
     // the problem lines of GCC/Clang, MSVC, CMake and the linkers (as BuildTools parses them)
-    if (contains(line, ": error") || contains(line, ": fatal error") || contains(line, " error C") ||
-        contains(line, " error LNK") || contains(line, "CMake Error") || contains(line, "undefined reference") ||
-        contains(line, "collect2: error") || contains(line, "LINK : fatal error")) {
+    if (outContains(line, ": error") || outContains(line, ": fatal error") || outContains(line, " error C") ||
+        outContains(line, " error LNK") || outContains(line, "CMake Error") || outContains(line, "undefined reference") ||
+        outContains(line, "collect2: error") || outContains(line, "LINK : fatal error")) {
         return LogLevel::Error;
     }
-    if (contains(line, ": warning") || contains(line, " warning C") || contains(line, "CMake Warning")) {
+    if (outContains(line, ": warning") || outContains(line, " warning C") || outContains(line, "CMake Warning")) {
         return LogLevel::Warn;
     }
     return LogLevel::Info;
@@ -217,14 +220,14 @@ LogLevel Out::buildLineLevel(const std::string& line) {
 std::vector<LogEntry> Out::getLogsSince(uint64_t afterId, size_t max, bool onlyProblems) {
     std::vector<LogEntry> result;
     std::lock_guard<std::mutex> lock(sinkMutex);
-    if (!memory) return result;
+    if (!memoryStore) return result;
     std::function<bool(const MemorySink::View&)> filter;
     if (onlyProblems) {
         filter = [](const MemorySink::View& view) {
-            return isProblem(typeOf(view.level, view.flags, *view.category));
+            return outIsProblem(typeOf(view.level, view.flags, *view.category));
         };
     }
-    for (MemorySink::Entry& stored : memory->since(afterId, max, filter)) {
+    for (MemorySink::Entry& stored : memoryStore->since(afterId, max, filter)) {
         LogEntry entry;
         entry.id = stored.id;
         entry.level = stored.level;
@@ -249,7 +252,7 @@ uint64_t Out::lastLogId() {
 void Out::clearConsole() {
     {
         std::lock_guard<std::mutex> lock(sinkMutex);
-        if (memory) memory->clear();
+        if (memoryStore) memoryStore->clear();
     }
     // The window is only touched on the main thread
     EditorHost& host = getEditorHost();
@@ -273,65 +276,65 @@ const char* Out::logTypeName(LogType type) {
 }
 
 void Out::info(const std::string& message) {
-    log(LogLevel::Info, message);
+    logEditor(LogLevel::Info, message);
 }
 
 void Out::success(const std::string& message) {
-    log(LogLevel::Info, message, LogFlagSuccess);
+    logEditor(LogLevel::Info, message, LogFlagSuccess);
 }
 
 void Out::warning(const std::string& message) {
-    log(LogLevel::Warn, message);
+    logEditor(LogLevel::Warn, message);
 }
 
 void Out::error(const std::string& message) {
-    log(LogLevel::Error, message);
+    logEditor(LogLevel::Error, message);
 }
 
 void Out::build(const std::string& message) {
-    logBuild(message);
+    logBuildLine(message);
 }
 
 void Out::info(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Info, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = vformat(fmt, args);
+    const std::string message = outFormat(fmt, args);
     va_end(args);
-    log(LogLevel::Info, message, 0, fmt);
+    logEditor(LogLevel::Info, message, 0, fmt);
 }
 
 void Out::success(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Info, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = vformat(fmt, args);
+    const std::string message = outFormat(fmt, args);
     va_end(args);
-    log(LogLevel::Info, message, LogFlagSuccess, fmt);
+    logEditor(LogLevel::Info, message, LogFlagSuccess, fmt);
 }
 
 void Out::warning(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Warn, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = vformat(fmt, args);
+    const std::string message = outFormat(fmt, args);
     va_end(args);
-    log(LogLevel::Warn, message, 0, fmt);
+    logEditor(LogLevel::Warn, message, 0, fmt);
 }
 
 void Out::error(const char* fmt, ...) {
     if (!Logger::shouldLog(LogLevel::Error, logCategoryEditor())) return;
     va_list args;
     va_start(args, fmt);
-    const std::string message = vformat(fmt, args);
+    const std::string message = outFormat(fmt, args);
     va_end(args);
-    log(LogLevel::Error, message, 0, fmt);
+    logEditor(LogLevel::Error, message, 0, fmt);
 }
 
 void Out::build(const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    const std::string message = vformat(fmt, args);
+    const std::string message = outFormat(fmt, args);
     va_end(args);
-    logBuild(message);
+    logBuildLine(message);
 }

@@ -8,7 +8,10 @@
 
 using namespace jasperengine;
 
-namespace {
+namespace je_platform_sink {}
+using namespace je_platform_sink;
+
+namespace je_platform_sink {
 
     int platformLogType(LogLevel level) {
         switch (level) {
