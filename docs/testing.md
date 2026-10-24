@@ -59,6 +59,49 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   `tools/web/gates/sample-project.json`. `GATE=sample-project-threads` checks the pthreads build
   (`WEB_THREADS=1 tools/build.sh web`). `tools/web/serve.py` serves a build the same way for a
   look in a desktop browser.
+- A gate baseline can also list `console` lines (`{"text", "level"}`, `"ordered": true`): each must
+  appear at that console level (log, info, warning, error), in order; an error listed there is
+  expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
+  web`) checks the logger's browser console sink and a Lua `Timer` that way.
+
+### Test projects
+
+`tools/test-projects/<name>/` are small engine projects (`main.cpp`, `lua/`, `assets/`) that a
+platform test builds instead of `engine/project`: `WEB_PROJECT=<name> tools/build.sh web`
+(`build/web-<name>`, checked by `GATE=<name> tools/build.sh web-gate` with
+`tools/web/gates/<name>.json`) and `ANDROID_PROJECT=<name> tools/build.sh android`
+(`build/android-<name>/app-debug.apk`, checked by the emulator runner below). Keep one project per
+behaviour under test, with its expectations next to it.
+
+### Android emulator: `tools/android-emulator-test.sh`
+
+Installs an APK on a headless Android emulator, launches it with its LAUNCHER intent and checks
+its logcat. It needs KVM: run it on a Linux host with `/dev/kvm` (build servers A and C; not B).
+
+```sh
+ANDROID_PROJECT=core-utilities tools/build.sh android
+tools/android-emulator-test.sh build/android-core-utilities/app-debug.apk --ordered \
+    --expect-file tools/test-projects/core-utilities/android-expect.txt
+tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid 'E/JasperEngine'
+```
+
+- The image is `docker/android-emulator.Dockerfile`: the Android build image plus the emulator and
+  an x86_64 Automated Test Device system image (`EMULATOR_API` 34, `EMULATOR_TAG` aosp_atd, build
+  arguments). The first run builds it (about 2 GB). The APK needs the x86_64 ABI, which
+  `tools/build.sh android` builds with the others.
+- Each run boots from wiped user data (`-no-window -no-snapshot -wipe-data`, SwiftShader GLES 3),
+  installs the APK with every permission granted, clears logcat, launches the app and polls
+  logcat until every `--expect` line is there, the app crashes, or `--timeout` (120 s) passes.
+- `--expect` matches a `logcat -v tag` line: `W/JasperEngine: [render] text` checks the priority,
+  the tag and the text. `--ordered` requires the order given, `--forbid` fails on a line,
+  `--expect-file` reads expectations one per line. A `FATAL EXCEPTION`, a native crash of the
+  package or `Fatal signal` fails the run.
+- Results in `--out` (default `build/android-emulator/`): `result.txt` (each expectation, found or
+  missing, then PASS/FAIL), `logcat.txt` (`-v tag`), `logcat-full.txt` (`-v threadtime`),
+  `screen.png` and `emulator.log`. Exit 0 pass, 1 fail, 2 could not run (no KVM, no boot, the
+  install failed).
+- `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
+  prebuilt emulator image) tune it.
 
 ## Where a test goes
 

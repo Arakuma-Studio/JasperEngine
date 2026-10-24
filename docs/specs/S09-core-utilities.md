@@ -574,11 +574,19 @@ Land S09 early in wave 1 so the others build on it.
 - **R32 / Apple exports.** Like the other Player settings that reach a game through the exported
   CMake (VSync, window), Player > Logging is not injected into the Xcode workspace; iOS builds use
   the defaults (and `--log-level` does not exist there).
-- **AC10, AC11, AC18** are manual or browser checks: the web gate's sample project has no Lua timer
-  script, Android needs a device (`adb logcat -s JasperEngine` shows `W JasperEngine: [render] ...`
-  by construction of `AndroidLogSink`), and the Preferences/Console walk-through needs a desktop
-  session. The MCP tests cover the same behaviour through the editor (categories, levels, sources,
-  timers in Pause and Step). AC21 is verified with GCC; MSVC and Clang are covered by CI.
+- **AC10, AC11, AC18 are automated** rather than manual checks. AC10:
+  `tools/test-projects/core-utilities` built for the web (`WEB_PROJECT=core-utilities tools/build.sh
+  web`) and `GATE=core-utilities tools/build.sh web-gate`, whose baseline lists the console lines
+  with their levels in order (C++ and Lua warnings and errors, a Lua `Timer.after(0.1)` and a
+  coroutine, no pthreads); CI runs it. AC11: the same project as an APK
+  (`ANDROID_PROJECT=core-utilities tools/build.sh android`) on a headless emulator,
+  `tools/android-emulator-test.sh` (KVM hosts) checking `W/JasperEngine: [render] ...` and the other
+  lines with their priorities. AC18: `tools/mcp/tests/test_logging_ui.py` drives Preferences >
+  Logging and the Console through MCP (`focus_window` opens Preferences pages and reports and drives
+  the Console view; `preferences.logging.*` settings), screenshots in
+  `build/test-results/logging-ui/`, and restarts the editor to check the levels persist. AC21 is
+  verified with GCC (`-Wformat=2` over the engine and editor sources); MSVC and Clang are covered by
+  CI.
 - **Tests** live in S02's targets: `engine/tests/core/log/`, `engine/tests/core/util/`
   (`jasperengine-core-tests`, plus `support/AllocationCounterTest.cpp`, the binary's counting
   `operator new`), `editor/tests/OutTest.cpp` and `editor/tests/util/CrashHandlerTest.cpp` with
