@@ -160,13 +160,15 @@ namespace jasperengine {
         // and their subtrees, ignored layers and inactive entities. Incremental: entities already
         // in the world are skipped, so calling it every frame with a growing region is cheap.
         // With pushNeighbours, movable entities (with a Rigidbody, or no larger than 2 m and not
-        // static-flagged) become dynamic neighbours instead.
+        // static-flagged) become dynamic neighbours instead, and the context around each new
+        // neighbour (its bounds grown by max(0.5 m, half its size)) is added too, repeatedly, so
+        // what it stands on is in the world even outside region; getContextRegion includes it.
         void ensureContext(const AABB& region);
         // Adds one entity (and its subtree) as static context regardless of region.
         void addContextEntity(Entity entity);
         size_t getContextBodyCount() const;
         const std::vector<Entity>& getNeighbours() const;
-        AABB getContextRegion() const;   // union of every region passed to ensureContext
+        AABB getContextRegion() const;   // union of every region passed to ensureContext, with the neighbours' support
 
         // Rebuilds every mover's (and neighbour's) shape: a decomposition that finished since is
         // picked up. Poses and velocities are kept.
@@ -226,6 +228,9 @@ namespace jasperengine {
         // Movers in insertion order, then neighbours in insertion order.
         std::vector<PlacementBodyState> getStates() const;
         AABB getMoversBounds() const;   // world AABB of every mover's shape
+        // World AABB of every dynamic body (movers and neighbours): the region to keep passing to
+        // ensureContext as neighbours are pushed around
+        AABB getDynamicBounds() const;
 
         // Triangle-accurate ray against context and dynamic bodies, ignoring the listed entities'
         // bodies (pass mover roots to hit only what lies behind them). The ray's direction length
