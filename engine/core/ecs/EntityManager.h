@@ -4,6 +4,7 @@
 #ifndef ENTITYMANAGER_H
 #define ENTITYMANAGER_H
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -248,6 +249,10 @@ namespace jasperengine{
             data.tag = 0;
             data.layer = 0;
             data.active = true;
+            if (freeSlots.size() == freeSlots.capacity()){
+                // a mass destroy grows it in two or three steps, not a dozen doublings
+                freeSlots.reserve(std::max<size_t>(std::max<size_t>(freeSlots.capacity() * 2, 64), (liveCount + freeSlots.size()) / 4));
+            }
             freeSlots.push_back(slot);
         }
 
