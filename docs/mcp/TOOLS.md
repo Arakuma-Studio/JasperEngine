@@ -2263,7 +2263,7 @@ Assert a live HTML/CSS UI document's layout: passed + each failure (element ref,
 | `max_width` | integer (0..4096) |  | 0 = full size. Default: `768`. |
 | `scene` | integer or string |  |  |
 | `screenshot` | `"on_failure"` \| `"always"` \| `"never"` |  | Default: `"on_failure"`. |
-| `viewports` | array of array[2] of number |  | [[w,h], ...] (max 6); default the current. |
+| `viewports` | array of array[2] of number |  | Up to 6 [w,h]; default: current. |
 
 
 ### `create_ui_document`
@@ -2275,7 +2275,7 @@ Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `html` | string | yes | .html in the assets dir, e.g. assets/ui/menu.html. |
-| `name` | string |  | Default: from the file name. |
+| `name` | string |  | Default: the file name. |
 | `overwrite` | boolean |  | Replace existing files. |
 | `parent` | integer or string |  | Default: scene root. |
 | `properties` | object |  | Other UI Document properties. |
@@ -2291,7 +2291,7 @@ Create a GameObject with a UI Document showing an HTML/CSS file (one scene undo 
 
 Hints: read-only, idempotent
 
-Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= `jasperengine-editor check --ui`). Lua-made content: play only.
+A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= `jasperengine-editor check --ui`). Lua-made content: play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -2305,8 +2305,8 @@ Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box 
 | `models` | boolean |  | Data-model values (play). |
 | `scene` | integer or string |  |  |
 | `screenshot` | boolean |  | Game view image of the matches, outlined. |
-| `selector` | string |  | CSS selector (default: whole document). |
-| `styles` | array of string |  | Computed CSS properties per element. |
+| `selector` | string |  | Default: whole document. |
+| `styles` | array of string |  | Computed CSS properties. |
 | `viewport` | array[2] of number |  | Lay out at [w,h] first (restored after). |
 
 
@@ -2331,12 +2331,12 @@ HTML/CSS UI GPU effects for CSS effect(<name>, ...): name, kind (paint: backgrou
 
 Hints: idempotent
 
-Pin the HTML/CSS UI effect clock (edit/play) for identical screenshots; null: live. pointer_path (a drag), splats: exact input for selector's stateful effects (s, element px).
+Pin the HTML/CSS UI effect clock (edit/play views) for identical screenshots.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `entity` | integer or string |  |  |
-| `pointer_path` | array |  | [[x,y,t]] element px, s; [] clears |
-| `selector` | string |  |  |
-| `splats` | array |  | [{x,y,dx,dy,radius,color,strength,t}] area px; replaces |
-| `time` | number or null | yes |  |
+| `entity` | integer or string |  | UI Document. |
+| `pointer_path` | array of array of number |  | Scripted drag [[x,y,t]] (element px, s); [] clears. |
+| `selector` | string |  | Element whose effects take pointer_path/splats. |
+| `splats` | array of object |  | [{x,y,dx,dy,radius,color,strength,t}] (area px, px/s; 8 a step); replaces. |
+| `time` | number or null | yes | Seconds; null: live. |

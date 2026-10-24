@@ -9,7 +9,7 @@
 // @state      pressure r16f aspect 128 max 512 nearest
 // @state      aux r16f aspect 128 max 512 nearest
 // @state      dye rgba16f box max 1024 linear
-// @state      ptr rgba32f 1x1 nearest
+// @state      ptr rgba16f 1x1 nearest
 // @state      bloom rgba16f aspect 256 max 1024 linear
 // @state      glow rgba16f aspect 256 max 1024 linear
 // @state      sunrays r16f aspect 196 max 1024 linear
@@ -99,6 +99,9 @@
 //   radius in area px (the Gaussian's 1/e distance), dx, dy in px/s (the force a pointer moving
 //   so fast would give), the colour's sRGB value x strength added to the dye (Pavel's pointer
 //   colours are 0.15, his start burst 1.5).
+// - Every state is a half float (no 32-bit float targets: GLES3/WebGL2 devices with only
+//   EXT_color_buffer_half_float run it); `ptr` holds the pointer colour's timer, hue and draw
+//   counter (mod 2048).
 // - Randomness: integer hashes of `seed`, the element's seed and a counter (no wall clock), so a
 //   pinned clock replays the same fluid on every backend.
 
@@ -357,26 +360,28 @@ vec4 jfx_step(JfxStep s){
         return fx_burst(s, false);
     if (s.pass == JFX_PASS_START_PTR)
         return vec4(0.0, fx_random(s, 1u, 0u), 1.0, 1.0);
-    // ---- a step: x the colour timer, y the colour's hue, z the colours drawn
+    // ---- a step: x the colour timer, y the colour's hue, z the colours drawn (mod 2048: exact in
+    // the half-float state)
     if (s.pass == JFX_PASS_POINTER){
         vec4 p = ptr_fetch(ivec2(0));
         if (s.pressed){
             p.y = fx_random(s, 1u, uint(p.z));
-            p.z += 1.0;
+            p.z = mod(p.z + 1.0, 2048.0);
         }
         if (params.colorful > 0.5){
             p.x += s.dt * params.colorSpeed;
             if (p.x >= 1.0){
                 p.x = mod(p.x, 1.0);
                 p.y = fx_random(s, 1u, uint(p.z));
-                p.z += 1.0;
+                p.z = mod(p.z + 1.0, 2048.0);
             }
         }
         return p;
     }
     if (s.pass == JFX_PASS_SPLAT_VEL){
         fx_gather_splats(s);
-        return vec4(vel_sample(uv).xy + fx_splats(uv, true).xy, 0.0, 1.0);
+        // kept finite in a half float (Pavel's vorticity clamps to +-1000 right after)
+        return vec4(clamp(vel_sample(uv).xy + fx_splats(uv, true).xy, -60000.0, 60000.0), 0.0, 1.0);
     }
     if (s.pass == JFX_PASS_CURL)
         return vec4(fluidCurl(uv, texel), 0.0, 0.0, 1.0);

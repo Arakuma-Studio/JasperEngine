@@ -1266,7 +1266,7 @@ Pavel Dobryakov's WebGL fluid: drag to paint glowing, swirling dye with bloom an
 
 Kind: paint; cost: stateful; backdrop: no; source: port WebGL-Fluid-Simulation (Pavel Dobryakov, MIT).
 
-Stateful (a simulation per element, phase 6): state `vel` rg16f aspect 128 x2, `pressure` r16f aspect 128 x2, `aux` r16f aspect 128 x2, `dye` rgba16f box x2, `ptr` rgba32f 1x1 x2, `bloom` rgba16f aspect 256 x2, `glow` rgba16f aspect 256 x2, `sunrays` r16f aspect 196 x2 (0.0 MB plus the area-sized images); 10 passes a step and 6 a drawn frame at 60 Hz; `seed, splats-on-start, splat-count` restarts it.
+Stateful (a simulation per element, phase 6): state `vel` rg16f aspect 128 x2, `pressure` r16f aspect 128 x2, `aux` r16f aspect 128 x2, `dye` rgba16f box x2, `ptr` rgba16f 1x1 x2, `bloom` rgba16f aspect 256 x2, `glow` rgba16f aspect 256 x2, `sunrays` r16f aspect 196 x2 (at most 9.8 MB plus the area-sized images); 10 passes a step and 6 a drawn frame at 60 Hz; `seed, splats-on-start, splat-count` restarts it.
 
 Presets (`preset <name>`: the parameters left at their defaults take its values):
 

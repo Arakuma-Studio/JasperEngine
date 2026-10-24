@@ -226,6 +226,28 @@ async def test_splats(ed: Editor):
     ed.check(peak <= 4, f"no splats: the canvas is empty (peak {peak})")
 
 
+async def test_refused_calls_change_nothing(ed: Editor):
+    """A refused call leaves the clock where it was; more than 8 splats in one step are refused, not
+    dropped; a splat after the pinned time is reported as future input."""
+    await ed.call("set_ui_effect_time", time=1.0)
+    await shot(ed, "refused-before")
+    nine = [{"x": 20 + 40 * k, "y": 100, "radius": 20, "strength": 1.5} for k in range(9)]
+    r = await ed.call_raw("set_ui_effect_time", {"time": 2.5, "entity": S["entity"], "selector": ".canvas", "splats": nine})
+    ed.check(r.is_error and "more than 8 splats" in r.text, f"9 splats in one step: {r.text}")
+    r = await ed.call_raw("set_ui_effect_time", {"time": 2.5, "entity": S["entity"], "selector": ".plain", "splats": nine[:1]})
+    ed.check(r.is_error, f"an element without a simulation: {r.text}")
+    state = await canvas_state(ed)
+    ed.check(abs(state["time"] - 1.0) < 1e-6, f"refused calls left the clock pinned at 1 s: {state}")
+    # spread over steps (t 1/60 s apart) they are taken; one later than the pinned time is future input
+    spread = [dict(item, t=0.5 + k / 60.0) for k, item in enumerate(nine)] + [{"x": 100, "y": 100, "t": 1.5}]
+    r = await ed.call("set_ui_effect_time", time=1.0, entity=S["entity"], selector=".canvas", splats=spread)
+    ed.check_eq((r["splats"], r["splats_applied"], r["splats_future"]), (10, 9, 1), f"the splats' account: {r}")
+    first = await shot(ed, "spread")
+    _, _, peak = stats(first, REGIONS["canvas"])
+    ed.check(peak >= 150, f"nine spread splats painted (peak {peak})")
+    await ed.call("set_ui_effect_time", time=1.0, entity=S["entity"], selector=".canvas", splats=[])
+
+
 async def test_mistakes(ed: Editor):
     r = await ed.call_raw("set_ui_effect_time", {"time": None, "selector": ".canvas", "pointer_path": drag(100.0)})
     ed.check(r.is_error and "pinned clock" in r.text, f"a path on the live clock: {r.text}")

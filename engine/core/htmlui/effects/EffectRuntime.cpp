@@ -644,12 +644,30 @@ void EffectRuntime::forgetSimulation(EffectSimulation* simulation){
         simulationObjects--;
 }
 
-int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName, std::optional<double> time){
+int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& input, const std::string& effectName, std::optional<double> time){
     auto it = elements.find(element);
     if (it == elements.end())
         return 0;
+    // a non-finite value is refused, extreme ones clamped: a half-float state would keep an
+    // overflow (inf, then NaN) for good, and every replay with it
+    auto finite = [](float v){ return std::isfinite(v); };
+    if (!finite(input.position.x) || !finite(input.position.y) || !finite(input.velocity.x) || !finite(input.velocity.y) ||
+        !finite(input.radius) || !finite(input.strength) || !finite(input.color[0]) || !finite(input.color[1]) || !finite(input.color[2]) ||
+        !finite(input.color[3]) || (time && !std::isfinite(*time)))
+        return 0;
+    EffectSplatData splat = input;
+    splat.position.x = std::clamp(splat.position.x, -1.0e6f, 1.0e6f);
+    splat.position.y = std::clamp(splat.position.y, -1.0e6f, 1.0e6f);
+    splat.velocity.x = std::clamp(splat.velocity.x, -kMaxSplatVelocity, kMaxSplatVelocity);
+    splat.velocity.y = std::clamp(splat.velocity.y, -kMaxSplatVelocity, kMaxSplatVelocity);
+    splat.radius = std::clamp(splat.radius, 0.f, kMaxSplatRadius);
+    splat.strength = std::clamp(splat.strength, -kMaxSplatStrength, kMaxSplatStrength);
+    for (float& c : splat.color)
+        c = std::clamp(c, 0.f, 1.f);
     int taken = 0;
-    const bool pinnedClock = EffectClock::isFixed();
+    // a splat given a time is scripted input for the pinned clock's replays (logged whatever the
+    // clock is now); else the pinned clock logs it at the pinned time, the live one queues it
+    const bool pinnedClock = EffectClock::isFixed() || time.has_value();
     for (auto& entry : it->second.states){
         EffectElementState& state = *entry.second;
         const std::string name = entry.first.substr(0, entry.first.rfind('#'));

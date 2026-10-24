@@ -12,11 +12,14 @@
 #include "HtmlUIClock.h"
 #include "htmlui/effects/EffectInstancers.h"
 #include "htmlui/effects/EffectSimulator.h"
+#include "htmlui/effects/EffectSyntax.h"
 #include "htmlui/effects/EffectValue.h"
 
 #include <array>
+#include <set>
 #include <chrono>
 #include <cstdlib>
+#include <limits>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -65,6 +68,9 @@ namespace {
 
     std::vector<EffectValue> valuesWith(const EffectManifest& m, const std::vector<std::pair<std::string, std::string>>& given){
         std::vector<EffectValue> values;
+        std::set<std::string> written;
+        for (const auto& g : given)
+            written.insert(g.first);
         for (const EffectParamDef& def : m.params){
             std::string text = def.defaultText;
             for (const auto& g : given)
@@ -75,7 +81,7 @@ namespace {
             EXPECT_TRUE(EffectValueParser::parse(def, text, value, reason)) << def.name << ": " << reason;
             values.push_back(value);
         }
-        applyEffectPreset(m, values);
+        applyEffectPreset(m, values, written);
         return values;
     }
 
@@ -167,6 +173,9 @@ TEST(EffectFluidManifest, TheEffect){
     EXPECT_EQ(m.states[(size_t)m.stateIndex("sunrays")].format, EffectStateFormat::R16F);
     EXPECT_EQ(m.states[(size_t)m.stateIndex("dye")].format, EffectStateFormat::RGBA16F);
     EXPECT_EQ(m.states[(size_t)m.stateIndex("dye")].aspectShort, 0) << "the dye follows the area's px";
+    for (const EffectStateDef& st : m.states)
+        EXPECT_TRUE(st.format != EffectStateFormat::RGBA32F && st.format != EffectStateFormat::R32F)
+            << st.name << ": a 32-bit float state needs EXT_color_buffer_float (half-float-only devices could not run it)";
     int init = 0, steps = 0, frames = 0;
     for (const EffectPassDef& pass : m.passes)
         (pass.init ? init : (pass.frame ? frames : steps))++;
@@ -213,6 +222,28 @@ TEST(EffectFluidManifest, PresetsSetTheParametersLeftAtTheirDefaults){
     std::vector<EffectValue> wild = valuesWith(m, {{"preset", "psychedelic"}});
     EXPECT_FLOAT_EQ(valueOf(m, wild, "curl"), 50.f);
     EXPECT_FLOAT_EQ(valueOf(m, wild, "bloom-threshold"), 0.3f);
+    // a written parameter wins even at its default (as the native component's explicit values)
+    std::vector<EffectValue> explicitOn = valuesWith(m, {{"preset", "ink"}, {"bloom", "on"}, {"curl", "30"}});
+    EXPECT_FLOAT_EQ(valueOf(m, explicitOn, "bloom"), 1.f) << "bloom on written: kept";
+    EXPECT_FLOAT_EQ(valueOf(m, explicitOn, "curl"), 30.f) << "curl 30 written: kept";
+    EXPECT_FLOAT_EQ(valueOf(m, explicitOn, "density-dissipation"), 0.15f);
+    // the RCSS path and the raw call: the same values
+    for (const std::string& call : {std::string("fluid, preset ink, bloom on")}){
+        EffectSnapshotResult r = snapshotFromCall(call, false);
+        ASSERT_TRUE(r.snapshot) << call;
+        EXPECT_FLOAT_EQ(valueOf(m, r.snapshot->values, "bloom"), 1.f);
+        EXPECT_FLOAT_EQ(valueOf(m, r.snapshot->values, "curl"), 8.f);
+    }
+    auto rcssOf = [&](const std::string& arguments){
+        EffectCall parsed;
+        std::vector<EffectDiagnostic> diags;
+        EXPECT_TRUE(EffectSyntax::parseArguments(arguments, parsed, diags)) << arguments;
+        return EffectSyntax::toRcss(parsed, m, false, std::string_view(), diags);
+    };
+    // the RCSS slots carry the preset's values for what the call leaves out, and the written ones
+    EXPECT_NE(rcssOf("fluid, preset ink"), rcssOf("fluid")) << "the preset's values are not in the slots";
+    EXPECT_NE(rcssOf("fluid, preset ink, bloom on"), rcssOf("fluid, preset ink")) << "bloom on written at its default lost to the preset";
+    EXPECT_EQ(rcssOf("fluid, preset ink, curl 8"), rcssOf("fluid, preset ink"));
     std::vector<EffectValue> plain = valuesWith(m, {{"preset", "default"}, {"curl", "12"}});
     EXPECT_FLOAT_EQ(valueOf(m, plain, "curl"), 12.f);
     EXPECT_FLOAT_EQ(valueOf(m, plain, "pressure-iterations"), 20.f);
@@ -274,6 +305,9 @@ TEST(EffectFluidManifest, FramePassesAspectSizesAndPresetsParse){
     EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @frame      glow vel if preset\n")).find("not a boolean or a number"),
               std::string::npos);
     EXPECT_NE(diagnosticsOf(manifestOf(presetParam + "// @frame      glow vel if\n")).find("if names"), std::string::npos);
+    // an @frame pass writes a state of its own (draw-only), not one a step writes
+    EXPECT_NE(diagnosticsOf(manifestOf("// @state      vel rg16f aspect 64\n// @step       move vel\n// @frame      glow vel\n"))
+                  .find("@frame pass 'glow' writes 'vel'"), std::string::npos);
     // @source: shaders.com, original or a port with its author and licence
     std::string source = manifestOf(states);
     source.replace(source.find("// @source     original"), 22, "// @source     somewhere else");
@@ -291,7 +325,7 @@ TEST_F(EffectFluid, GridSizesFollowTheAreasAspect){
     ASSERT_TRUE(sim.exists);
     // 320 x 200: aspect 1.6
     const size_t vel = 205u * 128u * 4u * 2u, scalar = 205u * 128u * 2u * 2u;
-    const size_t dye = 320u * 200u * 8u * 2u, ptr = 16u * 2u;
+    const size_t dye = 320u * 200u * 8u * 2u, ptr = 8u * 2u;
     const size_t bloom = 410u * 256u * 8u * 2u, sunrays = 314u * 196u * 2u * 2u;
     EXPECT_EQ(sim.bytes, vel + 2u * scalar + dye + ptr + 2u * bloom + sunrays);
     EXPECT_EQ(sim.images, 16);
@@ -456,4 +490,138 @@ TEST(EffectFluidProfile, LiveCost){
                     (unsigned long long)(after.pipelinesCreated - before.pipelinesCreated), (unsigned long long)(after.compileCalls - before.compileCalls),
                     (unsigned long long)(after.stateImagesCreated - before.stateImagesCreated), (unsigned long long)(after.replays - before.replays));
     }
+}
+
+// ── the review's findings ──
+
+// a splat logged after the pinned time is future input: not drawn until the time reaches it
+TEST_F(EffectFluid, FutureSplatsWaitForTheirTime){
+    ASSERT_TRUE(load("splats-on-start off, bloom off"));
+    at(0.5);
+    EffectSplatData splat;
+    splat.position = Rml::Vector2f(160.f, 100.f);
+    splat.radius = 30.f;
+    splat.strength = 1.5f;
+    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid", 0.8), 1);
+    EXPECT_LT(brightness(at(0.5)).second, 2) << "a splat at 0.8 s drawn at 0.5 s";
+    EXPECT_GT(brightness(at(0.85)).second, 100) << "the splat at 0.8 s is missing at 0.85 s";
+}
+
+// scripted input older than @replay (2 s) still counts: the replay starts at the earliest input
+TEST_F(EffectFluid, OldScriptedInputIsReplayed){
+    ASSERT_TRUE(load("splats-on-start off, bloom off, density-dissipation 0"));
+    at(1.0);
+    EffectSplatData splat;
+    splat.position = Rml::Vector2f(160.f, 100.f);
+    splat.radius = 30.f;
+    splat.strength = 1.5f;
+    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid", 0.5), 1);
+    const TestImage late = at(3.5);
+    EXPECT_GT(brightness(late).second, 60) << "a splat 3 s before the pinned time was ignored";
+    EXPECT_GE(info().steps, 180) << "the replay did not reach back to the splat";
+}
+
+// a parameter change redraws the look even without a step (a frozen simulation), and bloom
+// switched on computes its images
+TEST_F(EffectFluid, ParameterChangesRedoTheLookWhileFrozen){
+    const std::string html = "<!DOCTYPE html><html><head><style>\n"
+                             "html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #000; }\n"
+                             "#f { position: absolute; left: 20px; top: 20px; width: 320px; height: 200px; background: #000;"
+                             " background-image: effect(fluid, time-scale 0, bloom off, sunrays-weight 0.3); }\n"
+                             "#f.lit { background-image: effect(fluid, time-scale 0, bloom on, sunrays-weight 0.3); }\n"
+                             "#f.rays { background-image: effect(fluid, time-scale 0, bloom on, sunrays-weight 1); }\n"
+                             "</style></head><body><div id=\"f\"></div></body></html>";
+    std::string error;
+    ASSERT_TRUE(scene->loadHtml(html, &error)) << error;
+    double t = 10.0;
+    auto live = [&](){
+        HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
+        TestImage image;
+        EXPECT_TRUE(scene->capture(image));
+        return image;
+    };
+    live();
+    const TestImage off = live();
+    ASSERT_EQ(info().steps, 0) << "time-scale 0 freezes it";
+    scene->element("f")->SetClass("lit", true);
+    live();
+    const TestImage lit = live();
+    EXPECT_EQ(info().steps, 0);
+    EXPECT_GT(maxDifference(off, lit), 10) << "bloom switched on while frozen draws nothing new";
+    scene->element("f")->SetClass("rays", true);
+    live();
+    const TestImage rays = live();
+    EXPECT_GT(maxDifference(lit, rays), 5) << "sunrays-weight changed while frozen: the look did not follow";
+    // the same as a fresh frozen simulation with those parameters
+    const std::string fresh = "<!DOCTYPE html><html><head><style>\n"
+                              "html, body { margin: 0; width: 360px; height: 240px; overflow: hidden; background: #000; }\n"
+                              "#f { position: absolute; left: 20px; top: 20px; width: 320px; height: 200px; background: #000;"
+                              " background-image: effect(fluid, time-scale 0, bloom on, sunrays-weight 1); }\n"
+                              "</style></head><body><div id=\"f\"></div></body></html>";
+    ASSERT_TRUE(scene->loadHtml(fresh, &error)) << error;
+    live();
+    EXPECT_LE(maxDifference(rays, live()), 1);
+}
+
+// extreme splats are clamped (the half-float velocity stays finite), non-finite ones refused
+TEST_F(EffectFluid, ExtremeSplatsStayFinite){
+    ASSERT_TRUE(load("splats-on-start off, bloom off"));
+    at(0.5);
+    EffectSplatData splat;
+    splat.position = Rml::Vector2f(160.f, 100.f);
+    splat.radius = 30.f;
+    splat.strength = 1.5f;
+    splat.velocity = Rml::Vector2f(1.0e9f, -1.0e9f);
+    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), splat, "fluid", 0.3), 1);
+    EffectSplatData broken = splat;
+    broken.velocity.x = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_EQ(EffectRuntime::get().splat(scene->element("f"), broken, "fluid", 0.3), 0) << "a NaN velocity was taken";
+    broken = splat;
+    broken.strength = std::numeric_limits<float>::infinity();
+    EXPECT_EQ(EffectRuntime::get().splat(scene->element("f"), broken, "fluid", 0.3), 0) << "an infinite strength was taken";
+    // a second, ordinary splat later: still drawn (the fluid is not poisoned with NaN)
+    EffectSplatData later = splat;
+    later.velocity = Rml::Vector2f(0.f, 0.f);
+    later.position = Rml::Vector2f(80.f, 60.f);
+    ASSERT_EQ(EffectRuntime::get().splat(scene->element("f"), later, "fluid", 0.45), 1);
+    const TestImage image = at(0.5);
+    const Rml::Rectanglef box = scene->box("f");
+    int peak = 0;
+    for (int y = (int)box.Top() + 50; y < (int)box.Top() + 70; y++)
+        for (int x = (int)box.Left() + 70; x < (int)box.Left() + 90; x++){
+            const size_t i = ((size_t)y * (size_t)image.width + (size_t)x) * 4;
+            peak = std::max(peak, (int)std::max(image.rgba[i], std::max(image.rgba[i + 1], image.rgba[i + 2])));
+        }
+    EXPECT_GT(peak, 100) << "after an extreme splat the fluid draws nothing more (NaN)";
+}
+
+// half-float devices: without 32-bit float targets the effect still runs
+TEST_F(EffectFluid, RunsWithoutThirtyTwoBitFloatTargets){
+    EffectStatePool::setUnsupportedFormatsForTesting((1u << (unsigned)EffectStateFormat::RGBA32F) | (1u << (unsigned)EffectStateFormat::R32F));
+    EffectRuntime::get().clearStatefulDiagnostics();
+    const TestImage image = pinned("", 0.25);
+    EffectStatePool::setUnsupportedFormatsForTesting(0);
+    EXPECT_TRUE(info().exists);
+    EXPECT_GT(brightness(image).second, 100);
+    for (const auto& d : EffectRuntime::get().statefulDiagnostics())
+        EXPECT_NE(d.first, "HTMLUI-FX-0017") << d.second;
+}
+
+// with a scripted path the live pointer is no input: moving it over a pinned view replays nothing
+TEST_F(EffectFluid, ScriptedPathIgnoresTheLivePointer){
+    ASSERT_TRUE(load("splats-on-start off, bloom off"));
+    at(0.5);
+    std::vector<Rml::Vector3f> path;
+    for (int k = 0; k <= 10; k++)
+        path.emplace_back(40.f + 20.f * (float)k, 100.f, 0.1f + 0.02f * (float)k);
+    ASSERT_EQ(EffectRuntime::get().setPointerPath(scene->element("f"), path, "fluid"), 1);
+    const TestImage first = at(0.5);
+    const uint64_t replays = EffectRuntime::get().stats().replays;
+    EffectRuntime::get().setTestPointer(scene->context(), Rml::Vector2f(100.f, 80.f), true);
+    const TestImage moved = at(0.5);
+    EffectRuntime::get().setTestPointer(scene->context(), Rml::Vector2f(200.f, 150.f), false);
+    const TestImage again = at(0.5);
+    EXPECT_EQ(EffectRuntime::get().stats().replays, replays) << "the live pointer replayed a scripted simulation";
+    EXPECT_EQ(maxDifference(first, moved), 0);
+    EXPECT_EQ(maxDifference(first, again), 0);
 }
