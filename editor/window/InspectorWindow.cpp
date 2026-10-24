@@ -14367,14 +14367,44 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
         }
         if (ImGui::Button(ICON_FA_OBJECT_GROUP " Select All", ImVec2(buttonWidth, 0))){
             LatticeEditorOps::setSelectedPoints(sceneId, entity, lattice::selectAll(lattice.resolutionX, lattice.resolutionY, lattice.resolutionZ));
+            // the Scene view draws only when asked: show the selected points now
+            sceneProject->needUpdateRender = true;
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(selected.empty());
         if (ImGui::Button(ICON_FA_XMARK " Select None", ImVec2(buttonWidth, 0))){
             LatticeEditorOps::setSelectedPoints(sceneId, entity, {});
+            sceneProject->needUpdateRender = true;
         }
         ImGui::EndDisabled();
     }
+    // proportional falloff of the Scene-view point drags (spec §9.2: context menu, inspector, O)
+    {
+        LatticeFalloff& falloff = LatticeEditorOps::falloff();
+        beginTable(cpType, getLabelSize("Falloff Radius"), "lattice_falloff");
+        propertyHeader("Falloff", -1, false, false);
+        if (ImGui::Checkbox("##lattice_falloff_enabled", &falloff.enabled)){
+            sceneProject->needUpdateRender = true;
+        }
+        ImGui::SetItemTooltip("Proportional falloff (O in the Scene view): dragging points also moves the points around them, less with distance");
+        if (falloff.enabled){
+            static const char* const curves[] = {"Smooth", "Linear", "Sharp", "Constant"};
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(-1);
+            int curve = (int)falloff.curve;
+            if (ImGui::Combo("##lattice_falloff_curve", &curve, curves, IM_ARRAYSIZE(curves))){
+                falloff.curve = (LatticeFalloffCurve)curve;
+            }
+            propertyHeader("Falloff Radius", -1, false, false);
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::DragFloat("##lattice_falloff_radius", &falloff.radius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+                sceneProject->needUpdateRender = true;
+            }
+            ImGui::SetItemTooltip("In lattice local units (the cage is 1 across); the mouse wheel changes it during a drag");
+        }
+        endTable();
+    }
+
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
     ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " Edit Points: drag the cage's points in the Scene view with the Move, Rotate and Scale tools; right-click there for more.");
     ImGui::PopStyleColor();

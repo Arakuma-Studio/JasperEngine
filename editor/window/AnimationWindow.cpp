@@ -1195,6 +1195,7 @@ void editor::AnimationWindow::selectLatticeTrackPoints(SceneProject* sceneProjec
         project->setSelectedEntity(sceneProject->id, latticeEntity);
     }
     LatticeEditorOps::setSelectedPoints(sceneProject->id, latticeEntity, points);
+    sceneProject->needUpdateRender = true;
 }
 
 void editor::AnimationWindow::seekPreview(Scene* scene, SceneProject* sceneProject, float time, Entity clipEntity) {

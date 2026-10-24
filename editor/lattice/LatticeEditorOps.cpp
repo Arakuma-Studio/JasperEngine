@@ -654,25 +654,43 @@ bool LatticeEditorOps::mirror(Project* project, uint32_t sceneId, Entity entity,
 bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity entity, int rx, int ry, int rz, std::string* error){
     SceneProject* sceneProject = sceneOf(project, sceneId, error);
     if (!sceneProject) return false;
-    LatticeComponent* lattice = latticeOf(sceneProject->scene, entity, error);
-    if (!lattice) return false;
+    // not latticeOf: setting the resolution is how a broken layout (offsets of another size,
+    // e.g. a prefab instance overriding one resolution axis while the prefab changed another)
+    // gets repaired, as the other ops' error message says
+    LatticeComponent* lattice = nullptr;
+    if (entity == NULL_ENTITY || !sceneProject->scene->isEntityCreated(entity)){
+        return fail(error, "entity " + std::to_string(entity) + " does not exist in this scene");
+    }
+    lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
+    if (!lattice){
+        return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
+    }
 
     if (!validResolution(rx) || !validResolution(ry) || !validResolution(rz)){
         return fail(error, "resolution must be " + std::to_string(LATTICE_MIN_RESOLUTION) + ".." + std::to_string(LATTICE_MAX_RESOLUTION) +
                     " points per axis, not " + std::to_string(rx) + "x" + std::to_string(ry) + "x" + std::to_string(rz));
     }
-    if (rx == lattice->resolutionX && ry == lattice->resolutionY && rz == lattice->resolutionZ){
+    const int oldX = std::clamp(lattice->resolutionX, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const int oldY = std::clamp(lattice->resolutionY, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const int oldZ = std::clamp(lattice->resolutionZ, LATTICE_MIN_RESOLUTION, LATTICE_MAX_RESOLUTION);
+    const bool broken = oldX != lattice->resolutionX || oldY != lattice->resolutionY || oldZ != lattice->resolutionZ ||
+                        (int)lattice->offsets.size() != oldX * oldY * oldZ;
+    if (!broken && rx == lattice->resolutionX && ry == lattice->resolutionY && rz == lattice->resolutionZ){
         return true;
     }
 
-    // the runtime's resampling (Lattice:setResolution in Lua gives the same offsets and poses)
+    // the runtime's resampling (Lattice:setResolution in Lua gives the same offsets and poses);
+    // a broken layout counts its missing points as rest and drops the extra ones, as the solver does
     LatticeComponent resampled;
-    resampled.resolutionX = lattice->resolutionX;
-    resampled.resolutionY = lattice->resolutionY;
-    resampled.resolutionZ = lattice->resolutionZ;
+    resampled.resolutionX = oldX;
+    resampled.resolutionY = oldY;
+    resampled.resolutionZ = oldZ;
     resampled.offsets = lattice->offsets;
+    resampled.offsets.resize((size_t)(oldX * oldY * oldZ), Vector3(0, 0, 0));
     resampled.poses = lattice->poses;
-    LatticeSystem::setResolution(resampled, rx, ry, rz);
+    if (rx != oldX || ry != oldY || rz != oldZ){
+        LatticeSystem::setResolution(resampled, rx, ry, rz);
+    }
     LatticePointsState state = stateOf(resampled);
     if ((int)state.offsets.size() != rx * ry * rz){
         return fail(error, "resampling the offsets failed");
@@ -1021,10 +1039,25 @@ Entity LatticeEditorOps::createLattice(Project* project, uint32_t sceneId, const
         push(sceneId, new LatticePointsCmd(project, sceneId, entity, state));
     }
 
-    for (Entity target : bound){
+    // a group without a mesh of its own is deformed through its children
+    auto includesChildren = [scene](Entity target){
         LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(target);
-        // a group without a mesh of its own is deformed through its children
-        bool includeChildren = (modifier && modifier->includeChildren) || !hasMesh(scene, target);
+        return (modifier && modifier->includeChildren) || !hasMesh(scene, target);
+    };
+    for (Entity target : bound){
+        // a target below another one that includes its children already inherits this
+        // lattice: binding it too would deform it twice (own + inherited, spec §2.1)
+        bool inherited = false;
+        for (Entity other : bound){
+            if (other != target && includesChildren(other) && isDescendantOf(scene, target, other)){
+                inherited = true;
+                break;
+            }
+        }
+        if (inherited){
+            continue;
+        }
+        bool includeChildren = includesChildren(target);
         LatticeBinding binding;
         binding.lattice = entity;
         std::vector<LatticeBinding> bindings = boundList(scene, target, entity, binding);
