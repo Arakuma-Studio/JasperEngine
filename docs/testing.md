@@ -156,13 +156,15 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
   enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
   budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`) and
-  `SchedulerTest.Process10kUnder2ms` check the S09 budgets that way and print `[bench]` lines. A
+  `SchedulerTest.Process10kUnder2ms` check the S09 budgets that way and print `[bench]` lines; the
+  editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24) and
+  `AutosaveEncodeBench` (S03) (ratios such as a report's overhead stay checked everywhere). A
   shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
   unit test run never fails on wall-clock time; the benchmark run enforces them on the
   benchmark-only server E, which runs one job at a time:
 
   ```bash
-  rb.sh E env JASPER_TEST_PERF_SLACK=1 UNIT_SUITE=core \
+  rb.sh E env JASPER_TEST_PERF_SLACK=1 \
       UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms' tools/build.sh unit-tests
   ```
 

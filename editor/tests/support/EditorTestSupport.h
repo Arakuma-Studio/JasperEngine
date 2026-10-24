@@ -25,6 +25,11 @@ namespace jasperengine::editor::test {
 
     std::string readText(const std::filesystem::path& path);
 
+    // The factor wall-clock budgets are enforced with: JASPER_TEST_PERF_SLACK, set by the
+    // benchmark run on the benchmark server (docs/testing.md). 0 when it is not set, and under a
+    // sanitizer: the budgets are only printed, since a shared builder's load alone can miss them.
+    double perfSlack();
+
     // A scene file decoded the way Project::loadScene decodes it (report installed), into a
     // SceneProject of its own
     struct DecodedScene {

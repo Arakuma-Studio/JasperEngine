@@ -8,6 +8,7 @@
 #include "Stream.h"
 #include "System.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <mutex>
@@ -20,6 +21,16 @@ void editor::test::ensureEngine() {
     // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
     // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
     // System would leave that capture reading the wrong object
+}
+
+double editor::test::perfSlack() {
+#if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+    return 0.0;
+#else
+    const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
+    const double slack = value ? std::atof(value) : 0.0;
+    return slack > 0.0 ? slack : 0.0;
+#endif
 }
 
 fs::path editor::test::fixture(const std::string& relative) {
