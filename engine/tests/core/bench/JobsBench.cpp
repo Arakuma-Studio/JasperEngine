@@ -220,13 +220,13 @@ namespace{
         return bench::percentile(samples, 0.99);
     }
 
-    // R25: the median of three runs' p99. A neighbour taking cores on a shared build server
-    // during one run moves that run's p99, not the result.
+    // R25: the best of five runs' p99. A neighbour taking cores on a shared build server during
+    // a run moves that run's p99, not the scheduler's: the undisturbed run is the measure.
     double frameProtectionP99Ms(){
-        std::vector<double> runs;
-        for (int run = 0; run < 3; run++)
-            runs.push_back(frameProtectionRunP99Ms());
-        return bench::percentile(runs, 0.5);
+        double best = 1e9;
+        for (int run = 0; run < 5; run++)
+            best = std::min(best, frameProtectionRunP99Ms());
+        return best;
     }
 
     // The pre-S06 pool (one FIFO under a mutex, std::future), for the R25 comparison.

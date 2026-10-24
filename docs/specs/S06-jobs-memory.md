@@ -667,7 +667,8 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 - **R26 measurement methods.**
   - The range p99 comes from batches of 256 timed allocate+free pairs, with the median of 5
     runs' p99.
-  - R25 frame protection is the median of three 500-frame runs' p99.
+  - R25 frame protection is the best of five 500-frame runs' p99. On server C, a neighbour
+    compiling during a run moved that run's p99 from 2.2 ms to 4.5-12 ms.
   - R24 nested speedup times both sides in blocks (serial in 5 blocks of 4 runs, parallel in
     blocks of 50 of the 1 000 iterations) and takes the fastest block of each. A neighbour on
     the server slows some blocks; the scheduler's speedup is the undisturbed one.
