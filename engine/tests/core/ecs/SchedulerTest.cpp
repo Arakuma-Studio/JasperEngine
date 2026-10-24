@@ -376,7 +376,9 @@ TEST(SchedulerTest, OverheadOfTwentyEmptySystems){
     }
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / frames;
     std::printf("[ecs] 20 empty systems: %.2f us/frame\n", us);
-#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__) || !defined(NDEBUG)
+#if defined(__SANITIZE_THREAD__)
+    EXPECT_LE(us, 2000.0); // TSan instruments every access (5-15x)
+#elif defined(__SANITIZE_ADDRESS__) || !defined(NDEBUG)
     EXPECT_LE(us, 400.0);
 #else
     EXPECT_LE(us, 40.0); // R27: at most 2 us per system
