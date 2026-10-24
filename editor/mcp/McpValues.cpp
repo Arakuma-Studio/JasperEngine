@@ -29,6 +29,7 @@
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
+#include "util/FbxImporter.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -2013,12 +2014,18 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     return new ModelClearCmd(project, sceneId, entity);
                 }
                 if (!Util::isModelFile(stored) || !fs::exists(project->resolveAssetPath(stored))) {
-                    error = "filename must be an existing .gltf, .glb or .obj file in the assets directory.";
+                    error = "filename must be an existing .gltf, .glb, .obj or .fbx file in the assets directory.";
                     return nullptr;
                 }
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // a foliage layer's FBX mesh loads from its import, created here the first time
+            if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
+                    FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
+                error = propertyName + ": " + text + " could not be imported (the console has details).";
+                return nullptr;
+            }
             if (isShaderPathProperty(propertyName)) {
                 // an engine library shader of the component's type, or a fork whose files exist
                 std::string why;

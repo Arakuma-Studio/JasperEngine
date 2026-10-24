@@ -2627,6 +2627,7 @@ void editor::App::engineRender(){
 
     processMainThreadTasks();
     project.refreshLinkedMaterials();
+    project.refreshFbxImports();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)

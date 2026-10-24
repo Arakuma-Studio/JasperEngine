@@ -8,6 +8,7 @@
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
+#include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
 #include "window/TerrainEditWindow.h"
@@ -44,6 +45,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
+#include "command/type/ModelLoadCmd.h"
 #include "Stream.h"
 #include "util/FileDialogs.h"
 #include "util/SHA1.h"
@@ -1693,6 +1695,374 @@ void editor::Project::refreshLinkedMaterials(bool force) {
             sceneProject->isModified = true;
         }
     }
+}
+
+// Imports an FBX when its .glb is missing or stale, or always when forced; without canReplace only
+// a missing one is created. False when there is no .glb to load.
+static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs::path& assetsRoot, bool force, bool canReplace, bool& written) {
+    written = false;
+    const std::string fbxName = editor::FileUtils::pathToUtf8(fbxPath.filename());
+
+    const editor::FbxImporter::State state = editor::FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+    if (state == editor::FbxImporter::State::UpToDate && !force) {
+        return true;
+    }
+    if (!canReplace && state != editor::FbxImporter::State::Missing) {
+        if (force) {
+            editor::Out::warning("Cannot reimport %s while a project export is running", fbxName.c_str());
+        }
+        return true;
+    }
+
+    editor::Out::info("Importing %s", fbxName.c_str());
+    const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
+    for (const std::string& warning : result.warnings) {
+        editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
+    }
+    if (!result.success) {
+        editor::Out::error("Cannot import %s: %s", fbxName.c_str(), result.error.c_str());
+        // A stale import still loads
+        return state != editor::FbxImporter::State::Missing;
+    }
+    written = true;
+    return true;
+}
+
+fs::path editor::Project::getImportedModelPath(const fs::path& fbxPath) const {
+    return FileUtils::pathFromUtf8(MeshSystem::getImportedModelPath(FileUtils::pathToUtf8(fbxPath)));
+}
+
+bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
+    // The import mirrors the assets directory
+    if (!isInsideAssetsPath(fbxPath)) {
+        Out::error("Cannot import %s: it is outside the project assets", FileUtils::pathToUtf8(fbxPath.filename()).c_str());
+        return false;
+    }
+    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+    bool exported;
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        exported = exportedImports.count(fbxPath.lexically_normal()) > 0;
+    }
+    bool written = false;
+    const bool loadable = importFbx(fbxPath, getImportedModelPath(fbxPath), getAssetsPath(), force, !exported, written);
+    if (written) {
+        queueModelReload(fbxPath);
+    }
+    return loadable;
+}
+
+bool editor::Project::prepareModelFile(const std::string& modelPath) {
+    return !FbxImporter::isFbxFile(modelPath) || importFbxModel(resolveAssetPath(FileUtils::pathFromUtf8(modelPath)));
+}
+
+void editor::Project::queueModelReload(const fs::path& fbxPath) {
+    std::lock_guard<std::mutex> lock(fbxImportMutex);
+    modelReloads.insert(fbxPath.lexically_normal());
+}
+
+bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous) {
+    const std::string filename = FileUtils::pathToUtf8(fbxPath);
+    const std::string key = MeshSystem::getModelFilenameKey(filename);
+    const fs::path glbPath = getImportedModelPath(fbxPath);
+
+    // A parsed model of another import reloads to keep its part arrangement, unloaded ones read the
+    // new file anyway. A load in flight would put the old file back in the pool, so the reload waits.
+    std::vector<std::pair<SceneProject*, std::vector<Entity>>> reloads;
+    for (SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) {
+            continue;
+        }
+        std::shared_ptr<MeshSystem> meshSystem = sceneProject.scene->getSystem<MeshSystem>();
+        const std::unordered_set<Entity> sceneEntities(sceneProject.entities.begin(), sceneProject.entities.end());
+        std::vector<Entity> users;
+        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++) {
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            const Entity entity = models->getEntity(i);
+            if (model.filename.empty() || MeshSystem::getModelFilenameKey(model.filename) != key) {
+                continue;
+            }
+            if (meshSystem->isAsyncModelLoadPending(entity, model.filename)) {
+                return false;
+            }
+            if (model.gltfModel && sceneEntities.count(entity) && !FbxImporter::isCurrentImport(*model.gltfModel, glbPath)) {
+                users.push_back(entity);
+            }
+        }
+        reloads.emplace_back(&sceneProject, users);
+    }
+
+    MeshSystem::invalidateModelFile(filename);
+    const bool wasAsync = Engine::isAsyncLoading();
+    if (synchronous) {
+        Engine::setAsyncLoading(false);
+    }
+    for (const auto& [sceneProject, users] : reloads) {
+        std::shared_ptr<MeshSystem> meshSystem = sceneProject->scene->getSystem<MeshSystem>();
+        meshSystem->reloadFoliageMesh(filename);
+        meshSystem->retryFailedModelLoads(filename);
+        sceneProject->needUpdateRender = true;
+
+        for (Entity entity : users) {
+            const ModelComponent& model = sceneProject->scene->getComponent<ModelComponent>(entity);
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+                new ModelLoadCmd(this, sceneProject->id, entity, model.filename, model.mergeStaticMeshes));
+        }
+    }
+    Engine::setAsyncLoading(wasAsync);
+    return true;
+}
+
+fs::path editor::Project::applyModelReloads(bool synchronous) {
+    std::set<fs::path> reloads;
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        reloads.swap(modelReloads);
+    }
+    fs::path waiting;
+    for (const fs::path& fbxPath : reloads) {
+        if (!reloadModelFile(fbxPath, synchronous)) {
+            queueModelReload(fbxPath);
+            waiting = fbxPath;
+        }
+    }
+    return waiting;
+}
+
+void editor::Project::importFbxModels() {
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
+        // Hidden and build directories hold no assets
+        const std::string name = FileUtils::pathToUtf8(it->path().filename());
+        if (it->is_directory(ec) && (name.empty() || name[0] == '.' || name == "build")) {
+            it.disable_recursion_pending();
+            continue;
+        }
+        if (FbxImporter::isFbxFile(it->path()) && it->is_regular_file(ec)) {
+            importFbxModel(it->path());
+        }
+    }
+}
+
+void editor::Project::setFbxImportsPaused(bool paused) {
+    fbxImportsPaused = paused;
+    if (!paused) {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        exportedImports.clear();
+    }
+}
+
+bool editor::Project::flushFbxReloads(std::string& error) {
+    if (fbxImportScan.valid()) {
+        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
+            failedFbxImports[fbxPath] = failure;
+        }
+    }
+    // An import started before the pause queues its reload when it returns
+    {
+        std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+    }
+
+    const fs::path waiting = applyModelReloads(true);
+    if (!waiting.empty()) {
+        error = "Cannot export: " + FileUtils::pathToUtf8(waiting.filename()) + " is still loading. Export again once it finishes.";
+        return false;
+    }
+    return true;
+}
+
+std::map<fs::path, std::vector<const editor::SceneProject*>> editor::Project::collectSceneModelFiles() const {
+    auto fbxPathOf = [this](const std::string& filename) -> fs::path {
+        return FbxImporter::isFbxFile(filename) ? resolveAssetPath(FileUtils::pathFromUtf8(filename)).lexically_normal() : fs::path();
+    };
+
+    std::map<fs::path, std::vector<const SceneProject*>> files;
+    for (const SceneProject& sceneProject : scenes) {
+        if (!sceneProject.scene) {
+            continue;
+        }
+        const std::unordered_set<Entity> sceneEntities(sceneProject.entities.begin(), sceneProject.entities.end());
+        auto models = sceneProject.scene->getComponentArray<ModelComponent>();
+        for (size_t i = 0; i < models->size(); i++) {
+            const ModelComponent& model = models->getComponentFromIndex(i);
+            const fs::path fbxPath = fbxPathOf(model.filename);
+            if (fbxPath.empty() || !sceneEntities.count(models->getEntity(i))) {
+                continue;
+            }
+            std::vector<const SceneProject*>& unloadedScenes = files[fbxPath];
+            if (!model.gltfModel && (unloadedScenes.empty() || unloadedScenes.back() != &sceneProject)) {
+                unloadedScenes.push_back(&sceneProject);
+            }
+        }
+        // Foliage saves no model parts, so it never needs a reload
+        auto terrains = sceneProject.scene->getComponentArray<TerrainComponent>();
+        for (size_t i = 0; i < terrains->size(); i++) {
+            for (const TerrainFoliageLayer& layer : terrains->getComponentFromIndex(i).foliageLayers) {
+                const fs::path fbxPath = fbxPathOf(layer.meshPath);
+                if (!fbxPath.empty()) {
+                    files[fbxPath];
+                }
+            }
+        }
+    }
+    return files;
+}
+
+// Records which import the saved parts of each FBX model come from, so an export can check
+// a scene it cannot reload against the current FBX
+void editor::Project::updateSceneImports(SceneProject* sceneProject) {
+    if (!sceneProject->scene) {
+        return;
+    }
+    const std::unordered_set<Entity> sceneEntities(sceneProject->entities.begin(), sceneProject->entities.end());
+    // FBX -> the import its models were loaded from, empty when one is not loaded or they differ
+    std::map<std::string, std::string> loaded;
+    auto models = sceneProject->scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++) {
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        if (!FbxImporter::isFbxFile(model.filename) || !sceneEntities.count(models->getEntity(i))) {
+            continue;
+        }
+        const std::string key = normalizeToAssetsRelative(resolveAssetPath(FileUtils::pathFromUtf8(model.filename))).generic_string();
+        const std::string id = model.gltfModel ? FbxImporter::getImportId(*model.gltfModel) : std::string();
+        auto it = loaded.emplace(key, id).first;
+        if (it->second != id) {
+            it->second.clear();
+        }
+    }
+
+    std::map<std::string, std::string> imports;
+    for (const auto& [key, id] : loaded) {
+        auto saved = sceneProject->imports.find(key);
+        if (!id.empty()) {
+            imports[key] = id;
+        } else if (saved != sceneProject->imports.end()) {
+            imports[key] = saved->second;
+        }
+    }
+    sceneProject->imports = std::move(imports);
+}
+
+bool editor::Project::prepareFbxModelsForExport(std::string& error) {
+    const fs::path assetsRoot = getAssetsPath();
+    const auto files = collectSceneModelFiles();
+    {
+        std::lock_guard<std::mutex> lock(fbxImportMutex);
+        for (const auto& entry : files) {
+            exportedImports.insert(entry.first);
+        }
+    }
+
+    for (const auto& [fbxPath, unloadedScenes] : files) {
+        const std::string key = normalizeToAssetsRelative(fbxPath).generic_string();
+        const std::string fbxName = FileUtils::pathToUtf8(fbxPath.filename());
+        std::error_code ec;
+        if (!fs::is_regular_file(fbxPath, ec)) {
+            error = "Cannot export: " + key + " is missing";
+            return false;
+        }
+
+        // A scene that cannot reload keeps the model parts saved with it, which must come from this FBX
+        const std::string sourceId = FbxImporter::getSourceId(fbxPath);
+        std::string outdatedScenes;
+        for (const SceneProject* sceneProject : unloadedScenes) {
+            auto saved = sceneProject->imports.find(key);
+            if (saved == sceneProject->imports.end() || saved->second != sourceId) {
+                outdatedScenes += (outdatedScenes.empty() ? "" : ", ") + sceneProject->name;
+            }
+        }
+        if (!outdatedScenes.empty()) {
+            error = "Cannot export: " + fbxName + " changed after these scenes were saved: " + outdatedScenes +
+                ". Open them in the editor so their models reload, save them, then export again.";
+            return false;
+        }
+
+        const fs::path glbPath = getImportedModelPath(fbxPath);
+        if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
+            bool written = false;
+            importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+            if (!written) {
+                error = "Cannot export: " + fbxName + " could not be imported";
+                return false;
+            }
+            if (!reloadModelFile(fbxPath, true)) {
+                queueModelReload(fbxPath);
+                error = "Cannot export: " + fbxName + " is still loading. Export again once it finishes.";
+                return false;
+            }
+        }
+        for (const fs::path& missing : FbxImporter::findMissingLinkedFiles(fbxPath, glbPath)) {
+            Out::warning("%s uses %s, which is missing, so it is exported without that texture",
+                fbxName.c_str(), FileUtils::pathToUtf8(missing.filename()).c_str());
+        }
+    }
+    return true;
+}
+
+void editor::Project::refreshFbxImports() {
+    if (fbxImportScan.valid() && fbxImportScan.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
+            failedFbxImports[fbxPath] = failure;
+        }
+    }
+
+    // A playing scene would restore its snapshot over the reload on Stop
+    if (fbxImportsPaused || isAnyScenePlaying()) {
+        return;
+    }
+
+    applyModelReloads(false);
+
+    const auto now = std::chrono::steady_clock::now();
+    if (fbxImportScan.valid() || projectPath.empty() ||
+        std::chrono::duration<double>(now - lastFbxImportCheck).count() < fbxImportCheckIntervalSec) {
+        return;
+    }
+    lastFbxImportCheck = now;
+
+    // FBX -> its .glb
+    std::map<fs::path, fs::path> files;
+    for (const auto& entry : collectSceneModelFiles()) {
+        files[entry.first] = getImportedModelPath(entry.first);
+    }
+    if (files.empty()) {
+        return;
+    }
+
+    // Hashing and converting can take seconds, so the check runs off the main thread
+    fbxImportScan = std::async(std::launch::async,
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports]() {
+            std::map<fs::path, FbxImportFailure> failures;
+            for (const auto& [fbxPath, glbPath] : files) {
+                std::error_code ec;
+                FbxImportFailure stamp;
+                stamp.size = fs::file_size(fbxPath, ec);
+                if (ec) {
+                    continue;
+                }
+                stamp.time = fs::last_write_time(fbxPath, ec);
+                // A failed file is retried once it changes again
+                auto failed = known.find(fbxPath);
+                if (failed != known.end() && failed->second.size == stamp.size && failed->second.time == stamp.time) {
+                    continue;
+                }
+                // A missing .glb (a fresh clone, or a cleared cache) is built like a changed one
+                const FbxImporter::State state = FbxImporter::getState(fbxPath, glbPath, assetsRoot);
+                if (state == FbxImporter::State::UpToDate) {
+                    continue;
+                }
+                bool written = false;
+                importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                if (written) {
+                    queueModelReload(fbxPath);
+                } else {
+                    failures[fbxPath] = stamp;
+                }
+            }
+            return failures;
+        });
 }
 
 editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* scene) const {
@@ -5948,6 +6318,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
+    updateSceneImports(sceneProject);
 
     // What the content needs, the variants the scene drew since its last save (a script's
     // runtime meshes in Play), and the keys saved before
@@ -7043,6 +7414,10 @@ std::filesystem::path editor::Project::getProjectInternalPath() const{
     return projectPath / ".jasperengine";
 }
 
+std::filesystem::path editor::Project::getImportPath() const{
+    return getProjectInternalPath() / "imported";
+}
+
 fs::path editor::Project::getUserDataPath() const{
     // One player's progress, not project content. At the assets root, as a standalone
     // build has it, every playtest would leave a modified file in the working tree.
@@ -7628,6 +8003,31 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         SceneProject* mainSceneProject = getScene(sceneId);
         if (!mainSceneProject) {
             failPlayStartup(session, sceneId, "Failed to find scene to start");
+            return;
+        }
+
+        // Scripts can load any FBX by path. Its reloads land before the scenes are captured for Play,
+        // once the loads in flight end, since those would bring the old file back.
+        importFbxModels();
+        const auto reloadDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        fs::path stillLoading;
+        do {
+            auto reloaded = std::make_shared<std::promise<fs::path>>();
+            std::future<fs::path> reloadedFuture = reloaded->get_future();
+            editor::getEditorHost().enqueueMainThreadTask([this, reloaded]() {
+                reloaded->set_value(applyModelReloads(true));
+            });
+            while (reloadedFuture.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
+                if (isCancelled()) {
+                    markStartupDone();
+                    return;
+                }
+            }
+            stillLoading = reloadedFuture.get();
+        } while (!stillLoading.empty() && std::chrono::steady_clock::now() < reloadDeadline);
+        if (!stillLoading.empty()) {
+            failPlayStartup(session, sceneId, "Cannot play: " + FileUtils::pathToUtf8(stillLoading.filename()) +
+                " is still loading. Play again once it finishes.");
             return;
         }
 

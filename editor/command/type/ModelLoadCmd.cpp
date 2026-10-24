@@ -402,6 +402,11 @@ void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
 }
 
 bool editor::ModelLoadCmd::execute(){
+    // An FBX loads from its import, created here the first time
+    if (!project->prepareModelFile(modelPath)) {
+        return false;
+    }
+
     if (createEntityCmd) {
         if (!createEntityCmd->execute()) {
             return false;

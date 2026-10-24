@@ -3086,6 +3086,14 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
         root["prefabs"] = prefabsNode;
     }
 
+    if (!sceneProject->imports.empty()) {
+        YAML::Node importsNode;
+        for (const auto& [path, id] : sceneProject->imports) {
+            importsNode[path] = id;
+        }
+        root["imports"] = importsNode;
+    }
+
     YAML::Node entitiesNode;
     for (Entity entity : sceneProject->entities) {
         // Skip prefab children (they are stored in the prefab file)
@@ -3211,6 +3219,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
             }
             info.functionName = Factory::prefabToFunctionName(info.prefabPath);
             sceneProject->prefabs.push_back(std::move(info));
+        }
+    }
+
+    sceneProject->imports.clear();
+    if (node["imports"] && node["imports"].IsMap()) {
+        for (const auto& entry : node["imports"]) {
+            sceneProject->imports[entry.first.as<std::string>()] = entry.second.as<std::string>();
         }
     }
 }

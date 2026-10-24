@@ -73,6 +73,11 @@ void ModelPool::clear(){
     getObjMap().clear();
 }
 
+void ModelPool::invalidate(const std::string& id){
+    getMap().erase(id);
+    getObjMap().erase(id);
+}
+
 void ModelPool::clearUnused(){
     std::vector<std::string> gltfIds;
     gltfIds.reserve(getMap().size());

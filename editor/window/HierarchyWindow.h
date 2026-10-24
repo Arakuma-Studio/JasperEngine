@@ -175,6 +175,8 @@ namespace jasperengine::editor{
         void pushNodeImGuiId(const TreeNode& node);
         void popNodeImGuiId(const TreeNode& node);
         void drawInsertionMarker(const ImVec2& p1, const ImVec2& p2);
+        // A model file (.gltf, .glb, .obj, .fbx) dropped here makes a Model GameObject of the selected 3D scene
+        bool acceptsModelDrop(const std::string& filePath) const;
         void handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent = NULL_ENTITY);
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();

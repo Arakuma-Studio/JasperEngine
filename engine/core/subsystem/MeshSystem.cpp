@@ -5,11 +5,14 @@
 
 #include "Scene.h"
 #include "Engine.h"
+#include "System.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
 #include "pool/ModelPool.h"
+#include "pool/TexturePool.h"
+#include "pool/TextureDataPool.h"
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
 #include "subsystem/RenderSystem.h"
@@ -17,6 +20,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -141,6 +145,17 @@ std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     // loader does. This keeps the model/texture pools from treating the same
     // file as separate absolute and relative resources.
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
+}
+
+std::string MeshSystem::getImportedModelPath(const std::string& filename){
+    const std::string importPath = System::instance().getImportPath();
+    if (importPath.empty()){
+        return filename + ".glb";
+    }
+    // The editor's cache mirrors the assets directory
+    const std::filesystem::path source = std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal();
+    const std::filesystem::path assets = std::filesystem::path(System::instance().getAssetPath()).lexically_normal();
+    return (std::filesystem::path(importPath) / source.lexically_relative(assets)).generic_string() + ".glb";
 }
 
 // Key texture storage by image source and sampler, not glTF texture index: glTF files
@@ -900,6 +915,22 @@ bool MeshSystem::fileExists(const std::string &abs_filename, void *) {
     return df.open(abs_filename.c_str()) == FileErrors::FILEDATA_OK;
 }
 
+bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
+    std::string ext = FileData::getFilePathExtension(filename);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    if (ext == "fbx"){
+        std::vector<unsigned char> data;
+        if (!readWholeFile(&data, err, getImportedModelPath(filename), nullptr) || data.empty()){
+            return false;
+        }
+        return loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
+    }
+    if (ext == "glb"){
+        return loader.LoadBinaryFromFile(model, err, warn, filename);
+    }
+    return loader.LoadASCIIFromFile(model, err, warn, filename);
+}
+
 bool MeshSystem::readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *) {
     Data filedata;
 
@@ -1216,12 +1247,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
             loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
             loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
 
-            std::string ext = FileData::getFilePathExtension(filename);
-            if (ext.compare("glb") == 0) {
-                result->success = loader.LoadBinaryFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
-            }else{
-                result->success = loader.LoadASCIIFromFile(result->gltfModel.get(), &result->err, &result->warn, filename);
-            }
+            result->success = loadGLTFFile(loader, result->gltfModel.get(), &result->err, &result->warn, filename);
             if (result->success) {
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
 
@@ -1399,6 +1425,21 @@ bool MeshSystem::preloadModel(const std::string& filename, std::shared_ptr<void>
 
 void MeshSystem::cancelPreloadModel(const std::string& filename){
     cancelAsyncModelLoadByKey(getAsyncModelLoadKey(nullptr, filename));
+}
+
+void MeshSystem::invalidateModelFile(const std::string& filename){
+    const std::string poolKey = getModelFilenameKey(filename);
+    std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey);
+    if (model){
+        for (size_t i = 0; i < model->textures.size(); i++){
+            if (model->textures[i].source >= 0){
+                const std::string id = gltfTextureDedupKey(poolKey, *model, static_cast<int>(i));
+                TextureDataPool::invalidate(id);
+                TexturePool::invalidate(id);
+            }
+        }
+    }
+    ModelPool::invalidate(poolKey);
 }
 
 void MeshSystem::releasePreloadedModel(const std::string& filename){
@@ -3226,6 +3267,39 @@ Entity MeshSystem::getFoliageOwner(Entity foliageEntity) const{
     return NULL_ENTITY;
 }
 
+void MeshSystem::retryFailedModelLoads(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    for (auto it = failedModelLoads.begin(); it != failedModelLoads.end();){
+        it = getModelFilenameKey(*it) == key ? failedModelLoads.erase(it) : std::next(it);
+    }
+
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); i++){
+        ModelComponent& model = models->getComponentFromIndex(i);
+        const Entity entity = models->getEntity(i);
+        // Foliage chunks load through their terrain layer instead
+        if (model.gltfModel || model.objModel || model.filename.empty() || getModelFilenameKey(model.filename) != key ||
+                getFoliageOwner(entity) != NULL_ENTITY || isAsyncModelLoadPending(entity, model.filename)){
+            continue;
+        }
+        model.loadedFilename.clear();
+        model.needUpdateModel = true;
+    }
+}
+
+void MeshSystem::reloadFoliageMesh(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    for (auto& entry : terrainFoliage){
+        for (TerrainFoliageInstances& instances : entry.second){
+            // A path that no longer matches the layer makes the next update reload every chunk
+            if (!instances.loadedMeshPath.empty() && getModelFilenameKey(instances.loadedMeshPath) == key){
+                instances.loadedMeshPath.clear();
+                instances.needUpdate = true;
+            }
+        }
+    }
+}
+
 bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
     // changeRootTransform is off: the terrain places the field, not the file's root transform.
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
@@ -4373,13 +4447,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
             loader.SetImagesAsIs(true); // keep images encoded; decode in parallel below
 
-            std::string ext = FileData::getFilePathExtension(filename);
-
-            if (ext.compare("glb") == 0) {
-                res = loader.LoadBinaryFromFile(model.gltfModel.get(), &err, &warn, filename); // for binary glTF(.glb)
-            }else{
-                res = loader.LoadASCIIFromFile(model.gltfModel.get(), &err, &warn, filename);
-            }
+            res = loadGLTFFile(loader, model.gltfModel.get(), &err, &warn, filename);
 
             if (!warn.empty()) {
                 Log::warn("Loading GLTF model (%s): %s", filename.c_str(), warn.c_str());
