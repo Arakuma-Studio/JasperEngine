@@ -40,15 +40,11 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
+        # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
+        # it is registered only there, not skipped here (S02 R11, no skipped editor test)
+        JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
 )
 add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper)
-# whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without it is
-# registered only there, not skipped here (S02 R11, no skipped test in the editor target)
-if(JASPERENGINE_CONVEX_DECOMPOSITION)
-    target_compile_definitions(jasperengine-editor-tests PRIVATE JASPER_TEST_CONVEX_DECOMPOSITION=1)
-else()
-    target_compile_definitions(jasperengine-editor-tests PRIVATE JASPER_TEST_CONVEX_DECOMPOSITION=0)
-endif()
 
 # A process with nothing but the engine (the editor's static App builds a Scene before main, so
 # the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
