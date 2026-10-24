@@ -45,8 +45,8 @@ one undo step (the Inspector's Preset menu does the same). Tune afterwards with
 | `stylised` | pixelate, punchy posterized-looking grade, vignette | 1 (3) |
 | `crt_retro` | CRT (scanlines, mask, curvature), pixelate, chromatic aberration, grain, warm grade | 1 (4) |
 | `mobile_adaptive` | `mobile` plus dynamic resolution (min scale 0.6) | 8 (19) |
-| `film` | 35 mm film: neutral tone mapping, warm grade, Lens grain, halation, light damage (dust, hairs, gate weave), vignette | 3 (URP_FILM) |
-| `vhs` | VHS Tape: the tape's defaults, classic grain 0.1, a faded grade | 1 (URP_VHS) |
+| `film` | 35 mm film: neutral tone mapping, warm grade, Lens grain, halation, light damage (dust, hairs, gate weave), vignette | 3 (4) |
+| `vhs` | VHS Tape: the tape's defaults, classic grain 0.1, a faded grade | 1 (3) |
 
 The list's `current` is the scene's preset (`null` once a field differs: custom), its settings
 and the estimated cost readout of the Inspector: `{engine, unity_urp: {passes,
@@ -76,6 +76,22 @@ time (`tail_color`, `uber`, `uber_features`, `render_scale_applied`, the estimat
   exported game) and read the "Frame stats ... pass list:" lines in the log: frames 2, 30 and
   90 after everything loaded (`JASPERENGINE_FRAME_STATS=all`: every frame; in the editor each
   extra view, e.g. the Game view beside the Scene view, logs its own "view N" line).
+
+## Stylised looks (S13)
+
+The goldens of `tools/mcp/tests/test_post_fx_golden.py` (the post-processing fixture, time pinned),
+scaled down: VHS (`vhs_enabled`), Film (Lens grain, damage, the Academy gate mask), Filmic grain,
+halation without bloom, an ACEScct `.cube`, and the `film` preset.
+
+![VHS](img/post-fx/vhs.png) ![Film](img/post-fx/film.png) ![Filmic grain](img/post-fx/filmic.png)
+![Halation](img/post-fx/halation.png) ![ACEScct .cube](img/post-fx/cube_log.png) ![Film preset](img/post-fx/preset_film.png)
+
+Costs: VHS replaces the scene tap with 9 taps (FXAA and Sharpen stay off with it); film damage
+and the Lens grain add no texture read, the Filmic grain a 5x5 loop per pixel; halation reads two
+small textures and, without bloom, adds 2 passes of about 0.08 of a screen. Device budget (Mali-G57
+/ Adreno 610 class at 1080p, `film` and `vhs` at most 1 ms over `mobile`): not measured yet (no
+such device was available to the S13 stream, and the emulator's GPU is the host's); the static
+budgets are checked by the `UberBudget` unit test.
 
 ## Limits
 
@@ -173,8 +189,8 @@ depends on what its input is (`lut_input_encoding`; `auto` reads the title, e.g.
 | `logc3`, `acescct`, `cineon`, `davinci_intermediate` (and `linear` above 1) | scene, before the tone mapping | the exposed linear scene colour in the encoding's gamut and curve, decoded back after the lookup |
 
 A scene-stage LUT is part of the in-shader curve (T0). `lut_contribution` mixes either in.
-Exports cook every `.cube` of the assets to a compact `<name>.jlut` (16 bits per value across each table's range, the 3D table at most
-33^3) that the game loads in its place; a `.cube` that does not parse ships as it is (and logs the
+Exports cook every `.cube` of the assets to a compact `<name>.jlut` (16 bits per value across
+each table's range, the 3D table at most 33^3) that the game loads in its place; a `.cube` that does not parse ships as it is (and logs the
 same error in the game). No film-stock LUTs ship with the engine.
 
 ## Dynamic resolution
