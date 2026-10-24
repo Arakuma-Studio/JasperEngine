@@ -390,9 +390,12 @@ namespace {
     // fluid-smoke, 2.47 fog, 2.68 ink-flow, 1.33 magnetic-filings, 2.16 particle-field, 3.38
     // particle-flow, 1.44 particles, 2.09 pixel-sort, 1.65 pixel-throw, 1.85 reaction-diffusion,
     // 1.82 shatter, 2.62 smoke-fill, 2.72 smoke-flow, 2.13 time-trail; fluid x3.85 (Pavel's 128-grid
-    // solver with 20 Jacobi passes, a 512 x 512 dye, 8-level bloom and sunrays: 50 passes a frame))
+    // solver with 20 Jacobi passes, a 512 x 512 dye, 8-level bloom and sunrays: 50 passes a frame),
+    // but x6.4-6.5 on a 4-vCPU host (x7.9 with a fast fill run) where the others measure as here:
+    // its many small passes gain less from llvmpipe's threads than the fill, so its budget is the
+    // small host's x 1.5)
     const std::map<std::string, double> kStatefulBudgets = {
-        {"boids", 2.2}, {"chroma-flow", 1.5}, {"data-mosh", 2.4}, {"fluid", 5.8}, {"fluid-cursor-trail", 3.9}, {"fluid-smoke", 3.9},
+        {"boids", 2.2}, {"chroma-flow", 1.5}, {"data-mosh", 2.4}, {"fluid", 9.8}, {"fluid-cursor-trail", 3.9}, {"fluid-smoke", 3.9},
         {"fog", 3.8}, {"ink-flow", 4.1}, {"magnetic-filings", 2.0}, {"particle-field", 3.3}, {"particle-flow", 5.1},
         {"particles", 2.2}, {"pixel-sort", 3.2}, {"pixel-throw", 2.5}, {"reaction-diffusion", 2.8}, {"shatter", 2.8},
         {"smoke-fill", 4.0}, {"smoke-flow", 4.1}, {"time-trail", 3.2},
