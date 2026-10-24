@@ -70,9 +70,13 @@ default arguments): a missing `wake` reads as false.
   step and written back after it, so the write is silently discarded. Teleport through the body.
   GameObjects without a body have no such restriction.
 - A transform moved outside the fixed step (`onUpdate`, an animation, a Tween, the editor)
-  moves its body at the next step: a dynamic or static body jumps there, a **kinematic** body
-  is moved there with a velocity spread over the fixed steps of the frame, so it pushes and
-  carries the bodies it touches (a platform carries what stands on it).
+  moves its body at the next step by as much as it was moved, position and rotation each on
+  its own: setting only the rotation leaves the body's motion alone. A dynamic or static body
+  jumps; a **kinematic** body is moved with a velocity spread over the fixed steps of the
+  frame, so it pushes and carries the bodies it touches (a platform carries what stands on
+  it), and a part not animated keeps the velocity a script gave it. A kinematic body moved
+  further than its own size in one frame, or turned more than a quarter turn, is teleported
+  instead (a respawn, a reset).
 - Never describe transform-only movement as physics.
 
 ## Interpolation
