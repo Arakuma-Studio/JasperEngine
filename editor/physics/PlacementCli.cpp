@@ -15,6 +15,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "subsystem/MeshSystem.h"
+#include "registry/TagManager.h"
 #include "util/EntityPath.h"
 
 #include "json.hpp"
@@ -55,6 +56,11 @@ namespace jasperengine::editor {
             bool modeGiven = false;
             bool axisGiven = false;
             bool amountGiven = false;
+            bool gravityGiven = false;
+            bool spaceGiven = false;
+            std::string context;                    // "": auto; "none"; else entity paths, comma separated
+            std::vector<std::string> ignoreLayers;  // indices or names, resolved once the project is loaded
+            float decomposeTimeout = 120.0f;        // s to finish queued decompositions after the run; 0 = none
             bool save = false;
             bool dryRun = false;
             std::string format = "text";
@@ -157,6 +163,17 @@ namespace jasperengine::editor {
                     if (!vector(euler, "x,y,z degrees: the group's turn about its centre")) return false;
                     spec.targetRotation = Quaternion(euler.x, euler.y, euler.z);
                     spec.hasTargetRotation = true;
+                } else if (arg == "--target-space") {
+                    if (!need()) return false;
+                    if (value != "world" && value != "local") {
+                        error = "invalid --target-space '" + value + "' (world, or local: the first GameObject's parent space)";
+                        return false;
+                    }
+                    spec.targetLocal = value == "local";
+                    o.spaceGiven = true;
+                } else if (arg == "--ray-screen") {
+                    error = "--ray-screen needs the Scene view of a running editor: give --ray (a world-space origin and direction)";
+                    return false;
                 } else if (arg == "--ray") {
                     if (!need()) return false;
                     float v[6];
@@ -183,7 +200,7 @@ namespace jasperengine::editor {
                     o.amountGiven = true;
                 } else if (arg == "--gravity") {
                     if (!vector(spec.gravity, "x,y,z m/s^2")) return false;
-                    spec.settings.gravity = spec.gravity;
+                    o.gravityGiven = true;
                 } else if (arg == "--no-settle") {
                     spec.settle = false;
                 } else if (arg == "--seed") {
@@ -225,6 +242,29 @@ namespace jasperengine::editor {
                         error = "unknown decompose '" + value + "' (never, cached, always)";
                         return false;
                     }
+                } else if (arg == "--context") {
+                    if (!need()) return false;
+                    if (value.empty() || value.front() == ',' || value.back() == ',' || value.find(",,") != std::string::npos) {
+                        error = "invalid --context '" + value + "' (auto, none, or GameObject paths separated by commas)";
+                        return false;
+                    }
+                    o.context = value == "auto" ? std::string() : value;
+                } else if (arg == "--ignore-layers") {
+                    if (!need()) return false;
+                    size_t start = 0;
+                    for (;;) {
+                        const size_t comma = value.find(',', start);
+                        const std::string layer = value.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                        if (layer.empty()) {
+                            error = "invalid --ignore-layers '" + value + "' (layer indices 0-31 or names, separated by commas)";
+                            return false;
+                        }
+                        o.ignoreLayers.push_back(layer);
+                        if (comma == std::string::npos) break;
+                        start = comma + 1;
+                    }
+                } else if (arg == "--decompose-timeout") {
+                    if (!number(o.decomposeTimeout, 0.0f, "seconds, not negative; 0 = do not wait")) return false;
                 } else if (arg == "--push-neighbours") {
                     spec.settings.pushNeighbours = true;
                 } else if (arg == "--context-margin") {
@@ -275,6 +315,10 @@ namespace jasperengine::editor {
                 error = "--target, --delta and --rotation-euler are only used in move mode";
                 return false;
             }
+            if (o.spaceGiven && !anyTarget) {
+                error = "--target-space is only used with --target, --delta or --rotation-euler";
+                return false;
+            }
             if (spec.hasTargetPosition && spec.hasTargetDelta) {
                 error = "--target and --delta both say where the group goes: give one";
                 return false;
@@ -303,6 +347,14 @@ namespace jasperengine::editor {
                 error = "--no-settle is not used in separate mode (it never settles under gravity)";
                 return false;
             }
+            if (mode == PlacementMode::Separate && o.gravityGiven) {
+                error = "--gravity is not used in separate mode (it runs without gravity)";
+                return false;
+            }
+            // as the place_with_physics tool sets them, so the same arguments mean the same run
+            if (mode == PlacementMode::Separate) spec.settle = false;
+            spec.settings.gravity = spec.gravity;
+            spec.settings.maxSettleSeconds = spec.maxSeconds;
             return true;
         }
 
@@ -511,6 +563,50 @@ namespace jasperengine::editor {
             spec.sceneId = sceneId;
             spec.entities = placementRoots(&project, sceneId, selection);
 
+            // --context: the listed GameObjects (and their children) are all the environment
+            if (o.context == "none") {
+                spec.context = PlacementSpec::Context::None;
+            } else if (!o.context.empty()) {
+                spec.context = PlacementSpec::Context::Entities;
+                size_t start = 0;
+                for (;;) {
+                    const size_t comma = o.context.find(',', start);
+                    const std::string ref = o.context.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                    const std::vector<Entity> found = EntityPath::resolve(*sp, ref);
+                    if (found.size() != 1) {
+                        err << prefix << "--context: " << (found.empty() ? "no GameObject '" + ref + "' in scene " + sp->name
+                                                                          : "'" + ref + "' names " + std::to_string(found.size()) +
+                                                                            " GameObjects (give the path)")
+                            << "\n";
+                        return 2;
+                    }
+                    if (std::find(spec.contextEntities.begin(), spec.contextEntities.end(), found.front()) == spec.contextEntities.end()) {
+                        spec.contextEntities.push_back(found.front());
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+            }
+            // --ignore-layers: indices, or the project's layer names
+            for (const std::string& layerArg : o.ignoreLayers) {
+                int layer = -1;
+                if (std::all_of(layerArg.begin(), layerArg.end(), [](char c) { return c >= '0' && c <= '9'; }) && layerArg.size() <= 2) {
+                    layer = std::atoi(layerArg.c_str());
+                } else {
+                    layer = TagManager::nameToLayer(layerArg);
+                }
+                if (layer < 0 || layer >= MAX_LAYERS) {
+                    std::string layers;
+                    for (int i = 0; i < MAX_LAYERS; i++) {
+                        const std::string name = TagManager::layerToName(i);
+                        if (!name.empty()) layers += (layers.empty() ? "" : ", ") + std::to_string(i) + "=" + name;
+                    }
+                    err << prefix << "--ignore-layers: '" << layerArg << "' is not a layer (0-31 or a name; layers: " << layers << ")\n";
+                    return 2;
+                }
+                spec.settings.ignoreLayerMask |= 1u << layer;
+            }
+
             const std::vector<std::string> problems = checkPlacementSpec(&project, spec);
             if (!problems.empty()) {
                 for (const std::string& problem : problems) err << prefix << problem << "\n";
@@ -574,6 +670,22 @@ namespace jasperengine::editor {
                 printText(*sp, result, saved, text);
                 report = text.str();
             }
+
+            // decompositions the run queued (--decompose cached) finish into the project's cache
+            // for later runs, within --decompose-timeout; the result above does not change
+            if (cache && cache->pendingCount() > 0 && o.decomposeTimeout > 0.0f) {
+                if (!o.quiet) {
+                    err << "place-physics: finishing " << cache->pendingCount() << " queued decomposition(s) for later runs\n";
+                }
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(o.decomposeTimeout);
+                while (cache->pendingCount() > 0 && std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+                if (cache->pendingCount() > 0 && !o.quiet) {
+                    err << "place-physics: " << cache->pendingCount() << " decomposition(s) still running after " << fixed(o.decomposeTimeout, 0)
+                        << " s, dropped (raise --decompose-timeout)\n";
+                }
+            }
             return result.allSettled ? 0 : 3;
         }
 
@@ -584,7 +696,9 @@ namespace jasperengine::editor {
             << "  " << commandName << " place-physics --project <path> --scene <scene> --entity <path> [--entity ...] [options]\n\n"
             << "Places GameObjects with an edit-time physics simulation (Physics Placement): drops them until they\n"
             << "rest, pushes overlapping ones apart, or moves, snaps, gathers or distributes them so they stop\n"
-            << "against the scene around them. The same simulation and result as the place_with_physics MCP tool.\n"
+            << "against the scene around them. The same simulation and result as the place_with_physics MCP tool;\n"
+            << "every argument of the tool has a flag here, except the two that need an editor window: screenshot,\n"
+            << "and ray {screen: [x, y]} (a Scene view pixel; give --ray in world space instead).\n"
             << "The scene's own physics never runs; no project file changes unless --save (the convex decomposition\n"
             << "cache under .jasperengine/ may grow).\n\n"
             << "Options:\n"
@@ -598,30 +712,43 @@ namespace jasperengine::editor {
             << "                              (the group rigidly), stopping at contacts; snap: onto the surface --ray\n"
             << "                              hits; gather: toward the centre by --amount; distribute: equal spacing\n"
             << "                              along --axis. Every mode but separate settles afterwards.\n"
-            << "      --target <x,y,z>        Move: where the group's centre goes (world).\n"
-            << "      --delta <x,y,z>         Move: how far the group goes (world).\n"
+            << "      --target <x,y,z>        Move: where the group's centre goes.\n"
+            << "      --delta <x,y,z>         Move: how far the group goes.\n"
             << "      --rotation-euler <x,y,z>  Move: the group's turn about its centre, degrees.\n"
+            << "      --target-space <s>      world (default) or local: --target, --delta and --rotation-euler in the\n"
+            << "                              first GameObject's parent space.\n"
             << "      --ray <ox,oy,oz,dx,dy,dz>  Snap: a ray (origin, direction; 1000 m long) whose hit the group is placed\n"
             << "                              on, then settles; it goes there directly (walls in between are not\n"
             << "                              traversed physically). A ray that hits nothing is a usage error.\n"
+            << "      --ray-screen            Not available here: a Scene view pixel needs a running editor (MCP).\n"
             << "      --axis <x|y|z>          Distribute: the axis.\n"
             << "      --amount <a>            Gather: 0..1, how far toward the centre (default 1).\n"
             << "      --gravity <x,y,z>       Gravity, m/s^2 (default 0,-9.81,0).\n"
             << "      --no-settle             Stop after the gesture: no fall until resting afterwards.\n"
             << "      --seed <n>              Seed of --jitter (default 1). Same scene, arguments and editor build: the\n"
-            << "                              same result and state hash, with --decompose never or always (cached may\n"
-            << "                              pick up a decomposition an earlier run queued, and differ from it).\n"
+            << "                              same result and state hash, with --decompose never or always (with cached,\n"
+            << "                              a run after one that filled the cache uses those decompositions, and\n"
+            << "                              differs from it).\n"
             << "      --max-seconds <s>       Simulated seconds at most (default 10).\n"
             << "      --jitter <pos,deg>      A random offset (metres) and turn (degrees) per object before the first\n"
             << "                              step (default 0,0).\n"
             << "      --feel <feel>           precise, balanced (default) or fast.\n"
             << "      --colliders <c>         auto (default): authored colliders, else a fitted primitive, else a convex\n"
             << "                              hull (decomposition when cached); authored; generated; both.\n"
-            << "      --decompose <d>         never; cached (default): use convex decompositions already in the\n"
-            << "                              project's cache, queue the missing ones for later runs; always: compute\n"
-            << "                              the missing ones first (waits). never and always are reproducible.\n"
+            << "      --decompose <d>         never; cached (default): use the convex decompositions in the project's\n"
+            << "                              cache (.jasperengine/cache/colliders); the missing ones are computed after\n"
+            << "                              the run, for later runs (see --decompose-timeout); always: compute the\n"
+            << "                              missing ones first, then run. never and always are reproducible.\n"
+            << "      --decompose-timeout <s> After the run, wait at most this long for the decompositions it queued to\n"
+            << "                              reach the cache (default 120; 0: don't wait, they are dropped). Never\n"
+            << "                              changes the result or the exit code.\n"
             << "      --push-neighbours       Unselected movable objects nearby can be knocked too.\n"
-            << "      --context-margin <m>    The environment gathered around the objects, metres (default 2).\n"
+            << "      --context <c>           The environment: auto (default: what is around the objects), none (only\n"
+            << "                              the objects), or GameObject paths separated by commas (those and their\n"
+            << "                              children only).\n"
+            << "      --context-margin <m>    How far around the objects auto gathers the environment, metres (default 2).\n"
+            << "      --ignore-layers <list>  Layers (indices 0-31 or names, separated by commas) that are neither moved\n"
+            << "                              nor environment.\n"
             << "      --dry-run               Print the result, change nothing (the default).\n"
             << "      --save                  Apply the result (one undo step, as apply:true) and save the scene as the\n"
             << "                              editor's Save does (the scene file, modified child scenes, the project).\n"
