@@ -120,6 +120,7 @@ std::string joinNames(const std::vector<std::string>& names) {
 template<typename T>
 bool pickName(const std::vector<std::pair<const char*, T>>& table, const std::string& name, T& out,
               const std::string& what, std::string& error) {
+    out = T{};   // written on every path, so a caller's variable is never read uninitialized
     const std::string key = lowerText(name);
     for (const auto& item : table) {
         if (key == item.first) {
@@ -2961,7 +2962,10 @@ void previewAnimationTool(const CallPtr& call) {
     const std::string action = lowerText(stringOr(call->args(), "action", "play"));
     // The preview runs on the selected scene's selected Animation, as when a human uses the window
     if (target.project->getSelectedSceneId() != target.sceneId()) target.project->setSelectedSceneId(target.sceneId());
-    target.project->setSelectedEntity(target.sceneId(), target.entity);
+    // what the preview needs selected, not a selection step of its own (S24 R15)
+    SelectionState previewed;
+    previewed.entities = {target.entity};
+    target.project->setSelection(target.sceneId(), previewed, SelectionCause::Forced);
     window->setOpen(true);
     window->selectEntity(target.entity, target.sceneId());
     if (action == "play") window->externalPlay(target.entity, target.sceneId());

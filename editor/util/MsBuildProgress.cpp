@@ -102,7 +102,7 @@ namespace {
             : std::string();
     }
 
-    void replaceAll(std::string& value, const std::string& from, const std::string& to) {
+    void msbuildReplaceAll(std::string& value, const std::string& from, const std::string& to) {
         size_t pos = 0;
         while ((pos = value.find(from, pos)) != std::string::npos) {
             value.replace(pos, from.size(), to);
@@ -258,7 +258,7 @@ private:
                 if (itemEnd != std::string::npos) {
                     std::string objectValue = elementValue(xml, tagEnd + 1, itemEnd, "ObjectFileName");
                     if (!objectValue.empty()) {
-                        replaceAll(objectValue, "$(IntDir)", intermediate);
+                        msbuildReplaceAll(objectValue, "$(IntDir)", intermediate);
                         object = resolve(projectFile, objectValue);
                     }
                 }

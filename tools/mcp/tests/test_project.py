@@ -30,7 +30,7 @@ async def test_summary(ed: Editor):
     ed.check_eq(s["start_scene_id"], s["scenes_in_build"][0]["id"])
     ed.check_eq(s["assets_dir"], "assets")
     ed.check_eq(s["lua_dir"], "scripts")
-    ed.check_in(s["cxx_standard"], (17, 20, 23))
+    ed.check_in(s["cxx_standard"], (20, 23))
     ed.check_eq(s["platform"], "linux")
     ed.check(s["engine_version"], "engine_version")
     for legacy in ("set_project_script_dirs", "set_project_cxx_standard", "update_project_build_file",
@@ -108,14 +108,14 @@ async def test_settings_set(ed: Editor):
     now = (await ed.call("get_project_settings", keys=["player.window_width"]))["settings"]
     ed.check_eq(now["player.window_width"], 800)
 
-    for bad in ({"scripting.cxx_standard": 14}, {"player.identifier": "nodots"}, {"tags_and_layers.tags": ["Player"]},
+    for bad in ({"scripting.cxx_standard": 14}, {"scripting.cxx_standard": 17}, {"player.identifier": "nodots"}, {"tags_and_layers.tags": ["Player"]},
                 {"tags_and_layers.layers": {"0": "Mine"}}, {"player.window_icon": "missing.png"},
                 {"scripting.script_dirs": ["../outside"]}, {"physics.layer_collision_matrix": [["NoSuchLayer", 1]]}):
         await ed.call("set_project_settings", values=bad, expect_error=True)
 
     # restore what later tests (builds) care about
     await ed.call("set_project_settings", values={"player.window_width": 1280, "player.window_height": 720,
-                                                  "scripting.cxx_standard": 17, "quality.vsync": True})
+                                                  "scripting.cxx_standard": 20, "quality.vsync": True})
 
 
 async def test_script_dirs(ed: Editor):

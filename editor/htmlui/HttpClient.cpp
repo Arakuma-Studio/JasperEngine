@@ -6,6 +6,7 @@
 #include "util/CommandRunner.h"
 
 #include "htmlui/compat/ImportManifest.h"
+#include "util/FileUtils.h"
 
 #include <atomic>
 #include <cctype>
@@ -327,7 +328,7 @@ HttpResponse HttpClient::getFromMirror(const std::string& mirror, const std::str
         response.error = "not found: " + url + " (the import mirror serves http(s) URLs only)";
         return response;
     }
-    const fs::path file = fs::path(mirror) / fs::u8path(relative);
+    const fs::path file = fs::path(mirror) / editor::FileUtils::pathFromUtf8(relative);
     std::error_code ec;
     if (!fs::is_regular_file(file, ec)){
         response.status = 404;

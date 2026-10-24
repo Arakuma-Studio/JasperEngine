@@ -44,7 +44,7 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(lift, "lift", T::Vector3, -1.0f, 1.0f, "lift [r,g,b]: added to the shadows (0 none)"),
         PP_FIELD(gamma, "gamma", T::Vector3, 0.1f, 4.0f, "gamma [r,g,b]: midtones (1 none, above brightens)"),
         PP_FIELD(gain, "gain", T::Vector3, 0.0f, 4.0f, "gain [r,g,b]: scales the colour (1 none)"),
-        PP_FIELD(lutTexture, "lut_texture", T::String, 0.0f, 0.0f, "project LUT: an image strip (N*N x N, display colour) or a .cube file (\"\" none)"),
+        PP_FIELD(lutTexture, "lut_texture", T::Asset, 0.0f, 0.0f, "project LUT: an image strip (N*N x N, display colour) or a .cube file (\"\" none)"),
         PP_FIELD(lutContribution, "lut_contribution", T::Float, 0.0f, 1.0f, "how much of the LUT applies (0..1)"),
         PP_ENUM(lutInputEncoding, "lut_input_encoding", lutEncodingNames, "LutInputEncoding", lutEncodingValues,
                 "a .cube LUT's input: auto (from its title and range), srgb, linear (display), logc3, acescct, cineon, davinci_intermediate (scene, before the tone mapping)"),
@@ -150,6 +150,7 @@ bool PostProcessingSettings::operator==(const PostProcessingSettings& o) const{
             case FieldType::Float: if (*(const float*)a != *(const float*)b) return false; break;
             case FieldType::Vector3: if (*(const Vector3*)a != *(const Vector3*)b) return false; break;
             case FieldType::String: if (*(const std::string*)a != *(const std::string*)b) return false; break;
+            case FieldType::Asset: if (*(const AssetRef*)a != *(const AssetRef*)b) return false; break;
         }
     }
     return true;

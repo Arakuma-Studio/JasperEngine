@@ -37,7 +37,6 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
     this->mouseClicked = false;
-    this->lastCommand = nullptr;
     this->useGlobalTransform = true;
     this->isPlaying = false;
 
@@ -1255,10 +1254,22 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         }
     }
 
-    if (lastCommand){
-        lastCommand->setNoMerge();
-        lastCommand = nullptr;
+    dragEdit.commit();
+    dragEditStarted = false;
+}
+
+bool editor::SceneRender::pushDragCommand(size_t sceneId, Command* command){
+    if (dragEditStarted && !dragEdit.isOpen()){
+        // Esc cancelled the drag (or a popup ended it): nothing more until the mouse is released
+        delete command;
+        return false;
     }
+    CommandHistory* history = CommandHandle::get(sceneId);
+    if (!dragEditStarted){
+        dragEdit = history->beginInteractive(std::string());
+        dragEditStarted = true;
+    }
+    return history->addCommand(command);
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1376,9 +1387,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newPos;
                 Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
-                }
+                pushDragCommand(sceneId, dragCommand);
 
             }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D
                 && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
@@ -1402,9 +1411,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                 Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
-                }
+                pushDragCommand(sceneId, dragCommand);
             }
         }
     }
@@ -2005,8 +2012,8 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     } // end else (entity-level OBJECT2D)
                 }
 
-                if (dragCommand && CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
+                if (dragCommand){
+                    pushDragCommand(sceneId, dragCommand);
                 }
             }
         }

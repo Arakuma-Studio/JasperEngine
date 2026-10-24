@@ -3,11 +3,14 @@
 
 #pragma once
 
+#include "io/AtomicFile.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -122,35 +125,42 @@ public:
 
     enum class WriteResult { Unchanged, Written, Failed };
 
-    // Writes newContent only when the file does not already hold it.
+    // Writes newContent only when the file does not already hold it (its mtime stays then).
+    // Atomic (io::writeFileAtomic, Cache durability): a crash leaves the old file or the new
+    // one, never a truncation. Generated output; user documents use DocumentFiles::write.
     static WriteResult writeFile(const std::filesystem::path& filePath, const std::string& newContent) {
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        options.skipIfUnchanged = true;
+        const io::WriteResult result = io::writeFileAtomic(filePath, newContent, options);
+        if (result.error == io::WriteError::Unchanged) {
+            return WriteResult::Unchanged;
+        }
+        return result.ok() ? WriteResult::Written : WriteResult::Failed;
+    }
+
+    // std::filesystem::rename with the publish retry policy (a file another program holds open
+    // on Windows, an indexer): io::renameWithRetry, throwing like the original on failure
+    static void renameWithRetry(const std::filesystem::path& from, const std::filesystem::path& to) {
         std::error_code ec;
-        if (std::filesystem::exists(filePath, ec) && !ec) {
-            std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
-            if (ifs) {
-                std::string currentContent(
-                    (std::istreambuf_iterator<char>(ifs)),
-                    std::istreambuf_iterator<char>()
-                );
-                if (currentContent == newContent) {
-                    return WriteResult::Unchanged;
-                }
-            }
+        if (!io::renameWithRetry(from, to, ec)) {
+            throw std::filesystem::filesystem_error("rename", from, to, ec);
         }
+    }
 
-        if (filePath.has_parent_path()) {
-            std::filesystem::create_directories(filePath.parent_path(), ec);
-            if (ec) {
-                return WriteResult::Failed;
-            }
+    // Copies a file over another the atomic way: into a temporary sibling, then published
+    // (io::publishFile), so the target is the old file or the whole new one, never a part
+    static bool copyFileAtomic(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec) {
+        const std::filesystem::path temp = io::makeTemporarySiblingPath(to);
+        std::filesystem::copy_file(from, temp, std::filesystem::copy_options::none, ec);
+        if (ec) {
+            std::error_code ignored;
+            std::filesystem::remove(temp, ignored);
+            return false;
         }
-
-        std::ofstream ofs(filePath, std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!ofs) {
-            return WriteResult::Failed;
-        }
-        ofs.write(newContent.data(), static_cast<std::streamsize>(newContent.size()));
-        return ofs ? WriteResult::Written : WriteResult::Failed;
+        const io::WriteResult published = io::publishFile(temp, to);
+        ec = published.code;
+        return published.ok();
     }
 
     // True when the file holds newContent afterwards, written or already up to date.
@@ -159,18 +169,20 @@ public:
         return writeFile(filePath, newContent) != WriteResult::Failed;
     }
 
-    // path's UTF-8 conversions changed shape in C++20: u8string() returns std::u8string
-    // and u8path() is deprecated. These keep the call sites on std::string either way.
-    static std::filesystem::path pathFromUtf8(const std::string& text) {
-#ifdef __cpp_lib_char8_t
+    // path's UTF-8 conversions in C++20: u8string() returns std::u8string and u8path() is
+    // deprecated. These keep the call sites on std::string.
+    static std::filesystem::path pathFromUtf8(std::string_view text) {
         return std::filesystem::path(std::u8string(text.begin(), text.end()));
-#else
-        return std::filesystem::u8path(text);
-#endif
     }
 
     static std::string pathToUtf8(const std::filesystem::path& path) {
-        const auto utf8 = path.u8string();
+        const std::u8string utf8 = path.u8string();
+        return std::string(utf8.begin(), utf8.end());
+    }
+
+    // with '/' separators on every platform
+    static std::string genericPathToUtf8(const std::filesystem::path& path) {
+        const std::u8string utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());
     }
 };

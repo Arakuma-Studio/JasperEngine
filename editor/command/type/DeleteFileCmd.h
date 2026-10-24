@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include <vector>
 #include <string>
@@ -26,13 +27,28 @@ namespace jasperengine::editor{
         std::vector<DeleteFilesData> files;
         fs::path trash;
 
-        fs::path generateUniqueTrashPath(const fs::path& trashDir, const fs::path& originalFile);
-
     public:
         DeleteFileCmd(Project* project, std::vector<fs::path> filePaths, fs::path rootPath);
 
         bool execute() override;
         void undo() override;
+
+        // "Delete File a.png", "Delete 3 Files"
+        std::string describe() const override {
+            std::vector<fs::path> names;
+            for (const DeleteFilesData& file : files) {
+                names.push_back(file.originalFile);
+            }
+            return std::string("Delete ") + (files.size() == 1 ? "File " : "") + CommandNames::files(names);
+        }
+        const char* typeName() const override { return "DeleteFileCmd"; }
+        size_t memoryBytes() const override {
+            size_t bytes = sizeof(*this) + trash.native().size();
+            for (const DeleteFilesData& file : files) {
+                bytes += sizeof(file) + file.originalFile.native().size() + file.trashFile.native().size();
+            }
+            return bytes;
+        }
 
     };
 

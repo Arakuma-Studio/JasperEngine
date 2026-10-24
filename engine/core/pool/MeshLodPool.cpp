@@ -3,8 +3,6 @@
 
 #include "MeshLodPool.h"
 
-#include "thread/ThreadPoolManager.h"
-
 #include "meshoptimizer.h"
 
 #include <algorithm>
@@ -23,8 +21,8 @@ namespace{
     // rounding between copies of a vertex, as a share of the mesh size
     const float WELD_TOLERANCE = 2e-6f;
 
-    bool isReady(const std::shared_future<std::shared_ptr<MeshLodData>>& future){
-        return future.valid() && future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    bool isBuilt(const jobs::Task<std::shared_ptr<MeshLodData>>& task){
+        return task.isReady() && task.status() == jobs::TaskStatus::Completed;
     }
 
     // meshoptimizer only joins bitwise equal positions, so seam copies off by rounding would crack
@@ -107,7 +105,7 @@ uint64_t MeshLodPool::hash(uint64_t seed, const void* data, size_t size){
 std::shared_ptr<MeshLodData> MeshLodPool::get(uint64_t key){
     std::lock_guard<std::mutex> lock(getMutex());
     auto it = getMap().find(key);
-    if (it == getMap().end() || !isReady(it->second)){
+    if (it == getMap().end() || !isBuilt(it->second)){
         return nullptr;
     }
     return it->second.get();
@@ -124,16 +122,16 @@ void MeshLodPool::build(uint64_t key, MeshLodSource&& source){
         return;
     }
 
-    #ifndef NO_THREAD_SUPPORT
-        auto shared = std::make_shared<MeshLodSource>(std::move(source));
-        getMap()[key] = ThreadPoolManager::getInstance().enqueue([shared]() {
-            return simplify(*shared);
-        }).share();
-    #else
-        std::promise<std::shared_ptr<MeshLodData>> promise;
-        promise.set_value(simplify(source));
-        getMap()[key] = promise.get_future().share();
-    #endif
+    // single-thread mode runs it from the frame's pump instead
+    auto shared = std::make_shared<MeshLodSource>(std::move(source));
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "mesh-lod-simplify";
+    options.tags = jobs::Tag::Asset;
+    getMap()[key] = jobs::submit([shared]() {
+        return simplify(*shared);
+    }, options);
 }
 
 // levels are appended while they keep shrinking; a result without any means the source
@@ -204,9 +202,9 @@ std::shared_ptr<MeshLodData> MeshLodPool::simplify(const MeshLodSource& source){
 void MeshLodPool::clear(){
     std::lock_guard<std::mutex> lock(getMutex());
     for (auto& it : getMap()){
-        if (it.second.valid()){
-            it.second.wait();
-        }
+        // a build not started yet is dropped, a running one finishes
+        it.second.cancel();
+        it.second.wait();
     }
     getMap().clear();
 }
@@ -214,7 +212,7 @@ void MeshLodPool::clear(){
 void MeshLodPool::clearUnused(){
     std::lock_guard<std::mutex> lock(getMutex());
     for (auto it = getMap().begin(); it != getMap().end();){
-        if (isReady(it->second) && it->second.get().use_count() <= 1){
+        if (it->second.isReady() && (!isBuilt(it->second) || it->second.get().use_count() <= 1)){
             it = getMap().erase(it);
         }else{
             ++it;

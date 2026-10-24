@@ -12,6 +12,7 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "manager/PrefabAsset.h"
+#include "asset/AssetRef.h"
 
 // Macro with optional type parameter
 #define DPROPERTY_1(DisplayName) \
@@ -39,7 +40,8 @@ namespace jasperengine {
         Color3,
         Color4,
         EntityReference,
-        Prefab          // a PrefabAsset: a prefab dragged from the Project window
+        Prefab,         // a PrefabAsset: a prefab dragged from the Project window
+        Asset           // an AssetRef of the type assetType names ("texture", "model", ...)
     };
 
     struct EntityReference {
@@ -57,7 +59,8 @@ namespace jasperengine {
         Vector3,
         Vector4,
         EntityReference,
-        PrefabAsset
+        PrefabAsset,
+        AssetRef
     >;
 
     struct JASPERENGINE_API ScriptProperty {
@@ -73,6 +76,9 @@ namespace jasperengine {
 
         // Optional: Store the actual type name for editor UI/debugging
         std::string ptrTypeName; // e.g., "Mesh*", "GameObject*", "EntityHandle*"
+
+        // Asset properties: the asset type the value must have ("texture", "model", ...; empty = any)
+        std::string assetType;
 
         // Helper template to get typed value
         template<typename T>

@@ -6,6 +6,7 @@
     tools/mcp/run-tests.sh tests/test_protocol.py
     tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py   # fake-server protocol checks
     tools/mcp/run-tests.sh --url http://127.0.0.1:47615/mcp   # against an editor already running
+    tools/mcp/run-tests.sh --suite ci -j 2      # the CI suite: the files that declare CI = True
 
 A test is a module-level `async def test_xxx(ed)` (ed: harness.Editor) or `async def test_xxx()`.
 Tests of a file run in source order and share one editor, started on a fresh scratch copy of the
@@ -16,12 +17,20 @@ per-test hang guard in seconds (default 600): a test fails when no tool call has
 for that long (a slow but working editor, such as one waiting for game frames on a loaded machine,
 never trips it; each call has its own timeout, harness.Editor.call_raw).
 
-Each file runs in its own Python process. Exit code: 0 when nothing failed.
+A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
+level. CI has no copy of the default fixture (build/fixture-unity), so such a file must not need it:
+every test that takes an editor runs on EDITOR = {"create": True, ...} or EDITOR = {"project": ...}
+(e.g. a tools/fixtures project). The runner checks this and exits 2 otherwise. New test files are
+written CI-capable by default (docs/mcp/README.md).
+
+Each file runs in its own Python process. Exit code: 0 when nothing failed, 1 when a test failed or
+a worker crashed, 2 when --suite ci holds a file that relies on the default fixture.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
 import asyncio
 import concurrent.futures
 import contextlib
@@ -157,6 +166,77 @@ def worker_main(args) -> int:
 
 
 # ---------------------------------------------------------------------------
+# CI suite
+
+
+def _module_assignments(path: Path) -> dict[str, ast.expr]:
+    """The module-level `NAME = value` statements of a test file, without importing it."""
+    found: dict[str, ast.expr] = {}
+    for node in ast.parse(path.read_text(encoding="utf-8"), str(path)).body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    found[target.id] = node.value
+    return found
+
+
+def _wants_editor(path: Path) -> bool:
+    """Whether a test of the file takes the shared editor (a parameter: async def test_x(ed))."""
+    for node in ast.parse(path.read_text(encoding="utf-8"), str(path)).body:
+        if isinstance(node, ast.AsyncFunctionDef) and node.name.startswith("test_") and node.args.args:
+            return True
+    return False
+
+
+def is_ci_file(path: Path) -> bool:
+    value = _module_assignments(path).get("CI")
+    return isinstance(value, ast.Constant) and value.value is True
+
+
+def _own_fixture_call(path: Path) -> str | None:
+    """A call in the file that copies the default fixture: Editor() or RawEditor() without
+    create/project/url, or harness.default_fixture()."""
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), str(path))):
+        if not isinstance(node, ast.Call):
+            continue
+        name = node.func.id if isinstance(node.func, ast.Name) else \
+            node.func.attr if isinstance(node.func, ast.Attribute) else ""
+        if name == "default_fixture":
+            return f"it calls default_fixture() (line {node.lineno})"
+        if name in ("Editor", "RawEditor") and not node.args and \
+                not any(k.arg in ("create", "project", "url") or k.arg is None for k in node.keywords):
+            return f"it starts {name}() on the default fixture (line {node.lineno})"
+    return None
+
+
+def default_fixture_reason(path: Path) -> str | None:
+    """Why the file needs the default fixture (build/fixture-unity), or None when it does not:
+    its editor tests run on EDITOR["create"] or an explicit EDITOR["project"], and it starts no
+    editor of its own on the default fixture."""
+    own = _own_fixture_call(path)
+    if own:
+        return own
+    if not _wants_editor(path):
+        return None
+    editor = _module_assignments(path).get("EDITOR")
+    if isinstance(editor, ast.Dict):
+        for key, value in zip(editor.keys, editor.values):
+            if isinstance(key, ast.Constant) and key.value == "project":
+                return None
+            if isinstance(key, ast.Constant) and key.value == "create" and not (
+                    isinstance(value, ast.Constant) and not value.value):
+                return None
+    return "its tests take the shared editor, and EDITOR has neither \"create\" nor \"project\""
+
+
+def ci_files(tests: Path = TESTS) -> tuple[list[Path], list[str]]:
+    """The CI = True files, and the problems that keep them out of CI."""
+    files = [f for f in sorted(tests.glob("test_*.py")) if is_ci_file(f)]
+    problems = [f"{f.name}: CI = True, but {reason}" for f in files if (reason := default_fixture_reason(f))]
+    return files, problems
+
+
+# ---------------------------------------------------------------------------
 # Driver
 
 
@@ -170,6 +250,10 @@ def main() -> int:
     ap.add_argument("--url", help="attach to a running editor over Streamable HTTP")
     ap.add_argument("--keep", action="store_true", help="keep every scratch directory")
     ap.add_argument("--list", action="store_true", help="list the tests and exit")
+    ap.add_argument("--suite", choices=["ci", "all"], default="all",
+                    help="ci: only the files that declare CI = True (default: all, or the given files)")
+    ap.add_argument("--json", type=Path, help="write every test result (name, status, detail, seconds) here")
+    ap.add_argument("--tests-dir", type=Path, default=TESTS, help=argparse.SUPPRESS)  # selftest.py
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     ap.add_argument("--results", help=argparse.SUPPRESS)
     args = ap.parse_args()
@@ -177,7 +261,20 @@ def main() -> int:
     if args.worker:
         return worker_main(args)
 
-    files = [Path(f).resolve() for f in args.files] or sorted(TESTS.glob("test_*.py"))
+    if args.suite == "ci":
+        files, problems = ci_files(args.tests_dir)
+        if args.files:
+            wanted = {Path(f).resolve() for f in args.files}
+            files = [f for f in files if f.resolve() in wanted]
+        for problem in problems:
+            print(f"run_tests: {problem}", file=sys.stderr)
+        if problems:
+            return 2
+        if not files:
+            print("run_tests: no CI = True test file", file=sys.stderr)
+            return 2
+    else:
+        files = [Path(f).resolve() for f in args.files] or sorted(TESTS.glob("test_*.py"))
     if args.list:
         for f in files:
             _, tests = _collect(f, args.k or [])
@@ -228,8 +325,18 @@ def main() -> int:
             print(f"FAIL {r['name']}")
     for c in crashed:
         print(f"CRASH {c}")
+    elapsed = time.monotonic() - t0
     print(f"{n['pass']} passed, {n['fail']} failed, {n['skip']} skipped"
-          f"{', ' + str(len(crashed)) + ' crashed' if crashed else ''} in {time.monotonic() - t0:.1f}s")
+          f"{', ' + str(len(crashed)) + ' crashed' if crashed else ''} in {elapsed:.1f}s")
+    if args.json:
+        args.json.parent.mkdir(parents=True, exist_ok=True)
+        args.json.write_text(json.dumps({
+            "suite": args.suite, "files": [f.name for f in files], "passed": n["pass"], "failed": n["fail"],
+            "skipped": n["skip"], "crashed": crashed, "seconds": round(elapsed, 1), "results": all_results,
+        }, indent=1))
+    if not all_results and not crashed:
+        print("run_tests: no test ran", file=sys.stderr)
+        return 1
     return 1 if n["fail"] or crashed else 0
 
 

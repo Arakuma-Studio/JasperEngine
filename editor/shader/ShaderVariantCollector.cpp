@@ -138,7 +138,7 @@ namespace {
                 }
             }
             if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
-                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader, points->shaderFeatures)){
+                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader.path, points->shaderFeatures)){
                     facts |= FACT_SCENE_DEPTH;
                 }
             }
@@ -620,7 +620,7 @@ namespace {
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
-            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
+            const uint16_t id = shaderId(points ? points->customShader.path : std::string(), ShaderType::POINTS,
                                          points ? points->shaderFeatures : std::vector<std::string>(),
                                          points ? points->blendMode : MaterialBlendMode::AUTO);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);
@@ -635,11 +635,11 @@ namespace {
 
 namespace {
 
-    bool isIdentChar(char c){
+    bool collectorIsIdentChar(char c){
         return std::isalnum((unsigned char)c) || c == '-' || c == '_';
     }
 
-    std::string lowerAscii(std::string text){
+    std::string collectorLowerAscii(std::string text){
         for (char& c : text)
             c = (char)std::tolower((unsigned char)c);
         return text;
@@ -683,7 +683,7 @@ namespace {
             b++;
         while (e > b && std::isspace((unsigned char)text[e - 1]))
             e--;
-        return lowerAscii(text.substr(b, e - b));
+        return collectorLowerAscii(text.substr(b, e - b));
     }
 
     // the effect form a property draws with: 'p' paint, 'f' filter, 0 either (custom properties, unknown)
@@ -726,7 +726,7 @@ void editor::ShaderVariantCollector::scanUiEffects(const std::string& textIn, bo
         while ((at = text.find(prefix, at)) != std::string::npos){
             const size_t found = at;
             at += length;
-            if (found > 0 && isIdentChar(text[found - 1]))
+            if (found > 0 && collectorIsIdentChar(text[found - 1]))
                 continue;
             size_t p = at;
             if (!typed){
@@ -738,7 +738,7 @@ void editor::ShaderVariantCollector::scanUiEffects(const std::string& textIn, bo
                 continue;
             while (p < text.size() && (std::isalnum((unsigned char)text[p]) || text[p] == '-'))
                 p++;
-            std::string name = lowerAscii(text.substr(nameStart, p - nameStart));
+            std::string name = collectorLowerAscii(text.substr(nameStart, p - nameStart));
             if (typed && (p >= text.size() || text[p] != '('))
                 continue;
             add(name, found);
@@ -795,7 +795,7 @@ void editor::ShaderVariantCollector::collectUiEffects(const std::vector<std::str
     auto scanFile = [&](const std::string& assetPath){
         if (!scanned.insert(assetPath).second)
             return;
-        const std::string ext = lowerAscii(fs::path(assetPath).extension().string());
+        const std::string ext = collectorLowerAscii(fs::path(assetPath).extension().string());
         if (ext != ".html" && ext != ".htm" && ext != ".css" && ext != ".rml" && ext != ".rcss")
             return;
         std::string content;

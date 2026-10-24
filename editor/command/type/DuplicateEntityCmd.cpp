@@ -3,6 +3,8 @@
 
 #include "DuplicateEntityCmd.h"
 
+#include "command/PlayChangeReview.h"
+
 #include "Stream.h"
 #include "Out.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -222,4 +224,14 @@ void editor::DuplicateEntityCmd::undo(){
 
 std::vector<Entity> editor::DuplicateEntityCmd::getCreatedEntities() const{
     return createdEntities;
+}
+
+void editor::DuplicateEntityCmd::collectKeepCommands(KeepContext& context) const{
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    for (Entity root : Project::getTopLevelEntities(sceneProject->scene, createdEntities)){
+        context.addCreated(root);
+    }
 }

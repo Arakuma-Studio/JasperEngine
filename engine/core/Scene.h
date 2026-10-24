@@ -104,6 +104,7 @@ namespace jasperengine{
         void update(double dt);
         void fixedUpdate(double dt);
 
+        // Deprecated, as Engine::removeSubscriptionsByTag: SubscriptionOwnerIndex::releaseOwner
         void removeSubscriptionsByTag(const std::string& substring);
 
         void updateCameraSize();
@@ -235,6 +236,9 @@ namespace jasperengine{
 
         void setDefaultCustomShader(ShaderType type, const std::string& path);
         const std::string& getDefaultCustomShader(ShaderType type) const;
+        // The default shader of a type with the asset GUIDs of its files (editor references)
+        const ShaderRef& getDefaultShaderRef(ShaderType type) const;
+        void setDefaultShaderRef(ShaderType type, const ShaderRef& ref);
 
         // ordered user post-process chain; setting it rebuilds the RenderSystem passes
         // unless only uniform values changed
@@ -272,7 +276,7 @@ namespace jasperengine{
         std::shared_ptr<T> registerSystem(){
             const char* typeName = typeid(T).name();
 
-            auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
+            [[maybe_unused]] auto it = std::find_if(systems.begin(), systems.end(), [&](const auto& pair) { return pair.first == typeName; });
 
             assert(it == systems.end() && "Registering system more than once");
 

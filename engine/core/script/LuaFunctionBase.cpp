@@ -5,6 +5,7 @@
 
 #include "math/Vector2.h"
 #include "util/FunctionSubscribe.h"
+#include "util/CrashHook.h"
 #include "util/StringUtils.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
@@ -78,16 +79,10 @@ void LuaFunctionBase::call(int args, int results) {
         std::string error = LuaBinding::getLuaStackErrorString(m_vm, -1);
         lua_pop(m_vm, 1);
 
-        #ifdef JASPERENGINE_CRASH_GUARD
-        auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
-        if (crashHandler) {
-            crashHandler("Lua Script Error", error);
-        } else {
-            Log::error("Lua Error: %s", error.c_str());
+        // while Play runs the editor's crash hook gets it (pause, then stop)
+        if (!CrashHook::report("Lua Script Error", error)) {
+            LuaBinding::logLuaError("Lua Error: %s", error.c_str());
         }
-        #else
-        Log::error("Lua Error: %s", error.c_str());
-        #endif
 
         // Push nil values to satisfy the expected results count
         for (int i = 0; i < results; i++) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoStream.h"
+#include "thread/ThreadUtil.h"
 
 #include "Log.h"
 
@@ -35,7 +36,7 @@ VideoStream::VideoStream(const std::string& filePath, bool useThread, bool audio
     path(filePath), threaded(useThread && platformHasThreads()), wantAudio(audio){
     liveStreams++;
     if (threaded)
-        worker = std::thread([this]{ threadMain(); });
+        worker = jasperengine::thread::spawnNamed("je-video", [this]{ threadMain(); });
 }
 
 VideoStream::~VideoStream(){

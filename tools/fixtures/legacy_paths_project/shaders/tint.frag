@@ -1,0 +1,3 @@
+#version 450
+#include "common.glsl"
+void main() {}

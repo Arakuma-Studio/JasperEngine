@@ -50,6 +50,6 @@ void editor::CreatePrefabVariantAssetCmd::undo() {
     std::error_code ec;
     std::filesystem::remove(fullPath, ec);
     // like deleting it: an instance made since goes Missing (and comes back with a redo)
-    project->cleanupPrefabFilePath(fullPath);
+    project->onAssetFilesChanged(project->getAssetDatabase().removeAssets(fullPath));
     created = false;
 }

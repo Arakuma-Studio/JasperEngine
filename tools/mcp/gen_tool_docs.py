@@ -1,6 +1,6 @@
 """Generate docs/mcp/TOOLS.md from the editor's tools/list.
 
-    uv run --no-project --with mcp --with pyyaml python tools/mcp/gen_tool_docs.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_tool_docs.py
         [--out docs/mcp/TOOLS.md] [--project DIR | --fixture] [--url URL] [--fake]
 
 Starts the editor through the harness (a new empty project by default, so no fixture is
@@ -37,6 +37,7 @@ MODULES: list[tuple[str, str]] = [
     ("ConsoleTools", "Console"),
     ("ScriptTools", "Scripts"),
     ("AssetTools", "Assets, materials and shaders"),
+    ("AssetIdentityTools", "Asset identity: GUIDs, references, missing assets"),
     ("DocsTools", "Docs"),
     ("BuildTools", "Build and export"),
     ("WorldTools", "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models"),

@@ -318,17 +318,6 @@ namespace {
         return state;
     }
 
-    // the same without explicit stencil or colour write (AUTO: the manifest's, else off / all)
-    RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
-                                   MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
-                                   const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
-                                   CullingMode legacyCullingMode, WindingOrder windingOrder,
-                                   bool& blended, bool& transparentQueue){
-        return resolveRenderState(blendMode, cullMode, depthWrite, depthTest, offsetFactor, offsetUnits,
-                                  MaterialStencil(), -1, resolvedState, legacyBlended, legacyFaceCulling,
-                                  legacyCullingMode, windingOrder, blended, transparentQueue);
-    }
-
     // the manifest a shader string has, when it has one (built-in and forks without
     // manifest lines: null, the legacy path)
     std::shared_ptr<const ShaderManifest> findManifest(const std::string& shader){
@@ -660,7 +649,6 @@ void RenderSystem::destroy(){
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
-        Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -2017,7 +2005,7 @@ bool RenderSystem::loadAndProcessFog(){
     if (fog){
         hasFog = true;
 
-        int fogTypeI;
+        int fogTypeI = 0;
         if (fog->type == FogType::LINEAR){
             fogTypeI = 0;
         }else if (fog->type == FogType::EXPONENTIAL){
@@ -3700,7 +3688,7 @@ void RenderSystem::applyPostProcessing(){
     const PostProcessingSettings& settings = scene->getPostProcessing();
     // the user's LUT, read once per path through the shared cache (a missing or malformed one
     // is logged and left out); its stage decides whether it changes the curve or the grade
-    const std::string lutPath = (settings.colorGradingEnabled && settings.lutContribution > 0.0f) ? settings.lutTexture : std::string();
+    const std::string lutPath = (settings.colorGradingEnabled && settings.lutContribution > 0.0f) ? settings.lutTexture.path : std::string();
     if (lutPath != postLutPath){
         postLutPath = lutPath;
         postLut = getCachedColorLut(lutPath);
@@ -5352,7 +5340,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         if (!bufferRender->isCreated()) {
             if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
-                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu; resource pool may be exhausted",
+                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u; resource pool may be exhausted",
                            buf.first.c_str(), buf.second->getSize(), entity);
                 for (BufferRender* created : buffersCreatedThisLoad) {
                     created->destroyBuffer();
@@ -6007,11 +5995,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
 
-            unsigned int gbufferIndexCount = 0;
             for (auto const& buf : buffers){
                 if (buf.second->isRenderAttributes()) {
                     if (buf.second->getType() == BufferType::INDEX_BUFFER){
-                        gbufferIndexCount = buf.second->getCount();
                         Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
                         gbufferRender.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
                     }else{
@@ -8208,7 +8194,7 @@ void RenderSystem::predictSceneInputUsers(){
         if ((points.loadCalled && !points.needReload) || points.sceneInputsPredicted)
             continue;
         points.sceneInputsPredicted = true;
-        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
         std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
         if (!manifest)
             continue;
@@ -9567,7 +9553,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     }
 
     ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
-    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
+    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
     ui.shader = ShaderPool::get(ShaderType::UI, ui.shaderProperties, ui.customShaderId);
@@ -9773,7 +9759,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     }
 
     points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect) | postColorProperty(ShaderType::POINTS);
-    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
     const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures, points.blendMode);
     points.customShaderId = ShaderPool::registerCustomShader(pointsShaderSrc);
     points.shader = ShaderPool::get(ShaderType::POINTS, points.shaderProperties, points.customShaderId);
@@ -9876,7 +9862,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     render.beginLoad(PrimitiveType::LINES);
 
     lines.shaderProperties = ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES);
-    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader;
+    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path;
     const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures, lines.blendMode);
     lines.customShaderId = ShaderPool::registerCustomShader(linesShaderSrc);
     lines.shader = ShaderPool::get(ShaderType::LINES, lines.shaderProperties, lines.customShaderId);
@@ -10193,7 +10179,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
 
     render->beginLoad(PrimitiveType::TRIANGLES);
 
-    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader;
+    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path;
     const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures, MaterialBlendMode::AUTO);
     sky.customShaderId = ShaderPool::registerCustomShader(skyShaderSrc);
     sky.shaderProperties = postColorProperty(ShaderType::SKYBOX);
@@ -11219,11 +11205,6 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Vector3 camPos = camTransform.worldPosition;
-        if (instmesh.instancedCylindricalBillboard){
-            camPos.y = transform.worldPosition.y;
-        }
-
         Matrix4 m1 = camera.viewMatrix.inverse();
         bRotation.fromRotationMatrix(m1);
         bRotation = transform.worldRotation.inverse() * bRotation;

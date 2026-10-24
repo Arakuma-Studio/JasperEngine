@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityNameCmd.h"
+#include "command/PlayChangeReview.h"
 
 using namespace jasperengine;
 
@@ -28,9 +29,8 @@ bool editor::EntityNameCmd::execute(){
     // name is its own anyway)
     if (oldName != newName){
         project->recordPrefabStateEdit(sceneId, entity, PrefabObjectOverrides::StateName);
+        sceneProject->isModified = true;
     }
-
-    sceneProject->isModified = true;
 
     return true;
 }
@@ -59,4 +59,27 @@ bool editor::EntityNameCmd::mergeWith(editor::Command* otherCommand){
         }
     }
     return false;
+}
+void editor::EntityNameCmd::collectKeepCommands(KeepContext& context) const{
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene->isEntityCreated(entity)){
+        return;
+    }
+    const std::string current = sceneProject->scene->getEntityName(entity);
+    KeepRow row;
+    row.kind = KeepRow::Kind::Name;
+    row.entity = entity;
+    row.property = "Name";
+    row.playValue = KeepContext::text(current);
+    Project* target = project;
+    const uint32_t id = sceneId;
+    const Entity edited = entity;
+    row.factory = [target, id, edited, current]() -> std::unique_ptr<Command> {
+        return std::make_unique<EntityNameCmd>(target, id, edited, current);
+    };
+    row.readEditValue = [target, id, edited]() -> std::string {
+        SceneProject* restored = target->getScene(id);
+        return restored && restored->scene->isEntityCreated(edited) ? KeepContext::text(restored->scene->getEntityName(edited)) : std::string("(none)");
+    };
+    context.add(std::move(row));
 }

@@ -27,7 +27,6 @@ public:
     virtual std::string getUserDataPath() override;
 
     virtual FILE* platformFopen(const char* fname, const char* mode) override;
-    virtual void platformLog(const int type, const char *fmt, va_list args) override;
 
     virtual bool getBoolForKey(const char *key, bool defaultValue) override;
     virtual int getIntegerForKey(const char *key, int defaultValue) override;

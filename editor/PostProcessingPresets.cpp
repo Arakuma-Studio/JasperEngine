@@ -18,7 +18,7 @@ std::string lowerCase(std::string text) {
     return text;
 }
 
-std::vector<PostProcessingPreset> makePresets() {
+std::vector<PostProcessingPreset> makePostProcessingPresets() {
     std::vector<PostProcessingPreset> presets;
 
     presets.push_back({"none", "None", "Everything off: what the engine draws without post-processing (no pass, no shader work).",
@@ -193,7 +193,7 @@ void total(PostProcessingCostSide& side) {
 } // namespace
 
 const std::vector<PostProcessingPreset>& getPostProcessingPresets() {
-    static const std::vector<PostProcessingPreset> presets = makePresets();
+    static const std::vector<PostProcessingPreset> presets = makePostProcessingPresets();
     return presets;
 }
 
