@@ -164,7 +164,8 @@ namespace jasperengine{
         HTMLUI,     // HTML/CSS UI geometry and composite: premultiplied alpha, no color conversion
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
-        UI_EFFECT        // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        PROBE_FILTER     // reflection probe capture prefiltered into roughness mip levels (probe_filter.frag)
     };
 
     enum class AttributeType{
@@ -257,7 +258,8 @@ namespace jasperengine{
         COMPOSITE_FS_PARAMS,
         FS_LIGHTING2D,
         SHADOW2D_VS_PARAMS,
-        BLIT_FS_PARAMS
+        BLIT_FS_PARAMS,
+        PROBE_FILTER_FS_PARAMS
     };
 
     enum class StorageBufferType{
@@ -293,7 +295,8 @@ namespace jasperengine{
         GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
-        BONES
+        BONES,
+        PROBESOURCE          // reflection probe capture (or its box mip chain) read by the prefilter
     };
 
     enum class TextureType {
@@ -379,7 +382,11 @@ namespace jasperengine{
         // is the one the object's endLoad was given (its RenderSystem's)
         PIP_MSAA        = 1 << 12,
         PIP_MSAA_NODEPTH = 1 << 13,
-        PIP_ZPREPASS_MSAA = 1 << 14
+        PIP_ZPREPASS_MSAA = 1 << 14,
+        // a fullscreen pass into one face and mip level of an RGBA8 colour texture, no depth
+        // attachment, no blending (CameraRender::startRenderPass(TextureRender*, face, mip):
+        // the reflection probe prefilter)
+        PIP_RTT_COLORONLY = 1 << 15
     };
 
     // the depth attachment of an offscreen framebuffer

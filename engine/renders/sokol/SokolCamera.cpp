@@ -22,11 +22,19 @@ SokolCamera::SokolCamera(){
     pass.action.depth.clear_value = 1.0f;
     pass.action.stencil.load_action = SG_LOADACTION_CLEAR;
     pass.action.stencil.clear_value = 0;
+    textureView.id = SG_INVALID_ID;
 }
 
-SokolCamera::SokolCamera(const SokolCamera& rhs) = default;
+// a texture pass's view belongs to the pass that made it
+SokolCamera::SokolCamera(const SokolCamera& rhs) : pass(rhs.pass), multisample(rhs.multisample) {
+    textureView.id = SG_INVALID_ID;
+}
 
-SokolCamera& SokolCamera::operator=(const SokolCamera& rhs) = default;
+SokolCamera& SokolCamera::operator=(const SokolCamera& rhs){
+    pass = rhs.pass;
+    multisample = rhs.multisample;
+    return *this;
+}
 
 SokolCamera::~SokolCamera(){
 
@@ -115,6 +123,24 @@ void SokolCamera::startRenderPass(FramebufferRender* framebuffer, size_t face){
     beginPass(pass);
 }
 
+void SokolCamera::startRenderPass(TextureRender* texture, size_t face, int mip){
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    sg_view_desc viewDesc = {};
+    viewDesc.color_attachment.image = texture->backend.get();
+    viewDesc.color_attachment.mip_level = mip;
+    viewDesc.color_attachment.slice = (int)face;
+    viewDesc.label = "texture-pass-color-view";
+    textureView = sg_make_view(viewDesc);
+
+    sg_pass texturePass = pass;
+    texturePass.swapchain = {};
+    texturePass.attachments = {};
+    texturePass.attachments.colors[0] = textureView;
+    // with no view the empty attachments would begin a swapchain pass
+    texturePass.swapchain.invalid = (textureView.id == SG_INVALID_ID);
+    beginPass(texturePass);
+}
+
 void SokolCamera::startRenderPass(int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     pass.attachments = {};
@@ -197,4 +223,9 @@ void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
 void SokolCamera::endRenderPass(){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_end_pass();
+
+    if (textureView.id != SG_INVALID_ID){
+        sg_destroy_view(textureView);
+        textureView.id = SG_INVALID_ID;
+    }
 }

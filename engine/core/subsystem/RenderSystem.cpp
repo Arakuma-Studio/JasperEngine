@@ -593,6 +593,7 @@ void RenderSystem::destroy(){
     destroySSAO();
     destroySSR();
     destroyBlit();
+    destroyProbeFilter();
     destroyPostProcess();
     destroyUber();
     destroyBloomPrograms();
@@ -690,6 +691,7 @@ void RenderSystem::destroy(){
     // its Transform and updateReflectionProbes never revisited it)
     for (auto& entry : reflectionProbeRuntimes){
         entry.second->captureFramebuffer.destroyFramebuffer();
+        entry.second->filteredMap.destroyTexture();
         releaseReflectionProbeMaps(*entry.second);
     }
     reflectionProbeRuntimes.clear();
@@ -2159,6 +2161,7 @@ void RenderSystem::destroyReflectionProbe(Entity entity, ReflectionProbeComponen
     auto it = reflectionProbeRuntimes.find(entity);
     if (it != reflectionProbeRuntimes.end()){
         it->second->captureFramebuffer.destroyFramebuffer();
+        it->second->filteredMap.destroyTexture();
         releaseReflectionProbeMaps(*it->second);
         reflectionProbeRuntimes.erase(it);
     }
@@ -2268,6 +2271,8 @@ void RenderSystem::updateReflectionProbes(double dt){
                 activeReflectionProbe = NULL_ENTITY;
             runtime.captureInProgress = false;
             runtime.captureFramebuffer.destroyFramebuffer();
+            runtime.filteredMap.destroyTexture();
+            runtime.needFilter = false;
             runtime.resolution = 0;
             runtime.nextFace = 0;
             runtime.ready = false;
@@ -2394,6 +2399,10 @@ bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflec
     bool hasPrefilteredMap = selectedRuntime->prefilteredMap && selectedRuntime->prefilteredMap->isCreated();
     if (hasPrefilteredMap){
         texture = selectedRuntime->prefilteredMap.get();
+    }else if (selectedRuntime->filteredMap.isCreated()){
+        // a runtime capture prefiltered into roughness mips, as the authored cubemap's
+        texture = &selectedRuntime->filteredMap;
+        hasPrefilteredMap = true;
     }else{
         if (!selectedRuntime->captureFramebuffer.isCreated())
             return false;
@@ -2550,8 +2559,137 @@ void RenderSystem::renderReflectionProbeCapture(){
         runtime.captureInProgress = false;
         runtime.elapsed = 0.0f;
         runtime.capturedPosition = capturePosition;
+        runtime.needFilter = true;
         probe->needUpdate = false;
         activeReflectionProbe = NULL_ENTITY;
+    }
+}
+
+void RenderSystem::loadProbeFilter(){
+    if (probeFilterLoaded)
+        return;
+
+    // the probe filter shader may still be building (async in the editor): the captures
+    // are sampled as they are until it is
+    probeFilterShader = ShaderPool::get(ShaderType::PROBE_FILTER, 0);
+    if (!probeFilterShader || !probeFilterShader->isCreated())
+        return;
+
+    // fullscreen pass (vertexless: no attributes added) into a face and level of a texture
+    probeFilterRender.beginLoad(PrimitiveType::TRIANGLES);
+    probeFilterRender.setShader(probeFilterShader.get());
+    probeFilterSlotParams = probeFilterShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::PROBE_FILTER_FS_PARAMS);
+    if (!probeFilterRender.endLoad(PIP_RTT_COLORONLY, false, false, CullingMode::BACK, WindingOrder::CCW))
+        return;
+
+    // every texel is written: nothing to load
+    probeFilterPassRender.setColorActions(LoadAction::DONTCARE, StoreAction::STORE);
+    probeFilterPassRender.setLabel("reflection probe filter");
+
+    probeFilterLoaded = true;
+}
+
+void RenderSystem::destroyProbeFilter(){
+    if (probeFilterLoaded){
+        probeFilterRender.destroy();
+    }
+    if (probeFilterShader){
+        probeFilterShader.reset();
+        ShaderPool::remove(ShaderType::PROBE_FILTER, 0);
+    }
+
+    probeSourceMap.destroyTexture();
+    probeReduceMap.destroyTexture();
+
+    probeSourceSize = 0;
+    probeFilterSlotParams = -1;
+    probeFilterLoaded = false;
+}
+
+// Prefilters the finished runtime captures as IBLEnvironment does an authored cubemap: a box
+// mip chain of the capture, then one GGX roughness per level of a map the size of the sky's
+// prefiltered map (IBLEnvironment::SPECULAR_BASE_SIZE, SPECULAR_MIPS), sampled from that chain.
+// RGBA8 colour attachments throughout (renderable on every backend, GLES3 included).
+void RenderSystem::filterReflectionProbes(){
+    for (auto& entry : reflectionProbeRuntimes){
+        ReflectionProbeRuntime& runtime = *entry.second;
+        if (!runtime.needFilter || !runtime.ready || !runtime.captureFramebuffer.isCreated())
+            continue;
+
+        loadProbeFilter();
+        if (!probeFilterLoaded)
+            return;
+
+        const int size = IBLEnvironment::SPECULAR_BASE_SIZE;
+        const int levels = IBLEnvironment::SPECULAR_MIPS;
+        const int captureSize = (int)runtime.resolution;
+        // like IBLEnvironment, the chain starts no larger than the prefiltered map
+        const int sourceSize = std::min(captureSize, size);
+        int sourceLevels = 1;
+        while ((sourceSize >> sourceLevels) > 0)
+            sourceLevels++;
+        auto createMap = [](TextureRender& map, int mapSize, int mapLevels){
+            return map.createFramebufferTexture(TextureType::TEXTURE_CUBE, false, false, mapSize, mapSize,
+                    TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE,
+                    ColorFormat::RGBA, 1, false, false, mapLevels);
+        };
+        if (!probeSourceMap.isCreated() || !probeReduceMap.isCreated() || probeSourceSize != sourceSize){
+            probeSourceMap.destroyTexture();
+            probeReduceMap.destroyTexture();
+            probeSourceSize = 0;
+            if (!createMap(probeSourceMap, sourceSize, sourceLevels) || !createMap(probeReduceMap, sourceSize, sourceLevels)){
+                probeSourceMap.destroyTexture();
+                probeReduceMap.destroyTexture();
+                continue;
+            }
+            probeSourceSize = sourceSize;
+        }
+        if (!runtime.filteredMap.isCreated() && !createMap(runtime.filteredMap, size, levels)){
+            runtime.filteredMap.destroyTexture();
+            continue;
+        }
+
+        ShaderData& shaderData = probeFilterShader.get()->shaderData;
+        const std::pair<int, int> sourceSlot = shaderData.getTextureIndex(TextureShaderType::PROBESOURCE);
+        auto filterPass = [&](TextureRender& target, TextureRender& source, int level, int face){
+            probeFilterPassRender.startRenderPass(&target, (size_t)face, level);
+            if (probeFilterRender.beginDraw(PIP_RTT_COLORONLY)){
+                probeFilterRender.addTexture(sourceSlot, ShaderStageType::FRAGMENT, &source);
+                probeFilterRender.applyUniformBlock(probeFilterSlotParams, sizeof(fs_probe_filter_t), &fs_probe_filter);
+                probeFilterRender.draw(0, 3, 1);
+            }
+            probeFilterPassRender.endRenderPass();
+        };
+
+        auto downsampleLevel = [&](TextureRender& target, TextureRender& source, int level, int sourceLevel, int sourceBaseSize){
+            const int levelSize = sourceSize >> level;
+            const int sourceLevelSize = sourceBaseSize >> sourceLevel;
+            const float taps = (float)std::min(16, (sourceLevelSize + levelSize - 1) / levelSize);
+            for (int face = 0; face < 6; face++){
+                fs_probe_filter.params = Vector4(0.0f, (float)face, taps, 1.0f);
+                fs_probe_filter.source = Vector4((float)levelSize, (float)sourceBaseSize, 1.0f, (float)sourceLevel);
+                filterPass(target, source, level, face);
+            }
+        };
+
+        // each level is a box of the one above, reduced into probeReduceMap and copied back:
+        // a pass never samples the texture it renders to
+        downsampleLevel(probeSourceMap, runtime.captureFramebuffer.getColorTexture(), 0, 0, captureSize);
+        for (int level = 1; level < sourceLevels; level++){
+            downsampleLevel(probeReduceMap, probeSourceMap, level, level - 1, sourceSize);
+            downsampleLevel(probeSourceMap, probeReduceMap, level, level, sourceSize);
+        }
+
+        for (int level = 0; level < levels; level++){
+            const float roughness = (float)level / (float)(levels - 1);
+            for (int face = 0; face < 6; face++){
+                fs_probe_filter.params = Vector4(roughness, (float)face, 64.0f, 0.0f);
+                fs_probe_filter.source = Vector4((float)(size >> level), (float)sourceSize, (float)sourceLevels, 0.0f);
+                filterPass(runtime.filteredMap, probeSourceMap, level, face);
+            }
+        }
+
+        runtime.needFilter = false;
     }
 }
 
@@ -13508,6 +13646,8 @@ void RenderSystem::drawFramePasses(){
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
     renderReflectionProbeCapture();
+    // a capture finished above is prefiltered before anything samples it
+    filterReflectionProbes();
 
     // HTML UI documents draw into their own offscreen target before any camera pass, so
     // the composite below never needs a second swapchain pass (Vulkan allows one a frame)

@@ -3628,7 +3628,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      projections under 2% skipped.
     // v37: mesh.frag skips the shadow lookup of a surface facing away from the light (unless
     //      foliage transmission reads it); ssr.frag fades out rough surfaces (SSR_MAX_ROUGHNESS)
-    //      and skips their march.
+    //      and skips their march; probe_filter (PROBE_FILTER) prefilters runtime reflection probe
+    //      captures into roughness mips, each source level downsampled from the one above.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v37";
 }
 
