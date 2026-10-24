@@ -836,6 +836,7 @@ Integrator notes:
   solver): `test_lattice_data.py` passes, the inspector shows the folded-cell warning and the
   Deforming list. That build's Console showed `includes/lattice.glsl:135: 'active' : Reserved
   word` for the mesh and depth `Ltc` variants (glsl410): WP-RENDER must rename it.
+
 ### 12.x WP-RENDER
 
 GPU deformation as §5, with these decisions and deviations:
@@ -955,3 +956,118 @@ Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (on
 `editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
 `docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
 `engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
+
+### 12.x WP-BAKE
+
+§9.4 as specified, with these decisions:
+
+- **What a bake takes.** `bake(target)` / `canBake(target)`: the meshes of the target (its glTF
+  Model's meshes: the Model itself on the flat path, every mesh part entity on the node path; a
+  mesh part alone when the target is one), plus, when the target's Lattice Modifier has Include
+  Children, every mesh below it. Each glTF Model among them gets its own file (`path` returns
+  them joined by ", "). Meshes that are not glTF models (sprites, primitives, polygons,
+  tilemaps, terrains, meshes made by tools, OBJ models, Models without a file or still loading)
+  cannot be baked; when nothing else is left the reason names what the target is ("'Box' is a
+  generated mesh: only glTF models (.gltf, .glb) can be baked", "an OBJ model ... export it as
+  glTF first", "a sprite", ...). Refused while the scene plays.
+- **Same bindings as the GPU.** The bindings are resolved per mesh exactly as
+  `LatticeRender::prepare` packs them (lat/render exposes no per-entity resolver, so
+  `LatticeBake.cpp` has a `Resolver` mirroring it): own bindings when the modifier is enabled,
+  then every enabled ancestor modifier with Include Children nearest first, lattices skipped
+  when deleted / without a component / disabled / inactive in the hierarchy / with a singular or
+  non-finite transform / a padded grid that does not fit / non-finite offsets, non-finite weights
+  skipped, a mesh with a singular transform skipped, at most `LATTICE_MAX_PER_MESH`, terrains
+  never. `M = objectToNormalized(lattice, mesh)` and `Minv = M^-1` as packed. Per submesh: the
+  Submesh filter (engine submesh index; the loader stores a node's primitives reversed, the
+  bake maps them back), the mask only when the submesh has vertex colours (COLOR_0 VEC4, or VEC3
+  FLOAT/UBYTE/USHORT, as the loader binds them; otherwise mask 1), the weight; bindings at rest
+  or with weight 0 (`movingBindings` off) are not baked. Vertices go through
+  `lattice::deformVertex` in order; a vertex no binding moves keeps its file values bit for bit.
+- **Which bindings bake.** A binding is baked (and removed) only when everything it deforms is
+  baked with it, in the order the GPU applies it: (1) every mesh it deforms is in the bake (a
+  binding that also deforms another mesh stays: "it also deforms 'Prop', ..."); (2) on a
+  skinned submesh (JOINTS_0 or WEIGHTS_0 loaded) only Before Skinning bindings bake, into the
+  bind pose; After Skinning ones stay ("set its Stage to Before Skinning..."); (3) without
+  skinning every binding deforms after the instance matrix, so nothing bakes into an instanced
+  mesh (an `InstancedMeshComponent` on it); (4) lattices do not commute, so a submesh bakes the
+  bindings before the first one that stays (skinned: in the Before Skinning sequence, which runs
+  before the rest); this is iterated to a fixed point over all submeshes. Bindings that stay are
+  listed in `note` ("Kept binding 2 of 'Hero' (lattice 'Feet'): ..."), also those at rest,
+  invalid or past the limit; `note` also says when a mesh had more than 4 lattices (the ignored
+  ones deform it once the baked ones are gone) and when morph weights are not 0.
+- **Morph targets** (applied before the lattices) become displacements of the baked shape:
+  `deform(base + delta) - deform(base)` per target (position, normal, tangent), exact at weight
+  0 and 1 of a single target, close in between. A delta whose vertex no binding moves keeps its
+  file value; a sparse target without a base stays sparse with the same indices.
+- **The file** (`LatticeBakeGltf.{h,cpp}`, the glTF is read as JSON + buffers, not through
+  tinygltf, so everything not touched is kept as written: key order, extensions, extras,
+  materials, textures, samplers, skins, animations, morph targets, scenes). `<stem>_lattice.glb`
+  next to the original, never an existing file (`_2`, `_3`...; baking `x_lattice[_n].glb` counts
+  on from `x`). One binary buffer: the old buffers one after the other (16-byte aligned, external
+  `.bin` files and data URIs embedded), new data after them; bufferViews moved with them. Images
+  keep their URIs (valid: same directory) or bufferViews. New vertex data per node: a mesh used
+  by several nodes that get different data is copied for the nodes with new data (nodes that keep
+  their data keep the mesh index); an accessor is written in place when it is FLOAT, dense, every
+  primitive using it gets the same data, nothing else uses it (indices, skins, animations,
+  EXT_mesh_gpu_instancing) and no other accessor, sparse part or image shares its bytes
+  (interleaved attributes in one bufferView do not count); otherwise the primitives get new FLOAT
+  accessors (one per distinct result), the old one stays for its other users. POSITION
+  accessors get exact `min`/`max`, also in place. Normalized/quantized (KHR_mesh_quantization)
+  and sparse inputs are read as glTF defines them and written as FLOAT, which is exact; refused:
+  KHR_draco_mesh_compression / EXT_meshopt_compression / KHR_meshopt_compression ("export the
+  model uncompressed"), a file that changed on disk since the Model loaded it ("load the model
+  again"), Merge Static Meshes models whose vertex data is not FLOAT (the merge only transforms
+  FLOAT data), merged nodes scaled to zero. Merge Static Meshes models are baked in the space the
+  merge puts the vertices in (the node transforms, computed as `MeshSystem` does) and written
+  back in node space (the load applies the transforms again); their morph deltas are not
+  transformed by the merge, nor by the bake.
+- **The scene** (`command/type/LatticeBakeCmd.{h,cpp}`, one undo step): the baked bindings leave
+  their modifiers (`LatticeBindingsCmd` each, the component stays) and every baked Model loads
+  the new file in place with `MeshSystem::loadGLTF(..., skipEntities)` as a reopened scene does:
+  the node, mesh part, bone and animation entities are kept with their ids and components
+  (Lattice Modifiers on parts, submesh edits), because the file has the same nodes. A Prefab
+  instance records a `filename` override of its Model. Undo loads the original file back and
+  restores the bindings; the baked file stays (redo loads it again). A failure to load the new
+  file rolls everything back and deletes the files that bake wrote. The Project window refreshes
+  its directory. `path` is the file as the Model stores it (relative to the assets directory,
+  `ModelComponent::filename`'s convention).
+- **Inspector**: a "Bake" section at the end of the Lattice Modifier (single selection): "Bake
+  Deformation", disabled with `canBake`'s reason (or "Stop the scene to bake") as tooltip; the
+  result goes to the Console (the path, each note as a warning, or the error).
+- Known engine limitations met (not WP-BAKE's files): the loader ignores the sparse part of a
+  base attribute (POSITION/NORMAL/...; only morph targets are materialized), so the live render
+  of such a model shows the base values while the bake writes the glTF-correct ones; sokol has no
+  3-component SHORT/BYTE vertex format, so a KHR_mesh_quantization model with VEC3 positions does
+  not render before the bake (it does after: FLOAT).
+
+Contract additions: none in the headers. New: `editor/lattice/LatticeBakeGltf.{h,cpp}`,
+`editor/command/type/LatticeBakeCmd.{h,cpp}` (CMake editor list), the editor's include path gains
+`engine/libs/tinygltf` (the bake reads the loaded `tinygltf::Model` for the layout the meshes were
+built from). Xcode project entries for the new files are the integrator's.
+
+Files: `editor/lattice/LatticeBake.cpp` (stub replaced), `editor/lattice/LatticeBakeGltf.{h,cpp}`,
+`editor/command/type/LatticeBakeCmd.{h,cpp}`, `editor/window/InspectorWindow.cpp` (the Bake row:
+`drawLatticeBakeRow`, called at the end of `drawLatticeModifierComponent`), `CMakeLists.txt`,
+`tools/mcp/tests/test_lattice_bake.py` (new).
+
+Tests: `tools/mcp/tests/test_lattice_bake.py` (4 tests, new empty project, harness Xvfb, the button
+clicked with xdotool: it is found in an editor screenshot as the lowest full-width button-coloured
+row once the inspector is scrolled to its end; the test skips with a message if the layout moves).
+Ball (.gltf + .bin + PNG, NORMAL, TANGENT with w = -1 on half, COLOR_0, a sparse morph target, two
+primitives sharing their accessors; two lattices, one on submesh 1 with the red mask): positions,
+normals, tangents (w kept) and the morph displacement of chosen vertices against the spec formulas
+computed in Python, texture URI, one embedded buffer, split accessors; the baked render matches the
+live GPU render (pngdiff, tolerance 16, at most 0.3% of the pixels; the unbaked view is checked to
+differ), undo/redo, a second bake writes `_2` and leaves the first file alone, the saved scene names
+the file. Column (skinned): Before Skinning bakes into the bind pose (every vertex checked, written
+in place, skin and joints untouched, `max` updated), the After Skinning binding stays with its
+Console note, render matches, undo/redo. Pair (two nodes, one mesh, one bound): the bound node gets
+a mesh copy, the other keeps its data, part entities keep their ids, undo. Box primitive: the
+button is disabled and clicking it writes nothing. With a temporary debug MCP tool (not committed)
+the reasons above, a group with Include Children baking two models into two files, a quantized
+model (exact to 1e-7) and a Merge Static Meshes model (exact to 1e-8, the unbound node unchanged)
+were also checked. WP-MCP: `edit_lattice` `bake` should call `LatticeEditorOps::bake` and return
+`path` and `note`; adding its variant of these checks to the test drops the xdotool dependency.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_bake.py
