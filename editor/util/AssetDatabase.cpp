@@ -744,11 +744,18 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::adoptOrphans(s
     if (orphans.empty() || withoutIdentity.empty()) {
         return changes;
     }
-    std::vector<std::string> remaining;
+    // R5: same extension and size, and the same content hash when the index has the orphan's;
+    // without a hash, the same file name too. A match counts only when it is the only one on
+    // both sides: one file for the orphan, one orphan for the file (two look-alike files leave
+    // the orphan as it is)
+    struct Candidates {
+        std::vector<std::string> byHash, byName;
+    };
+    std::map<std::string, Candidates> ofFile;     // file -> orphan meta keys
+    std::map<std::string, Candidates> ofOrphan;   // orphan meta key -> files
     for (const std::string& relative : withoutIdentity) {
         const AssetTypeInfo* info = AssetTypes::find(relative, assetsDir);
         if (!info || info->identity != AssetIdentity::Sidecar) {
-            remaining.push_back(relative);
             continue;
         }
         fs::file_time_type time;
@@ -756,10 +763,6 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::adoptOrphans(s
         statFile(relative, time, size);
         const std::string extension = lower(fs::path(relative).extension().string());
         const std::string name = fs::path(relative).filename().string();
-
-        // R5: same extension and size, and the same content hash when the index has the
-        // orphan's; without a hash, one candidate only with the same file name and size
-        std::vector<std::string> byHash, byName;
         bool fileHashed = false;
         uint64_t fileHash = 0;
         for (const auto& [metaKey, orphan] : orphans) {
@@ -775,19 +778,37 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::adoptOrphans(s
                     fileHashed = ContentHash::ofFile(projectPath / relative, fileHash);
                 }
                 if (fileHashed && fileHash == last->second.contentHash) {
-                    byHash.push_back(metaKey);
+                    ofFile[relative].byHash.push_back(metaKey);
+                    ofOrphan[metaKey].byHash.push_back(relative);
                 }
             } else if (fs::path(orphan.assetPath).filename().string() == name) {
-                byName.push_back(metaKey);
+                ofFile[relative].byName.push_back(metaKey);
+                ofOrphan[metaKey].byName.push_back(relative);
             }
         }
-        std::string chosen;
-        if (!byHash.empty()) {
-            chosen = byHash.front();
-        } else if (byName.size() == 1) {
-            chosen = byName.front();
+    }
+
+    std::vector<std::string> remaining;
+    for (const std::string& relative : withoutIdentity) {
+        const AssetTypeInfo* info = AssetTypes::find(relative, assetsDir);
+        auto found = ofFile.find(relative);
+        if (!info || info->identity != AssetIdentity::Sidecar || found == ofFile.end()) {
+            remaining.push_back(relative);
+            continue;
         }
-        if (chosen.empty()) {
+        std::string chosen;
+        for (const std::string& metaKey : found->second.byHash) {
+            // the same content: the first file (in path order) takes it
+            if (orphans.find(metaKey) != orphans.end()) {
+                chosen = metaKey;
+                break;
+            }
+        }
+        if (chosen.empty() && found->second.byHash.empty() && found->second.byName.size() == 1 &&
+                ofOrphan[found->second.byName.front()].byName.size() == 1) {
+            chosen = found->second.byName.front();
+        }
+        if (chosen.empty() || orphans.find(chosen) == orphans.end()) {
             remaining.push_back(relative);
             continue;
         }

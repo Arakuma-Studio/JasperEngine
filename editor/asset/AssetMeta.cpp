@@ -47,6 +47,14 @@ namespace {
         return flow.substr(1, flow.size() - 2);
     }
 
+    // Sub-asset keys always hold ':' or '#': written double-quoted, so every YAML reader
+    // takes them as one scalar
+    std::string doubleQuoted(const std::string& text) {
+        YAML::Emitter out;
+        out << YAML::DoubleQuoted << text;
+        return out.c_str();
+    }
+
     bool sameGuids(const std::vector<Guid>& a, const std::vector<Guid>& b) {
         return a == b;
     }
@@ -174,7 +182,7 @@ std::string editor::AssetMeta::canonical(const std::string& name, const AssetMet
         }
         std::string block = "subAssets:\n";
         for (const SubAsset& entry : meta.subAssets) {
-            block += "  - {key: " + quoteIfNeeded(entry.key) + ", guid: " + entry.guid.str() +
+            block += "  - {key: " + doubleQuoted(entry.key) + ", guid: " + entry.guid.str() +
                      ", name: " + quoteIfNeeded(entry.name) + "}\n";
         }
         return block;
