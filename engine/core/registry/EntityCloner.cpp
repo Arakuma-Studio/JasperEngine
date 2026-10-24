@@ -121,14 +121,14 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
-    // the lattice records and their texture are the original's: the clone's are packed anew
-    mesh.lattice = LatticeMeshState();
     mesh.needUpdateBones = true;
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
-    // the copy packs and uploads its own lattice data (LatticeRender::prepare); the sprite
-    // grid request stays, the copied vertices are built for it
+    // the lattice records and their texture are the original's: the copy packs and uploads
+    // its own (LatticeRender::prepare). The sprite grid request stays, the copied vertices
+    // are built for it (reset first, the copy would rebuild them as a quad, draw that quad
+    // for a frame, then rebuild and reload the grid)
     const bool wantsTessellation = mesh.lattice.wantsTessellation;
     const int tessellation = mesh.lattice.tessellation;
     mesh.lattice = LatticeMeshState();

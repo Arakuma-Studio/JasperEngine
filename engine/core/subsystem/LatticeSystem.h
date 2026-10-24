@@ -13,6 +13,7 @@
 #include "action/Ease.h"
 #include "component/LatticeComponent.h"
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -23,6 +24,14 @@ namespace jasperengine{
     private:
         // play time since the last lateUpdate: the jiggle steps there, once transforms are current
         double jiggleTime = 0.0;
+        // frames passed without a jiggle step (paused): the acceleration history restarts
+        bool jiggleHistoryStale = false;
+
+        // per-frame scratch, kept so a steady frame allocates nothing
+        std::vector<float> jiggleWeights;
+        std::vector<std::pair<size_t, Entity>> followerOrder;
+        std::vector<std::pair<Entity, std::vector<Vector3>>> followerGrids; // padded grid per lattice
+        size_t followerGridCount = 0;                                       // entries used this frame
 
         void updateTweens(double dt);
         void updateJiggle(double dt);
