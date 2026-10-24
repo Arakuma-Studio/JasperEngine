@@ -323,8 +323,11 @@ async def test_one_undo_restores(ed: Editor):
 async def test_apply_after_an_edit_simulates_again(ed: Editor):
     preview = (await place(ed, entities=["Crate"])).structured
     # an edit in between (even one that changes nothing in the end): the scene may read
-    # differently now, so the apply simulates again instead of committing the stored preview
-    await ed.call("set_transform", entity="Table", position=[-10, 0.5, -10])
+    # differently now, so the apply simulates again instead of committing the stored preview.
+    # (A set_transform to the same pose is no step at all since S24: there is no edit then.)
+    table = (await world(ed, "Table"))[0]
+    await ed.call("set_transform", entity="Table", position=[table[0], table[1] + 1, table[2]])
+    await ed.call("set_transform", entity="Table", position=table)
     v = (await place(ed, entities=["Crate"], apply=True)).structured
     check(v["applied"] is True and v["from_preview"] is False, f"simulated again: {v['from_preview']}")
     check(v["state_hash"] == preview["state_hash"], "the same scene content: the same result anyway")
@@ -827,9 +830,13 @@ async def test_undo_redo_during_a_gesture(ed: Editor):
         xdo(ed, "keyup", "space")
     await asyncio.sleep(0.3)
     check((await world(ed, "Gest"))[0] == start[0], "the cancelled gesture commits nothing on release")
-    undone = await ed.call("undo")
-    check(undone["steps"] == 1 and (await world(ed, "Marker"))[0] == [6.0, 0.5, -35.0], f"then undo works as before: {undone}")
-    redone = await ed.call("redo")
-    check(redone["steps"] == 1 and (await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "and redo")
+    # then undo works as before: the agent's select_entities is a step of its own (S24 R40),
+    # the Marker's move the one before it
+    undone = await ed.call("undo", steps=2)
+    names = [step["name"] for step in undone["undone"]]
+    check(undone["steps"] == 2 and "Select Gest" in names[0] and (await world(ed, "Marker"))[0] == [6.0, 0.5, -35.0],
+          f"then undo works as before: {undone}")
+    redone = await ed.call("redo", steps=2)
+    check(redone["steps"] == 2 and (await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "and redo")
     xdo(ed, "key", "g")
     await ed.call("delete_entities", entities=["Gest", "Marker"])

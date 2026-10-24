@@ -43,6 +43,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import yaml
+
 import harness
 from harness import TestFailure
 
@@ -497,6 +499,12 @@ async def test_save_writes_the_scene():
     # tooling files on a first save; no other scene and no project.yaml change
     after_save = tree_bytes(proj)
     changed = sorted(k for k, v in others.items() if after_save.get(k) != v)
+    # a project.yaml written before format versions gets its formatVersion on the first save
+    # (S03 R20/R21), and nothing else
+    if "project.yaml" in changed:
+        old, new = yaml.safe_load(others["project.yaml"]), yaml.safe_load(after_save["project.yaml"])
+        if "formatVersion" not in old and new.pop("formatVersion", None) is not None and new == old:
+            changed.remove("project.yaml")
     check(not changed, f"--save changed {changed}")
     # the saved poses are where the next run starts, and they stay put
     again = place(proj, "TableCrate", CRATE_BOXES)
