@@ -1,9 +1,9 @@
 # Lattice deformer (free-form deformation)
 
-Status: approved scope (owner, 2026-10-23: "implement everything"). The declarations in §2.0
-are committed in the contract commit on branch `lattice`; every work package builds against
-them and must not rename them. Implementation notes added by work packages go in §12 and
-override the sections they name.
+Status: implemented (owner, 2026-10-23: "implement everything"). The declarations in §2.0 were
+committed first on branch `lattice` (the contract); the work packages of §11 built against
+them in parallel and were merged, reviewed and integrated there. §12 records what each package
+decided; where it differs from §1-§10, §12 is what the code does.
 
 Prior art studied (ideas only, clean-room; no code from these may be copied, none of them
 is licensed for it): Harry Heath's "Lattice Modifier for Unity" (Asset Store 293850, docs at
@@ -597,7 +597,7 @@ branches to integrate (the integrator merges into `lattice`).
 
 (Work packages append here: decisions, deviations, file lists, shortcut choices.)
 
-### 12.x WP-SOLVER (solver, presets, unit tests)
+### 12.1 WP-SOLVER (solver, presets, unit tests)
 
 Files: `engine/core/lattice/LatticeSolver.{h,cpp}`, `engine/core/lattice/LatticePresets.{h,cpp}`
 (stubs replaced; headers only gained comments), `engine/tests/lattice/**` (new),
@@ -691,7 +691,7 @@ or inside the editor build (the binary lands in the build root):
 (also from the standalone engine build `cmake -S engine ... -DJASPERENGINE_LATTICE_TESTS=ON`;
 `ctest` runs it where testing is enabled).
 
-### 12.x WP-EDITOR-DATA
+### 12.2 WP-EDITOR-DATA
 
 §9.1 and the generic MCP surface of §10.1, as specified, with these decisions:
 
@@ -838,7 +838,7 @@ Integrator notes:
   Deforming list. That build's Console showed `includes/lattice.glsl:135: 'active' : Reserved
   word` for the mesh and depth `Ltc` variants (glsl410): WP-RENDER must rename it.
 
-### 12.x WP-RENDER
+### 12.3 WP-RENDER
 
 GPU deformation as §5, with these decisions and deviations:
 
@@ -1015,7 +1015,7 @@ WP-ECS's MeshSystem reads `LatticeMeshState::wantsTessellation`/`tessellation` (
 target, read for sprites). `EntityCloner.cpp` gets one line from this package. Followers,
 bake and sampling use the solver directly; nothing else needs to call LatticeRender.
 
-### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
+### 12.4 WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
 
 Files: `engine/core/subsystem/LatticeSystem.{h,cpp}`, `engine/core/object/Lattice.{h,cpp}`,
 `engine/core/registry/EntityCloner.cpp` (lattice parts), `engine/core/subsystem/MeshSystem.{h,cpp}`
@@ -1139,7 +1139,7 @@ Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpd
 and the tessellation request); with them the three tests pass and a 2D sprite bound to a
 lattice renders as a smoothly warped 8 x 8 grid.
 
-### 12.x WP-ANIM (LatticeTracks, §7)
+### 12.5 WP-ANIM (LatticeTracks, §7)
 
 Files: `engine/core/action/keyframe/LatticeTracks.{h,cpp}` (stub replaced),
 `engine/core/subsystem/ActionSystem.{h,cpp}`, `engine/core/script/binding/ActionClassesLua.cpp`,
@@ -1244,7 +1244,7 @@ WP-EDITOR-SCENE's implementation filters by lattice and works with the calls mad
 Not done here: `create_entity` type `lattice_tracks` (EntityTools, WP-MCP), `docs/mcp/TOOLS.md`
 regeneration (WP-MCP), the Xcode project entry for `editor/util/LatticeTrackKeys.cpp` (integration).
 
-### 12.x WP-EDITOR-SCENE (Scene-view editing, LatticeEditorOps)
+### 12.6 WP-EDITOR-SCENE (Scene-view editing, LatticeEditorOps)
 
 Files: `editor/lattice/LatticeEditorOps.cpp` (stubs replaced), `editor/lattice/LatticeSceneRender.cpp`
 (new: `SceneRender`'s lattice members, cages, picking, point gizmo drag),
@@ -1411,7 +1411,7 @@ Integrator notes:
 - SceneRender finds its project scene id by searching the project's scenes and prefab stages
   for itself (cached), so no Project.cpp change was needed.
 
-### 12.x WP-BAKE
+### 12.7 WP-BAKE
 
 §9.4 as specified, with these decisions:
 
@@ -1526,7 +1526,7 @@ were also checked. WP-MCP: `edit_lattice` `bake` should call `LatticeEditorOps::
     JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
         tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_bake.py
 
-### 12.x Engine runtime review
+### 12.8 Engine runtime review
 
 Adversarial review of the merged engine side (solver, presets, LatticeSystem, Lattice, LatticeTracks
 and the ActionSystem changes, EntityCloner, the sprite grid, the Lua bindings). Fixed:
@@ -1549,7 +1549,7 @@ and the ActionSystem changes, EntityCloner, the sprite grid, the Lua bindings). 
 
 Tests: `tools/mcp/tests/test_lattice_review.py` (3 tests), `engine/tests/htmlui/TestLatticeRuntime.cpp`.
 
-### 12.x WP-MCP (edit_lattice, create_entity lattice, show_all_lattices, guide, tests)
+### 12.9 WP-MCP (edit_lattice, create_entity lattice, show_all_lattices, guide, tests)
 
 Files: `editor/mcp/tools/LatticeTools.cpp` (new, `registerLatticeTools`, registered after
 WorldTools in `McpServer::registerAllTools`, listed in `McpTools.h`, `CMakeLists.txt`,
@@ -1680,7 +1680,7 @@ after this merge; the Xcode project needs `editor/mcp/tools/LatticeTools.cpp` an
 `LatticeShared.h`. The golden image is Mesa/llvmpipe on Xvfb (tolerance as the other pngdiff tests);
 other renderers may need `JASPER_UPDATE_GOLDEN=1` once, after looking at the image.
 
-### 12.x Editor review
+### 12.10 Editor review
 
 Adversarial review of the merged editor side (Catalog/Stream/Factory, inspectors, creation,
 `LatticeEditorOps`, the commands, Scene-view editing, preferences, keying). Fixed:
@@ -1739,7 +1739,7 @@ undo, follower gizmo moving the rest. Five fail on the unreviewed build.
     JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
         tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_review_editor.py
 
-### 12.x Render review
+### 12.11 Render review
 
 Adversarial review of the merged GPU path (`includes/lattice.glsl` and its call sites,
 `LatticeRender`, the RenderSystem, ShaderPool, compiler and collector changes).
@@ -1810,7 +1810,7 @@ failure matched by its twin's: over 16 vertex attributes); `test_shader_library.
 `test_shader_library_fixes.py` 13/15 with the two failures the baseline binary has too (the
 lattice fixture has no `assets/sprites/rock.png`).
 
-### 12.x Agent UX pass
+### 12.12 Agent UX pass
 
 An agent that had never seen the feature used it through MCP only (initialize instructions,
 tools/list, jasper://docs/lattice and lua-api, results and errors) for seven tasks: bend a
@@ -1871,3 +1871,24 @@ differs by 2% of the pixels on the pre-fix binary), weight-0 exclusion equal to 
 child alone, the unbind hint; follow (rest where the prop stands, follower_outside then extend, the
 prop at the squashed top, refusals); rest/pose keys and their errors; the play hint; the bake note.
 `test_lattice.py::test_guide_names_exist` covers `follow` and the follower warnings.
+
+### 12.13 Integration
+
+- All packages merged into `lattice`, then three independent passes (engine runtime review,
+  editor review, render review) and an agent-UX pass (§12.8, §12.10-§12.12), each fix proven by a
+  test that failed before it.
+- Vertex colour mask clamped to [0, 1] on CPU (`LatticeSolver.cpp` `maskValue`) and GPU
+  (`includes/lattice.glsl`): float colours outside the range made the culling bound (which
+  assumes m <= 1) too small. Unit test in `VertexColorMaskAndWeight`. Editor shader cache v35.
+- Falloff (`LatticeEditorOps::transformedOffsets`): far points are rejected by the moved
+  points' box grown by the radius, and the nearest-point search uses squared distances
+  (was points x moved-points square roots per drag frame).
+- Unit test `BendAndTwistUseTheCageProportions` for the agent-UX pass's preset change.
+- Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj`): the new engine sources,
+  in a `lattice` group and next to their siblings (the editor has no Xcode project).
+- Verification on this host (Linux, GL, Mesa llvmpipe under Xvfb; native build, no Docker):
+  `jasperengine-lattice-tests`, `jasperengine-htmlui-tests --gtest_filter='Lattice*'`,
+  `tools/mcp/tests/test_lattice*.py`, and the whole MCP suite compared with the pre-lattice
+  binary on the same empty fixture project (the TappyPlane fixture is not available here, so
+  tests that need its assets fail on both).
+
