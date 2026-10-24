@@ -11692,13 +11692,19 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
     RowSettings settingsBodyValue;
 
-    beginTable(cpType, getLabelSize("Motion Quality"));
+    beginTable(cpType, getLabelSize("Water Angular Drag"));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     propertyRow(RowPropertyType::Enum, cpType, "motionQuality", "Motion Quality", sceneProject, entities, settingsMotionQuality);
     propertyRow(RowPropertyType::Bool, cpType, "sensor", "Sensor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "gravityFactor", "Gravity Factor", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "friction", "Friction", sceneProject, entities, settingsBodyValue);
     propertyRow(RowPropertyType::Float, cpType, "restitution", "Restitution", sceneProject, entities, settingsBodyValue);
+    // floating in a library:water (Water.h): 0 ignores the water
+    propertyRow(RowPropertyType::Float, cpType, "buoyancy", "Buoyancy", sceneProject, entities, settingsBodyValue);
+    if (body.buoyancy > 0.0f) {
+        propertyRow(RowPropertyType::Float, cpType, "waterDrag", "Water Drag", sceneProject, entities, settingsBodyValue);
+        propertyRow(RowPropertyType::Float, cpType, "waterAngularDrag", "Water Angular Drag", sceneProject, entities, settingsBodyValue);
+    }
     propertyRow(RowPropertyType::Bool, cpType, "overrideMassProperties", "Override Mass", sceneProject, entities, settingsBodyValue);
 
     if (body.overrideMassProperties) {

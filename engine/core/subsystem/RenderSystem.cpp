@@ -22,6 +22,7 @@
 #include "pool/TextureDataPool.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "object/environment/Water.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -475,6 +476,10 @@ uint32_t RenderSystem::pixelsGray[64];
 uint32_t RenderSystem::pixelsFlatNormal[64];
 TextureRender RenderSystem::emptyGray;
 TextureRender RenderSystem::emptyFlatNormal;
+uint32_t RenderSystem::pixelsRipples[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
+TextureRender RenderSystem::defaultRipples;
+TextureRender RenderSystem::defaultNoise;
 TextureRender RenderSystem::emptyCubeGray;
 
 bool RenderSystem::emptyTexturesCreated = false;
@@ -827,6 +832,20 @@ void RenderSystem::createEmptyTextures(){
         emptyFlatNormal.createTexture(
                 "empty|flatnormal", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+
+        // shader library @texture defaults "ripples" and "noise" (library:water's): seamless
+        // patterns, filtered and mipmapped as an image would be
+        Water::makeRipplesTexture(pixelsRipples, DEFAULT_PATTERN_SIZE);
+        Water::makeNoiseTexture(pixelsNoise, DEFAULT_PATTERN_SIZE);
+        size_array[0] = DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE * 4;
+        data_array[0] = (void*)pixelsRipples;
+        defaultRipples.createTexture(
+                "default|ripples", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
+        data_array[0] = (void*)pixelsNoise;
+        defaultNoise.createTexture(
+                "default|noise", DEFAULT_PATTERN_SIZE, DEFAULT_PATTERN_SIZE, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::REPEAT, TextureWrap::REPEAT);
 
         emptyTexturesCreated = true;
     }
@@ -3621,12 +3640,15 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
         case ShaderTextureDefault::BLACK:  return cube ? &emptyCubeBlack : &emptyBlack;
         case ShaderTextureDefault::GRAY:   return cube ? &emptyCubeGray : &emptyGray;
         case ShaderTextureDefault::NORMAL: return cube ? &emptyCubeGray : &emptyFlatNormal;
+        case ShaderTextureDefault::RIPPLES: return cube ? &emptyCubeGray : &defaultRipples;
+        case ShaderTextureDefault::NOISE:  return cube ? &emptyCubeGray : &defaultNoise;
         default:                           return cube ? &emptyCubeWhite : &emptyWhite;
     }
 }
 
 bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
-                                             std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest){
+                                             std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
+                                             const std::vector<std::string>& enabledFeatures){
     bindings.clear();
 
     // the frame block, by name; both stages declare the same layout but for the post colour's
@@ -3703,7 +3725,7 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     };
     if (manifest){
         for (const ShaderManifestTexture& texture : manifest->textures)
-            addTexture(texture.uniform, static_cast<int>(texture.defaultTexture));
+            addTexture(texture.uniform, static_cast<int>(texture.getDefault(enabledFeatures)));
     }else{
         for (const auto& texture : textures)
             addTexture(texture.first, static_cast<int>(ShaderTextureDefault::WHITE));
@@ -5691,7 +5713,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         // shader library: the frame block and the material's custom textures
         if (!loadShaderLibraryBindings(mesh.submeshes[i].libraryBindings, shaderData, mesh.submeshes[i].render,
-                                       mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get())){
+                                       mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get(),
+                                       ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures))){
             return false;
         }
         loadShadowTextures(shaderData, mesh.submeshes[i].render, mesh.receiveLights, p_receiveShadows);
@@ -5876,7 +5899,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
             if (!loadShaderLibraryBindings(mesh.submeshes[i].depthLibraryBindings, depthShaderData, depthRender,
-                                           mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get())){
+                                           mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get(),
+                                           ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures))){
                 return false;
             }
             // a custom depth program (library @depth or a fork) gets every attribute it
@@ -6922,7 +6946,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     // the material's textures (a fork of Lit samples them) and its own custom textures
     if (!loadPBRTextures(submesh.material, shaderData, render, mesh.receiveLights))
         return false;
-    if (!loadShaderLibraryBindings(extra.libraryBindings, shaderData, render, pass.shaderTextures, extra.manifest.get()))
+    if (!loadShaderLibraryBindings(extra.libraryBindings, shaderData, render, pass.shaderTextures, extra.manifest.get(),
+                                   ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures)))
         return false;
     extra.needUpdateTexture = false;
 
@@ -9674,7 +9699,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
         }
         render.addTexture(shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureRender);
     }
-    if (!loadShaderLibraryBindings(ui.libraryBindings, shaderData, render, ui.shaderTextures, ui.shaderManifest.get())){
+    if (!loadShaderLibraryBindings(ui.libraryBindings, shaderData, render, ui.shaderTextures, ui.shaderManifest.get(),
+                                   ShaderReference::getEnabledFeatures(ui.customShader, ui.shaderFeatures))){
         return false;
     }
     
@@ -9878,7 +9904,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
             points.transparent = true;
         }
     }
-    if (!loadShaderLibraryBindings(points.libraryBindings, shaderData, render, points.shaderTextures, points.shaderManifest.get())){
+    if (!loadShaderLibraryBindings(points.libraryBindings, shaderData, render, points.shaderTextures, points.shaderManifest.get(),
+                                   ShaderReference::getEnabledFeatures(points.customShader, points.shaderFeatures))){
         return false;
     }
 
@@ -9959,7 +9986,8 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     // buffer is dynamic
     lines.needUpdateBuffer = true;
 
-    if (!loadShaderLibraryBindings(lines.libraryBindings, shaderData, render, lines.shaderTextures, lines.shaderManifest.get())){
+    if (!loadShaderLibraryBindings(lines.libraryBindings, shaderData, render, lines.shaderTextures, lines.shaderManifest.get(),
+                                   ShaderReference::getEnabledFeatures(lines.customShader, lines.shaderFeatures))){
         return false;
     }
 
@@ -10264,7 +10292,8 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     } else {
         return false;
     }
-    if (!loadShaderLibraryBindings(sky.libraryBindings, shaderData, *render, sky.shaderTextures, sky.shaderManifest.get())){
+    if (!loadShaderLibraryBindings(sky.libraryBindings, shaderData, *render, sky.shaderTextures, sky.shaderManifest.get(),
+                                   ShaderReference::getEnabledFeatures(sky.customShader, sky.shaderFeatures))){
         return false;
     }
 
@@ -12316,6 +12345,9 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+
+    // library:underwater passes on while the main camera is under a water (Water.h)
+    Water::updateUnderwater(scene);
 
     int numLights = checkLightsAndShadow();
 

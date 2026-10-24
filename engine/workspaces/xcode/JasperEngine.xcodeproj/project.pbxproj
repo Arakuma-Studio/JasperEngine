@@ -608,9 +608,12 @@
 		7170A3D52818A8A30003E965 /* Bone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3CE2818A8A30003E965 /* Bone.cpp */; };
 		7170A3D62818A8A30003E965 /* Bone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3CE2818A8A30003E965 /* Bone.cpp */; };
 		7170A3D72818A8A30003E965 /* Skybox.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D02818A8A30003E965 /* Skybox.h */; };
+		7AE0A7E00000000000000003 /* Water.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000001 /* Water.h */; };
 		7170A3D82818A8A30003E965 /* Fog.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D12818A8A30003E965 /* Fog.h */; };
 		7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
 		7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
+		7AE0A7E00000000000000004 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
+		7AE0A7E00000000000000005 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
 		7170A3DB2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		7170A3DC2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		717AD876290B5DF3007D7DB5 /* soloud_bus.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD7C0290B5DF2007D7DB5 /* soloud_bus.h */; };
@@ -4257,6 +4260,8 @@
 		7170A3D02818A8A30003E965 /* Skybox.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Skybox.h; sourceTree = "<group>"; };
 		7170A3D12818A8A30003E965 /* Fog.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Fog.h; sourceTree = "<group>"; };
 		7170A3D22818A8A30003E965 /* Skybox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Skybox.cpp; sourceTree = "<group>"; };
+		7AE0A7E00000000000000001 /* Water.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Water.h; sourceTree = "<group>"; };
+		7AE0A7E00000000000000002 /* Water.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Water.cpp; sourceTree = "<group>"; };
 		7170A3D32818A8A30003E965 /* Fog.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Fog.cpp; sourceTree = "<group>"; };
 		717AD7A2290B5DA1007D7DB5 /* libsoloud-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		717AD7B1290B5DCA007D7DB5 /* libsoloud-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -8043,6 +8048,8 @@
 				175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */,
 				7170A3D02818A8A30003E965 /* Skybox.h */,
 				7170A3D22818A8A30003E965 /* Skybox.cpp */,
+				7AE0A7E00000000000000001 /* Water.h */,
+				7AE0A7E00000000000000002 /* Water.cpp */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -11134,6 +11141,7 @@
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
 				7170A3D72818A8A30003E965 /* Skybox.h in Headers */,
+				7AE0A7E00000000000000003 /* Water.h in Headers */,
 				71BE620025B1DB22006D6E02 /* System.h in Headers */,
 				175DCCBB300FA22F008C19EC /* Export.h in Headers */,
 				175DCE6B30255343008C19EC /* CharExtent.h in Headers */,
@@ -13169,6 +13177,7 @@
 				7105A56528B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
 				71BE620225B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */,
+				7AE0A7E00000000000000005 /* Water.cpp in Sources */,
 				713D82B0259D307F00567F9F /* Attribute.cpp in Sources */,
 				71E54502284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DAA2AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
@@ -13539,6 +13548,7 @@
 				7105A56428B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
 				71BE620125B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */,
+				7AE0A7E00000000000000004 /* Water.cpp in Sources */,
 				7162FD4A25963AE00075B97D /* Texture.cpp in Sources */,
 				71E54501284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DA92AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,

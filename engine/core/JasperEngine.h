@@ -121,6 +121,7 @@
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"
 #include "object/environment/ReflectionProbe.h"
+#include "object/environment/Water.h"
 #include "object/environment/Skybox.h"
 #include "object/Light.h"
 #include "object/Light2D.h"

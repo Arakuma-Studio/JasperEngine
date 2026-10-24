@@ -7222,6 +7222,9 @@ YAML::Node editor::Stream::encodeRigidbodyComponent(const RigidbodyComponent& bo
     node["gravityFactor"] = body.gravityFactor;
     node["friction"] = body.friction;
     node["restitution"] = body.restitution;
+    node["buoyancy"] = body.buoyancy;
+    node["waterDrag"] = body.waterDrag;
+    node["waterAngularDrag"] = body.waterAngularDrag;
 
     // Six booleans instead of the bit mask, so the file stays readable.
     YAML::Node dofsNode;
@@ -7296,6 +7299,9 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
     if (node["gravityFactor"]) body.gravityFactor = YamlNumbers::as<float>(node["gravityFactor"]);
     if (node["friction"]) body.friction = YamlNumbers::as<float>(node["friction"]);
     if (node["restitution"]) body.restitution = YamlNumbers::as<float>(node["restitution"]);
+    if (node["buoyancy"]) body.buoyancy = YamlNumbers::as<float>(node["buoyancy"]);
+    if (node["waterDrag"]) body.waterDrag = YamlNumbers::as<float>(node["waterDrag"]);
+    if (node["waterAngularDrag"]) body.waterAngularDrag = YamlNumbers::as<float>(node["waterAngularDrag"]);
 
     if (node["allowedDOFs"]) {
         const YAML::Node& dofsNode = node["allowedDOFs"];

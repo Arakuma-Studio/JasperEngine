@@ -142,6 +142,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshSystem>("MeshSystem")
         .addFunction("createPlane", &MeshSystem::createPlane)
+        .addFunction("createGrid", &MeshSystem::createGrid)
         .addFunction("createBox", &MeshSystem::createBox)
         .addFunction("createSphere", &MeshSystem::createSphere)
         .addFunction("createCylinder", &MeshSystem::createCylinder)

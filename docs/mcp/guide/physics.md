@@ -86,6 +86,28 @@ reads the GameObject's world position (`object:getWorldPosition()`, C++ `getWorl
 `setPosition`) are not interpolated, and a body whose transform a script or animation moved
 keeps that pose until the next step.
 
+## Floating in water
+
+A dynamic Rigidbody floats in a water surface (a mesh drawn with `library:water`; the
+GameObject menu's 3D Object > Water, `create_entity type=water`) when its `buoyancy` is above 0:
+before each fixed step, with its centre of mass over the mesh's world bounds (XZ) and not
+deeper than the water's floating depth, it gets Jolt's buoyancy impulse at the surface over
+the centre of mass, waves included (the same waves the shader draws, on its clock).
+
+| Rigidbody field | Default | |
+|---|---|---|
+| `buoyancy` | 0 | 1 neutral, more floats, less sinks, 0 ignores water; around 1.5 floats with a third out |
+| `waterDrag` | 0.5 | Jolt's linear drag in the water |
+| `waterAngularDrag` | 0.01 | Jolt's angular drag (about 0.01 times the body's size) |
+
+The water material decides per water: `buoyancy` (on by default; off floats nothing) and
+`buoyancyDepth` (world units below the surface a body still floats; 0 = no bottom). Where waters
+overlap the one whose bottom is highest wins (a pool with a depth inside a lake without). The
+submerged volume comes from the colliders (a body with a mesh or heightfield collider does not
+float: Jolt has no volume for them; use convex shapes), the mass from their density. The water itself has no collider: what does not float falls through
+it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNormal` /
+`Water.isUnderwater(scene, point)` (Lua API 2.10.1).
+
 ## Layers, contacts and queries
 
 - Each backend has a Layer Collision Matrix (Project Settings > Physics / Physics 2D), saved in

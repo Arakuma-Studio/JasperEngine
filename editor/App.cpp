@@ -3725,6 +3725,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      foliage transmission reads it); ssr.frag fades out rough surfaces (SSR_MAX_ROUGHNESS)
     //      and skips their march; probe_filter (PROBE_FILTER) prefilters runtime reflection probe
     //      captures into roughness mips, each source level downsampled from the one above.
+    //      library:water's REFLECTION, CAUSTICS, UNDERSIDE and BUILTIN_TEXTURES features, its
+    //      distant detail fade and new parameters (u_fs_customParams grows); includes/lights.glsl
+    //      gains ggxSpecular; the library post-process shader library:underwater.
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v37";
 }
 

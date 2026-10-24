@@ -951,6 +951,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Fog.cpp
     core/object/environment/ReflectionProbe.cpp
     core/object/environment/Skybox.cpp
+    core/object/environment/Water.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/Image.cpp

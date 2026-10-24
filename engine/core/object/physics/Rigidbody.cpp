@@ -637,6 +637,30 @@ void Rigidbody::setRestitution(float restitution){
     }
 }
 
+float Rigidbody::getBuoyancy() const{
+    return getComponent<RigidbodyComponent>().buoyancy;
+}
+
+void Rigidbody::setBuoyancy(float buoyancy){
+    getComponent<RigidbodyComponent>().buoyancy = buoyancy;
+}
+
+float Rigidbody::getWaterDrag() const{
+    return getComponent<RigidbodyComponent>().waterDrag;
+}
+
+void Rigidbody::setWaterDrag(float waterDrag){
+    getComponent<RigidbodyComponent>().waterDrag = waterDrag;
+}
+
+float Rigidbody::getWaterAngularDrag() const{
+    return getComponent<RigidbodyComponent>().waterAngularDrag;
+}
+
+void Rigidbody::setWaterAngularDrag(float waterAngularDrag){
+    getComponent<RigidbodyComponent>().waterAngularDrag = waterAngularDrag;
+}
+
 Vector3 Rigidbody::getPosition() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
