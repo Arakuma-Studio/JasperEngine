@@ -60,9 +60,11 @@ How it renders: the scene's depth is reduced to the fog's resolution (the farthe
 the march runs per low-resolution texel with steps spread quadratically and offset by a static
 64×64 blue noise (no frame index: a still scene renders the same image every frame), a 3×3
 depth-aware denoise removes the pattern, and a joint bilateral upsample composites it over the
-opaque scene. Opaque surfaces take the analytic fog from the Distance on, so nothing is fogged
-twice; transparent surfaces take the analytic fog over their whole ray (no light shafts or
-volumes on them), and refractive shaders see the fogged scene.
+opaque scene. Every surface takes the analytic fog over its whole ray; the composite then puts
+the marched fog in place of the analytic fog's near part (up to the Distance), so where the two
+are the same medium (no shadow, volume or noise) the image is exactly the analytic fog's, and
+nothing is fogged twice. Transparent surfaces keep the analytic fog (no light shafts or volumes on
+them), and refractive shaders see the fogged scene.
 
 ### Local Volumetric Fog
 

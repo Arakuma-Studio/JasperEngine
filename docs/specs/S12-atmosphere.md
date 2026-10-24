@@ -545,9 +545,18 @@ The `gpuMs` value is present when S15 timings exist.
 - **Sky pixels under volumetric fog (R6).** The marched fog in front of the sky is drawn over the
   sky fill (the physically right result, and where light shafts show against the sky), so the
   handoff invariant holds for surfaces; AC5 is measured on a view of geometry.
-- **Composite blend.** The composites blend premultiplied (`src ONE, dst ONE_MINUS_SRC_ALPHA`,
-  colour `encode(S / (1 - T)) (1 - T)`, alpha `1 - T`) rather than `ONE / SRC_ALPHA` with alpha
-  `T`: the same display-space approximation, without a second blend state.
+- **Handoff by replacement, not by split (§6.3, R5, R6, R10).** Blending a marched near segment
+  over surfaces fogged from the volumetric distance on is a display-space blend (the colour
+  targets hold display-encoded colour), which is far from the analytic fog for half-transparent
+  fog (about 16/255 in the AC5 scene). Instead every opaque surface takes the analytic fog over
+  its whole ray, and `Atmosphere/VolumetricComposite` replaces the analytic near part [0, m] with
+  the marched one: `colour' = ((colour T_c + C) - A) k + V`, `k = T_v / T_a`, A, V and C the
+  analytic, marched and Screen cloud layers (A computed per full-resolution pixel in the
+  composite). Where the march equals the analytic fog, k = 1 and V = A: the image is unchanged
+  (AC5 measures 0.5-0.8/255). It draws twice, with a new `BlendMode::SUBTRACT_PREMULTIPLIED`
+  (reverse subtract) for the part of the correction below zero, then premultiplied. The block's
+  `start_handoff_maxDist_inscatter.y` is `start_volumetric_maxDist_inscatter.y`: the distance the
+  pass marched.
 - **Sun shadow block (§6.4).** S10 has not landed: `shaderlib/includes/sun_shadow.glsl` declares
   `u_fs_sunShadow` (cascade matrices, atlas rects, split distances, bias), filled from the camera's
   current shadow uniforms, with S10's `sampleDirectionalShadow1` signature, for S10 to adopt.

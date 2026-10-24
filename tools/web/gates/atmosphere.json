@@ -1,0 +1,16 @@
+{
+  "description": "tools/test-projects/atmosphere (WEB_PROJECT=atmosphere tools/build.sh web): a volumetric height fog and Volumetric Clouds (Sky Map, the web's Low tier) in WebGL2. The canvas centre is fogged ground; its colour is the glcore golden's (engine/tests/core/golden/atmosphere_valley.png, centre 164 169 182): the volumetric fog leaves it as the analytic fog made it.",
+  "rgb": [
+    164,
+    169,
+    182
+  ],
+  "tolerance": 8,
+  "isolated": true,
+  "console": [
+    {
+      "text": "[gate] atmosphere quality Low",
+      "level": "log"
+    }
+  ]
+}
