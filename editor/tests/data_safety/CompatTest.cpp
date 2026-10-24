@@ -115,13 +115,14 @@ TEST(Compat, CorpusRoundTrip) {
         EXPECT_TRUE(again.report.empty()) << problems(again.report);
         EXPECT_EQ(encodeSceneText(again), first) << "a second round trip changed the file";
 
-        // written by the editor (a scene saved with its build data): only the version line is new.
+        // written by the editor (a scene saved with its build data): only the version line is new
+        // (a scene the current editor saved has it already).
         // Hand-written fixtures and scenes holding prefab instances (their members come from the
         // prefab files, which this test does not load) are normalised by their first save.
         const bool editorWritten = original.find("\nmaxValues:") != std::string::npos &&
                                    original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos;
         if (editorWritten) {
-            const std::string difference = firstDifference(withoutShaderKeys(withoutVersionLine(first)), withoutShaderKeys(original));
+            const std::string difference = firstDifference(withoutShaderKeys(withoutVersionLine(first)), withoutShaderKeys(withoutVersionLine(original)));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
             EXPECT_EQ(first.rfind("formatVersion: 1\n", 0), 0u);
