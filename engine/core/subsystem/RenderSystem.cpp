@@ -5082,7 +5082,11 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
+#ifdef JASPERENGINE_EDITOR
     primaryView.disableFog = disableFog;
+#else
+    (void)disableFog;
+#endif
 }
 
 void RenderSystem::setDisableClouds(bool disableClouds){

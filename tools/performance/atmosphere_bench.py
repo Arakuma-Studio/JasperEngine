@@ -58,8 +58,9 @@ async def make_fixture(ed: Editor) -> None:
             height = 4 + ((row * 7 + column * 3) % 9) * 3
             await ed.call("set_transform", scene=scene, entity=box["entity_id"],
                           position=[-60 + column * 24, height / 2, -20 - row * 40], scale=[8, height, 8])
-    sun = await ed.call("create_entity", scene=scene, type="directional_light", name="Sun")
-    await ed.call("set_properties", scene=scene, entity=sun["entity_id"],
+    # the new 3D scene's sun
+    sun = (await ed.call("find_entities", scene=scene, component="light"))["entities"][0]
+    await ed.call("set_properties", scene=scene, entity=sun["id"],
                   values={"light": {"direction": [-0.4, -0.35, -1.0], "intensity": 2.0, "shadows": True}})
     fog = await ed.call("create_entity", scene=scene, type="fog", name="Fog")
     await ed.call("apply_atmosphere_preset", scene=scene, entity=fog["entity_id"], preset="mountain_valley")
@@ -72,6 +73,7 @@ async def make_fixture(ed: Editor) -> None:
     await ed.call("set_properties", scene=scene, entity=camera["entity_id"],
                   values={"camera": {"type": "perspective", "target": [0, 8, -200], "farClip": 5000}})
     await ed.call("set_transform", scene=scene, entity=camera["entity_id"], position=[0, 10, 30])
+    await ed.call("set_main_camera", scene=scene, entity=camera["entity_id"])
     await ed.call("save_scene", scene=scene)
 
 
