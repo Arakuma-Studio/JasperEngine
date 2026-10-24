@@ -114,11 +114,6 @@ bool readSourceSignature(const std::filesystem::path& path, std::string& signatu
     return !signature.empty();
 }
 
-void clearCustomSourceCache() {
-    std::lock_guard<std::mutex> lock(customSourceCacheMutex);
-    customSourceCache.clear();
-}
-
 // the customShader of a customSourceCacheKey (its second-to-last line)
 std::string customShaderOfCacheKey(const std::string& key) {
     const size_t last = key.find_last_of('\n');
