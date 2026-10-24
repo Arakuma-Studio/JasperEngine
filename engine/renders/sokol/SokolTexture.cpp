@@ -11,6 +11,8 @@
 #include <cstring>
 #include <cstdlib>
 
+#include "meshoptimizer.h"
+
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
 // thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
 // (re-check when sokol_gfx is updated)
@@ -256,6 +258,34 @@ sg_image SokolTexture::generateMipmaps(const sg_image_desc* desc_){
     return img;
 }
 
+// GLES3 and WebGL2 have no unorm16 textures (sokol reports R16 unsupported there),
+// so 16-bit heightmaps go up as R32F where float textures filter, else as R16F,
+// which always does. Returns the converted pixels, freed once the image is made.
+static void* unorm16ToFloat(sg_image_desc* desc){
+    const uint16_t* source = (const uint16_t*)desc->data.mip_levels[0].ptr;
+    const size_t count = desc->data.mip_levels[0].size / sizeof(uint16_t);
+
+    if (sg_query_pixelformat(SG_PIXELFORMAT_R32F).filter){
+        float* target = (float*)malloc(count * sizeof(float));
+        for (size_t i = 0; i < count; i++){
+            target[i] = source[i] / 65535.0f;
+        }
+        desc->pixel_format = SG_PIXELFORMAT_R32F;
+        desc->data.mip_levels[0].ptr = target;
+        desc->data.mip_levels[0].size = count * sizeof(float);
+        return target;
+    }
+
+    uint16_t* target = (uint16_t*)malloc(count * sizeof(uint16_t));
+    for (size_t i = 0; i < count; i++){
+        target[i] = meshopt_quantizeHalf(source[i] / 65535.0f);
+    }
+    desc->pixel_format = SG_PIXELFORMAT_R16F;
+    desc->data.mip_levels[0].ptr = target;
+    desc->data.mip_levels[0].size = count * sizeof(uint16_t);
+    return target;
+}
+
 bool SokolTexture::createTexture(
             const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
@@ -307,6 +337,11 @@ bool SokolTexture::createTexture(
         image_desc.data.mip_levels[0].size = size[0];
     }
 
+    void* converted = NULL;
+    if (pixelFormat == SG_PIXELFORMAT_R16 && !sg_query_pixelformat(SG_PIXELFORMAT_R16).filter){
+        converted = unorm16ToFloat(&image_desc);
+    }
+
     if (sampler_desc.mipmap_filter == SG_FILTER_LINEAR || sampler_desc.mipmap_filter == SG_FILTER_NEAREST){
         image = generateMipmaps(&image_desc);
     }else{
@@ -320,6 +355,9 @@ bool SokolTexture::createTexture(
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
         SystemRender::scheduleCleanup(std::free, combined);
+    }
+    if (converted){
+        SystemRender::scheduleCleanup(std::free, converted);
     }
     if (Engine::isAsyncThread()){
         sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
