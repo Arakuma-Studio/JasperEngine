@@ -717,7 +717,7 @@ struct ConvexDecompositionCache::Impl {
         return (std::filesystem::path(directory) / (keyHex(key) + FILE_EXTENSION)).string();
     }
 
-    // Memory under the state lock. Caller holds it.
+    // Queued or running. Caller holds the state lock.
     bool pendingLocked(uint64_t key) const{
         return queued.count(key) > 0 || (running && runningKey == key);
     }
