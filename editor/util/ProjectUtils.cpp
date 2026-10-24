@@ -2243,6 +2243,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<AnimationComponent>()))   return handleClass("Animation");
     if (signature.test(scene->getComponentId<SpriteAnimationComponent>())) return handleClass("SpriteAnimation");
     if (signature.test(scene->getComponentId<MorphTracksComponent>())) return handleClass("MorphTracks");
+    if (signature.test(scene->getComponentId<LatticeTracksComponent>())) return handleClass("LatticeTracks");
     if (signature.test(scene->getComponentId<RotateTracksComponent>())) return handleClass("RotateTracks");
     if (signature.test(scene->getComponentId<ScaleTracksComponent>())) return handleClass("ScaleTracks");
     if (signature.test(scene->getComponentId<TranslateTracksComponent>())) return handleClass("TranslateTracks");

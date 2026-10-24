@@ -5,6 +5,7 @@
 
 #include "Catalog.h"
 #include "component/KeyframeTracksComponent.h"
+#include "component/LatticeTracksComponent.h"
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
@@ -30,6 +31,17 @@ editor::CreateTrackKeyCmd::CreateTrackKeyCmd(Project* project, uint32_t sceneId,
     createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, creationType, target);
     createCmd->addProperty<std::vector<float>>(ComponentType::KeyframeTracksComponent, "times", {localTime});
     createCmd->addProperty<std::vector<Quaternion>>(ComponentType::RotateTracksComponent, "values", {value});
+    wasModified = project->getScene(sceneId)->isModified;
+}
+
+editor::CreateTrackKeyCmd::CreateTrackKeyCmd(Project* project, uint32_t sceneId, Entity animEntity, Entity target,
+                                             std::string name, float localTime, std::vector<int> points,
+                                             std::vector<Vector3> values)
+    : project(project), sceneId(sceneId), animEntity(animEntity){
+    createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, EntityCreationType::LATTICE_TRACKS, target);
+    createCmd->addProperty<std::vector<float>>(ComponentType::KeyframeTracksComponent, "times", {localTime});
+    createCmd->addProperty<std::vector<int>>(ComponentType::LatticeTracksComponent, "points", points);
+    createCmd->addProperty<std::vector<std::vector<Vector3>>>(ComponentType::LatticeTracksComponent, "values", {values});
     wasModified = project->getScene(sceneId)->isModified;
 }
 

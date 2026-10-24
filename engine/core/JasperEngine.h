@@ -20,6 +20,7 @@
 #include "action/ColorTween.h"
 #include "action/Ease.h"
 #include "action/keyframe/MorphTracks.h"
+#include "action/keyframe/LatticeTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"

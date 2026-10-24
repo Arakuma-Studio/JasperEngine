@@ -528,6 +528,7 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Animation", "Rotation Track", ICON_FA_ARROWS_SPIN, T::ROTATE_TRACKS, "Rotation Track", CREATE_IN_ALL},
         {"Animation", "Scale Track", ICON_FA_MAXIMIZE, T::SCALE_TRACKS, "Scale Track", CREATE_IN_ALL},
         {"Animation", "Morph Track", ICON_FA_SHAPES, T::MORPH_TRACKS, "Morph Track", CREATE_IN_ALL},
+        {"Animation", "Lattice Track", ICON_FA_CUBES_STACKED, T::LATTICE_TRACKS, "Lattice Track", CREATE_IN_ALL},
 
         {nullptr, "Camera", ICON_FA_VIDEO, T::CAMERA, "Camera", CREATE_IN_ALL},
     };

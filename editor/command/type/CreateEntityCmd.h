@@ -60,6 +60,7 @@ namespace jasperengine::editor{
         ROTATE_TRACKS,
         SCALE_TRACKS,
         MORPH_TRACKS,
+        LATTICE_TRACKS,
         MODEL,
         PARTICLE_SYSTEM,
         POINTS,
