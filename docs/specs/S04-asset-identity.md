@@ -660,6 +660,6 @@ Recorded by the implementer; each is the closest correct alternative to the text
     is written by the background thread (and on close), not by each save.
 19. **First open of a project written before GUIDs** writes one meta per asset. Metas that hold
     only what their path derives (legacy GUID, derived sub-assets) skip the sync, since a crash
-    rewrites them identically; it is still a write per asset (about 15 s for 25,000 assets on
-    the build server), which R22's 1 s identity budget (measured with metas present) does not
-    cover.
+    rewrites them identically; it is still a write per asset (about 5 s for 25,000 assets on
+    the build server, 1 s to open it again), which R22's 1 s identity budget (measured with
+    metas present) does not cover.
