@@ -248,7 +248,7 @@ int Rigidbody::createConvexHullCollider(Vector3 position, Quaternion rotation, s
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
-            Log::warn("Convex hull vertices truncated from %zu to %zu", shape.numVertices, i);
+            Log::warn("Convex hull vertices truncated from %d to %zu", shape.numVertices, i);
             shape.numVertices = i;
             break;
         }
@@ -288,7 +288,7 @@ int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::ve
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
-            Log::warn("Mesh shape vertices truncated from %zu to %zu", shape.numVertices, i);
+            Log::warn("Mesh shape vertices truncated from %d to %zu", shape.numVertices, i);
             shape.numVertices = i;
             break;
         }
@@ -297,7 +297,7 @@ int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::ve
     shape.numIndices = indices.size();
     for (size_t i = 0; i < shape.numIndices; i++){
         if (!shape.indices.validIndex(i)){
-            Log::warn("Mesh shape indices truncated from %zu to %zu", shape.numIndices, i);
+            Log::warn("Mesh shape indices truncated from %d to %zu", shape.numIndices, i);
             shape.numIndices = i;
             break;
         }
@@ -337,7 +337,7 @@ Collider3DType Rigidbody::getColliderType(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].type;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
         throw std::runtime_error("Cannot find shape");
     }
 }
@@ -355,10 +355,10 @@ void Rigidbody::setColliderDensity(size_t index, float density){
             JPH::ConvexShape* convexShape = (JPH::ConvexShape*)body.colliders[index].shape.GetPtr();
             convexShape->SetDensity(density);
         }else{
-            Log::warn("The shape %i does not have density", index);
+            Log::warn("The shape %zu does not have density", index);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -372,7 +372,7 @@ float Rigidbody::getColliderDensity(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].density;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return 0;

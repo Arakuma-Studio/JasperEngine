@@ -4,8 +4,11 @@
 #include "CrashHandler.h"
 
 #include "EditorVersion.h"
+#include "log/Backtrace.h"
+#include "log/Logger.h"
 
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdarg>
 #include <cstdint>
@@ -129,8 +132,15 @@ namespace {
         }
 
         HANDLE process = GetCurrentProcess();
-        SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
-        const bool symbols = SymInitialize(process, nullptr, TRUE) != FALSE;
+        // DbgHelp is single-threaded and the logger symbolizes too: its lock, with a
+        // deadline (module+offset still locates every frame without it)
+        std::timed_mutex& dbgHelp = Backtrace::dbgHelpMutex();
+        const bool locked = dbgHelp.try_lock_for(std::chrono::milliseconds(200));
+        bool symbols = false;
+        if (locked) {
+            SymSetOptions(SYMOPT_UNDNAME | SYMOPT_DEFERRED_LOADS);
+            symbols = SymInitialize(process, nullptr, TRUE) != FALSE;
+        }
 
         char symbolBuffer[sizeof(SYMBOL_INFO) + 256] = {0};
         SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(symbolBuffer);
@@ -160,6 +170,7 @@ namespace {
         }
 
         if (symbols) SymCleanup(process);
+        if (locked) dbgHelp.unlock();
 #elif defined(JASPERENGINE_HAS_EXECINFO)
         void* frames[64];
         int count = backtrace(frames, 64);
@@ -176,7 +187,15 @@ namespace {
     }
 
     void report(const char* reason) {
+        // What was logged before the crash is still queued for the file: written first, so
+        // the log ends with the lines that led here (only atomics and sleeps, signal-safe)
+        uint64_t unwritten = 0;
+        const bool flushed = Logger::flushForCrash(std::chrono::milliseconds(300), &unwritten);
+
         FileHandle file = openReportFile();
+        if (!flushed && Logger::isInitialized()) {
+            writeFormatted(file, "log tail incomplete: %llu records unwritten\n", static_cast<unsigned long long>(unwritten));
+        }
 
         writeLine(file, "");
         writeLine(file, "========================================================");

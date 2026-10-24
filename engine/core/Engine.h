@@ -169,6 +169,7 @@
     }
 
 namespace jasperengine {
+    class Scheduler;
 
     class JASPERENGINE_API Scene;
 
@@ -282,6 +283,8 @@ namespace jasperengine {
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
+        // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
+        static bool gameEventsPaused;
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
@@ -348,6 +351,10 @@ namespace jasperengine {
         static std::vector<Scene*> getSceneLayers();
 
         static void pauseGameEvents(bool pause);
+        static bool areGameEventsPaused();
+        // One frame of the scheduler's Game (scaled), Unscaled and Frames clocks, unless the
+        // game is paused, held or its events are (the editor's Pause). True when they ran.
+        static bool advanceGameClocks(Scheduler& scheduler, double frameTime);
         
         static int getCanvasWidth();
         static int getCanvasHeight();
@@ -476,6 +483,8 @@ namespace jasperengine {
         // Callbacks scripts left on a scene's components. Needed before the code behind them
         // goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
+        // Deprecated (kept one release for C++ glue generated before owner keys): scans every
+        // event for tags containing substring. Use SubscriptionOwnerIndex::releaseOwner.
         static void removeSubscriptionsByTag(const std::string& substring);
 
 #ifdef JASPERENGINE_EDITOR
