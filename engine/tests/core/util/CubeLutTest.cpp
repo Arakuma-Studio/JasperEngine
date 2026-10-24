@@ -4,10 +4,14 @@
 // Engine/Modules/Rendering/Tests/CubeLutFileParserTests.cpp
 
 // .cube parsing, the input encoding proposal, the .jlut cook and the LUT cache (S13 AC1, AC2,
-// AC6, AC21, AC22). CPU only; fixtures in engine/tests/fixtures/cubelut (OpenEngine's).
+// AC6, AC21, AC22). CPU only; fixtures in engine/tests/core/fixtures/cubelut (OpenEngine's).
 
 #include "util/CubeLut.h"
 #include "util/PostColorLut.h"
+
+#include "support/AllocationCounter.h"
+#include "TempDir.h"
+#include "TestPaths.h"
 
 #include <gtest/gtest.h>
 
@@ -29,21 +33,18 @@ using namespace jasperengine;
 
 namespace {
 
-    // the benchmarks' budgets are for optimised builds: debug and sanitizer builds get 4x
-#if !defined(NDEBUG) || defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-    const double BENCH_SLACK = 4.0;
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer) || __has_feature(memory_sanitizer)
-    const double BENCH_SLACK = 4.0;
+    // the benchmarks' budgets are for optimised builds: a debug build gets 4x; under a
+    // sanitizer (perfSlack 0) they are only printed
+    double benchSlack(){
+#if defined(NDEBUG)
+        return testsupport::perfSlack();
 #else
-    const double BENCH_SLACK = 1.0;
+        return 4.0 * testsupport::perfSlack();
 #endif
-#else
-    const double BENCH_SLACK = 1.0;
-#endif
+    }
 
     std::string fixturePath(const char* name){
-        return std::string(JASPER_TEST_FIXTURES_DIR) + "/cubelut/" + name;
+        return test::testPaths().assetDir + "/cubelut/" + name;
     }
 
     std::string readText(const std::string& path){
@@ -162,26 +163,11 @@ namespace {
     }
 
     void reportBench(const char* name, double ms, double budget){
-        std::printf("[   BENCH  ] %s: %.3f ms (budget %.1f ms)\n", name, ms, budget * BENCH_SLACK);
-        EXPECT_LE(ms, budget * BENCH_SLACK) << name;
+        const double slack = benchSlack();
+        std::printf("[bench] %s: %.3f ms (budget %.1f ms)\n", name, ms, budget * slack);
+        if (slack > 0.0)
+            EXPECT_LE(ms, budget * slack) << name;
     }
-
-    // a scratch directory removed with the test
-    struct TempDir{
-        std::filesystem::path path;
-
-        explicit TempDir(const char* name){
-            path = std::filesystem::temp_directory_path() / (std::string("jasper-cubelut-") + name);
-            std::error_code ec;
-            std::filesystem::remove_all(path, ec);
-            std::filesystem::create_directories(path);
-        }
-
-        ~TempDir(){
-            std::error_code ec;
-            std::filesystem::remove_all(path, ec);
-        }
-    };
 
 }
 
@@ -543,9 +529,9 @@ TEST(CubeLut, JlutRoundTrip){
 // loadColorLut reads through the engine's io (absolute paths here), a .cube's cooked sibling
 // first; the cache parses once per path until invalidated
 TEST(CubeLut, LoadsFilesAndCaches){
-    const TempDir dir("load");
+    const test::TempDir dir;
     const std::string text = cubeText("ACEScct look", 9, logLook);
-    const std::filesystem::path cubePath = dir.path / "look.cube";
+    const std::filesystem::path cubePath = dir.path() / "look.cube";
     writeBytes(cubePath, text.data(), text.size());
 
     CubeLut lut;
@@ -564,23 +550,23 @@ TEST(CubeLut, LoadsFilesAndCaches){
     cookedSource.title = "cooked";
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(writeJlut(cookedSource, bytes));
-    writeBytes(dir.path / "look.jlut", bytes.data(), bytes.size());
+    writeBytes(dir.path() / "look.jlut", bytes.data(), bytes.size());
     EXPECT_EQ(getCachedColorLut(cubePath.string()), first);
     invalidateColorLutCache(cubePath.string());
     const std::shared_ptr<const CubeLut> second = getCachedColorLut(cubePath.string());
     ASSERT_TRUE(second);
     EXPECT_NE(second, first);
     EXPECT_EQ(second->title, "cooked");
-    ASSERT_TRUE(loadColorLut((dir.path / "look.jlut").string(), lut, &error)) << error;
+    ASSERT_TRUE(loadColorLut((dir.path() / "look.jlut").string(), lut, &error)) << error;
     EXPECT_EQ(lut.title, "cooked");
 
     // failures: kept with their error, null
-    const std::filesystem::path badPath = dir.path / "bad.cube";
+    const std::filesystem::path badPath = dir.path() / "bad.cube";
     const std::string bad = "LUT_3D_SIZE 2\n" + rows(3);
     writeBytes(badPath, bad.data(), bad.size());
     EXPECT_FALSE(getCachedColorLut(badPath.string()));
     EXPECT_EQ(getCachedColorLutError(badPath.string()), "line 4: Incomplete 3D LUT data (3 of 8 entries).");
-    EXPECT_FALSE(loadColorLut((dir.path / "missing.cube").string(), lut, &error));
+    EXPECT_FALSE(loadColorLut((dir.path() / "missing.cube").string(), lut, &error));
     EXPECT_EQ(error, "File not found.");
     EXPECT_TRUE(lut.empty());
     EXPECT_FALSE(getCachedColorLut(""));
@@ -621,13 +607,13 @@ TEST(CubeLutBench, Bake32){
 }
 
 TEST(CubeLutBench, LoadJlut){
-    const TempDir dir("bench");
+    const test::TempDir dir;
     CubeLut cube;
     std::string error;
     ASSERT_TRUE(parseCubeLut(cubeText("Display look", 65, displayLook), cube, error)) << error;
     std::vector<uint8_t> bytes;
     ASSERT_TRUE(writeJlut(cube, bytes));
-    const std::string path = (dir.path / "look.jlut").string();
+    const std::string path = (dir.path() / "look.jlut").string();
     writeBytes(path, bytes.data(), bytes.size());
     CubeLut lut;
     const double ms = bestMs(5, [&]{

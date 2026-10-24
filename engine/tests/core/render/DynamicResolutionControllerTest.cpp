@@ -11,6 +11,8 @@
 
 #include "render/DynamicResolutionController.h"
 
+#include "support/AllocationCounter.h"
+
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -962,12 +964,15 @@ TEST(DynamicResolutionControllerBench, Tick){
     }
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     const double perTick = ms / (2.0 * ITERATIONS);
-#if !defined(NDEBUG) || defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
-    const double budget = 0.04;
+    // the budget is for optimised builds: a debug build gets 4x; under a sanitizer (perfSlack 0)
+    // it is only printed
+#if defined(NDEBUG)
+    const double budget = 0.01 * testsupport::perfSlack();
 #else
-    const double budget = 0.01;
+    const double budget = 0.04 * testsupport::perfSlack();
 #endif
-    std::printf("[ BENCH    ] DynamicResolutionController tick: %.5f ms (budget %.3f ms)\n", perTick, budget);
-    EXPECT_LE(perTick, budget);
+    std::printf("[bench] DynamicResolutionController tick: %.5f ms (budget %.3f ms)\n", perTick, budget);
+    if (budget > 0.0)
+        EXPECT_LE(perTick, budget);
     EXPECT_GT(frameLaw.getStats().ticks + gpuLaw.getStats().ticks, 0u);
 }
