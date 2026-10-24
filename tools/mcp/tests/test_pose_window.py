@@ -223,6 +223,8 @@ async def test_scene_keys_follow_the_character(ed: Editor):
     await focus(ed, index=0)
     await ed.call("select_entities", entities=["Ground"])
     ed.check((await state(ed))["scene_keys"] is False, "another GameObject selected: the Scene view keeps its keys")
+    # selecting another object leaves posing (phase 5 spec, section 2): pose again
+    await focus(ed, index=0)
     await ed.call("select_entities", entities=[THIGH])
     ed.check((await state(ed))["scene_keys"] is True, "a bone of the character: pose keys")
     await ed.call("select_entities", entities=["Hero"])
@@ -237,6 +239,8 @@ async def test_scene_keys_follow_the_character(ed: Editor):
 
 async def test_mapping_change_rebuilds_the_rig(ed: Editor):
     """Map Bones' undo/redo or MCP set_humanoid: the window's rig follows the sidecar."""
+    st = (await focus(ed, index=0))["state"]
+    ed.check_eq(st["mode"], "posing", "posing before the mapping changes")
     await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "set_humanoid", "model": HERO, "bones": {"left_toes": ""}}])
     await ed.call("wait", seconds=0.6)
     st = await state(ed)

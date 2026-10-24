@@ -2034,6 +2034,7 @@ void editor::PoseAnimationWindow::drawPoseTab(){
     ImGui::SameLine();
     ImGui::SetNextItemWidth(Theme::dpi(90.0f));
     ImGui::SliderFloat("##PoseOnionOpacity", &onion.opacity, 0.05f, 1.0f, "opacity %.2f");
+    ImGui::SetItemTooltip("How visible the ghosts are (default 0.5)");
     ImGui::Checkbox("Show balance", &view.showBalance);
     ImGui::SetItemTooltip("The centre of mass on the floor: green when balanced over the feet");
     ImGui::SameLine();

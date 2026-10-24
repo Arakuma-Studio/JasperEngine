@@ -41,7 +41,7 @@ public:
     void setWorking(const pose::HumanPose&);         // applies to the bones immediately (no undo)
     bool commitWorking(const std::string& undoName, const std::string& mergeKey);  // toBodyPose, limits, grounding, doc commit
     // ghost / onion settings read by phase 5
-    struct OnionSettings { bool previous = true; bool next = false; float opacity = 0.3f; };
+    struct OnionSettings { bool previous = true; bool next = false; float opacity = 0.5f; };  // 0.5: ruling of the phase 5 fix round (was 0.3)
     OnionSettings& onion();
     // global edit (phase 5 drives it; the window shows its bar)
     bool globalEditActive() const;  void beginGlobalEdit();  bool applyGlobalEdit(const std::vector<int>& targets /* empty = all others */);  void cancelGlobalEdit();
