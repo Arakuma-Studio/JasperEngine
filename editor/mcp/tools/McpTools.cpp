@@ -35,6 +35,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerConsoleTools, "Console", ""},
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
+    {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},

@@ -1,12 +1,15 @@
 // The agent guide: sent as MCP initialize.instructions on every session and served as the
-// resource jasper://guide. Keep it tight (it costs tokens on every session); deeper reference
-// lives in docs/mcp/guide/*.md (served as jasper://docs/...). Every tool and parameter name it
-// mentions must exist (tools/mcp/tests/test_autosync.py checks them against tools/list).
+// resource jasper://guide. It costs tokens on every session, so it holds the workflow every
+// agent needs (names, addressing, the loop, undo, code, layout) and a short digest per area;
+// an area's detail lives in docs/mcp/guide/<area>.md (served as jasper://docs/<area>), which
+// its digest points to. Its limits are the "guide" entry of tools/mcp/budget.json (the whole
+// text, with the generated tool groups section, and each "## " section), gated by
+// tools/mcp/tool_budget.py --check; docs/mcp/conventions.md ("The agent guide") has the rule.
+// Every tool and parameter name it mentions must exist (tools/mcp/tests/test_autosync.py
+// checks them against tools/list).
 //
 // MSVC limits one string literal piece to ~16 KB, so the text is split into adjacent raw
-// literals (concatenated by the compiler). Keep every chunk well under 16000 bytes. The whole
-// guide, with the generated tool groups section, stays within 16,384 bytes
-// (tools/mcp/tests/test_tool_groups.py).
+// literals (concatenated by the compiler). Keep every chunk well under 16000 bytes.
 
 #include "McpServer.h"
 #include "McpToolGroups.h"
@@ -26,18 +29,17 @@ You are driving a running JasperEngine editor: a C++ game engine with a Unity-st
 scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
-first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, undo, Unity glossary).
+first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
+shaders, prefabs, assets, HTML/CSS UI, data safety, undo, Unity glossary).
 
 ## Unity names -> engine names
-Use Unity terms in prose; tools, component names and script APIs use the engine names.
+Tools, component names and script APIs use the engine names.
 GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, Light2DComponent...).
+Most others are Unity's name + "Component" (AudioSourceComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -56,7 +58,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
+- assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
+  referrer; see find_references, list_missing_assets, retarget_asset_references.
 
 ## The loop
 1. Inspect: `editor_status`, the scenes, the hierarchy, the GameObjects you will touch.
@@ -101,61 +104,17 @@ scene created outside the editor before opening, playing or building it.
 )JE"
 R"JE(
 ## Lua scripts
-A Lua script returns a module table; attach it to a GameObject through its Script component.
-self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
-self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
-Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and its properties and catches typos.
-
-```lua
----@class Player : ScriptInstance
-local Player = {
-    properties = {
-        { name = "speed", displayName = "Speed", type = "float", default = 300.0 },
-        { name = "label", displayName = "Label", type = "Text" },      -- GameObject reference
-        { name = "bullet", displayName = "Bullet", type = "Prefab" },  -- PrefabAsset
-    }
-}
-
-function Player:init()
-    self.go = GameObject(self.scene, self.entity)
-    RegisterEngineEvent(self, "onUpdate")
-end
-
-function Player:onUpdate()
-    local dx = 0
-    if Input.isKeyPressed(Input.KEY_RIGHT) then dx = dx + 1 end
-    if Input.isKeyPressed(Input.KEY_LEFT) then dx = dx - 1 end
-    local p = self.go.position                          -- a copy: assign it back
-    self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.isKeyPressed(Input.KEY_SPACE) and not self.fired then
-        GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
-        Log.print("fired at " .. tostring(p.x))
-    end
-    self.fired = Input.isKeyPressed(Input.KEY_SPACE)
-end
-
-return Player
-```
-- Property types: bool, int, float, string, vector2/3/4, color3/color4, prefab, entity, any
-  wrapper class name (Sprite, Text, Image, Button, AudioSource, Rigidbody2D, ...), or another
-  Lua script's class name (you get that script's self). Values are read as self.<name>.
-- Events: RegisterEngineEvent(self, "onUpdate" | "onFixedUpdate" | "onPostUpdate" |
-  "onKeyDown" | "onMouseDown" | "onTouchStart" | ...); define the method first. Component
-  events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
-  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
-- Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. A non-existent method fails at runtime ("attempt to call a nil value").
-  Check jasper://docs/lua-api (an index: read only the sections you need), the Lua stubs or
-  search_engine_api before using a name you have not seen there.
-- Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
-  with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
-- Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
-- Lua has no on_start, getComponent or setProperty (timers: Timer.after/every). Never put
-  editor property paths (submeshes[0]...) in scripts.
+Read jasper://docs/lua-scripting (a complete script, property types, events) before your first
+script. A script returns a module table (`---@class Name : ScriptInstance`, Name = the file
+name) attached through the Script component; properties = { {name, displayName, type,
+default} } are read as self.<name>. self.entity is a numeric id, NOT an object: wrap it
+(GameObject(self.scene, self.entity), Sprite(...), Rigidbody2D(...)); a constructor given only
+self.scene CREATES a GameObject. RegisterEngineEvent(self, "onUpdate") in init(), the method
+defined first. Bound getters are PROPERTIES: go.position (a copy: assign it back),
+Engine.deltatime; a made-up method fails at runtime, so check jasper://docs/lua-api or
+search_engine_api. Time: Engine.timeScale and Engine.fixedDeltatime (read/write),
+Engine.gameTime, Engine.frameCount. Log.print/warn/error take ONE string (use ..). Lua has no
+on_start, getComponent or setProperty (timers: Timer.after/every).
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class

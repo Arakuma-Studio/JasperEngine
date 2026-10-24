@@ -8,7 +8,10 @@ this editor and fails, naming the tool, when a tool outgrows its limit.
   2,000-character description, and the same run exits 1 naming selftest_echo;
 - the rules of check() on made-up rows (each limit, stale entries, core trades);
 - budget.json: every group of the group table may have an entry, no entry names a group the
-  table lacks (checked by the gate run), and every exception has a reason.
+  table lacks (checked by the gate run), and every exception has a reason;
+- the agent guide (initialize.instructions): the gate run also checks it against budget.json's
+  "guide" entry (16,384 bytes in all, 1,500 per "## " section); check_guide() on made-up guides
+  fails on each limit, naming the section.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ async def test_budget_check_passes():
     if code != 0:
         raise TestFailure(f"tool_budget.py --check exits {code}:\n{tail}")
     print("     [budget] " + next((line for line in out.splitlines() if " tools: total " in line), "?"))
+    print("     [budget] " + next((line for line in out.splitlines() if line.startswith("guide: ")), "no guide line"))
 
 
 async def test_budget_red_control():
@@ -92,8 +96,29 @@ async def test_check_rules():
     assert tool_budget.check(ok, dict(budget, core_trades=[{"tool": "get_p", "spec": "S99", "trimmed": "x"}]))
 
 
+async def test_guide_rules():
+    budget = {"guide": {"bytes": 300, "section_bytes": 100, "sections": {"Long": {"limit": 150, "reason": "r"}}}}
+    intro = "# Guide\n" + "x" * 40 + "\n"
+    ok = intro + "## Short\n" + "y" * 60 + "\n## Long\n" + "z" * 130 + "\n"
+    assert [h for h, _ in tool_budget.guide_sections(ok)] == ["(intro)", "Short", "Long"], tool_budget.guide_sections(ok)
+    assert sum(n for _, n in tool_budget.guide_sections(ok)) == len(ok.encode())
+    assert tool_budget.check_guide(ok, budget) == [], tool_budget.check_guide(ok, budget)
+    over_section = ok.replace("y" * 60, "y" * 120)
+    assert any("'Short'" in p for p in tool_budget.check_guide(over_section, budget)), tool_budget.check_guide(over_section, budget)
+    over_own = ok.replace("z" * 130, "z" * 160)
+    assert any("'Long'" in p for p in tool_budget.check_guide(over_own, budget))
+    over_total = ok + "## More\n" + "w" * 90 + "\n"
+    assert any("agent guide:" in p for p in tool_budget.check_guide(over_total, budget))
+    stale = {"guide": dict(budget["guide"], sections={"Gone": {"limit": 9, "reason": ""}})}
+    problems = tool_budget.check_guide(ok, stale)
+    assert any("'Gone'" in p and "no such section" in p for p in problems) and any("no reason" in p for p in problems), problems
+    # bytes, not characters: a multi-byte character counts as its UTF-8 length
+    assert tool_budget.guide_sections("## A\n\u00e9\n") == [("A", 8)]
+
+
 async def test_budget_file_shape():
     budget = tool_budget.load_budget()
+    assert budget["guide"]["bytes"] == 16384 and budget["guide"]["section_bytes"] == 1500, budget["guide"]
     for key in ("default_listing", "group_default", "tool_default", "groups", "exceptions", "core_trades"):
         assert key in budget, f"budget.json lacks {key}"
     assert budget["default_listing"] == {"chars": 100000, "tools": 150}, budget["default_listing"]

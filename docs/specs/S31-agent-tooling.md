@@ -564,3 +564,15 @@ in `tools/mcp/tests/`.
   `JASPER_KEEP_SCRATCH=1`.
 - **Coverage** (R23) counts a tool as tested when a test file names it quoted (`"tool_name"`),
   so a word inside a longer name does not count.
+- **The agent guide has a budget in budget.json** (beyond R19's "≤ 16,384 bytes"): after the
+  S04 merge oe-port's guide measured 17,194 bytes, because each stream trimmed or grew it ad
+  hoc. budget.json's `guide` entry now holds its limits (16,384 bytes in all, 1,500 per `##`
+  section, per-section exceptions with a reason), `tool_budget.py --check` gates them, and
+  conventions.md ("The agent guide") makes the guide workflow plus one digest per area, with an
+  area's detail in `docs/mcp/guide/<area>.md`. The Lua scripts section (3,139 bytes, the largest)
+  became a digest; its full text and example script are `jasper://docs/lua-scripting`.
+- **S04's tools are in `assets_pipeline`** (§6.4 names S04 there): `resolve_asset`,
+  `find_references`, `get_asset_dependencies`, `list_missing_assets`,
+  `retarget_asset_references`, `clear_asset_references`, through their module row in
+  `buildToolRegistry`. S04 had registered them into core and raised the limit in
+  `test_html_ui_tools.py`; its `import_files` and `build_project` parameters stay in core.

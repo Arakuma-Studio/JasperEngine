@@ -79,6 +79,7 @@ person's checkout, and never rewrite branches you do not own.
 3. Build its schema with `editor/mcp/McpSchema.h` only: snake_case keys, closed objects.
 4. Set annotations and activity accurately; decide `allowedWhilePlaying`.
 5. Return a text summary plus `structuredContent`; more than 1 s of work becomes a job.
-6. Stay within `tools/mcp/budget.json` (`tool_budget.py --check`).
+6. Stay within `tools/mcp/budget.json` (`tool_budget.py --check`); put agent guidance in
+   `docs/mcp/guide/<area>.md`, with at most a short digest in the agent guide.
 7. Test it in `tools/mcp/tests/`, including that its group is hidden until `tool_groups` enables it.
 8. Regenerate `docs/mcp/TOOLS.md`. The full rules: `docs/mcp/conventions.md`.

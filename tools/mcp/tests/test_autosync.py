@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 from harness import Editor, default_fixture, find_key
+import tool_budget
 
 TIMEOUT = 900
 
@@ -438,8 +439,9 @@ def tool_params(ed: Editor, name: str) -> set:
 async def test_instructions_name_real_tools(ed: Editor):
     text = ed.instructions
     ed.check(len(text) > 1000, "no instructions")
-    # sent on every session: the budget of docs/mcp/DESIGN.md (detail goes in docs/mcp/guide)
-    ed.check(len(text.encode()) <= 16 * 1024, f"the guide is {len(text.encode())} bytes, over 16 KB")
+    # sent on every session: its limits are budget.json's "guide" entry (detail goes in docs/mcp/guide)
+    limit = tool_budget.load_budget()["guide"]["bytes"]
+    ed.check(len(text.encode()) <= limit, f"the guide is {len(text.encode())} bytes, over {limit} (tools/mcp/budget.json)")
     tools = ed.tool_names
     params: set = set()
     for t in ed.tool_list:

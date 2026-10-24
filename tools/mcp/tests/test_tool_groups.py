@@ -24,6 +24,7 @@ from pathlib import Path
 
 import harness
 from harness import Editor, HttpSession, RawEditor, free_port, tool_meta, wait_for_port
+import tool_budget
 
 SELFTEST_ENV = {"JASPER_MCP_SELFTEST_GROUP": "1"}
 EDITOR = {"create": True, "env": SELFTEST_ENV}
@@ -193,7 +194,8 @@ async def test_instructions_name_tool_groups(ed: Editor):
     ed.check("`tool_groups`" in text and "## Tool groups" in text, "the guide names tool_groups")
     ed.check("selftest" in text, "the guide names the groups that have tools")
     size = len(text.encode())
-    ed.check(size <= 16384, f"the guide is {size} bytes, over 16,384")
+    limit = tool_budget.load_budget()["guide"]["bytes"]
+    ed.check(size <= limit, f"the guide is {size} bytes, over {limit} (tools/mcp/budget.json)")
     print(f"     [guide] {size} bytes")
 
 
@@ -205,6 +207,8 @@ SPEC_GROUPS = {
     "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
     "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
     "editor_ux": ["get_undo_history", "get_play_changes", "apply_play_changes", "discard_play_changes"],  # S24
+    "assets_pipeline": ["resolve_asset", "find_references", "get_asset_dependencies", "list_missing_assets",  # S04
+                        "retarget_asset_references", "clear_asset_references"],
 }
 
 

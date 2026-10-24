@@ -16,7 +16,9 @@ default), all (every registered tool), or a comma-separated list of groups.
 --check BUDGET lists every group and exits 1 naming each violation of the budget file: the
 default listing (core) over its characters or tool count, a group over its limits, a tool over
 the per-tool limit (or its exceptions entry), an exceptions/groups entry naming a tool or group
-that does not exist. docs/mcp/conventions.md explains the rules.
+that does not exist. It also gates the agent guide (initialize.instructions) against the
+budget's "guide" entry: the whole text and each "## " section. docs/mcp/conventions.md explains
+the rules.
 """
 
 from __future__ import annotations
@@ -125,6 +127,52 @@ def check(rows: list[dict], budget: dict, known_groups: set[str] | None = None) 
     return problems
 
 
+def guide_sections(text: str) -> list[tuple[str, int]]:
+    """The guide's "## " sections as (heading, UTF-8 bytes); the text before the first is "(intro)"."""
+    sections: list[tuple[str, int]] = []
+    heading, start = "(intro)", 0
+    lines = text.splitlines(keepends=True)
+    offset = 0
+    for line in lines:
+        if line.startswith("## "):
+            if offset > start:
+                sections.append((heading, len(text[start:offset].encode())))
+            heading, start = line[3:].strip(), offset
+        offset += len(line)
+    sections.append((heading, len(text[start:].encode())))
+    return sections
+
+
+def check_guide(text: str, budget: dict) -> list[str]:
+    """Every violation of the budget's "guide" entry by this guide text."""
+    entry = budget["guide"]
+    problems: list[str] = []
+    size = len(text.encode())
+    if size > int(entry["bytes"]):
+        problems.append(f"agent guide: {size} bytes, over {entry['bytes']}: move area detail into "
+                        f"docs/mcp/guide/<area>.md and keep a digest (docs/mcp/conventions.md)")
+    own = entry.get("sections", {})
+    present = set()
+    for heading, nbytes in guide_sections(text):
+        present.add(heading)
+        limit = int(own[heading]["limit"]) if heading in own else int(entry["section_bytes"])
+        if nbytes > limit:
+            problems.append(f"agent guide section {heading!r}: {nbytes} bytes, over {limit}: move its detail "
+                            f"into jasper://docs/<area> (docs/mcp/guide/)")
+    for heading, value in own.items():
+        if heading not in present:
+            problems.append(f"guide sections entry {heading!r}: no such section (remove the entry)")
+        if not str(value.get("reason", "")).strip():
+            problems.append(f"guide sections entry {heading!r}: no reason")
+    return problems
+
+
+def print_guide(text: str, budget: dict) -> None:
+    sections = sorted(guide_sections(text), key=lambda s: s[1], reverse=True)
+    print(f"guide: {len(text.encode())} of {budget['guide']['bytes']} bytes, {len(sections)} sections; largest: " +
+          ", ".join(f"{h} {n}" for h, n in sections[:5]))
+
+
 async def known_tool_groups(ed: Editor) -> set[str]:
     """The group table, as the tool_groups tool reports it."""
     result = await ed.call("tool_groups")
@@ -185,13 +233,16 @@ async def main() -> int:
     async with ed:
         tools = await ed.tools(groups=groups)
         known = await known_tool_groups(ed) if args.check else None
+        guide = ed.instructions
 
     rows = sorted((measure(t, args.full) for t in tools), key=lambda r: r["total"], reverse=True)
     print_rows(rows, args.top, args.full)
     if args.json:
         Path(args.json).write_text(json.dumps(rows, indent=1))
     if args.check:
-        problems = check(rows, load_budget(args.check), known)
+        budget = load_budget(args.check)
+        print_guide(guide, budget)
+        problems = check(rows, budget, known) + check_guide(guide, budget)
         for p in problems:
             print(f"BUDGET: {p}")
         if problems:

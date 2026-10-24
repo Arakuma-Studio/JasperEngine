@@ -42,6 +42,9 @@
 #include "command/type/PasteEntitiesCmd.h"
 #include "util/EntityClipboard.h"
 #include "util/EntityPath.h"
+#include "asset/AssetRefEditor.h"
+#include "asset/AssetFileWrite.h"
+#include "json.hpp"
 #include "util/ProjectChecks.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "htmlui/effects/EffectManifest.h"
@@ -112,6 +115,7 @@ struct ExportCliOptions {
     std::vector<std::string> shaderSpecs;   // as given: expanded again once the engine (and project) is up
     bool help = false;
     bool listScenes = false;
+    bool allowMissingAssets = false;
 };
 
 struct ShaderCliOptions {
@@ -253,6 +257,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
+        << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
@@ -279,6 +284,7 @@ static void printUsage(const std::string& commandName) {
         << "      --shader <spec>         Shader type and optional properties, e.g. mesh:Uv1,Nor. Can repeat.\n"
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
+        << "      --allow-missing-assets  Export even when the build references missing assets.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
@@ -374,6 +380,8 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.shaderSpecs.push_back(value);
         } else if (arg == "--list-scenes") {
             options.listScenes = true;
+        } else if (arg == "--allow-missing-assets") {
+            options.allowMissingAssets = true;
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -617,6 +625,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.luaDir    = options.luaDir.empty()    ? project.getLuaDir()    : options.luaDir;
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
+    config.allowMissingAssets = options.allowMissingAssets;
     config.selectedBackends   = options.backends;
     expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
@@ -1332,6 +1341,8 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                     case PropertyType::Int: command->addPropertyCmd<int>(&project, id, target, type, property, value.as<int>()); break;
                     case PropertyType::UInt: command->addPropertyCmd<unsigned int>(&project, id, target, type, property, value.as<unsigned int>()); break;
                     case PropertyType::String: command->addPropertyCmd<std::string>(&project, id, target, type, property, value.as<std::string>()); break;
+                    case PropertyType::Asset: command->addPropertyCmd<AssetRef>(&project, id, target, type, property, AssetRef(value.as<std::string>())); break;
+                    case PropertyType::Shader: command->addPropertyCmd<ShaderRef>(&project, id, target, type, property, ShaderRef(value.as<std::string>())); break;
                     case PropertyType::Vector3: command->addPropertyCmd<Vector3>(&project, id, target, type, property,
                         Vector3(value[0].as<float>(), value[1].as<float>(), value[2].as<float>())); break;
                     case PropertyType::Vector4: command->addPropertyCmd<Vector4>(&project, id, target, type, property,
@@ -1681,6 +1692,229 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
         }
     }
     return 0;
+}
+
+// ---- assets: asset identity from a shell or CI (docs/specs/S04-asset-identity.md R32) ----
+//
+//   assets check --project P     the missing references, the ones resolved only by path and the
+//                                orphan metas, as JSON on stdout; exit code 1 when any is missing
+//   assets migrate --project P   rewrites every scene, prefab, material and project.yaml with the
+//                                GUIDs of what they reference (idempotent: a second run writes nothing)
+
+// assets bench (developer, tools/performance/assetdb_bench.py): the asset database and the
+// dependency index alone on a project, timed in milliseconds as JSON: a cold open (no cache),
+// the full index, a warm open, one referrer's incremental update, find_references, resolution
+static int runAssetsBench(const fs::path& projectArg) {
+    using Json = nlohmann::json;
+    using Clock = std::chrono::steady_clock;
+    auto ms = [](Clock::time_point since) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - since).count();
+    };
+    const fs::path project = fs::is_regular_file(projectArg) ? projectArg.parent_path() : projectArg;
+    std::string assetsDir = "assets";
+    try {
+        const YAML::Node root = YAML::LoadFile((project / "project.yaml").string());
+        if (root["assetsDir"]) assetsDir = root["assetsDir"].as<std::string>();
+    } catch (const std::exception&) {
+    }
+    const AssetIndex::Roots roots{assetsDir, assetsDir};
+    Json result;
+    std::error_code ec;
+    {
+        // the identity pass with no cache (the metas exist: the project was opened before)
+        fs::remove_all(project / ".jasperengine" / "assetdb", ec);
+        AssetDatabase database;
+        database.setBackgroundHashing(false);
+        Clock::time_point start = Clock::now();
+        database.open(project, assetsDir);
+        result["cold_identity_ms"] = ms(start);
+        AssetIndex index;
+        start = Clock::now();
+        index.open(&database, project, roots);
+        index.waitUntilReady();
+        result["cold_index_ms"] = ms(start);
+        result["assets"] = database.assetCount();
+        index.close();
+    }
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    Clock::time_point start = Clock::now();
+    database.open(project, assetsDir);
+    result["warm_open_ms"] = ms(start);
+    AssetIndex index;
+    start = Clock::now();
+    index.open(&database, project, roots);
+    index.waitUntilReady();
+    result["warm_index_ms"] = ms(start);
+
+    // the poll with nothing changed: the walk (a background thread in the editor) and what the
+    // main thread does with it (R23)
+    start = Clock::now();
+    const AssetDatabase::DiskScan scan = database.scanDisk();
+    result["poll_walk_ms"] = ms(start);
+    start = Clock::now();
+    database.refresh(scan);
+    result["poll_apply_ms"] = ms(start);
+
+    // one referrer edited and saved: its entry and its edges are updated (the save's path, and
+    // what an S05 watcher event does); the YAML parse is part of it
+    std::string referrer;
+    Guid referrerGuid;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (referrer.empty() && info.type == AssetType::Scene) {
+            referrer = info.path;
+            referrerGuid = info.guid;
+        }
+    });
+    if (!referrer.empty()) {
+        std::string text;
+        assetio::readFile(project / referrer, text);
+        assetio::writeFile(project / referrer, text + "\n", assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(2));
+        // as in the editor: the cache is written by the background thread, not by the save
+        database.setBackgroundHashing(true);
+        start = Clock::now();
+        database.registerAsset(project / referrer, referrerGuid.str());
+        index.updateReferrer(referrer);
+        result["single_update_ms"] = ms(start);
+        // the same through a full refresh (the poll finding it)
+        assetio::writeFile(project / referrer, text, assetio::Durability::Cache);
+        fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(4));
+        start = Clock::now();
+        index.update(database.refresh());
+        result["refresh_update_ms"] = ms(start);
+    }
+
+    // Find References of the most referenced asset
+    std::vector<AssetDatabase::AssetInfo> assets;
+    database.forEachAsset([&](const AssetDatabase::AssetInfo& info) { assets.push_back(info); });
+    double worst = 0.0;
+    size_t found = 0;
+    for (size_t i = 0; i < assets.size() && i < 200; i++) {
+        start = Clock::now();
+        found += index.referencesTo(assets[i].guid, assets[i].path, true, 500).size();
+        worst = std::max(worst, ms(start));
+    }
+    result["find_references_worst_ms"] = worst;
+    result["references_found"] = found;
+
+    // resolution: a hash map lookup
+    const size_t rounds = 1000000;
+    start = Clock::now();
+    size_t hits = 0;
+    for (size_t i = 0; i < rounds; i++) {
+        hits += database.resolve(assets[i % assets.size()].guid, std::string(), AssetType::Unknown, false).found();
+    }
+    result["resolve_ns"] = ms(start) * 1.0e6 / static_cast<double>(rounds);
+    result["resolved"] = hits;
+    index.close();
+    std::cout << result.dump(2) << "\n";
+    return 0;
+}
+
+static int runAssets(int argc, char** argv, const std::string& commandName) {
+    using Json = nlohmann::json;
+    const std::string usage = commandName + " assets check|migrate --project <dir|project.yaml>\n"
+                              "(paths absolute or relative to the current directory)\n";
+    if (argc >= 4 && std::string(argv[1]) == "bench" && (std::string(argv[2]) == "--project" || std::string(argv[2]) == "-p")) {
+        return runAssetsBench(CommandLine::projectArgPath(argv[3]));
+    }
+    if (argc < 2 || (std::string(argv[1]) != "check" && std::string(argv[1]) != "migrate")) {
+        std::cerr << usage;
+        return 2;
+    }
+    const std::string action = argv[1];
+    fs::path projectArg;
+    for (int i = 2; i < argc; i++) {
+        const std::string arg = argv[i];
+        if ((arg == "--project" || arg == "-p") && i + 1 < argc) {
+            projectArg = CommandLine::projectArgPath(argv[++i]);
+        } else {
+            std::cerr << usage;
+            return 2;
+        }
+    }
+    if (projectArg.empty()) {
+        std::cerr << commandName << " assets: --project is required\n";
+        return 2;
+    }
+
+    EditorHostOverrideGuard hostOverride(nullptr);
+    Out::setConsoleWindow(nullptr);
+    AppSettings::initialize();
+
+    Project project;
+    auto platform = std::make_unique<Platform>(&project);
+    Engine::systemInit(argc, argv, platform.get());
+    EngineRuntimeGuard engineRuntime;
+    Engine::pauseGameEvents(true);
+    Engine::setAsyncLoading(false);
+
+    if (!project.loadProject(projectArg, false)) {
+        return 1;
+    }
+    project.getAssetIndex().waitUntilReady();
+
+    if (action == "migrate") {
+        std::vector<std::string> files;
+        project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+            if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+                files.push_back(info.path);
+            }
+        });
+        std::sort(files.begin(), files.end());
+        files.push_back("project.yaml");
+        Json written = Json::array();
+        int failures = 0;
+        for (const std::string& file : files) {
+            bool changed = false;
+            std::string error;
+            if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+                std::cerr << error << "\n";
+                failures++;
+            } else if (changed) {
+                written.push_back(file);
+            }
+        }
+        std::cout << Json{{"files_written", written}, {"checked", files.size()}}.dump(2) << "\n";
+        return failures > 0 ? 1 : 0;
+    }
+
+    MissingAssetTracker& tracker = project.getMissingAssets();
+    tracker.update(project.getAssetDatabase(), project.getAssetIndex(), true);
+    auto referrerJson = [](const MissingAssetTracker::Referrer& referrer) {
+        Json item{{"owner", referrer.ownerPath}, {"field", referrer.field}, {"locator", referrer.locator}};
+        if (referrer.entity != 0) item["entity"] = Json{{"id", referrer.entity}, {"path", referrer.entityPath}};
+        if (!referrer.component.empty()) item["component"] = referrer.component;
+        return item;
+    };
+    Json missing = Json::array();
+    for (const MissingAssetTracker::Group& group : tracker.getGroups()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : group.referrers) referrers.push_back(referrerJson(referrer));
+        missing.push_back({{"guid", group.guid.isNull() ? Json(nullptr) : Json(group.guid.str())},
+                           {"expected_type", assetTypeName(group.expected)}, {"last_path", group.lastPath},
+                           {"referrers", referrers}});
+    }
+    Json healed = Json::array();
+    for (const MissingAssetTracker::ResolvedByPath& entry : tracker.getResolvedByPath()) {
+        Json referrers = Json::array();
+        for (const MissingAssetTracker::Referrer& referrer : entry.referrers) referrers.push_back(referrerJson(referrer));
+        healed.push_back({{"referenced_guid", entry.referencedGuid.str()}, {"guid", entry.currentGuid.str()},
+                          {"path", entry.path}, {"referrers", referrers}});
+    }
+    Json orphans = Json::array();
+    for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
+        orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
+    }
+    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    return missing.empty() ? 0 : 1;
+}
+
+int CommandLine::runAssetsCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return runAssets(argc, argv, getCommandName(executableName));
 }
 
 int CommandLine::runSceneDumpCommand(int argc, char** argv, const char* executableName) {

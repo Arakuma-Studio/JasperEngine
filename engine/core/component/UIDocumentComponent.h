@@ -4,6 +4,7 @@
 #ifndef UIDOCUMENT_COMPONENT_H
 #define UIDOCUMENT_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "Engine.h"
 #include <string>
 
@@ -17,7 +18,7 @@ namespace jasperengine{
     // loaded into the scene's UIDocumentSystem; sortOrder orders the scene's documents.
     struct JASPERENGINE_API UIDocumentComponent{
         // phase 0
-        std::string filename;     // asset-relative .html/.htm/.rml (asset path rules of FileData); MCP validates it
+        AssetRef filename;        // asset-relative .html/.htm/.rml (asset path rules of FileData); MCP validates it
         int sortOrder = 0;        // higher draws on top (document z-index)
         bool enabled = true;      // shown and receiving pointer input (Inspector header checkbox, UIDocument::setVisible)
 

@@ -6,7 +6,10 @@
         "default_listing: the core group, which every session lists. group_default: each other group unless groups",
         "has an entry for it. tool_default: each tool unless exceptions has an entry (a higher limit for a tool that",
         "predates the rule, or a lower cap a spec set). A spec that moves a tool into core records it in core_trades",
-        "with what core gave up for it, and the default listing must still fit."
+        "with what core gave up for it, and the default listing must still fit.",
+        "guide: the agent guide (initialize.instructions = jasper://guide), in UTF-8 bytes: the whole text with its",
+        "generated tool groups section, and each '## ' section (the text before the first one counts as a section);",
+        "sections names a section's own limit. Area detail goes to docs/mcp/guide/<area>.md, never into a raised limit."
     ],
     "default_listing": {
         "chars": 100000,
@@ -17,6 +20,11 @@
         "tools": 12
     },
     "tool_default": 1500,
+    "guide": {
+        "bytes": 16384,
+        "section_bytes": 1500,
+        "sections": {}
+    },
     "groups": {
         "profiling": {
             "chars": 7000,
