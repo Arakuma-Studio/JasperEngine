@@ -10,14 +10,15 @@
 //   and 4); in-betweens, moving holds, life and follow-through need humanize.enabled.
 // - Follow-through, joint limits, the skipping of unmapped slots and the frames' ground
 //   correction need SamplerInput::rig; with rig == nullptr they are skipped.
-// - Ground correction of the frames (always on with a rig, last, after the limits): a frame
-//   inside the hold of a grounded key, or inside a segment whose both end keys are grounded, has
-//   its hips moved along up so the lowest point is exactly on the floor (PoseRig::groundPose with
-//   the rig's skin, as the keys are grounded); inside a segment with one grounded end it is only
-//   moved up, when the lowest point is below the floor (no penetration, lifts and jumps kept).
-//   The frame's time is classified after the choppiness step, as sample() sees it; the loop's
-//   last segment leads back to key 0 and the last frame stays a copy of frame 0. Overlap delays
-//   are not considered: a bone still settling after a segment is inside the next key's hold.
+// - Ground correction of the frames (always on with a rig; spec 4.8): a ground weight g per
+//   frame (1 in grounded holds and between two grounded keys, 0 in lifted holds and between two
+//   lifted keys, faded with smoothstep(clamp01(e_hips)) over launch and landing segments) puts
+//   the lowest point at (1 - g) * max(h, 0) for an uncorrected height h. It runs after the
+//   in-betweens and before follow-through; frames follow-through or the limits change are
+//   corrected again (their uncorrected height = the new lowest point minus the first shift). The
+//   frame's time is classified after the choppiness step, as sample() sees it; the loop's last
+//   segment leads back to key 0 and the last frame stays a copy of frame 0. Overlap delays of
+//   other bones are not considered (g follows the hips, which lead the motion).
 // - lifeRotation = Rx * Ry * Rz (bone-local axes, post-multiplied in that order); hash01 packs
 //   (seed << 32) | (bone << 16) | (axis << 8) | k into splitmix64 and takes the top 24 bits.
 // - A one-pose animation is static: every sample is the key (no life). An empty one leaves

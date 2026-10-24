@@ -193,52 +193,139 @@ namespace jasperengine::pose {
             }
         }
 
-        // How the frame at `time` (already stepped by the choppiness) is grounded (4.8 frames):
-        // Exact inside the hold of a grounded key or a segment between two grounded keys,
-        // NoPenetration inside a segment with one grounded end, None otherwise
-        enum class FrameGrounding { None, NoPenetration, Exact };
+        // the choppiness: the time sample() poses
+        double steppedTime(const PoseAnimationSettings& settings, double t){
+            return settings.stepRate > 0.0f ? std::floor(t * settings.stepRate + 1e-4) / settings.stepRate : t;
+        }
 
-        FrameGrounding frameGrounding(const SamplerInput& input, double time){
+        // bone b's delayed time (overlap) and looseness at the stepped time t
+        void boneTiming(const SamplerInput& input, int b, double t, double& tau, double& loose){
+            const PoseAnimationSettings& settings = input.settings;
+            const HumanBoneInfo& info = humanBoneInfo(boneAt(b));
+            const double weight = settings.weights[static_cast<int>(info.group)];
+            tau = t - settings.overlap * weight * info.depth;
+            loose = clampd(settings.looseness * weight * info.depth, 0.0, 1.0);
+            tau = input.timeline.loop ? positiveFmod(tau, input.timeline.length) : std::max(tau, 0.0);
+        }
+
+        // the ease value e of segment s (cycle c: 0, or -1 for a loop's previous cycle) for a bone
+        // at its delayed time tau (4.8 step 4 with moving holds and the previous cycle's settling)
+        double segmentEase(const SamplerInput& input, double tau, double loose, size_t s, int c){
+            const PoseTimeline& timeline = input.timeline;
+            const HumanizeSettings& humanize = input.settings.humanize;
+            const bool movingHolds = humanize.enabled && humanize.movingHolds > 0.0f;
+            const double length = timeline.length;
+            const double local = tau - timeline.start[s] - c * length;
+            if (c == 0 && local <= 0.0 && !movingHolds){
+                return 0.0;   // not started: e = 0 (the wind-up is at x > 0)
+            }
+            const Transition tr = loose > 0.0 ? loosen(timeline.transitions[s], static_cast<float>(loose)) : timeline.transitions[s];
+            double e = easePrecise(local / std::max(static_cast<double>(tr.duration), 1e-4), tr);
+            if (movingHolds){
+                const double drift = humanize.movingHolds;
+                const double hold = timeline.holds[s];
+                const double hp = hold > 1e-4 ? smoothstep(0.0, 1.0, (local + hold) / hold) : (local >= 0.0 ? 1.0 : 0.0);
+                e = drift * hp + (1.0 - drift) * e;
+            }
+            if (c < 0){
+                // the previous cycle settles exactly by the end of the loop, so the product is
+                // the identity at tau = len and the loop is seamless
+                e += (1.0 - e) * smoothstep(0.0, 1.0, tau / length);
+            }
+            return e;
+        }
+
+        // The ground weight g of the frame at time t (4.8 frames): 1 in the hold of a grounded key
+        // and in a segment between two grounded keys, 0 in a lifted key's hold and between two
+        // lifted keys; a launch segment (grounded -> lifted) fades it out and a landing segment
+        // (lifted -> grounded) in with smoothstep(clamp01(e)) of the hips' ease, so a wind-up dip
+        // (e < 0) stays fully grounded and g is continuous where the hips' motion is
+        double groundWeight(const SamplerInput& input, double time){
             const PoseTimeline& timeline = input.timeline;
             const size_t n = input.keys.size();
             const size_t segments = std::min(timeline.segmentCount(), timeline.loop ? n : n - 1);
-            auto grounded = [&](size_t key){ return input.grounded[key % n]; };
+            const double t = steppedTime(input.settings, time);
+            auto grounded = [&](size_t key){ return input.grounded[key % n] ? 1.0 : 0.0; };
             for (size_t s = 0; s < segments; s++){
-                if (time < timeline.start[s]){
-                    return grounded(s) ? FrameGrounding::Exact : FrameGrounding::None;   // the hold of key s
+                if (t < timeline.start[s]){
+                    return grounded(s);   // the hold of key s
                 }
-                if (time < timeline.start[s] + std::max(0.0, static_cast<double>(timeline.transitions[s].duration))){
-                    const bool from = grounded(s), to = grounded(s + 1);
-                    return from && to ? FrameGrounding::Exact : (from || to ? FrameGrounding::NoPenetration : FrameGrounding::None);
+                if (t < timeline.start[s] + std::max(0.0, static_cast<double>(timeline.transitions[s].duration))){
+                    const double from = grounded(s), to = grounded(s + 1);
+                    if (from == to){
+                        return from;
+                    }
+                    double tau = 0.0, loose = 0.0;
+                    boneTiming(input, 0, t, tau, loose);
+                    const double w = smoothstep(0.0, 1.0, clampd(segmentEase(input, tau, loose, s, 0), 0.0, 1.0));
+                    return from > 0.0 ? 1.0 - w : w;
                 }
             }
-            // after the last segment: the last key's hold, or the wrap of a loop (the instant of
-            // frame 0, inside key 0's hold or its first segment)
-            if (timeline.loop){
-                return segments > 0 && time > 0.0 ? frameGrounding(input, 0.0) : FrameGrounding::None;
-            }
-            return grounded(n - 1) ? FrameGrounding::Exact : FrameGrounding::None;
+            // after the last segment: the last key's hold (a loop's last segment ends at the
+            // loop's length, the instant of frame 0 in key 0's hold)
+            return grounded(timeline.loop ? 0 : n - 1);
         }
 
-        // the ground correction of the frames: keeps the feet on the floor between grounded keys
-        // (the hips are interpolated linearly while the legs swing, so a crouch to stand dips the
-        // body into the floor) and never lets a frame next to a grounded key go below it
-        void groundFrames(std::vector<HumanPose>& result, const SamplerInput& input, double length, int count, bool loop){
-            const PoseRig& rig = *input.rig;
-            const PoseSkin* skin = rig.skin();
+        // The ground correction of the frames: the hips are interpolated linearly while the legs
+        // swing, so a crouch to stand dips the body into the floor. A frame with ground weight g
+        // and lowest point h above the floor (uncorrected) ends at (1 - g) * max(h, 0): on the
+        // floor when g = 1, only pushed out of it when g = 0 (lifts and jumps kept), a blend in
+        // between (no pop where a launch leaves the floor or a landing reaches it).
+        struct FrameGround {
+            double weight = 0.0;    // g
+            double shift = 0.0;     // how far the correction moved the lowest point
+            HumanPose corrected;    // the frame right after the correction (to detect later changes)
+        };
+
+        // moves `frame` (lowest point `lowest`, model space; `shift` already applied) to its
+        // corrected height; returns the lowest point it ends at
+        double groundFrame(const PoseRig& rig, HumanPose& frame, double weight, double lowest, double shift){
             const double floor = rig.floorHeight();
-            const double tolerance = 1e-6 * rig.humanScale();
-            const int last = loop ? count - 1 : count;   // a loop's last frame is a copy of frame 0
-            for (int f = 0; f <= last; f++){
-                double t = f * length / count;
-                if (input.settings.stepRate > 0.0f){
-                    t = std::floor(t * input.settings.stepRate + 1e-4) / input.settings.stepRate;   // as sample() does
+            const double raw = lowest - shift - floor;   // the height without any correction
+            const double target = floor + (1.0 - weight) * std::max(raw, 0.0);
+            if (std::fabs(target - lowest) <= 1e-9 * rig.humanScale()){
+                return lowest;
+            }
+            return rig.moveLowestTo(frame, target, lowest, rig.skin());
+        }
+
+        // first pass, before follow-through (so it follows the corrected hips path)
+        std::vector<FrameGround> groundFrames(std::vector<HumanPose>& result, const SamplerInput& input, double length, int count){
+            const PoseRig& rig = *input.rig;
+            std::vector<FrameGround> ground(result.size());
+            for (int f = 0; f <= count; f++){
+                FrameGround& g = ground[f];
+                g.weight = groundWeight(input, f * length / count);
+                const double lowest = rig.lowestPointPrecise(result[f], rig.skin());
+                g.shift = groundFrame(rig, result[f], g.weight, lowest, 0.0) - lowest;
+                g.corrected = result[f];
+            }
+            return ground;
+        }
+
+        bool samePose(const HumanPose& a, const HumanPose& b){
+            if (!(a.hipsPosition == b.hipsPosition)){
+                return false;
+            }
+            for (int k = 0; k < HUMAN_BONE_COUNT; k++){
+                const Quaternion& x = a.rotations[k];
+                const Quaternion& y = b.rotations[k];
+                if (x.w != y.w || x.x != y.x || x.y != y.y || x.z != y.z){
+                    return false;
                 }
-                const FrameGrounding grounding = frameGrounding(input, t);
-                if (grounding == FrameGrounding::Exact ||
-                        (grounding == FrameGrounding::NoPenetration && rig.lowestPointPrecise(result[f], skin) < floor - tolerance)){
-                    rig.groundPose(result[f], 0.0f, skin);
+            }
+            return true;
+        }
+
+        // final pass: only the frames follow-through or the limits changed are measured again;
+        // their uncorrected height is the new lowest point minus the first pass's shift
+        void regroundChangedFrames(std::vector<HumanPose>& result, const SamplerInput& input, const std::vector<FrameGround>& ground){
+            const PoseRig& rig = *input.rig;
+            for (size_t f = 0; f < result.size(); f++){
+                if (samePose(result[f], ground[f].corrected)){
+                    continue;
                 }
+                groundFrame(rig, result[f], ground[f].weight, rig.lowestPointPrecise(result[f], rig.skin()), ground[f].shift);
             }
         }
 
@@ -326,45 +413,20 @@ namespace jasperengine::pose {
         const HumanizeSettings& humanize = settings.humanize;
         const double length = timeline.length;
 
-        double t = time;
-
-        // choppiness
-        if (settings.stepRate > 0.0f){
-            t = std::floor(t * settings.stepRate + 1e-4) / settings.stepRate;
-        }
-
-        const bool movingHolds = humanize.enabled && humanize.movingHolds > 0.0f;
-        const double drift = humanize.movingHolds;
+        const double t = steppedTime(settings, time);   // choppiness
         const bool life = humanize.enabled && humanize.life > 0.0f;
 
         for (int b = 0; b < HUMAN_BONE_COUNT; b++){
             const HumanBoneInfo& info = humanBoneInfo(boneAt(b));
-            const double weight = settings.weights[static_cast<int>(info.group)];
-            double tau = t - settings.overlap * weight * info.depth;
-            const double loose = clampd(settings.looseness * weight * info.depth, 0.0, 1.0);
-            tau = timeline.loop ? positiveFmod(tau, length) : std::max(tau, 0.0);
+            double tau = 0.0, loose = 0.0;
+            boneTiming(input, b, t, tau, loose);
 
             Quatd r = Quatd(keys[0].rotations[b]).normalized();
             Vec3d hips(keys[0].hipsPosition);
             const int firstCycle = timeline.loop ? -1 : 0;
             for (int c = firstCycle; c <= 0; c++){
                 for (size_t s = 0; s < segments; s++){
-                    const double local = tau - timeline.start[s] - c * length;
-                    if (c == 0 && local <= 0.0 && !movingHolds){
-                        continue;   // not started: e = 0 (the wind-up is at x > 0)
-                    }
-                    const Transition tr = loose > 0.0 ? loosen(timeline.transitions[s], static_cast<float>(loose)) : timeline.transitions[s];
-                    double e = easePrecise(local / std::max(static_cast<double>(tr.duration), 1e-4), tr);
-                    if (movingHolds){
-                        const double hold = timeline.holds[s];
-                        const double hp = hold > 1e-4 ? smoothstep(0.0, 1.0, (local + hold) / hold) : (local >= 0.0 ? 1.0 : 0.0);
-                        e = drift * hp + (1.0 - drift) * e;
-                    }
-                    if (c < 0){
-                        // the previous cycle settles exactly by the end of the loop, so the
-                        // product is the identity at tau = len and the loop is seamless
-                        e += (1.0 - e) * smoothstep(0.0, 1.0, tau / length);
-                    }
+                    const double e = segmentEase(input, tau, loose, s, c);
                     if (e == 0.0){
                         continue;
                     }
@@ -438,6 +500,13 @@ namespace jasperengine::pose {
             }
         }
 
+        // ground correction (before follow-through, which then follows the corrected hips path)
+        const bool groundCorrection = input.rig && input.keys.size() > 1 && input.grounded.size() == input.keys.size();
+        std::vector<FrameGround> ground;
+        if (groundCorrection){
+            ground = groundFrames(result, input, length, count);
+        }
+
         if (input.rig && humanize.enabled && (humanize.torsoFollow > 0.0f || humanize.headFollow > 0.0f)){
             applyFollowThrough(result, *input.rig, fps, loop, humanize);
         }
@@ -477,9 +546,9 @@ namespace jasperengine::pose {
             }
         }
 
-        // ground correction, last: after the in-betweens, follow-through and limits moved the legs
-        if (input.rig && input.keys.size() > 1 && input.grounded.size() == input.keys.size()){
-            groundFrames(result, input, length, count, loop);
+        // follow-through and the limits can move the lowest point: those frames are corrected again
+        if (groundCorrection){
+            regroundChangedFrames(result, input, ground);
         }
 
         if (loop){

@@ -500,12 +500,17 @@ namespace jasperengine::pose {
         if (!built){
             return;
         }
-        const double target = floor + static_cast<double>(lift) * scale;
+        moveLowestTo(pose, floor + static_cast<double>(lift) * scale, lowestPointPrecise(pose, skin), skin);
+    }
+
+    double PoseRig::moveLowestTo(HumanPose& pose, double target, double lowest, const PoseSkin* skin) const{
+        if (!built){
+            return lowest;
+        }
         const double tolerance = 1e-12 * std::max(1.0, std::fabs(target));
         // One step is exact when the lowest point moves with the hips. A lowest skin vertex
         // weighted partly to bones outside the hips subtree moves less: the next steps divide by
         // the measured response (secant). A step that does not move it at all is undone.
-        double lowest = lowestPointPrecise(pose, skin);
         double response = 1.0;
         for (int iteration = 0; iteration < 8; iteration++){
             const double remaining = target - lowest;
@@ -523,6 +528,7 @@ namespace jasperengine::pose {
             response = clampd((moved - lowest) / step, 0.05, 1.0);
             lowest = moved;
         }
+        return lowest;
     }
 
     BodyPose mirrorBodyPose(const BodyPose& body){

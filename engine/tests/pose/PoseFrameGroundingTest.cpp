@@ -9,6 +9,8 @@
 
 #include "pose/PoseIK.h"
 #include "pose/PoseSampler.h"
+#include "pose/PoseSecondary.h"
+#include "pose/PoseTween.h"
 
 #include <gtest/gtest.h>
 
@@ -39,6 +41,17 @@ namespace {
             h.push_back((rig.lowestPointPrecise(frame, rig.skin()) - rig.floorHeight()) / rig.humanScale());
         }
         return h;
+    }
+
+    // a moderate crouch (the feet stay the lowest point) and the airborne tuck of a jump
+    BodyPose bendPose(){
+        return bodyWith({{"left_upper_leg.forward", 50}, {"right_upper_leg.forward", 50},
+                         {"left_lower_leg.bend", 80}, {"right_lower_leg.bend", 80}});
+    }
+
+    BodyPose tuckPose(){
+        return bodyWith({{"left_upper_leg.forward", 70}, {"right_upper_leg.forward", 70},
+                         {"left_lower_leg.bend", 100}, {"right_lower_leg.bend", 100}});
     }
 
     std::vector<const PoseRig*> everyRig(){
@@ -85,13 +98,15 @@ TEST(PoseFrameGrounding, CrouchToStandStaysOnTheFloor){
     }
 }
 
-TEST(PoseFrameGrounding, JumpLaunchIsNotPulledDown){
-    // crouch (grounded) -> airborne (lift 0.4) -> crouch: the segments with one grounded end are
-    // only pushed up out of the floor; frames above it (the launch, the flight) are untouched
+TEST(PoseFrameGrounding, JumpNeverPenetratesAndKeepsTheFlight){
+    // bend (grounded) -> tuck (lift 0.3) -> bend: no frame is below the floor, the grounded holds
+    // are on it, the airborne key's hold is untouched (ground weight 0, above the floor), no
+    // frame is raised above its uncorrected height unless it was below the floor, and the flight
+    // reaches its uncorrected height
     for (const PoseRig* rig : everyRig()){
-        PoseAnimationData data = springy({crouch(), bodyWith({{"left_upper_leg.forward", 30}, {"right_upper_leg.forward", 30}}), crouch()}, false);
+        PoseAnimationData data = springy({bendPose(), tuckPose(), bendPose()}, false);
         data.poses[1].grounded = false;
-        data.poses[1].lift = 0.4f;
+        data.poses[1].lift = 0.3f;
         const SamplerInput input = makeSamplerInput(data, realiseKeys(data, *rig), rig);
         SamplerInput uncorrected = input;
         uncorrected.grounded.clear();
@@ -102,41 +117,131 @@ TEST(PoseFrameGrounding, JumpLaunchIsNotPulledDown){
         const PoseTimeline& timeline = input.timeline;
         const double length = timeline.length;
         const int count = static_cast<int>(f.size()) - 1;
-        int untouched = 0, flight = 0, landed = 0;
+        int landed = 0, flight = 0;
+        double peak = 0.0, rawPeak = 0.0;
         for (int i = 0; i <= count; i++){
             const double t = i * length / count;
-            EXPECT_GT(h[i], -1e-5) << "frame " << i;   // never below the floor
-            const bool groundedHold = t < timeline.start[0] || t >= timeline.start[1] + 0.2;
-            if (groundedHold){
-                // the holds of the grounded keys: on the floor exactly (the landing too, while
-                // the springs still bounce the body up)
-                EXPECT_NEAR(h[i], 0.0, 1e-5) << "frame " << i;
+            EXPECT_GT(h[i], -1e-5) << "frame " << i;
+            EXPECT_LT(h[i], std::max(rawH[i], 0.0) + 1e-5) << "frame " << i;
+            peak = std::max(peak, h[i]);
+            rawPeak = std::max(rawPeak, rawH[i]);
+            if (t < timeline.start[0] || t >= timeline.start[1] + 0.2){
+                EXPECT_NEAR(h[i], 0.0, 1e-5) << "frame " << i;   // the grounded holds (the landing too)
                 landed++;
-                continue;
-            }
-            if (t >= timeline.start[0] + 0.2 && t < timeline.start[1]){
-                EXPECT_GT(h[i], 0.25) << "frame " << i;   // the airborne key's hold (the spring still settling)
+            }else if (t >= timeline.start[0] + 0.2 && t < timeline.start[1]){
+                const Vec3d moved = Vec3d(rig->hipsWorldPosition(f[i])) - Vec3d(rig->hipsWorldPosition(raw[i]));
+                EXPECT_LT(moved.length(), 1e-6 * rig->humanScale()) << "frame " << i;   // the lifted hold
+                EXPECT_GT(h[i], 0.15) << "frame " << i;
                 flight++;
             }
-            if (rawH[i] >= 0.0){
-                // a segment frame above the floor without the correction (the launch, the
-                // flight, the fall): the same frame
-                const Vec3d moved = Vec3d(rig->hipsWorldPosition(f[i])) - Vec3d(rig->hipsWorldPosition(raw[i]));
-                EXPECT_LT(moved.length(), 1e-6 * rig->humanScale()) << "frame " << i;
-                untouched++;
-            }else{
-                EXPECT_NEAR(h[i], 0.0, 1e-5) << "frame " << i;   // pushed up exactly to the floor
+        }
+        EXPECT_GT(landed, 10);
+        EXPECT_GT(flight, 3);
+        EXPECT_GT(peak, 0.99 * rawPeak);
+    }
+}
+
+TEST(PoseFrameGrounding, CorrectionIsContinuousAcrossHoldsAndSegments){
+    // reviewer probe: an exact correction in a grounded hold followed by a push-up-only launch
+    // segment popped 0.023 to 0.08 humanScale in one frame (moving holds, a still-bouncing
+    // spring). With the ground weight continuous (fading out over the launch and in over the
+    // landing) the correction (corrected minus uncorrected hips height) changes per frame no
+    // faster than the uncorrected height of the lowest point does nearby: jumps with a hold
+    // between the landing and the relaunch, moving holds on, every feel preset, loops
+    int checked = 0;
+    double worst = 0.0;
+    for (const PoseRig* rig : everyRig()){
+        const double hs = rig->humanScale();
+        for (const FeelPreset& preset : feelPresets()){
+            for (bool loop : {false, true}){
+                PoseAnimationData data = makeAnimation({bendPose(), tuckPose(), bendPose(), tuckPose()}, loop, 0.2f);
+                if (!loop){
+                    PoseKey last = data.poses[0];
+                    data.poses.push_back(last);
+                }
+                applyFeelPreset(preset, data.settings);
+                data.settings.frameRate = 60;
+                data.settings.humanize.enabled = true;   // moving holds 0.08, in-betweens, follow-through
+                data.settings.humanize.life = 0.0f;
+                for (int k : {1, 3}){
+                    data.poses[k].grounded = false;
+                    data.poses[k].lift = 0.3f;
+                }
+                const SamplerInput input = makeSamplerInput(data, realiseKeys(data, *rig), rig);
+                SamplerInput uncorrected = input;
+                uncorrected.grounded.clear();
+                const std::vector<HumanPose> f = frames(input, 0);
+                const std::vector<HumanPose> raw = frames(uncorrected, 0);
+                const std::vector<double> h = heights(*rig, f), rawH = heights(*rig, raw);
+                const int count = static_cast<int>(f.size()) - 1;
+                std::vector<double> offset(f.size()), rawStep(f.size(), 0.0);
+                for (int i = 0; i <= count; i++){
+                    offset[i] = (rig->hipsWorldPosition(f[i]).y - rig->hipsWorldPosition(raw[i]).y) / hs;
+                    if (i > 0) rawStep[i] = std::fabs(rawH[i] - rawH[i - 1]);
+                }
+                for (int i = 1; i <= count; i++){
+                    double nearby = 0.0;
+                    for (int j = std::max(i - 1, 1); j <= std::min(i + 1, count); j++){
+                        nearby = std::max(nearby, rawStep[j]);
+                    }
+                    const double change = std::fabs(offset[i] - offset[i - 1]);
+                    EXPECT_LE(change, 1.5 * nearby + 0.005) << preset.name << " loop " << loop << " frame " << i
+                        << " correction " << offset[i - 1] << " -> " << offset[i] << ", lowest point steps nearby " << nearby;
+                    EXPECT_GT(h[i], -1e-5) << preset.name << " loop " << loop << " frame " << i;
+                    worst = std::max(worst, change - 1.5 * nearby);
+                    checked++;
+                }
             }
         }
-        EXPECT_GT(flight, 3);
-        EXPECT_GT(landed, 10);
-        EXPECT_GT(untouched, count / 3);
-        // the launch: the frames of segment 0 after the anticipation rise above the floor
-        int launch = 0;
-        for (int i = 0; i <= count; i++){
-            const double t = i * length / count;
-            if (t > timeline.start[0] + 0.08 && t < timeline.start[0] + 0.2 && h[i] > 0.05) launch++;
-        }
-        EXPECT_GT(launch, 2);
     }
+    std::printf("[ info ] worst correction change over 1.5 x the nearby lowest-point step: %+.5f humanScale\n", worst);
+    EXPECT_GT(checked, 1000);
+}
+
+TEST(PoseFrameGrounding, FollowThroughFollowsTheCorrectedHips){
+    // the correction runs before follow-through, so the torso and head tilts are those of the
+    // corrected hips path; a final pass re-grounds the frames follow-through changed
+    int compared = 0;
+    for (const PoseRig* rig : everyRig()){
+        PoseAnimationData data = springy({bendPose(), tuckPose(), bendPose()}, false);
+        data.poses[1].grounded = false;
+        data.poses[1].lift = 0.3f;
+        data.settings.humanize.enabled = true;
+        data.settings.humanize.life = 0.0f;
+        data.settings.humanize.inbetweens = 0.0f;
+        data.settings.humanize.movingHolds = 0.0f;
+        data.settings.humanize.jointLimits = false;
+        data.settings.humanize.torsoFollow = 1.0f;
+        data.settings.humanize.headFollow = 1.0f;
+        const SamplerInput input = makeSamplerInput(data, realiseKeys(data, *rig), rig);
+        const std::vector<HumanPose> f = frames(input, 0);
+        // the corrected path without follow-through, then follow-through on it
+        SamplerInput still = input;
+        still.settings.humanize.torsoFollow = 0.0f;
+        still.settings.humanize.headFollow = 0.0f;
+        const std::vector<HumanPose> stillFrames = frames(still, 0);
+        std::vector<HumanPose> expected = stillFrames;
+        applyFollowThrough(expected, *rig, data.settings.frameRate, false, data.settings.humanize);
+        ASSERT_EQ(f.size(), expected.size());
+        bool tilted = false;
+        for (size_t i = 0; i < f.size(); i++){
+            for (int b = 1; b < HUMAN_BONE_COUNT; b++){
+                EXPECT_LT(rotationError(f[i].rotations[b], expected[i].rotations[b]), 1e-6) << "frame " << i << " bone " << b;
+                tilted = tilted || rotationError(f[i].rotations[b], stillFrames[i].rotations[b]) > 1e-3;
+            }
+            compared++;
+        }
+        EXPECT_TRUE(tilted);
+        // the grounded holds are still on the floor after follow-through moved the torso
+        const std::vector<double> h = heights(*rig, f);
+        const PoseTimeline& timeline = input.timeline;
+        const int count = static_cast<int>(f.size()) - 1;
+        for (int i = 0; i <= count; i++){
+            const double t = i * timeline.length / count;
+            if (t < timeline.start[0] || t >= timeline.start[1] + 0.2){
+                EXPECT_NEAR(h[i], 0.0, 1e-5) << "frame " << i;
+            }
+        }
+    }
+    EXPECT_GT(compared, 100);
 }

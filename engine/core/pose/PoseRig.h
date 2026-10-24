@@ -103,6 +103,9 @@ namespace jasperengine::pose {
         double lowestPointPrecise(const HumanPose& pose, const PoseSkin* skin) const;
         // moves the hips along up so the lowest point is floor + lift * humanScale
         void groundPose(HumanPose& pose, float lift, const PoseSkin* skin) const;
+        // the same towards a model-space height `target`, from the pose's already measured
+        // lowestPointPrecise(pose, skin) `lowest`; returns the lowest point it ends at
+        double moveLowestTo(HumanPose& pose, double target, double lowest, const PoseSkin* skin) const;
 
     private:
         struct Slot {
