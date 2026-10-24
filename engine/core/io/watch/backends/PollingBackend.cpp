@@ -85,6 +85,11 @@ namespace jasperengine::watch {
         bool built = false;
         ProjectFileIndex index;
         int64_t rootMtime = 0;
+        // Folders whose mtime was stamped within the timestamp granularity of a change (racy:
+        // another entry added in the same tick keeps it): listed again on the next scan
+        bool rootRacy = false;
+        std::set<std::string> racyFolders;
+        void noteFolderStamp(const std::string& key, int64_t mtimeNs);
         std::vector<std::string> hot;
         std::string codeCursor, assetCursor;
 
@@ -130,6 +135,8 @@ void PollingBackend::stop() {
     std::lock_guard<std::mutex> lock(scanMutex);
     index.reset({});
     hot.clear();
+    racyFolders.clear();
+    rootRacy = false;
     built = false;
 }
 
@@ -141,6 +148,11 @@ void PollingBackend::run() {
         index.build();
         PathStat rootStat;
         rootMtime = statPath(root, rootStat, false) ? rootStat.mtimeNs : 0;
+        rootRacy = isRacyStamp(rootMtime);
+        racyFolders.clear();
+        for (const auto& [key, entry] : index.all()) {
+            if (entry.directory) noteFolderStamp(key, entry.mtimeNs);
+        }
         built = true;
     }
     while (true) {
@@ -161,12 +173,19 @@ void PollingBackend::markHot(const std::string& key) {
     if (hot.size() > HOT_MAX) hot.erase(hot.begin());
 }
 
+void PollingBackend::noteFolderStamp(const std::string& key, int64_t mtimeNs) {
+    if (isRacyStamp(mtimeNs)) racyFolders.insert(key);
+    else racyFolders.erase(key);
+}
+
 void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
-    // folders to list again: their mtime moved (an entry was added, removed or renamed)
+    // folders to list again: their mtime moved (an entry was added, removed or renamed), or
+    // it was racy when it was stamped
     std::vector<std::string> changed;
     PathStat rootStat;
-    if (statPath(root, rootStat, false) && rootStat.mtimeNs != rootMtime) {
+    if (statPath(root, rootStat, false) && (rootStat.mtimeNs != rootMtime || rootRacy)) {
         rootMtime = rootStat.mtimeNs;
+        rootRacy = isRacyStamp(rootMtime);
         changed.push_back("");
     }
     std::vector<std::string> folders;
@@ -184,8 +203,9 @@ void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
         }
         ProjectFileIndex::Entry known;
         index.find(index.absolute(key), known);
-        if (now.mtimeNs != known.mtimeNs) changed.push_back(key);
+        if (now.mtimeNs != known.mtimeNs || racyFolders.count(key)) changed.push_back(key);
     }
+    for (const std::string& key : gone) racyFolders.erase(key);
     if (changed.empty()) return;
 
     // What each changed folder lists now against what the index has in it
@@ -245,6 +265,7 @@ void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
                 if (index.find(index.absolute(dir), known)) {
                     known.mtimeNs = now.mtimeNs;
                     index.set(index.absolute(dir), known);
+                    noteFolderStamp(dir, now.mtimeNs);
                 }
             }
         }
@@ -289,6 +310,10 @@ void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
         const PathStat now = added[to];
         index.move(index.absolute(from), index.absolute(to));
         index.set(index.absolute(to), now);
+        if (now.directory) {
+            racyFolders.erase(from);
+            noteFolderStamp(to, now.mtimeNs);
+        }
         events.push_back(RawEvent{RawEvent::Type::Moved, index.absolute(to), index.absolute(from), now.directory});
         if (!now.directory && !known.sameContent(now)) events.push_back(RawEvent{RawEvent::Type::Modified, index.absolute(to), {}, false});
         if (!now.directory) markHot(to);
@@ -306,6 +331,7 @@ void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
         index.erase(index.absolute(key));
     }
     for (const auto& [key, stat] : added) {
+        if (stat.directory) noteFolderStamp(key, stat.mtimeNs);
         if (underAny(key, movedTo)) continue;
         index.set(index.absolute(key), stat);
         events.push_back(RawEvent{RawEvent::Type::Created, index.absolute(key), {}, stat.directory});
