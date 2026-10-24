@@ -10,6 +10,7 @@
 #include "texture/Texture.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -113,7 +114,7 @@ namespace jasperengine{
 
     // The extension maps, in the priority a variant keeps them by (it binds at most
     // MaterialPbr::MAX_EXTENSION_MAPS of them, u_pbrExtTexture0..2)
-    enum class PbrMap{
+    enum class PbrMap : uint8_t{
         CLEARCOAT,
         SPECULAR,
         TRANSMISSION,
@@ -223,8 +224,9 @@ namespace jasperengine{
         // The variant of a material on the built-in Lit (or a fork with the S11 hooks): the
         // lighting it resolves to (VERTEX and NONE take no lobe; hex tiling is no lobe), whether
         // it draws a Terrain (no lobe, no material hex: its layers tile on their own) and the
-        // tier. Shared by the renderer and the exporter's variant collector.
-        static PbrVariant getPbrVariant(const Material& material, MaterialLighting resolved, bool terrain, PbrTier tier);
+        // tier. Shared by the renderer and the exporter's variant collector. reservedMaps: slots the
+        // variant needs for something else (a 2D shadow atlas), taken off the budget.
+        static PbrVariant getPbrVariant(const Material& material, MaterialLighting resolved, bool terrain, PbrTier tier, int reservedMaps = 0);
         // The tier a build draws with: FULL on desktop, the project's mobile tier on Android,
         // iOS and HTML5. Shared by the renderer and the exporter.
         static PbrTier resolveTier(bool mobileTarget, PbrTier mobileTier);
@@ -238,10 +240,23 @@ namespace jasperengine{
         static void getUniformBlock(const MaterialPbrExtensions& pbr, float out[UNIFORM_FLOATS]);
 
         // "lit_" + two letters per define of a builtin:lit reference (Cc Cm Cn Sh Sm An Am Ir Im
-        // Tr Tm Vo Sp Sq Hx Th), the basename its compiled shaders are stored under
+        // Tr Tm Vo Sp Sq Hx Th Lq), the basename its compiled shaders are stored under
         static std::string getVariantBasename(const std::vector<std::string>& defines);
-        // whether a define is one of the S11 defines (PBR_*, TERRAIN_HEX_TILING)
-        static bool isPbrDefine(const std::string& define);
+        // the defines of a basename made by getVariantBasename (false: not one)
+        static bool parseVariantBasename(const std::string& basename, std::vector<std::string>& defines);
+        // whether a define is one a builtin:lit reference takes (PBR_*, TERRAIN_HEX_TILING,
+        // USE_LIT_QUALITY)
+        static bool isBuiltinLitDefine(const std::string& define);
+        // those defines as bits (one per define, in the basename's order) and back, sorted
+        static uint32_t getDefineBits(const std::vector<std::string>& defines);
+        static uint32_t getDefineBit(const std::string& define);
+        static std::vector<std::string> getDefinesFromBits(uint32_t bits);
+
+        // the High Lit Quality's define (SceneSettings::litQuality)
+        static const char* const LIT_QUALITY_DEFINE;   // USE_LIT_QUALITY
+        // a Terrain with a hex tiled layer (TerrainSurfaceLayer::hexTiling)
+        static const char* const TERRAIN_HEX_DEFINE;   // TERRAIN_HEX_TILING
+        static const char* const TRANSMISSION_DEFINE;  // PBR_TRANSMISSION
     };
 
 }

@@ -46,7 +46,28 @@
 
 using namespace jasperengine;
 
+#define PBR_LUA_PROPERTY(name, lobe, Lobe, field) \
+    .addProperty(name, &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::get, \
+                 &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::set)
+#define PBR_LUA_TEXTURE(name, lobe, Lobe, field) \
+    .addProperty(name, &PbrLuaField<&MaterialPbrExtensions::lobe, &MaterialPbrExtensions::Lobe::field>::get)
+
 namespace {
+    // A field of Material::pbr as a flat Lua property of Material (MaterialPbr's table names
+    // them): read without allocating, written into the material's own value (into range)
+    template<auto Lobe, auto Field>
+    struct PbrLuaField {
+        using Value = std::decay_t<decltype(std::declval<MaterialPbrExtensions&>().*Lobe.*Field)>;
+        static Value get(const Material* self) {
+            return self->pbr.get().*Lobe.*Field;
+        }
+        static void set(Material* self, Value value) {
+            MaterialPbrExtensions& pbr = self->pbr.edit();
+            pbr.*Lobe.*Field = value;
+            MaterialPbr::clamp(pbr);
+        }
+    };
+
     // What Log.category(name) returns: a category's trace/debug/info/warn/error
     struct LuaLogCategory {
         LogCategory* category;
@@ -508,6 +529,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LOW", ShadowQuality::LOW)
         .addVariable("MEDIUM", ShadowQuality::MEDIUM)
         .addVariable("HIGH", ShadowQuality::HIGH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LitQuality")
+        .addVariable("STANDARD", LitQuality::STANDARD)
+        .addVariable("HIGH", LitQuality::HIGH)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -1256,6 +1283,43 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("alphaCutoff", &Material::alphaCutoff, &Material::alphaCutoff)
         .addProperty("foliageTransmission", &Material::foliageTransmission, &Material::foliageTransmission)
         .addProperty("emissiveFactor", &Material::emissiveFactor, &Material::emissiveFactor)
+        .addProperty("emissiveStrength", &Material::emissiveStrength, &Material::emissiveStrength)
+        // the built-in Lit's extended lobes and hex tiling, flat (MaterialPbr's table: the
+        // Lua name of each field); their maps are read-only here, as the other textures
+        PBR_LUA_PROPERTY("clearcoatEnabled", clearcoat, Clearcoat, enabled)
+        PBR_LUA_PROPERTY("clearcoatFactor", clearcoat, Clearcoat, factor)
+        PBR_LUA_PROPERTY("clearcoatRoughness", clearcoat, Clearcoat, roughness)
+        PBR_LUA_PROPERTY("clearcoatNormalScale", clearcoat, Clearcoat, normalScale)
+        PBR_LUA_PROPERTY("sheenEnabled", sheen, Sheen, enabled)
+        PBR_LUA_PROPERTY("sheenColor", sheen, Sheen, color)
+        PBR_LUA_PROPERTY("sheenRoughness", sheen, Sheen, roughness)
+        PBR_LUA_PROPERTY("anisotropyEnabled", anisotropy, Anisotropy, enabled)
+        PBR_LUA_PROPERTY("anisotropyStrength", anisotropy, Anisotropy, strength)
+        PBR_LUA_PROPERTY("anisotropyRotation", anisotropy, Anisotropy, rotation)
+        PBR_LUA_PROPERTY("iridescenceEnabled", iridescence, Iridescence, enabled)
+        PBR_LUA_PROPERTY("iridescenceFactor", iridescence, Iridescence, factor)
+        PBR_LUA_PROPERTY("iridescenceIor", iridescence, Iridescence, ior)
+        PBR_LUA_PROPERTY("iridescenceThicknessRange", iridescence, Iridescence, thicknessNm)
+        PBR_LUA_PROPERTY("transmissionEnabled", transmission, Transmission, enabled)
+        PBR_LUA_PROPERTY("transmissionFactor", transmission, Transmission, factor)
+        PBR_LUA_PROPERTY("volumeEnabled", volume, Volume, enabled)
+        PBR_LUA_PROPERTY("thicknessFactor", volume, Volume, thickness)
+        PBR_LUA_PROPERTY("attenuationColor", volume, Volume, attenuationColor)
+        PBR_LUA_PROPERTY("attenuationDistance", volume, Volume, attenuationDistance)
+        PBR_LUA_PROPERTY("specularEnabled", specular, Specular, enabled)
+        PBR_LUA_PROPERTY("specularFactor", specular, Specular, factor)
+        PBR_LUA_PROPERTY("specularColor", specular, Specular, color)
+        PBR_LUA_PROPERTY("ior", specular, Specular, ior)
+        PBR_LUA_PROPERTY("hexTilingEnabled", hex, Hex, enabled)
+        PBR_LUA_PROPERTY("hexTilingRotation", hex, Hex, rotation)
+        PBR_LUA_PROPERTY("hexTilingContrast", hex, Hex, contrast)
+        PBR_LUA_TEXTURE("clearcoatTexture", clearcoat, Clearcoat, map)
+        PBR_LUA_TEXTURE("clearcoatNormalTexture", clearcoat, Clearcoat, normalMap)
+        PBR_LUA_TEXTURE("sheenTexture", sheen, Sheen, map)
+        PBR_LUA_TEXTURE("anisotropyTexture", anisotropy, Anisotropy, map)
+        PBR_LUA_TEXTURE("iridescenceTexture", iridescence, Iridescence, map)
+        PBR_LUA_TEXTURE("transmissionTexture", transmission, Transmission, map)
+        PBR_LUA_TEXTURE("specularTexture", specular, Specular, map)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
@@ -1434,6 +1498,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("getGlobalIlluminationColorLinear", &Scene::getGlobalIlluminationColorLinear)
         .addFunction("setGlobalIllumination", (void (Scene::*)(float, Vector3))&Scene::setGlobalIllumination)
         .addProperty("maxLightsPerObject", &Scene::getMaxLightsPerObject, &Scene::setMaxLightsPerObject)
+        // the built-in Lit's quality (LitQuality.STANDARD, HIGH) and the exposure lights in
+        // physical units are drawn at (EV100)
+        .addProperty("litQuality", &Scene::getLitQuality, &Scene::setLitQuality)
+        .addProperty("physicalLightEV100", &Scene::getPhysicalLightEV100, &Scene::setPhysicalLightEV100)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)

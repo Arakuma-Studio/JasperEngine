@@ -528,6 +528,16 @@ const EnumOptions& lightShadingOptions() {
     return options;
 }
 
+const EnumOptions& lightUnitOptions() {
+    static const EnumOptions options = {
+        {(int)LightUnit::ENGINE, "engine", "Engine"},
+        {(int)LightUnit::LUX, "lux", "Lux"},
+        {(int)LightUnit::CANDELA, "candela", "Candela"},
+        {(int)LightUnit::LUMEN, "lumen", "Lumen"}
+    };
+    return options;
+}
+
 const EnumOptions& primitiveTypeOptions() {
     static const EnumOptions options = {
         {(int)PrimitiveType::TRIANGLES, "triangles", "Triangles"},
@@ -617,6 +627,14 @@ const EnumOptions& shadowQualityOptions() {
         {(int)ShadowQuality::LOW, "low", "Low"},
         {(int)ShadowQuality::MEDIUM, "medium", "Medium"},
         {(int)ShadowQuality::HIGH, "high", "High"}
+    };
+    return options;
+}
+
+const EnumOptions& litQualityOptions() {
+    static const EnumOptions options = {
+        {(int)LitQuality::STANDARD, "standard", "Standard"},
+        {(int)LitQuality::HIGH, "high", "High"}
     };
     return options;
 }
@@ -839,6 +857,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"light_state", &lightStateOptions()},
         {"shadow_quality", &shadowQualityOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
+        {"lit_quality", &litQualityOptions()},
+        {"light_unit", &lightUnitOptions()},
         {"texture_filter", &textureFilterOptions()},
         {"framebuffer_filter", &framebufferFilterOptions()},
         {"texture_wrap", &textureWrapOptions()},
@@ -888,6 +908,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LightComponent:
             if (name == "type") return &lightTypeOptions();
             if (name == "shading") return &lightShadingOptions();
+            if (name == "intensityUnit") return &lightUnitOptions();
             break;
         case ComponentType::UIComponent:
         case ComponentType::PointsComponent:
@@ -1424,6 +1445,9 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
     // shader library: the shader and the render state always (they say how it draws), its
     // values when set
     materialShaderLibraryToJson(project, scene, material, out, false);
+    // the built-in Lit's emission intensity and its extended lobes (those set)
+    out["emissiveStrength"] = number(material.emissiveStrength);
+    if (material.pbr != MaterialPbrExtensions()) out["pbr"] = materialPbrToJson(project, scene, material.pbr);
     if (!linkedFile.empty()) {
         out["file"] = project ? project->normalizeToProjectRelative(project->getProjectPath() / linkedFile).generic_string()
                               : linkedFile;
@@ -1449,14 +1473,14 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         const std::string& key = it.key();
         bool known = key == "name" || key == "baseColorFactor" || key == "metallicFactor" || key == "roughnessFactor" ||
                      key == "alphaCutoff" || key == "foliageTransmission" || key == "alphaMode" ||
-                     key == "emissiveFactor" || key == "file";
+                     key == "emissiveFactor" || key == "emissiveStrength" || key == "pbr" || key == "file";
         for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
             if (key == field.name || key == field.texCoordName) known = true;
         }
         known = known || isMaterialShaderLibraryKey(key);
         if (!known) {
             error = "unknown material key \"" + key + "\"; valid: name, baseColorFactor, metallicFactor, roughnessFactor, "
-                    "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, baseColorTexture, emissiveTexture, "
+                    "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, emissiveStrength, pbr, baseColorTexture, emissiveTexture, "
                     "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
@@ -1481,6 +1505,19 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
     if (!number("metallicFactor", out.metallicFactor) || !number("roughnessFactor", out.roughnessFactor) ||
         !number("alphaCutoff", out.alphaCutoff) || !number("foliageTransmission", out.foliageTransmission)) {
         return false;
+    }
+    if (value.contains("emissiveStrength")) {
+        if (!value["emissiveStrength"].is_number() || !(value["emissiveStrength"].get<float>() >= 0.0f) ||
+                !std::isfinite(value["emissiveStrength"].get<float>())) {
+            error = "emissiveStrength must be a number >= 0.";
+            return false;
+        }
+        out.emissiveStrength = value["emissiveStrength"].get<float>();
+    }
+    if (value.contains("pbr")) {
+        MaterialPbrExtensions pbr = out.pbr;
+        if (!materialPbrFromJson(project, scene, value["pbr"], pbr, error)) return false;
+        out.pbr = pbr;
     }
     if (value.contains("alphaMode")) {
         int mode = 0;
@@ -1509,6 +1546,149 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         }
     }
     return materialShaderLibraryFromJson(project, scene, value, out, error);
+}
+
+Json McpValues::materialPbrToJson(Project* project, SceneProject* scene, const MaterialPbrExtensions& pbr) {
+    static const MaterialPbrExtensions defaults;
+    MaterialPbrExtensions& values = const_cast<MaterialPbrExtensions&>(pbr);
+    Json out = Json::object();
+    for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()) {
+        bool changed = false;
+        Json fields = Json::object();
+        for (const PbrField& field : MaterialPbr::getFields()) {
+            if (field.lobe != lobe.lobe) continue;
+            const void* value = field.ref(values);
+            const void* def = field.ref(const_cast<MaterialPbrExtensions&>(defaults));
+            switch (field.type) {
+                case PbrFieldType::Bool:
+                    fields[field.name] = *(const bool*)value;
+                    changed = changed || *(const bool*)value != *(const bool*)def;
+                    break;
+                case PbrFieldType::Float:
+                    // an infinite attenuation distance (no absorption) reads as null
+                    fields[field.name] = std::isfinite(*(const float*)value) ? Json(number(*(const float*)value)) : Json(nullptr);
+                    changed = changed || *(const float*)value != *(const float*)def;
+                    break;
+                case PbrFieldType::Vector2:
+                    fields[field.name] = toJson(*(const Vector2*)value);
+                    changed = changed || *(const Vector2*)value != *(const Vector2*)def;
+                    break;
+                case PbrFieldType::Color:
+                    fields[field.name] = toJson(*(const Vector3*)value);
+                    changed = changed || *(const Vector3*)value != *(const Vector3*)def;
+                    break;
+                case PbrFieldType::Texture:
+                    fields[field.name] = textureToJson(project, scene, *(const Texture*)value);
+                    changed = changed || !((const Texture*)value)->empty();
+                    break;
+                case PbrFieldType::TexCoord:
+                    fields[field.name] = *(const int*)value;
+                    changed = changed || *(const int*)value != *(const int*)def;
+                    break;
+            }
+        }
+        if (changed) out[lobe.name] = fields;
+    }
+    return out;
+}
+
+bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error) {
+    if (value.is_null()) {
+        out = MaterialPbrExtensions();
+        return true;
+    }
+    if (!value.is_object()) {
+        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex "
+                "(each {field: value}, partial values merge), or null for none.";
+        return false;
+    }
+    for (auto lobeIt = value.begin(); lobeIt != value.end(); ++lobeIt) {
+        const PbrLobeInfo* lobe = MaterialPbr::findLobe(lobeIt.key());
+        if (!lobe) {
+            error = "pbr: unknown lobe "" + lobeIt.key() + ""; valid: clearcoat, sheen, anisotropy, iridescence, transmission, "
+                    "volume, specular, hex.";
+            return false;
+        }
+        if (!lobeIt.value().is_object()) {
+            error = "pbr." + lobeIt.key() + " must be an object of its fields.";
+            return false;
+        }
+        for (auto fieldIt = lobeIt.value().begin(); fieldIt != lobeIt.value().end(); ++fieldIt) {
+            const PbrField* field = MaterialPbr::findField(lobe->lobe, fieldIt.key());
+            const std::string path = "pbr." + lobeIt.key() + "." + fieldIt.key();
+            if (!field) {
+                std::string names;
+                for (const PbrField& candidate : MaterialPbr::getFields()) {
+                    if (candidate.lobe == lobe->lobe) names += (names.empty() ? "" : ", ") + std::string(candidate.name);
+                }
+                error = path + ": unknown field; " + lobeIt.key() + " has " + names + ".";
+                return false;
+            }
+            const Json& item = fieldIt.value();
+            void* target = field->ref(out);
+            auto numberText = [](float number) {
+                char buffer[32];
+                std::snprintf(buffer, sizeof(buffer), "%g", number);
+                return std::string(buffer);
+            };
+            auto checked = [&](float number) {
+                if (!MaterialPbr::isInRange(*field, number)) {
+                    const std::string range = std::isinf(field->maxValue) ? (">= " + numberText(field->minValue))
+                                                                          : (numberText(field->minValue) + " to " + numberText(field->maxValue));
+                    error = path + ": " + numberText(number) + " is out of range (" + MaterialPbr::getFieldLabel(*field) + ": " + range + ").";
+                    return false;
+                }
+                return true;
+            };
+            switch (field->type) {
+                case PbrFieldType::Bool:
+                    if (!item.is_boolean()) { error = path + " must be true or false."; return false; }
+                    *(bool*)target = item.get<bool>();
+                    break;
+                case PbrFieldType::Float:
+                    // null: the attenuation distance's "no absorption"
+                    if (item.is_null() && std::isinf(field->maxValue) && std::string(field->name) == "attenuationDistance") {
+                        *(float*)target = INFINITY;
+                        break;
+                    }
+                    if (!item.is_number()) { error = path + " must be a number."; return false; }
+                    if (!checked(item.get<float>())) return false;
+                    *(float*)target = item.get<float>();
+                    break;
+                case PbrFieldType::Vector2: {
+                    Vector2 v = *(Vector2*)target;
+                    if (!parseVector2(item, v)) { error = path + " must be [x,y]."; return false; }
+                    if (!checked(v.x) || !checked(v.y)) return false;
+                    *(Vector2*)target = v;
+                    break;
+                }
+                case PbrFieldType::Color: {
+                    Vector3 v = *(Vector3*)target;
+                    if (!parseVector3(item, v)) { error = path + " must be [r,g,b] (linear) or \"#RRGGBB\"."; return false; }
+                    if (!checked(v.x) || !checked(v.y) || !checked(v.z)) return false;
+                    *(Vector3*)target = v;
+                    break;
+                }
+                case PbrFieldType::Texture: {
+                    Entity camera = NULL_ENTITY;
+                    std::string why;
+                    if (!textureFromJson(project, scene, item, *(Texture*)target, camera, why)) {
+                        error = path + ": " + why;
+                        return false;
+                    }
+                    break;
+                }
+                case PbrFieldType::TexCoord:
+                    if (!isIntegral(item) || (integralValue(item) != 0 && integralValue(item) != 1)) {
+                        error = path + " must be 0 or 1 (the UV set).";
+                        return false;
+                    }
+                    *(int*)target = (int)integralValue(item);
+                    break;
+            }
+        }
+    }
+    return true;
 }
 
 Json McpValues::shaderUniformsToJson(const ShaderUniformValues& values) {

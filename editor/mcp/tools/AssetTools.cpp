@@ -532,6 +532,9 @@ Json materialToJson(Project* project, const Material& material) {
     for (const auto& [name, member] : materialTexCoords()) data[name] = material.*member;
     // shader library: the shader, its values and the render state
     McpValues::materialShaderLibraryToJson(project, nullptr, material, data, true);
+    // the built-in Lit's emission intensity and extended lobes (those set)
+    data["emissiveStrength"] = material.emissiveStrength;
+    if (material.pbr != MaterialPbrExtensions()) data["pbr"] = McpValues::materialPbrToJson(project, nullptr, material.pbr);
     return data;
 }
 
@@ -579,6 +582,17 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
                 return false;
             }
             material.alphaMode = found->second;
+        } else if (key == "emissiveStrength") {
+            if (!value.is_number() || !(value.get<float>() >= 0.0f) || !std::isfinite(value.get<float>())) {
+                error = "emissiveStrength must be a number >= 0.";
+                return false;
+            }
+            material.emissiveStrength = value.get<float>();
+        } else if (key == "pbr") {
+            // a partial object merges into the lobes the material has
+            MaterialPbrExtensions pbr = material.pbr;
+            if (!McpValues::materialPbrFromJson(project, nullptr, value, pbr, error)) return false;
+            material.pbr = pbr;
         } else if (McpValues::isMaterialShaderLibraryKey(key)) {
             // applied together below, the shader first
         } else {
@@ -617,7 +631,7 @@ bool applyMaterialJson(Project* project, Material& material, const Json& values,
         }
         if (!handled) {
             error = "Unknown material field \"" + key + "\". Fields: baseColorFactor, metallicFactor, roughnessFactor, alphaCutoff, "
-                    "alphaMode, emissiveFactor, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
+                    "alphaMode, emissiveFactor, emissiveStrength, pbr, foliageTransmission, baseColorTexture, emissiveTexture, metallicRoughnessTexture, "
                     "occlusionTexture, normalTexture, the *TexCoord indices, and the shader library's shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass.";
@@ -3086,7 +3100,9 @@ void registerAssetTools(McpRegistry& registry) {
         "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
         "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
         "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
-        "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");
+        "colorWrite, extraPass {shader, its params, state, stencil, order}; emissiveStrength; pbr {clearcoat|sheen|anisotropy|"
+        "iridescence|transmission|volume|specular|hex: {enabled, fields, map: path|null}} merged (jasper://docs/materials); "
+        "null removes (jasper://docs/shaders).");
 
     {
         ToolDef tool;
@@ -3147,7 +3163,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "list_material_presets";
         tool.title = "List Material Presets";
         tool.description =
-            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency...): "
+            "One-click material setups (outlines, see-through silhouette, stencil masks, draw-once transparency, the built-in "
+            "Lit's car paint, velvet, brushed metal, soap bubble, clear glass, tiled floor...): "
             "id, name, description, the fields each sets. Apply with apply_material_preset.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;

@@ -7,6 +7,7 @@
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 
 #include <algorithm>
 #include <cctype>
@@ -814,6 +815,31 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
         }
         result.defines.push_back(define);
         appendSignaturePart(signatureInput, "define", define);
+    }
+
+    // the built-in Lit with the defines its property bits have no room for (MaterialPbr)
+    if (ShaderReference::isBuiltin(base)){
+        if (base != ShaderReference::BUILTIN_LIT || shaderType != ShaderType::MESH){
+            result.error = "Unknown built-in shader: " + customShader;
+            return result;
+        }
+        for (const std::string& define : result.defines){
+            if (!MaterialPbr::isBuiltinLitDefine(define)){
+                result.error = "The built-in Lit has no define '" + define + "' (" + customShader + ")";
+                return result;
+            }
+        }
+        result.library = true;
+        result.vertFile = "mesh.vert";
+        result.fragFile = "mesh.frag";
+        if (!getLibrarySources().count(result.vertFile) || !getLibrarySources().count(result.fragFile)){
+            result.error = "This build has no engine shader library to compile " + base + " from";
+            return result;
+        }
+        appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+        result.signature = signatureInput;
+        result.valid = true;
+        return result;
     }
 
     if (ShaderReference::isLibrary(base)){

@@ -161,6 +161,8 @@ namespace {
         {"material.stencil", SubmeshOverride_Stencil},
         {"material.colorWrite", SubmeshOverride_ColorWrite},
         {"material.extraPass", SubmeshOverride_ExtraPass},
+        {"material.emissiveStrength", SubmeshOverride_EmissiveStrength},
+        {"material.pbr", SubmeshOverride_PbrExtensions},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -194,8 +196,33 @@ namespace {
             fields = SubmeshOverride_ExtraPass;
             return true;
         }
+        // so does a field of the extended lobes (one bit for all of them)
+        if (field.compare(0, 13, "material.pbr.") == 0) {
+            fields = SubmeshOverride_PbrExtensions;
+            return true;
+        }
 
         return false;
+    }
+
+    // A field of a material's extended lobes and hex tiling ("pbr.<lobe>.<field>",
+    // MaterialPbr's table; the value is made on access, as the extra pass). An enabled flag, a
+    // map or its UV set picks the built-in Lit's variant, built while the loaded one draws
+    // (RenderSystem, from the texture update); the factors are uniforms.
+    PropertyData getMaterialPbrProperty(Material& material, Material* def, const std::string& path, bool hasRef) {
+        const PbrField* field = MaterialPbr::findField(path);
+        if (!field) return PropertyData();
+        PropertyType type = PropertyType::Float;
+        uint64_t flags = UpdateFlags_None;
+        switch (field->type) {
+            case PbrFieldType::Bool: type = PropertyType::Bool; flags = UpdateFlags_Mesh_Texture; break;
+            case PbrFieldType::Float: type = PropertyType::Float; break;
+            case PbrFieldType::Vector2: type = PropertyType::Vector2; break;
+            case PbrFieldType::Color: type = PropertyType::Vector3; break;
+            case PbrFieldType::Texture: type = PropertyType::Texture; flags = UpdateFlags_Mesh_Texture; break;
+            case PbrFieldType::TexCoord: type = PropertyType::Int; flags = UpdateFlags_Mesh_Texture; break;
+        }
+        return {type, flags, def ? field->ref(def->pbr.edit()) : nullptr, hasRef ? field->ref(material.pbr.edit()) : nullptr};
     }
 
     // The shader library fields of a submesh material ("submeshes[N].material.<field>"). The
@@ -284,6 +311,10 @@ namespace {
                     def ? (void*)&def->extraPass.edit() : nullptr, hasRef ? (void*)&material.extraPass.edit() : nullptr};
         if (field.compare(0, 10, "extraPass.") == 0)
             return getMaterialPassProperty(hasRef ? &material.extraPass.edit() : nullptr, def ? &def->extraPass.edit() : nullptr, field.substr(10));
+        if (field.compare(0, 4, "pbr.") == 0)
+            return getMaterialPbrProperty(material, def, field.substr(4), hasRef);
+        if (field == "emissiveStrength")
+            return data(PropertyType::Float, UpdateFlags_None, &Material::emissiveStrength);
         return getStencilColorWriteProperty(hasRef ? &material.stencil : nullptr, def ? &def->stencil : nullptr,
                                             hasRef ? &material.colorWrite : nullptr, def ? &def->colorWrite : nullptr, field, UpdateFlags_Mesh_Reload);
     }
@@ -545,6 +576,10 @@ namespace {
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         // read by RenderSystem when it picks each mesh's lights
         makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
+        // photometric units and colour temperature, resolved on the CPU (util/LightPhotometry.h)
+        makeFastProperty<LightComponent, LightUnit, &LightComponent::intensityUnit>("intensityUnit", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LightComponent, bool, &LightComponent::useColorTemperature>("useColorTemperature", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::colorTemperature>("colorTemperature", PropertyType::Float, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kLight2DProperties[] = {
@@ -1485,6 +1520,9 @@ namespace {
         if (fieldName == ".occlusionStrength") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.occlusionStrength, &layer.occlusionStrength};
         if (fieldName == ".uvScale") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvScale, &layer.uvScale};
         if (fieldName == ".uvOffset") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvOffset, &layer.uvOffset};
+        // hex tiling: a variant define and a uniform, which RenderSystem follows on its own
+        if (fieldName == ".hexTiling") return {PropertyType::Bool, UpdateFlags_None, &def.hexTiling, &layer.hexTiling};
+        if (fieldName == ".hexRotation") return {PropertyType::Float, UpdateFlags_None, &def.hexRotation, &layer.hexRotation};
         return PropertyData();
     }
 
@@ -2527,6 +2565,8 @@ namespace {
             field(".occlusionStrength", PropertyType::Float, (void*)&defSurfaceLayer.occlusionStrength, layer ? (void*)&layer->occlusionStrength : nullptr);
             field(".uvScale", PropertyType::Vector2, (void*)&defSurfaceLayer.uvScale, layer ? (void*)&layer->uvScale : nullptr);
             field(".uvOffset", PropertyType::Vector2, (void*)&defSurfaceLayer.uvOffset, layer ? (void*)&layer->uvOffset : nullptr);
+            field(".hexTiling", PropertyType::Bool, (void*)&defSurfaceLayer.hexTiling, layer ? (void*)&layer->hexTiling : nullptr);
+            field(".hexRotation", PropertyType::Float, (void*)&defSurfaceLayer.hexRotation, layer ? (void*)&layer->hexRotation : nullptr);
         }
 
         ps["foliageLayers"] = {PropertyType::Custom, UpdateFlags_Terrain_Foliage, (void*)&def.foliageLayers, compRef ? (void*)&comp->foliageLayers : nullptr};
@@ -2713,6 +2753,11 @@ namespace {
             ps["submeshes[" + idx + "].material"] = {PropertyType::Material, UpdateFlags_Mesh_Texture | UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, (void*)&defSub.material, compRef ? (void*)&sub.material : nullptr};
             for (const char* field : kMaterialLibraryFields) {
                 ps["submeshes[" + idx + "].material." + field] = getMaterialLibraryProperty(sub.material, &defSub.material, field, compRef != nullptr);
+            }
+            ps["submeshes[" + idx + "].material.emissiveStrength"] = getMaterialLibraryProperty(sub.material, &defSub.material, "emissiveStrength", compRef != nullptr);
+            for (const PbrField& field : MaterialPbr::getFields()) {
+                ps["submeshes[" + idx + "].material.pbr." + MaterialPbr::getFieldPath(field)] =
+                    getMaterialPbrProperty(sub.material, &defSub.material, MaterialPbr::getFieldPath(field), compRef != nullptr);
             }
             ps["submeshes[" + idx + "].material.name"] = {PropertyType::String, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
             ps["submeshes[" + idx + "].material.baseColorFactor"] = {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, compRef ? (void*)&sub.material.baseColorFactor : nullptr};

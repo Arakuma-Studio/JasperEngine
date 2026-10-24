@@ -1081,6 +1081,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
@@ -1094,6 +1095,7 @@ set(JASPERENGINE_SRCS
     core/texture/Framebuffer.cpp
     core/texture/IBLEnvironment.cpp
     core/texture/MaterialPbr.cpp
+    core/texture/TexturePack.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
     core/jobs/BackgroundGate.cpp

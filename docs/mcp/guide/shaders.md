@@ -120,6 +120,16 @@ editable `includes/` folder beside the fork.
   (with SSR on they read the G-buffer, which keeps the built-in shader). It reads the same
   `shaderUniforms`.
 
+A fork of the built-in Mesh shader keeps the material's extended lobes and hex tiling
+(clear coat, sheen, ... `jasper://docs/materials`) and the High Lit Quality when it keeps
+their hooks: `#include "includes/pbr_ext_slots.glsl"` before `includes/pbr.glsl`,
+`includes/specular_aa.glsl` and `includes/pbr_ext.glsl` after `includes/ibl.glsl`, and the
+`#ifdef PBR_*` / `USE_LIT_QUALITY` blocks of `main()` (`pbrExtSurface`, `pbrExtView`,
+`pbrExtEnvironment`, `pbrExtDirect`, `pbrExtTransmission`, `pbrExtComposite`). The engine adds
+their defines to the fork's variants (`<fork>#PBR_CLEARCOAT,...`); a fork written before them
+compiles them as unused defines and draws without the lobes (the Inspector says "This shader
+does not implement advanced surface"): fork again to get them.
+
 ## Editing a fork
 
 The forked files are complete engine shaders with a strict structure: a `#version` line,

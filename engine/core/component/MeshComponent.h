@@ -188,6 +188,11 @@ namespace jasperengine{
         // cached here so the matching ShaderPool::remove uses the same key
         uint16_t customShaderId = 0;
         uint16_t customDepthShaderId = 0;
+        // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
+        // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
+        // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
+        uint32_t litDefineBits = 0;
+        PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;
         int slotFSParams = -1;
@@ -212,6 +217,7 @@ namespace jasperengine{
         int slotVSMorphTarget = -1;
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        int slotFSPbrExt = -1;          // includes/pbr_ext_slots.glsl (the extended lobes, hex tiling)
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix

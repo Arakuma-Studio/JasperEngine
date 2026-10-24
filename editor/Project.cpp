@@ -2056,6 +2056,14 @@ bool editor::Project::isRuntimeShadersEnabled() const{
     return runtimeShadersEnabled;
 }
 
+void editor::Project::setMobilePbrTier(PbrTier tier){
+    this->mobilePbrTier = tier;
+}
+
+PbrTier editor::Project::getMobilePbrTier() const{
+    return mobilePbrTier;
+}
+
 void editor::Project::setTagsAndLayers(const std::vector<std::string>& tags, const std::vector<std::string>& layerNames){
     TagManager::setTags(tags);
     TagManager::setLayerNames(layerNames);
@@ -3163,9 +3171,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             if (mesh.loaded) {
                 const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
                 for (unsigned int s = 0; s < mesh.numSubmeshes; ++s) {
-                    // each submesh's shader (its material's, the mesh's, the scene's) and features
+                    // each submesh's shader (its material's, the mesh's, the scene's) and features,
+                    // with the built-in Lit's defines its variant was loaded with
                     uint16_t customShaderId = ShaderPool::registerCustomShader(
-                        RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
+                        RenderSystem::getSubmeshShaderReference(mesh, mesh.submeshes[s], sceneMeshShader,
+                                                                MaterialPbr::getDefinesFromBits(mesh.submeshes[s].litDefineBits)));
                     uint16_t customDepthShaderId = ShaderPool::registerCustomShader(
                         RenderSystem::getSubmeshDepthShaderReference(mesh, mesh.submeshes[s], sceneMeshShader));
                     uint32_t meshProperties = mesh.submeshes[s].shaderProperties;
@@ -3354,7 +3364,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
-                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
+                                         scriptsMention("itQuality"), getMobilePbrTier());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -4770,6 +4781,7 @@ void editor::Project::resetConfigs() {
     physics2DEnabled = defaultPhysics2DEnabled;
     physics3DEnabled = defaultPhysics3DEnabled;
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
+    mobilePbrTier = defaultMobilePbrTier;
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     packNativeResources = defaultPackNativeResources;
@@ -6209,7 +6221,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -7939,7 +7951,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }

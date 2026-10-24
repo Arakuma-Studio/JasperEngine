@@ -64,7 +64,8 @@ namespace {
     #define PBR_REF(lobeMember, LobeType, member, MemberType) \
         &fieldRef<MemberType, MaterialPbrExtensions::LobeType, &MaterialPbrExtensions::lobeMember, &MaterialPbrExtensions::LobeType::member>
 
-    std::atomic<int> mobileTierValue{(int)PbrTier::FULL};
+    // the project export setting's default (Project Settings > Graphics > Mobile PBR Tier)
+    std::atomic<int> mobileTierValue{(int)PbrTier::REDUCED};
 
     // u_fs_pbrExt (includes/pbr_ext.glsl): the vec4 each lobe writes
     enum PbrUniformVector{
@@ -92,9 +93,14 @@ namespace {
         {"PBR_VOLUME", "Vo"},
         {"PBR_SPECULAR", "Sp"}, {"PBR_SPECULAR_MAP", "Sq"},
         {"PBR_HEX_TILING", "Hx"}, {"TERRAIN_HEX_TILING", "Th"},
+        {"USE_LIT_QUALITY", "Lq"},
     };
 
 }
+
+const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
+const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
+const char* const MaterialPbr::TRANSMISSION_DEFINE = "PBR_TRANSMISSION";
 
 const std::vector<PbrLobeInfo>& MaterialPbr::getLobes(){
     static const std::vector<PbrLobeInfo> lobes = {
@@ -361,7 +367,7 @@ bool MaterialPbr::isMapStripped(PbrMap map, PbrTier tier){
     return tier == PbrTier::REDUCED && (map == PbrMap::ANISOTROPY || map == PbrMap::CLEARCOAT_NORMAL || map == PbrMap::IRIDESCENCE);
 }
 
-PbrVariant MaterialPbr::getPbrVariant(const Material& material, MaterialLighting resolved, bool terrain, PbrTier tier){
+PbrVariant MaterialPbr::getPbrVariant(const Material& material, MaterialLighting resolved, bool terrain, PbrTier tier, int reservedMaps){
     PbrVariant variant;
     // a Terrain's surface is its layers'; its hex tiling is theirs (TERRAIN_HEX_TILING)
     if (terrain)
@@ -392,6 +398,7 @@ PbrVariant MaterialPbr::getPbrVariant(const Material& material, MaterialLighting
         variant.strippedMaps.push_back("iridescence lobe");
 
     // the maps of the lobes it has, in priority order, the first MAX_EXTENSION_MAPS bound
+    const int budget = std::max(MAX_EXTENSION_MAPS - reservedMaps, 0);
     for (int m = 0; m < (int)PbrMap::COUNT; m++){
         const PbrMap map = (PbrMap)m;
         if (!lobes[(size_t)getMapLobe(map)] || getMap(pbr, map).empty())
@@ -400,7 +407,7 @@ PbrVariant MaterialPbr::getPbrVariant(const Material& material, MaterialLighting
             variant.strippedMaps.push_back(getMapName(map));
             continue;
         }
-        if ((int)variant.maps.size() < MAX_EXTENSION_MAPS){
+        if ((int)variant.maps.size() < budget){
             variant.maps.push_back(map);
             variant.defines.push_back(getMapDefine(map));
         }else{
@@ -480,7 +487,54 @@ std::string MaterialPbr::getVariantBasename(const std::vector<std::string>& defi
     return basename;
 }
 
-bool MaterialPbr::isPbrDefine(const std::string& define){
+bool MaterialPbr::parseVariantBasename(const std::string& basename, std::vector<std::string>& defines){
+    defines.clear();
+    if (basename.compare(0, 4, "lit_") != 0 || (basename.size() - 4) % 2 != 0 || basename.size() == 4)
+        return false;
+    for (size_t i = 4; i + 2 <= basename.size(); i += 2){
+        const DefineCode* found = nullptr;
+        for (const DefineCode& entry : defineCodes){
+            if (basename.compare(i, 2, entry.code) == 0)
+                found = &entry;
+        }
+        if (!found){
+            defines.clear();
+            return false;
+        }
+        defines.push_back(found->define);
+    }
+    std::sort(defines.begin(), defines.end());
+    return true;
+}
+
+uint32_t MaterialPbr::getDefineBits(const std::vector<std::string>& defines){
+    uint32_t bits = 0;
+    for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
+        if (std::find(defines.begin(), defines.end(), defineCodes[i].define) != defines.end())
+            bits |= 1u << i;
+    }
+    return bits;
+}
+
+uint32_t MaterialPbr::getDefineBit(const std::string& define){
+    for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
+        if (define == defineCodes[i].define)
+            return 1u << i;
+    }
+    return 0;
+}
+
+std::vector<std::string> MaterialPbr::getDefinesFromBits(uint32_t bits){
+    std::vector<std::string> defines;
+    for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
+        if (bits & (1u << i))
+            defines.push_back(defineCodes[i].define);
+    }
+    std::sort(defines.begin(), defines.end());
+    return defines;
+}
+
+bool MaterialPbr::isBuiltinLitDefine(const std::string& define){
     for (const DefineCode& entry : defineCodes){
         if (define == entry.define)
             return true;

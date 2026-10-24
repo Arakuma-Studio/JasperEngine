@@ -15,6 +15,7 @@
 using namespace jasperengine;
 
 std::unordered_map<std::string, TextureDataPool::PendingTexture> TextureDataPool::pendingBuilds;
+std::unordered_map<std::string, std::function<TextureData()>> TextureDataPool::generators;
 std::mutex TextureDataPool::cacheMutex;
 std::atomic<bool> TextureDataPool::shutdownRequested{false};
 
@@ -174,6 +175,70 @@ void TextureDataPool::prepareFace(TextureData& face, size_t numFaces, bool fixAl
     if (numFaces == 6) {
         face.resizeToSquare();
     }
+}
+
+void TextureDataPool::setGenerator(const std::string& id, std::function<TextureData()> generator) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    generators[id] = std::move(generator);
+}
+
+TextureLoadResult TextureDataPool::loadGenerated(const std::string& id) {
+    TextureLoadResult result;
+    result.id = id;
+
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    auto generator = generators.find(id);
+    if (generator == generators.end())
+        return result;
+
+    auto& shared = getMap()[id];
+    if (shared.use_count() > 0 && hasTexturePixels(shared, 1)) {
+        result.state = ResourceLoadState::Finished;
+        result.data = shared;
+        return result;
+    }
+    if (shutdownRequested.load()) {
+        result.state = ResourceLoadState::Failed;
+        result.errorMessage = "Shutdown requested";
+        return result;
+    }
+
+    auto pending = pendingBuilds.find(id);
+    if (pending == pendingBuilds.end()) {
+        PendingTexture build;
+        std::function<TextureData()> make = generator->second;
+        build.task = jobs::submit([make]() -> std::array<TextureData, 6> {
+            std::array<TextureData, 6> faces;
+            faces[0] = make();
+            return faces;
+        }, {jobs::Lane::Background, jobs::GateClass::Heavy, "texture-generate", jobs::Tag::Asset});
+        pendingBuilds[id] = std::move(build);
+        result.state = ResourceLoadState::Loading;
+        return result;
+    }
+    if (!pending->second.task.isReady()) {
+        result.state = ResourceLoadState::Loading;
+        return result;
+    }
+    try {
+        std::array<TextureData, 6> faces = pending->second.task.get();
+        pendingBuilds.erase(pending);
+        if (!faces[0].getData() || faces[0].getSize() == 0) {
+            result.state = ResourceLoadState::Failed;
+            result.errorMessage = "No pixels were made for " + id;
+            return result;
+        }
+        shared = std::make_shared<std::array<TextureData, 6>>(faces);
+        // the pool's copy owns the pixels the generator handed over
+        shared->at(0).setDataOwned(true);
+        result.state = ResourceLoadState::Finished;
+        result.data = shared;
+    } catch (const std::exception& e) {
+        pendingBuilds.erase(pending);
+        result.state = ResourceLoadState::Failed;
+        result.errorMessage = e.what();
+    }
+    return result;
 }
 
 TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder) {
@@ -494,6 +559,8 @@ void TextureDataPool::remove(const std::string& id){
     if (it != map.end()){
         if (!it->second || it->second.use_count() <= 1){
             map.erase(it);
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            generators.erase(id);
         }
 	}else if (!removedPending){
 		if (Engine::isViewLoaded()){
@@ -506,6 +573,7 @@ void TextureDataPool::clear(){
     {
 		std::lock_guard<std::mutex> lock(cacheMutex);
 		quiescePending(false);
+		generators.clear();
 	}
 	getMap().clear();
 }

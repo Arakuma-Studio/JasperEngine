@@ -62,6 +62,9 @@ namespace jasperengine{
             void setPath(const std::string& path);
             void setData(const std::string& id, TextureData data);
             void setId(const std::string& id);
+            // pixels a job makes under the id (TextureDataPool::setGenerator: a lobe map packed
+            // from two glTF images), made when the texture is first drawn
+            void setGenerated(const std::string& id);
             void setCubeMap(const std::string& path);
             void setCubePath(size_t index, const std::string& path);
 

@@ -626,6 +626,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
@@ -686,6 +687,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
+    ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp

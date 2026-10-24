@@ -221,7 +221,17 @@ namespace jasperengine{
     // A layer with its own surface, or its own tiling, needs the wider terrain shader
     inline bool hasTerrainSurfaceLayers(const TerrainComponent& terrain){
         for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
-            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0)){
+            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.hexTiling){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a layer hex tiles (TERRAIN_HEX_TILING): the terrain draws its surface layers' path
+    inline bool hasTerrainHexLayers(const TerrainComponent& terrain){
+        for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
+            if (layer.hexTiling){
                 return true;
             }
         }

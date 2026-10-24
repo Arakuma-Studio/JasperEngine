@@ -170,6 +170,7 @@ namespace {
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
             postProcessReadsDepth(scene);
+        environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
         return environment;
     }
 
@@ -177,7 +178,7 @@ namespace {
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
-            (e.postColor ? (1u << 21) : 0u);
+            (e.postColor ? (1u << 21) : 0u) | (e.litQualityHigh ? (1u << 22) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 23) : 0u);
     }
 
     // the states of the post-processing colour bit (RenderSystem::getPostProcessingTiers) the
@@ -193,7 +194,8 @@ namespace {
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
-                                                             bool allLightCapacities, const std::vector<bool>& postColor){
+                                                             bool allLightCapacities, const std::vector<bool>& postColor,
+                                                             bool allLitQualities, PbrTier mobilePbrTier){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -230,6 +232,28 @@ namespace {
                             environments.push_back(environment);
                         }
                     }
+                }
+            }
+        }
+        // the other Lit Quality, when a script sets it (scene.litQuality), and the lobes the
+        // mobile and web exports draw (MaterialPbr::resolveTier: the same rule as their runtime)
+        const size_t own = environments.size();
+        for (size_t e = 0; e < own; e++){
+            if (allLitQualities){
+                MeshShaderEnvironment other = environments[e];
+                other.litQualityHigh = !other.litQualityHigh;
+                if (distinct.insert(environmentBits(other)).second){
+                    environments.push_back(other);
+                }
+            }
+        }
+        if (mobilePbrTier != PbrTier::FULL){
+            const size_t full = environments.size();
+            for (size_t e = 0; e < full; e++){
+                MeshShaderEnvironment mobile = environments[e];
+                mobile.pbrTier = MaterialPbr::resolveTier(true, mobilePbrTier);
+                if (distinct.insert(environmentBits(mobile)).second){
+                    environments.push_back(mobile);
                 }
             }
         }
@@ -461,10 +485,12 @@ namespace {
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             const SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t meshShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader));
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
             for (const MeshShaderEnvironment& environment : environments){
                 const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
+                // the reference takes the variant's built-in Lit defines (lobes, Lit Quality)
+                const uint16_t meshShaderId = ShaderPool::registerCustomShader(
+                    RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines));
                 insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
                 if (variant.depth){
                     insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
@@ -899,7 +925,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
-                                                  const std::vector<std::string>& scriptPostProcessingFields){
+                                                  const std::vector<std::string>& scriptPostProcessingFields,
+                                                  bool scriptsSetLitQuality, PbrTier mobilePbrTier){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -919,7 +946,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
+                                                                                 scriptsSetLitQuality, mobilePbrTier);
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);

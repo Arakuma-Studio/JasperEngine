@@ -17,6 +17,7 @@
 #include "texture/IBLEnvironment.h"
 #include "util/Angle.h"
 #include "util/Color.h"
+#include "util/LightPhotometry.h"
 #include "buffer/ExternalBuffer.h"
 #include "math/AABB.h"
 #include "pool/TextureDataPool.h"
@@ -494,6 +495,8 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     lightListEpoch = 1;
     lightListCap = 0;
     lightCapacityTier = 8;
+    loadedLitQuality = LitQuality::STANDARD;
+    loadedPbrTier = PbrTier::FULL;
 }
 
 RenderSystem::~RenderSystem(){
@@ -830,6 +833,16 @@ int RenderSystem::checkLightsAndShadow(){
     return numLights;
 }
 
+void RenderSystem::resolveLights(){
+    // only a light whose authored values or the scene's Physical Light Exposure changed is
+    // converted again (LightPhotometry::resolveLight keeps what it resolved from)
+    const float ev100 = scene->getPhysicalLightEV100();
+    auto lights = scene->getComponentArray<LightComponent>();
+    for (size_t i = 0; i < lights->size(); i++){
+        LightPhotometry::resolveLight(lights->getComponentFromIndex(i), ev100);
+    }
+}
+
 bool RenderSystem::loadLights(int numLights){
     int freeProjectiveSlot = 0;
     int freePointSlot = 0;
@@ -1008,7 +1021,7 @@ void RenderSystem::updateSpotMaskAtlas(int numLights){
             if (light.type != LightType::SPOT || light.spotMask.empty() || light.spotMask.isFramebuffer()){
                 continue;
             }
-            const bool lit = light.intensity > 0.0f && isLightActive(lights->getEntity(i), light);
+            const bool lit = light.resolvedIntensity > 0.0f && isLightActive(lights->getEntity(i), light);
             if (lit == (pass == 2) || std::find(tileLights.begin(), tileLights.end(), i) != tileLights.end()){
                 continue;
             }
@@ -1464,7 +1477,9 @@ void RenderSystem::updateSceneLights(){
             restructured = true;
         }
 
-        const LightComponent& light = lights->getComponentFromIndex(i);
+        LightComponent& light = lights->getComponentFromIndex(i);
+        // the units and temperature as drawn (a light made since update() resolves here)
+        LightPhotometry::resolveLight(light, scene->getPhysicalLightEV100());
         const Transform* transform = scene->findComponent<Transform>(entity);
         const Vector3 position = transform ? transform->worldPosition : Vector3(0, 0, 0);
 
@@ -1479,7 +1494,7 @@ void RenderSystem::updateSceneLights(){
         SceneLight& sceneLight = sceneLights[i];
         sceneLight.position_type = Vector4(position.x, position.y, position.z, type);
         sceneLight.direction_range = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
-        sceneLight.color_intensity = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
+        sceneLight.color_intensity = Vector4(light.resolvedColor.x, light.resolvedColor.y, light.resolvedColor.z, light.resolvedIntensity);
         sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.numShadowCascades);
         sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
         // the per-object lights block's form (includes/lights.glsl); spot_shadow.w is per draw
@@ -1487,14 +1502,14 @@ void RenderSystem::updateSceneLights(){
         const bool spot = light.type == LightType::SPOT;
         sceneLight.packed[0] = Vector4(position.x, position.y, position.z, directional ? 0.0f : 1.0f + std::max(light.range, 0.0f));
         sceneLight.packed[1] = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, spot ? light.innerConeCos : -2.0f);
-        sceneLight.packed[2] = Vector4(light.color.x * light.intensity, light.color.y * light.intensity, light.color.z * light.intensity,
-                                       spot ? light.outerConeCos : -2.0f);
+        sceneLight.packed[2] = Vector4(light.resolvedColor.x * light.resolvedIntensity, light.resolvedColor.y * light.resolvedIntensity,
+                                       light.resolvedColor.z * light.resolvedIntensity, spot ? light.outerConeCos : -2.0f);
         const Vector2 up = octahedralEncode(light.worldUp);
         sceneLight.packed[3] = Vector4(up.x, up.y, spotMask ? light.spotMaskAspect : 0.0f, 0.0f);
         sceneLight.cullingMask = light.cullingMask;
         sceneLight.spotMaskTile = spotMask ? light.spotMaskTile : -1;
         sceneLight.shading = light.shading;
-        sceneLight.active = light.intensity > 0.0f && isLightActive(entity, light);
+        sceneLight.active = light.resolvedIntensity > 0.0f && isLightActive(entity, light);
 
         if (!restructured && !(sceneLight == previousSceneLights[i])){
             changedLights.push_back((int)i);
@@ -2742,6 +2757,8 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.depthPrepass = scene->isDepthPrepassEnabled();
     environment.sceneDepth = sceneDepthPrograms;
     environment.postColor = postColorVariants;
+    environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
+    environment.pbrTier = MaterialPbr::getRuntimeTier();
     return environment;
 }
 
@@ -2756,6 +2773,22 @@ const std::string& RenderSystem::getSubmeshShader(const MeshComponent& mesh, con
 std::string RenderSystem::getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
     return ShaderReference::getColorVariantReference(getSubmeshShader(mesh, submesh, sceneMeshShader), submesh.material.shaderFeatures,
                                                      submesh.material.blendMode);
+}
+
+std::string RenderSystem::getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
+                                                    const std::vector<std::string>& litDefines){
+    const std::string reference = getSubmeshShaderReference(mesh, submesh, sceneMeshShader);
+    if (litDefines.empty())
+        return reference;
+    // the built-in Lit's own defines: after the manifest's features (a fork of Lit has none
+    // to filter them out), sorted as a reference's suffix is
+    if (reference.empty())
+        return ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, litDefines);
+    std::vector<std::string> defines = ShaderReference::getFeatures(reference);
+    defines.insert(defines.end(), litDefines.begin(), litDefines.end());
+    std::sort(defines.begin(), defines.end());
+    defines.erase(std::unique(defines.begin(), defines.end()), defines.end());
+    return ShaderReference::withFeatures(ShaderReference::getBase(reference), defines);
 }
 
 std::string RenderSystem::getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader){
@@ -2800,6 +2833,10 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.receiveShadows = false;
     inputs.receiveIBL = false;
     inputs.mirror = false;
+    // and none of the built-in Lit's lobes (its shader is the pass's)
+    inputs.material = nullptr;
+    inputs.pbrTransmission = false;
+    inputs.terrainHex = false;
     return inputs;
 }
 
@@ -2826,10 +2863,48 @@ RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, c
 RenderState RenderSystem::resolveSubmeshRenderState(const MeshComponent& mesh, const Submesh& submesh, const ShaderManifestState* manifestState,
                                                     bool& blended, bool& transparentQueue){
     const Material& material = submesh.material;
-    return resolveRenderState(material.blendMode, material.cullMode, material.depthWrite, material.depthTest,
-                              material.depthOffsetFactor, material.depthOffsetUnits, material.stencil, material.colorWrite, manifestState,
-                              usesAlphaBlend(material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
-                              blended, transparentQueue);
+    RenderState state = resolveRenderState(material.blendMode, material.cullMode, material.depthWrite, material.depthTest,
+                                           material.depthOffsetFactor, material.depthOffsetUnits, material.stencil, material.colorWrite, manifestState,
+                                           usesAlphaBlend(material), submesh.faceCulling, mesh.cullingMode, mesh.windingOrder,
+                                           blended, transparentQueue);
+    // a transmissive Lit material shows the opaque scene through it: it draws after the scene
+    // colour copy (the transparent queue), opaque over it (its own refraction of that copy)
+    // and writing depth, unless the material says otherwise
+    if (!manifestState && usesPbrTransmission(material)){
+        if (material.blendMode == MaterialBlendMode::AUTO){
+            state.blend = toBlendMode(MaterialBlendMode::NONE);
+            blended = false;
+        }
+        if (material.depthWrite == MaterialDepthWrite::AUTO)
+            state.depthWrite = true;
+        transparentQueue = true;
+    }
+    return state;
+}
+
+PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tier){
+    // as getSubmeshShaderVariant asks for them, from the loaded variant's bits: unlit (no
+    // lobes) and the 2D shadow atlas (one map slot less)
+    const bool unlit = (submesh.shaderProperties & (1u << 0)) != 0;
+    const bool shadows2d = (submesh.shaderProperties & (1u << 23)) != 0;
+    const MaterialLighting lighting = unlit ? MaterialLighting::NONE : resolveLighting(submesh.material.lighting, nullptr);
+    return MaterialPbr::getPbrVariant(submesh.material, lighting, false, tier, shadows2d ? 1 : 0);
+}
+
+bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
+    const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
+    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE);
+    if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
+        return false;
+    for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+        if ((k < (int)expected.maps.size() ? expected.maps[k] : PbrMap::COUNT) != submesh.pbrMaps[k])
+            return false;
+    }
+    return true;
+}
+
+bool RenderSystem::usesPbrTransmission(const Material& material){
+    return material.pbr->transmission.enabled && resolveLighting(material.lighting, nullptr) != MaterialLighting::VERTEX;
 }
 
 uint32_t RenderSystem::getSubmeshSceneInputs(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
@@ -2840,6 +2915,9 @@ uint32_t RenderSystem::getSubmeshSceneInputs(const MeshComponent& mesh, const Su
     std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
     if (manifest)
         inputs |= manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, submesh.material.shaderFeatures));
+    // the built-in Lit's transmission refracts the scene colour copy
+    if (!manifest && usesPbrTransmission(submesh.material))
+        inputs |= ShaderRequire_SceneColor;
     const MaterialPass& pass = submesh.material.extraPass;
     if (std::shared_ptr<const ShaderManifest> passManifest = findManifest(pass.shader))
         inputs |= passManifest->resolveRequire(ShaderReference::getEnabledFeatures(pass.shader, pass.shaderFeatures));
@@ -2933,7 +3011,7 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
                 const SubmeshShaderInputs inputs = getSubmeshShaderInputs(*mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
                 const SubmeshShaderVariant variant = getSubmeshShaderVariant(environment, inputs);
                 // the shader of each submesh (its material's, the mesh's, the scene's), see loadMesh
-                const uint16_t meshShaderId = ShaderPool::registerCustomShader(getSubmeshShaderReference(*mesh, submesh, sceneMeshShader));
+                const uint16_t meshShaderId = ShaderPool::registerCustomShader(getSubmeshShaderReference(*mesh, submesh, sceneMeshShader, variant.litDefines));
                 const uint16_t depthShaderId = ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(*mesh, submesh, sceneMeshShader));
                 add(ShaderType::MESH, variant.properties, meshShaderId);
                 if (variant.depth)
@@ -3157,6 +3235,14 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.instanceFade = instmesh && instmesh->distanceFade;
     inputs.mirror = mirror;
 
+    // the built-in Lit's extended lobes (a shader with a manifest has none of them, nor does
+    // a Terrain: its painted layers are its surface, and they hex tile on their own)
+    if (!inputs.manifest){
+        inputs.material = &submesh.material;
+        inputs.pbrTransmission = !terrain && submesh.material.pbr->transmission.enabled;
+    }
+    inputs.terrainHex = terrain && hasTerrainHexLayers(*terrain);
+
     return inputs;
 }
 
@@ -3330,8 +3416,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         p_hasNormalMap = false;
     }
 
-    // screen-space AO modulates ambient/indirect light on lit submeshes (Lit's).
-    const bool p_ssao = environment.ssao && !p_unlit && !manifest && (p_punctual || p_vertexLights || p_ibl);
+    // screen-space AO modulates ambient/indirect light on lit submeshes (Lit's), not on a
+    // transmissive one: it draws in the transparent queue, over the AO of what is behind it
+    // (and the scene colour it refracts takes the slot)
+    const bool p_ssao = environment.ssao && !p_unlit && !manifest && (p_punctual || p_vertexLights || p_ibl) && !inputs.pbrTransmission;
     const bool p_alphaMask = inputs.alphaMode == MaterialAlphaMode::MASK;
     const bool p_alphaOpaque = inputs.alphaMode == MaterialAlphaMode::ALPHA_OPAQUE;
     // AUTO + textureShadow preserves the legacy opt-in for editor-created
@@ -3355,6 +3443,23 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
+
+    // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
+    // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
+    // Lit Quality. Lobes are lighting: an unlit variant keeps hex tiling only. A 2D shadow
+    // atlas takes one extension map slot (16 fragment textures at most).
+    if (!manifest){
+        if (inputs.material){
+            const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
+            variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
+            variant.litDefines = variant.pbr.defines;
+        }
+        if (p_terrainSurface && inputs.terrainHex)
+            variant.litDefines.push_back(MaterialPbr::TERRAIN_HEX_DEFINE);
+        if (environment.litQualityHigh && !p_unlit)
+            variant.litDefines.push_back(MaterialPbr::LIT_QUALITY_DEFINE);
+        std::sort(variant.litDefines.begin(), variant.litDefines.end());
+    }
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
@@ -3548,18 +3653,19 @@ void RenderSystem::fillFrameBlock(frame_t& frame, const CameraComponent& camera,
     auto lights = scene->getComponentArray<LightComponent>();
     for (size_t i = 0; i < lights->size(); i++){
         const LightComponent& light = lights->getComponentFromIndex(i);
-        if (light.type != LightType::DIRECTIONAL || light.intensity <= 0.0f || !isLightActive(lights->getEntity(i), light))
+        if (light.type != LightType::DIRECTIONAL || light.resolvedIntensity <= 0.0f || !isLightActive(lights->getEntity(i), light))
             continue;
-        const float luminance = 0.2126f * light.color.x + 0.7152f * light.color.y + 0.0722f * light.color.z;
-        const float brightness = light.intensity * luminance;
+        const Vector3& color = light.resolvedColor;
+        const float luminance = 0.2126f * color.x + 0.7152f * color.y + 0.0722f * color.z;
+        const float brightness = light.resolvedIntensity * luminance;
         if (brightness <= brightest)
             continue;
         brightest = brightness;
         Vector3 towardsLight = Vector3(-light.worldDirection.x, -light.worldDirection.y, -light.worldDirection.z);
         if (towardsLight.length() > 0.0f)
             towardsLight.normalize();
-        frame.mainLightDirection = Vector4(towardsLight, light.intensity);
-        frame.mainLightColor = Vector4(light.color, 1.0f);
+        frame.mainLightDirection = Vector4(towardsLight, light.resolvedIntensity);
+        frame.mainLightColor = Vector4(light.resolvedColor, 1.0f);
     }
 
     frame.ambient = Vector4(scene->getGlobalIlluminationColorLinear() * scene->getGlobalIlluminationIntensity(), 1.0f);
@@ -4334,6 +4440,39 @@ void RenderSystem::applyEnvironment(ObjectRender& render, const ShaderLibraryBin
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, texture);
 }
 
+void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material){
+    // the 12-float prefix of Material as it is; with an emission intensity, a copy whose
+    // emissive factor carries it (KHR_materials_emissive_strength)
+    if (material.emissiveStrength == 1.0f){
+        render.applyUniformBlock(slot, sizeof(float) * 12, const_cast<Material*>(&material));
+        return;
+    }
+    float prefix[12];
+    std::memcpy(prefix, &material, sizeof(prefix));
+    for (int c = 8; c < 11; c++)
+        prefix[c] *= material.emissiveStrength;
+    render.applyUniformBlock(slot, sizeof(prefix), prefix);
+}
+
+bool RenderSystem::loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render){
+    static const char* const slotNames[MaterialPbr::MAX_EXTENSION_MAPS] = {"u_pbrExtTexture0", "u_pbrExtTexture1", "u_pbrExtTexture2"};
+    MaterialPbrExtensions* pbr = submesh.material.pbr.editIfSet();
+    for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+        const PbrMap map = submesh.pbrMaps[k];
+        if (map == PbrMap::COUNT || !pbr)
+            continue;
+        const std::pair<int, int> slot = shaderData.getTextureIndexByName(slotNames[k]);
+        if (slot.first == -1)
+            continue;
+        TextureRender* fallback = map == PbrMap::CLEARCOAT_NORMAL ? &emptyNormal : &emptyWhite;
+        TextureRender* textureRender = MaterialPbr::getMap(*pbr, map).getRender(fallback);
+        if (textureRender && !textureRender->isCreated())
+            return false;
+        render.addTexture(slot, ShaderStageType::FRAGMENT, textureRender ? textureRender : fallback);
+    }
+    return true;
+}
+
 bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights){
     TextureRender* textureRender = NULL;
     std::pair<int, int> slotTex(-1, -1);
@@ -4920,7 +5059,9 @@ void RenderSystem::applyTerrainLayersUniform(ObjectRender& render, int slot, Ent
         layers.surface[i] = Vector4(layer.roughnessFactor, layer.metallicFactor, layer.normalStrength, layer.occlusionStrength);
         layers.slices[i] = Vector4((float)i,
                                    detail ? (float)detail->normalSlice[i] : -1.0f,
-                                   detail ? (float)detail->surfaceSlice[i] : -1.0f, 0.0f);
+                                   detail ? (float)detail->surfaceSlice[i] : -1.0f,
+                                   // the hex rotation of a hex tiled layer, < 0 for the others (TERRAIN_HEX_TILING)
+                                   (present && layer.hexTiling) ? std::clamp(layer.hexRotation, 0.0f, 1.0f) : -1.0f);
     }
 
     render.applyUniformBlock(slot, sizeof(fs_terrain_layers_t), &layers);
@@ -5264,11 +5405,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         mesh.submeshes[i].shaderProperties = variant.properties;
         mesh.submeshes[i].loadedLighting = mesh.submeshes[i].material.lighting;
+        // the built-in Lit's defines and the extension maps its variant binds
+        mesh.submeshes[i].litDefineBits = MaterialPbr::getDefineBits(variant.litDefines);
+        for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++)
+            mesh.submeshes[i].pbrMaps[k] = k < (int)variant.pbr.maps.size() ? variant.pbr.maps[k] : PbrMap::COUNT;
         // a custom main shader (a library shader or a fork) overrides the built-in Mesh
         // shader; the variant (#define) system, depth/gbuffer passes and bind-slots are
         // unchanged. Priority: material shader > component customShader > scene default
         // shader > built-in (empty); the material's features key the variant too.
-        submeshLoads[i].meshShaderSrc = getSubmeshShaderReference(mesh, mesh.submeshes[i], sceneMeshShader);
+        submeshLoads[i].meshShaderSrc = getSubmeshShaderReference(mesh, mesh.submeshes[i], sceneMeshShader, variant.litDefines);
         const std::string& meshShaderSrc = submeshLoads[i].meshShaderSrc;
         mesh.submeshes[i].customShaderId = ShaderPool::registerCustomShader(meshShaderSrc);
         mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId);
@@ -5325,6 +5470,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                            meshShaderSrc.c_str(), scene->getEntityName(entity).c_str());
                 mesh.submeshes[i].customShaderId = 0;
                 mesh.submeshes[i].shader = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0);
+            }else if (ShaderReference::isBuiltin(meshShaderSrc)){
+                // a built-in Lit variant still building (a lobe just enabled, Lit Quality just
+                // raised) draws the plain one meanwhile, and swaps when it is ready (no stall)
+                std::shared_ptr<ShaderRender> plain = ShaderPool::get(ShaderType::MESH, mesh.submeshes[i].shaderProperties, 0);
+                if (plain->isCreated()){
+                    mesh.submeshes[i].customShaderId = 0;
+                    mesh.submeshes[i].shader = plain;
+                    mesh.needVariantReload = true;
+                }
             }
             if (!mesh.submeshes[i].shader->isCreated())
                 shadersReady = false;
@@ -5401,6 +5555,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
+        mesh.submeshes[i].slotFSPbrExt = shaderData.getUniformBlockIndexByName("u_fs_pbrExt");
         if (p_hasTexture2){
             mesh.submeshes[i].slotFSTexCoordSets = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS);
         }
@@ -5457,6 +5612,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         writeSubmeshCustomUniforms(mesh, mesh.submeshes[i]);
 
         if (!loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights)){
+            return false;
+        }
+        if (!loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render)){
             return false;
         }
         // shader library: the frame block and the material's custom textures
@@ -5528,7 +5686,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         // the camera depth pre-pass leaves out a forked color shader without a depth
         // program (its vertices may not match), and what writes no depth
-        const bool forkedColor = mesh.submeshes[i].customShaderId != 0 && !ShaderReference::isLibrary(meshShaderSrc);
+        const bool forkedColor = mesh.submeshes[i].customShaderId != 0 && !ShaderReference::isLibrary(meshShaderSrc) &&
+                                 !ShaderReference::isBuiltin(meshShaderSrc);
         const bool explicitDepthWrite = resolveState(mesh.submeshes[i].material.depthWrite,
             manifestState ? manifestState->depthWrite : MaterialDepthWrite::AUTO) != MaterialDepthWrite::AUTO;
         if ((forkedColor && depthShaderSrc.empty()) || (explicitDepthWrite && !colorState.depthWrite)){
@@ -5903,6 +6062,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // (a failed shader drawn by the built-in one reads nothing)
         if (inputs.manifest && mesh.submeshes[i].customShaderId != 0)
             submeshInputs |= inputs.manifest->resolveRequire(inputs.features);
+        // the built-in Lit's transmission (its variant as drawn: not while the plain one stands in)
+        if (mesh.submeshes[i].customShaderId != 0 && (mesh.submeshes[i].litDefineBits & MaterialPbr::getDefineBit(MaterialPbr::TRANSMISSION_DEFINE)))
+            submeshInputs |= ShaderRequire_SceneColor;
         if (mesh.submeshes[i].extraPass && mesh.submeshes[i].extraPass->loaded)
             submeshInputs |= mesh.submeshes[i].extraPass->sceneInputs;
         sceneInputs |= submeshInputs;
@@ -6791,7 +6953,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     // the material's prefix, the size its variant declares (a fork of Lit reads it)
     if (lit){
-        render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 12, &submesh.material);
+        applyLitMaterialBlock(render, extra.slotFSParams, submesh.material);
     }else if (properties & (1u << 24)){
         render.applyUniformBlock(extra.slotFSParams, sizeof(float) * 8, &submesh.material);
     }else{
@@ -7369,6 +7531,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
                 ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
                 if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
+                        loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
                         bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
                 }
@@ -7490,7 +7653,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (submeshLit){
-                render.applyUniformBlock(mesh.submeshes[i].slotFSParams, sizeof(float) * 12, &mesh.submeshes[i].material);
+                applyLitMaterialBlock(render, mesh.submeshes[i].slotFSParams, mesh.submeshes[i].material);
             }else if (mesh.submeshes[i].shaderProperties & (1u << 24)){
                 // Unlit alpha-mask variants include the metallic/roughness padding
                 // and alphaCutoff from the shared CPU material prefix.
@@ -7511,7 +7674,18 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     mat.baseColorTexCoord, mat.metallicRoughnessTexCoord, mat.occlusionTexCoord, mat.emissiveTexCoord,
                     mat.normalTexCoord, 0, 0, 0
                 };
+                // set1.yzw: the extension map slots' (u_pbrExtTexture0..2)
+                for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
+                    if (mesh.submeshes[i].pbrMaps[k] != PbrMap::COUNT)
+                        texCoordSets[5 + k] = MaterialPbr::getMapTexCoord(mat.pbr, mesh.submeshes[i].pbrMaps[k]);
+                }
                 render.applyUniformBlock(mesh.submeshes[i].slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
+            }
+
+            if (mesh.submeshes[i].slotFSPbrExt != -1){
+                float pbrExt[MaterialPbr::UNIFORM_FLOATS];
+                MaterialPbr::getUniformBlock(mesh.submeshes[i].material.pbr, pbrExt);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSPbrExt, sizeof(pbrExt), pbrExt);
             }
 
             if (terrain){
@@ -8280,6 +8454,7 @@ void RenderSystem::fillSceneInputs(const CameraComponent& camera, const Rect& vi
     const Matrix4 inverseView = camera.viewMatrix.inverse();
     const Matrix4 inverseProjection = (camera.viewProjectionMatrix * inverseView).inverse();
     passSceneBlock.inverseViewProjection = inverseView * inverseProjection;
+    passSceneBlock.viewProjection = camera.viewProjectionMatrix;
     // distance along the view axis = -view.z / view.w, view = inverse projection * ndc
     const Vector4 rowZ = inverseProjection.row(2);
     passSceneBlock.inverseProjectionZ = Vector4(-rowZ.x, -rowZ.y, -rowZ.z, -rowZ.w);
@@ -9257,6 +9432,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSParams = -1;
         submesh.slotFSParams = -1;
         submesh.slotFSTexCoordSets = -1;
+        submesh.slotFSPbrExt = -1;
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
         submesh.slotFSFog = -1;
@@ -10846,7 +11022,7 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& m
         const SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
-                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
+                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines))) && allReady;
         if (variant.depth){
             allReady = ready(ShaderType::DEPTH, variant.depthProperties,
                              ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
@@ -12212,6 +12388,13 @@ void RenderSystem::update(double dt){
         lightCapacityTier = lightCapacity;
         needReloadMeshVariants();
     }
+    // the Lit Quality and the lobe tier are part of the built-in Lit's variants (builtin:lit)
+    const PbrTier pbrTier = MaterialPbr::getRuntimeTier();
+    if (scene->getLitQuality() != loadedLitQuality || pbrTier != loadedPbrTier){
+        loadedLitQuality = scene->getLitQuality();
+        loadedPbrTier = pbrTier;
+        needReloadMeshVariants();
+    }
 
     if (pipelines != loadedPipelines){
         loadedPipelines = pipelines;
@@ -12223,6 +12406,7 @@ void RenderSystem::update(double dt){
         needReloadSky();
     }
 
+    resolveLights();
     loadLights(numLights);
     updateSpotMaskAtlas(numLights);
     loadLights2D();
@@ -12411,6 +12595,13 @@ void RenderSystem::update(double dt){
                     const bool shaderTerrainSurface = (mesh.submeshes[s].shaderProperties & (1u << 27)) != 0;
                     if (shaderTerrainSurface != hasTerrainSurfaceLayers(*terrain)){
                         mesh.needReload = true;
+                    }else if (shaderTerrainSurface && mesh.loaded && !mesh.needReload){
+                        // so can a layer's hex tiling, a define of the built-in Lit's variant
+                        // (as asked for: the plain variant standing in for it reloads on its own)
+                        const bool shaderHex = (mesh.submeshes[s].litDefineBits & MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE)) != 0;
+                        if (shaderHex != hasTerrainHexLayers(*terrain)){
+                            mesh.needVariantReload = true;
+                        }
                     }
                 }
 
@@ -12435,6 +12626,12 @@ void RenderSystem::update(double dt){
                         if ((mesh.submeshes[s].shaderProperties & (1 << 1)) || (mesh.submeshes[s].shaderProperties & (1 << 2))){ // 'Uv1' or 'Uv2'
                             mesh.needReload = true;
                         }
+                    }
+                    // the built-in Lit's lobes, maps and hex tiling: a variant of their own, built
+                    // while the loaded one draws (the variant as asked for, see loadMesh)
+                    if (!mesh.submeshes[s].manifest && !terrain && mesh.loaded && !mesh.needReload &&
+                            !pbrVariantMatches(mesh.submeshes[s])){
+                        mesh.needVariantReload = true;
                     }
                     if (mesh.submeshes[s].manifest){
                         // no normal map variant: its lighting comes from the manifest

@@ -88,3 +88,22 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |
 | `AssetDecodeGate`, `AssetIOService`, adapted | `engine/core/jobs/BackgroundGate.*`, `engine/core/io/AssetIOService.*` | frame protection and the asset readers (S06) |
 | Tests (`ParallelAlgorithmsTests`, `AssetDecodeGateTests`, `AssetIOServiceTests`, Memory tests, `MemoryBench`), ported | `engine/tests/core/` | test cases and benchmark loops (tests only, never shipped) |
+| `Engine/Modules/Rendering/Shaders/Includes/specular_aa.glsl`, adapted | `engine/shaderlib/includes/specular_aa.glsl` | geometric specular anti-aliasing of the High Lit Quality (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/iridescence.glsl`, adapted | `engine/shaderlib/includes/iridescence.glsl` | the thin-film Fresnel of KHR_materials_iridescence (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/terrain_material_albedo.glsl` (the colour-slotted hex lattice), adapted with an integer hash | `engine/shaderlib/includes/hex_tiling.glsl` | hex tiling of materials and terrain layers (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/standard_pbr.glsl` (anisotropic GGX, Charlie visibility, the sheen albedo fit), adapted | `engine/shaderlib/includes/pbr_ext.glsl` | the extended lobes of the built-in Lit (S11) |
+| `Engine/Include/Components/Rendering/LightPhotometry.h` (black body fit, lumen to candela), adapted | `engine/core/util/LightPhotometry.h` | photometric light units and colour temperature (S11) |
+
+The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
+
+Test assets (never shipped: `engine/tests/` stays out of the editor install and of exports): the [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) models of `engine/tests/render/assets/khronos/`, each with its `LICENSE.md` and `metadata.json`. The CC-BY-4.0 ones are credited here:
+
+| Model | Location | License | Credit |
+|---|---|---|---|
+| ClearCoatTest | `engine/tests/render/assets/khronos/ClearCoatTest/` | CC-BY-4.0 | Ed Mackey, © 2020 Analytical Graphics, Inc. |
+| AnisotropyRotationTest | `engine/tests/render/assets/khronos/AnisotropyRotationTest/` | CC-BY-4.0 | Ed Mackey, © 2023 Analytical Graphics, Inc. |
+| TransmissionRoughnessTest | `engine/tests/render/assets/khronos/TransmissionRoughnessTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| AttenuationTest | `engine/tests/render/assets/khronos/AttenuationTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| SpecularTest | `engine/tests/render/assets/khronos/SpecularTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| EmissiveStrengthTest | `engine/tests/render/assets/khronos/EmissiveStrengthTest/` | CC-BY-4.0 | Ed Mackey, © 2022 AGI |
+| SheenTestGrid, AnisotropyStrengthTest, IridescenceDielectricSpheres, IridescenceMetallicSpheres, TransmissionTest, IORTestGrid, MetalRoughSpheresNoTextures | `engine/tests/render/assets/khronos/` | CC0-1.0 | Eric Chadwick, Ed Mackey, Khronos, UX3D, Adobe, Krill Gavrilov (their `metadata.json`) |

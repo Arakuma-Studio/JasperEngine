@@ -750,7 +750,7 @@ void setMainCameraTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ scene settings
 
-enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
+enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, LitQuality, Filter, PostProcess,
                          PostProcessing, PostProcessingField };
 
 struct SceneSetting {
@@ -770,6 +770,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
+        {"lit_quality", SettingKind::LitQuality, "the built-in Lit's quality: standard (as before), high (specular anti-aliasing, direct-light energy compensation; new scenes)"},
+        {"physical_light_ev100", SettingKind::Float, "Physical Light Exposure, EV100 -6..24 (Sunny 15, Overcast 12, Interior 7, Night 2): only lights in lux, candela or lumen"},
         {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
@@ -963,6 +965,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
         case SettingKind::PostProcessing: return "post_processing";
@@ -976,6 +979,7 @@ const McpValues::EnumOptions* settingOptions(SettingKind kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
+        case SettingKind::LitQuality: return McpValues::enumTable("lit_quality");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
         default: return nullptr;
     }
@@ -1041,6 +1045,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LightState>(setting.name)
                                                         : Catalog::getSceneProperty<LightState>(scene, setting.name)),
                                          *settingOptions(setting.kind));
+        case SettingKind::LitQuality:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<LitQuality>(setting.name)
+                                                        : Catalog::getSceneProperty<LitQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
         case SettingKind::Filter:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<TextureFilter>(setting.name)
                                                         : Catalog::getSceneProperty<TextureFilter>(scene, setting.name)),
@@ -1105,6 +1113,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");
+            if (name == "physical_light_ev100" && (value.get<float>() < -6.0f || value.get<float>() > 24.0f)) return expect("-6 to 24");
             return new ScenePropertyCmd<float>(project, id, name, value.get<float>());
         case SettingKind::String: {
             if (!value.is_string()) return expect("a string (\"\" for the built-in shader)");
@@ -1143,6 +1152,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::LitQuality:
         case SettingKind::Filter: {
             int parsed = 0;
             std::string why;
@@ -1153,6 +1163,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (setting.kind == SettingKind::ShadowQuality) return new ScenePropertyCmd<ShadowQuality>(project, id, name, (ShadowQuality)parsed);
             if (setting.kind == SettingKind::SceneColorScale) return new ScenePropertyCmd<SceneColorScale>(project, id, name, (SceneColorScale)parsed);
             if (setting.kind == SettingKind::LightState) return new ScenePropertyCmd<LightState>(project, id, name, (LightState)parsed);
+            if (setting.kind == SettingKind::LitQuality) return new ScenePropertyCmd<LitQuality>(project, id, name, (LitQuality)parsed);
             return new ScenePropertyCmd<TextureFilter>(project, id, name, (TextureFilter)parsed);
         }
         case SettingKind::PostProcessing:

@@ -10,6 +10,8 @@
 #include "shader/ShaderDataSerializer.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Base64.h"
+#include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
@@ -234,6 +236,10 @@ std::string ShaderPool::getCustomShaderBasename(uint16_t customId){
         }
         return "fx_" + effect;
     }
+    // a variant of the built-in Lit ("builtin:lit#PBR_CLEARCOAT,...") is "lit_" and two
+    // letters per define, short enough for every platform's paths (MaterialPbr)
+    if (ShaderReference::getBase(name) == ShaderReference::BUILTIN_LIT)
+        return MaterialPbr::getVariantBasename(ShaderReference::getFeatures(name));
     std::string base = name;
     // Sanitize the project-relative base into a filesystem-safe, deterministic token
     // (e.g. "shaders/myMesh" -> "shaders_myMesh") used in .sdat filenames.
@@ -1155,6 +1161,10 @@ std::string ShaderPool::resolveCustomShaderBasename(const std::string& basename)
         }
         return libraryEffectPrefix + name;
     }
+    // the built-in Lit's variants map back without a resolver too
+    std::vector<std::string> litDefines;
+    if (MaterialPbr::parseVariantBasename(basename, litDefines))
+        return ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, litDefines);
     const auto& resolver = customShaderNameResolver();
     return resolver ? resolver(basename) : std::string();
 }

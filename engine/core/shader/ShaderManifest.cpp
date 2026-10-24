@@ -1256,9 +1256,15 @@ std::string ShaderManifest::getShaderTypeToken(ShaderType type){
 // ---------------------------------------------------------------- ShaderReference
 
 const char* const ShaderReference::LIBRARY_PREFIX = "library:";
+const char* const ShaderReference::BUILTIN_PREFIX = "builtin:";
+const char* const ShaderReference::BUILTIN_LIT = "builtin:lit";
 
 bool ShaderReference::isLibrary(const std::string& reference){
     return reference.compare(0, 8, LIBRARY_PREFIX) == 0;
+}
+
+bool ShaderReference::isBuiltin(const std::string& reference){
+    return reference.compare(0, 8, BUILTIN_PREFIX) == 0;
 }
 
 std::string ShaderReference::getLibraryName(const std::string& reference){
