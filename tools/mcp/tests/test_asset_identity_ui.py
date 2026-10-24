@@ -121,6 +121,7 @@ async def context_menu(ed: Editor, name: str, label: str) -> None:
     await click(ed, entry(state, name), button="3")
     state = await wait_ui(ed, lambda s: menu_item(s, label), f"the context menu of {name} shows {label}")
     STATE["menu"] = state["project_window"]["context_menu"]
+    await shot(ed, f"ui-menu-{label.lower().replace(' ', '-')}")
     await click(ed, menu_item(state, label))
 
 
