@@ -39,6 +39,7 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "pose/ModelRig.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -3412,8 +3413,8 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     }
 
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
-    // play reuses the edit-time scene: the animators start from their beginning
-    entry.runtime->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
+    // no animator reset here: the scripts' init already ran (onFinish, play, setAnimation...);
+    // Stop resets them (finalizeStop), so play starts from their beginning
 
     entry.runtime->scene->getSystem<UISystem>()->clearAnchorReferenceSize();
     entry.runtime->scene->getSystem<UIDocumentSystem>()->clearReferenceSize();
@@ -4553,6 +4554,8 @@ void editor::Project::resetConfigs() {
     // process. Do not carry its dependency snapshots or compiled custom data across
     // that boundary.
     editor::ShaderBuilder::invalidateCustomShaders();
+    // the pose rigs of its models (the next project may have files of the same names)
+    pose::PoseRigCache::shared().clear();
 
     // Scenes are gone: drop unreferenced pool assets from the previous project.
     // Keep entries still held by the editor/engine (fonts, active shaders, etc.).

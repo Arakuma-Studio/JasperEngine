@@ -317,3 +317,50 @@ TEST(PoseRuntime, RigCacheSharesRigs){
     EXPECT_FALSE(c.rig->has(H::LeftToes));
     EXPECT_EQ(cache.size(), 1u);
 }
+
+TEST(PoseRuntime, RigCacheFollowsTheModelData){
+    PoseRigCache cache;
+    const TestRig& rig = tposeRig();
+    auto skinFactory = [&](){ return rig.skin; };
+    std::string error;
+    auto loadA = std::make_shared<int>(1);   // stands for a ModelComponent's loaded gltfModel
+    ModelRigInfo a, again, b;
+    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadA, rig.skeleton, HumanoidOverrides(), skinFactory, a, &error)) << error;
+    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadA, rig.skeleton, HumanoidOverrides(), skinFactory, again, &error)) << error;
+    EXPECT_EQ(a.rig.get(), again.rig.get());
+    // the file reloaded: new data, a new rig
+    auto loadB = std::make_shared<int>(2);
+    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadB, rig.skeleton, HumanoidOverrides(), skinFactory, b, &error)) << error;
+    EXPECT_NE(a.rig.get(), b.rig.get());
+    EXPECT_EQ(cache.size(), 1u);
+    // unloaded: the entry goes with the data
+    loadB.reset();
+    ModelRigInfo other;
+    ASSERT_TRUE(cache.get("models/robot.gltf", "", rig.skeleton, HumanoidOverrides(), skinFactory, other, &error)) << error;
+    EXPECT_EQ(cache.size(), 1u);
+    cache.clear();
+    EXPECT_EQ(cache.size(), 0u);
+}
+
+TEST(PoseRuntime, PausedTransitionFreezes){
+    PoseAnimationData data = armsAnimation(true);
+    auto runtime = loaded(data, tposeRig());
+    runtime->displayed = runtime->keys[0];
+    runtime->hasDisplayed = true;
+    PoseGoTo request;
+    request.key = 1;
+    request.duration = 0.2f;
+    ASSERT_TRUE(runtime->startTransition(request));
+    HumanPose out = runtime->displayed;
+    runtime->sampleTransition(0.05f, out);
+    const float time = runtime->transitionTime;
+    // what PoseAnimator::pause does; the system then advances it by 0
+    runtime->transitionPaused = true;
+    HumanPose frozen = out;
+    runtime->sampleTransition(0.0f, frozen);
+    EXPECT_FLOAT_EQ(runtime->transitionTime, time);
+    EXPECT_LT(maxDifference(frozen, out), 1e-7);
+    // a new goToPose runs again
+    ASSERT_TRUE(runtime->startTransition(request));
+    EXPECT_FALSE(runtime->transitionPaused);
+}

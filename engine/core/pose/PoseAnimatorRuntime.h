@@ -76,6 +76,9 @@ namespace jasperengine::pose {
         std::string error;
         // made for the pending load (PoseAnimatorComponent::needsLoad): parsed, waiting for the model
         bool loading = false;
+        // a failed animator retries every second; the error last logged (not logged twice)
+        float retryTimer = 0.0f;
+        std::string loggedError;
 
         // the model it plays on (filled by PoseAnimatorSystem)
         Entity model = NULL_ENTITY;
@@ -99,6 +102,7 @@ namespace jasperengine::pose {
         // live transition (goToPose); a request made before the rig is ready waits in `pending`
         bool transitionActive = false;
         bool transitionArrived = false;   // settled: holds the key pose exactly
+        bool transitionPaused = false;    // pause() during a transition freezes it
         float transitionTime = 0.0f;
         float transitionSettle = 0.0f;    // transitionSettleTime() of the current transition
         int transitionKey = -1;
@@ -106,7 +110,10 @@ namespace jasperengine::pose {
         HumanPose transitionFrom;
         PoseGoTo pending;
 
+        // the weight blend per slot, and the bone entity each blend state was written to (the
+        // bones to give their base pose back when the animator stops driving them)
         std::array<PoseBlendBone, HUMAN_BONE_COUNT> blend;
+        std::array<Entity, HUMAN_BONE_COUNT> blendEntities{};
 
         // Realises the keys on `rig` (joint limits first when humanize.jointLimits, grounded with
         // the rig's skin) and computes the frames at the animation's frame rate. Uses `data`.

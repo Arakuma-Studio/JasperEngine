@@ -211,6 +211,7 @@ bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
     transitionTime = 0.0f;
     transitionActive = true;
     transitionArrived = false;
+    transitionPaused = false;
     transitionSettle = transitionSettleTime();
     return true;
 }

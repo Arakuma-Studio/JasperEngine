@@ -30,6 +30,7 @@ namespace jasperengine{
         std::string getAnimation() const;
 
         void play();
+        // stops playback; a live goToPose transition freezes where it is
         void pause();
         // back to time 0, showing key pose 0
         void stop();
