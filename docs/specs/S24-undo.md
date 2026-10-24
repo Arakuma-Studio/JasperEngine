@@ -752,3 +752,10 @@ with the code base:
 14. **Manual checks (AC5, AC15, AC16)** need a person at the editor; their behaviour is covered by the
     gtest suites (interactive cancel/commit, jumps, the review) and the MCP tests, and is left for the
     integrator's manual pass.
+15. **Stop now removes GameObjects that edits made while playing.** `restorePlaySnapshot` removed
+    only script-made GameObjects; ones made by a command (Create, Duplicate, Paste, an agent's
+    `create_entity`) are tracked and survived Stop, although their steps went with the play
+    session (no undo). They are destroyed and untracked now, as in Unity; Play Mode Changes
+    offers them back (R26).
+16. **View-side selections of tools are not steps.** `preview_animation` selects the Animation it
+    previews (the window needs it): that is a `Forced` selection change, not a step of its own.
