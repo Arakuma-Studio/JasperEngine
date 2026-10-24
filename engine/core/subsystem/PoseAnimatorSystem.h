@@ -26,6 +26,9 @@ namespace jasperengine{
         bool fail(PoseAnimatorComponent& animator, const std::string& message);
         bool bonesAlive(const pose::PoseAnimatorRuntime& runtime) const;
         void applyPose(pose::PoseAnimatorRuntime& runtime, const pose::HumanPose& pose, float weight);
+        // gives the bones the animator wrote their base pose back (when nobody else wrote them
+        // since) and forgets the blend state; `onlyStale`: only the slots whose bone changed
+        void restoreBones(pose::PoseAnimatorRuntime& runtime, bool onlyStale = false);
 
     public:
         PoseAnimatorSystem(Scene* scene);
@@ -45,6 +48,8 @@ namespace jasperengine{
         void draw() override;
         void destroy() override;
         void update(double dt) override;
+
+        void onComponentRemoved(Entity entity, ComponentId componentId) override;
     };
 
 }

@@ -6601,12 +6601,15 @@ YAML::Node editor::Stream::encodePoseAnimatorComponent(const PoseAnimatorCompone
 }
 
 PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator) {
-    // the old one's runtime state (what it loaded, where it plays, onFinish) stays while the
+    // the old one's runtime state (what it loaded, where it plays) stays while the
     // animation is the same: paste and play-stop restore decode over an existing component
     PoseAnimatorComponent animator;
     if (oldAnimator) {
         animator = *oldAnimator;
     }
+    // callbacks are the running game's (scripts register them again): a snapshot or a copy
+    // restored over the component must not bring back a released Lua function
+    animator.onFinish.clear();
 
     // a missing key is the default, not the old value
     const PoseAnimatorComponent defaults;
