@@ -1033,7 +1033,8 @@ is resampled on use from the resolution its size factors into, the factorization
 the current resolution (ties: x before y before z); a size no resolution has reads as zeros.
 
 Jiggle (spec §6.2) details: acceleration from finite differences of the lattice's world
-position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, a frame longer
+position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, frames the lattice
+spent inactive or the system paused (the springs are kept, only the history restarts), a frame longer
 than 0.25 s or a jump of more than 2 lattice sizes (largest world axis length) in one frame
 only rebuild the history (teleport). Substeps of at most `min(1/120 s, 1/sqrt(k))`, at most
 64 per frame; a frame longer than 0.25 s is integrated as 0.25 s. Clamp keeps
@@ -1160,8 +1161,9 @@ Runtime:
   Animation that ended in an update stopped its tracks before the all-actions pass sampled them
   at the end, so the last keys were missed by up to a frame (0.385 instead of 0.4 at the ~8 fps of
   the headless test). `ActionSystem::animationApplyEnd` (private, added) samples every running
-  keyframe child once at the clip's end (its frame's end at most, the animation duration when that
-  cut it) before the clip stops; the pose blend of that update writes the final values.
+  keyframe child once at the clip's end (at the clip time, as every other update samples it, the
+  animation duration when that cut it) before the clip stops; the pose blend of that update writes
+  the final values.
 - Integration fix: `pushEntityHandleByType` had no `Lattice` entry (ProjectUtils names a lattice
   entity's class `Lattice`, so `eval_lua object(ref, "Lattice")` and typed script references fell
   back to EntityHandle); added `DISPATCH_TYPE(Lattice, "lattice")` in `LuaBinding.cpp`.
@@ -1504,3 +1506,26 @@ were also checked. WP-MCP: `edit_lattice` `bake` should call `LatticeEditorOps::
 
     JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
         tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_bake.py
+
+### 12.x Engine runtime review
+
+Adversarial review of the merged engine side (solver, presets, LatticeSystem, Lattice, LatticeTracks
+and the ActionSystem changes, EntityCloner, the sprite grid, the Lua bindings). Fixed:
+
+- `EntityCloner` `prepare<MeshComponent>`: WP-RENDER's `mesh.lattice = LatticeMeshState()` ran
+  before WP-ECS read `wantsTessellation`/`tessellation`, so a copied lattice sprite was rebuilt
+  as a quad, drawn bilinearly bent for a frame, then rebuilt and reloaded as its grid. The
+  request is kept now (`TestLatticeRuntime.cpp`, htmlui tests).
+- `ActionSystem::animationApplyEnd` clamped each track to its frame's explicit duration, while
+  every other update samples it at the clip time (an explicit frame duration does not cut a track
+  at runtime): a track whose frame is shorter than its keys jumped back to its value at the
+  frame's end on the clip's last update (all track types). It samples at the clip time now.
+- Jiggle: the position history now restarts after frames without a step (inactive lattice,
+  paused system); a lattice moved meanwhile was kicked by a stale finite difference.
+- Lua `Lattice:addFollower` had only the 2- and 6-argument forms (LuaBridge matches the exact
+  arity): the documented optional `applyPosition, applyRotation, applyScale` failed with 3 to 5
+  arguments.
+- `LatticeSystem` steady frames allocate nothing (jiggle anchor weights, follower order, padded
+  grids and the subtree walk use kept scratch).
+
+Tests: `tools/mcp/tests/test_lattice_review.py` (3 tests), `engine/tests/htmlui/TestLatticeRuntime.cpp`.

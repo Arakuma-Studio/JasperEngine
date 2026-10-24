@@ -905,13 +905,33 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("unbind",
             luabridge::overload<Entity>(&Lattice::unbind),
             luabridge::overload<EntityHandle*>(&Lattice::unbind))
+        // every arity of addFollower(follower, rest [, applyPosition, applyRotation, applyScale,
+        // weight]): LuaBridge picks an overload by its exact argument count
         .addFunction("addFollower",
             luabridge::overload<Lattice*, Entity, Entity>(+[](Lattice* self, Entity follower, Entity rest) -> bool {
                 return self->addFollower(follower, rest);
             }),
+            luabridge::overload<Lattice*, Entity, Entity, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, Entity, Entity, bool, bool, bool>(+[](Lattice* self, Entity follower, Entity rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
+            }),
             luabridge::overload<Entity, Entity, bool, bool, bool, float>(&Lattice::addFollower),
             luabridge::overload<Lattice*, EntityHandle*, EntityHandle*>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest) -> bool {
                 return self->addFollower(follower, rest);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position) -> bool {
+                return self->addFollower(follower, rest, position);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation) -> bool {
+                return self->addFollower(follower, rest, position, rotation);
+            }),
+            luabridge::overload<Lattice*, EntityHandle*, EntityHandle*, bool, bool, bool>(+[](Lattice* self, EntityHandle* follower, EntityHandle* rest, bool position, bool rotation, bool scale) -> bool {
+                return self->addFollower(follower, rest, position, rotation, scale);
             }),
             luabridge::overload<EntityHandle*, EntityHandle*, bool, bool, bool, float>(&Lattice::addFollower))
         .addFunction("removeFollower",

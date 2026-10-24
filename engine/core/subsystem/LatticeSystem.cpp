@@ -13,8 +13,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <unordered_map>
-#include <unordered_set>
 
 using namespace jasperengine;
 
@@ -475,7 +473,8 @@ void LatticeSystem::stepJiggle(LatticeComponent& lattice, const Transform& trans
     const int steps = std::clamp((int)std::ceil(stepTime / maxStep), 1, JIGGLE_MAX_SUBSTEPS);
     const float h = (float)(stepTime / steps);
 
-    std::vector<float> weights(count, 1.0f);
+    std::vector<float>& weights = jiggleWeights;
+    weights.assign(count, 1.0f);
     if (lattice.jiggleAnchor != LatticeJiggleAnchor::NONE){
         for (int k = 0; k < rz; k++){
             for (int j = 0; j < ry; j++){
@@ -541,8 +540,14 @@ void LatticeSystem::updateJiggle(double dt){
             }
             continue;
         }
+        // after frames without a step (paused, inactive) the position history is stale: a
+        // lattice moved meanwhile would read as a huge acceleration. The springs are kept.
+        if (jiggleHistoryStale){
+            lattice.jiggleWarmup = 0;
+        }
         // an inactive lattice keeps its state, like a paused one
         if (!scene->isEntityActiveInHierarchy(entity)){
+            lattice.jiggleWarmup = 0;
             continue;
         }
         const Transform* transform = scene->findComponent<Transform>(entity);
@@ -562,8 +567,8 @@ void LatticeSystem::updateFollowers(){
     auto transforms = scene->getComponentArray<Transform>();
 
     // parents first, so a follower placed on another one's subtree sees it moved
-    std::vector<std::pair<size_t, Entity>> order;
-    order.reserve(followers->size());
+    std::vector<std::pair<size_t, Entity>>& order = followerOrder;
+    order.clear();
     for (size_t i = 0; i < followers->size(); i++){
         const Entity entity = followers->getEntity(i);
         if (transforms->hasEntity(entity)){
@@ -573,7 +578,8 @@ void LatticeSystem::updateFollowers(){
     std::sort(order.begin(), order.end());
 
     std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>();
-    std::unordered_map<Entity, std::vector<Vector3>> paddedGrids;
+    // padded grids built this frame, one per lattice (the slots and their vectors are reused)
+    followerGridCount = 0;
 
     for (const auto& entry : order){
         const Entity entity = entry.second;
@@ -619,12 +625,19 @@ void LatticeSystem::updateFollowers(){
         Vector3 worldScale = restScale;
 
         if (weight != 0.0f){
-            auto it = paddedGrids.find(latticeEntity);
-            if (it == paddedGrids.end()){
-                it = paddedGrids.emplace(latticeEntity, std::vector<Vector3>()).first;
-                lattice::buildPaddedGrid(*lattice, it->second);
+            size_t slot = 0;
+            while (slot < followerGridCount && followerGrids[slot].first != latticeEntity){
+                slot++;
             }
-            const std::vector<Vector3>& padded = it->second;
+            if (slot == followerGridCount){
+                if (slot == followerGrids.size()){
+                    followerGrids.emplace_back();
+                }
+                followerGrids[slot].first = latticeEntity;
+                lattice::buildPaddedGrid(*lattice, followerGrids[slot].second);
+                followerGridCount++;
+            }
+            const std::vector<Vector3>& padded = followerGrids[slot].second;
             const Matrix4& latticeModel = latticeTransform->modelMatrix;
 
             worldPosition = lattice::deformWorldPoint(*lattice, padded, latticeModel, restPosition, weight);
@@ -701,18 +714,26 @@ void LatticeSystem::updateFollowers(){
         transform->scale = scale;
 
         // the follower and its subtree get their world matrices this frame: the branch that
-        // follows it in the Transform array
+        // follows it in the Transform array (parents before children), which ends at the
+        // first transform that does not descend from the follower
         const size_t start = transforms->getIndex(entity);
-        std::unordered_set<Entity> branch;
-        branch.insert(entity);
         for (size_t t = start; t < transforms->size(); t++){
             Transform& current = transforms->getComponentFromIndex(t);
             const Entity currentEntity = transforms->getEntity(t);
             if (t != start){
-                if (!branch.count(current.parent)){
+                bool inBranch = false;
+                Entity ancestor = current.parent;
+                while (ancestor != NULL_ENTITY){
+                    if (ancestor == entity){
+                        inBranch = true;
+                        break;
+                    }
+                    const Transform* ancestorTransform = transforms->findComponent(ancestor);
+                    ancestor = ancestorTransform ? ancestorTransform->parent : NULL_ENTITY;
+                }
+                if (!inBranch){
                     break;
                 }
-                branch.insert(currentEntity);
             }
             current.needUpdate = true;
             render->updateTransform(current, currentEntity);
@@ -726,7 +747,10 @@ void LatticeSystem::lateUpdate(){
         jiggleTime = 0.0;
         if (dt > 0.0){
             updateJiggle(dt);
+            jiggleHistoryStale = false;
         }
+    }else{
+        jiggleHistoryStale = true;
     }
 
     updateFollowers();
