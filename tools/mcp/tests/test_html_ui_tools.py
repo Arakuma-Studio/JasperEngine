@@ -59,7 +59,8 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # (598), resolve_asset (522), find_references (434), list_missing_assets (319),
 # clear_asset_references (311), get_asset_dependencies (293), import_files' overwrite and
 # build_project's allow_missing_assets
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603
+# S06 (jobs & memory, merged after S04's measurement): +914 measured on the merge
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
