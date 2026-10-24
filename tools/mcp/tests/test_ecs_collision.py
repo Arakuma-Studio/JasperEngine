@@ -21,7 +21,7 @@ SANITIZER_REPORTS = ("ERROR: AddressSanitizer", "runtime error:", "ERROR: LeakSa
 
 async def test_contact_callbacks_destroy_for_1000_frames(ed: Editor):
     ed.require_tools("play", "wait", "eval_lua", "read_console")
-    cursor = (await ed.call("read_console", limit=1, tail=True))["next_cursor"]
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
     started = await ed.call("play", action="start")
     ed.check_eq(started["state"], "playing", f"play start: {started}")
     try:
